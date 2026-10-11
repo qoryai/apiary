@@ -15,10 +15,10 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
-    `:contract` (a signed request of the server contract), `:contract_limited` (the same,
-    held to the key's rate limit) and `:path_scope` (the reserved names,
-    `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
-    pipe through imported. First, since the others pipe through them.
+    `:contract` (a signed request of the server contract), `:contract_events` and
+    `:contract_registration` (the same, each typing its body and held to a bucket of the key's rate
+    limit) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
+    plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
@@ -27,8 +27,9 @@ defmodule ApiaryWeb.Routes do
     stories are this checkout's.
   - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
-  - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
-    `live_session :current_user`, with the session's controller routes.
+  - `visitor_routes/1`: registration, log-in, an invitation, a password link and the
+    set-up link, for anyone, in the `live_session :current_user`, with the session's
+    controller routes.
   - `instance_routes/1`: the Instance level's pages under `/instance`, behind sign-in, in
     the `live_session :instance`; each page checks its own access. Before
     `organisation_routes/1`, whose `/:org` would take `/instance`.
@@ -113,11 +114,24 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.SignedRequest
       end
 
-      # The same, for the events endpoint and the run configuration, which a key's rate
-      # limit holds.
-      pipeline :contract_limited do
+      # The same, for the events endpoint, which takes a batch and spends the key's bucket
+      # of the rate limit.
+      pipeline :contract_events do
         plug :accepts, ["json"]
-        plug ApiaryWeb.Contract.SignedRequest, rate_limit: true
+
+        plug ApiaryWeb.Contract.SignedRequest,
+          rate_limit: :events,
+          content_type: "application/cloudevents-batch+json"
+      end
+
+      # The same, for the run endpoint, which takes a registration, answers a reload, and
+      # spends a bucket of the key's own, apart from the events endpoint's.
+      pipeline :contract_registration do
+        plug :accepts, ["json"]
+
+        plug ApiaryWeb.Contract.SignedRequest,
+          rate_limit: :registration,
+          content_type: "application/json"
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -151,7 +165,8 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
-      # The server contract: signed requests, discovery, events, run configuration.
+      # The server contract: signed requests, discovery, events, a run's registration and
+      # reload.
       scope "/.well-known", ApiaryWeb.Contract do
         pipe_through :contract
 
@@ -167,10 +182,16 @@ defmodule ApiaryWeb.Routes do
       end
 
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract_limited
+        pipe_through :contract_events
 
         post "/events", EventsController, :create
-        get "/run-configuration", RunConfigurationController, :show
+      end
+
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_registration
+
+        post "/runs", RegistrationController, :create
+        get "/runs/:run_id", RegistrationController, :show
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
@@ -281,8 +302,9 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
-  visitor_routes/1 defines registration, log-in and an invitation's page, for anyone,
-  and the session's controller routes; the block's routes go into the
+  visitor_routes/1 defines registration, log-in, an invitation's page, a password link's
+  and the set-up page, for anyone, and the session's controller routes; the block's
+  routes go into the
   `live_session :current_user`, after the core's.
   """
   defmacro visitor_routes(opts \\ [], block \\ []) do
@@ -297,6 +319,8 @@ defmodule ApiaryWeb.Routes do
             live "/users/log-in", UserLive.Login, :new
             live "/users/log-in/:token", UserLive.Confirmation, :new
             live "/invitations/:token", InvitationLive.Accept, :show
+            live "/users/password/:token", UserLive.Password, :edit
+            live "/setup/:code", SetupLive, :show
             unquote(@block)
           end
 
@@ -317,8 +341,9 @@ defmodule ApiaryWeb.Routes do
   carries the workspace the person opened last, as on their own pages, so the sidebar
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
-  block's routes go into the `live_session :instance`, after the core's. The core's one
-  page here is Instance settings › Configuration
+  block's routes go into the `live_session :instance`, after the core's. The core's pages
+  here are Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
+  (`ApiaryWeb.InstanceMailController`), and Instance settings › Configuration
   (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
   sends on to the first section the person may open, and is not found for whoever may
   open none (`ApiaryWeb.InstanceController`).
@@ -331,12 +356,16 @@ defmodule ApiaryWeb.Routes do
 
           # The level itself: sent on to the first of its sections the person may open.
           get "/instance", InstanceController, :show
+          # Instance › Mail's test link, which turns mail on for the admin who saved it.
+          get "/instance/mail/confirm/:token", InstanceMailController, :turn_on
 
           live_session :instance,
             on_mount: [
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # Instance › Mail: the mail server.
+            live "/instance/mail", InstanceLive.Mail, :show
             # Instance › Configuration: what whoever runs the server set, read only.
             live "/instance/configuration", InstanceLive.Configuration, :show
             unquote(@block)
@@ -369,12 +398,15 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
-        # The switcher's link to a workspace at the section the reader is on, sent on to
-        # that section there, or to the workspace's overview where it has no such page:
-        # whether it has one is the destination's own answer, read when it is followed.
+        # The links of the breadcrumb's menus: to a workspace, and to an organisation, in
+        # the workspace the person last used there (`-` is no workspace's slug), sent on to
+        # the page the reader is on, its list page, its section or the workspace's overview:
+        # what that workspace has is its own answer, read when the link is followed. The
+        # organisation's first, whose `-` the workspace's `:workspace` would take.
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
 
+          get "/:org/-/switch/:section", SwitchController, :show
           get "/:org/:workspace/switch/:section", SwitchController, :show
         end
 
@@ -481,8 +513,10 @@ defmodule ApiaryWeb.Routes do
                    NodeLive.AccessKey,
                    :revoke_code
 
-              # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's subject, the id Forager prints, not the row's id.
+              # One run: three tabs of one LiveView, so a tab is a patch. `:run_id` is the
+              # run's subject, the id Forager prints, not the row's id. `/details` lands old
+              # links to the Details tab: the Timeline with Details open, the address
+              # rewritten to the Timeline's.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/network", RunLive.Show, :connections

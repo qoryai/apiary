@@ -1,10 +1,11 @@
 defmodule Apiary.Contract.RecordedRunTest do
   @moduledoc """
   Replays `fixtures/run/<id>/events.jsonl` of the server contract, the record of
-  one run, through the events endpoint and through `Apiary.Runs.Ingest`, and
-  holds the receiver to its rule: whatever the order, the batching and the
-  repetition of the deliveries, the same events are stored and the same run is
-  projected from them.
+  one run, through the run and events endpoints and through `Apiary.Runs.Registration`
+  and `Apiary.Runs.Ingest`, and holds the receiver to its rule: the run registers
+  first, its record's sequence 1, which is never posted; then, whatever the order, the
+  batching and the repetition of the deliveries, the same events are stored and the
+  same run is projected from them.
   """
   use ApiaryWeb.ConnCase, async: true
   use ExUnitProperties
@@ -61,14 +62,17 @@ defmodule Apiary.Contract.RecordedRunTest do
       run:
         run
         |> Map.from_struct()
-        # The last two are dated by the receiver's clock, when the events arrived.
+        # The last four are by the receiver's clock, when the registration and the events
+        # arrived.
         |> Map.drop([
           :__meta__,
           :id,
           :inserted_at,
           :updated_at,
+          :registered_at,
           :last_event_at,
-          :last_heartbeat_at
+          :last_heartbeat_at,
+          :clock_offset_ms
         ])
         |> Map.reject(fn {_field, value} -> match?(%Ecto.Association.NotLoaded{}, value) end),
       connections:
@@ -100,13 +104,15 @@ defmodule Apiary.Contract.RecordedRunTest do
 
     test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the gateway cuts it, is the stored run",
          %{scope: scope, key: key, secret: secret} do
-      lines = lines(@file_path)
+      record = lines(@file_path)
       subject = subject(@file_path)
 
-      # The ping is a batch of one, sent before anything else; then batches.
-      [ping | rest] = lines
+      # The registration is sent before anything else; then the rest, in batches.
+      {registration, lines} = record_registration(record)
+      conn = signed_register(build_conn(), key.key_id, secret, registration)
+      assert conn.status == 200
 
-      for batch <- [[ping] | Enum.chunk_every(rest, 5)] do
+      for batch <- Enum.chunk_every(lines, 5) do
         body = "[" <> Enum.join(batch, ",") <> "]"
         conn = signed_post(build_conn(), key.key_id, secret, body)
         assert conn.status == 202
@@ -117,7 +123,7 @@ defmodule Apiary.Contract.RecordedRunTest do
 
       assert run.event_count == length(lines)
       assert %{events: events} = stored(run)
-      assert Enum.map(events, & &1.sequence) == Enum.to_list(1..length(lines))
+      assert Enum.map(events, & &1.sequence) == Enum.to_list(2..length(record))
       assert Enum.map(events, & &1.event_id) == Enum.map(wire, & &1["id"])
       assert Enum.map(events, & &1.type) == Enum.map(wire, & &1["type"])
       assert Enum.map(events, & &1.data) == Enum.map(wire, & &1["data"])
@@ -127,12 +133,13 @@ defmodule Apiary.Contract.RecordedRunTest do
       exited = Enum.find(wire, &(&1["type"] == "dev.qory.run.exited"))
       started = Enum.find(wire, &(&1["type"] == "dev.qory.run.started"))
 
-      # A session's exit says its state and its exit code; a run a gateway opened has no
-      # session, says neither, and ends with a reason: quiet in the contract's record.
+      # Every exit says its state, a session's its exit code too; a run a gateway opened
+      # has no session and no exit code, and ends with a reason: quiet in the contract's
+      # record. The state `succeeded` is a completed run.
       expected_state =
         case exited["data"] do
+          %{"state" => "succeeded"} -> "completed"
           %{"state" => state} -> state
-          %{"reason" => "quiet"} -> "ended"
         end
 
       assert projected.state == expected_state
@@ -141,7 +148,7 @@ defmodule Apiary.Contract.RecordedRunTest do
       assert projected.reason == exited["data"]["reason"]
       assert projected.quiet_seconds == exited["data"]["quiet_seconds"]
       assert projected.host == started["data"]["host"]
-      assert projected.projected_sequence == length(lines)
+      assert projected.projected_sequence == length(record)
 
       # The terminal's size is the record's last word on it: the last resize, else the
       # start's; a start on pipes leaves none.
@@ -163,9 +170,10 @@ defmodule Apiary.Contract.RecordedRunTest do
 
     property "any order, batching and repetition of #{file |> Path.dirname() |> Path.basename()} stores the same events and projects the same run",
              %{scope: scope, key: key} do
-      lines = lines(@file_path)
+      {registration, lines} = @file_path |> lines() |> record_registration()
       subject = subject(@file_path)
 
+      {:ok, _answer} = register_run(key, registration)
       ingest!(key, lines)
       run = run!(scope, subject)
       expected = stored(run)
@@ -188,6 +196,7 @@ defmodule Apiary.Contract.RecordedRunTest do
           |> Enum.map(&elem(&1, 0))
           |> cut(sizes)
 
+        {:ok, _answer} = register_run(key, registration)
         for batch <- deliveries, do: ingest!(key, batch)
 
         run = run!(scope, subject)

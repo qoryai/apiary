@@ -27,7 +27,6 @@ defmodule ApiaryWeb.OverviewComponents do
       button: 1,
       code_block: 1,
       icon: 1,
-      inline_confirm: 1,
       listening: 1,
       sparkline: 1,
       steps: 1
@@ -247,10 +246,6 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, default: false
   attr :now, :any, required: true
 
-  attr :confirming, :string,
-    default: nil,
-    doc: "the id of the item whose act asks to confirm in place (a lost run's Close)"
-
   attr :panel, :map,
     default: nil,
     doc: "the page's open panel of an item's Allow (`RunComponents.rule_panel/1`), by `item_id`"
@@ -278,7 +273,6 @@ defmodule ApiaryWeb.OverviewComponents do
           shared={@shared}
           can_set_mode?={@can_set_mode?}
           now={@now}
-          confirming={@confirming == item.id}
           panel={@panel && @panel.item_id == item.id && @panel}
         />
       </ul>
@@ -304,37 +298,7 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, required: true
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
-  attr :confirming, :boolean, default: false
-
   attr :panel, :any, default: nil
-
-  # A lost run's Close asks in place: the row becomes the question, its act and Cancel.
-  defp attention_item(%{confirming: true, item: %{kind: :lost}} = assigns) do
-    ~H"""
-    <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
-      <.inline_confirm
-        id="close-run"
-        question={rich_gettext("Close %{run}?", run: row_name(@item.run))}
-        cancel={JS.push("close_cancel")}
-      >
-        {gettext(
-          "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
-        )}
-        <:action>
-          <.button
-            id="close-confirm"
-            variant="danger"
-            size="xs"
-            phx-click="close_confirm"
-            loading_text={gettext("Closing")}
-          >
-            {gettext("Yes, close")}
-          </.button>
-        </:action>
-      </.inline_confirm>
-    </li>
-    """
-  end
 
   defp attention_item(assigns) do
     ~H"""
@@ -381,9 +345,6 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <span :if={@item.resolved.mark == :allowed} class="q-amk q-mark-ok" title={gettext("Allowed")}>
       <.icon name="hero-check-micro" class="size-3.5" /><span class="sr-only">{gettext("Allowed")}</span>
-    </span>
-    <span :if={@item.resolved.mark == :closed} class="q-amk q-mark-closed" title={gettext("Closed")}>
-      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{gettext("Closed")}</span>
     </span>
     <span
       :if={@item.resolved.mark == :resolved}
@@ -597,7 +558,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_reason(%{item: %{kind: :lost}} = assigns) do
     ~H"""
-    {gettext("Lost, never posted its exit")}
+    {lost_words(@item.run)}
     """
   end
 
@@ -681,7 +642,7 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp reason_title(%{kind: :lost}, _can), do: lost_tip()
+  defp reason_title(%{kind: :lost, run: run}, _can), do: lost_tip(run)
 
   defp reason_title(%{kind: :behind}, _can),
     do: gettext("A run reloads the policy at its next heartbeat.")
@@ -861,30 +822,9 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A run a gateway opened is ended by the one who started it: its row offers Open, never
-  # Close.
   defp attention_act(%{item: %{kind: :lost}} = assigns) do
-    assigns =
-      assign(
-        assigns,
-        :close?,
-        Apiary.Runs.closable?(assigns.item.run) and
-          Apiary.Access.can?(assigns.scope, :"run.close", assigns.item.run)
-      )
-
     ~H"""
-    <button
-      :if={@close?}
-      id={"#{@item.id}-act"}
-      type="button"
-      class="q-act"
-      aria-label={gettext("Close %{run}", run: row_title(@item.run))}
-      phx-click={JS.push("close_ask", value: %{id: @item.id})}
-    >
-      {gettext("Close")}
-    </button>
     <.link
-      :if={!@close?}
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
@@ -1022,11 +962,20 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 
-  defp lost_tip,
+  # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
+  # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the
+  # run's end was never recorded. Only the second has an exit time.
+  defp lost_words(%{exited_at: nil}), do: gettext("Lost, never posted its exit")
+  defp lost_words(%{reason: "session_lost"}), do: gettext("Lost, stopped responding")
+  defp lost_words(_run), do: gettext("Lost, end not recorded")
+
+  defp lost_tip(%{exited_at: nil}),
     do:
       gettext(
         "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
       )
+
+  defp lost_tip(_run), do: gettext("The run's end was not recorded; how it went is not known.")
 
   defp mode_tip,
     do:
@@ -1045,15 +994,6 @@ defmodule ApiaryWeb.OverviewComponents do
   else its short id: what a row calls it.
   """
   def row_title(run), do: given_title(run) || command_title(run)
-
-  # `row_title/1` in a sentence: the title a run gave isolated (`{:bdi, title}`), so a
-  # bidirectional character in it reorders nothing of the sentence.
-  defp row_name(run) do
-    case given_title(run) do
-      nil -> command_title(run)
-      title -> {:bdi, title}
-    end
-  end
 
   defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")
@@ -1171,8 +1111,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   A run's state as a dot, with its word only when the run needs a look (running, ended
-  badly) or ended, grey; a run that succeeded is its dot, and a screen reader hears the
-  word. Then when it started.
+  badly) or was cancelled, grey; a run that completed is its dot, and a screen reader hears
+  the word. Then when it started.
   """
   attr :run, :map, required: true
   attr :quiet, :boolean, default: false
@@ -1181,7 +1121,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         tone: if(assigns.quiet, do: "quiet", else: assigns.run.state),
-        said?: assigns.run.state not in ["succeeded", "pending"]
+        said?: Apiary.Runs.Run.current_state(assigns.run.state) not in ["completed", "pending"]
       )
 
     ~H"""
@@ -1205,7 +1145,8 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
   columns each, today last and in ink. `days` holds fourteen maps `%{day:, runs:, alive:,
-  ended_well:, ended_badly:, denied:}`, oldest first, zeros filled in by the caller.
+  ended_well:, cancelled:, ended_badly:, denied:}`, oldest first, zeros filled in by the
+  caller.
   `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
   words are never scaled; `table?` shows the table twin instead of the drawing.
   """
@@ -1274,6 +1215,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <th scope="col">{gettext("Day")}</th>
                 <th scope="col" class="q-num">{gettext("Runs")}</th>
                 <th scope="col" class="q-num">{gettext("Ended well")}</th>
+                <th scope="col" class="q-num">{gettext("Cancelled")}</th>
                 <th scope="col" class="q-num">{gettext("Denied attempts")}</th>
               </tr>
             </thead>
@@ -1282,6 +1224,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <td class="q-hot">{day_label(day.day, @today)}</td>
                 <td class="q-num">{day.runs}</td>
                 <td class="q-num">{day.ended_well}</td>
+                <td class="q-num">{day.cancelled}</td>
                 <td class={["q-num", day.denied > 0 && "q-hot"]}>{day.denied}</td>
               </tr>
             </tbody>
@@ -1455,19 +1398,21 @@ defmodule ApiaryWeb.OverviewComponents do
   defp slot_label(day, today) do
     if Date.compare(day.day, today) == :eq do
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
+        cancelled: Format.number(day.cancelled),
         other: Format.number(day.alive + day.ended_badly),
         denied: denied_count(day.denied)
       )
     else
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
+        cancelled: Format.number(day.cancelled),
         bad: Format.number(day.ended_badly),
         denied: denied_count(day.denied)
       )

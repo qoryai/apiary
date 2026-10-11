@@ -13,6 +13,16 @@ defmodule ApiaryWeb.MemberLive.Index do
   goes back to People with a flash. Members see the page read-only. What each may is asked of
   `Apiary.Access`.
 
+  **Without mail** (`Apiary.Mail.configured?/0`) nothing is emailed: the form's button
+  creates an invitation link, and the page shows it in place of the form, once
+  (`CoreComponents.one_time_link/1`), for the inviter to copy and send themselves, with
+  Done back to People. A pending invitation's ⋯ menu makes a new link for it, Make a new
+  link (`Apiary.Organisations.renew_invitation/3`), which its row shows in place of its
+  cells, once, with Done; the old link stops working at once. A link lives in the page's
+  process alone, wrapped in a function so no inspection of the process's state prints it,
+  until the reader leaves it: any path starts without it, and no path, flash or title
+  carries it.
+
   Each person is one row on the row spec (`docs/ui.md`, Lists): the email is the title,
   the level is plain text, and what a reader may do to a membership is in its ⋯ menu:
   the level, as a choice of three with what each may do, suspending, activating and
@@ -28,11 +38,22 @@ defmodule ApiaryWeb.MemberLive.Index do
   until it is activated. Owners suspend and activate admins and members, admins members only
   (`Apiary.Organisations.suspend_member/2`, `activate_member/2`); suspending is confirmed
   on the member's row, `/:org/settings/people/:id/suspend`.
+
+  **Password links.** On the People page of the instance's organisation, while no mail is
+  set (`Apiary.Mail.configured?/0`), an instance admin's ⋯ menu of each other member has
+  Make a password link (`Apiary.Accounts.build_password_link/3`): a link that sets that
+  account's password, for a person who forgot theirs. It needs a recent sign-in, as
+  Account settings do: an admin whose sign-in is older is sent to log in again first. It
+  works once, for 24 hours, or until mail is set (`Apiary.Mail.end_password_links/0`), and
+  a new one ends the one before. The page shows it once, above the list, to copy and send
+  to the person, until Done or until the reader leaves (`CoreComponents.one_time_link/1`,
+  `kind: :password`); it keeps the link in its own process alone, never in a path, a flash
+  or a title.
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Organisations}
-  alias Apiary.Organisations.Membership
+  alias Apiary.{Access, Accounts, Mail, Organisations}
+  alias Apiary.Organisations.{Invitation, Membership}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
@@ -58,13 +79,38 @@ defmodule ApiaryWeb.MemberLive.Index do
         cancel={~p"/#{@current_scope.organisation}/settings/people"}
         cancel_by="patch"
       >
-        <:description>
+        <:description :if={!@link and @mail?}>
           {gettext(
             "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
             workspace: @current_scope.workspace.name
           )}
         </:description>
+        <:description :if={!@link and !@mail?}>
+          {gettext(
+            "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
+            workspace: @current_scope.workspace.name
+          )}
+        </:description>
+        <%!-- The link made, once, in place of the form. --%>
+        <.one_time_link
+          :if={@link}
+          id="invitation-link"
+          url={@link.url.()}
+          expires_at={@link.invitation.expires_at}
+          for={@link.invitation.email}
+        >
+          <:actions>
+            <.button
+              id="invitation-link-done"
+              variant="primary"
+              patch={~p"/#{@current_scope.organisation}/settings/people"}
+            >
+              {gettext("Done")}
+            </.button>
+          </:actions>
+        </.one_time_link>
         <.form
+          :if={!@link}
           for={@form}
           id="invitation-form"
           phx-change="validate_invite"
@@ -87,8 +133,21 @@ defmodule ApiaryWeb.MemberLive.Index do
             cancel={~p"/#{@current_scope.organisation}/settings/people"}
             cancel_by="patch"
           >
-            <.button variant="primary" type="submit" loading_text={gettext("Sending")}>
+            <.button
+              :if={@mail?}
+              variant="primary"
+              type="submit"
+              loading_text={gettext("Sending")}
+            >
               {gettext("Send invitation")}
+            </.button>
+            <.button
+              :if={!@mail?}
+              variant="primary"
+              type="submit"
+              loading_text={gettext("Creating…")}
+            >
+              {gettext("Create invitation link")}
             </.button>
           </.page_form_foot>
         </.form>
@@ -137,6 +196,22 @@ defmodule ApiaryWeb.MemberLive.Index do
             <.icon name="hero-user-plus" class="size-4" /> {gettext("Invite people")}
           </.button>
         </:actions>
+
+        <.one_time_link
+          :if={@password_link}
+          id="password-link"
+          url={@password_link.url.()}
+          expires_at={@password_link.expires_at}
+          for={@password_link.email}
+          kind={:password}
+          class="mb-2"
+        >
+          <:actions>
+            <.button id="password-link-done" size="sm" phx-click="password_link_done">
+              {gettext("Done")}
+            </.button>
+          </:actions>
+        </.one_time_link>
 
         <.list_search
           id="people-search"
@@ -213,6 +288,15 @@ defmodule ApiaryWeb.MemberLive.Index do
               <% end %>
               <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
               <.menu_item
+                :if={@password_links? and m.user_id != @current_scope.user.id}
+                id={"member-#{m.id}-password-link"}
+                phx-click="password_link"
+                phx-value-membership_id={m.id}
+                aria-label={gettext("Make a password link for %{email}", email: m.user.email)}
+              >
+                {gettext("Make a password link")}
+              </.menu_item>
+              <.menu_item
                 :if={is_nil(m.suspended_at) and Access.can?(@current_scope, :"member.suspend", m)}
                 id={"member-#{m.id}-suspend"}
                 patch={~p"/#{@current_scope.organisation}/settings/people/#{m.id}/suspend"}
@@ -270,6 +354,7 @@ defmodule ApiaryWeb.MemberLive.Index do
             label={gettext("Pending invitations")}
             rows={@invitations}
             row_id={&"invitation-#{&1.id}"}
+            confirming={@renewed && "invitation-#{@renewed.invitation.id}"}
           >
             <:col :let={i} label={gettext("Email")} kind="title">
               <span class="q-nm">
@@ -288,16 +373,50 @@ defmodule ApiaryWeb.MemberLive.Index do
                 {Format.day(i.expires_at)}
               </span>
             </:col>
+            <%!-- A new link, shown once in place of the row's cells. --%>
+            <:confirm :let={i}>
+              <.one_time_link
+                id={"invitation-#{i.id}-link"}
+                url={@renewed.url.()}
+                expires_at={@renewed.invitation.expires_at}
+                for={i.email}
+                class="py-1"
+              >
+                <:actions>
+                  <.button
+                    id={"invitation-#{i.id}-link-done"}
+                    variant="primary"
+                    size="xs"
+                    phx-click="link_done"
+                  >
+                    {gettext("Done")}
+                  </.button>
+                </:actions>
+              </.one_time_link>
+            </:confirm>
             <:action
               :let={i}
               :if={Access.can?(@current_scope, :"invitation.revoke", @current_scope.organisation)}
             >
               <.row_menu
-                :if={Access.can?(@current_scope, :"invitation.revoke", i)}
+                :if={
+                  Access.can?(@current_scope, :"invitation.revoke", i) or
+                    (!@mail? and Access.can?(@current_scope, :"invitation.renew", i))
+                }
                 id={"invitation-#{i.id}-menu"}
                 label={gettext("Actions for the invitation to %{email}", email: i.email)}
               >
                 <.menu_item
+                  :if={!@mail? and Access.can?(@current_scope, :"invitation.renew", i)}
+                  id={"invitation-#{i.id}-renew"}
+                  phx-click="renew_invitation"
+                  phx-value-id={i.id}
+                  aria-label={gettext("Make a new link for %{email}", email: i.email)}
+                >
+                  {gettext("Make a new link")}
+                </.menu_item>
+                <.menu_item
+                  :if={Access.can?(@current_scope, :"invitation.revoke", i)}
                   id={"invitation-#{i.id}-revoke"}
                   phx-click="revoke_invitation"
                   phx-value-id={i.id}
@@ -448,14 +567,28 @@ defmodule ApiaryWeb.MemberLive.Index do
        page_title: title(socket.assigns.current_scope, gettext("People")),
        page: nil,
        form: nil,
-       member: nil
+       member: nil,
+       link: nil,
+       renewed: nil,
+       mail?: Mail.configured?(),
+       password_link: nil
      )
      |> load()}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    socket = assign(socket, page: nil, form: nil)
+    # Every path starts without a link shown: it is shown once, until the reader leaves.
+    socket =
+      assign(socket,
+        page: nil,
+        form: nil,
+        link: nil,
+        renewed: nil,
+        password_link: nil,
+        mail?: Mail.configured?()
+      )
+
     {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
   end
 
@@ -548,7 +681,11 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   def handle_event("validate_invite", %{"invitation" => params}, socket) do
-    changeset = params |> Organisations.change_invitation() |> Map.put(:action, :validate)
+    changeset =
+      %Invitation{}
+      |> Organisations.change_invitation(params)
+      |> Map.put(:action, :validate)
+
     {:noreply, assign(socket, :form, to_form(changeset))}
   end
 
@@ -556,6 +693,14 @@ defmodule ApiaryWeb.MemberLive.Index do
     scope = socket.assigns.current_scope
 
     case Organisations.invite_member(scope, params, &url(~p"/invitations/#{&1}")) do
+      # Without mail: the link, shown once in place of the form, in a function so no
+      # inspection of the process's state prints it.
+      {:ok, invitation, {:link, link}} ->
+        {:noreply,
+         socket
+         |> assign(:link, %{invitation: invitation, url: fn -> link end})
+         |> load()}
+
       {:ok, invitation} ->
         {:noreply,
          socket
@@ -724,6 +869,143 @@ defmodule ApiaryWeb.MemberLive.Index do
     end
   end
 
+  # A password link for a member's account, made by an instance admin while no mail is set,
+  # shown once above the list: the context asks who may (`Accounts.build_password_link/3`).
+  # Only where the page offers them (`password_links?/1`): the context makes one for any
+  # account, so an event sent anywhere else is refused here, as the context would refuse
+  # it on the instance's organisation's page.
+  def handle_event("password_link", %{"membership_id" => id}, socket) do
+    case Enum.find(socket.assigns.members, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket |> load() |> gone()}
+
+      member ->
+        case password_link(socket, member) do
+          # The link in a function, as an invitation's, so no inspection of the process's
+          # state prints it.
+          {:ok, url, expires_at} ->
+            {:noreply,
+             assign(socket, :password_link, %{
+               email: member.user.email,
+               url: fn -> url end,
+               expires_at: expires_at
+             })}
+
+          {:error, :mail_set} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext(
+                 "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
+               )
+             )
+             |> load()}
+
+          {:error, :not_found} ->
+            {:noreply, socket |> assign(:password_link, nil) |> load() |> gone()}
+
+          {:error, :own_account} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(:error, gettext("Change your own password in Account settings."))}
+
+          # The sign-in is not recent: signed in again first, as the Mail page asks.
+          {:error, :sudo} ->
+            {:noreply,
+             socket
+             |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+             |> redirect(to: ~p"/users/log-in")}
+
+          {:error, reason} when reason in [:forbidden, :no_instance_organisation] ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext(
+                 "Only an admin of this Qory Apiary makes password links, while it sends no email."
+               )
+             )
+             |> load()}
+
+          # An account the edition refuses gets no link.
+          {:error, _refusal} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext("That account cannot log in at the moment, so it gets no password link.")
+             )}
+        end
+    end
+  end
+
+  def handle_event("password_link_done", _params, socket),
+    do: {:noreply, assign(socket, :password_link, nil)}
+
+  def handle_event("renew_invitation", %{"id" => id}, socket) do
+    case Organisations.renew_invitation(
+           socket.assigns.current_scope,
+           id,
+           &url(~p"/invitations/#{&1}")
+         ) do
+      # Shown once on its row, in a function as the invite page's is.
+      {:ok, invitation, {:link, link}} ->
+        {:noreply,
+         socket
+         |> load()
+         |> assign(:renewed, %{invitation: invitation, url: fn -> link end})}
+
+      # Mail was set meanwhile: the new link is emailed.
+      {:ok, invitation} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Invitation sent to %{email}.", email: invitation.email))
+         |> load()}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, no_new_link(changeset, socket.assigns.invitations, id))
+         |> load()}
+
+      {:error, :delivery_failed_pending} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext(
+             "The invitation could not be sent, and is still pending. Revoke it under Pending invitations, then try again."
+           )
+         )
+         |> load()}
+
+      {:error, :unconfirmed} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext(
+             "Confirm your email address before you invite anyone: log in again with the link we email you."
+           )
+         )}
+
+      {:error, :forbidden} ->
+        {:noreply, unauthorized(socket)}
+
+      # Accepted, revoked or expired meanwhile: the list shows it gone.
+      {:error, :not_found} ->
+        {:noreply, load(socket)}
+    end
+  end
+
+  def handle_event("link_done", _params, socket),
+    do: {:noreply, assign(socket, :renewed, nil)}
+
   def handle_event("revoke_invitation", %{"id" => id}, socket) do
     case Organisations.revoke_invitation(socket.assigns.current_scope, id) do
       {:ok, invitation} ->
@@ -793,9 +1075,28 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     socket
     |> assign(members: members, invitations: invitations)
+    |> assign(:password_links?, password_links?(scope))
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
+  end
+
+  defp password_link(%{assigns: %{password_links?: true}} = socket, member) do
+    Accounts.build_password_link(
+      socket.assigns.current_scope,
+      member.user,
+      &url(~p"/users/password/#{&1}")
+    )
+  end
+
+  defp password_link(_socket, _member),
+    do: {:error, if(Mail.configured?(), do: :mail_set, else: :forbidden)}
+
+  # Whether the page offers password links: on the instance's organisation, to an instance
+  # admin, while no mail is set. The context asks again when one is made.
+  defp password_links?(scope) do
+    scope.organisation.id == Apiary.Edition.instance_organisation_id() and
+      not Apiary.Mail.configured?() and Access.instance_admin?(scope)
   end
 
   # The current user's own level may have changed; reload the scope the path names, so
@@ -815,6 +1116,29 @@ defmodule ApiaryWeb.MemberLive.Index do
       |> reload_scope()
 
     if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))
+  end
+
+  # A new link refused over the day's invitations, in the words of the refusal of an
+  # invitation, said of the invitation's address.
+  defp no_new_link(%Ecto.Changeset{errors: errors}, invitations, id) do
+    email = Enum.find_value(invitations, "", &(&1.id == id && &1.email))
+    {_message, opts} = Keyword.fetch!(errors, :email)
+
+    case opts[:validation] do
+      :invitation_attempts_per_day ->
+        gettext(
+          "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later.",
+          email: email,
+          limit: Format.number(opts[:limit])
+        )
+
+      :invitations_per_day ->
+        gettext(
+          "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later.",
+          email: email,
+          limit: Format.number(opts[:limit])
+        )
+    end
   end
 
   # One sentence per level, and one for a member no longer listed.

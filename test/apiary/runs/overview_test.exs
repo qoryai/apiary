@@ -30,29 +30,51 @@ defmodule Apiary.Runs.OverviewTest do
   defp day(days_ago), do: @now |> DateTime.to_date() |> Date.add(-days_ago)
 
   describe "day_facts/3" do
-    test "one row per UTC day a run started, counted in the three families", %{
+    test "one row per UTC day a run started, counted in the families", %{
       scope: scope,
       other: other
     } do
       run(scope, 10, "running")
       run(scope, 20, "pending", %{started_at: nil})
+      # Stored by an older release as succeeded: it ended well.
       run(scope, 3600, "succeeded", %{denied_count: 2, cost_usd: Decimal.new("0.50")})
       run(scope, 2 * 86_400, "failed", %{denied_count: 1, cost_usd: Decimal.new("0.25")})
-      run(scope, 2 * 86_400 + 60, "closed")
-      # A run a gateway opened that ended quiet ended well, never badly.
+      run(scope, 2 * 86_400 + 60, "lost")
+      # A cancelled run, and one an older release stored as ended, which reads as cancelled:
+      # neither ended well nor ended badly.
       run(scope, 2 * 86_400 + 120, "ended")
+      run(scope, 2 * 86_400 + 180, "cancelled")
+      run(scope, 2 * 86_400 + 240, "completed")
       # Just before the window: not counted.
-      run(scope, 14 * 86_400 + 1, "succeeded")
+      run(scope, 14 * 86_400 + 1, "completed")
       run(other, 10, "running")
 
       from = DateTime.add(@now, -14 * 86_400, :second)
       assert [older, today] = Runs.day_facts(scope, from)
 
-      assert %{runs: 3, alive: 0, ended_well: 1, ended_badly: 2, denied: 1, costed: 1} = older
+      assert %{
+               runs: 5,
+               alive: 0,
+               ended_well: 1,
+               cancelled: 2,
+               ended_badly: 2,
+               denied: 1,
+               costed: 1
+             } = older
+
       assert older.day == day(2)
       assert Decimal.equal?(older.cost, Decimal.new("0.25"))
 
-      assert %{runs: 3, alive: 2, ended_well: 1, ended_badly: 0, denied: 2, costed: 1} = today
+      assert %{
+               runs: 3,
+               alive: 2,
+               ended_well: 1,
+               cancelled: 0,
+               ended_badly: 0,
+               denied: 2,
+               costed: 1
+             } = today
+
       assert today.day == day(0)
       assert Decimal.equal?(today.cost, Decimal.new("0.50"))
 

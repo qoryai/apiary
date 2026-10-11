@@ -49,29 +49,26 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       assert response(conn, 202) == ""
 
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, false)
-             ]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       run = run!(scope, subject)
       assert run.organisation_id == scope.organisation.id
       assert run.access_key_id == key.id
-      assert run.event_count == 2
+      assert run.event_count == 1
       assert run.last_event_at
       assert run.contract_version == 1
 
-      assert [%Event{sequence: 1, type: "dev.qory.ping"}, %Event{sequence: 2} = started] =
-               events(run)
+      assert [%Event{sequence: 2, type: "dev.qory.run.started"} = started] = events(run)
 
       # Stored as received.
-      assert started.data == Enum.at(batch, 1)["data"]
+      assert started.data == hd(batch)["data"]
       assert started.time == ~U[2026-09-16 12:00:00.000000Z]
     end
 
-    test "the ping alone is answered 202 and the versions are recorded on the key",
-         %{conn: conn, scope: scope, key: key, secret: secret} do
-      {subject, [ping, _]} = first_events()
-      conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-forager/0.4.1")
+    test "a batch is answered 202 and the versions are recorded on the key",
+         %{conn: conn, key: key, secret: secret} do
+      {_subject, batch} = first_events()
+      conn = signed_post(conn, key.key_id, secret, batch, user_agent: "qory-forager/0.4.1")
       assert response(conn, 202)
 
       key = Repo.get!(AccessKey, key.id)
@@ -79,14 +76,10 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert key.last_forager_version == "0.4.1"
       assert key.last_contract_version == 1
       assert key.last_heartbeat_at == nil
-
-      # The projector has read the ping; the run has not started.
-      run = run!(scope, subject)
-      assert run.state == "pending"
     end
 
-    test "a heartbeat is recorded on the key by the server's clock, not Forager's",
-         %{key: key, secret: secret} do
+    test "a heartbeat is recorded on the key as its run counts it, never after its arrival",
+         %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
       # Forager on a machine whose clock is a century ahead does not pin the key's heartbeat.
@@ -98,25 +91,66 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       assert DateTime.compare(first, before) != :lt
       assert DateTime.diff(first, before) < 60
+      assert first == run!(scope, subject).last_heartbeat_at
 
       # The same heartbeat delivered again is not a new heartbeat.
       assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
       assert Repo.get!(AccessKey, key.id).last_heartbeat_at == first
 
-      # A new one moves it on.
-      next = wire_event(subject, 2, "run.heartbeat", beat, time: "1999-01-01T00:00:00Z")
+      # A new one on the same clock moves it on.
+      next = wire_event(subject, 2, "run.heartbeat", beat, time: "2126-01-01T00:00:30Z")
       assert build_conn() |> signed_post(key.key_id, secret, [next]) |> response(202)
+      moved = Repo.get!(AccessKey, key.id).last_heartbeat_at
+      assert DateTime.compare(moved, first) == :gt
+      assert moved == run!(scope, subject).last_heartbeat_at
 
-      assert DateTime.compare(Repo.get!(AccessKey, key.id).last_heartbeat_at, first) !=
-               :lt
+      # One recorded long before, sent now, counts by its own time and never moves it back.
+      old = wire_event(subject, 3, "run.heartbeat", beat, time: "2125-12-31T23:00:00Z")
+      assert build_conn() |> signed_post(key.key_id, secret, [old]) |> response(202)
+      assert DateTime.diff(moved, run!(scope, subject).last_heartbeat_at) > 3000
+      assert Repo.get!(AccessKey, key.id).last_heartbeat_at == moved
+    end
+
+    test "a key whose run's heartbeats arrive late records when they were recorded, corrected",
+         %{scope: scope, key: key, secret: secret} do
+      {subject, [started]} = first_events()
+      now = DateTime.utc_now()
+      stamp = &(&1 |> DateTime.add(&2, :second) |> DateTime.to_iso8601())
+
+      started = %{
+        started
+        | "time" => stamp.(now, 0),
+          "data" => %{
+            "opened_by" => "gateway",
+            "credential" => "issuer",
+            "forager_version" => "0.4.0"
+          }
+      }
+
+      # A run a gateway opened, its registration on time; its first heartbeat recorded an
+      # hour ago.
+      assert build_conn()
+             |> signed_register(key.key_id, secret, registration(subject))
+             |> response(200)
+
+      assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
+
+      data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
+      beat = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, -3600))
+
+      assert build_conn() |> signed_post(key.key_id, secret, [beat]) |> response(202)
+
+      heard = Repo.get!(AccessKey, key.id).last_heartbeat_at
+      assert heard == run!(scope, subject).last_heartbeat_at
+      assert DateTime.diff(now, heard) in 3200..3400
     end
 
     test "a delivery whose User-Agent names no Forager version leaves the one the key has recorded",
          %{key: key, secret: secret} do
-      {subject, [ping, _]} = first_events()
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
+      {subject, batch} = first_events()
+      assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
 
-      beat = wire_event(subject, 2, "run.heartbeat", %{"elapsed_seconds" => 30})
+      beat = wire_event(subject, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
 
       assert build_conn()
              |> signed_post(key.key_id, secret, [beat], user_agent: "curl/8")
@@ -162,10 +196,10 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       end
 
       run = run!(scope, subject)
-      assert run.event_count == 2
-      assert length(events(run)) == 2
+      assert run.event_count == 1
+      assert length(events(run)) == 1
 
-      assert [%Delivery{event_count: 2, inserted_count: 2, status: 202, run_id: ^subject}] =
+      assert [%Delivery{event_count: 1, inserted_count: 1, status: 202, run_id: ^subject}] =
                Repo.all(from d in Delivery, where: d.access_key_id == ^key.id)
     end
 
@@ -177,9 +211,9 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
       end
 
-      assert run!(scope, subject).event_count == 2
+      assert run!(scope, subject).event_count == 1
 
-      assert [2, 0] ==
+      assert [1, 0] ==
                Repo.all(
                  from d in Delivery,
                    where: d.access_key_id == ^key.id,
@@ -190,11 +224,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
     test "events arrive in any order and are read back by sequence",
          %{scope: scope, key: key, secret: secret} do
-      {subject, [ping, started]} = first_events()
+      {subject, [started]} = first_events()
+      beat = wire_event(subject, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
+      assert build_conn() |> signed_post(key.key_id, secret, [beat]) |> response(202)
       assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
 
-      assert [1, 2] == scope |> run!(subject) |> events() |> Enum.map(& &1.sequence)
+      assert [2, 3] == scope |> run!(subject) |> events() |> Enum.map(& &1.sequence)
     end
 
     test "a type the apiary does not know is kept", %{scope: scope, key: key, secret: secret} do
@@ -222,17 +257,18 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
     test "the run configuration digest the gateway holds is kept when it has the shape",
          %{scope: scope, key: key, secret: secret} do
-      {subject, [ping, started]} = first_events()
+      {subject, [started]} = first_events()
+      beat = wire_event(subject, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
       digest = "sha256=" <> String.duplicate("ab", 32)
 
       assert build_conn()
-             |> signed_post(key.key_id, secret, [ping], run_configuration: digest)
+             |> signed_post(key.key_id, secret, [started], run_configuration: digest)
              |> response(202)
 
       assert run!(scope, subject).reported_run_configuration_digest == digest
 
       assert build_conn()
-             |> signed_post(key.key_id, secret, [started], run_configuration: "sha256=nonsense")
+             |> signed_post(key.key_id, secret, [beat], run_configuration: "sha256=nonsense")
              |> response(202)
 
       assert run!(scope, subject).reported_run_configuration_digest == digest
@@ -252,14 +288,14 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
          %{scope: scope, key: key, secret: secret} do
       %{scope: other} = sign_up_fixture()
       %{access_key: other_key, secret: other_secret} = contract_key_fixture(other)
-      {subject, [ping, _]} = first_events()
+      {subject, [started]} = first_events()
       # The same subject, other events: ids are unique within a workspace.
-      other_ping = wire_event(subject, 1, "ping", ping["data"])
+      other_started = wire_event(subject, 2, "run.started", started["data"])
 
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
+      assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
 
       assert build_conn()
-             |> signed_post(other_key.key_id, other_secret, [other_ping])
+             |> signed_post(other_key.key_id, other_secret, [other_started])
              |> response(202)
 
       assert run!(scope, subject).id != run!(other, subject).id
@@ -283,22 +319,22 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
       assert build_conn() |> signed_post(other_key.key_id, other_secret, batch) |> response(202)
 
-      assert run!(scope, subject).event_count == 2
-      assert run!(other, subject).event_count == 2
+      assert run!(scope, subject).event_count == 1
+      assert run!(other, subject).event_count == 1
     end
   end
 
   describe "collisions" do
     test "an event whose id exists under a different run is dropped, not an error",
          %{scope: scope, key: key, secret: secret} do
-      {subject, [ping, _]} = first_events()
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
+      {subject, [started]} = first_events()
+      assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
 
       other = Ecto.UUID.generate()
-      thief = wire_event(other, 1, "ping", ping["data"], id: ping["id"])
+      thief = wire_event(other, 2, "run.started", started["data"], id: started["id"])
 
       fine =
-        wire_event(other, 2, "run.heartbeat", %{"elapsed_seconds" => 1, "interval_seconds" => 30})
+        wire_event(other, 3, "run.heartbeat", %{"elapsed_seconds" => 1, "interval_seconds" => 30})
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
@@ -306,44 +342,48 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         end)
 
       assert log =~ "1 event(s) that collide"
-      refute log =~ ping["id"]
+      refute log =~ started["id"]
 
-      assert [%Event{sequence: 2}] = scope |> run!(other) |> events()
+      assert [%Event{sequence: 3}] = scope |> run!(other) |> events()
       assert run!(scope, other).event_count == 1
-      assert [%Event{sequence: 1}] = scope |> run!(subject) |> events()
+      assert [%Event{sequence: 2}] = scope |> run!(subject) |> events()
     end
 
     test "a sequence that exists with another id is dropped, not an error",
          %{scope: scope, key: key, secret: secret} do
-      {subject, [ping, _]} = first_events()
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
+      {subject, batch} = first_events()
+      assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
 
-      usurper = wire_event(subject, 1, "run.exited", %{"state" => "failed"})
+      usurper = wire_event(subject, 2, "run.exited", %{"state" => "failed"})
 
       ExUnit.CaptureLog.capture_log(fn ->
         assert build_conn() |> signed_post(key.key_id, secret, [usurper]) |> response(202)
       end)
 
-      assert [%Event{type: "dev.qory.ping"}] = scope |> run!(subject) |> events()
+      assert [%Event{type: "dev.qory.run.started"}] = scope |> run!(subject) |> events()
     end
   end
 
-  describe "a closed run" do
+  describe "a run whose events retention has pruned" do
     test "is answered 410 with the digest; the delivery is recorded and nothing else",
          %{scope: scope, key: key, secret: secret} do
-      {subject, [ping, started]} = first_events()
-      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
-      {:ok, _run} = Runs.close_run(scope, run!(scope, subject))
+      {subject, [started]} = first_events()
+      beat = wire_event(subject, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
+      assert build_conn() |> signed_post(key.key_id, secret, [beat]) |> response(202)
+      pruned = run!(scope, subject)
+
+      # The mark `Apiary.Retention` sets once it has deleted the run's events.
+      Repo.update_all(from(r in Run, where: r.id == ^pruned.id),
+        set: [events_pruned_at: DateTime.utc_now()]
+      )
 
       conn = signed_post(build_conn(), key.key_id, secret, [started])
       assert response(conn, 410) == ""
 
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, false)
-             ]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       run = run!(scope, subject)
-      assert run.state == "closed"
+      assert run.state == pruned.state
       assert run.event_count == 1
       assert length(events(run)) == 1
 
@@ -381,7 +421,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "another content type is 415, whatever the body", %{key: key, secret: secret} do
       {_subject, batch} = first_events()
 
-      for content_type <- ["application/json", "text/plain", "application/x-www-form-urlencoded"] do
+      for content_type <- [
+            "application/json",
+            "text/plain",
+            "application/x-www-form-urlencoded",
+            "application/cloudevents-batch+jsonx"
+          ] do
         conn = signed_post(build_conn(), key.key_id, secret, batch, content_type: content_type)
         assert json_response(conn, 415) == %{"error" => "unsupported_media_type"}
         assert unsigned_answer?(conn)
@@ -422,7 +467,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
     test "a body that is not a batch is 400 and echoes nothing", %{key: key, secret: secret} do
       subject = Ecto.UUID.generate()
-      good = wire_event(subject, 1, "ping")
+      good = wire_event(subject, 1, "run.heartbeat")
 
       bodies = [
         "",
@@ -454,7 +499,11 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         Jason.encode!([%{good | "data" => []}]),
         Jason.encode!([Map.delete(good, "data")]),
         # Two subjects in one batch.
-        Jason.encode!([good, wire_event(Ecto.UUID.generate(), 2, "ping")])
+        Jason.encode!([good, wire_event(Ecto.UUID.generate(), 2, "run.heartbeat")]),
+        # The ping the contract no longer has, and the record's registration, never posted.
+        Jason.encode!([%{good | "type" => "dev.qory.ping"}]),
+        Jason.encode!([good, wire_event(subject, 2, "ping", %{"interval_seconds" => 30})]),
+        Jason.encode!([%{good | "type" => "dev.qory.run.registered"}])
       ]
 
       for body <- bodies do
@@ -569,7 +618,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         {"ak_0000000000000000", secret, []},
         {"ak_SHOUTING00000000", secret, []},
         {"ak_" <> <<255>> <> "00000000000000", secret, []},
-        # a revoked key, on the ping as on anything else
+        # a revoked key
         {revoked.key_id, revoked_secret, []},
         # the signature: another key's, padded, in the standard alphabet, hex, short, empty;
         # a signature with no "-" or "_" is the same in both alphabets, so that one is skipped

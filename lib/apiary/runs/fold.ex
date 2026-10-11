@@ -15,7 +15,8 @@ defmodule Apiary.Runs.Fold do
   written.
 
   The fold tolerates any order of arrival. What decides between two events is always the
-  sequence, never a clock and never the order in which they were folded: `latest` carries,
+  sequence, never a clock and never the order in which they were folded, but for one
+  revive (Times, below): `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
   the later of the two decides, and `run.started` and `run.resized` share the rank of the
@@ -30,9 +31,9 @@ defmodule Apiary.Runs.Fold do
   allowed (`Apiary.Runs.tool_invocation?/2`); one a path rule refused keeps its tool, and
   never reached it.
 
-  What a run is about is `about` of its `run.started`, read member by member. No string of
-  it, key or value, may hold a control character (U+0000 to U+001F, U+007F to U+009F,
-  U+2028, U+2029). `kind` (1 to 64 bytes), `title` (1 to 256) and `details` are each kept
+  What a run is about is `about` of its `run.started`, read member by member
+  (`Apiary.Runs.About.read/1`). No string of it, key or value, may hold a control
+  character (U+0000 to U+001F, U+007F to U+009F, U+2028, U+2029). `kind` (1 to 64 bytes), `title` (1 to 256) and `details` are each kept
   whole or dropped whole. `details` is an object of at most 8192 bytes as the event carries
   it (compact, with `<`, `>` and `&` written as `\\u003c`, `\\u003e` and `\\u0026`), nested
   at most 4 levels deep, each key at any level 1 to 64 bytes; a key or a string that
@@ -47,14 +48,41 @@ defmodule Apiary.Runs.Fold do
 
   What opened the run is `opened_by` of its `run.started`, `session` or `gateway`. A run a
   gateway opened has no session: its start says no runtime, command or host, and its exit
-  no state and no exit code, so the exit's reason decides its state (`exit_state/2`). An
-  exit with the reason `quiet` says the quiet period, `quiet_seconds`.
+  no exit code. An exit with the reason `quiet` says the quiet period, `quiet_seconds`.
+  What the start says of the run credential, `credential`, is not read: `starter`, `issuer`
+  as an older Forager wrote it, or `none`.
+
+  How the run ended is its exit's `state` and `reason`, the same rule for a session's run
+  and a gateway's (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
+  any other value is absent; the reason is a code, a lower-case letter then up to 63
+  lower-case letters, digits and `_`, and anything else is absent. An exit that maps to
+  lost sets `lost_at` to the exit's time. A run that did not start, `dev.qory.run.refused`,
+  is failed, its `reason` the refusal's code, and has no exit time; an exit decides over
+  it. Either is final: no start or heartbeat folded after it changes the state.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
-  own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
-  with the highest sequence, because the lost-run check compares it with the server's
-  clock and Forager's clock may be anywhere.
+  own, the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
+  counts as heard (`Apiary.Runs.Liveness.heard_at/3`): its own time corrected by the run's
+  clock offset, within a tolerance, and never after this server received it, because the
+  lost-run check compares it with the server's clock and Forager's clock may be anywhere.
+  The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
+  heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
+  registration's (`registered_at` less `registration_time`) and its ping's, whose clock is
+  the gateway's, as its heartbeats' are: a minimum, so it is the same in any order. A
+  session's heartbeats are on the session's machine's clock, which behind a separate
+  gateway is not the gateway's. Whenever a pass folds a later heartbeat or
+  lowers the offset, the heartbeat with the highest sequence is counted again by the
+  offset as the pass leaves it, from its time and arrival (the projector hands them over
+  when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
+  order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
+  run only when it counts as heard within three intervals of its arrival; a lower offset
+  alone revives nothing and undoes no revive. So the one order that can show is a revive
+  by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
+  a gateway's start, which revives the run itself, or from an earlier heartbeat delivered
+  after it across a clock set back between the two. The next lost-run check settles it.
   """
+
+  alias Apiary.Runs.{About, Liveness}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -64,6 +92,7 @@ defmodule Apiary.Runs.Fold do
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @exited "dev.qory.run.exited"
+  @refused "dev.qory.run.refused"
   @result "dev.qory.session.result"
 
   @forager_version "forager_version"
@@ -80,7 +109,7 @@ defmodule Apiary.Runs.Fold do
   def ranks(@ping), do: [@ping, @forager_version]
   def ranks(@started), do: [@started, @forager_version, @terminal_rank]
   def ranks(@resized), do: [@terminal_rank]
-  def ranks(type) when type in [@policy_applied, @heartbeat, @exited], do: [type]
+  def ranks(type) when type in [@policy_applied, @heartbeat, @exited, @refused], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
@@ -98,30 +127,31 @@ defmodule Apiary.Runs.Fold do
   @max_cells 65_535
   @statuses 100..599
 
-  @about_kind 64
-  @about_title 256
-  @max_subjects 16
-  @subject_type ~r/\A[a-z0-9]+([ _.-][a-z0-9]+)*\z/
-  @subject_type_bytes 64
-  @subject_text 256
-  @subject_url 2048
-  @details_bytes 8192
-  @details_depth 4
-  @details_key 64
-  # What no string of `about` holds, key or value, as `Apiary.Runs.Target` reads a label: C0
-  # and DEL, C1, and the line and paragraph separators.
-  @control ~r/[\x{00}-\x{1F}\x{7F}-\x{9F}\x{2028}\x{2029}]/u
-
-  @terminal ~w(succeeded ended failed timed_out)
+  # The states no start or heartbeat folded later changes, with the old names an older
+  # release stored them under (`Apiary.Runs.Run.old_states/0`).
+  @terminal ~w(completed failed cancelled succeeded ended timed_out)
   @openers ~w(session gateway)
-  # The reasons of an exit without a state that end a run neither well nor by a failure of
-  # its own: a run a gateway opened was quiet, its run credential expired, or its issuer
-  # said it ended.
-  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
+  # A reason: an open code of Forager's or of the run's starter.
+  @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
+  # The reasons of a failed exit that say nobody knows how the run ended: the session went
+  # silent, or the end was never recorded.
+  @lost_reasons ~w(session_lost gateway_lost)
+  # The reasons of the failed exit an older Forager, under the contract before the outcome,
+  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
+  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
+  # and a rebuild folds it again.
+  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
+  # The reasons of an exit without a state, stored under that contract, that cancel the run:
+  # its time limit, no activity, its run credential expired, or its starter ended it.
+  @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
 
   defstruct run: %{},
             latest: %{},
+            ping_offset: nil,
+            beat: nil,
+            recount: false,
+            beaten: false,
             connections: %{},
             log_chunks: [],
             skipped_log_chunks: 0
@@ -129,32 +159,52 @@ defmodule Apiary.Runs.Fold do
   @type t :: %__MODULE__{
           run: map(),
           latest: %{optional(String.t()) => integer()},
+          ping_offset: integer() | nil,
+          beat: %{time: DateTime.t(), received_at: DateTime.t()} | nil,
+          recount: boolean(),
+          beaten: boolean(),
           connections: %{optional({String.t(), integer(), String.t()}) => map()},
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer()
         }
 
   @doc """
-  Folds `events` (maps with `type`, `time`, `sequence`, `data`) into `run` (any map with
-  the run's fields, the schema struct included). `latest` maps a type of `ranked_types/0`
-  to the highest sequence of it already projected.
+  Folds `events` (maps with `type`, `time`, `sequence`, `data`, and `received_at`, else
+  `time` stands for it) into `run` (any map with the run's fields, the schema struct
+  included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
+  already projected. `projected` says what the fold needs of the events already projected:
+  `ping_offset`, the smallest clock offset of the pings (the fold lowers it by the
+  registration's own, from `run`), and `beat`, the `time` and
+  `received_at` of the heartbeat with the highest sequence; each absent or nil when there
+  is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
   (host, port, path), `log_chunks` in sequence order and the count of log events skipped
   because their bytes were not base64.
   """
-  @spec fold(map(), Enumerable.t(), map()) :: t()
-  def fold(run, events, latest \\ %{}) do
+  @spec fold(map(), Enumerable.t(), map(), map()) :: t()
+  def fold(run, events, latest \\ %{}, projected \\ %{}) do
+    acc = %__MODULE__{
+      run: run,
+      latest: latest,
+      ping_offset: lower(projected[:ping_offset], registration_offset(run)),
+      beat: projected[:beat]
+    }
+
     acc =
       events
       |> Enum.sort_by(& &1.sequence)
-      |> Enum.reduce(%__MODULE__{run: run, latest: latest}, &event(&2, &1))
+      |> Enum.reduce(acc, &event(&2, &1))
+      |> count_beat()
 
     %{acc | log_chunks: Enum.reverse(acc.log_chunks)}
   end
 
   defp event(acc, %{type: @ping, data: data} = event) do
-    acc
+    offset = Liveness.clock_offset(received_at(event), event.time)
+
+    %{acc | ping_offset: lower(acc.ping_offset, offset)}
+    |> ping_clock()
     |> ranked(event, &%{&1 | contract_version: integer(data, "contract_version", 0..@int4)})
     |> forager_version(event)
   end
@@ -187,6 +237,7 @@ defmodule Apiary.Runs.Fold do
       |> Map.merge(about(data))
       |> started_state()
     end)
+    |> ping_clock()
   end
 
   defp event(acc, %{type: @policy_applied, data: data} = event) do
@@ -199,17 +250,31 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  # Ordered by sequence, timed by this server: see the moduledoc.
-  defp event(acc, %{type: @heartbeat, data: data} = event) do
-    ranked(acc, event, fn run ->
-      run
-      |> Map.merge(%{
-        last_heartbeat_at: Map.get(event, :received_at) || event.time,
-        elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
-        heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
-      })
-      |> revive()
-    end)
+  # Ordered by sequence, timed by its own time within the run's clock offset: see the
+  # moduledoc. Every heartbeat lowers the offset; the one with the highest sequence decides
+  # the rest, and is counted once the pass is folded (`count_beat/1`).
+  defp event(acc, %{type: @heartbeat, data: data, sequence: sequence} = event) do
+    received_at = received_at(event)
+    acc = put_offset(acc, Liveness.clock_offset(received_at, event.time))
+
+    if sequence > Map.get(acc.latest, @heartbeat, 0) do
+      run =
+        Map.merge(acc.run, %{
+          elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
+          heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
+        })
+
+      %{
+        acc
+        | run: run,
+          latest: Map.put(acc.latest, @heartbeat, sequence),
+          beat: %{time: event.time, received_at: received_at},
+          recount: true,
+          beaten: true
+      }
+    else
+      acc
+    end
   end
 
   # A resize that is not a size is nothing: the run keeps the size it had.
@@ -287,19 +352,29 @@ defmodule Apiary.Runs.Fold do
 
   defp event(acc, %{type: @exited, data: data} = event) do
     ranked(acc, event, fn run ->
-      reason = string(data, "reason")
+      reason = code(data, "reason")
+      state = exit_state(string(data, "state"), reason)
 
-      run
-      |> Map.merge(%{
+      Map.merge(run, %{
+        state: state,
         exited_at: event.time,
         exit_code: integer(data, "exit_code", -@int4..@int4),
         signal: string(data, "signal", 64),
         reason: reason,
         quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
-        duration_ms: integer(data, "duration_ms", 0..@int8)
+        duration_ms: integer(data, "duration_ms", 0..@int8),
+        lost_at: if(state == "lost", do: event.time)
       })
-      |> Map.update!(:state, &exited_state(&1, string(data, "state"), reason))
-      |> Map.put(:lost_at, nil)
+    end)
+  end
+
+  # A run that did not start is failed, with the refusal's code; an exit decides over it, in
+  # whichever order the two are folded.
+  defp event(acc, %{type: @refused, data: data} = event) do
+    ranked(acc, event, fn run ->
+      if exited?(run),
+        do: run,
+        else: Map.merge(run, %{state: "failed", reason: code(data, "code"), lost_at: nil})
     end)
   end
 
@@ -346,35 +421,49 @@ defmodule Apiary.Runs.Fold do
   end
 
   @doc """
-  The run state a `dev.qory.run.exited` with this `state` and `reason` means. A session's
-  exit says its state: succeeded, or failed, timed out with the reason `timeout`. An exit
-  without one, a run a gateway opened, reads its reason: `quiet`, `credential_expired` and
-  `run_ended_at_issuer` are ended, `timeout` timed out, `run_closed` closed, and the rest,
-  `gateway_lost` and `session_lost` among them, failed.
+  The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
+  that applies, whoever opened the run:
+
+    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
+       cancelled: the exit an older Forager, under the contract before the outcome, wrote
+       when it stopped a run itself.
+    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
+       `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
+       cancelled, `session_lost` and `gateway_lost` lost, and any other reason, or none,
+       failed.
+
+  A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("succeeded", _reason), do: "succeeded"
-  def exit_state("failed", "timeout"), do: "timed_out"
-  def exit_state(nil, reason) when reason in @ended_reasons, do: "ended"
-  def exit_state(nil, "timeout"), do: "timed_out"
-  def exit_state(nil, "run_closed"), do: "closed"
+  def exit_state("failed", reason) when reason in @stopped_reasons, do: "cancelled"
+  def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
+  def exit_state("succeeded", _reason), do: "completed"
+  def exit_state("failed", _reason), do: "failed"
+  def exit_state("cancelled", _reason), do: "cancelled"
+  def exit_state(_state, reason) when reason in @cancelled_reasons, do: "cancelled"
+  def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  @doc """
-  The reasons of an exit that end a run neither well nor by a failure of its own:
-  `quiet`, `credential_expired` and `run_ended_at_issuer`. Without a state, such an exit
-  ends the run `ended` (`exit_state/2`).
-  """
-  @spec ended_reasons() :: [String.t()]
-  def ended_reasons, do: @ended_reasons
+  defp started_state(run) do
+    if ended?(run), do: run, else: %{run | state: "running", lost_at: nil}
+  end
 
-  defp exited_state("closed", _state, _reason), do: "closed"
-  defp exited_state(_current, state, reason), do: exit_state(state, reason)
+  # A run whose exit or refusal said how it ended. A run Apiary marked lost by its own
+  # check has neither, and a start or a heartbeat revives it.
+  defp ended?(%{state: state}) when state in @terminal, do: true
+  defp ended?(run), do: exited?(run)
 
-  defp started_state(%{state: state} = run) when state in @terminal or state == "closed",
-    do: run
+  defp exited?(run), do: Map.get(run, :exited_at) != nil
 
-  defp started_state(run), do: %{run | state: "running", lost_at: nil}
+  # A code, as the contract writes a reason: anything else is absent.
+  defp code(data, key) do
+    case string(data, key, :infinity) do
+      code when is_binary(code) -> if Regex.match?(@reason, code), do: code
+      nil -> nil
+    end
+  end
 
   # What opened the run, one of the two the contract names, or nil.
   defp opened_by(data) do
@@ -425,12 +514,65 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # A heartbeat says the run is alive: a lost run runs again, and so does a run whose
-  # `run.started` has not arrived yet. An exit or a close is not undone.
-  defp revive(%{state: state} = run) when state in ["lost", "pending"],
-    do: %{run | state: "running", lost_at: nil}
+  # The heartbeat with the highest sequence, counted by the offset as the pass leaves it,
+  # whenever the pass folded a later heartbeat or lowered the offset: so the last heartbeat
+  # is that heartbeat's by the smallest offset, whatever the order the events were folded
+  # in. A heartbeat this pass folded and heard within three intervals of its arrival says
+  # the run is alive: a lost run runs again, and so does a run whose `run.started` has not
+  # arrived yet. An exit is not undone. A lower offset alone revives nothing.
+  defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
+    heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
+    run = Map.put(acc.run, :last_heartbeat_at, heard_at)
+    # The registration's interval, else the heartbeats': the rule of the lost-run check.
+    interval =
+      Map.get(run, :registration_interval_seconds) || Map.get(run, :heartbeat_interval_seconds)
+
+    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
+      do: %{acc | run: revive(run)},
+      else: %{acc | run: run}
+  end
+
+  defp count_beat(acc), do: acc
+
+  defp revive(%{state: state} = run) when state in ["lost", "pending"] do
+    if exited?(run), do: run, else: %{run | state: "running", lost_at: nil}
+  end
 
   defp revive(run), do: run
+
+  # When this server received the event; an event that does not say is taken at its time.
+  defp received_at(event), do: Map.get(event, :received_at) || event.time
+
+  # A lower offset counts the last heartbeat again.
+  defp put_offset(%{run: run} = acc, offset) do
+    current = Map.get(run, :clock_offset_ms)
+
+    case lower(current, offset) do
+      ^current -> acc
+      lowered -> %{acc | run: Map.put(run, :clock_offset_ms, lowered), recount: true}
+    end
+  end
+
+  # The gateway's offset, its registration's and its ping's, counts for a run a gateway
+  # opened, whichever of the ping and the start comes first.
+  defp ping_clock(%{run: %{opened_by: "gateway"}, ping_offset: offset} = acc)
+       when is_integer(offset),
+       do: put_offset(acc, offset)
+
+  defp ping_clock(acc), do: acc
+
+  # The registration's time on the gateway's clock and its arrival at this server, as a
+  # ping's time and arrival were: nil for a run that did not register.
+  defp registration_offset(run) do
+    case {Map.get(run, :registered_at), Map.get(run, :registration_time)} do
+      {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)
+      _ -> nil
+    end
+  end
+
+  defp lower(offset, nil), do: offset
+  defp lower(nil, offset), do: offset
+  defp lower(current, offset), do: min(current, offset)
 
   # Only the event of its type with the highest sequence decides.
   defp ranked(acc, %{type: type, sequence: sequence}, fun) do
@@ -486,116 +628,9 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The four fields of what the run is about, from `about` (see the moduledoc). Every one
-  # is set, so a later `run.started` replaces all of them.
-  defp about(data) do
-    about =
-      case data do
-        %{"about" => %{} = about} -> about
-        _ -> %{}
-      end
-
-    %{
-      about_kind: bounded(about, "kind", @about_kind),
-      about_title: bounded(about, "title", @about_title),
-      about_subjects: subjects(about),
-      about_details: details(about)
-    }
-  end
-
-  # A string of 1 to `max` bytes with no control character, whole, or nil: never cut.
-  defp bounded(data, key, max) do
-    case data do
-      %{^key => value} when is_binary(value) and byte_size(value) in 1..max//1 ->
-        if clean?(value), do: value
-
-      _ ->
-        nil
-    end
-  end
-
-  defp clean?(string), do: String.valid?(string) and not Regex.match?(@control, string)
-
-  # Dropped one by one, then the first of each type and ref, then cut.
-  defp subjects(%{"subjects" => subjects}) when is_list(subjects) do
-    subjects
-    |> Stream.map(&subject/1)
-    |> Stream.reject(&is_nil/1)
-    |> Stream.uniq_by(&{&1["type"], &1["ref"]})
-    |> Enum.take(@max_subjects)
-  end
-
-  defp subjects(_about), do: []
-
-  # A type and a ref, or no subject; a title or a url only when it keeps its bound.
-  defp subject(%{} = subject) do
-    with type when is_binary(type) <- bounded(subject, "type", @subject_type_bytes),
-         true <- Regex.match?(@subject_type, type),
-         ref when is_binary(ref) <- bounded(subject, "ref", @subject_text) do
-      [{"url", url(subject)}, {"title", bounded(subject, "title", @subject_text)}]
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-      |> Map.merge(%{"type" => type, "ref" => ref})
-    else
-      _ -> nil
-    end
-  end
-
-  defp subject(_subject), do: nil
-
-  # An absolute http or https url with a host and no user name or password, as given, or
-  # nil.
-  defp url(subject) do
-    with url when is_binary(url) <- bounded(subject, "url", @subject_url),
-         {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
-         when scheme in ["http", "https"] and is_binary(host) and host != "" <- URI.new(url) do
-      url
-    else
-      _ -> nil
-    end
-  end
-
-  # An object within its bounds, whole, or nil.
-  defp details(%{"details" => %{} = details}) do
-    with true <- nested_within?(details, @details_depth),
-         true <- clean_details?(details),
-         {:ok, json} <- Jason.encode(details),
-         true <- carried_size(json) <= @details_bytes do
-      details
-    else
-      _ -> nil
-    end
-  end
-
-  defp details(_about), do: nil
-
-  # Whether `value` nests no deeper than `levels`. An object or an array is a level, the
-  # outermost the first, as `Apiary.Runs.Batch` counts the depth of `data`.
-  defp nested_within?(%{} = map, levels),
-    do: levels > 0 and Enum.all?(Map.values(map), &nested_within?(&1, levels - 1))
-
-  defp nested_within?(list, levels) when is_list(list),
-    do: levels > 0 and Enum.all?(list, &nested_within?(&1, levels - 1))
-
-  defp nested_within?(_value, _levels), do: true
-
-  # Whether every key at every level is 1 to 64 bytes, and every key and string has no
-  # control character.
-  defp clean_details?(%{} = map) do
-    Enum.all?(map, fn {key, value} ->
-      byte_size(key) in 1..@details_key//1 and clean?(key) and clean_details?(value)
-    end)
-  end
-
-  defp clean_details?(list) when is_list(list), do: Enum.all?(list, &clean_details?/1)
-  defp clean_details?(string) when is_binary(string), do: clean?(string)
-  defp clean_details?(_value), do: true
-
-  # The bytes of compact JSON as the event carries it, `<`, `>` and `&` written as
-  # `\u003c`, `\u003e` and `\u0026`, six bytes each. They are counted here: Jason's
-  # `html_safe` escape writes `<` alone of the three, and `/` as `\/` besides.
-  defp carried_size(json),
-    do: byte_size(json) + 5 * length(:binary.matches(json, ["<", ">", "&"]))
+  # The four fields of what the run is about, from `about` (`Apiary.Runs.About.read/1`).
+  defp about(%{"about" => about}), do: About.read(about)
+  defp about(_data), do: About.read(nil)
 
   # The target the labels as sent name, whole, by the workspace's domain
   # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like

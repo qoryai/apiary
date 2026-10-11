@@ -43,20 +43,45 @@ page, the one the person came from (Two levels, below).
   **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
   foot. A page's title stays its `<h1>`; the breadcrumb is navigation. A page without a
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
-- **The switcher.** With more than one place to go, or an edition's entry after the places
-  (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
-  workspace open one dropdown under them (a disclosure: the chevron's `aria-expanded` and
-  `aria-controls`, the panel a named `role="group"`; the `Switcher` hook): a search that filters
-  as the reader types, the places opened last (kept in `localStorage`), then each
-  organisation with its workspaces, a link to each at the section the reader is on where
-  that workspace has it, else its overview (a section of a feature goes through
-  `/:org/:workspace/switch/:section`, `ApiaryWeb.SwitchController`, which asks the
-  destination's own scope when it is followed), and
-  the edition's groups of places under their own headings
-  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
-  group's count, unless the reader's place is in it; a search opens every group it finds a
-  place in. ↑ and ↓ move, Enter opens the first match, Escape
-  closes and gives focus back. With one place the segments are links and nothing more.
+- **The organisation menu and the workspace menu.** The chevron beside the organisation
+  opens the organisation menu, and the one beside the workspace the workspace menu, each a
+  dropdown of its own under its segment (a disclosure: the chevron's `aria-expanded` and
+  `aria-controls`, the panel a named `role="group"`; the `Switcher` hook). A menu shows only
+  when there is another place to go or an entry: the organisation menu with more than one
+  place, or an edition's entry after the places (`ApiaryWeb.Edition.switcher_entries/1`);
+  the workspace menu with another workspace of the organisation, or an edition's entry for
+  it (`ApiaryWeb.Edition.workspace_switcher_entries/1`). So an instance with one
+  organisation and one workspace shows neither, and the segments are links and nothing
+  more.
+  The organisation menu has a search, then two panels that each scroll on their own: on
+  the left the organisations the person reaches, by name, their own first and the
+  edition's groups of places under their own headings (`ApiaryWeb.Edition.place_group/1`),
+  each folded behind its heading, a button with the group's count, unless the page's
+  organisation is in it; on the right, under a heading that names it, the workspaces of
+  the organisation pointed at, by name. On opening, the page's organisation is pointed at
+  and scrolled to; then the one with focus, or the one under the mouse once it has rested
+  there for 100 ms, so a pointer crossing others on its way to the right panel changes
+  nothing. Each organisation's `›` shows its workspaces. An organisation's link lands in
+  the workspace the person last used there; a workspace's lands in that workspace. At its
+  foot are Your organisations and the edition's entries.
+  The workspace menu has a search, then this organisation's workspaces by name, and no
+  other organisation's; at its foot, the edition's entries for it.
+  Every link goes through `/:org/:workspace/switch/:section` or `/:org/-/switch/:section`
+  (`ApiaryWeb.SwitchController`), which asks the destination's own scope when it is
+  followed and lands on the reader's page there, its list page where the page names one
+  thing by its id, else the section, else the overview; from an organisation's own page,
+  on the overview. The search filters as the reader types: the organisation menu by an
+  organisation's name and slug, keeping one with a matching workspace with only those
+  workspaces, and opening every group it finds one in; the workspace menu by a
+  workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓ move within
+  a panel, → and ← between an organisation and its workspaces, Enter in the search follows
+  the first match, Escape closes and gives focus back. On a phone a menu is a sheet under
+  the bar showing one panel at a time: `›` shows an organisation's workspaces in place of
+  the organisations, under a button back to them, Organisations. A phone's bar names the
+  page alone, so there the drawer's head holds, where either has a menu, the organisation
+  and, on a workspace's page, the workspace (`#drawer-place`), each a button that opens
+  its menu where it has one, else its name: the drawer closes, the menu opens as the sheet
+  under the bar, and Escape closes it and gives focus to the bar's Open menu button.
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` what matches, 150 ms after the
   reader stops typing, at the sidebar's level: `/:org/:workspace/jump` where the sidebar is
@@ -103,14 +128,15 @@ page, the one the person came from (Two levels, below).
   bare Settings, and so its tooltip while folded; the current entry on every page of them
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
-  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
-  version, opening upward to what is about the product rather than the person: first, only
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the edition's
+  name (`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), no version,
+  opening upward to what is about the product rather than the person: first, only
   for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
-  Changelog (on an instance with every feature), a rule and Source on GitHub; and at the
-  right of it the fold. Folded, and from the bar on a page without a sidebar, it is the
-  same menu.
+  Changelog with the running version faint at its right (`#brand-version`), a rule and
+  Source on GitHub; and at the right of it the fold. Folded, and from the bar on a page
+  without a sidebar, it is the same menu.
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar
@@ -122,7 +148,7 @@ page, the one the person came from (Two levels, below).
   `[ Workspace settings · Main ▾ ]` (`#settings-disclosure`, `aria-expanded`,
   `aria-controls` the list), that opens the same links in place, one per line, pushing the
   page down: not a modal, not sticky. Escape on it or on a link closes it and gives it the
-  focus; a navigation renders it closed. The drawer holds the sidebar alone. The level
+  focus; a navigation renders it closed. The drawer holds none of its sections. The level
   leaves the page: a settings page's `<h1>` is its section. Each keeps the ids its
   list had: `#settings-tabs` and `settings-tab-<key>` for a level's Settings,
   `#nav-group-account` and `nav-<key>` for a person's, `#instance-tabs` and
@@ -144,16 +170,18 @@ page, the one the person came from (Two levels, below).
   the first paint by the root layout's script, and while folded each item's name is its
   title. Folded, the foot is the fold over the mark alone, which still opens the menu,
   upward and to the right; the groups are split by rules, their headings gone.
-- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head a
-  Close menu button and its foot the same, without the fold. Open, it is a modal dialog
+- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head, where
+  either has a menu (above), the organisation and the workspace, each opening its menu
+  where it has one, else its name, then a Close menu button, and its foot the same,
+  without the fold. Open, it is a modal dialog
   (`role="dialog"`, `aria-modal`). The `NavDrawer` hook moves focus into the drawer, makes
   the top bar, `#shell-content` and Skip to content inert and stops the page scrolling
   behind it; the scrim, Escape, the Close menu button and any navigation close
   it, and focus returns to the menu button. It scrolls as one piece, its Close menu button
-  kept at the top, so on a short screen the foot never squeezes the main entries. It holds
-  the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
-  page's parent, while the disclosure under the bar (Two levels, above) names the level
-  and lists its sections. The bar names the last segment of the breadcrumb only, and before
+  kept at the top, so on a short screen the foot never squeezes the main entries. Under
+  its head it holds the sidebar alone; on a settings page the foot's Workspace settings
+  is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
+  above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
   (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
@@ -242,12 +270,23 @@ replaces the navigation it is in.
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to
-  People with a flash; removing, leaving and suspending, each from a member's ⋯ menu, are
+  People with a flash; without mail its button is Create invitation link, and the link
+  shows once in place of the form (`one_time_link/1`: "Copy this link and send it to
+  dana@example.com yourself.", the link with an icon Copy, "Works once, until 17 Oct,
+  14:05 (7 days). It is shown only now.", Done back to People), and a pending
+  invitation's ⋯ menu has Make a new link, whose link its row shows in place of its
+  cells, once, with Done; removing, leaving and suspending, each from a member's ⋯ menu, are
   confirmed in place, the member's row turned into the question, what happens, Yes,
   remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
   `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to
-  People), Workspaces
-  (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
+  People; on the instance's organisation, while no mail is set, an instance admin's ⋯
+  menu of each other member has Make a password link, which, after a recent sign-in (an
+  older one leads to the log-in page first), shows the link once above the list, to copy
+  and send, until Done, and the link's page, `/users/password/:token`, sets
+  the account's password), Workspaces
+  (whoever may rename or delete a workspace, `Apiary.Organisations.lists_workspaces?/1`,
+  owners and admins in the core; Delete… and the note under the list only for whoever
+  may delete one; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot), and the edition's sections
@@ -478,7 +517,7 @@ nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that succeeded say nothing (a screen reader hears the word); a suspended
+  a run that completed say nothing (a screen reader hears the word); a suspended
   member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
@@ -531,13 +570,30 @@ menu's acts, the workspace's are read there and lead to the workspace's page. A 
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
 The mode is a card above the tabs, the same on the workspace's Policy page, on each of
-its tabs, and on a target's Policy tab, above its views (`PolicyComponents.mode_card/1`);
-a version and its export, which state their own mode, have none. It states the mode in
+its tabs, the Document tab included, and on a target's Policy tab, above each of its
+views (`PolicyComponents.mode_card/1`); a version opened from the History (the one in
+force too) and the export, which state their own mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
 "Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
 workspace, by its name, or Its own; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
+The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
+in force under the card and the tabs: its version's number, In force and the version's
+views, which stay on the tab. The document's bar is the tab's one place to take it away,
+the code-block header's pattern: two small icon buttons on its right, Copy (the document
+as served; its hint reads Copied while the copy is confirmed, which is said politely
+too) and Download (the document as served, the bytes Copy copies, saved as
+run-configuration.json; the export page's policy file stays on the export page), each
+named by its hint, which opens under it, flush with its right edge. The tab has no Export;
+the export page opens from the header's Export on the other tabs and from a version's
+own page. In the list of versions, on the tab and on each
+version's page, the version in force leads to the Document tab and an older one to its
+own page. A change that makes a new version, Enforce or
+Observe among them, shows the new version, its number and its mode there in place. A
+target served the workspace's policy shows the workspace's version: in its list the
+version in force leads to the target's own Document view and the older ones to the
+workspace's version pages, and Download saves the workspace's document.
 
 The policy pages confirm in place, never over the page:
 
@@ -567,14 +623,20 @@ with Version n and Export and is the one way back, with no trail of the page's o
 title "Export for a node without a server" and what is exported (an h2 under a target's
 own title), the policy file with Download and Copy, the command for the
 node and the Forager file's egress section, each with Copy, the notes, and Done back to the
-version. Only the version in force is exported; another version's path sends on to it.
+Document tab (a target's Document view), the version in force under the card. Only the
+version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
-  other is. An Ended run counts with the runs that ended well, never under Ended badly,
-  and the Filter menu's State section lists Ended with them. A view's own filter is not
-  repeated as a token. The number that matches is a line over the list, only when the
-  list is narrowed ("87 runs match"), in the list's status region (`role="status"`,
+  other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
+  section lists the six states under their four families, each heading a checkbox for the
+  whole family: Alive (Pending, Running), Ended well (Completed), Cancelled (Cancelled) and
+  Ended badly (Failed, Lost). A cancelled run counts neither as ended well nor as ended
+  badly. A filter of whole families says their words ("ended badly"), and an empty list
+  of one family says so ("No runs cancelled."). A run stored under a state's older name
+  counts and lists as its new state. A view's own filter is not repeated as a token. The
+  number that matches is a line over the list, only when the list is narrowed ("87 runs
+  match"), in the list's status region (`role="status"`,
   `.q-status`), which is always rendered, empty and taking no place otherwise, so a
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
@@ -582,7 +644,8 @@ version. Only the version in force is exported; another version's path sends on 
   (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
-  case (a run's id, title or target; a destination's host or path). A word it cannot read is said in a notice, never dropped in silence. On Network
+  case (a run's id, title or target; a destination's host or path). `state:` takes a
+  state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
@@ -600,7 +663,8 @@ version. Only the version in force is exported; another version's path sends on 
 - **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. Ended shows its word, a grey dot as Closed's. A run with no session
+  when there are any. Completed is its green dot alone, the word for a screen reader;
+  Cancelled shows its word, muted, and a grey dot. A run with no session
   says "no session" in the Runtime column, muted as the column is, and "n/a" as its Host.
   What the run says it is about is a muted line under them, only when it names a kind or a
   subject: the kind, then up to two subjects, each its type and ref
@@ -684,7 +748,8 @@ words say so. The workspace's window is **fourteen days**:
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact on the mode card and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
-- **The targets index** counts runs, the share that ended well and denied attempts over
+- **The targets index** counts runs, the share that ended well of those that ended well or
+  badly (a cancelled run is in neither), and denied attempts over
   the same fourteen days, each column saying so; a **target's page** counts its denied
   destinations as Network access does (host, port and path), so its card and its Network
   access tab agree.
@@ -697,8 +762,8 @@ run is listed for seven days, a key is idle after thirty.
 The workspace overview (`ApiaryWeb.WorkspaceLive.Overview`, `OverviewComponents`) answers
 what needs the reader, then what their agents did, and never grows with the data:
 
-- **The summary**: alive now, runs, runs that ended badly and denied attempts over
-  fourteen days, each a link to the list it counts over the same days.
+- **The summary**: alive now, runs, runs that ended badly (failed or lost) and denied
+  attempts over fourteen days, each a link to the list it counts over the same days.
 - **To review**: one line an item, on columns the list holds (each row a subgrid,
   so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
@@ -710,14 +775,24 @@ what needs the reader, then what their agents did, and never grows with the data
   page to one who may change it there, and a lock with the reason to the rest. A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
-  what is read. A lost run's Close asks on its own line: the row becomes its
-  `inline_confirm/1` ("Close nightly-mirror?", what a close does, Yes, close and Cancel),
-  never a dialog; Cancel or Escape gives the row back with the focus on its Close. A lost
-  run a gateway opened offers Open instead: the one who starts a run ends it.
+  what is read. A lost run says how it was lost: "Lost, never posted its exit" when the
+  lost-run check marked it, with the tip "Nothing was heard for three heartbeat intervals.
+  The run may still be going; the record is not.", and "Lost, stopped responding" or
+  "Lost, end not recorded" when its exit said so, with the tip "The run's end was not
+  recorded; how it went is not known." It offers Open, its page: Qory Apiary records what
+  a run reports and never ends a run it did not start; it starts none today. A run the
+  check marked leaves when its start arrives, an exit that does not say it was lost, or a
+  heartbeat that counts within three intervals of its arrival (a backlog's old heartbeats
+  do not), and then says what became of it ("Completed.", "Failed.", "Cancelled.",
+  "Heartbeats resumed."); a run whose exit said it was lost stays. Either leaves when its
+  seven days pass.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
-  `DaysChart` hook measured, with its table twin a text action away.
+  `DaysChart` hook measured, with its table twin a text action away: Day, Runs, Ended
+  well, Cancelled and Denied attempts. Each day is said as its runs, of them how many
+  ended well, were cancelled and ended badly (today: alive or ended badly), and its denied
+  attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
-  word only when it is running or ended badly), a sparkline of its days and its denials.
+  word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
   says what it does: the policy's mode and version, the targets with rules of their own
   (Review), retention (Change, to Workspace settings › Runs).
@@ -750,7 +825,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 - **The notation.** A target is its path in mono (`<.target_name>`); its system goes
   before it, faint, only where the same path is in another system of the workspace
   (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
-  is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
+  is a dot and its word (`<.state_mark>`), the dot alone for a run that completed, never a
+  pill.
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
   is (Lists, above): views with the workspace's counts (All, Active this week, Never ran),
   one search, one Filter menu (System, Activity, Policy, Pinned) and Sort (Last run, Name,
@@ -759,9 +835,10 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   `activity:`, `is:pinned`; `ApiaryWeb.TargetLive.Query`): the menu writes it, and one
   the reader types becomes a token on Enter, never half typed. All of it is the URL; a
   value the page does not know is left out. A row is one line on the row spec: the
-  reader's ★, the path the title, the last run as a dot and a time (its word when it is
-  running or went badly), a 14-day sparkline of runs with their number, the share that
-  ended well (lifted to the text colour below 80 %; red is for denials only), the denied
+  reader's ★, the path the title, the last run as a dot and a time (its word unless it
+  completed), a 14-day sparkline of runs with their number, the share that ended well of
+  those that ended well or badly (lifted to the text colour below 80 %; red is for denials
+  only), the denied
   attempts of the same fourteen days in red when there are any, and the policy mode only where the target sets its own. Pages of 50.
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
@@ -1008,7 +1085,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
   build-01? Clear this instance if it stopped without saying so. Another instance can then
   start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
-  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat brings a run back.
+  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat
+  that counts within three intervals of its arrival brings a run back.
 - **Live**: the list and the page read again on `{:nodes_touched, workspace_id}`
   (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a node, at most
   every 250 ms, and every 15 seconds, since an instance stops running without an event.
@@ -1074,10 +1152,15 @@ needs becomes a component, or an attribute of one, not a copy.
   Newer on its first page). `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
-- **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
-  value and as one field, what the value completes: the path of the organisation before
-  a workspace's slug. A caller's `aria-describedby` is merged with the field's own (its
-  hint, its errors), never replaced by it.
+- **`<.input>`** is every field but the sign-up page's new password; with `prefix` a text
+  input shows, in mono before the value and as one field, what the value completes: the path of the
+  organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
+  field's own (its hint, its errors), never replaced by it.
+- **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
+  asks for them without mail, and a password link's page. The server never writes a password back: each input is the
+  browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
+  the input, outside it, and mark it (`aria-invalid`, `aria-describedby`) as they come and
+  go.
 - **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
   neither checks a field nor shows its own bubble, and the server answers a field that is
   wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the
@@ -1290,9 +1373,10 @@ not fill fails until it is filled there.
 ## The run page
 
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
-width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
-on its own) sits beside it, on every tab but Terminal, which is wide and takes the
-whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
+width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
+on its own) sits beside it on every tab, Terminal too; below 1280 px Details is a button
+under the header. The terminal takes the whole window through Focus (The terminal,
+below). The top bar's breadcrumb ends with Runs, a link to the list,
 and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page has no breadcrumb of its own.
 
@@ -1302,22 +1386,34 @@ page has no breadcrumb of its own.
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
   the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each
-  after a faint middle dot, why it ended in words where they say more than the state
-  (Ended · quiet for 30 minutes, but not "timed out" beside Timed out), how alive the run
-  is while it runs, the target (its page), the runtime, the host, when it
-  started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: Close run while the run may be closed, never on a run a
-  gateway opened (the one who starts a run ends it), and a ⋯ menu (Copy run id, Raw log,
-  Download log). Close run asks in place: the button becomes its
-  `inline_confirm/1`, "Close this run?", that a close is final, Yes, close and Cancel,
-  never a dialog; Cancel or Escape brings the button back with the focus. The seven
-  cells of v1 are the rail's. A run that ended badly says how under the meta line, in one
-  cut line whole on hover: the last result of its timeline that was no success, else its
-  last failed turn or tool, with "Jump to it", the timeline at that item.
-- **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
-  Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
+  after a faint middle dot, why it ended in words (Cancelled · time limit reached,
+  Completed · all checks passed), the runtime's exit for a session's run that failed with
+  no words ("exit 1", "SIGKILL"), how alive the run is while it runs, the target (its
+  page), the runtime, the host, when it
+  started, how long it took (left out for a run that did not start, which never ran) and
+  its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
+  (Copy run id, Raw log, Download log), and no
+  Close: Qory Apiary records what a run reports and never ends a run it did not start; it
+  starts none today. The seven
+  cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
+  meta line, in one cut line whole on hover: the last result of its timeline that was no
+  success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
+- **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
+  live action of the one LiveView, so a tab is a patch. An old link to a run's Details
+  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  becomes the Timeline's.
+- **Details is one element** (`#run-details`), after the header and before the tabs at
+  every width, so the two places never disagree and no id is drawn twice; its reading and
+  keyboard order is the header, Details, the tabs, then the tab's content. From 1280 px it
+  is the right column, level with the header, beside every tab. Below 1280 px it is a
+  **Details button** under the header (`#run-details-toggle`, a disclosure with
+  `aria-expanded` and `aria-controls`, as the settings' section button): closed when the
+  page opens, it opens the same element in place above the tabs, its sections as cards,
+  pushing the tabs down; not sticky, not a modal. It stays as the reader left it across
+  the tabs; Escape on it closes it and keeps the focus on it. The Record's Session is read
+  again when the session starts, whatever the tab.
 - **The Details rail** is key and value lines under small headings (About, Run, Labels,
-  Command, Record, Policy in force), no card and no chip; the run's labels are its own
+  Command, Record, Policy in force), no chip, and no card in the right column; the run's labels are its own
   identifiers, in mono, and one that names the target leads to its page.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
@@ -1332,29 +1428,51 @@ page has no breadcrumb of its own.
   the host alone.
 - **A run's title and kind** are each isolated in a `<bdi>` wherever they show as markup
   (the run page's `<h1>` and About, the runs list's row and preview, a target's runs, the
-  Overview's rows and its Close question, Network access's hits and ⌘K's results), in a
+  Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
-  an `aria-label` and an announcement hold them as plain text. Below 1440 px,
-  and from it when Terminal took the rail's room, the Details tab shows this same element
-  in the column, its sections as cards
-  (`q-run-on-details`), so the two never disagree and no id is drawn twice.
+  an `aria-label` and an announcement hold them as plain text.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
-- **The end reason** is in words (`RunComponents.reason_words/1`), the same in the meta
-  line and under State in the rail: timed out, closed, gateway lost, session lost, quiet
-  for a period, run credential expired, and the issuer reported the run ended
-  ([contract-assumptions.md](contract-assumptions.md), How a run ends). The quiet period
-  reads in whole hours, else whole minutes, else seconds: 1800 seconds is "quiet for 30
-  minutes". The meta line leaves out the exit where it reads as the words ("gateway
-  lost").
+- **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
+  the meta line, under State in the rail, in the timeline's last item and in the runs
+  list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
+  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
+  "events refused", "couldn't check whether the run may go on: no answer", "couldn't
+  check whether the run may go on: unreadable answer", and for a run that did not start
+  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
+  meta line and the rail as in the timeline's item. None names who or
+  what ended the run. Any other code is the run's starter's, shown as given with spaces
+  for underscores: "no longer needed". The quiet period reads in whole hours, else whole
+  minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
+- **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
+  under Pending for a run that registered, or "Ping only" for a run that only pinged,
+  stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was
+  recorded, whatever its state, is the runtime's exit as recorded, in mono: the signal
+  ("SIGTERM"), else the code ("0", "1"), and "not recorded" for `-1` without a signal,
+  the placeholder of an exit that holds no exit status of the runtime's.
+- **The timeline's last item** is one kind for every end: "Run ended", then the end
+  reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
+  a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
+  not start ends on "Run did not start" and the refusal's code in mono, with the red
+  x-mark.
+- **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";
+  "Run completed after 12 m 04 s.", or "Run completed."; "Run failed with exit 1.", "Run
+  failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
+  start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
+  "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
+  No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
+  when a quiet run is heard again. A state stored under an older name is said as its new
+  state.
 - **A run with no session**, one a gateway opened for a program that reports none
   (`opened_by` `gateway`, `Apiary.Runs.Run.no_session?/1`), has the same page with what
-  the record lacks left out. Its header says its state, Ended for a run that went quiet,
-  whose run credential expired or whose issuer reported it ended, and the reason's words
-  after it, with no runtime, no host and no exit. The tabs are as on any run: Timeline,
-  Terminal, Network access and Details.
+  the record lacks left out. Its header says its state and the end reason's words after
+  it, as any run's does (Cancelled · no activity for 30 minutes), with no runtime, no
+  host and no exit. The tabs are as on any run: Timeline,
+  Terminal and Network access, with Details beside them.
   - **Terminal** is the terminal itself, as on a session's run, its bar, its dark screen
     and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
     terminal's own message style: "**No session.** A gateway opened this run for a
@@ -1364,9 +1482,8 @@ page has no breadcrumb of its own.
     terminal, below).
   - **Timeline** has no notice of its own; the lane key, Main session, and Connections
     inline are as on any run. Run started reads "by a gateway with no session". The last
-    item of a run that ended quiet, with its run credential expired or by its issuer
-    reads "Run ended", the reason's words and the duration, with a neutral stop mark;
-    every other reason keeps "Run exited".
+    item is "Run ended", the end reason's words and the duration, with its state's mark,
+    as on any run.
   - **The Details rail**'s Run section: State with the reason's words under it; Opened
     by, "gateway (no session)", second; Key and Node; then Forager, its version and the
     contract's (`0.10.0 · contract 1`), the gateway's; and Instance. There is no Exit,
@@ -1469,7 +1586,8 @@ and names the product Qory Apiary.
 ## Phones and touch
 
 The breakpoint is 768 px (Tailwind's `md`). Below it the sidebar is the drawer, which
-scrolls as one piece and holds the sidebar alone (The shell), the gutter is 16 px,
+scrolls as one piece and holds the sidebar alone under a head that opens the
+organisation and workspace menus where there are any (The shell), the gutter is 16 px,
 controls are 40 px high and inputs take 16 px text so the browser does not zoom. The
 second column is a column from 1024 px and, below it, at every width, one disclosure under
 the top bar, `[ Workspace settings · Main ▾ ]`, whose links open in place. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area

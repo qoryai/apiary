@@ -48,7 +48,7 @@ beside it:
   (`node_instances`) are claims Forager makes under the node's key, recorded by
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
   run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
-  the node's row lock (`check_instance_limit/3`, `admit/4`).
+  the node's row lock when a run registers (`check_instance_limit/3`, `admit/4`).
 - `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
   with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
   answers what uses one before a deletion: nothing links a secret, so the answer is
@@ -69,15 +69,19 @@ beside it:
   the core's own, and the default.
 - `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot, and the
   commands for whoever runs the instance (`bin/apiary eval "Apiary.Release.…"`).
+- `Apiary.Setup`: the set-up link of a new instance, its code found or made and logged
+  at a start before set-up, just before the endpoint starts, and the set-up that uses it;
+  and the release command's claim of a new instance.
 
 The web side is under `lib/apiary_web/`:
 
 - `contract/`: the server contract. `ApiaryWeb.Contract.SignedRequest` is the plug that
   verifies a signed request and assigns the access key; the controllers behind it answer
   the contract's endpoints: `ConfigurationController` for the discovery document,
-  `EventsController` for the events, whose body `RawBody` keeps as it was sent,
-  `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`. `EnrolmentController`
+  `RegistrationController` for a run's registration and its reload, and
+  `EventsController` for the events, whose bodies `RawBody` keeps as they were sent.
+  Each of them refuses a contract revision it does not serve through `ContractVersion`.
+  `EnrolmentController`
   answers enrolment, beside them and outside `SignedRequest`: a machine with no access
   key yet enrols one with a code (`Apiary.AccessKeys.enrol/2`), its body kept by `RawBody`
   too, and its answers signed with the instance's key.
@@ -207,16 +211,18 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   own organisation (`c:Apiary.Edition.instance_organisation_id/0`; in the core's edition,
   the oldest organisation in use), named by the sign-up form's organisation name, with
   its workspace **Main** and the person as its owner, the instance's first admin, and
-  nothing else; the edition is told so (`:first_sign_up`). Whether a sign-up is the first
-  is read inside its transaction: when the instance has no organisation of its own, it
-  takes a transaction-level advisory lock and reads again, so of two first sign-ups one
-  creates it and the other finds it and is a later sign-up. The instance's organisation
-  stays, so a sign-up that sees it without the lock needs none.
+  nothing else; the edition is told so (`:first_sign_up`). It is the set-up's or the
+  release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
+  below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is
+  the first is read inside its transaction: when the instance has no organisation of its
+  own, it takes a transaction-level advisory lock and reads again, so of two first
+  sign-ups one creates it and the other finds it, `{:error, :instance_claimed}`. The
+  instance's organisation stays, so a sign-up that sees it without the lock needs none.
 - **A later sign-up** without an invitation creates an organisation only where the
   edition opens one (`c:Apiary.Edition.sign_up_open?/0`); the core's edition opens none,
   so after the first sign-up people join by invitation. It hands the edition what the
   form sent beyond the core's fields (`{:sign_up, extra}`), which the edition may refuse
-  on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:first`, `:open` or
+  on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:not_set_up`, `:open` or
   `:closed`) is what the page offers, and the sign-up asks again before it creates
   anything. A sign-up with an invitation creates no organisation. Every new organisation
   starts with one workspace, **Main**.
@@ -233,8 +239,8 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   theirs to choose. An organisation's name carries no web address (`://`, `www.`), no
   double quotation mark or lookalike, and no Unicode format character but the join
   controls, and the email takes such characters out of it all the same
-  (`Apiary.Organisations.Organisation`); a mail client may still link a bare domain. The
-  inviter's account is confirmed, and an organisation sends at most
+  (`Apiary.Organisations.Organisation`); a mail client may still link a bare domain. A mailed
+  invitation needs a confirmed inviter, and an organisation makes at most
   `Apiary.Instance.invitations_per_day/0` in a rolling 24 hours, counted from the audit
   entries of its invitations, which outlive the invitations the sweep and an acceptance
   delete, leaving out one withdrawn as undelivered, under the organisation's row lock
@@ -249,11 +255,23 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
 - **Release commands.** `Apiary.Release.grant_instance_admin/2` makes an account an owner
   of the instance's organisation and `revoke_instance_admin/1` makes one a member of it,
   refusing the last owner; both act as the instance, `instance_admin.grant` and
-  `instance_admin.revoke` in its trail, which no role takes. On an instance nobody has
-  signed up to, `grant_instance_admin/2` with an organisation's name is the first
-  sign-up, `first_only: true` to `sign_up_user/3`, under the same lock: of it and a
-  sign-up on the web, one creates the instance's organisation, and the command then
+  `instance_admin.revoke` in its trail, which no role takes. On an instance that is not
+  set up, `grant_instance_admin/2` with an organisation's name is the first sign-up,
+  `first_only: true` and `actor: :instance` to `sign_up_user/3`, under the same lock: of
+  it and the set-up link, one creates the instance's organisation, and the command then
   grants as it would on any instance.
+- **The set-up link.** `Apiary.Setup`, a child of the application's supervisor after
+  the edition's processes and just before `ApiaryWeb.Endpoint`, logs "Set up Qory Apiary
+  at <url>/setup/<code>." at every start while the instance has no organisation. The code
+  is 32 random bytes in base64url, kept as it is in `instance_settings.setup_code`: found
+  or made by `code!/0` under the row's lock (`FOR UPDATE`), so two starts at once agree on
+  one. `set_up/3` is `sign_up_user/3` with `first_only: true` and `actor: :instance`,
+  whose first sign-up takes the first-sign-up lock, then the row's, compares the code in
+  constant time (`Plug.Crypto.secure_compare/2`), and sets `set_up_at` and makes the code
+  NULL in the transaction that creates the organisation; the release command's first
+  sign-up marks it used the same way. Before set-up, every other sign-up is
+  `{:error, :not_set_up}`. The page is `ApiaryWeb.SetupLive`; its line on what is created
+  is the edition's (`c:Apiary.Edition.first_sign_up_line/0`).
 
 ## Suspending a member
 
@@ -345,14 +363,16 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   (`ApiaryWeb.Routes`) with its own routes in the core's `live_session`s, may serve a page
   of its own at a core path (`except:`), and is the one the endpoint dispatches to
   (`ApiaryWeb.Edition.router/0`); navigation entries, their groups and their counts
-  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the switcher's entries, the scope
-  a place of its own gives and the heading it lists such a place under
-  (`switcher_entries/1`, `place_scope/2`, `place_group/1`); what a page says to a person it lets in without
-  a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
-  settings sections (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
-  the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for
-  its actions in the audit log (`activity_describer/0`); and the names its own paths
-  take (`reserved_slugs/0`).
+  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the entries of the breadcrumb's
+  organisation menu and workspace menu, and the heading the organisation menu lists a
+  place of its own under (`switcher_entries/1`, `workspace_switcher_entries/1`,
+  `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
+  a person it lets in without a membership, and of a refusal of its own
+  (`reader_sentence/2`, `refusal_sentence/1`); settings sections (`settings_tabs/1`,
+  `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
+  pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
+  (`activity_describer/0`); the names its own paths take (`reserved_slugs/0`); and the
+  product's name on the Qory Apiary menu's button (`product_name/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only
 through the places the core gives it, slots, settings tabs and navigation entries, and a
@@ -389,8 +409,11 @@ where `QORY_FEATURES` lists it by name, and is never one of those.
 `APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the key the instance encrypts and codes
 with, and nothing is encrypted or keyed under its own bytes: every key is derived from it
 with HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per
-purpose: `apiary values v1` for stored values and `apiary integrity v1` for integrity
-codes. Each derived key
+purpose: `apiary values v1` for stored values, `apiary integrity v1` for integrity
+codes, `apiary check v1` for the check value the boot compares (`Apiary.KeyCheck`) and
+`apiary mail v1` for the SMTP password saved in Instance settings › Mail
+(`Apiary.Mail.Password`, AES-256-GCM with associated data binding it to its row, its
+field, the relay, the port, TLS and the username). Each derived key
 has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
 rotation of the secret can keep the previous one to read with and tell the two apart.
 
@@ -447,7 +470,7 @@ vendored byte for byte as `priv/contract/runtimes.json` at the commit in
 `.forager-contract-ref` (`Apiary.Kinds.Runtimes`). Forager generates it from its built-in
 descriptors; it is read at compile time, and a list missing from a runtime fails the
 compile. Services come from a service definition, the one source of a service's hosts,
-paths, auth and declared secrets, whose `auth` is Apiary's own: its `scheme`, `header`
+paths, auth and declared secrets, whose `auth` is Qory Apiary's own: its `scheme`, `header`
 and `username` are the members of the contract's `auth.schema.json`, vendored beside the
 catalogue, with a username of at most 128 characters, and `secret` and `username_secret`
 are ids of secrets Qory Apiary stores for the definition, `secret` required: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
@@ -513,7 +536,7 @@ refuses all the workspace's connections when one fails. The targets carry no cod
 Every change a person, an access key or the instance makes to what an organisation holds
 leaves one entry in `audit_entries` (`Apiary.Audit`): who, which action, on what, when,
 from where, and the changed fields before and after. It is not the record: the record is
-what runs did and comes from Forager; the trail is what was done to the apiary. The
+what runs did and comes from Forager; the trail is what was done to Qory Apiary. The
 events the gateway posts are the record and leave no entry.
 
 - **Written with the change.** The context function that asked `Access.authorize/3`
@@ -529,7 +552,7 @@ events the gateway posts are the record and leave no entry.
   `member.activate`); granting and revoking an instance admin, by a release command;
   an access key's arrival on a node and its revocation, and making
   and cancelling an enrolment code;
-  closing a run; the retention settings; every write of the security policy, whose
+  the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's own retention.
   What the application removes of its own accord is recorded as the action that removes
   it: an expired invitation deleted when a new one goes to its address, one whose email

@@ -1,5 +1,6 @@
 # The machines of the end to end job, beside the test instance, which run.sh starts on
-# the host: the Linux node the session runs on, and the host the session asks for.
+# the host: the Linux node the session runs on, the host the session asks for, and the
+# SMTP sink the mailed instance sends to.
 name: apiary-e2e
 
 services:
@@ -23,13 +24,21 @@ services:
   # The host the session asks for: a page over TLS, on the node's network and nowhere
   # else, under a name no resolver outside this job knows.
   upstream:
-    image: nginx:1.29-alpine
+    image: public.ecr.aws/docker/library/nginx:1.29-alpine
     volumes:
       - "./upstream/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
       - "${E2E_WORK:?}/tls:/etc/nginx/tls:ro"
     networks:
       outside:
         aliases: ["${E2E_UPSTREAM_HOST:?}"]
+
+  # The SMTP sink: it takes every message on port 1025, sends none on, and shows what it
+  # holds on its API, port 8025, which the job asks from inside the container. It
+  # publishes no port: the instance reaches it at its address on this network. Pulled from
+  # ghcr.io, not Docker Hub, whose pulls without a login are limited.
+  sink:
+    image: ghcr.io/axllent/mailpit:v1.31.4
+    networks: [outside]
 
 networks:
   outside: {}

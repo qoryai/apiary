@@ -44,6 +44,33 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "a reader" do
+    # `reader/1` names the edition's way in only for a role that changes nothing, asked
+    # with `reads_only?/1` of the actions the role holds: a stub role an edition might
+    # give, with the core's actions.
+    test "a role that holds only reads changes nothing, one with a change does" do
+      assert Access.reads_only?([])
+
+      reads = [:"node.read", :"run.read", :"secret.read", :"audit.read", :"connection.read"]
+      assert Access.reads_only?(reads)
+
+      for change <- [:"workspace.rename", :"node.edit", :"security_policy.edit", :"member.invite"] do
+        refute Access.reads_only?(reads ++ [change]), "#{change} is a change"
+        refute Access.reads_only?([change])
+      end
+    end
+
+    test "every level of the core holds a change, so none is a reader" do
+      for level <- [:owner, :admin, :member] do
+        refute Access.reads_only?(Map.fetch!(Access.roles(), level)), "#{level} changes nothing"
+      end
+    end
+
+    test "an action that is none raises" do
+      assert_raise ArgumentError, fn -> Access.reads_only?([:"no.such_action"]) end
+    end
+  end
+
   describe "marked for deletion" do
     # A scope loaded before the marking, asked after it: every action is not found, as for
     # an organisation or a workspace that is gone, but cancelling the deletion and the
@@ -152,13 +179,13 @@ defmodule Apiary.AccessTest do
     # Each action whose subject can be a row, asked by an owner of one organisation of a row
     # of another's: not found, and yes for that organisation's own owner.
     @rows [
-      {:run, [:"run.read", :"run.read_log", :"run.close"]},
+      {:run, [:"run.read", :"run.read_log"]},
       {:rule, [:"security_policy.edit", :"security_policy.lock"]},
       {:node, [:"access_key.create_code", :"access_key.add"]},
       {:node_key, [:"access_key.revoke"]},
       {:code, [:"access_key.cancel_code"]},
       {:membership, [:"member.change_level", :"member.remove"]},
-      {:invitation, [:"invitation.revoke"]}
+      {:invitation, [:"invitation.revoke", :"invitation.renew"]}
     ]
 
     setup do
@@ -226,7 +253,7 @@ defmodule Apiary.AccessTest do
         assert Access.authorize(ctx.owner, action, membership) == :ok
       end
 
-      for action <- [:"member.invite", :"invitation.revoke"] do
+      for action <- [:"member.invite", :"invitation.revoke", :"invitation.renew"] do
         assert Access.authorize(ctx.owner, action, ctx.invitation) == :ok
       end
     end
@@ -244,7 +271,7 @@ defmodule Apiary.AccessTest do
       end
 
       # An invitation makes a member, whoever sent it.
-      for action <- [:"member.invite", :"invitation.revoke"] do
+      for action <- [:"member.invite", :"invitation.revoke", :"invitation.renew"] do
         assert Access.authorize(ctx.admin, action, ctx.invitation) == :ok
       end
     end

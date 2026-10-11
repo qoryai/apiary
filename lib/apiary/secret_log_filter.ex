@@ -6,7 +6,7 @@ defmodule Apiary.SecretLogFilter do
   after it with `[FILTERED]`, in a log event's message and in its metadata, before any
   handler sees the event.
 
-  Apiary never has a key's secret: a key made in a browser sends its public half alone
+  Qory Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
   parameters of a LiveView event, which `Phoenix.LiveView.Logger` logs at debug before the
   page refuses an event holding a secret, or the arguments and the last message that a
@@ -17,7 +17,7 @@ defmodule Apiary.SecretLogFilter do
 
   An enrolment code (`qec_` and 26 characters of Crockford base32, which a person may type
   in groups split by `-`) is a credential too, for the 15 minutes it works: a machine that
-  sends it gets a key on the node. Apiary shows it once, inside the command, and logs it
+  sends it gets a key on the node. Qory Apiary shows it once, inside the command, and logs it
   nowhere; the filter takes it as it takes a secret, should a client send it back in an
   event's parameters, or a crash print it. The fingerprint after it in the command (`.`
   and the server key's fingerprint) is public, and stays.
@@ -39,6 +39,29 @@ defmodule Apiary.SecretLogFilter do
     * Each metadata value is scrubbed the same way: `:crash_reason` (the exception, the
       arguments it holds and the stacktrace's), a `Plug.Conn`, and anything else there.
 
+  **A link's token.** Seven routes carry a bearer token in the path, or the instance's
+  set-up code (`token_routes/0`): an invitation and its next step, a log-in link, an
+  email change, a password link, the set-up link and the test link of Instance settings ›
+  Mail. Whoever reads one from a log could sign in, set a password, join an organisation
+  or set the instance up with it. So in every string the filter reads, a message's, a
+  report's or the metadata's, such a path's token segment is replaced by `:token` (`:code`
+  for the set-up link), as `redact_path/1` replaces it in the request log
+  (`ApiaryWeb.RequestLog`): a bare path (`GET /users/password/…`, which Phoenix logs in
+  development, or a `Plug.Conn`'s `request_path`, which the production formatter writes
+  for a request that crashed) and one inside a whole URL (a LiveView's join payload,
+  printed when it crashes), a doubled slash too; and a list of a path's segments (a
+  `Plug.Conn`'s `path_info`). The set-up link's own line (`Apiary.Setup`) is the one that
+  writes it whole: the event that carries the metadata `setup_link: true` keeps its
+  message as it came, its metadata scrubbed.
+
+  An invitation's token travels in a query too: its page sends a person to sign up at
+  `/users/register?invitation=<token>`. So in every string the filter reads, the value of
+  an `invitation` parameter that is a token (43 base64url characters, the 32 bytes every
+  token is) is replaced by `:token`: after `?`, `&` or `;`, or at the start of the string
+  (a `Plug.Conn`'s `query_string`), and in its URL-encoded form (`%3Finvitation%3D…`, a
+  return path inside another parameter). A value of another shape, an invitation's id
+  among them (`invitation=<uuid>` in a line of the app's own), is left as it is.
+
   An event without a secret is passed on exactly as it came. The filter never stops an
   event and never raises: should a term defeat it, the event is passed on as it came.
 
@@ -47,7 +70,11 @@ defmodule Apiary.SecretLogFilter do
   holding part of `qak_` or `qec_`); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). A public key whose base64url happens to hold `qak_`
-  or `qec_` is filtered from a log line as a secret would be.
+  or `qec_` is filtered from a log line as a secret would be. A link's token anywhere else
+  is not recognised: in another parameter of a query, or alone as a parameter's value,
+  which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
+  a segment of its own (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
+  route's, and is left whole.
   """
 
   @id :apiary_access_key_secrets
@@ -59,6 +86,86 @@ defmodule Apiary.SecretLogFilter do
                 a <- seconds,
                 k <- thirds,
                 do: q <> a <> k <> "_"
+
+  # The routes that carry a bearer token, or the set-up code, in the path: their segments,
+  # the token's named. The one list `redact_path/1`, the request log's, and the filter
+  # read.
+  @token_routes [
+    ~w(invitations :token),
+    ~w(invitations :token continue),
+    ~w(users log-in :token),
+    ~w(users settings confirm-email :token),
+    ~w(users password :token),
+    ~w(setup :code),
+    ~w(instance mail confirm :token)
+  ]
+
+  # Each route's segments before its token, and the token's name.
+  @token_prefixes @token_routes
+                  |> Enum.map(fn route ->
+                    {before, [name | _]} =
+                      Enum.split_while(route, &(not String.starts_with?(&1, ":")))
+
+                    {before, name}
+                  end)
+                  |> Enum.uniq()
+
+  # What `:binary.match/2` looks for, before the regex replaces: the segment just before a
+  # token, and its slash.
+  @path_marks @token_prefixes
+              |> Enum.map(fn {before, _name} -> List.last(before) <> "/" end)
+              |> Enum.uniq()
+
+  # A token's path, bare or after a URL's `//host`: what comes before it is kept, and the
+  # token, its base64url characters (every token and the code are base64url), is
+  # replaced, so a full stop or a query after it stays. A path starts the
+  # string, or follows a character that is not part of a path's segment, so a file's path
+  # that merely holds `setup/` is left alone. Slashes may be doubled, as the router reads
+  # them.
+  @path_source "(?<![\\w.~%/-])((?://[^/\\s\"'<>]*)?)(/+(?:" <>
+                 Enum.map_join(@token_prefixes, "|", fn {before, _name} ->
+                   Enum.map_join(before, "/+", &Regex.escape/1)
+                 end) <> ")/+)([A-Za-z0-9_%-]+)"
+
+  # An invitation's token as a query parameter's value, bare or URL-encoded: what
+  # `:binary.match/2` looks for, and the regex that keeps the parameter's name and
+  # replaces a token's 43 base64url characters.
+  @query_marks ["invitation=", "invitation%3D", "invitation%3d"]
+  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
+
+  @doc """
+  token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
+  in the path: each its segments, the token's named `:token` (`:code`).
+  """
+  @spec token_routes() :: [[String.t()]]
+  def token_routes, do: @token_routes
+
+  @doc """
+  redact_path/1 is a request's path with the token segment of a route of
+  `token_routes/0` replaced by its name, `:token` or `:code`; any other path as it is.
+  Empty segments are dropped the way the router drops them, so a doubled or trailing
+  slash does not get a token past it.
+  """
+  @spec redact_path(term) :: term
+  def redact_path(path) when is_binary(path) do
+    case path |> String.split("/", trim: true) |> token_route() do
+      nil -> path
+      route -> "/" <> Enum.join(route, "/")
+    end
+  end
+
+  def redact_path(path), do: path
+
+  # The route of `token_routes/0` the segments are, or nil: a proper list of binaries
+  # alone matches one.
+  defp token_route(segments), do: Enum.find(@token_routes, &route?(&1, segments))
+
+  defp route?([":" <> _name | route], [segment | segments]) when is_binary(segment),
+    do: route?(route, segments)
+
+  defp route?([literal | route], [literal | segments]), do: route?(route, segments)
+  defp route?([], []), do: true
+  defp route?(_route, _segments), do: false
 
   @doc """
   install/0 adds the filter to `:logger`'s primary filters, once: installing it again
@@ -77,6 +184,13 @@ defmodule Apiary.SecretLogFilter do
   `[FILTERED]`, or the event as it came when it holds none.
   """
   @spec filter(:logger.log_event(), term) :: :logger.log_event()
+  # The set-up link's line writes its link whole (`Apiary.Setup`).
+  def filter(%{meta: %{setup_link: true} = meta} = event, _extra) do
+    %{event | meta: scrub(meta)}
+  catch
+    _kind, _defeated -> event
+  end
+
   def filter(%{msg: msg, meta: meta} = event, _extra) when is_map(meta) do
     %{event | msg: scrub_msg(msg), meta: scrub(meta)}
   catch
@@ -125,8 +239,15 @@ defmodule Apiary.SecretLogFilter do
 
   defp replace_in(list) when is_list(list) do
     case printable(list) do
-      {:ok, text} -> if secret?(text), do: text |> replace() |> String.to_charlist(), else: list
-      :none -> replace_in_list(list)
+      {:ok, text} ->
+        if secret?(text), do: text |> replace() |> String.to_charlist(), else: list
+
+      :none ->
+        # A path's segments, a `Plug.Conn`'s `path_info`, the token's named.
+        case token_route(list) do
+          nil -> replace_in_list(list)
+          route -> route
+        end
     end
   end
 
@@ -151,7 +272,7 @@ defmodule Apiary.SecretLogFilter do
   defp holds?(list) when is_list(list) do
     case printable(list) do
       {:ok, text} -> secret?(text)
-      :none -> list_holds?(list)
+      :none -> token_route(list) != nil or list_holds?(list)
     end
   end
 
@@ -173,8 +294,40 @@ defmodule Apiary.SecretLogFilter do
 
   defp printable(_list), do: :none
 
-  defp secret?(binary), do: :binary.match(binary, @prefixes) != :nomatch
+  defp secret?(binary),
+    do: :binary.match(binary, @prefixes ++ @path_marks ++ @query_marks) != :nomatch
 
-  defp replace(binary),
-    do: Regex.replace(~r/q(ak|ec)_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
+  defp replace(binary) do
+    binary = Regex.replace(~r/q(ak|ec)_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
+
+    binary =
+      if :binary.match(binary, @path_marks) == :nomatch,
+        do: binary,
+        else: Regex.replace(regex(:path, @path_source), binary, &redact_token/4)
+
+    if :binary.match(binary, @query_marks) == :nomatch,
+      do: binary,
+      else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
+  end
+
+  # A regex compiled once and kept in `:persistent_term`: a compiled regex cannot be a
+  # module attribute.
+  defp regex(name, source) do
+    case :persistent_term.get({__MODULE__, name}, nil) do
+      nil ->
+        regex = Regex.compile!(source)
+        :persistent_term.put({__MODULE__, name}, regex)
+        regex
+
+      regex ->
+        regex
+    end
+  end
+
+  # The path up to the token kept, and the token replaced by its name.
+  defp redact_token(_path, host, before, _token) do
+    segments = String.split(before, "/", trim: true)
+    {_before, name} = List.keyfind(@token_prefixes, segments, 0)
+    host <> before <> name
+  end
 end

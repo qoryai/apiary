@@ -863,12 +863,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})
 
   @doc """
-  After a patch between a version and its export (Export, Done), the focus goes to the
-  heading of what is shown now, so it never falls to the page's body: `from` is the view
-  shown before the patch, `to` the one shown now.
+  After a patch between a version (or the Document view) and its export (Export, Done),
+  the focus goes to the heading of what is shown now, so it never falls to the page's
+  body: `from` is the view shown before the patch, `to` the one shown now.
   """
-  def heading_focus(socket, :version, :export), do: focus(socket, "policy-export-h")
-  def heading_focus(socket, :export, :version), do: focus(socket, "policy-version-h")
+  def heading_focus(socket, from, :export) when from in [:version, :document],
+    do: focus(socket, "policy-export-h")
+
+  def heading_focus(socket, :export, to) when to in [:version, :document],
+    do: focus(socket, "policy-version-h")
+
   def heading_focus(socket, _from, _to), do: socket
 
   @doc """
@@ -1487,13 +1491,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @views ~w(changes document served)
 
   @doc """
-  One version of the holder for the version page: the configuration, what it is compared
-  with (`?compare=`, the one before by default), the view (`?view=`), the lines to show
-  and the few versions around it. `:error` when the holder has no such version.
+  One version of the holder for the version page and the Document view: the
+  configuration, what it is compared with (`?compare=`, the one before by default), the
+  view (`?view=`), the lines to show and the few versions around it. `:error` when the
+  holder has no such version. `holder:` reads another holder's versions than the page's:
+  the workspace's, on a target served them.
   """
-  def version(socket, n, params) do
+  def version(socket, n, params, opts \\ []) do
     scope = socket.assigns.current_scope
-    holder = socket.assigns.holder
+    holder = Keyword.get(opts, :holder, socket.assigns.holder)
 
     with {:ok, configuration} <- Policy.get_configuration(scope, holder, n) do
       # One page of versions serves the newest, the few around this one and the ones to

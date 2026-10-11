@@ -1,18 +1,21 @@
 # Editions
 
-Qory Apiary comes in a free edition, which is this repository, and in paid editions, which
-8wonders GmbH, the company behind Qory, licenses. Every paid edition is the same Qory
-Apiary: the free edition's code, with more added to it, in one image.
+Qory Apiary comes as Qory Apiary Community, which is this repository, and as Qory Apiary
+Pro, which 8wonders GmbH, the company behind Qory, licenses. Qory Apiary Pro is the same
+Qory Apiary: Qory Apiary Community's code, with more added to it, in one image.
 
-**Nothing in the free edition will ever move to a paid one.**
+**Nothing in Qory Apiary Community will ever move to Qory Apiary Pro.**
 
-## The free edition
+## Qory Apiary Community
 
 Apache License 2.0, this repository, self-hosted. It is complete for one team:
 
-- **One organisation and one workspace.** The first person to sign up creates the
-  instance's organisation, with its workspace Main, and is its owner. Everyone after joins
-  it by invitation.
+- **One organisation and one workspace.** The person who sets a new instance up, with the
+  set-up link its log gives, creates the instance's organisation, with its workspace Main,
+  and is its owner. Everyone after joins it by invitation.
+- **Mail is optional.** Without it, people sign in with a password, and invitations and
+  password links are copied by hand; with an SMTP relay, Qory Apiary emails log-in links
+  and invitations.
 - **The record.** Every run of every machine of the workspace: the session as a timeline,
   the terminal as it was written, every connection with the decision and the rule behind
   it, and how the run ended.
@@ -34,9 +37,9 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The docs.** The guides and the release notes, served by every instance at `/docs`, and
   the module reference, served by an instance with every feature.
 
-## Pro
+## Qory Apiary Pro
 
-Pro adds, for a company that runs Qory Apiary for more than one team:
+Qory Apiary Pro adds, for a company that runs Qory Apiary for more than one team:
 
 - more organisations and more workspaces;
 - per-member workspace access: a member reaches the workspaces they are added to;
@@ -44,7 +47,7 @@ Pro adds, for a company that runs Qory Apiary for more than one team:
 - the Admin area, where the instance's admins manage the organisations, accounts and
   features of the instance.
 
-## Operator
+### Operator
 
 Operator adds, for a company that provides a harness its clients run on Qory Apiary:
 

@@ -411,6 +411,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("story", "/dev/storybook/" <> _, p), do: p.stories
 
   defp value_of("key_id", _path, p), do: p.key_id
+  # The owner set the instance up: any code opens the page that says so.
+  defp value_of("code", "/setup/:code", _p), do: "used-code"
 
   defp value_of("target_id", path, p) do
     cond do
@@ -425,6 +427,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       String.starts_with?(path, "/users/log-in/") -> p.login_token
       String.starts_with?(path, "/users/settings/confirm-email/") -> p.login_token
       String.starts_with?(path, "/invitations/") -> p.invitation_token
+      String.starts_with?(path, "/users/password/") -> p.password_token
+      # Not the test link's: it leads to the page, and changes nothing.
+      String.starts_with?(path, "/instance/mail/confirm/") -> p.login_token
       true -> nil
     end
   end
@@ -476,6 +481,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     login_token =
       extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
 
+    # A password link's, as `Apiary.Accounts.build_password_link/3` stores it.
+    {password_token, password_row} =
+      Apiary.Accounts.UserToken.build_password_link_token(user, "password")
+
+    Apiary.Repo.insert!(password_row)
+
     {stories, component_stories} = stories()
 
     base = %{
@@ -492,6 +503,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       target_glob: target.path,
       invitation_token: invitation,
       login_token: login_token,
+      password_token: password_token,
       stories: stories,
       component_stories: component_stories
     }

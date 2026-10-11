@@ -1,10 +1,10 @@
 defmodule Apiary.Audit do
   @moduledoc """
-  The audit trail: what people, access keys and the instance did to what the apiary
-  holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
+  The audit trail: what people, access keys and the instance did to what Qory
+  Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. It is not the
   record: the record is what runs did (their events, their log), the trail is what was
-  done to the apiary. The events the gateway posts are the record and leave no entry.
+  done to Qory Apiary. The events the gateway posts are the record and leave no entry.
 
   ## Written with the change
 
@@ -46,12 +46,19 @@ defmodule Apiary.Audit do
   the application removes of its own accord is audited too, by the action that removes
   it: an expired invitation deleted when a new one goes to its address, and one whose
   email could not be delivered, are each an `invitation.revoke` by the person who sent
-  the new invitation, `details.reason` `expired` or `undelivered`, and an invitation
+  the new invitation, `details.reason` `expired` or `undelivered` (the latter naming the
+  entry that counted the sending it undoes, `details.entry_id`), and an invitation
   expired for 30 days, which the daily sweep deletes, an `invitation.revoke` by the
   instance with the reason `expired`. A release command run on the instance's machine that
   makes an account an owner of the instance's organisation, or an owner of it a member, is
   an `instance_admin.grant` or an `instance_admin.revoke` in that organisation's trail, by
-  the instance. A new organisation's trail begins with the entry of its creation,
+  the instance. A password link, which an instance admin or a release command makes for an
+  account (`Apiary.Accounts.build_password_link/3`), is an `account.password_link` in that
+  organisation's trail too, by the person or the instance, naming the account by user id
+  and never holding the link. Saving the instance's mail settings and turning them on
+  (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
+  `instance.mail_on` there, by the instance admin, never holding the password. A new
+  organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
   the same way, and what the edition changes in the core's transactions is an entry of
@@ -59,8 +66,8 @@ defmodule Apiary.Audit do
   in: each membership's end is a `member.remove` there, by the person, `details.reason`
   `account_deleted`; the account itself belongs to no organisation and has no entry. A workspace's deletion, its cancelling and its purge are
   entries of the organisation, with no workspace, so they outlive it; an organisation's
-  purge deletes its trail with it. The record's own retention is not a change to the
-  apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
+  purge deletes its trail with it. The record's own retention is not a change to Qory
+  Apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
   the record's too.
 
   ## Append-only

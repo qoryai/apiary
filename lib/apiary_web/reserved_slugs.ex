@@ -32,12 +32,12 @@ defmodule ApiaryWeb.ReservedSlugs do
   # and static files, and the development routes.
   @instance ~w(
     .well-known assets dev docs favicon-32.png favicon.ico favicon.svg fonts health images
-    instance invitations live phoenix robots.txt users v1
+    instance invitations live phoenix robots.txt setup users v1
   )
 
-  # The organisation's own pages, the second segment of `/:org/…`, and the palette's
-  # answers there.
-  @organisation_pages ~w(activity audit-log jump members settings)
+  # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
+  # there and the switcher's link to the organisation (`-`).
+  @organisation_pages ~w(- activity audit-log jump members settings)
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the

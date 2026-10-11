@@ -28,7 +28,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     :"connection.read",
     :"connection.write"
   ]
-  alias ApiaryWeb.{Format, RunComponents}
+  alias ApiaryWeb.Format
 
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
@@ -39,9 +39,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.change_level"), do: gettext("Member's level changed")
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
+  def label(:"invitation.renew"), do: gettext("Invitation renewed")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
   def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
+  def label(:"account.password_link"), do: gettext("Password link made")
+  def label(:"instance.mail_save"), do: gettext("Mail settings saved")
+  def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -58,7 +62,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"node.edit"), do: gettext("Node changed")
   def label(:"node.delete"), do: gettext("Node deleted")
   def label(:"node.clear_instance"), do: gettext("Instance cleared")
-  def label(:"run.close"), do: gettext("Run closed")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
@@ -131,6 +134,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Withdrew an invitation that could not be delivered")
 
   defp said(:"invitation.revoke", _details, _actor), do: gettext("Revoked an invitation")
+
+  defp said(:"invitation.renew", _details, _actor),
+    do: gettext("Made a new link for an invitation")
+
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),
@@ -138,6 +145,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"instance_admin.revoke", _details, _actor),
     do: gettext("Made an owner a member, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, :instance),
+    do: gettext("Made a password link, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, _actor),
+    do: gettext("Made a password link for a person")
+
+  defp said(:"instance.mail_save", _details, _actor),
+    do: gettext("Saved the mail settings, which sent a test link")
+
+  defp said(:"instance.mail_on", _details, _actor),
+    do: gettext("Turned mail on, by the test link")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -175,8 +194,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"node.clear_instance", _details, _actor),
     do: gettext("Cleared an instance of a node")
-
-  defp said(:"run.close", _details, _actor), do: gettext("Closed a run")
 
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
@@ -347,6 +364,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  def change(action, _before, _after, %{"relay" => relay, "port" => port})
+      when action in [:"instance.mail_save", :"instance.mail_on"] and is_binary(relay),
+      do: [{:m, "#{relay}:#{port}"}]
+
   def change(:"member.suspend", _before, _after, _details), do: gettext("Suspended")
   def change(:"member.activate", _before, _after, _details), do: gettext("Active")
 
@@ -386,9 +407,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       )
     ]
   end
-
-  def change(:"run.close", before, after_, _details),
-    do: from_to(state(before["state"]), state(after_["state"]))
 
   def change(:"retention.edit", before, after_, _details) do
     for {field, label} <- [
@@ -461,9 +479,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")
   defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
   defp limit_or_name(_field, value), do: to_string(value)
-
-  defp state(nil), do: nil
-  defp state(state), do: RunComponents.state_label(state)
 
   defp days(nil), do: gettext("Forever")
 

@@ -127,8 +127,9 @@ defmodule Apiary.Policy do
   @doc """
   Whether somebody has made the workspace's policy: there is a change in its history, the
   first rule or the first change of mode. Until then the workspace serves no run
-  configuration at all (discovery names no `run` section, the endpoint answers `404`, the
-  answers to batches name no digest of one), so its machines use the policy of their own
+  configuration of its own (a run's registration is answered `{"version":1}`, the document
+  of no policy; a reload answers `404`; and the answers to batches name no digest of one),
+  so its machines use the policy of their own
   `forager.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
   enforcement away. From the first change on, every run of the workspace takes the
   workspace's policy. The first change anywhere counts, a target's rule or a target's mode
@@ -2285,8 +2286,9 @@ defmodule Apiary.Policy do
   # `Apiary.Access`'s answer as the policy says it: a sentence for a role that may not,
   # not found where the `security` feature is off. Asked of the scope `write/4` read under
   # the workspace's lock, without another read. A reader, who reads the organisation
-  # through the edition's reach and changes nothing in it (`Apiary.Access.reader/1`), is
-  # told so in the edition's words rather than the level a change would take.
+  # through the edition's reach in a role that changes nothing there
+  # (`Apiary.Access.reader/1`), is told so in the edition's words rather than the level a
+  # change would take.
   defp may(%Scope{} = scope, action, message) do
     case Access.check(scope, action, scope.workspace) do
       :ok ->

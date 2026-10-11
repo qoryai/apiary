@@ -171,8 +171,8 @@ defmodule ApiaryWeb.RichText do
   Renders rich text. A `{:part, name}` in it is filled by the `:part` slot of that name,
   so a template can put its own markup in a sentence:
 
-      <.rich text={rich_gettext("%{time} by a member", time: {:part, :time})}>
-        <:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part>
+      <.rich text={rich_gettext("Last heard %{time}", time: {:part, :time})}>
+        <:part name={:time}><.clock at={@run.last_event_at} id="last-event-at" /></:part>
       </.rich>
   """
   attr :text, :any, required: true

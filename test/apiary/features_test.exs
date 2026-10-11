@@ -86,6 +86,19 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse("secrets") == {:error, "secrets needs security, which is left out"}
     end
 
+    test "instance_mail, a name the list once took, is accepted and ignored" do
+      refute :instance_mail in Features.all()
+
+      assert Features.parse("observability,instance_mail") == {:ok, [:observability]}
+      assert Features.parse(" instance_mail , observability ") == {:ok, [:observability]}
+      assert Features.parse("instance_mail") == {:ok, []}
+      assert Features.parse("all-instance_mail") == Features.parse("all")
+      assert Features.parse("all-security,instance_mail") == Features.parse("all-security")
+
+      assert {:error, reason} = Features.parse("observability,instance_mail,dispatch")
+      assert reason =~ "unknown feature dispatch;"
+    end
+
     test "all is not a feature to list" do
       for value <- ["security,all", "observability,all-security", "all,all"] do
         assert {:error, reason} = Features.parse(value)
@@ -101,6 +114,15 @@ defmodule Apiary.FeaturesTest do
       for feature <- Features.all() -- [:observability] do
         assert :observability in needs_all(feature)
       end
+    end
+
+    test "the Install guide says no feature needs observability that does not" do
+      guide = File.read!(Path.expand("../../guides/install.md", __DIR__))
+
+      free =
+        for f <- Features.all() -- [:observability], :observability not in needs_all(f), do: f
+
+      if free != [], do: refute(guide =~ ~r/every other feature\s+needs it/)
     end
 
     test "a name that is no feature is a mistake in the caller" do
@@ -283,6 +305,12 @@ defmodule Apiary.FeaturesBootTest do
     Application.put_env(:apiary, :features_setting, "observability,security,secrets")
     assert Features.boot!() == [:observability, :security, :secrets]
     assert Features.on?(:secrets)
+  end
+
+  test "boot!/0 boots where QORY_FEATURES still names instance_mail, as if it did not" do
+    Application.put_env(:apiary, :features_setting, "observability,security,instance_mail")
+    assert Features.boot!() == [:observability, :security]
+    assert Features.enabled() == [:observability, :security]
   end
 
   test "boot!/0 stops the boot on a value parse/1 refuses, saying how to fix it" do

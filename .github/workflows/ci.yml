@@ -5,16 +5,184 @@ on:
     branches: [main, next]
   pull_request:
 
+# A newer push to a pull request cancels its run in progress. A push to next or main is a
+# group of its own, the run's, so no later push cancels its run, in progress or waiting,
+# and the head of every push to them is checked.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Five jobs side by side: Checks, the checks that do not depend on the features, run once;
+# the tests, under each set of features; the image, on each platform; Database over TLS;
+# and Compose install and upgrade.
+#
+# A pull request whose head is next, of this repository, skips them: the push to next runs
+# them on the same commit, the pull request's head. GitHub does not evaluate the name of a
+# job its if skips: the skipped job's check shows its name: expression as written, which is
+# never a required check's name, so a required check is answered only by the push run's job
+# on that commit. The push run's jobs carry the readable names. A fork's branch named next
+# is not this repository's, and its pull request runs them.
 jobs:
+  checks:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Checks · checked by the push run' || 'Checks' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      # The job's own cache, apart from the tests': the dependencies, the dev and prod
+      # builds the checks and the assets compile, and the Tailwind binary. Not esbuild's:
+      # its file carries no version, so a cached one would outlive a change of version.
+      - name: Restore dependencies and build
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build/dev
+            _build/prod
+            _build/tailwind-*
+          key: mix-checks-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-checks-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+
+      - name: Check the Gettext catalogues are extracted
+        run: mix gettext.extract --check-up-to-date
+
+      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
+      # key a browser makes against the contract's known answer, and what it sends Qory.
+      - name: Test the browser scripts
+        run: node --test 'assets/js/test/*.test.mjs'
+
+      - name: Build the documentation without warnings
+        run: mix docs --warnings-as-errors
+
+      - name: Build the assets
+        env:
+          MIX_ENV: prod
+        run: mix assets.deploy
+
+      # The AWS template, deploy/aws/apiary.yaml: cfn-lint, at the version pinned here, in
+      # a virtual environment of its own; scripts/aws-template-check.py reads the template
+      # with cfn-lint's decoder.
+      - name: Install cfn-lint
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn-lint"
+          "$RUNNER_TEMP/cfn-lint/bin/pip" install --quiet cfn-lint==1.57.0
+          echo "$RUNNER_TEMP/cfn-lint/bin" >> "$GITHUB_PATH"
+
+      - name: Lint the AWS template
+        run: cfn-lint deploy/aws/apiary.yaml
+
+      # Every resource stack-policy.json names is the template's, the database and the four
+      # key secrets are all guarded, and the policy the stack sets on itself is the same. The
+      # stack sets it once its create or an update completes, through a rule on its own
+      # status changes alone, a function only that rule may invoke, and a role that may set
+      # this stack's policy and write its own log group, nothing else; no custom resource or other function sets it,
+      # since CloudFormation refuses a stack policy while the stack is in progress.
+      - name: Check the stack policy against the template
+        run: python scripts/aws-template-check.py policy
+
+      # The person installs from the console alone: no output is a command.
+      - name: Check no output of the template is a command
+        run: python scripts/aws-template-check.py outputs
+
+      # The four secrets are kept when the stack is deleted or replaces them, each under a
+      # name made with the whole UUID of the stack's ID; the download key's secret is
+      # deleted with the stack and guarded by no stack policy. The log groups are kept too,
+      # under names made the same way, with their retention.
+      - name: Check which secrets and log groups the stack keeps
+        run: python scripts/aws-template-check.py kept
+
+      # The Release mapping's keys, which Qory Apiary Pro's release writes too, and every
+      # Fn::FindInMap against the mappings: cfn-lint does not check one inside a Fn::If.
+      - name: Check the template's mappings
+        run: python scripts/aws-template-check.py mappings
+
+      # Every Fn::Equals with Edition compares it with one of its AllowedValues, each is
+      # compared, and Rules and Conditions use Edition in no other way: a Rule or Condition
+      # that compares a value Edition no longer allows never applies.
+      - name: Check the template's comparisons with Edition
+        run: python scripts/aws-template-check.py editions
+
+      # The AWS console shows a character that is not ASCII as "?": the template and its
+      # stack policy hold none, in any text, comment or code.
+      - name: Check the AWS template is ASCII alone
+        run: python scripts/aws-template-check.py ascii
+
+      # A release writes its versions into a copy of the template, as release.yml does for
+      # Qory Apiary Community (the Qory Apiary Pro version empty) and as a release naming
+      # both does, with Qory Apiary Pro first; the script fails unless it writes every place
+      # exactly once. cfn-lint then reads each copy, and each is checked for its comparisons
+      # with Edition and for ASCII alone.
+      - name: Write a release's template, and lint it
+        run: |
+          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community.yaml"
+          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community.yaml" \
+            --edition-default "Qory Apiary Community" --community-version 0.0.0 --pro-version ""
+          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro.yaml" \
+            --edition-default "Qory Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
+          cfn-lint "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-check.py editions "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-check.py ascii "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+
+      # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
+      # included, which replaces a restored database with an empty one. The guides name
+      # aws cloudformation deploy and the console's Update, which keep them.
+      - name: Check no guide names update-stack
+        run: |
+          if grep -rn 'update-stack' guides docs README.md; then
+            echo "a guide names update-stack; name aws cloudformation deploy or the console's Update" >&2
+            exit 1
+          fi
+
+      # A changed property can replace a secret, and a replaced secret is generated anew, so
+      # the four secrets stay as the previous release's template has them. The previous
+      # release is the repository's latest, as GitHub names it (the newest that is neither a
+      # draft nor a prerelease), and its template the apiary.yaml attached to it. With no
+      # release, or a release without one, there is nothing to compare with.
+      - name: Check the secrets against the previous release's template
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>"$RUNNER_TEMP/release.err"); then
+            grep -q 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
+            echo "::notice::No release yet: the template's secrets have no previous release to compare with."
+            exit 0
+          fi
+          assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if ! grep -qx apiary.yaml <<< "$assets"; then
+            echo "::notice::Release $tag has no apiary.yaml attached: the template's secrets have nothing to compare with."
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern apiary.yaml --dir "$RUNNER_TEMP/previous"
+          python scripts/aws-template-check.py secrets "$RUNNER_TEMP/previous/apiary.yaml"
+
   test:
-    name: Elixir tests (${{ matrix.name }})
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     # The suite runs under each instance a launch may make: every feature, the opt-in
     # ones included (QORY_FEATURES unset or empty, which the tests take for every
     # feature); the default features, as `all` gives them to an instance; and the record
     # alone. A test that exercises a feature is tagged `needs:` and left out where the
-    # feature is off; the checks that do not depend on the features run once, with every
-    # feature.
+    # feature is off. A test tagged `with_features:` runs under the features it names,
+    # whatever the leg's, so it runs once, in the "every feature" leg (test/test_helper.exs).
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +195,7 @@ jobs:
             features: observability
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -57,43 +225,25 @@ jobs:
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
 
+      # The legs compile the same build, as QORY_FEATURES is read when the suite runs and
+      # not when it compiles: each restores the tests' cache, and "every feature" alone
+      # saves it, so no leg's save races another's.
       - name: Restore dependencies and build
-        uses: actions/cache@v6
+        id: restore
+        uses: actions/cache/restore@v6
         with:
           path: |
             deps
-            _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+            _build/test
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
           restore-keys: |
-            mix-${{ runner.os }}-
+            mix-test-${{ runner.os }}-
 
       - name: Fetch dependencies
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
-
-      - name: Check formatting
-        if: matrix.features == ''
-        run: mix format --check-formatted
-
-      - name: Compile without warnings
-        if: matrix.features == ''
-        run: mix compile --warnings-as-errors
-
-      - name: Check the Gettext catalogues are extracted
-        if: matrix.features == ''
-        run: mix gettext.extract --check-up-to-date
-
-      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
-      # key a browser makes against the contract's known answer, and what it sends Qory.
-      - name: Test the browser scripts
-        if: matrix.features == ''
-        run: node --test 'assets/js/test/*.test.mjs'
-
-      - name: Build the documentation without warnings
-        if: matrix.features == ''
-        run: mix docs --warnings-as-errors
 
       - name: Test
         env:
@@ -103,8 +253,520 @@ jobs:
           QORY_FEATURES: ${{ matrix.features }}
         run: mix test
 
-      - name: Build the assets
-        if: matrix.features == ''
+      - name: Save dependencies and build
+        if: matrix.features == '' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
+            _build/test
+          key: ${{ steps.restore.outputs.cache-primary-key }}
+
+  # The image, from the Dockerfile, for each platform a release publishes, each built on a
+  # runner of its own architecture: built and checked, and pushed to no registry. Only
+  # release.yml publishes an image, at a release, with the same build: the same labels,
+  # build argument and cache.
+  image:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Image · checked by the push run' || format('Image ({0})', matrix.platform) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
+      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
+      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
+      # logged in and the pulls stay anonymous.
+      - name: Log in to Docker Hub, when its token is set
         env:
-          MIX_ENV: prod
-        run: mix assets.deploy
+          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
+            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
+            exit 0
+          fi
+          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Loaded into the runner's Docker for the checks below, under a name that is not the
+      # package's. The cache is the platform's own, which release.yml builds on too.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: apiary:ci
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      # The keys directory belongs to nobody, the release carries the commit it was built
+      # from, RDS's certificate bundle is the one the Dockerfile pins, and the VM writes no
+      # crash dump.
+      - name: Check the image
+        run: |
+          docker image inspect apiary:ci --format '{{range .Config.Env}}{{println .}}{{end}}' |
+            grep -qx 'ERL_CRASH_DUMP_BYTES=0' || {
+            echo "the image does not set ERL_CRASH_DUMP_BYTES=0" >&2; exit 1; }
+
+          docker run --rm apiary:ci ls -ld /var/lib/apiary/keys
+          owner="$(docker run --rm apiary:ci stat -c %U /var/lib/apiary/keys)"
+          [ "$owner" = nobody ] || {
+            echo "/var/lib/apiary/keys belongs to $owner, not nobody" >&2; exit 1; }
+
+          revision="$(docker run --rm apiary:ci cat /app/REVISION)"
+          [ "$revision" = "$GITHUB_SHA" ] || {
+            echo "/app/REVISION holds $revision, not $GITHUB_SHA" >&2; exit 1; }
+
+          pinned="$(grep -o 'checksum=sha256:[0-9a-f]*' Dockerfile | cut -d: -f2)"
+          [ -n "$pinned" ] || { echo "the Dockerfile pins no checksum" >&2; exit 1; }
+          echo "$pinned  /app/certs/rds-global-bundle.pem" |
+            docker run --rm -i apiary:ci sha256sum -c -
+
+  # DATABASE_URL's sslmode and sslrootcert (Apiary.DatabaseUrl) against a Postgres 18 that
+  # serves TLS: a CA and a certificate for localhost are made for the run, in the runner's
+  # temporary directory, and the CAs' keys deleted once the certificate is signed.
+  # verify-full with sslrootcert naming that CA connects over TLS; another CA, another host
+  # name and the system's CAs are refused; require connects without checking; disable
+  # connects without TLS. The tests' own database is the service, as in the tests' job.
+  database-tls:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Database over TLS · checked by the push run' || 'Database over TLS' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TLS_CONTAINER: apiary-database-tls-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      # The tests' cache, read only: the tests' job saves it.
+      - name: Restore dependencies and build
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            deps
+            _build/test
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-test-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Make a CA, another CA and a certificate for localhost
+        run: |
+          tls_dir="$RUNNER_TEMP/database-tls"
+          mkdir -p "$tls_dir" && cd "$tls_dir"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary test CA" \
+            -keyout ca.key -out ca.pem
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary other CA" \
+            -keyout wrong-ca.key -out wrong-ca.pem
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=localhost" \
+            -keyout server.key -out server.csr
+          printf '%s\n' "subjectAltName=DNS:localhost" "basicConstraints=CA:FALSE" \
+            "extendedKeyUsage=serverAuth" > server.ext
+          openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 1 \
+            -extfile server.ext -out server.crt
+          rm ca.key wrong-ca.key server.csr
+          echo "DATABASE_TLS_CA=$tls_dir/ca.pem" >> "$GITHUB_ENV"
+          echo "DATABASE_TLS_WRONG_CA=$tls_dir/wrong-ca.pem" >> "$GITHUB_ENV"
+
+      # Postgres reads its key only when the key is its own and private, so the container
+      # copies the mounted files to where they are before Postgres starts. The password is
+      # the run's own, and reaches the tests in DATABASE_PASSWORD's place.
+      - name: Start Postgres 18 with TLS
+        run: |
+          tls_dir="$RUNNER_TEMP/database-tls"
+          password=$(openssl rand -hex 16)
+          echo "::add-mask::$password"
+          echo "DATABASE_TLS_PASSWORD=$password" >> "$GITHUB_ENV"
+          docker run -d --name "$TLS_CONTAINER" -e POSTGRES_PASSWORD="$password" \
+            -p 127.0.0.1::5432 \
+            -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
+            public.ecr.aws/docker/library/postgres:18 bash -c '
+              install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
+              install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
+              exec docker-entrypoint.sh postgres -c ssl=on \
+                -c ssl_cert_file=/etc/postgresql-tls/server.crt \
+                -c ssl_key_file=/etc/postgresql-tls/server.key'
+          echo "DATABASE_TLS_PORT=$(docker port "$TLS_CONTAINER" 5432/tcp | head -n 1 | cut -d: -f2)" >> "$GITHUB_ENV"
+          for _ in $(seq 60); do
+            docker exec "$TLS_CONTAINER" pg_isready -U postgres -h localhost && break
+            sleep 1
+          done
+          docker exec "$TLS_CONTAINER" psql -U postgres -tAc 'SHOW ssl' | grep -qx on
+
+      - name: Test
+        env:
+          MIX_ENV: test
+        run: mix test --only database_tls
+
+      - name: Remove the Postgres with TLS
+        if: always()
+        run: docker rm -f "$TLS_CONTAINER"
+
+  # compose.yaml and .env.example as a person runs them, against the image built here, on
+  # fresh volumes: the install, a second start, a stop and start, the development path of a
+  # checkout, the upgrade from the image of the base commit (a pull request's base branch
+  # head, a push's parent) and, once a release exists, from ghcr.io/qoryai/apiary:latest,
+  # and an external Postgres over TLS with the profile postgres off. Images built here are
+  # named apiary, never the package's name. The keys are compared by checksum and masked in
+  # the log; no value is printed.
+  compose:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Compose install and upgrade · checked by the push run' || 'Compose install and upgrade' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXTERNAL_NETWORK: apiary-external-${{ github.run_id }}-${{ github.run_attempt }}
+      EXTERNAL_DATABASE: apiary-external-database-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      # Two commits deep: the parent of what is built is the base commit. On a pull request
+      # what is built is GitHub's merge commit, whose first parent is the base branch head.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
+      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
+      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
+      # logged in and the pulls stay anonymous.
+      - name: Log in to Docker Hub, when its token is set
+        env:
+          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
+            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
+            exit 0
+          fi
+          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+
+      # The builder loads what it builds into the runner's Docker, so the development path
+      # below runs `docker build` as a person types it, on this builder's layers.
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: default-load=true
+
+      # The image job's cache, read only: the image job saves it.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: apiary:ci
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=image-amd64
+
+      # A base commit from before bin/keys has no compose.yaml to upgrade from, and the
+      # upgrade from it is skipped.
+      - name: Check out the base commit
+        id: base
+        run: |
+          base="$(git rev-parse HEAD^1)"
+          git worktree add --detach "$RUNNER_TEMP/base" "$base"
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+          if [ -f "$RUNNER_TEMP/base/rel/overlays/bin/keys" ]; then
+            echo "keys=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The base commit $base has no bin/keys: the upgrade from it is skipped."
+          fi
+
+      - name: Build the image of the base commit
+        if: steps.base.outputs.keys == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/base
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: apiary:base
+          build-args: |
+            APIARY_REVISION=${{ env.BASE_SHA }}
+          cache-from: type=gha,scope=image-amd64
+
+      - name: Write the checks the steps below share
+        run: |
+          cat > "$RUNNER_TEMP/compose-checks.sh" <<'SH'
+          keys_file=/var/lib/apiary/keys/apiary.env
+
+          # mask_keys: every value in the volume keys, masked in the log from here on.
+          mask_keys() {
+            docker run --rm -v qory_keys:/keys:ro apiary:ci cat /keys/apiary.env /keys/postgres-password |
+              while IFS= read -r line; do
+                [ -z "$line" ] || echo "::add-mask::${line#*=}"
+              done
+          }
+
+          # healthy REVISION: GET /health answers 200 within three minutes and reports
+          # REVISION, null for an image built without APIARY_REVISION.
+          healthy() {
+            for _ in $(seq 180); do
+              if body="$(curl -fsS http://127.0.0.1:4100/health 2>/dev/null)"; then
+                echo "/health: $body"
+                [ "$(jq -r .revision <<<"$body")" = "$1" ] || {
+                  echo "/health does not report the revision $1" >&2; exit 1; }
+                return 0
+              fi
+              sleep 1
+            done
+            echo "/health did not answer 200 within three minutes" >&2
+            docker compose ps --all
+            docker compose logs --no-color --tail 200
+            exit 1
+          }
+
+          # keys_state FILE: the names, modes, owner and checksums of the keys files in FILE,
+          # never a value; the modes are 0600 and 0644, the owner nobody.
+          keys_state() {
+            docker run --rm -v qory_keys:/keys:ro apiary:ci sh -c '
+              cd /keys &&
+                stat -c "%a %U %n" apiary.env postgres-password &&
+                cut -d= -f1 apiary.env &&
+                sha256sum apiary.env postgres-password' > "$1"
+            printf '%s\n' "600 nobody apiary.env" "644 nobody postgres-password" \
+              SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET DATABASE_PASSWORD |
+              cmp -s - <(head -n 6 "$1") || {
+                echo "The keys files are not as bin/keys writes them:" >&2; head -n 6 "$1" >&2; exit 1; }
+          }
+
+          # said LINE: the service keys printed LINE, in its log since its container was made.
+          said() {
+            log="$(docker compose logs --no-log-prefix keys)"
+            grep -qxF "$1" <<<"$log" || {
+              echo "The service keys did not print: $1" >&2; exit 1; }
+          }
+
+          # keys_generated: the first start generated the four keys and said so; the files'
+          # state is kept for keys_kept.
+          keys_generated() {
+            said "Generated SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and DATABASE_PASSWORD in $keys_file."
+            keys_state "$RUNNER_TEMP/keys-first"
+          }
+
+          # keys_kept: the keys are the first start's, and the service keys said it kept them.
+          keys_kept() {
+            keys_state "$RUNNER_TEMP/keys-now"
+            cmp -s "$RUNNER_TEMP/keys-first" "$RUNNER_TEMP/keys-now" || {
+              echo "The keys are not the ones of the first start" >&2; exit 1; }
+            said "The keys in $keys_file are kept; none was generated."
+            echo "The keys are the ones of the first start."
+          }
+          SH
+
+      # .env as a release's env.example makes it, naming the image built here, with no
+      # mail.
+      - name: Install on fresh volumes
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' .env
+          printf '%s\n' APIARY_IMAGE=apiary >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$GITHUB_SHA"
+          keys_generated
+          [ "$(docker compose port apiary 4100)" = 127.0.0.1:4100 ] || {
+            echo "port 4100 is not published on 127.0.0.1 alone" >&2; exit 1; }
+
+      - name: Start again
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker compose up -d
+          healthy "$GITHUB_SHA"
+          keys_kept
+
+      - name: Stop and start
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker compose down
+          docker compose up -d
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # CONTRIBUTING.md's "Run it from a checkout", as written: an image without
+      # APIARY_REVISION reports the revision null.
+      - name: Run it from a checkout (for development)
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker build -t apiary:dev .
+          cp .env.example .env
+          APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
+          export APIARY_IMAGE=apiary APIARY_VERSION=dev
+          mask_keys
+          healthy null
+          keys_generated
+          docker compose down -v
+
+      # The upgrade a person makes: APIARY_VERSION set in .env, then up -d, here without
+      # pull, as the new image is the local one. The new release migrates before it serves.
+      - name: Upgrade from the base commit
+        if: steps.base.outputs.keys == 'true'
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=base/' .env
+          # An image from before mail was optional does not start without MAIL_TO_LOG=true
+          # or a relay; the image built here ignores it.
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$BASE_SHA"
+          keys_state "$RUNNER_TEMP/keys-first"
+          sed -i 's/^APIARY_VERSION=base$/APIARY_VERSION=ci/' .env
+          docker compose up -d --pull never
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # Until the joint release no ghcr.io/qoryai/apiary:latest can be read, and this is
+      # skipped.
+      - name: Upgrade from the latest release
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          if ! docker manifest inspect ghcr.io/qoryai/apiary:latest > /dev/null 2>&1; then
+            echo "::notice::ghcr.io/qoryai/apiary:latest cannot be read: the upgrade from it is skipped."
+            exit 0
+          fi
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=latest/' .env
+          # As from the base commit: MAIL_TO_LOG=true for an image from before mail was
+          # optional.
+          echo MAIL_TO_LOG=true >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/qoryai/apiary:latest)"
+          keys_state "$RUNNER_TEMP/keys-first"
+          sed -i 's/^APIARY_VERSION=latest$/APIARY_VERSION=ci/' .env
+          echo APIARY_IMAGE=apiary >> .env
+          docker compose up -d --pull never
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # A Postgres 18 of its own over TLS, on a network of its own under the name
+      # database.example.test, with a CA and a certificate made for the run, the CA's key
+      # deleted once the certificate is signed. .env turns the profile postgres off and names
+      # it in DATABASE_URL with sslmode=verify-full, and compose.override.yaml mounts the CA
+      # and joins the network, as a person does for a CA the system does not hold.
+      - name: Install with an external Postgres over TLS
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          tls_dir="$RUNNER_TEMP/compose-tls"
+          mkdir -p "$tls_dir"
+          (
+            cd "$tls_dir" || exit 1
+            openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary test CA" \
+              -keyout ca.key -out ca.pem
+            openssl req -newkey rsa:2048 -nodes -subj "/CN=database.example.test" \
+              -keyout server.key -out server.csr
+            printf '%s\n' "subjectAltName=DNS:database.example.test" "basicConstraints=CA:FALSE" \
+              "extendedKeyUsage=serverAuth" > server.ext
+            openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 1 \
+              -extfile server.ext -out server.crt
+            rm ca.key server.csr
+          )
+
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          docker network create "$EXTERNAL_NETWORK"
+          docker run -d --name "$EXTERNAL_DATABASE" --network "$EXTERNAL_NETWORK" \
+            --network-alias database.example.test \
+            -e POSTGRES_USER=apiary -e POSTGRES_DB=apiary -e POSTGRES_PASSWORD="$password" \
+            -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
+            public.ecr.aws/docker/library/postgres:18 bash -c '
+              install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
+              install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
+              exec docker-entrypoint.sh postgres -c ssl=on \
+                -c ssl_cert_file=/etc/postgresql-tls/server.crt \
+                -c ssl_key_file=/etc/postgresql-tls/server.key'
+          for _ in $(seq 60); do
+            docker exec "$EXTERNAL_DATABASE" pg_isready -U apiary -d apiary -h localhost && break
+            sleep 1
+          done
+          docker exec "$EXTERNAL_DATABASE" psql -U apiary -d apiary -tAc 'SHOW ssl' | grep -qx on
+
+          cat > compose.override.yaml <<YAML
+          services:
+            apiary:
+              networks: [default, external]
+              volumes:
+                - $tls_dir/ca.pem:/run/database-ca.pem:ro
+          networks:
+            external:
+              name: $EXTERNAL_NETWORK
+              external: true
+          YAML
+
+          cp .env.example .env
+          sed -i -e 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' -e 's/^COMPOSE_PROFILES=postgres$/COMPOSE_PROFILES=/' .env
+          printf '%s\n' APIARY_IMAGE=apiary \
+            "DATABASE_URL=postgres://apiary:$password@database.example.test:5432/apiary?sslmode=verify-full&sslrootcert=/run/database-ca.pem" >> .env
+          docker compose up -d
+          mask_keys
+          services="$(docker compose ps --all --format '{{.Service}}')"
+          ! grep -qx postgres <<<"$services" || {
+            echo "the bundled postgres runs with COMPOSE_PROFILES empty" >&2; exit 1; }
+          healthy "$GITHUB_SHA"
+          keys_generated
+
+          # Apiary's connections to it, over TLS.
+          encrypted="$(docker exec "$EXTERNAL_DATABASE" psql -U apiary -d apiary -tAc \
+            "SELECT count(*) FROM pg_stat_ssl JOIN pg_stat_activity USING (pid)
+             WHERE usename = 'apiary' AND ssl AND pid <> pg_backend_pid()")"
+          [ "$encrypted" -gt 0 ] || { echo "no connection of Apiary's is encrypted" >&2; exit 1; }
+          echo "Apiary's connections over TLS: $encrypted"
+
+      # .env and compose.override.yaml are the run's; down needs an APIARY_VERSION, which
+      # the shell gives when .env does not.
+      - name: Tear down
+        if: always()
+        run: |
+          touch .env
+          APIARY_IMAGE=apiary APIARY_VERSION=ci docker compose down -v --remove-orphans || true
+          docker rm -f "$EXTERNAL_DATABASE" || true
+          docker network rm "$EXTERNAL_NETWORK" || true
+          rm -f .env compose.override.yaml

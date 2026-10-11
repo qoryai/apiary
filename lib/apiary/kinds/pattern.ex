@@ -6,7 +6,7 @@ defmodule Apiary.Kinds.Pattern do
   Every pattern of the contracts is anchored, and `$` there is the end of the string, as
   in RE2 and ECMAScript: a value with a trailing newline does not match. PCRE's `$` also
   matches before a final newline, so `"github\\n"` would pass `^[a-z]+$`. A pattern
-  Apiary compiles itself is compiled with `:dollar_endonly` (`compile!/1`,
+  Qory Apiary compiles itself is compiled with `:dollar_endonly` (`compile!/1`,
   `whole_match?/2`). JSV compiles the `pattern` and `patternProperties` of a JSON Schema
   itself, so a schema is first given to `end_only/1`, which writes each `$` that is an
   anchor as `\\z`, the meaning `:dollar_endonly` gives it, before JSV builds it.

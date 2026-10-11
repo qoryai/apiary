@@ -4,15 +4,14 @@ defmodule Apiary.Runs do
 
   Events come in through `Apiary.Runs.Ingest`, are folded by `Apiary.Runs.Projector` and
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
-  the caller's scope first and reads only the scope's workspace. Two read more:
-  `closed?/2`, for the receiver, which has an access key's workspace and no user, and
+  the caller's scope first and reads only the scope's workspace. One reads more:
   `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
   scope's organisation it is given.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
     * `topic(workspace_id)`, `"runs:<workspace_id>"`: `{:run_changed, %Run{}}` whenever a
-      run of the workspace was projected, found lost or closed;
+      run of the workspace was projected or found lost;
     * `topic(workspace_id, run_id)`, `"run:<workspace_id>:<run_id>"` (`run_id` is the
       row's id): `{:run_projected, %Run{}, first_sequence, last_sequence}` after a
       projection, with the lowest and highest sequence it folded, and
@@ -24,7 +23,6 @@ defmodule Apiary.Runs do
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
@@ -137,7 +135,7 @@ defmodule Apiary.Runs do
 
   @doc """
   A page of the workspace's runs under the filters, in their order (`sort`: newest first by
-  when they started, a run that has only pinged placed by when its ping arrived; oldest
+  when they started, a run that has only registered placed by when it registered; oldest
   first; the longest first, by the duration its exit gave or else the time it reported
   elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
   is (the last one, when the filters asked for one beyond it), the total, the pages and
@@ -455,13 +453,15 @@ defmodule Apiary.Runs do
   defp facet_limit(_n), do: @facet_size
 
   defp state_facet(scope, filters, now) do
+    # A name an older release stored counts as its new state.
     counts =
       Repo.all(
         from r in filtered(scope, %{filters | states: []}, now),
           group_by: r.state,
           select: {r.state, count(r.id)}
       )
-      |> Map.new()
+      |> Enum.group_by(&Run.current_state(elem(&1, 0)), &elem(&1, 1))
+      |> Map.new(fn {state, counts} -> {state, Enum.sum(counts)} end)
 
     options = for state <- Run.states(), count = counts[state], do: {state, state, count}
     %{options: options, total: length(options)}
@@ -632,7 +632,7 @@ defmodule Apiary.Runs do
     {from, to} = Filters.bounds(f, now)
 
     in_scope(scope)
-    |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
+    |> where_if(f.states != [], dynamic([r], r.state in ^Run.with_old_names(f.states)))
     |> where_target(f.target)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
@@ -1232,25 +1232,9 @@ defmodule Apiary.Runs do
     |> Map.new()
   end
 
-  @doc """
-  Whether the workspace has closed the run with this subject. For the receiver, which
-  answers `410` to a closed run; a subject the workspace has never seen is not closed.
-  """
-  def closed?(workspace_id, run_id) do
-    with {:ok, workspace_id} <- Ecto.UUID.cast(workspace_id),
-         {:ok, run_id} <- Ecto.UUID.cast(run_id) do
-      Repo.exists?(
-        from r in Run,
-          where: r.workspace_id == ^workspace_id and r.run_id == ^run_id and r.state == "closed"
-      )
-    else
-      :error -> false
-    end
-  end
-
   ## The workspace overview
 
-  # The runs are placed by when they started, or, for a run that has only pinged, by when
+  # The runs are placed by when they started, or, for a run that has only registered, by when
   # the workspace first heard of it: the expression of
   # `runs_workspace_id_started_or_first_heard_index`. A run's UTC day is that expression
   # cast to a date as it is, since the columns hold UTC with no zone: `AT TIME ZONE 'UTC'`
@@ -1260,16 +1244,18 @@ defmodule Apiary.Runs do
   defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
 
   @typedoc """
-  One UTC day of the workspace's runs, counted in the three families (`alive`,
-  `ended_well`, `ended_badly`; `runs` is their sum), with the denials of those runs and
-  the cost they reported: `cost` is the sum of `cost_usd` over the day's runs, nil when
-  none reported one, and `costed` how many did.
+  One UTC day of the workspace's runs: how many (`runs`), and of them the alive, the ended
+  well, the cancelled and the ended badly (`alive`, `ended_well`, `cancelled`,
+  `ended_badly`), with the denials of those runs and the cost they reported: `cost` is the
+  sum of `cost_usd` over the day's runs, nil when none reported one, and `costed` how many
+  did. A name an older release stored counts in its new state's family.
   """
   @type day_facts :: %{
           day: Date.t(),
           runs: non_neg_integer,
           alive: non_neg_integer,
           ended_well: non_neg_integer,
+          cancelled: non_neg_integer,
           ended_badly: non_neg_integer,
           denied: non_neg_integer,
           cost: Decimal.t() | nil,
@@ -1278,7 +1264,7 @@ defmodule Apiary.Runs do
 
   @doc """
   The workspace's runs from `from` on, one row per UTC day they started (a pending run by
-  when its ping arrived), oldest first; a day with no run has no row. One grouped query
+  when it registered), oldest first; a day with no run has no row. One grouped query
   over the index the runs list reads by; the caller fills the days in. `to`, when given,
   bounds the read above (exclusive), so one call can read today alone.
   """
@@ -1301,7 +1287,9 @@ defmodule Apiary.Runs do
             ),
           runs: count(r.id),
           alive: filter(count(r.id), r.state in ^Run.alive_states()),
-          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+          ended_well:
+            filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
+          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: type(coalesce(sum(r.denied_count), 0), :integer),
           cost: sum(r.cost_usd),
@@ -1552,8 +1540,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The runs the workspace found lost since `since`, the most recently lost first, at most
-  `limit` (default 6): the ones a member may still want to close, or open when a gateway
-  opened them. Older losses are facts on the runs list, not tasks.
+  `limit` (default 6): the ones a member may still want to open. Older losses are facts on
+  the runs list, not tasks.
   """
   @spec lost_since(Scope.t(), DateTime.t(), pos_integer) :: [Run.t()]
   def lost_since(%Scope{} = scope, %DateTime{} = since, limit \\ 6) do
@@ -1695,81 +1683,6 @@ defmodule Apiary.Runs do
       nil ->
         if Regex.match?(~r/\A[0-9a-fA-F-]{4,36}\z/, text),
           do: String.downcase(text) <> "%"
-    end
-  end
-
-  ## Closing
-
-  @closable_states ~w(pending running lost)
-
-  @doc "The states a member may close a run from: the ones without an end."
-  def closable_states, do: @closable_states
-
-  @doc """
-  Whether the run may be closed: it has not ended, and no gateway opened it with no session.
-  The one who starts a run ends it, so a run a gateway opened ends by its own exit, never by
-  a close.
-  """
-  @spec closable?(Run.t()) :: boolean()
-  def closable?(%Run{} = run), do: run.state in @closable_states and not Run.no_session?(run)
-
-  @doc """
-  Closes the run: the workspace takes no more events for it and the receiver answers
-  `410` (`run.close`, which every member may). Only a run that has
-  not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
-  ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
-  the run, and closing a closed run changes nothing. A run a gateway opened, with no session,
-  is never closed once its projected start says so: the one who starts a run ends it
-  (`closable?/1`). Until its start is projected, a run does not say who opened it, and may
-  still be closed.
-
-  `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's workspace, `{:error, :opened_by_gateway}` when a
-  gateway opened it, `{:error, :not_closable}` when it has ended.
-  """
-  def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
-    Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, :"run.close", workspace) do
-        now = DateTime.utc_now()
-
-        # The state it had, for the audit entry, read under the row's lock; the update
-        # keeps the state in its WHERE all the same, so an exit that lands between a read
-        # and this write is not overwritten. A run a gateway opened is never in it.
-        closable =
-          from r in in_scope(scope),
-            where: r.id == ^id and r.state in ^@closable_states,
-            where: is_nil(r.opened_by) or r.opened_by != "gateway"
-
-        before = Repo.one(from r in closable, select: r.state, lock: "FOR UPDATE")
-
-        case Repo.update_all(from(r in closable, select: r),
-               set: [state: "closed", closed_at: now, closed_by_id: user.id, updated_at: now]
-             ) do
-          {1, [run]} ->
-            with {:ok, _entry} <-
-                   Audit.record(Repo, scope, :"run.close", run, %{
-                     before: %{state: before},
-                     after: %{state: run.state}
-                   }),
-                 do: {:ok, {:closed, run}}
-
-          {0, _} ->
-            case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
-              %Run{state: "closed"} = run -> {:ok, run}
-              %Run{opened_by: "gateway"} -> {:error, :opened_by_gateway}
-              %Run{} -> {:error, :not_closable}
-              nil -> {:error, :not_found}
-            end
-        end
-      end
-    end)
-    |> case do
-      {:ok, {:closed, run}} ->
-        broadcast_changed(run)
-        {:ok, run}
-
-      result ->
-        result
     end
   end
 

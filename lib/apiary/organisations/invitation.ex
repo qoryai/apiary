@@ -5,13 +5,15 @@ defmodule Apiary.Organisations.Invitation do
   An invitation is the email address and nothing else the inviter writes: no level and no
   message. Its person joins as a member, of the workspace it was sent from, and an owner
   changes their level afterwards, unless the edition gives another level
-  (`c:Apiary.Edition.accepting/3`). The inviter's account is confirmed, and the
-  organisation whose allowance it counts against sends at most
-  `Apiary.Instance.invitations_per_day/0` in 24 hours
+  (`c:Apiary.Edition.accepting/3`). An emailed invitation's inviter has a confirmed
+  account; without mail its link is copied instead. The organisation whose allowance it
+  counts against makes at most `Apiary.Instance.invitations_per_day/0` in 24 hours
   (`Apiary.Organisations.invite_member/3`).
 
-  The URL token is never stored; only its SHA-256 hash is. An invitation is
-  pending while `accepted_at` is nil and `expires_at` is in the future.
+  The URL token is never stored; only its SHA-256 hash is. A new token for the same
+  invitation (`Apiary.Organisations.renew_invitation/3`) replaces the hash, so the old
+  link stops working. An invitation is pending while `accepted_at` is nil and
+  `expires_at` is in the future.
   """
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext

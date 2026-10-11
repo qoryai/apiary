@@ -5,9 +5,8 @@ defmodule Apiary.OrganisationsFixtures do
   a second workspace (`workspace_fixture/2`), inserted whatever the edition's limit says,
   since the core's allows one.
 
-  The suite's instance has had its first sign-up before any test runs
-  (`ensure_instance_organisation!/0`, from `test/test_helper.exs`), so a sign-up in a test
-  is a later one.
+  The suite's instance is set up before any test runs (`ensure_instance_organisation!/0`,
+  from `test/test_helper.exs`), so a sign-up in a test is a later one.
   """
 
   import Ecto.Query
@@ -24,15 +23,17 @@ defmodule Apiary.OrganisationsFixtures do
   membership and a loaded scope. With `invitation_token: token` the sign-up
   accepts that invitation instead of creating an organisation. Without one it is a later
   sign-up, which the fixture makes whether or not the edition opens one (`open: true`,
-  `Apiary.Organisations.sign_up_user/3`).
+  `Apiary.Organisations.sign_up_user/3`); or, on an instance a test shows as not set up,
+  its set-up (`Apiary.Setup.set_up/3`).
   """
   def sign_up_fixture(attrs \\ %{}) do
     {token, attrs} = Map.pop(attrs, :invitation_token)
+    attrs = AccountsFixtures.valid_user_attributes(attrs)
 
     {:ok, %{user: user, organisation: organisation, workspace: workspace, membership: membership}} =
-      attrs
-      |> AccountsFixtures.valid_user_attributes()
-      |> Organisations.sign_up_user(token, open: true)
+      if is_nil(token) and not Apiary.Setup.set_up?(),
+        do: Apiary.Setup.set_up(Apiary.Setup.code!(), attrs),
+        else: Organisations.sign_up_user(attrs, token, open: true)
 
     user = confirm_user(user)
 
@@ -52,20 +53,23 @@ defmodule Apiary.OrganisationsFixtures do
 
   @doc """
   The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`), created
-  once by the instance's first sign-up, the way the product creates it, and committed,
-  outside any test's sandbox: every test sees it, so no test's sign-up is the instance's
-  first.
+  once by the instance's set-up (`Apiary.Setup.set_up/3`), the way the product creates
+  it, and committed, outside any test's sandbox: every test sees it, so the instance is
+  set up for every test.
   """
   def ensure_instance_organisation! do
     organisation =
       case Apiary.Edition.instance_organisation_id() do
         nil ->
           {:ok, %{organisation: organisation}} =
-            Organisations.sign_up_user(%{
+            Apiary.Setup.set_up(Apiary.Setup.code!(), %{
               email: "instance-admin@example.com",
               organisation_name: "The suite's instance"
             })
 
+          # The set-up's row of the instance's settings goes: the suite's database holds
+          # none, as the key check's tests of a first boot expect (`Apiary.KeyCheckTest`).
+          Repo.query!("DELETE FROM instance_settings")
           organisation
 
         id ->
@@ -85,18 +89,22 @@ defmodule Apiary.OrganisationsFixtures do
     organisation
   end
 
-  @doc "A pending invitation into the scope's workspace, with the URL token the email carried."
+  @doc "A pending invitation into the scope's workspace, with the URL token its link carries."
   def invitation_fixture(%Scope{} = scope, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{"email" => AccountsFixtures.unique_user_email()})
 
     parent = self()
     ref = make_ref()
 
-    {:ok, invitation} =
-      Organisations.invite_member(scope, attrs, fn token ->
-        send(parent, {ref, token})
-        "http://localhost/invitations/#{token}"
-      end)
+    # Emailed with mail, its link handed back without (`Apiary.Mail.configured?/0`).
+    invitation =
+      case Organisations.invite_member(scope, attrs, fn token ->
+             send(parent, {ref, token})
+             "http://localhost/invitations/#{token}"
+           end) do
+        {:ok, invitation} -> invitation
+        {:ok, invitation, {:link, _url}} -> invitation
+      end
 
     token =
       receive do

@@ -259,7 +259,33 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <:caption>
               run-configuration.json <span class="text-faint">· {@v.caption}</span>
             </:caption>
-            <:actions>
+            <%!-- The Document view's bar, the code-block header pattern: Copy and Download as
+                 small icons with their hints. The well clips what overflows it, so a hint
+                 opens under its icon, flush with the icon's right edge (`q-tip-end`).
+                 Copy's hint reads Copied while the copy is confirmed (`done_tip`). A
+                 version's own page keeps Copy document. --%>
+            <:actions :if={@v[:path]}>
+              <.copy_button
+                id="version-copy"
+                text={@v.configuration.document}
+                icon_only
+                done_tip
+                placement="bottom"
+                class="q-tip-end"
+              />
+              <.tooltip tip={gettext("Download")} placement="bottom" class="q-tip-end">
+                <a
+                  id="version-download"
+                  class="btn btn-ghost btn-xs btn-square"
+                  href={document_href(@v.configuration.document)}
+                  download="run-configuration.json"
+                  aria-label={gettext("Download")}
+                >
+                  <.icon name="hero-arrow-down-tray" class="size-4" />
+                </a>
+              </.tooltip>
+            </:actions>
+            <:actions :if={!@v[:path]}>
               <.copy_button
                 id="version-copy"
                 text={@v.configuration.document}
@@ -289,8 +315,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
               phx-no-format
             >{@v.configuration.document}</pre>
           </.doc_well>
-          <p class="max-w-[78ch] text-[12.5px]/[18px] text-faint">
-            <span :if={@v.view != "served"}>{gettext("Shown indented for reading.")}</span>
+          <p id="version-doc-note" class="max-w-[78ch] text-[12.5px]/[18px] text-faint">
+            <span :if={@v.view != "served"}>{gettext("Shown indented for reading.")}{" "}</span>
             <%= for part <- served_sentence(byte_size(@v.configuration.document)) do %>
               <.term
                 :if={part == :digest}
@@ -299,7 +325,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
                 class="q-tip-wide"
               /><span :if={part != :digest}>{part}</span>
             <% end %>
-            {gettext("Deny rules and locks are not in the document: they decide what it lists.")}
           </p>
         </div>
 
@@ -313,8 +338,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <.link
               :for={item <- @v.versions}
               id={"ver-#{item.version}"}
-              navigate={"#{@base}/versions/#{item.version}"}
-              aria-current={item.version == @v.configuration.version && "page"}
+              navigate={entry_path(@base, @v, item)}
+              aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
               <span class="min-w-0 truncate">
@@ -355,7 +380,33 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
-  @doc "The path of a version page with its `view` and `compare`, defaults left out."
+  # The export page's policy file as a download of its own.
+  defp download_href(file),
+    do: "data:text/yaml;charset=utf-8," <> URI.encode(file, &URI.char_unreserved?/1)
+
+  # The Document view's download: the document as served, byte for byte. In base64, which
+  # grows it by a third whatever it holds, where escaping JSON's punctuation can triple it:
+  # a document is at most 1 MiB (`Apiary.Policy`'s `@document_max`), so its address stays
+  # under 1.4 MB, inside the 2 MB a browser keeps of an address.
+  defp document_href(document),
+    do: "data:application/json;base64," <> Base.encode64(document)
+
+  # The version in force is listed as the Document view, an older one as its own page.
+  defp entry_path(base, %{latest: n} = v, %{version: n}), do: v[:path] || "#{base}/document"
+  defp entry_path(base, _v, item), do: "#{base}/versions/#{item.version}"
+
+  # The entry of the version shown is the page itself, unless it leads elsewhere: the
+  # version in force on its own page leads to the Document view.
+  defp entry_current(%{configuration: %{version: n}, latest: n} = v, %{version: n}),
+    do: if(v[:path], do: "page", else: "true")
+
+  defp entry_current(%{configuration: %{version: n}}, %{version: n}), do: "page"
+  defp entry_current(_v, _item), do: nil
+
+  @doc """
+  The path of a version page with its `view` and `compare`, defaults left out; of the
+  Document view (`v.path`) where the version is shown there.
+  """
   def version_path(base, v, opts) do
     view = Keyword.get(opts, :view, v.view)
     compare = Keyword.get(opts, :compare, v.compare && v.compare.version)
@@ -365,7 +416,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       [{"view", view != "changes" && view}, {"compare", compare && compare != default && compare}]
       |> Enum.filter(&elem(&1, 1))
 
-    "#{base}/versions/#{v.configuration.version}" <>
+    (v[:path] || "#{base}/versions/#{v.configuration.version}") <>
       if(query == [], do: "", else: "?" <> URI.encode_query(query))
   end
 
@@ -373,13 +424,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   @doc """
   The export of the version in force as a page of its own, at `…/versions/:n/export`: the
-  title and what is exported, the texts to copy, and Done back to the version. The way
+  title and what is exported, the texts to copy, and Done back to the Document view. The way
   back to the policy and the version is the frame's breadcrumb, never a trail of its own. Nothing here is a form. `heading` is h2 under a
   page's own title, as a target's Policy tab has. The heading takes the focus a page sends
   it (`policy-export-h`) when the page is reached by a patch, as Export is.
   """
   attr :export, :map, required: true
-  attr :done, :string, required: true, doc: "the version's path, where Done goes back"
+  attr :done, :string, required: true, doc: "the Document view's path, where Done goes back"
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
 
   def export_page(assigns) do
@@ -408,7 +459,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <a
             id="export-download"
             class="btn btn-ghost btn-xs btn-keep font-sans"
-            href={"data:text/yaml;charset=utf-8," <> URI.encode(@export.policy_file, &URI.char_unreserved?/1)}
+            href={download_href(@export.policy_file)}
             download={@export.file_name}
           >
             <.icon name="hero-arrow-down-tray" class="size-4" />{gettext("Download")}
@@ -435,11 +486,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
       </.doc_well>
 
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
-        <span :for={note <- @export.notes}>{note}</span>
+        <span :for={note <- @export.notes}>{note}{" "}</span>
         {gettext("Keep a policy file outside the checkout.")}
         {pgettext(
           "plain",
-          "Deny rules and locks are already applied: the text lists what remains allowed."
+          "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
         )}
       </p>
 

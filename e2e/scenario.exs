@@ -2,20 +2,31 @@
 # endpoint serving, so what it calls is what a page calls, in the same virtual machine
 # that answers the gateway. run.sh starts it; see e2e/README.md.
 #
-# It makes a workspace with an owner, a node and the node's access key: a fresh Ed25519
-# key, generated here, whose public key is added to the node the way the node's Generate
-# a key adds one made in a browser, active as it is added. It puts the workspace in enforce with nothing
-# allowed, writes the node's Forager file, with the server lines the key's page shows, and
-# the key's secret in access-key-secret beside it, starts the session on the node, waits
-# for the denied connection to arrive, allows its host the way the connection's row does,
-# and then watches the run's record for the second policy applied event and the allowed
-# connection. A member of the workspace then asks for observe, which is an owner's or an
+# Each instance is set up as a person sets one up: with the set-up link its start logged,
+# read from its log (`E2E_INSTANCE_LOG`, the file run.sh writes the instance's output to),
+# never with a code asked of the instance in-process.
+#
+# With E2E_MAIL=none, the default, the instance has no mail, as a new install has none.
+# It makes a workspace with an owner, set up with a password, a node and the node's access
+# key: a fresh Ed25519 key, generated here, whose public key is added to the node the way
+# the node's Generate a key adds one made in a browser, active as it is added. It puts the
+# workspace in enforce with nothing allowed, writes the node's Forager file, with the
+# server lines the key's page shows, and the key's secret in access-key-secret beside it,
+# starts the session on the node, waits for the denied connection to arrive, allows its
+# host the way the connection's row does, and then watches the run's record for the
+# second policy applied event and the allowed connection. A member of the workspace,
+# invited with a link the owner copies, then asks for observe, which is an owner's or an
 # admin's, and is refused, and it checks that the session is still let through to the host
 # and that the run's record shows no policy applied event after the refusal. Then it puts
 # the workspace in observe, denies the host from the same row, and watches for the third
 # policy applied event and the denied connection, refused by name under observe. It prints
 # the timings and leaves with status 0 only when every assertion held. It never prints the
 # secret: access-key-secret is the one place it goes.
+#
+# With E2E_MAIL=sink the instance sends its mail over SMTP to the job's sink
+# (compose.yaml's `sink`), and the scenario checks the mailed way in: the set-up through
+# the logged link, the owner's log-in link and a member's invitation, each read from the
+# sink (`E2E_SINK_COMMAND`), and the member's sign-up with it. No node and no session.
 
 defmodule E2E do
   import Ecto.Query
@@ -35,7 +46,23 @@ defmodule E2E do
   @egress "dev.qory.run.egress"
   @poll_ms 50
 
+  # What the instance's start logs: the set-up link, and, with no mail, that no mail is set.
+  @set_up_line ~r{^Set up Qory Apiary at (\S+)\.$}
+  @no_mail_line "No mail is set: invitations and password links are copied by hand. Set mail in Instance settings › Mail."
+
   def main do
+    # A line per request is the instance's log, not this job's. What its start logged, the
+    # set-up link among it, is in the log already.
+    Logger.configure(level: :warning)
+
+    case System.get_env("E2E_MAIL", "none") do
+      "none" -> live_reload()
+      "sink" -> mailed()
+      other -> fail("E2E_MAIL is none or sink, not #{inspect(other)}")
+    end
+  end
+
+  defp live_reload do
     host = env!("E2E_UPSTREAM_HOST")
     forager_file = env!("E2E_FORAGER_FILE")
     forager_tail = File.read!(env!("E2E_FORAGER_TAIL"))
@@ -50,8 +77,16 @@ defmodule E2E do
         "workspace" -> :workspace
       end
 
-    # A line per request is the instance's log, not this job's.
-    Logger.configure(level: :warning)
+    # The test instance has no SMTP_RELAY, so no mail (`Apiary.Mail`), and its start said
+    # so: the owner signs in with a password, and the member's invitation is a link the
+    # owner copies.
+    step("an instance without mail, set up with its logged link")
+
+    unless Apiary.Mail.source() == :none,
+      do: fail("the instance has mail; E2E_MAIL=none has none")
+
+    unless logged?(@no_mail_line),
+      do: fail("the instance's start did not say that no mail is set")
 
     step("a workspace, its owner, a node and its access key")
     scope = owner_scope()
@@ -398,62 +433,250 @@ defmodule E2E do
     :ok
   end
 
-  # The workspace's first owner, made the way sign-up makes one: the instance's first
-  # sign-up, on its fresh database, which every edition offers whatever its settings say,
-  # and makes the instance's own organisation. Anyone else would
-  # need an invitation from it. The owner then signs in with the emailed link, which is
-  # what confirms an account, as it must be before it invites anyone.
+  # The workspace's first owner, made the way a person makes one: the set-up link the
+  # instance's start logged, read from its log and followed, on its fresh database, which
+  # makes the instance's own organisation. Anyone else would need an invitation from it.
+  # Without mail the owner then signs in with the password the set-up was given, with the
+  # call the log-in form's post makes.
   defp owner_scope do
-    {:ok, %{user: user}} =
-      Organisations.sign_up_user(%{email: "owner@e2e.test", organisation_name: "E2E"})
+    email = "owner@e2e.test"
+    password = new_password()
+    set_up_with_logged_link(email, password)
 
-    parent = self()
+    case Apiary.Accounts.get_user_by_email_and_password(email, password) do
+      %Apiary.Accounts.User{} = user ->
+        %Scope{workspace: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
+        scope
 
-    {:ok, _email} =
-      Apiary.Accounts.deliver_login_instructions(user, fn token ->
-        send(parent, {:login_token, token})
-        "#{ApiaryWeb.Endpoint.url()}/users/log-in/#{token}"
-      end)
-
-    token =
-      receive do
-        {:login_token, token} -> token
-      after
-        0 -> fail("the log-in link was not sent")
-      end
-
-    {:ok, {user, _tokens}} = Apiary.Accounts.login_user_by_magic_link(token)
-
-    %Scope{workspace: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
-    scope
+      nil ->
+        fail("the owner cannot sign in with the password given at the set-up")
+    end
   end
 
-  # A member of the owner's workspace, joined the way a person joins: an invitation sent
-  # from the workspace, and a sign-up with its token. The email goes to the log.
+  # A member of the owner's workspace, joined the way a person joins without mail: an
+  # invitation from the workspace, whose link the owner copies, and a sign-up with it and a
+  # password of the member's own.
   defp member_scope(%Scope{workspace: %{id: workspace_id}} = owner) do
     email = "member@e2e.test"
-    parent = self()
+    password = new_password()
 
-    {:ok, _invitation} =
-      Organisations.invite_member(owner, %{"email" => email}, fn token ->
-        send(parent, {:invitation_token, token})
-        "#{ApiaryWeb.Endpoint.url()}/invitations/#{token}"
-      end)
-
-    token =
-      receive do
-        {:invitation_token, token} -> token
-      after
-        0 -> fail("the invitation was not sent")
+    url =
+      case Organisations.invite_member(owner, %{"email" => email}, &invitation_url/1) do
+        {:ok, _invitation, {:link, url}} -> url
+        other -> fail("the invitation was not a link to copy: #{inspect(other)}")
       end
 
-    {:ok, %{user: user}} = Organisations.sign_up_user(%{email: email}, token)
+    {:ok, %{user: user}} =
+      Organisations.sign_up_user(
+        %{email: email, password: password, password_confirmation: password},
+        token_in(url, "/invitations/")
+      )
 
     %Scope{workspace: %{id: ^workspace_id}, membership: %{level: :member}} =
       scope = Organisations.load_scope(Scope.for_user(user))
 
     scope
   end
+
+  # The instance with mail, through the job's SMTP sink: the set-up with its logged link,
+  # the owner's log-in link, which confirms the address, as it must be before anyone
+  # sends an invitation by mail, and a member's invitation, each read from the sink as it
+  # arrived there.
+  defp mailed do
+    step("an instance with mail through the sink, set up with its logged link")
+
+    unless Apiary.Mail.source() == :env,
+      do: fail("the instance has no mail; E2E_MAIL=sink sets it")
+
+    if logged?(@no_mail_line), do: fail("the instance's start said that no mail is set")
+
+    owner_email = "owner@e2e.test"
+    owner = set_up_with_logged_link(owner_email, new_password())
+
+    step("the owner's log-in link, mailed")
+
+    {:ok, _email} =
+      Apiary.Accounts.deliver_login_instructions(
+        owner,
+        &"#{ApiaryWeb.Endpoint.url()}/users/log-in/#{&1}"
+      )
+
+    log_in_url = mailed_url(owner_email, "/users/log-in/")
+
+    # The first link log-in confirms the address, and removes the password set before it.
+    owner =
+      case Apiary.Accounts.login_user_by_magic_link(token_in(log_in_url, "/users/log-in/")) do
+        {:ok, {user, _tokens}, :password_removed} -> user
+        other -> fail("the log-in link did not confirm the owner as it should: #{inspect(other)}")
+      end
+
+    unless owner.confirmed_at, do: fail("the log-in link did not confirm the owner's address")
+    say("the log-in link came through the sink; the owner's address is confirmed")
+
+    step("a member's invitation, mailed")
+
+    %Scope{workspace: %{id: workspace_id}} =
+      scope = Organisations.load_scope(Scope.for_user(owner))
+
+    member_email = "member@e2e.test"
+
+    case Organisations.invite_member(scope, %{"email" => member_email}, &invitation_url/1) do
+      {:ok, _invitation} -> :ok
+      other -> fail("the invitation was not mailed: #{inspect(other)}")
+    end
+
+    invitation = mailed_url(member_email, "/invitations/")
+
+    {:ok, %{user: member}} =
+      Organisations.sign_up_user(%{email: member_email}, token_in(invitation, "/invitations/"))
+
+    case Organisations.load_scope(Scope.for_user(member)) do
+      %Scope{workspace: %{id: ^workspace_id}, membership: %{level: :member}} -> :ok
+      other -> fail("the member did not join the owner's workspace: #{inspect(other)}")
+    end
+
+    say("the invitation came through the sink; the member joined the owner's workspace")
+    IO.puts("E2E PASS  mail=sink set_up=logged_link log_in_link=mailed invitation=mailed")
+  end
+
+  # The set-up link the instance's start logged, followed: its page offers the form, the
+  # set-up is the one the form's submit makes (`Apiary.Setup.set_up/3`, a password
+  # required), and the page then says the instance is set up. The link is never printed.
+  defp set_up_with_logged_link(email, password) do
+    link = logged_set_up_link()
+    endpoint = ApiaryWeb.Endpoint.url()
+
+    unless String.starts_with?(link, endpoint <> "/setup/"),
+      do: fail("the logged set-up link is not on the instance's address, #{endpoint}")
+
+    code = token_in(link, "/setup/")
+    form = Req.get!(link, retry: false, redirect: false)
+
+    unless form.status == 200 and form.body =~ "Set up Qory Apiary",
+      do: fail("the logged set-up link did not open the set-up form (status #{form.status})")
+
+    user =
+      case Apiary.Setup.set_up(
+             code,
+             %{
+               "email" => email,
+               "password" => password,
+               "password_confirmation" => password,
+               "organisation_name" => "E2E"
+             },
+             password: :required
+           ) do
+        {:ok, %{user: user}} -> user
+        other -> fail("the set-up with the logged link failed: #{inspect(other)}")
+      end
+
+    done = Req.get!(link, retry: false, redirect: false)
+
+    unless done.status == 200 and done.body =~ "This Qory Apiary is already set up.",
+      do: fail("the set-up link still offers the form once used")
+
+    say("set up with the link from the instance's log; the link now says it is set up")
+    user
+  end
+
+  # The set-up link in the instance's log, waited for: the start logs it before the
+  # endpoint serves, and the log reaches its file a moment later.
+  defp logged_set_up_link do
+    deadline = System.monotonic_time(:millisecond) + 30_000
+    find_set_up_link(deadline)
+  end
+
+  defp find_set_up_link(deadline) do
+    case Enum.find_value(log_messages(), &match_set_up_line/1) do
+      nil ->
+        if System.monotonic_time(:millisecond) > deadline,
+          do: fail("no set-up link in the instance's log"),
+          else: Process.sleep(@poll_ms) && find_set_up_link(deadline)
+
+      link ->
+        link
+    end
+  end
+
+  defp match_set_up_line(message) do
+    case Regex.run(@set_up_line, message) do
+      [_line, link] -> link
+      nil -> nil
+    end
+  end
+
+  # Whether the instance's start logged `message`, asked once the set-up link, which the
+  # start logs after the rest, has reached the log.
+  defp logged?(message) do
+    _link = logged_set_up_link()
+    message in log_messages()
+  end
+
+  # The messages of the instance's log, `E2E_INSTANCE_LOG`: one JSON object per line in
+  # production, its message under "message"; any other line, this scenario's own, as it
+  # is.
+  defp log_messages do
+    env!("E2E_INSTANCE_LOG")
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn line ->
+      case JSON.decode(line) do
+        {:ok, %{"message" => message}} when is_binary(message) -> message
+        _other -> line
+      end
+    end)
+  end
+
+  # The link in the newest message the sink holds for `to`, whose path starts with
+  # `prefix`, waited for: the sink's API, asked inside its own container
+  # (`E2E_SINK_COMMAND`, with the API's path appended), since it publishes no port.
+  defp mailed_url(to, prefix) do
+    endpoint = ApiaryWeb.Endpoint.url()
+    pattern = ~r{#{Regex.escape(endpoint <> prefix)}[A-Za-z0-9_-]+}
+
+    await("a message to #{to} with a link to #{prefix}…", 30_000, nil, fn ->
+      with %{"messages" => messages} <- sink("messages"),
+           %{"ID" => id} <-
+             Enum.find(messages, fn message ->
+               Enum.any?(message["To"] || [], &(&1["Address"] == to))
+             end),
+           %{"Text" => text} <- sink("message/" <> id),
+           [url] <- Regex.run(pattern, text) do
+        url
+      else
+        _none -> nil
+      end
+    end)
+  end
+
+  defp sink(path) do
+    case System.cmd("sh", ["-c", env!("E2E_SINK_COMMAND") <> path], stderr_to_stdout: true) do
+      {body, 0} ->
+        case JSON.decode(body) do
+          {:ok, decoded} -> decoded
+          {:error, _reason} -> nil
+        end
+
+      {_output, _status} ->
+        nil
+    end
+  end
+
+  defp invitation_url(token), do: "#{ApiaryWeb.Endpoint.url()}/invitations/#{token}"
+
+  # The token at the end of a link's path, after `prefix`.
+  defp token_in(url, prefix) do
+    path = URI.parse(url).path || ""
+    token = String.replace_prefix(path, prefix, "")
+
+    if String.starts_with?(path, prefix) and token =~ ~r/^[A-Za-z0-9_-]+$/,
+      do: token,
+      else: fail("not a link to #{prefix}…")
+  end
+
+  # A password of the job's own, never printed: 24 characters, within the 12 to 72 a
+  # password takes.
+  defp new_password, do: Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
 
   # The audit entries a person wrote in the scope's organisation.
   defp trail(%Scope{user: %{id: user_id}, organisation: %{id: organisation_id}}) do

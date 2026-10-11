@@ -12,15 +12,20 @@ being one. Every variable named here is described in [Install and configure](ins
   request is redirected to the `https` address again. Forager refuses a `gateway.server.url` over
   plain `http` unless it is an address of its own machine, and one with a path, so serve
   the instance at the root of its host name.
-- **Real mail.** Set `SMTP_RELAY` and the variables beside it, and make sure `MAIL_TO_LOG`
-  is not set: with it, log-in links and invitation links, which are credentials, are
-  written to the log. Send yourself a log-in link before inviting anybody, and check that
-  `MAIL_FROM` is an address your relay may send from.
-- **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
-  `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
-  database backups are stored, not only in the `.env` of the machine.
+- **Mail, or none.** Mail is optional. Without it the instance sends no email: people log
+  in with a password, whoever invites copies the invitation's link and sends it, and a
+  forgotten password is a link an instance admin makes on **People** and sends by hand.
+  With mail, set `SMTP_RELAY` and the variables beside it, send yourself a log-in link
+  before inviting anybody, and check that `MAIL_FROM` is an address your relay may send
+  from: [Install and configure](install.md#mail). An instance admin can set mail in
+  **Instance settings › Mail** instead.
+- **The three keys, kept.** With `compose.yaml` the service `keys` generates
+  `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first
+  start, each on its own, into the volume `keys`. Copy them out once
+  ([Backup and restore](backup.md#the-keys)) and store the copy where the database backups
+  are stored, not only in the volume, which `docker compose down --volumes` deletes.
   `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
-  access key is trusted.
+  access key is trusted, and the instance does not start with another.
   <!-- feature: secrets -->
   Losing it also loses every stored secret value.
   <!-- /feature -->
@@ -32,11 +37,14 @@ being one. Every variable named here is described in [Install and configure](ins
   before they arrive: [Install and configure](install.md#features).
 - **Postgres that is backed up.** The database is the only state. Schedule the dump, and
   restore one into an empty database once, before it is needed.
-- **Claim the instance.** The first person to sign up creates its organisation and becomes
-  its admin. Before the address is public, run `Apiary.Release.grant_instance_admin/2` on
-  the release with your address and your organisation's name: it is the instance's first
-  sign-up, and emails you your log-in link.
-  [Install and configure](install.md#the-instance-admins) has the command.
+- **Set the instance up.** Until it is set up, every start logs its set-up link, "Set up
+  Qory Apiary at …/setup/<code>.", the same each time; `docker compose logs apiary` shows
+  it with `compose.yaml`. Open it as soon as the instance is up, since anyone who reads
+  the log can use it first. Its page asks for your email address, a password and your
+  organisation's name, and makes your account, the instance's organisation and its admin.
+  From a shell, `Apiary.Release.grant_instance_admin/2` with your address and your
+  organisation's name does the same.
+  [Install and configure](install.md#set-up-a-new-instance) has both.
 <!-- feature: secrets -->
 - **Where integrations come from.** A workspace adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
@@ -46,24 +54,32 @@ being one. Every variable named here is described in [Install and configure](ins
   release's download links, which its author chooses on GitLab and Codeberg, are still
   followed to any public https host: [Install and configure](install.md#integrations).
 <!-- /feature -->
-- **The port is not public.** Publish the release's port to the reverse proxy only. In the
-  compose file that is `127.0.0.1:4100:4100` in place of `4100:4100` when the proxy runs
-  on the same machine.
+- **The proxy's address.** Behind a reverse proxy, set `TRUSTED_PROXIES` to the address
+  the proxy's connections come from; unset, every client counts as the proxy, and they
+  share its limits on signing in. With `compose.yaml` and a proxy on the same machine,
+  that is the gateway of the network `qory_default`, which `docker network inspect
+  qory_default` shows: [Install and configure](install.md#tls-and-the-reverse-proxy).
+- **The port is not public.** Publish the release's port to the reverse proxy only.
+  `compose.yaml` publishes it on `127.0.0.1:4100` alone, for a proxy on the same machine;
+  for a proxy elsewhere, publish it in a `compose.override.yaml` on an address only that
+  proxy reaches ([Install and configure](install.md#compose-only)).
 
 ## When it is up
 
 - **Health.** Point the load balancer or the monitor at `GET /health`: `200` with
-  `"status":"ok"` when the database answers, `503` when it does not. It needs no
-  credentials and says nothing about any workspace.
+  `"status":"ok"` when the database answers, `503` when it does not, both with the
+  release's `version` and `revision`. It needs no credentials and says nothing about any
+  workspace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
   A line never holds a request's headers or body, and the paths that carry a credential
-  are rewritten before they are logged.
-- **Sign-up.** Once the instance is claimed, nobody signs up without an invitation: people
-  join by invitation from an owner or an admin on the organisation's **Members** page, as
-  members. `INVITATIONS_PER_DAY` bounds how many invitations the organisation sends a day.
+  are rewritten before they are logged. The set-up link is written whole, by each start
+  until the instance is set up: that line is how you get it.
+- **Sign-up.** Once the instance is set up, nobody signs up without an invitation: people
+  join by invitation from an owner or an admin on the organisation's **People** page, as
+  members. `INVITATIONS_PER_DAY` bounds how many invitations the organisation makes a day.
   [Install and configure](install.md#sign-up-and-invitations) has the details.
 - **Stopping someone.** An owner suspends an admin or a member on the organisation's
-  **Members** page, and an admin a member, and activates them again; nothing is removed.
+  **People** page, and an admin a member, and activates them again; nothing is removed.
   A suspended person acts in the organisation no more, but the access keys they added
   keep working, since they belong to their nodes: revoke those too if they should stop.
   [Install and configure](install.md#the-instance-admins) says more.
@@ -72,10 +88,6 @@ being one. Every variable named here is described in [Install and configure](ins
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
   smaller limit on request bodies turns them into errors the gateway retries for ever.
   Allow at least 2 MiB on `/v1/events`.
-  <!-- feature: security -->
-  The gateway sends every label of a run in the query of `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
-  takes 16 KiB, and a proxy has to take as much.
-  <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
 - **The security headers.** Every page carries a `Content-Security-Policy` that lets only

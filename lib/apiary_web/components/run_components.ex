@@ -63,9 +63,10 @@ defmodule ApiaryWeb.RunComponents do
   ## Run state
 
   @doc """
-  The badge of a run's state, one family for the eight states. `quiet_for` (seconds since
-  the last heartbeat, set by the server once it is over one interval) turns a running badge
-  amber and adds the note beside it.
+  The badge of a run's state, one word, mark and colour for each of the six states (a name a
+  run stored before Completed and Cancelled reads as the state that took it in,
+  `state_label/1`). `quiet_for` (seconds since the last heartbeat, set by the server once it
+  is over one interval) turns a running badge amber and adds the note beside it.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :exit_code, :integer, default: nil, doc: "after Failed when not 0 and not -1"
@@ -73,11 +74,11 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil, doc: "the last heartbeat, so the seconds tick"
   attr :interval, :integer, default: nil, doc: "heartbeat_interval_seconds, for the tooltip"
-  attr :closed_at, :any, default: nil, doc: "for the tooltip of a closed run"
   attr :note, :boolean, default: true, doc: "false drops the amber note, for tight rows"
   attr :class, :any, default: nil
 
   def run_state(assigns) do
+    assigns = assign(assigns, :state, current_state(assigns.state))
     quiet? = assigns.state == "running" and is_integer(assigns.quiet_for)
 
     assigns =
@@ -99,13 +100,7 @@ defmodule ApiaryWeb.RunComponents do
       >
         <.icon :if={@glyph} name={@glyph} class="size-3" />
         <i :if={!@glyph} aria-hidden="true"></i>
-        <span
-          :if={@state == "closed"}
-          class="tooltip q-tip-wide"
-          tabindex="0"
-          data-tip={closed_tip(@closed_at)}
-        >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
-        <span :if={@state != "closed"}>{state_label(@state)}</span>
+        <span>{state_label(@state)}</span>
         <span :if={@code} class="font-mono text-[11px]">{@code}</span>
       </.badge>
       <span
@@ -132,43 +127,178 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc "The word of a state, as the badge says it."
-  def state_label("pending"), do: gettext("Pending")
-  def state_label("running"), do: gettext("Running")
-  def state_label("succeeded"), do: gettext("Succeeded")
-  def state_label("failed"), do: gettext("Failed")
-  def state_label("timed_out"), do: gettext("Timed out")
-  def state_label("lost"), do: gettext("Lost")
-  def state_label("closed"), do: gettext("Closed")
-  def state_label("ended"), do: gettext("Ended")
+  # The names a run's state had before Completed and Cancelled took them in. A run stored
+  # under one of them reads as its state today, and so does an exit's `state` as the contract
+  # writes it (`succeeded`).
+  @earlier_states %{
+    "succeeded" => "completed",
+    "timed_out" => "cancelled",
+    "ended" => "cancelled"
+  }
+
+  # A state's name as a string, an earlier name as the state that took it in.
+  defp current_state(state) when is_atom(state) and not is_nil(state),
+    do: current_state(Atom.to_string(state))
+
+  defp current_state(state), do: Map.get(@earlier_states, state, state)
 
   @doc """
-  Why the run ended, in words, from its exit's `reason` (and `quiet_seconds` for `quiet`):
-  "timed out", "quiet for 30 minutes", "the issuer reported the run ended". Nil for a run
-  whose exit gave no reason, or one these words do not know.
+  The word of a state, as the badge says it, for its name as a string or an atom. A name a
+  run stored before Completed and Cancelled reads as their word: `succeeded` Completed,
+  `timed_out` and `ended` Cancelled.
+  """
+  @spec state_label(String.t() | atom()) :: String.t()
+  def state_label(state) do
+    case current_state(state) do
+      "pending" -> gettext("Pending")
+      "running" -> gettext("Running")
+      "completed" -> gettext("Completed")
+      "failed" -> gettext("Failed")
+      "cancelled" -> gettext("Cancelled")
+      "lost" -> gettext("Lost")
+    end
+  end
+
+  # An end reason as the contract has it: a lower-case letter, then lower-case letters, digits
+  # and _, up to 64 characters.
+  @reason_code ~r/\A[a-z][a-z0-9_]{0,63}\z/
+
+  # The names Forager gave three of its own reasons before `stopped`,
+  # `credential_check_unreachable` and `credential_check_invalid`. It writes them no more, and
+  # no starter can send them; exits stored with them read as the new names.
+  @earlier_reasons %{
+    "run_ended_at_issuer" => "stopped",
+    "issuer_unreachable" => "credential_check_unreachable",
+    "issuer_answer_invalid" => "credential_check_invalid"
+  }
+
+  @doc """
+  Why the run ended, in words: the one line the run page's header and rail say after the
+  state, its timeline's last item and the runs list's preview. `run` is a run or an exit:
+  its `reason`, `quiet_seconds` for `quiet`, and `state` when it has one, as a string or an
+  atom.
+
+  Forager's own reasons have words of their own, none naming who or what ended the run:
+  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
+  "events refused", "couldn't check whether the run may go on: no answer". A reason stored
+  under its earlier name reads as the new one. Any other code is the one the run's starter
+  gave, shown as given with spaces for underscores: `no_longer_needed` reads "no longer
+  needed".
+
+  A run refused at its start is given as `%{refused: code}`, the code of its
+  `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
+  A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
+  the refusal's code as its reason, reads the same.
+
+  Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
+  value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
-  def reason_words(%{reason: "timeout"}), do: gettext("timed out")
-  def reason_words(%{reason: "run_closed"}), do: gettext("closed")
-  def reason_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
-  def reason_words(%{reason: "session_lost"}), do: gettext("session lost")
-  def reason_words(%{reason: "credential_expired"}), do: gettext("run credential expired")
+  def reason_words(%Run{} = run) do
+    if Run.refused?(run), do: refusal_words(run.reason), else: given_words(run)
+  end
 
-  def reason_words(%{reason: "run_ended_at_issuer"}),
-    do: gettext("the issuer reported the run ended")
+  def reason_words(%{refused: code}), do: refusal_words(code)
+  def reason_words(run), do: given_words(run)
 
-  def reason_words(%{reason: "quiet", quiet_seconds: seconds})
-      when is_integer(seconds) and seconds > 0,
-      do: quiet_words(seconds)
+  defp refusal_words(code) do
+    case refusal_code(code) do
+      nil -> gettext("did not start")
+      code -> gettext("did not start: %{code}", code: code)
+    end
+  end
 
-  def reason_words(_run), do: nil
+  # The starter's end under the earlier name came with no outcome, whatever the state the
+  # exit said.
+  defp given_words(%{reason: "run_ended_at_issuer"}), do: gettext("stopped, no outcome given")
+
+  defp given_words(%{reason: reason} = run) when is_binary(reason) do
+    if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)
+  end
+
+  defp given_words(_run), do: nil
+
+  @doc """
+  A run's end reason as the run page's header and rail show it, `reason_words/1` in a span,
+  with the refusal's code of a run that did not start in mono, as the timeline's item has
+  it: "did not start: `image_unknown`". Nothing when there is no reason.
+  """
+  attr :run, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+
+  def end_reason(assigns) do
+    code = if Run.refused?(assigns.run), do: refusal_code(assigns.run.reason)
+
+    {before, rest} =
+      if code,
+        do: split_at_hole(gettext("did not start: %{code}", code: hole())),
+        else: {reason_words(assigns.run), ""}
+
+    assigns = assign(assigns, before: before, code: code, rest: rest)
+
+    ~H"""
+    <span :if={@before} id={@id} class={@class}>{@before}<span
+      :if={@code}
+      class="font-mono"
+    >{@code}</span>{@rest}</span>
+    """
+  end
+
+  @doc """
+  The code of a `dev.qory.run.refused` as the run page shows it, an earlier name read as the
+  new one: `image_unknown`, and `stopped` for `run_ended_at_issuer`. Nil for a value that is
+  no code.
+  """
+  @spec refusal_code(term()) :: String.t() | nil
+  def refusal_code(code) when is_binary(code) do
+    if code =~ @reason_code, do: Map.get(@earlier_reasons, code, code)
+  end
+
+  def refusal_code(_code), do: nil
+
+  defp words_of("timeout", _run), do: gettext("time limit reached")
+
+  defp words_of("quiet", run) do
+    case Map.get(run, :quiet_seconds) do
+      seconds when is_integer(seconds) and seconds > 0 -> quiet_words(seconds)
+      _ -> nil
+    end
+  end
+
+  defp words_of("credential_expired", _run), do: gettext("permission to run expired")
+
+  # Forager writes `stopped` only with cancelled, when the starter gave no outcome; beside an
+  # outcome it says only that the run was stopped.
+  defp words_of("stopped", run) do
+    if current_state(Map.get(run, :state)) in ~w(completed failed),
+      do: gettext("stopped"),
+      else: gettext("stopped, no outcome given")
+  end
+
+  # Forager writes `interrupted` only with cancelled, for a session's run stopped where it was
+  # started (a Ctrl-C, or a signal to `qory run`).
+  defp words_of("interrupted", _run), do: gettext("interrupted")
+  defp words_of("session_lost", _run), do: gettext("stopped responding")
+  defp words_of("gateway_lost", _run), do: gettext("end not recorded")
+  defp words_of("batch_refused", _run), do: gettext("events refused")
+
+  defp words_of("credential_check_unreachable", _run),
+    do: gettext("couldn't check whether the run may go on: no answer")
+
+  defp words_of("credential_check_invalid", _run),
+    do: gettext("couldn't check whether the run may go on: unreadable answer")
+
+  defp words_of("run_closed", _run), do: nil
+  defp words_of(code, _run), do: String.replace(code, "_", " ")
 
   # The quiet period as a duration reads: in hours or minutes when it is a whole number of
   # them, else in seconds.
   defp quiet_words(seconds) when rem(seconds, 3600) == 0 do
     hours = div(seconds, 3600)
 
-    ngettext("quiet for %{number} hour", "quiet for %{number} hours", hours,
+    ngettext("no activity for %{number} hour", "no activity for %{number} hours", hours,
       number: Format.number(hours)
     )
   end
@@ -176,13 +306,13 @@ defmodule ApiaryWeb.RunComponents do
   defp quiet_words(seconds) when rem(seconds, 60) == 0 do
     minutes = div(seconds, 60)
 
-    ngettext("quiet for %{number} minute", "quiet for %{number} minutes", minutes,
+    ngettext("no activity for %{number} minute", "no activity for %{number} minutes", minutes,
       number: Format.number(minutes)
     )
   end
 
   defp quiet_words(seconds) do
-    ngettext("quiet for %{number} second", "quiet for %{number} seconds", seconds,
+    ngettext("no activity for %{number} second", "no activity for %{number} seconds", seconds,
       number: Format.number(seconds)
     )
   end
@@ -193,31 +323,32 @@ defmodule ApiaryWeb.RunComponents do
   slot :inner_block, required: true
 
   defp spliced(assigns) do
-    {before, rest} =
-      case String.split(assigns.text, @hole, parts: 2) do
-        [before, rest] -> {before, rest}
-        [before] -> {before, ""}
-      end
-
+    {before, rest} = split_at_hole(assigns.text)
     assigns = assign(assigns, before: before, rest: rest)
 
     ~H"{@before}{render_slot(@inner_block)}{@rest}"
+  end
+
+  defp split_at_hole(text) do
+    case String.split(text, @hole, parts: 2) do
+      [before, rest] -> {before, rest}
+      [before] -> {before, ""}
+    end
   end
 
   defp hole, do: @hole
 
   defp state_color("running", true), do: "warning"
   defp state_color("running", false), do: "info"
-  defp state_color("succeeded", _), do: "success"
-  defp state_color(state, _) when state in ~w(failed timed_out), do: "error"
+  defp state_color("completed", _), do: "success"
+  defp state_color("failed", _), do: "error"
   defp state_color("lost", _), do: "warning"
   defp state_color(_state, _), do: "neutral"
 
-  defp state_glyph("succeeded"), do: "hero-check-micro"
+  defp state_glyph("completed"), do: "hero-check-micro"
   defp state_glyph("failed"), do: "hero-x-mark-micro"
-  defp state_glyph("timed_out"), do: "hero-clock-micro"
+  defp state_glyph("cancelled"), do: "hero-stop-micro"
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
-  defp state_glyph("closed"), do: "hero-lock-closed-micro"
   defp state_glyph(_state), do: nil
 
   defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal) and signal != "",
@@ -240,14 +371,6 @@ defmodule ApiaryWeb.RunComponents do
   defp quiet_tip(_interval),
     do: gettext("Heartbeats have stopped. After three missed intervals the run is marked lost.")
 
-  defp closed_tip(%DateTime{} = at),
-    do:
-      gettext("Closed by a member on %{date}. The run never posted its exit.",
-        date: Format.date(at)
-      )
-
-  defp closed_tip(_at), do: gettext("Closed by a member. The run never posted its exit.")
-
   # What `Apiary.Runs.Liveness` holds a run to when it announced no interval, and its bounds.
   @default_beat 30
   @max_beat 3600
@@ -256,7 +379,7 @@ defmodule ApiaryWeb.RunComponents do
   The seconds a running run has been quiet for, or nil: set once the workspace has heard
   no heartbeat for more than one interval. The server decides this, never the browser, and
   by the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from
-  when the last heartbeat was received, or, for a run that has not beaten yet, from when
+  when the last heartbeat counts as heard, or, for a run that has not beaten yet, from when
   the workspace first heard of it; a run that announced no valid interval is held to 30
   seconds.
   """
@@ -278,9 +401,13 @@ defmodule ApiaryWeb.RunComponents do
   @doc "When the server last heard the run is alive: its last heartbeat, else its first event."
   def heard_at(run), do: Map.get(run, :last_heartbeat_at) || Map.get(run, :inserted_at)
 
-  @doc "The heartbeat interval the run is held to, in seconds: its own within bounds, else 30."
+  @doc """
+  The heartbeat interval the run is held to, in seconds: the one its registration stated,
+  else its heartbeats', within bounds, else 30.
+  """
   def beat(run) do
-    case Map.get(run, :heartbeat_interval_seconds) do
+    case Map.get(run, :registration_interval_seconds) ||
+           Map.get(run, :heartbeat_interval_seconds) do
       interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
       _ -> @default_beat
     end
@@ -288,7 +415,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's own
-  `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
+  `elapsed_seconds` of its last heartbeat and the server time that heartbeat counts as heard;
   before the first heartbeat, zero at the moment the workspace first heard of the run.
   Never Forager's `started_at`: its clock may be anywhere.
   """
@@ -631,7 +758,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A subject in words, as text: its type and ref as given, "pull request #412", for a
-  tooltip. Apiary knows no subject types, so neither is mapped or translated.
+  tooltip. Qory Apiary knows no subject types, so neither is mapped or translated.
   `subject_name/1` is the same words as markup.
   """
   def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
@@ -716,7 +843,7 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" -> %>
           <span>{gettext("Alive")}</span>
         <% true -> %>
-          <span>{ended_sentence(@state, @run)}</span>
+          <span>{ended_sentence(current_state(@state), @run)}</span>
       <% end %>
     </span>
     """
@@ -738,12 +865,15 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # A run that registered and posted nothing yet, or, stored before the registration
+  # replaced the ping, one that pinged and posted nothing else.
+  defp ended_sentence("pending", %{registered_at: %DateTime{}}), do: gettext("Registered only")
   defp ended_sentence("pending", _run), do: gettext("Ping only")
 
-  defp ended_sentence("succeeded", %{duration_ms: ms}) when is_integer(ms),
-    do: gettext("Succeeded %{duration} after it started", duration: format_duration_ms(ms))
+  defp ended_sentence("completed", %{duration_ms: ms}) when is_integer(ms),
+    do: gettext("Completed %{duration} after it started", duration: format_duration_ms(ms))
 
-  defp ended_sentence("succeeded", _run), do: gettext("Succeeded")
+  defp ended_sentence("completed", _run), do: gettext("Completed")
 
   defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
     do: gettext("Failed with %{signal}", signal: signal)
@@ -753,10 +883,10 @@ defmodule ApiaryWeb.RunComponents do
 
   defp ended_sentence("failed", _run), do: gettext("Failed")
 
-  defp ended_sentence("timed_out", %{duration_ms: ms}) when is_integer(ms),
-    do: gettext("Timed out after %{duration}", duration: format_duration_ms(ms))
+  defp ended_sentence("cancelled", %{duration_ms: ms}) when is_integer(ms),
+    do: gettext("Cancelled after %{duration}", duration: format_duration_ms(ms))
 
-  defp ended_sentence("timed_out", _run), do: gettext("Timed out")
+  defp ended_sentence("cancelled", _run), do: gettext("Cancelled")
 
   defp ended_sentence("lost", %{} = run) do
     case Map.get(run, :last_heartbeat_at) || Map.get(run, :last_event_at) do
@@ -769,13 +899,6 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp ended_sentence("lost", _run), do: gettext("Lost")
-
-  defp ended_sentence("closed", %{closed_at: %DateTime{} = at}),
-    do: gettext("Closed %{date}", date: Format.date(at))
-
-  defp ended_sentence("closed", _run), do: gettext("Closed")
-
-  defp ended_sentence("ended", _run), do: gettext("Ended")
 
   ## Filter bar
 
@@ -838,10 +961,6 @@ defmodule ApiaryWeb.RunComponents do
     chosen and mixed when some are; its values follow it, indented, each looked up in
     `options`, which therefore holds one for every value of every group
     """
-
-  attr :tips, :map,
-    default: %{},
-    doc: "value => a sentence shown on hover and focus of the option's word (grouped only)"
 
   def filter(assigns) do
     values = assigns.value |> List.wrap() |> Enum.map(&to_string/1)
@@ -914,7 +1033,6 @@ defmodule ApiaryWeb.RunComponents do
           narrow={@narrow}
           search_label={@search_label}
           groups={@groups}
-          tips={@tips}
         />
       </div>
     </div>
@@ -942,7 +1060,6 @@ defmodule ApiaryWeb.RunComponents do
   attr :narrow, :string, default: "narrow"
   attr :more, :string, default: nil, doc: "the event that asks for more options"
   attr :groups, :list, default: []
-  attr :tips, :map, default: %{}
 
   attr :search_label, :string,
     default: nil,
@@ -1048,25 +1165,12 @@ defmodule ApiaryWeb.RunComponents do
                   checked={to_string(value) in @values}
                   class="checkbox checkbox-xs"
                   data-family={group.key}
-                  aria-describedby={@tips[to_string(value)] && "#{@id}-tip-#{value}"}
                 />
-                <span :if={!@tips[to_string(value)]} class="min-w-0 flex-1 truncate" title={label}>
-                  {label}
-                </span>
-                <span :if={@tips[to_string(value)]} class="min-w-0 flex-1 truncate">
-                  <span
-                    class="tooltip q-tip-wide"
-                    tabindex="0"
-                    data-tip={@tips[to_string(value)]}
-                  >{label}</span>
-                </span>
+                <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
                 <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
                   {count_label(count)}
                 </span>
               </label>
-              <span :if={@tips[to_string(value)]} id={"#{@id}-tip-#{value}"} class="sr-only">
-                {@tips[to_string(value)]}
-              </span>
             </li>
           </ul>
         </li>
@@ -1512,36 +1616,30 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's state as a row of a list says it: a dot, and its word where the state needs a
-  look (pending, running, failed, timed out, lost, closed) and for a run that ended, grey
-  as a closed one is; a run that succeeded is its dot, its word for a screen reader only,
-  unless `word` asks for it. `quiet_for` turns a running run's dot amber and adds the
-  note, as `run_state/1` does; `code` follows the word (the exit, for the preview).
+  look (pending, running, failed, lost) and for a run that was cancelled, in grey; a run
+  that completed is its dot, its word for a screen reader only, unless `word` asks for it.
+  `quiet_for` turns a running run's dot amber and adds the note, as `run_state/1` does;
+  `code` follows the word (why it ended, or its exit, for the preview).
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil
   attr :interval, :integer, default: nil
-  attr :closed_at, :any, default: nil
   attr :word, :boolean, default: false
   attr :code, :string, default: nil
   attr :class, :any, default: nil
 
   def run_mark(assigns) do
     assigns =
-      assign(assigns, :quiet?, assigns.state == "running" and is_integer(assigns.quiet_for))
+      assign(assigns,
+        quiet?: assigns.state == "running" and is_integer(assigns.quiet_for),
+        completed?: current_state(assigns.state) == "completed"
+      )
 
     ~H"""
     <span class={["q-st", "q-st-#{@state}", @quiet? && "q-st-quiet", @class]}>
       <i aria-hidden="true"></i>
-      <span
-        :if={@state == "closed"}
-        class="q-st-w tooltip q-tip-wide"
-        data-tip={closed_tip(@closed_at)}
-      >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
-      <span
-        :if={@state != "closed"}
-        class={["q-st-w", @state == "succeeded" && !@word && "sr-only"]}
-      >{state_label(@state)}</span>
+      <span class={["q-st-w", @completed? && !@word && "sr-only"]}>{state_label(@state)}</span>
       <span :if={@code} class="q-st-code">{@code}</span>
       <span
         :if={@quiet?}
@@ -1566,16 +1664,23 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc "A run's exit as the preview says it after the state: \"exit 1\", \"SIGKILL\"; nil otherwise."
-  def exit_note(%{state: state, signal: signal})
-      when state in ~w(succeeded failed) and is_binary(signal) and signal != "",
-      do: signal
+  @doc """
+  A run's end as the preview says it after the state: why it ended (`reason_words/1`), else
+  its exit, "exit 1", "SIGKILL", for a run that completed or failed; nil otherwise.
+  """
+  def exit_note(run) do
+    reason_words(run) || exit_code_note(current_state(run.state), run)
+  end
 
-  def exit_note(%{state: state, exit_code: code})
-      when state in ~w(succeeded failed) and is_integer(code) and code != -1,
-      do: gettext("exit %{code}", code: code)
+  defp exit_code_note(state, %{signal: signal})
+       when state in ~w(completed failed) and is_binary(signal) and signal != "",
+       do: signal
 
-  def exit_note(_run), do: nil
+  defp exit_code_note(state, %{exit_code: code})
+       when state in ~w(completed failed) and is_integer(code) and code != -1,
+       do: gettext("exit %{code}", code: code)
+
+  defp exit_code_note(_state, _run), do: nil
 
   @doc """
   The runs of a list, one row each: the state as a mark, the run's title (`given_title/1`,
@@ -1738,7 +1843,6 @@ defmodule ApiaryWeb.RunComponents do
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
-          closed_at={@run.closed_at}
         />
       </td>
       <td class="q-rl-run" role="cell">
@@ -1790,7 +1894,7 @@ defmodule ApiaryWeb.RunComponents do
         <.relative_time at={@run.started_at || @run.inserted_at} />
       </td>
       <td class="q-rl-c2 q-rl-dur q-num" role="cell">
-        <.run_length run={@run} quiet={@quiet} />
+        <.run_length :if={!Run.refused?(@run)} run={@run} quiet={@quiet} />
       </td>
       <td class="q-rl-den q-num" role="cell">
         <span :if={@run.denied_count > 0} class="q-rl-denied">
@@ -1806,12 +1910,21 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet, :boolean, required: true
 
   @doc """
-  How long a run ran, as its row and its preview say it: the duration its exit gave; for a
-  running run the time since it started, ticking; for a quiet, lost or closed one "at
-  least" what it last reported; nothing for a run that has only pinged.
+  How long a run ran, as its row and its preview say it: the duration its exit gave, as the
+  run page says it, also for a run its exit said was lost; for a running run the time since
+  it started, ticking; for a quiet one, or one Qory Apiary marked lost, "at least" what it last
+  reported; nothing for a run that has only registered. A run that did not start
+  (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
+  leaves out its Duration.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(succeeded ended failed timed_out) do
+      when state in ~w(succeeded completed ended failed timed_out cancelled) do
+    ~H"""
+    <.duration ms={@run.duration_ms} />
+    """
+  end
+
+  def run_length(%{run: %{state: "lost", duration_ms: ms}} = assigns) when is_integer(ms) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """
@@ -1870,7 +1983,6 @@ defmodule ApiaryWeb.RunComponents do
             quiet_for={if @preview.quiet, do: quiet_for(@preview.run) || 0}
             quiet_since={heard_at(@preview.run)}
             interval={beat(@preview.run)}
-            closed_at={@preview.run.closed_at}
           />
           <span class="flex-1"></span>
           <.button
@@ -1903,8 +2015,10 @@ defmodule ApiaryWeb.RunComponents do
               at={@preview.run.started_at || @preview.run.inserted_at}
             />
           </dd>
-          <dt>{gettext("Duration")}</dt>
-          <dd class="tabular-nums"><.run_length run={@preview.run} quiet={@preview.quiet} /></dd>
+          <dt :if={!Run.refused?(@preview.run)}>{gettext("Duration")}</dt>
+          <dd :if={!Run.refused?(@preview.run)} class="tabular-nums">
+            <.run_length run={@preview.run} quiet={@preview.quiet} />
+          </dd>
           <dt :if={@preview.run.denied_count > 0}>{gettext("Denied")}</dt>
           <dd :if={@preview.run.denied_count > 0} id={"#{@id}-denials"}>
             <span class="q-rl-denied">

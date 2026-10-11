@@ -65,8 +65,9 @@ defmodule Apiary.Targets do
 
   @typedoc """
   A row of the index: the target, its last run (`state`, `at`, `run_id`) or nil, its runs
-  a day over fourteen days (oldest first, today last), how many of those ended well and
-  badly, its denied attempts in those fourteen days, and whether its path is in another system too.
+  a day over fourteen days (oldest first, today last), how many of those ended well, were
+  cancelled and ended badly, its denied attempts in those fourteen days, and whether its
+  path is in another system too.
   """
   @type row :: %{
           target: Target.t(),
@@ -74,6 +75,7 @@ defmodule Apiary.Targets do
           days: [non_neg_integer],
           runs: non_neg_integer,
           ended_well: non_neg_integer,
+          cancelled: non_neg_integer,
           ended_badly: non_neg_integer,
           denied: non_neg_integer,
           shared: boolean
@@ -159,6 +161,7 @@ defmodule Apiary.Targets do
             last_run_id: l.run_id,
             runs: s.runs,
             ended_well: s.ended_well,
+            cancelled: s.cancelled,
             ended_badly: s.ended_badly,
             denied: s.denied,
             days: s.days,
@@ -264,10 +267,10 @@ defmodule Apiary.Targets do
     {DateTime.new!(day0, ~T[00:00:00.000000], "Etc/UTC"), day0}
   end
 
-  # The window's runs of each target: in all, ended well and badly, their denied attempts
-  # (over the same fourteen days, so the columns count one window), and the runs of each day as `[day, runs]` pairs, day 0 the
-  # window's first. Two levels, by target and day and then by target, over the range of
-  # the runs list's index the window is.
+  # The window's runs of each target: in all, ended well, cancelled and ended badly, their
+  # denied attempts (over the same fourteen days, so the columns count one window), and the
+  # runs of each day as `[day, runs]` pairs, day 0 the window's first. Two levels, by target
+  # and day and then by target, over the range of the runs list's index the window is.
   defp window_stats(scope, from, day0) do
     by_day =
       from r in Run,
@@ -284,7 +287,9 @@ defmodule Apiary.Targets do
               :day
             ),
           runs: count(r.id),
-          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+          ended_well:
+            filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
+          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: sum(r.denied_count)
         }
@@ -295,6 +300,7 @@ defmodule Apiary.Targets do
         target_id: d.target_id,
         runs: type(sum(d.runs), :integer),
         ended_well: type(sum(d.ended_well), :integer),
+        cancelled: type(sum(d.cancelled), :integer),
         ended_badly: type(sum(d.ended_badly), :integer),
         denied: type(coalesce(sum(d.denied), 0), :integer),
         days:
@@ -394,6 +400,7 @@ defmodule Apiary.Targets do
       days: days(found.days),
       runs: found.runs || 0,
       ended_well: found.ended_well || 0,
+      cancelled: found.cancelled || 0,
       ended_badly: found.ended_badly || 0,
       denied: found.denied || 0,
       shared: found.shared
@@ -414,7 +421,7 @@ defmodule Apiary.Targets do
   summary/3 is what a target's header and its About say of it: how many runs it has
   (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, run_id:}` or
   nil), and the fourteen days of the window as `page/3` counts them (`days`, `window`:
-  runs, ended well and badly, denied attempts, over the fourteen days).
+  runs, ended well, cancelled and ended badly, denied attempts, over the fourteen days).
   """
   @spec summary(Scope.t(), Target.t(), DateTime.t()) :: map
   def summary(%Scope{} = scope, %Target{} = target, now \\ DateTime.utc_now()) do
@@ -449,7 +456,10 @@ defmodule Apiary.Targets do
                 :day
               ),
             runs: count(r.id),
-            ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+            ended_well:
+              filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
+            cancelled:
+              filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
             ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
             denied: coalesce(sum(r.denied_count), 0)
           }
@@ -465,6 +475,7 @@ defmodule Apiary.Targets do
       window: %{
         runs: Enum.sum_by(by_day, & &1.runs),
         ended_well: Enum.sum_by(by_day, & &1.ended_well),
+        cancelled: Enum.sum_by(by_day, & &1.cancelled),
         ended_badly: Enum.sum_by(by_day, & &1.ended_badly),
         denied: Enum.sum_by(by_day, &to_integer(&1.denied))
       }
@@ -602,14 +613,12 @@ defmodule Apiary.Targets do
   @doc """
   count_by_workspace/1 is how many targets each workspace of the scope's organisation has,
   by the workspace's id, for a reader who may list the organisation's workspaces
-  (`workspace.delete`, asked of the organisation): the Workspaces section of its settings.
+  (`Apiary.Organisations.lists_workspaces?/1`): the Workspaces section of its settings.
   A workspace with none is absent; anyone else gets an empty map.
   """
   @spec count_by_workspace(Scope.t()) :: %{Ecto.UUID.t() => non_neg_integer}
-  def count_by_workspace(
-        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope
-      ) do
-    if Access.can?(scope, :"workspace.delete", organisation) do
+  def count_by_workspace(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
+    if Apiary.Organisations.lists_workspaces?(scope) do
       from(t in Target,
         where: t.organisation_id == ^organisation_id,
         group_by: t.workspace_id,

@@ -89,6 +89,17 @@ if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end
 
+# APIARY_ACCEPT_SIGNING_FINGERPRINT makes a new signing key the instance's on purpose: the
+# fingerprint the boot's key check names as the key's when APIARY_SIGNING_SECRET is not the
+# one the machines pinned. `Apiary.KeyCheck` records it at boot when it equals the current
+# key's, and any other value changes nothing. It names one key, so it needs no reset. Not
+# read under test, where the tests set it.
+if config_env() != :test do
+  config :apiary,
+         :accept_signing_fingerprint_setting,
+         System.get_env("APIARY_ACCEPT_SIGNING_FINGERPRINT")
+end
+
 # TRUSTED_PROXIES names the reverse proxies whose X-Forwarded-For the audit trail believes
 # for a request's address: addresses or CIDR ranges separated by commas, none when unset.
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
@@ -151,20 +162,46 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  # The keys bin/keys generates at first start, in $APIARY_KEYS_DIR/apiary.env
+  # (Apiary.KeysFile): SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and
+  # DATABASE_PASSWORD. key_env gives each from the environment, or from the file where the
+  # environment does not set it: the environment always wins.
+  keys_file = Apiary.KeysFile.read(System.get_env("APIARY_KEYS_DIR"))
+  key_env = &Apiary.KeysFile.get(keys_file, &1)
+
+  # APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET are 32 bytes, in base64 (44
+  # characters, as openssl rand -base64 32 prints them) or in hex (64 characters, either
+  # case). Both forms are decoded to the bytes, and only the bytes are used and compared.
+  # nil for anything else.
+  decode_key = fn value ->
+    decoded =
+      if byte_size(value) == 64,
+        do: Base.decode16(value, case: :mixed),
+        else: Base.decode64(value)
+
+    with {:ok, <<_::binary-size(32)>> = key} <- decoded, do: key, else: (_ -> nil)
+  end
+
   # ## Database
 
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
       environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
+      For example: postgres://USER:PASS@HOST/DATABASE
       """
+
+  # The password when DATABASE_URL carries none, from the environment or the keys file.
+  database_password = key_env.("DATABASE_PASSWORD")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # The URL, TLS as its sslmode and sslrootcert say, and the password (Apiary.DatabaseUrl).
+  repo_options = Apiary.DatabaseUrl.repo_options(database_url, database_password)
+
+  config :apiary, Apiary.Repo, repo_options
+
   config :apiary, Apiary.Repo,
-    # ssl: true,
-    url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
@@ -182,34 +219,31 @@ if config_env() == :prod do
   # to check this value into version control, so we use an environment
   # variable instead.
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
+    key_env.("SECRET_KEY_BASE") ||
       raise """
       environment variable SECRET_KEY_BASE is missing.
       You can generate one by calling: mix phx.gen.secret
+      With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
       """
 
   # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
   # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
   # it with the database backups.
   encryption_secret =
-    case System.get_env("APIARY_ENCRYPTION_SECRET") do
+    case key_env.("APIARY_ENCRYPTION_SECRET") do
       nil ->
         raise """
         environment variable APIARY_ENCRYPTION_SECRET is missing.
         It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, key} when byte_size(key) == 32 ->
-            key
-
-          _ ->
-            raise """
-            environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
@@ -224,25 +258,21 @@ if config_env() == :prod do
   # Forager's contract. Every comparison is in constant time, and no message here carries a
   # value.
   signing_seed =
-    case System.get_env("APIARY_SIGNING_SECRET") do
-      blank when blank in [nil, ""] ->
+    case key_env.("APIARY_SIGNING_SECRET") do
+      nil ->
         raise """
         environment variable APIARY_SIGNING_SECRET is missing.
         It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
         Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, seed} when byte_size(seed) == 32 ->
-            seed
-
-          _ ->
-            raise """
-            environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   if :crypto.hash_equals(signing_seed, encryption_secret) do
@@ -295,10 +325,7 @@ if config_env() == :prod do
       # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
-      port: String.to_integer(System.get_env("PORT") || "4100"),
-      # The gateway sends every label of a run as the run configuration request's query; at
-      # the contract's bounds that request line runs to about 13 KB, past Bandit's 10,000.
-      http_1_options: [max_request_line_length: 16_384]
+      port: String.to_integer(System.get_env("PORT") || "4100")
     ],
     secret_key_base: secret_key_base
 
@@ -319,21 +346,10 @@ if config_env() == :prod do
 
   case smtp_relay do
     nil ->
-      # No relay configured. Writing emails to the log puts log-in links and
-      # invitation links, which are credentials, in front of whoever reads the log,
-      # so it is never the silent fallback: the operator asks for it by name.
-      if System.get_env("MAIL_TO_LOG") == "true" do
-        config :apiary, Apiary.Mailer,
-          adapter: Swoosh.Adapters.Logger,
-          level: :info,
-          log_full_email: true
-      else
-        raise """
-        no mail delivery is configured.
-        Set SMTP_RELAY to the host of an SMTP relay, or, for a trial on one machine only,
-        set MAIL_TO_LOG=true to write every email (log-in links included) to the log.
-        """
-      end
+      # No relay: Qory Apiary starts, and sends no email (`Apiary.Mail.source/0` is
+      # `:none`, and the boot says so in one line). The adapter is unset, so the one
+      # config/config.exs names for development is not used.
+      config :apiary, Apiary.Mailer, adapter: nil
 
     relay ->
       smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "587")
@@ -355,19 +371,30 @@ if config_env() == :prod do
         end
 
       # Port 465 means implicit TLS on connect; every other port uses STARTTLS as
-      # SMTP_TLS says.
+      # SMTP_TLS says. TLS checks the relay's certificate against the system's
+      # certificate authorities and the relay's name, and the relay is the host
+      # connected to, as for the settings saved in Instance settings › Mail
+      # (`Apiary.Mail.TLS.smtp_options/2`).
       implicit_tls = smtp_port == 465
 
-      config :apiary, Apiary.Mailer,
-        adapter: Swoosh.Adapters.SMTP,
-        relay: relay,
-        port: smtp_port,
-        username: smtp_username,
-        password: System.get_env("SMTP_PASSWORD"),
-        auth: if(smtp_username, do: :always, else: :never),
-        ssl: implicit_tls,
-        tls: if(implicit_tls, do: :never, else: smtp_tls),
-        retries: 2
+      # The username and password only with a username: the adapter refuses either as nil.
+      credentials =
+        if smtp_username,
+          do: [username: smtp_username, password: System.get_env("SMTP_PASSWORD") || ""],
+          else: []
+
+      mailer =
+        [
+          adapter: Swoosh.Adapters.SMTP,
+          relay: relay,
+          port: smtp_port,
+          auth: if(smtp_username, do: :always, else: :never),
+          ssl: implicit_tls,
+          tls: if(implicit_tls, do: :never, else: smtp_tls),
+          retries: 2
+        ] ++ credentials
+
+      config :apiary, Apiary.Mailer, mailer ++ Apiary.Mail.TLS.smtp_options(relay, implicit_tls)
   end
 
   # ## Logs

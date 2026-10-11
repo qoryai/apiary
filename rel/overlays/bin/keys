@@ -1,0 +1,129 @@
+#!/bin/sh
+# Generates the keys the release needs, once: SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET,
+# APIARY_SIGNING_SECRET and DATABASE_PASSWORD, in $APIARY_KEYS_DIR/apiary.env (mode 0600,
+# one NAME=value line each, read by config/runtime.exs through Apiary.KeysFile). A name set
+# in the environment is skipped, and the environment wins at boot; a name the file holds
+# is kept and never changed; any other is generated with openssl. The database password,
+# the environment's or the file's, is also written to $APIARY_KEYS_DIR/postgres-password
+# (mode 0644), for the postgres image's POSTGRES_PASSWORD_FILE.
+#
+# POSIX sh and openssl, no BEAM: config/runtime.exs refuses to start without these keys.
+# Each file is written to a temporary file beside it and renamed once whole, so a crash
+# leaves no half file. Prints names and paths, never a value; exits non-zero when it
+# cannot write.
+set -eu
+umask 077
+
+dir=${APIARY_KEYS_DIR:?}
+file=$dir/apiary.env
+password_file=$dir/postgres-password
+newline='
+'
+
+# fail OUTPUT: stops, with the reason the failed command gave (what follows its last ": "),
+# or a reason of its own when that command printed none.
+fail() {
+  rm -f "$file.tmp" "$password_file.tmp" 2>/dev/null || true
+  reason=${1##*: }
+  printf 'Cannot write %s: %s. The volume keys has to be writable by the user nobody.\n' \
+    "$dir" "${reason:-the write did not complete}" >&2
+  exit 1
+}
+
+# held NAME: the value the file holds for NAME, from its first line NAME=value, read as
+# Apiary.KeysFile reads it.
+held() {
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case $line in
+    "$1"=?*)
+      printf '%s' "${line#*=}"
+      return 0
+      ;;
+    esac
+  done <"$file"
+}
+
+# write PATH MODE CONTENT: CONTENT in PATH, through PATH.tmp, created afresh and renamed
+# into place once written. printf is a builtin, so no value reaches a command line. The
+# first sync puts the whole file on disk before the rename; the second puts the rename on
+# disk before this run ends, so a power loss cannot undo it and leave the next run to
+# remove the whole temporary file and generate new keys.
+write() {
+  output=$({
+    rm -f "$1.tmp" &&
+      (set -C && printf '%s' "$3" >"$1.tmp") &&
+      chmod "$2" "$1.tmp" &&
+      sync &&
+      mv -f "$1.tmp" "$1" &&
+      sync
+  } 2>&1) || fail "$output"
+}
+
+# A temporary file left by a run that crashed is never read, only removed.
+rm -f "$file.tmp" "$password_file.tmp" 2>/dev/null || true
+
+content=
+generated=
+kept=
+database_password=
+
+for name in SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET DATABASE_PASSWORD; do
+  eval "set_value=\${$name:-}"
+  value=$(held "$name")
+
+  if [ -n "$set_value" ] && [ -n "$value" ]; then
+    printf '%s is set in the environment, which wins; the file keeps its own.\n' "$name"
+  elif [ -n "$set_value" ]; then
+    printf '%s is set in the environment: not generated, not kept here.\n' "$name"
+  elif [ -n "$value" ]; then
+    kept=yes
+  else
+    case $name in
+    SECRET_KEY_BASE) value=$(openssl rand -base64 48) ;;
+    DATABASE_PASSWORD) value=$(openssl rand -hex 24) ;;
+    *) value=$(openssl rand -base64 32) ;;
+    esac
+    generated="$generated $name"
+  fi
+
+  # A value the file holds stays in it, also when the environment sets the name.
+  if [ -n "$value" ]; then
+    content="$content$name=$value$newline"
+  fi
+
+  if [ "$name" = DATABASE_PASSWORD ]; then
+    database_password=${set_value:-$value}
+  fi
+done
+
+if [ -n "$generated" ]; then
+  write "$file" 600 "$content"
+
+  # "A, B, C and D"
+  set -- $generated
+  list=$1
+  shift
+  while [ "$#" -gt 1 ]; do
+    list="$list, $1"
+    shift
+  done
+  if [ "$#" -eq 1 ]; then
+    list="$list and $1"
+  fi
+
+  printf 'Generated %s in %s.\n' "$list" "$file"
+  printf 'Keep a copy apart from the database backups: without APIARY_ENCRYPTION_SECRET no access key is trusted. To print the file: docker compose exec apiary cat %s\n' "$file"
+elif [ -n "$kept" ]; then
+  printf 'The keys in %s are kept; none was generated.\n' "$file"
+fi
+
+# postgres-password is mode 0644, not 0600: the postgres container reads it as its own user,
+# uid 999, not the user nobody who writes it. It holds only the database password, which
+# that container holds already. On the host the volume is reachable only by root, under
+# /var/lib/docker. A group shared with postgres would tie this script to the postgres
+# image's gid. When DATABASE_PASSWORD is set in the environment, that value is the one
+# written here, since it is the password Qory connects with.
+if [ ! -f "$password_file" ] || [ "$(cat "$password_file")" != "$database_password" ]; then
+  write "$password_file" 644 "$database_password$newline"
+fi

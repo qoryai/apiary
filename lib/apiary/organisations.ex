@@ -38,11 +38,12 @@ defmodule Apiary.Organisations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, Features, Instance, Repo}
+  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
 
   alias Apiary.Organisations.{
     Invitation,
+    LastWorkspace,
     Membership,
     Organisation,
     Slug,
@@ -98,10 +99,12 @@ defmodule Apiary.Organisations do
   workspaces the edition says (`c:Apiary.Edition.reached_workspaces/2`). What each may do
   there is `Apiary.Access`'s answer.
 
-  Without a workspace slug, for an organisation's own page, the workspace is the one
-  `last_workspace:` names, the workspace the session remembers as last opened, while the
-  user reaches it and it is in this organisation; otherwise the oldest they reach; none
-  for one who reaches no workspace yet, who still gets `{:ok, scope}`.
+  Without a workspace slug, for an organisation's own page and the switcher's link to the
+  organisation, the workspace is the one `last_workspace:` names, the workspace the
+  session remembers as last opened, while the user reaches it and it is in this
+  organisation; otherwise the one they last used in this organisation
+  (`remember_workspace/1`), while they reach it; otherwise the oldest they reach; none for
+  one who reaches no workspace yet, who still gets `{:ok, scope}`.
 
   `:error` when a slug names nothing and when it names an organisation the user does not
   reach or a workspace they do not reach: one answer for all, so a slug does not tell
@@ -186,25 +189,77 @@ defmodule Apiary.Organisations do
     do: {:ok, home_workspace(scope, last_workspace_id)}
 
   # The workspace of an organisation's page: the one the person opened last, while they
-  # reach it, else the oldest they reach; `{workspace, what the edition says}`, or nil.
+  # reach it; else, asked with a scope, the one they last used in this organisation
+  # (`remember_workspace/1`), while they reach it; else the oldest they reach.
+  # `{workspace, what the edition says}`, or nil.
   defp home_workspace(scope_or_membership, last_workspace_id) do
-    last =
-      case Ecto.UUID.cast(last_workspace_id) do
-        {:ok, id} ->
-          scope_or_membership
-          |> reached_query()
-          |> where([workspace: w], w.id == ^id)
-          |> Repo.one()
+    reached = reached_query(scope_or_membership)
 
-        :error ->
-          nil
-      end
+    row =
+      reached_by_id(reached, last_workspace_id) || last_used(reached, scope_or_membership) ||
+        reached |> oldest() |> Repo.one()
 
-    case last || scope_or_membership |> reached_query() |> oldest() |> Repo.one() do
-      nil -> nil
-      row -> place(row)
+    row && place(row)
+  end
+
+  defp reached_by_id(query, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> query |> where([workspace: w], w.id == ^id) |> Repo.one()
+      :error -> nil
     end
   end
+
+  # The reached workspace the scope's person last used in the organisation. The query
+  # leaves out a workspace marked for deletion, as it leaves out one they no longer reach.
+  defp last_used(query, %Scope{user: %User{id: user_id}}) do
+    from([workspace: w] in query,
+      join: l in LastWorkspace,
+      on: l.workspace_id == w.id and l.organisation_id == w.organisation_id,
+      where: l.user_id == ^user_id
+    )
+    |> exclude(:order_by)
+    |> Repo.one()
+  end
+
+  defp last_used(_query, %Membership{}), do: nil
+
+  @doc """
+  remember_workspace/1 records the scope's workspace as the one its person last used in
+  its organisation (`Apiary.Organisations.LastWorkspace`), which the organisation's page
+  opens while they reach it (`resolve_scope/4`): one row per person and organisation,
+  changed only when the workspace differs. A scope without a person or a workspace records
+  nothing.
+  """
+  @spec remember_workspace(Scope.t() | nil) :: :ok
+  def remember_workspace(%Scope{
+        user: %User{id: user_id},
+        organisation: %Organisation{id: organisation_id},
+        workspace: %Workspace{id: workspace_id}
+      }) do
+    now = DateTime.utc_now()
+
+    Repo.insert_all(
+      LastWorkspace,
+      [
+        %{
+          user_id: user_id,
+          organisation_id: organisation_id,
+          workspace_id: workspace_id,
+          updated_at: now
+        }
+      ],
+      on_conflict:
+        from(l in LastWorkspace,
+          where: l.workspace_id != ^workspace_id,
+          update: [set: [workspace_id: ^workspace_id, updated_at: ^now]]
+        ),
+      conflict_target: [:user_id, :organisation_id]
+    )
+
+    :ok
+  end
+
+  def remember_workspace(_scope), do: :ok
 
   # The one workspace of the query that was created first: where the person has opened
   # none yet, an organisation's pages open its oldest, the one it was made with while it
@@ -637,22 +692,26 @@ defmodule Apiary.Organisations do
   ## Sign-up
 
   @sign_up_types %{email: :string, organisation_name: :string}
-  @sign_up_fields Enum.map(Map.keys(@sign_up_types), &Atom.to_string/1)
+  # The password and its confirmation are checked on the form (`change_sign_up/2`) and
+  # hashed into the account (`sign_up_user/3`); never kept in the form's changes, and never
+  # handed to the edition.
+  @sign_up_fields Enum.map(Map.keys(@sign_up_types), &Atom.to_string/1) ++
+                    ~w(password password_confirmation)
 
   @doc """
   sign_up_offer/1 is what a sign-up without an invitation may do on this instance now:
-  `:first`, the instance's first sign-up, while the instance has no organisation of its
-  own (`c:Apiary.Edition.instance_organisation_id/0`), which it creates; `:open`, a later
-  sign-up, which creates an organisation, where the edition opens one
-  (`c:Apiary.Edition.sign_up_open?/0`); `:closed`, where sign-up is by invitation only.
-  The sign-up page asks it on mount, and `sign_up_user/3` asks again, inside its
-  transaction, before it creates anything. `open:`, a boolean, stands in for the
-  edition's answer, for tests.
+  `:not_set_up` while the instance has no organisation of its own
+  (`c:Apiary.Edition.instance_organisation_id/0`), which only its set-up link makes
+  (`Apiary.Setup`), so nobody signs up before it; `:open`, a sign-up that creates an
+  organisation, where the edition opens one (`c:Apiary.Edition.sign_up_open?/0`);
+  `:closed`, where sign-up is by invitation only. The sign-up page asks it on mount, and
+  `sign_up_user/3` asks again, inside its transaction, before it creates anything.
+  `open:`, a boolean, stands in for the edition's answer, for tests.
   """
-  @spec sign_up_offer(keyword) :: :first | :open | :closed
+  @spec sign_up_offer(keyword) :: :not_set_up | :open | :closed
   def sign_up_offer(opts \\ []) do
     cond do
-      not instance_claimed?() -> :first
+      not instance_claimed?() -> :not_set_up
       open?(opts) -> :open
       true -> :closed
     end
@@ -660,10 +719,10 @@ defmodule Apiary.Organisations do
 
   @doc """
   sign_up_offered?/0 says whether a sign-up without an invitation is offered at all: on
-  an instance without its first user yet, and where the edition opens one.
+  an instance that is set up, where the edition opens one.
   """
   @spec sign_up_offered?() :: boolean
-  def sign_up_offered?, do: sign_up_offer() != :closed
+  def sign_up_offered?, do: sign_up_offer() == :open
 
   defp open?(opts), do: Keyword.get_lazy(opts, :open, &Edition.sign_up_open?/0)
 
@@ -678,6 +737,15 @@ defmodule Apiary.Organisations do
   form does while it is typed in. An edition whose sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
+
+  **The password.** `password` and `password_confirmation` are checked as an account's
+  password is (`Apiary.Accounts.User.password_changeset/3`: 12 to 72 characters, and
+  72 bytes at most, the confirmation the same), with their errors on those fields. They
+  are never kept in the changeset's changes. `password: :required` asks for one, as a
+  person's sign-up does while the instance sends no email (`Apiary.Mail.configured?/0`);
+  `password: :none` leaves them out, as a person's sign-up does once the instance sends
+  email; `password: :optional` checks one only when it is given, as the instance's own
+  sign-up does. The default is the person's, by the instance's mail.
   """
   @spec change_sign_up(map, keyword) :: Ecto.Changeset.t()
   def change_sign_up(attrs \\ %{}, opts \\ []) do
@@ -689,6 +757,7 @@ defmodule Apiary.Organisations do
       |> Ecto.Changeset.cast(attrs, Map.keys(@sign_up_types))
       |> Ecto.Changeset.update_change(:organisation_name, &String.trim/1)
       |> copy_errors(user)
+      |> check_password(attrs, Keyword.get_lazy(opts, :password, &password_rule/0))
 
     if Keyword.get(opts, :invited, false) do
       form
@@ -699,13 +768,56 @@ defmodule Apiary.Organisations do
   end
 
   # The errors of the account's or the organisation's changeset, on the form's fields: the
-  # address on `email`, the organisation's name and slug on `organisation_name`, and
-  # anything else on `email`, which is where the form says it could not sign up.
+  # address on `email`, the password and its confirmation on theirs, the organisation's
+  # name and slug on `organisation_name`, and anything else on `email`, which is where the
+  # form says it could not sign up.
   defp copy_errors(form, %Ecto.Changeset{errors: errors}) do
     Enum.reduce(errors, form, fn {field, {message, keys}}, form ->
-      field = if field in [:name, :slug], do: :organisation_name, else: :email
+      field =
+        cond do
+          field in [:name, :slug] -> :organisation_name
+          field in [:password, :password_confirmation] -> field
+          true -> :email
+        end
+
       Ecto.Changeset.add_error(form, field, message, keys)
     end)
+  end
+
+  # Whether a person's sign-up takes a password: while the instance sends no email, a
+  # password is the account's only way in; once it sends email, the address is confirmed
+  # by a link before the account has any, so none is taken.
+  defp password_rule, do: if(Apiary.Mail.configured?(), do: :none, else: :required)
+
+  # The password's errors on the form, checked on an account's password changeset without
+  # hashing it, with the 72 bytes the hashing checks; an optional one only when it is
+  # given, and none at all for `:none`.
+  defp check_password(form, _attrs, :none), do: form
+
+  defp check_password(form, attrs, rule) do
+    if rule == :required or password_given?(attrs),
+      do: copy_errors(form, checked_password(attrs)),
+      else: form
+  end
+
+  defp checked_password(attrs) do
+    changeset = User.password_changeset(%User{}, password_attrs(attrs), hash_password: false)
+
+    if changeset.valid?,
+      do: Ecto.Changeset.validate_length(changeset, :password, max: 72, count: :bytes),
+      else: changeset
+  end
+
+  defp password_given?(attrs),
+    do: Enum.any?(Map.values(password_attrs(attrs)), &(is_binary(&1) and &1 != ""))
+
+  # The password and its confirmation, of a form's string keys or a caller's atom keys.
+  defp password_attrs(attrs) do
+    for field <- [:password, :password_confirmation],
+        value = Map.get(attrs, field, Map.get(attrs, Atom.to_string(field))),
+        not is_nil(value),
+        into: %{},
+        do: {field, value}
   end
 
   @doc """
@@ -718,9 +830,15 @@ defmodule Apiary.Organisations do
 
   - **The instance's first sign-up** creates the instance's own organisation, whose
     owners run the instance (`Apiary.Access.instance_admin?/1`): its owner is the
-    instance's first admin. The edition is told so (`:first_sign_up`). Of two first
-    sign-ups at once, one takes the instance's first-sign-up lock and creates it; the
-    other waits for the lock, finds it, and is a later sign-up.
+    instance's first admin. The edition is told so (`:first_sign_up`). It is the
+    set-up's (`Apiary.Setup.set_up/3`) or a release command's, with `first_only: true`
+    and `actor: :instance`; any other sign-up before it is refused with
+    `{:error, :not_set_up}`. It marks the set-up code used, in its transaction
+    (`Apiary.Setup`); with `setup_code:`, the set-up's, it checks that code
+    first, under the row's lock, and is `{:error, :invalid_code}` when it is not the
+    stored one. Of two first sign-ups at once, one takes the instance's first-sign-up
+    lock and creates it; the other waits for the lock, finds it, and is
+    `{:error, :instance_claimed}`.
   - **A later sign-up** creates an organisation where the edition opens one, and the
     edition is told so, with what the form sent beyond the core's fields, with string
     keys (`{:sign_up, extra}`): an edition may ask more of the form, and refuse it on
@@ -746,12 +864,24 @@ defmodule Apiary.Organisations do
   organisation, with `details.sign_up` true, `invitation.accept` for an invitation, from
   `origin:` (see `Apiary.Accounts.Scope.put_origin/2`), the request's address and client.
 
+  **The password.** `password`, with `password_confirmation`, is the account's password,
+  checked as `change_sign_up/2` checks it and hashed into the account. A person's sign-up
+  needs one while the instance sends no email (`Apiary.Mail.configured?/0`), since it is
+  then the account's only way in. Once the instance sends email, a person's sign-up takes
+  none, and drops one sent all the same: the address is confirmed by a link before the
+  account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
+  `password: :required` asks for one whatever the mail, as the set-up page does.
+  Either way the account is unconfirmed until a log-in link sent to its address is
+  followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
+  sign-up takes the invitation's address, whatever `email` says: the link is the
+  inviter's word for it.
+
   `first_only: true` creates the instance's organisation or nothing, for
-  `Apiary.Release.grant_instance_admin/2` on an instance nobody has signed up to:
-  `{:error, :instance_claimed}` once the instance has one, a web sign-up that came first
-  included. `actor: :instance` records the sign-up as the instance's, from `origin:`,
-  rather than the new user's: a release command made it. The entry names the user by id
-  either way.
+  `Apiary.Setup.set_up/3` and `Apiary.Release.grant_instance_admin/2` on an instance
+  that is not set up: `{:error, :instance_claimed}` once the instance has one, a set-up
+  that came first included. `actor: :instance` records the sign-up as the instance's,
+  from `origin:`, rather than the new user's: the set-up or a release command made it.
+  The entry names the user by id either way.
 
   `opts` is also for tests: `pick_slug: fun`, given the organisation's name, stands in for
   the pick of a free slug, and `open:`, a boolean, for the edition's answer to whether a
@@ -765,23 +895,60 @@ defmodule Apiary.Organisations do
              workspace: %Workspace{},
              membership: %Membership{}
            }}
-          | {:error, Ecto.Changeset.t() | :instance_claimed}
+          | {:error, Ecto.Changeset.t() | :instance_claimed | :not_set_up | :invalid_code}
   def sign_up_user(attrs, invitation_or_token \\ nil, opts \\ []) do
-    origin = Keyword.get(opts, :origin)
     invitation = pending_invitation(invitation_or_token)
+
+    # Before set-up the one sign-up is the instance's first, its set-up's or a release
+    # command's; asked again inside the transaction.
+    if match?(%Invitation{}, invitation) or setting_up?(opts) or instance_claimed?(),
+      do: sign_up(attrs, invitation, opts),
+      else: {:error, :not_set_up}
+  end
+
+  defp sign_up(attrs, invitation, opts) do
+    origin = Keyword.get(opts, :origin)
     invited? = match?(%Invitation{}, invitation)
+    mail? = Apiary.Mail.configured?()
 
     offered? =
       invited? or Keyword.get(opts, :first_only, false) or sign_up_offer(opts) != :closed
 
+    # The instance's own sign-up (a release command's, the set-up's) takes a password
+    # when it is given one. A person's needs one while the instance sends no email, and
+    # takes none once it does: its address is confirmed by a link first, so a password
+    # sent all the same is dropped. `password:` says otherwise, as the set-up page does.
+    password =
+      Keyword.get_lazy(opts, :password, fn ->
+        cond do
+          Keyword.get(opts, :actor, :person) == :instance -> :optional
+          mail? -> :none
+          true -> :required
+        end
+      end)
+
+    attrs =
+      if password == :none,
+        do:
+          Map.drop(attrs, [:password, :password_confirmation | ~w(password password_confirmation)]),
+        else: attrs
+
+    # Without mail, the invitation's link is the inviter's word for its address: the
+    # account takes it, whatever the form sent.
+    attrs = if invited? and not mail?, do: put_email(attrs, invitation.email), else: attrs
+
     form =
       attrs
-      |> change_sign_up(invited: invited?, validate_unique: false)
+      |> change_sign_up(invited: invited?, validate_unique: false, password: password)
       |> refuse_closed_sign_up(offered?)
 
     if form.valid? do
       email = Ecto.Changeset.get_field(form, :email)
-      user_changeset = User.email_changeset(%User{}, %{email: email})
+
+      user_changeset =
+        %User{}
+        |> User.email_changeset(%{email: email})
+        |> put_password(attrs)
 
       multi =
         if invited?,
@@ -802,8 +969,11 @@ defmodule Apiary.Organisations do
           {:ok,
            %{user: user, organisation: organisation, workspace: workspace, membership: membership}}
 
-        {:error, :how, :instance_claimed, _changes} ->
-          {:error, :instance_claimed}
+        {:error, :how, reason, _changes} when reason in [:instance_claimed, :not_set_up] ->
+          {:error, reason}
+
+        {:error, :set_up, :invalid_code, _changes} ->
+          {:error, :invalid_code}
 
         {:error, :organisation, :slug_taken, _changes} ->
           {:error,
@@ -824,6 +994,21 @@ defmodule Apiary.Organisations do
     else
       {:error, Map.put(form, :action, :insert)}
     end
+  end
+
+  # The address of the form's attributes, under the key kind they use.
+  defp put_email(attrs, email) do
+    if Enum.any?(Map.keys(attrs), &is_atom/1),
+      do: attrs |> Map.delete("email") |> Map.put(:email, email),
+      else: Map.put(attrs, "email", email)
+  end
+
+  # The password, hashed into the account, once the form has checked it; none when none
+  # was given.
+  defp put_password(user_changeset, attrs) do
+    if password_given?(attrs),
+      do: User.password_changeset(user_changeset, password_attrs(attrs)),
+      else: user_changeset
   end
 
   defp refuse_closed_sign_up(form, true), do: form
@@ -853,6 +1038,13 @@ defmodule Apiary.Organisations do
 
     Ecto.Multi.new()
     |> Ecto.Multi.run(:how, fn _repo, _changes -> sign_up_how(extra, opts) end)
+    # The instance's first sign-up uses its set-up code: the link's, which it checks, or
+    # whatever code is stored, for a release command's (`Apiary.Setup.use_code/2`).
+    |> Ecto.Multi.run(:set_up, fn repo, %{how: how} ->
+      if how == :first_sign_up,
+        do: Apiary.Setup.use_code(repo, Keyword.get(opts, :setup_code)),
+        else: {:ok, nil}
+    end)
     |> Ecto.Multi.insert(:user, user_changeset)
     |> build_organisation(
       name: name,
@@ -865,11 +1057,13 @@ defmodule Apiary.Organisations do
 
   # What the sign-up is, decided inside its transaction: the instance's first while the
   # instance has no organisation of its own, read again under the first-sign-up lock, so
-  # of two first sign-ups one creates it; a later one where the edition opens one. The
-  # instance's organisation stays, so one seen without the lock is there.
+  # of two first sign-ups one creates it, and only for its set-up or a release command
+  # (`setting_up?/1`); a later one where the edition opens one. The instance's
+  # organisation stays, so one seen without the lock is there.
   defp sign_up_how(extra, opts) do
     cond do
-      not instance_claimed?() -> first_sign_up_how(extra, opts)
+      not instance_claimed?() and setting_up?(opts) -> first_sign_up_how()
+      not instance_claimed?() -> {:error, :not_set_up}
       Keyword.get(opts, :first_only, false) -> {:error, :instance_claimed}
       true -> later_sign_up_how(extra, opts)
     end
@@ -877,15 +1071,16 @@ defmodule Apiary.Organisations do
 
   # The instance's first-sign-up lock, for the transaction, then a second look: of two
   # first sign-ups at once, one creates the instance's organisation and the other sees it.
-  defp first_sign_up_how(extra, opts) do
+  defp first_sign_up_how do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended('apiary:first-sign-up', 0))")
 
-    cond do
-      not instance_claimed?() -> {:ok, :first_sign_up}
-      Keyword.get(opts, :first_only, false) -> {:error, :instance_claimed}
-      true -> later_sign_up_how(extra, opts)
-    end
+    if instance_claimed?(), do: {:error, :instance_claimed}, else: {:ok, :first_sign_up}
   end
+
+  # The instance's first sign-up is its set-up's (`Apiary.Setup.set_up/3`) or a release
+  # command's: the instance's, and that sign-up only.
+  defp setting_up?(opts),
+    do: Keyword.get(opts, :first_only, false) and Keyword.get(opts, :actor) == :instance
 
   defp later_sign_up_how(extra, opts) do
     if open?(opts),
@@ -1278,6 +1473,20 @@ defmodule Apiary.Organisations do
         order_by: [asc: w.name, asc: w.id]
     )
   end
+
+  @doc """
+  lists_workspaces?/1 says whether the scope's person sees the workspaces of the scope's
+  organisation in its settings, under Workspaces: whoever may rename one or delete one
+  (`workspace.rename`, `workspace.delete`), asked of the organisation. In the core's
+  edition an owner or an admin. Each control there asks its own action.
+  """
+  @spec lists_workspaces?(Scope.t() | nil) :: boolean
+  def lists_workspaces?(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    Access.can?(scope, :"workspace.rename", organisation) or
+      Access.can?(scope, :"workspace.delete", organisation)
+  end
+
+  def lists_workspaces?(_scope), do: false
 
   ## Members
 
@@ -1945,23 +2154,31 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  Invites an email address to the scope's workspace and emails the link built by
-  `url_fun.(token)` (`member.invite`): the invitation is sent from the workspace, and
-  grants it. An invitation is the address and nothing else: its person joins as a member,
-  and an owner changes their level afterwards; `attrs` gives `email` and nothing else is
-  read. An owner or an admin invites; `{:error, :forbidden}` for a member. The inviter's
-  account is confirmed, as signing in confirms it: `{:error, :unconfirmed}` otherwise.
+  Invites an email address to the scope's workspace (`member.invite`), with the link built
+  by `url_fun.(token)`: the invitation is sent from the workspace, and grants it. An
+  invitation is the address and nothing else: its person joins as a member, and an owner
+  changes their level afterwards; `attrs` gives `email` and nothing else is read. An owner
+  or an admin invites; `{:error, :forbidden}` for a member.
+
+  **With mail** (`Apiary.Mail.configured?/0`) the link is emailed, `{:ok, invitation}`, and
+  the inviter's account is confirmed, as signing in with a mailed link confirms it:
+  `{:error, :unconfirmed}` otherwise. **Without mail** nothing is sent: the invitation is
+  kept, and its link is handed back for the inviter to copy and send themselves,
+  `{:ok, invitation, {:link, url}}`, whether or not their account is confirmed, since no
+  mail goes out in their name. The token is in that link and nowhere else: only its hash
+  is stored, so the link cannot be shown again; `renew_invitation/4` makes a new one.
 
   Refused with an error on `:email`: an address that already belongs to a member of the
   organisation; an address with a pending invitation; an organisation with
-  #{@max_pending_invitations} pending invitations; and an organisation that has sent
+  #{@max_pending_invitations} pending invitations; and an organisation that has made
   `Apiary.Instance.invitations_per_day/0` invitations in the last 24 hours, which says how
   many it may. That count is of the entries of the invitations counted against its
-  allowance (`details.allowance_id`), in a rolling window by the database's clock, so an
-  invitation accepted, revoked or deleted since still counts; one withdrawn because its
-  email could not be delivered does not, as no mail was sent. Every invitation tried in
-  those 24 hours, delivered or not, counts against #{@attempts_per_invitation} times as
-  many, refused the same way when they are reached. Each organisation has its own
+  allowance (`details.allowance_id`), a link copied, or made again with
+  `renew_invitation/4`, as much as one emailed, in a rolling window by the database's
+  clock, so an invitation accepted, revoked or deleted since still counts; one withdrawn
+  because its email could not be delivered does not, as no mail was sent. Every invitation
+  tried in those 24 hours, delivered or not, counts against #{@attempts_per_invitation}
+  times as many, refused the same way when they are reached. Each organisation has its own
   allowance; an invitation the edition sends from another organisation counts against
   the one it names (`insert_invitation/3`). The organisation's row is locked while the
   invitation is counted and written, so two at once cannot both be the last one
@@ -1983,6 +2200,7 @@ defmodule Apiary.Organisations do
   """
   @spec invite_member(Scope.t(), map, (String.t() -> String.t())) ::
           {:ok, %Invitation{}}
+          | {:ok, %Invitation{}, {:link, String.t()}}
           | {:error,
              Ecto.Changeset.t()
              | :not_found
@@ -1993,18 +2211,19 @@ defmodule Apiary.Organisations do
   def invite_member(%Scope{} = scope, attrs, url_fun) when is_function(url_fun, 1) do
     %Scope{user: inviter, organisation: organisation, workspace: workspace} = scope
     {changeset, token} = new_invitation(scope, attrs)
+    mail? = Mail.configured?()
 
     # Asked of the invitation as it would be: its workspace. An organisation's page without
     # a workspace has none to send it from.
     with %Workspace{} <- workspace || {:error, :not_found},
          :ok <-
            Access.authorize(scope, :"member.invite", Ecto.Changeset.apply_changes(changeset)),
-         :ok <- ensure_confirmed(inviter),
+         :ok <- ensure_confirmed(inviter, mail?),
          {:ok, invitation} <-
            Repo.transact(fn ->
              write_invitation(scope, changeset, :"member.invite", organisation)
            end) do
-      send_invitation(scope, invitation, token, url_fun)
+      hand_over(scope, invitation, token, url_fun, mail?)
     end
   end
 
@@ -2015,9 +2234,10 @@ defmodule Apiary.Organisations do
   records, `member.invite` unless the edition's; `allowance:`, the organisation whose
   allowance of invitations it counts against, the scope's unless another, whose row is
   locked `FOR NO KEY UPDATE` while it is counted, and which refuses while it is out of use
-  (`c:Apiary.Edition.active_organisations/2`). The inviter's account is confirmed,
-  `{:error, :unconfirmed}` otherwise. The entry names the allowance,
-  `details.allowance_id`.
+  (`c:Apiary.Edition.active_organisations/2`). With mail (`Apiary.Mail.configured?/0`) the
+  inviter's account is confirmed, `{:error, :unconfirmed}` otherwise; without mail it
+  need not be, as `invite_member/3` says. The entry names the allowance,
+  `details.allowance_id`, which `renew_invitation/4` charges again.
 
   `{:ok, invitation, token}`, the token for `send_invitation/4` once the transaction has
   committed; `{:error, changeset}` for the refusals of `invite_member/3`, and
@@ -2032,36 +2252,206 @@ defmodule Apiary.Organisations do
     {changeset, token} = new_invitation(scope, attrs)
 
     with %Workspace{} <- scope.workspace || {:error, :not_found},
-         :ok <- ensure_confirmed(scope.user),
+         :ok <- ensure_confirmed(scope.user, Mail.configured?()),
          {:ok, invitation} <- write_invitation(scope, changeset, action, allowance) do
       {:ok, invitation, token}
     end
   end
 
   @doc """
-  send_invitation/4 emails `invitation`, written by `invite_member/3` or
-  `insert_invitation/3`, the link built by `url_fun.(token)`, once its transaction has
-  committed, so no transaction waits on the mail relay. `{:ok, invitation}` when it was
-  sent. One that could not be delivered is withdrawn, as `invite_member/3` says:
-  `{:error, :delivery_failed}`, or `{:error, :delivery_failed_pending}` should the
-  withdrawal fail too; one accepted meanwhile is `{:ok, invitation}`.
+  send_invitation/4 hands over `invitation`, written by `invite_member/3` or
+  `insert_invitation/3`, with the link built by `url_fun.(token)`, once its transaction has
+  committed, so no transaction waits on the mail relay. With mail
+  (`Apiary.Mail.configured?/0`, asked as it is sent) the link is emailed:
+  `{:ok, invitation}` when it was sent. One that could not be delivered is withdrawn, as
+  `invite_member/3` says: `{:error, :delivery_failed}`, or
+  `{:error, :delivery_failed_pending}` should the withdrawal fail too; one accepted
+  meanwhile is `{:ok, invitation}`. Mail needs the inviter's account confirmed, asked as
+  it is sent too, since mail may have been set after the invitation was written: one
+  that is not gets `{:error, :unconfirmed}`, nothing is sent, and the invitation is
+  withdrawn the same way. Without mail nothing is sent and nothing withdrawn:
+  `{:ok, invitation, {:link, url}}`, the link for the inviter to copy, which the caller
+  shows once and keeps nowhere else.
   """
   @spec send_invitation(Scope.t(), %Invitation{}, String.t(), (String.t() -> String.t())) ::
-          {:ok, %Invitation{}} | {:error, :delivery_failed | :delivery_failed_pending}
+          {:ok, %Invitation{}}
+          | {:ok, %Invitation{}, {:link, String.t()}}
+          | {:error, :unconfirmed | :delivery_failed | :delivery_failed_pending}
   def send_invitation(%Scope{} = scope, %Invitation{} = invitation, token, url_fun)
-      when is_function(url_fun, 1) do
-    case deliver_invitation(invitation, scope.organisation, url_fun.(token)) do
-      :ok ->
-        {:ok, invitation}
+      when is_function(url_fun, 1),
+      do: hand_over(scope, invitation, token, url_fun, Mail.configured?())
 
-      :error ->
+  # The invitation emailed, with mail, or its link handed back, without.
+  defp hand_over(_scope, invitation, token, url_fun, false = _mail?),
+    do: {:ok, invitation, {:link, url_fun.(token)}}
+
+  # Mailed, it needs a confirmed inviter, asked as it is sent: mail may have been set
+  # since the invitation was written without it (`insert_invitation/3`). Refused, it is
+  # withdrawn as one undelivered is, as nothing was sent.
+  defp hand_over(scope, invitation, token, url_fun, true = _mail?) do
+    with :ok <- ensure_confirmed(scope.user, true),
+         :ok <- deliver_invitation(invitation, scope.organisation, url_fun.(token)) do
+      {:ok, invitation}
+    else
+      refused_or_undelivered ->
         # An invitation nobody received must not occupy the pending slot.
         case withdraw_undelivered(scope, invitation) do
           {:ok, {:accepted, accepted}} -> {:ok, accepted}
-          {:ok, _withdrawn_or_gone} -> {:error, :delivery_failed}
-          {:error, _reason} -> {:error, :delivery_failed_pending}
+          {:ok, _withdrawn_or_gone} -> undelivered(refused_or_undelivered, :delivery_failed)
+          {:error, _reason} -> undelivered(refused_or_undelivered, :delivery_failed_pending)
         end
     end
+  end
+
+  defp undelivered({:error, :unconfirmed} = refused, _reason), do: refused
+  defp undelivered(:error, reason), do: {:error, reason}
+
+  @doc """
+  renew_invitation/4 makes a new link for the pending invitation `invitation_id` of the
+  scope's organisation (`invitation.renew`), for one whose link was lost: the same
+  invitation, a new token and #{Invitation.validity_days()} days again from now. Only the
+  new token's hash is stored, so the old link stops working at once. An owner or an admin
+  renews any pending invitation of the organisation, whoever sent it and whichever
+  workspace it grants; the edition may let others (`c:Apiary.Edition.check/3`).
+
+  It counts as an invitation made: against the allowance the invitation was counted
+  against when it was made, the one its latest entry names (`details.allowance_id`),
+  whichever organisation the scope's person acts from, and refused as `invite_member/3`
+  refuses one over the day's limit, `{:error, changeset}` with the same error on
+  `:email`. Its entry is an `invitation.renew` in the invitation's organisation's trail,
+  by the scope's person, naming that allowance. The allowance's organisation row is
+  locked `FOR NO KEY UPDATE` first, then the invitation's `FOR UPDATE`.
+
+  Then the link is handed over as `send_invitation/4` hands over an invitation's: without
+  mail, `{:ok, invitation, {:link, url}}`, the link built by `url_fun.(token)`, to show
+  once. With mail it is emailed, `{:ok, invitation}`, the inviter's account confirmed,
+  `{:error, :unconfirmed}` otherwise; one that could not be delivered stays pending, as
+  the old link is gone already: `{:error, :delivery_failed_pending}`, for an owner to
+  renew again or revoke. `{:error, :not_found}` for an invitation that is not a pending
+  one of the organisation, accepted, revoked or expired meanwhile included;
+  `{:error, :forbidden}` for whom `Apiary.Access` refuses, and for an allowance out of use.
+
+  **With `action:`**, for a caller that asked `Apiary.Access` itself, as
+  `insert_invitation/3`'s does: `invitation.renew` is not asked, and the entry records
+  `action` in its place, in the same trail, by the same person, naming the same
+  allowance. The renewal is still charged to the allowance the invitation was counted
+  against; there is no `allowance:`. The inviter's account is confirmed with mail, and
+  the day's limit refuses, as without. Nothing is sent: `{:ok, invitation, token}`, the
+  token for `send_invitation/4` once the caller's transaction has committed, so no
+  transaction waits on the mail relay. Should `send_invitation/4` then fail to deliver
+  it, it withdraws the invitation as it withdraws a new one, `{:error, :delivery_failed}`;
+  without `action:` an undelivered renewal stays pending instead. Called inside the
+  caller's own `Repo.transact/2`, it joins that transaction, and the caller may hold the
+  allowance's organisation row already; a refusal then rolls the caller's back.
+  """
+  @spec renew_invitation(Scope.t(), term, (String.t() -> String.t()), keyword) ::
+          {:ok, %Invitation{}}
+          | {:ok, %Invitation{}, {:link, String.t()}}
+          | {:ok, %Invitation{}, String.t()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :not_found
+             | :forbidden
+             | :unconfirmed
+             | :delivery_failed_pending}
+  def renew_invitation(scope, invitation_id, url_fun, opts \\ [])
+
+  def renew_invitation(
+        %Scope{organisation: %Organisation{}} = scope,
+        invitation_id,
+        url_fun,
+        opts
+      )
+      when is_function(url_fun, 1) and is_list(opts) do
+    action = Keyword.get(opts, :action)
+    {token, token_hash} = Invitation.build_token()
+    mail? = Mail.configured?()
+
+    Repo.transact(fn ->
+      # The lock order (docs/access.md): the allowance's organisation row first, then the
+      # invitation's. Read once, without a lock, to find the allowance, then again under
+      # its lock.
+      with %Invitation{} = found <-
+             Repo.one(pending_invitation_query(scope, invitation_id, false)) ||
+               {:error, :not_found},
+           :ok <- authorize_renewal(scope, action, found),
+           :ok <- ensure_confirmed(scope.user, mail?),
+           %Organisation{} = allowance <- allowance_of(found),
+           :ok <- lock_allowance(allowance),
+           %Invitation{} = invitation <-
+             Repo.one(pending_invitation_query(scope, found.id)) || {:error, :not_found},
+           true <- Invitation.pending?(invitation) || {:error, :not_found},
+           %Ecto.Changeset{valid?: true} <-
+             invitation |> Ecto.Changeset.change() |> refuse_over_daily_limit(allowance),
+           {:ok, renewed} <-
+             invitation
+             |> Ecto.Changeset.change(
+               token_hash: token_hash,
+               expires_at: DateTime.add(DateTime.utc_now(), Invitation.validity_days(), :day)
+             )
+             |> Repo.update(),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, action || :"invitation.renew", renewed, %{
+               details: %{allowance_id: allowance.id}
+             }) do
+        {:ok, renewed}
+      else
+        %Ecto.Changeset{} = changeset -> {:error, %{changeset | action: :update}}
+        {:error, _reason} = error -> error
+      end
+    end)
+    |> case do
+      # The caller hands it over once its transaction has committed.
+      {:ok, renewed} when not is_nil(action) -> {:ok, renewed, token}
+      {:ok, renewed} -> hand_over_renewed(scope, renewed, token, url_fun, mail?)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def renew_invitation(_scope, _invitation_id, _url_fun, _opts), do: {:error, :not_found}
+
+  # Asked of `Apiary.Access` here, unless the caller asked it for an action of its own.
+  defp authorize_renewal(scope, nil = _action, invitation),
+    do: Access.authorize(scope, :"invitation.renew", invitation)
+
+  defp authorize_renewal(_scope, _action, _invitation), do: :ok
+
+  # A renewed invitation's new link, handed over as a new invitation's. Emailed and
+  # undelivered, it is not withdrawn: its old link is gone, and it stays pending for an
+  # owner to renew again or revoke.
+  defp hand_over_renewed(scope, renewed, token, url_fun, true = _mail?) do
+    case deliver_invitation(renewed, scope.organisation, url_fun.(token)) do
+      :ok -> {:ok, renewed}
+      :error -> {:error, :delivery_failed_pending}
+    end
+  end
+
+  defp hand_over_renewed(scope, renewed, token, url_fun, false = mail?),
+    do: hand_over(scope, renewed, token, url_fun, mail?)
+
+  # The organisation whose allowance the invitation was counted against: the one its
+  # latest entry that names one says, `member.invite`, the edition's, or a renewal's, in
+  # the invitation's organisation's trail; the invitation's own organisation should the
+  # trail no longer hold one.
+  defp allowance_of(%Invitation{organisation_id: organisation_id} = invitation) do
+    allowance_id =
+      Repo.one(
+        counted_entries(invitation)
+        |> select([e], fragment("?->>'allowance_id'", e.details))
+        |> limit(1)
+      ) || organisation_id
+
+    Repo.get(Organisation, allowance_id) || {:error, :forbidden}
+  end
+
+  # The invitation's entries that counted it against an allowance, each naming the one it
+  # was counted against: the latest first.
+  defp counted_entries(%Invitation{id: id, organisation_id: organisation_id}) do
+    from e in Apiary.Audit.Entry,
+      where: e.organisation_id == ^organisation_id and e.subject_id == ^id,
+      where: e.subject_kind == "invitation",
+      where: fragment("? \\? 'allowance_id'", e.details),
+      order_by: [desc: e.inserted_at, desc: e.id]
   end
 
   # A new invitation to the scope's workspace, by the scope's person, and its URL token.
@@ -2132,7 +2522,7 @@ defmodule Apiary.Organisations do
           with {:ok, _deleted} <- Repo.delete(pending),
                {:ok, _entry} <-
                  Audit.record(Repo, scope, :"invitation.revoke", pending, %{
-                   details: %{reason: "undelivered"}
+                   details: undelivered_details(pending)
                  }) do
             {:ok, :withdrawn}
           end
@@ -2157,6 +2547,15 @@ defmodule Apiary.Organisations do
       {:error, :not_withdrawn}
   end
 
+  # A withdrawal's reason, and the entry it undoes, `entry_id`: the one that counted the
+  # invitation's latest sending, which sent nothing (`refuse_over_daily_limit/2`).
+  defp undelivered_details(invitation) do
+    case Repo.one(counted_entries(invitation) |> select([e], e.id) |> limit(1)) do
+      nil -> %{reason: "undelivered"}
+      entry_id -> %{reason: "undelivered", entry_id: entry_id}
+    end
+  end
+
   # When the invitation was accepted, by its entry in the trail: an accepted invitation is
   # deleted, and the entry of its acceptance is what is left of it.
   defp accepted_at(%Invitation{id: id, organisation_id: organisation_id}) do
@@ -2179,10 +2578,12 @@ defmodule Apiary.Organisations do
     _exception -> :error
   end
 
-  # Signing in confirms an account, so an inviter who signed in is confirmed; said here
-  # all the same, since an invitation is mail the instance sends for them.
-  defp ensure_confirmed(%User{confirmed_at: %DateTime{}}), do: :ok
-  defp ensure_confirmed(_inviter), do: {:error, :unconfirmed}
+  # Signing in with a mailed link confirms an account; an invitation emailed is mail the
+  # instance sends for the inviter, so it needs one whose address is confirmed. Without
+  # mail nothing is sent for them, and an unconfirmed account makes a link to copy.
+  defp ensure_confirmed(_inviter, false = _mail?), do: :ok
+  defp ensure_confirmed(%User{confirmed_at: %DateTime{}}, true = _mail?), do: :ok
+  defp ensure_confirmed(_inviter, true = _mail?), do: {:error, :unconfirmed}
 
   # The organisation whose allowance the invitation counts against, or whose workspaces a
   # creation counts, its row locked `FOR NO KEY UPDATE`: two invitations of one allowance,
@@ -2219,7 +2620,10 @@ defmodule Apiary.Organisations do
     attempts_limit = limit * @attempts_per_invitation
 
     # Its withdrawal, in the invitation's workspace and after it: on the trail's index of
-    # `(workspace_id, subject_id, inserted_at)`.
+    # `(workspace_id, subject_id, inserted_at)`. A withdrawal names the entry it undoes,
+    # `details.entry_id`, and undoes that one alone: an invitation sent, then renewed and
+    # withdrawn, still counts once. One written before withdrawals named it undoes every
+    # earlier entry of its invitation.
     undelivered =
       from r in Apiary.Audit.Entry,
         where: r.workspace_id == parent_as(:invite).workspace_id,
@@ -2227,7 +2631,14 @@ defmodule Apiary.Organisations do
         where: r.inserted_at >= parent_as(:invite).inserted_at,
         where: r.organisation_id == parent_as(:invite).organisation_id,
         where: r.action == "invitation.revoke",
-        where: fragment("?->>'reason'", r.details) == "undelivered"
+        where: fragment("?->>'reason'", r.details) == "undelivered",
+        where:
+          fragment(
+            "NOT (? \\? 'entry_id') OR ?->>'entry_id' = ?::text",
+            r.details,
+            r.details,
+            parent_as(:invite).id
+          )
 
     # Only an invitation's entry names an allowance: the index of the entries that do
     # answers the count.
@@ -2248,7 +2659,7 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: this organisation has sent %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+            "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
           ),
           limit: limit,
           validation: :invitations_per_day
@@ -2370,12 +2781,20 @@ defmodule Apiary.Organisations do
     end)
   end
 
-  defp pending_invitation_query(%Scope{organisation: %Organisation{id: organisation_id}}, id) do
+  # The organisation's invitation `id`, not accepted, locked `FOR UPDATE` unless `lock?` is
+  # false.
+  defp pending_invitation_query(
+         %Scope{organisation: %Organisation{id: organisation_id}},
+         id,
+         lock? \\ true
+       ) do
     case Ecto.UUID.cast(id) do
       {:ok, id} ->
-        from i in Invitation,
-          where: i.id == ^id and i.organisation_id == ^organisation_id and is_nil(i.accepted_at),
-          lock: "FOR UPDATE"
+        query =
+          from i in Invitation,
+            where: i.id == ^id and i.organisation_id == ^organisation_id and is_nil(i.accepted_at)
+
+        if lock?, do: lock(query, "FOR UPDATE"), else: query
 
       :error ->
         from i in Invitation, where: false
@@ -2423,7 +2842,7 @@ defmodule Apiary.Organisations do
   transaction, so it makes one membership however many callers hold it: the others get
   `{:error, :invalid}`, and so does an account deleted meanwhile, or an invitation whose
   organisation or workspace was marked for deletion, or whose organisation the edition
-  stopped. The token is the check: nobody's role is asked. A user alone, not a scope, is
+  stopped, or that was renewed since it was found, whose old link no longer works. The token is the check: nobody's role is asked. A user alone, not a scope, is
   accepted as a scope without an origin.
   """
   @spec accept_invitation(%User{} | Scope.t(), %Invitation{} | String.t()) ::
@@ -2502,8 +2921,10 @@ defmodule Apiary.Organisations do
   # undelivered invitation, lock the same row. The organisation is held already
   # (`lock_open_organisation/1`), so its marking, and what the edition stops, wait for the
   # claim, or came first and are seen; the workspace's `FOR KEY SHARE` holds it against
-  # its purge's deletion, and its marking is read as the claim finds it.
-  defp claim_invitation(%Invitation{id: id}) do
+  # its purge's deletion, and its marking is read as the claim finds it. It is claimed by
+  # the token it was found by: renewed since (`renew_invitation/4`), it has another, and
+  # the old link claims nothing.
+  defp claim_invitation(%Invitation{id: id, token_hash: token_hash}) do
     now = DateTime.utc_now()
 
     claim =
@@ -2511,7 +2932,8 @@ defmodule Apiary.Organisations do
         join: o in assoc(i, :organisation),
         as: :organisation,
         join: w in assoc(i, :workspace),
-        where: i.id == ^id and is_nil(i.accepted_at) and i.expires_at > ^now,
+        where: i.id == ^id and i.token_hash == ^token_hash,
+        where: is_nil(i.accepted_at) and i.expires_at > ^now,
         where: is_nil(o.deletion_marked_at) and is_nil(w.deletion_marked_at),
         lock: fragment("FOR UPDATE OF ? FOR KEY SHARE OF ?, ?", i, o, w)
       )

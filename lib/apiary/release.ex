@@ -11,8 +11,10 @@ defmodule Apiary.Release do
   one the instance's first user signed up with
   (`c:Apiary.Edition.instance_organisation_id/0`, `Apiary.Access.instance_admin?/1`):
   `grant_instance_admin/2` and `revoke_instance_admin/1` make and unmake one, for a
-  scripted install, which claims a fresh instance, and for recovery when none is left. An
-  edition's own commands run the way these do (`run/1`).
+  scripted install, which claims a fresh instance, and for recovery when none is left.
+  `password_link/1` prints a one-time link that sets an account's password.
+  `accept_signing_key/0` records a new signing key's fingerprint, for the boot's key
+  check (`Apiary.KeyCheck`). An edition's own commands run the way these do (`run/1`).
   """
   @app :apiary
 
@@ -189,18 +191,22 @@ defmodule Apiary.Release do
   signs up with an invitation, or at the sign-up page where the instance allows it, first.
   Prints what it did and returns `{:ok, membership}` or `{:error, reason}`.
 
-  On an instance nobody has signed up to yet it claims the instance instead, before its
-  address is public: it is the instance's first sign-up, with `email` and
-  `organisation_name`, which creates the instance's organisation, its workspace Main and
-  the account as its owner, and sends the account its log-in link, as the sign-up page does;
-  `{:ok, :created}`. Should the mail not go out, the instance is claimed all the same, the
-  output says so, without the address or the link, and says to ask for a link at
-  `/users/log-in`: `{:ok, :created_without_mail}`. With `MAIL_TO_LOG=true` the message,
-  its link included, is written to the command's output, as it is to the log.
+  On an instance that is not set up yet it sets the instance up instead, from a shell, in
+  place of its set-up link (`Apiary.Setup`): it is the instance's first sign-up, with
+  `email` and `organisation_name`, which creates the instance's organisation, its
+  workspace Main and the account as its owner, and marks the set-up code used, so the
+  link works no more. With mail (`Apiary.Mail.configured?/0`) it sends the account its
+  log-in link, as the sign-up page does; `{:ok, :created}`. Should that mail not go out,
+  the instance is set up all the same, the output says so, without the address or the
+  link, and says to ask for a link at `/users/log-in`: `{:ok, :created_without_mail}`.
+  Without mail it prints a password link for the account instead, which works once, for an
+  hour (`password_link/1`), and never the address: `{:ok, :created_without_mail}`.
   `bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'`.
   The organisation's name is required then, `{:error, :organisation_name_required}`
-  without it. Should a sign-up on the web have come first, the command does what it does
+  without it. Should the set-up link have been used first, the command does what it does
   on any instance that has its organisation.
+
+  The claim is `Apiary.Setup.claim/3`.
   """
   def grant_instance_admin(email, organisation_name \\ nil) when is_binary(email) do
     run(fn -> grant_instance_admin_now(String.trim(email), organisation_name) end)
@@ -222,32 +228,23 @@ defmodule Apiary.Release do
   end
 
   defp claim_instance(email, name) do
-    case Apiary.Organisations.sign_up_user(%{email: email, organisation_name: name}, nil,
-           first_only: true,
-           actor: :instance,
-           origin: %{worker: "Apiary.Release.grant_instance_admin/2"}
-         ) do
-      {:ok, %{user: user}} ->
-        case send_log_in_link(user) do
-          :ok ->
-            IO.puts(
-              "The account #{user.id} is the instance's first admin; " <>
-                "its log-in link is on its way."
-            )
+    case Apiary.Setup.claim(email, name, %{worker: "Apiary.Release.grant_instance_admin/2"}) do
+      {:ok, user, :sent} ->
+        IO.puts(Apiary.Setup.message(user, :sent))
+        {:ok, :created}
 
-            {:ok, :created}
-
-          :error ->
-            IO.puts(
-              "The account #{user.id} is the instance's first admin, but its log-in link " <>
-                "could not be sent. Check the mail settings, then ask for a link at " <>
-                "#{public_url()}/users/log-in."
-            )
-
-            {:ok, :created_without_mail}
+      # No mail is set: the log-in link had nowhere to go, and a password link takes its
+      # place, on this terminal.
+      {:ok, user, :not_sent} ->
+        if Apiary.Mail.configured?() do
+          IO.puts(Apiary.Setup.message(user, :not_sent))
+        else
+          print_password_link(user, :first_admin, "Apiary.Release.grant_instance_admin/2")
         end
 
-      # Someone signed up on the web a moment before: the instance has its admin.
+        {:ok, :created_without_mail}
+
+      # The set-up link was used a moment before: the instance has its admin.
       {:error, :instance_claimed} ->
         grant_existing(email)
 
@@ -255,20 +252,6 @@ defmodule Apiary.Release do
         IO.puts("Not created: #{changeset_errors(changeset)}.")
         {:error, :invalid}
     end
-  end
-
-  # The log-in link, sent as the sign-up page sends it. A failure says nothing of why: the
-  # relay's reason may quote the message, which holds the address and the link.
-  defp send_log_in_link(user) do
-    case Apiary.Accounts.deliver_login_instructions(
-           user,
-           &"#{public_url()}/users/log-in/#{&1}"
-         ) do
-      {:ok, _email} -> :ok
-      _error -> :error
-    end
-  rescue
-    _exception -> :error
   end
 
   defp grant_existing(email) do
@@ -292,24 +275,77 @@ defmodule Apiary.Release do
   end
 
   # A changeset's errors by field, with the messages and no value: the address stays off
-  # the terminal's scrollback.
+  # the terminal's scrollback. Each message is filled in by
+  # `Apiary.Setup.error_messages/1`, which never turns an option such as a list of
+  # fields into text.
   defp changeset_errors(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
+    |> Apiary.Setup.error_messages()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.map_join("; ", fn {field, messages} -> "#{field} #{Enum.join(messages, ", ")}" end)
   end
 
-  # The instance's address for a link in mail: the endpoint's, when it runs, else the one
-  # its configuration gives, as `bin/apiary eval` starts no endpoint.
+  @doc """
+  Prints a one-time link that sets the password of the account whose email address is
+  `email`, for whoever runs the instance, with shell access, when its person has lost
+  their password: `bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'`.
+  Whoever has the link may set the account's password, so it goes to that person alone.
+
+  It works once, for an hour, mail or not, and ends the account's link before, if any
+  (`Apiary.Accounts.build_password_link/3`); setting the password ends every session of
+  the account. An entry in the instance's organisation's trail, `account.password_link`,
+  by the instance. Prints the link and until when it works, never the address; returns
+  `{:ok, user_id}` or `{:error, reason}`.
+  """
+  def password_link(email) when is_binary(email) do
+    run(fn -> password_link_now(String.trim(email)) end)
+  end
+
+  defp password_link_now(email) do
+    with {:ok, user} <- account(email),
+         {:ok, _url} <- print_password_link(user, :account, "Apiary.Release.password_link/1"),
+         do: {:ok, user.id}
+  end
+
+  # A password link for `user`, by the instance, from `worker`, printed on the terminal of
+  # whoever runs the command, and nowhere else: neither the log nor the trail holds it.
+  defp print_password_link(user, why, worker) do
+    scope =
+      nil
+      |> Apiary.Accounts.Scope.for_instance()
+      |> Apiary.Accounts.Scope.put_origin(%{worker: worker})
+
+    case Apiary.Accounts.build_password_link(scope, user, &"#{public_url()}/users/password/#{&1}") do
+      {:ok, url, expires_at} ->
+        IO.puts(password_link_message(user, why, expires_at) <> "\n\n    " <> url <> "\n")
+        {:ok, url}
+
+      {:error, reason} ->
+        IO.puts("No password link was made: #{refusal(reason)}.")
+        {:error, reason}
+    end
+  end
+
+  defp password_link_message(user, :first_admin, expires_at),
+    do:
+      "The account #{user.id} is the instance's first admin. No mail is set, so it has " <>
+        "no log-in link: open this link to set its password. It works once, until " <>
+        "#{utc(expires_at)}."
+
+  defp password_link_message(user, :account, expires_at),
+    do:
+      "A password link for the account #{user.id}. It works once, until #{utc(expires_at)}; " <>
+        "send it to that person alone."
+
+  defp utc(at), do: Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+
+  # The instance's address for a link printed here: the endpoint's, when it runs, else the
+  # one its configuration gives, as `bin/apiary eval` has no endpoint running.
   defp public_url do
     if :persistent_term.get({Phoenix.Endpoint, ApiaryWeb.Endpoint}, nil) do
       ApiaryWeb.Endpoint.url()
     else
-      url = Application.get_env(@app, ApiaryWeb.Endpoint, [])[:url] || []
+      url = Application.get_env(:apiary, ApiaryWeb.Endpoint, [])[:url] || []
 
       URI.to_string(%URI{
         scheme: url[:scheme] || "https",
@@ -366,6 +402,29 @@ defmodule Apiary.Release do
       user ->
         {:ok, user}
     end
+  end
+
+  @doc """
+  Records the fingerprint of the current signing key, the one `APIARY_SIGNING_SECRET`
+  makes, as the instance's, for a change of signing key on purpose:
+  `bin/apiary eval 'Apiary.Release.accept_signing_key()'`. The boot's key check
+  (`Apiary.KeyCheck`) then starts with the new key, and every machine has to pin it again.
+  The way the docs give is `APIARY_ACCEPT_SIGNING_FINGERPRINT`, which the key check reads
+  at boot; this command stays for support. `eval` does not start the application, so the
+  check that refused the boot does not refuse this; and a refused boot leaves no running
+  container, so it runs in a one-off container of the same release. The check of
+  `APIARY_ENCRYPTION_SECRET` is left as it is. Prints the new fingerprint, public by
+  design, and returns `{:ok, fingerprint}`.
+  """
+  @spec accept_signing_key() :: {:ok, String.t()}
+  def accept_signing_key do
+    run(fn ->
+      fingerprint = Apiary.KeyCheck.accept_signing_key()
+
+      IO.puts(Apiary.KeyCheck.accepted_message(fingerprint))
+
+      {:ok, fingerprint}
+    end)
   end
 
   @doc """

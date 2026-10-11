@@ -24,6 +24,7 @@ defmodule ApiaryWeb.EditionTest do
     assert core.activity_describer() == nil
     assert core.above_policy_link(nil) == nil
     assert core.reserved_slugs() == %{}
+    assert core.product_name() == "Qory Apiary"
     assert core.gettext_backend() == nil
   end
 

@@ -2,7 +2,9 @@ defmodule ApiaryWeb.UserLive.Settings do
   @moduledoc """
   A person's own settings, one section a page, whose list is the sidebar of a person's
   pages under Your settings (`ApiaryWeb.Layouts`): Account, `/users/settings` (`:edit`),
-  their email address, their password and, last, its danger zone
+  their email address, which a link sent to the new one confirms, so that it cannot be
+  changed while the instance sends no email (`Apiary.Mail.configured?/0`), their password
+  and, last, its danger zone
   (`ApiaryWeb.SettingsComponents.danger_zone/1`), deleting their account, confirmed inline
   in it, its line expanded in place at `/users/settings/delete` (`:delete`), where they
   type their email to confirm, once nothing stops the deletion; and Preferences, `/users/settings/preferences` (`:preferences`), their language
@@ -60,12 +62,16 @@ defmodule ApiaryWeb.UserLive.Settings do
               autocomplete="username"
               spellcheck="false"
               required
+              disabled={!@mail?}
             />
             <SettingsComponents.save>
-              <.button type="submit" loading_text={gettext("Sending")}>
+              <.button type="submit" loading_text={gettext("Sending")} disabled={!@mail?}>
                 {gettext("Change email")}
               </.button>
-              <:note>{gettext("We send a confirmation link to the new address.")}</:note>
+              <:note :if={@mail?}>
+                {gettext("We send a confirmation link to the new address.")}
+              </:note>
+              <:note :if={!@mail?}>{no_mail_for_email()}</:note>
             </SettingsComponents.save>
           </.form>
         </SettingsComponents.part>
@@ -112,7 +118,10 @@ defmodule ApiaryWeb.UserLive.Settings do
               <.button type="submit" loading_text={gettext("Saving")}>
                 {gettext("Save password")}
               </.button>
-              <:note>{gettext("Optional. Log-in links keep working either way.")}</:note>
+              <%!-- Without mail there are no log-in links: the password is the way in. --%>
+              <:note :if={@mail?}>
+                {gettext("Optional. Log-in links keep working either way.")}
+              </:note>
             </SettingsComponents.save>
           </.form>
         </SettingsComponents.part>
@@ -289,7 +298,15 @@ defmodule ApiaryWeb.UserLive.Settings do
           put_flash(socket, :info, gettext("Your email address is changed."))
 
         {:error, _} ->
-          put_flash(socket, :error, gettext("That link has expired. Ask for a new one below."))
+          # Without mail no new link can be asked for: the address cannot be changed.
+          put_flash(
+            socket,
+            :error,
+            if(Apiary.Mail.configured?(),
+              do: gettext("That link has expired. Ask for a new one below."),
+              else: gettext("That link has expired.")
+            )
+          )
       end
 
     {:ok, push_navigate(socket, to: ~p"/users/settings")}
@@ -304,6 +321,8 @@ defmodule ApiaryWeb.UserLive.Settings do
       socket
       |> assign(:page_title, page_title(socket.assigns.live_action))
       |> assign(:current_email, user.email)
+      # A new address is confirmed by a link sent to it: without mail it cannot be changed.
+      |> assign(:mail?, Apiary.Mail.configured?())
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
@@ -405,7 +424,14 @@ defmodule ApiaryWeb.UserLive.Settings do
     user = socket.assigns.current_scope.user
     true = Accounts.sudo_mode?(user)
 
+    # The form is disabled without mail; a submit sent all the same, or one sent after the
+    # mail went, changes nothing and sends nothing.
+    mail? = Apiary.Mail.configured?()
+
     case Accounts.change_user_email(user, user_params) do
+      _changeset when not mail? ->
+        {:noreply, socket |> assign(:mail?, false) |> put_flash(:error, no_mail_for_email())}
+
       %{valid?: true} = changeset ->
         Accounts.deliver_user_update_email_instructions(
           Ecto.Changeset.apply_action!(changeset, :insert),
@@ -522,6 +548,10 @@ defmodule ApiaryWeb.UserLive.Settings do
          |> push_patch(to: ~p"/users/settings")}
     end
   end
+
+  defp no_mail_for_email,
+    do:
+      gettext("Changing your address needs mail. Ask an admin of this Qory Apiary to set it up.")
 
   defp preferences_form(changeset, action \\ nil),
     do: to_form(changeset, as: :preferences, action: action || changeset.action)

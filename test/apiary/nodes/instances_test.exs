@@ -323,6 +323,50 @@ defmodule Apiary.Nodes.InstancesTest do
                Repo.transact(fn -> {:ok, Nodes.check_instance_limit(node, "i_9", now)} end)
     end
 
+    test "a run whose backlog is sent late holds no slot; one that beats now does", %{
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      now = DateTime.utc_now()
+
+      # Lost an hour ago; its heartbeats had set its clock offset, a second behind.
+      lost =
+        node_run_fixture(node, "i_1", %{
+          state: "lost",
+          inserted_at: ago(7200, now),
+          last_heartbeat_at: ago(3600, now),
+          lost_at: ago(3500, now),
+          clock_offset_ms: 1000
+        })
+
+      admit = fn ->
+        Repo.transact(fn -> {:ok, Nodes.check_instance_limit(node, "i_2", now)} end)
+      end
+
+      beat = fn sequence, time ->
+        Apiary.RunEventsFixtures.event_fixture(
+          lost,
+          sequence,
+          "run.heartbeat",
+          %{"elapsed_seconds" => sequence, "interval_seconds" => 30},
+          time: time,
+          received_at: now
+        )
+
+        {:ok, run} = Apiary.Runs.Projector.project(lost)
+        run
+      end
+
+      for sequence <- 10..20, do: beat.(sequence, ago(3600 - 30 * (sequence - 9), now))
+
+      assert state(lost) == "lost"
+      assert admit.() == {:ok, :ok}
+
+      # A heartbeat recorded now brings it back, and its instance counts again.
+      assert %Run{state: "running"} = beat.(21, ago(1, now))
+      assert admit.() == {:ok, {:error, :instance_limit}}
+    end
+
     test "a limit raised to none since the node was read admits", %{scope: scope} do
       pool = pool_fixture(scope, instance_limit: 1)
       node_run_fixture(pool, "i_1")

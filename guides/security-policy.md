@@ -9,12 +9,12 @@ which apply it to the runs they start and to the runs already in flight. In the 
 > #### A workspace is served a policy only after its first change {: .warning}
 >
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
-> workspace's policy, by the first rule or the first change of mode, the server offers the
-> workspace's machines no run configuration, and every machine keeps the `egress` section
-> of its own Forager file, enforcement included. From the first change, every machine of
-> the workspace applies the workspace's policy narrowed by its own `egress` section: a run
-> enforces when either side enforces, a host is allowed only where both sides allow it,
-> and what either side denies is denied. Read [The first change](#the-first-change) before
+> workspace's policy, by the first rule or the first change of mode, the server answers
+> every run's registration with no policy, `{"version":1}`, and every machine keeps the
+> `egress` section of its own Forager file, enforcement included. From the first change,
+> every machine of the workspace applies the workspace's policy narrowed by its own
+> `egress` section: a run enforces when either side enforces, a host is allowed only where
+> both sides allow it, and what either side denies is denied. Read [The first change](#the-first-change) before
 > you make it.
 
 ## Rules
@@ -200,8 +200,8 @@ version, and says when an alive run is behind the version in force.
 ## Live reload
 
 Every answer of the server to a batch of events carries the digest of the run configuration
-in force for the run's repository. A gateway that holds another digest fetches the run
-configuration again and applies it. A run sends a heartbeat every thirty seconds, so a change
+in force for the repository the run registered with. A gateway that holds another digest
+fetches the run's configuration again, `GET /v1/runs/<run_id>`, and applies it. A run sends a heartbeat every thirty seconds, so a change
 reaches the runs in flight within a heartbeat, about 30 s.
 
 On a reload the new policy holds for new connections at once, the record gets a second
@@ -251,9 +251,10 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - On the run's timeline, allowed requests to one tool in a row fold into one line that
   names the tool, "2 allowed requests"; a refused one is never folded away, and the row of
   one request carries the proxy's id of it on hover.
-- The run's policy applied item and the policy in force on its Details tab list the tools,
-  each with its argument beside its name when the policy passed one, and the hosts each
-  serves.
+- The run's policy applied item and the policy in force in its Details (the right column
+  beside every tab from 1280 px; below 1280 px, under the Details button under the header)
+  list the tools, each with its argument beside its name when the policy passed one, and
+  the hosts each serves.
 - On Network access, `/:org/:workspace/network`, **Tool invocations** keeps only the
   destinations where a run's last attempt was a tool invocation, each whole: its counts
   are the same as without the filter. A destination where every run's last attempt was
@@ -309,8 +310,8 @@ A change that would pass a limit is refused, and nothing is changed.
 
 Until somebody has made the workspace's policy:
 
-- the server's discovery document names no `run` section for the workspace's machines;
-- the run configuration endpoint answers `404` for the workspace's keys;
+- the server answers every run's registration with no policy, `{"version":1}`;
+- a reload of a run's configuration answers `404`;
 - every machine runs under the `egress` section of its own Forager file, in its own mode,
   enforcement included;
 - the policy page says: "Runs use each machine's own policy until the first change here."

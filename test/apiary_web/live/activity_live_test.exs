@@ -434,7 +434,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
     end
 
     test "says so when nothing matches", %{conn: conn, scope: scope} do
-      view = open(conn, scope, "?action=run.close")
+      view = open(conn, scope, "?action=node.clear_instance")
       assert has_element?(view, "#activity-empty", "No entries match these filters")
       assert has_element?(view, "#activity-filters-clear")
     end

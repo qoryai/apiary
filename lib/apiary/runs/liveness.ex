@@ -3,19 +3,30 @@ defmodule Apiary.Runs.Liveness do
   Finds the runs that stopped talking and marks them `lost`, after projecting whatever a
   dead task or a stopped node left unprojected.
 
-  A run announces how often it beats (`interval_seconds` of its heartbeats). It is lost
-  when nothing has been heard for more than three of those intervals; a run that has not
-  announced one is held to 30 seconds, Forager's default, so to 90 seconds of silence.
+  A run announces how often it beats (`interval_seconds` of its registration,
+  `Apiary.Runs.Registration`, and of its heartbeats). It is lost when nothing has been
+  heard for more than three of those intervals: the one its registration stated, else its
+  heartbeats'; a run that has announced none is held to 30 seconds, Forager's default, so
+  to 90 seconds of silence.
 
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
-    * a `pending` run, one whose events have begun and whose `run.started` has not come,
-      is measured from the moment the workspace first heard of it (`inserted_at`).
+    * a `pending` run, one that has registered or whose events have begun, and whose
+      `run.started` has not come, is measured from the moment the workspace first heard of
+      it (`inserted_at`, which for a run that registered is its `registered_at`).
 
-  Only this server's clock is compared with `now`: `last_heartbeat_at` is when the
-  heartbeat was received, not when Forager says it was sent, and the arrival of the
-  `run.started` is its `received_at`. A machine whose clock is wrong is not lost for it,
-  and a heartbeat dated in the future holds nothing alive.
+  **A heartbeat's time.** A heartbeat counts as heard at its own `time`, corrected by the
+  run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
+  (`heard_at/3`); the fold keeps that as the run's `last_heartbeat_at`. The offset,
+  `clock_offset_ms`, is the smallest arrival less own time over the run's heartbeats,
+  and for a run with no session, which the gateway beats for, its registration's (and a
+  ping's, stored before the registration replaced it) (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
+  unless they were recorded within the tolerance and three intervals of their arrival, or
+  the run had no offset before them, when its first heartbeat counts at its arrival; a
+  machine whose clock is off by a constant is not lost for it, and a heartbeat dated in
+  the future holds nothing alive. A clock set back by more than the tolerance makes the
+  heartbeats after it count as old. The arrival of the `run.started` is its
+  `received_at`. Only this server's clock is compared with `now`.
 
   **The sweep.** The receiver projects a batch in a task after it has answered. If that
   task dies, or the node stops between the commit and the task, the events stay
@@ -31,7 +42,10 @@ defmodule Apiary.Runs.Liveness do
 
   **Alive.** The two rules are one condition each, shared: `alive/2` is their negation,
   for whatever counts the runs that are still alive, as a node's running instances and
-  its instance limit do, so that running means exactly "not yet lost".
+  its instance limit do, so that running means exactly "not yet lost". The fold revives a
+  lost or pending run on a heartbeat by the running rule (`heard_within?/3`), judged at
+  the heartbeat's arrival, so it revives no run that the check would mark lost at that
+  moment.
 
   The process ticks every `:interval` milliseconds (15 s) and is not started when
   `config :apiary, Apiary.Runs.Liveness, enabled: false`; tests call `check/1`.
@@ -53,6 +67,9 @@ defmodule Apiary.Runs.Liveness do
   @max_beat 3600
   @sweep_after 10
   @sweep_limit 100
+  # How far past its own time, corrected by the run's clock offset, a heartbeat may count:
+  # the skew, drift and transit the contract's 300 seconds on `X-Qory-Timestamp` allow.
+  @clock_tolerance 300
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -102,13 +119,50 @@ defmodule Apiary.Runs.Liveness do
     length(runs)
   end
 
+  @doc """
+  The clock offset an event gives, in milliseconds: when this server received it less its
+  own `time`, rounded down.
+  """
+  @spec clock_offset(DateTime.t(), DateTime.t()) :: integer()
+  def clock_offset(%DateTime{} = received_at, %DateTime{} = time),
+    do: Integer.floor_div(DateTime.diff(received_at, time, :microsecond), 1000)
+
+  @doc """
+  When a heartbeat received at `received_at` and dated `time` counts as heard, by the run's
+  clock offset `offset` (`clock_offset/2`, the smallest of the run's): `time` plus
+  `offset` plus #{@clock_tolerance} seconds, never after `received_at` and never before
+  1970.
+  """
+  @spec heard_at(DateTime.t(), DateTime.t(), integer()) :: DateTime.t()
+  def heard_at(%DateTime{} = received_at, %DateTime{} = time, offset) when is_integer(offset) do
+    heard =
+      DateTime.to_unix(time, :microsecond) + offset * 1000 + @clock_tolerance * 1_000_000
+
+    if heard >= DateTime.to_unix(received_at, :microsecond),
+      do: received_at,
+      else: DateTime.from_unix!(max(heard, 0), :microsecond)
+  end
+
+  @doc """
+  Whether a run heard at `heard_at`, whose stored heartbeat interval is `interval`, is
+  heard from within three of its intervals at `at`: the running rule, bounded as the SQL
+  bounds it. The fold revives a run by it; `alive/2` and the check are the same rule.
+  """
+  @spec heard_within?(DateTime.t(), integer() | nil, DateTime.t()) :: boolean()
+  def heard_within?(%DateTime{} = heard_at, interval, %DateTime{} = at) do
+    beat = if is_integer(interval), do: interval |> max(1) |> min(@max_beat), else: @default_beat
+    DateTime.compare(DateTime.add(heard_at, beat * @missed, :second), at) != :lt
+  end
+
   # The interval is bounded here as well as in the fold, so the arithmetic cannot
-  # overflow whatever the column holds.
-  defmacrop silence(interval) do
+  # overflow whatever the column holds: the registration's, else the heartbeats', else the
+  # default.
+  defmacrop silence(registration, heartbeat) do
     quote do
       fragment(
-        "LEAST(GREATEST(COALESCE(?, ?), 1), ?) * ? * interval '1 second'",
-        unquote(interval),
+        "LEAST(GREATEST(COALESCE(?, ?, ?), 1), ?) * ? * interval '1 second'",
+        unquote(registration),
+        unquote(heartbeat),
         @default_beat,
         @max_beat,
         @missed
@@ -157,7 +211,7 @@ defmodule Apiary.Runs.Liveness do
         r.last_heartbeat_at,
         subquery(started),
         r.inserted_at,
-        silence(r.heartbeat_interval_seconds),
+        silence(r.registration_interval_seconds, r.heartbeat_interval_seconds),
         ^now
       )
     )
@@ -166,7 +220,12 @@ defmodule Apiary.Runs.Liveness do
   defp silent(:pending, now) do
     dynamic(
       [run: r],
-      fragment("? + ? < ?", r.inserted_at, silence(r.heartbeat_interval_seconds), ^now)
+      fragment(
+        "? + ? < ?",
+        r.inserted_at,
+        silence(r.registration_interval_seconds, r.heartbeat_interval_seconds),
+        ^now
+      )
     )
   end
 

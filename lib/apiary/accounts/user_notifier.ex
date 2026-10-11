@@ -5,6 +5,9 @@ defmodule Apiary.Accounts.UserNotifier do
   about a workspace, so it reads the default domain's words. An invitation goes to an
   address that may have no account yet, so it is written in the calling process's locale:
   a request or a LiveView has already set the inviter's (`ApiaryWeb.Lingo`).
+
+  With no mail set (`Apiary.Mail.configured?/0`), every function here sends nothing and
+  returns `{:error, :no_mail}`.
   """
   use Gettext, backend: ApiaryWeb.Gettext
   import Swoosh.Email
@@ -13,9 +16,19 @@ defmodule Apiary.Accounts.UserNotifier do
   alias Apiary.Accounts.User
   alias Apiary.Organisations.Organisation
 
-  # Delivers the email using the application mailer. The body's paragraphs are whole,
-  # translated sentences, set between the rules the tests and mail clients expect.
+  # Delivers the email using the application mailer, with the configuration
+  # `Apiary.Mail.mailer_config/0` gives; with no mail set it sends nothing and answers
+  # `{:error, :no_mail}`, the answer of an email that did not go out. The body's
+  # paragraphs are whole, translated sentences, set between the rules the tests and mail
+  # clients expect.
   defp deliver(recipient, subject, paragraphs) do
+    case Apiary.Mail.mailer_config() do
+      nil -> {:error, :no_mail}
+      config -> deliver(recipient, subject, paragraphs, config)
+    end
+  end
+
+  defp deliver(recipient, subject, paragraphs, config, sender \\ nil) do
     body = """
 
     ==============================
@@ -28,11 +41,11 @@ defmodule Apiary.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from(Mailer.from())
+      |> from(Mailer.from(sender))
       |> subject(subject)
       |> text_body(body)
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
+    with {:ok, _metadata} <- Mailer.deliver(email, config) do
       {:ok, email}
     end
   end
@@ -111,5 +124,33 @@ defmodule Apiary.Accounts.UserNotifier do
         )
       ]
     )
+  end
+
+  @doc """
+  Delivers the test link of the mail settings an instance admin saved (`Apiary.Mail`) to
+  that admin, through those settings, `config` (`Apiary.Mail.smtp_config/2`), from
+  `sender`, or the default sender for `nil`, whatever the instance's mail is: the link
+  turns them on. Sent even where no mail is set.
+  """
+  def deliver_mail_test_link(user, url, config, sender) when is_list(config) do
+    ApiaryWeb.Lingo.with_locale(nil, user, fn ->
+      deliver(
+        user.email,
+        gettext("Turn on mail for Qory Apiary"),
+        [
+          gettext("Hi %{email},", email: user.email),
+          gettext(
+            "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:",
+            email: user.email
+          ),
+          url,
+          gettext(
+            "The link works once, for 60 minutes, and only for you. If you did not save these settings, ignore this email."
+          )
+        ],
+        config,
+        sender
+      )
+    end)
   end
 end

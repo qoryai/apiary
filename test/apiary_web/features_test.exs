@@ -81,49 +81,30 @@ defmodule ApiaryWeb.FeaturesTest do
       end
     end
 
-    test "the run configuration endpoint answers an unsigned request as one that does not exist" do
-      askers = [
-        {"unsigned", &get(build_conn(), &1)},
-        {"unsigned, asking for JSON",
-         &get(put_req_header(build_conn(), "accept", "application/json"), &1)}
-      ]
-
-      # Three segments: a path of two is a workspace's (`/:org/:workspace`).
-      for {who, ask} <- askers do
-        assert answer(fn -> ask.("/v1/run-configuration") end) ==
-                 answer(fn -> ask.("/v1/no-such/endpoint") end),
-               who
-      end
-    end
-
-    # The contract signs every answer to a verified request, its 404 among them.
-    test "the run configuration endpoint answers a verified request a signed 404", ctx do
+    # A policy removed mid-run never loosens a run already started: the reload is a signed
+    # 404, never the document of no policy.
+    test "a registration is answered the document of no policy; a reload, a signed 404", ctx do
+      managed_before_security_went(ctx.scope)
       %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
+      run_id = Ecto.UUID.generate()
+
+      conn = signed_register(build_conn(), key.key_id, secret, registration(run_id))
+      assert conn.resp_body == ~s({"version":1})
+      assert conn.status == 200
+      assert signed_answer?(conn)
+
+      assert get_resp_header(conn, "x-qory-run-configuration") == [
+               Apiary.Policy.Render.digest(~s({"version":1}))
+             ]
 
       for headers <- [[], [{"accept", "application/json"}]] do
         conn =
-          signed_get(build_conn(), key.key_id, secret, "/v1/run-configuration", headers: headers)
+          signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id, headers: headers)
 
-        assert conn.status == 404
+        assert json_response(conn, 404) == %{"error" => "not_found"}
         assert signed_answer?(conn)
         assert get_resp_header(conn, "x-qory-run-configuration") == []
       end
-    end
-
-    test "the run configuration endpoint tells a signed request that does not verify 401",
-         ctx do
-      %{access_key: key} = contract_key_fixture(ctx.scope)
-
-      conn =
-        signed_get(
-          build_conn(),
-          key.key_id,
-          :crypto.strong_rand_bytes(32),
-          "/v1/run-configuration"
-        )
-
-      assert conn.status == 401
-      assert unsigned_answer?(conn)
     end
 
     test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
@@ -137,25 +118,21 @@ defmodule ApiaryWeb.FeaturesTest do
                )
     end
 
-    test "the contract names no run section and serves no run configuration", ctx do
+    test "discovery names the run endpoint, and a batch is answered no run configuration",
+         ctx do
       managed_before_security_went(ctx.scope)
       %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
 
       conn = signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration")
       assert conn.status == 200
-      refute Map.has_key?(Jason.decode!(conn.resp_body), "run")
-
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, false)
-             ]
+      assert %{"url" => _} = Jason.decode!(conn.resp_body)["run"]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       {_subject, events} = first_events()
       conn = signed_post(build_conn(), key.key_id, secret, events)
       assert conn.status in 200..299
-
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, false)
-             ]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
+      assert get_resp_header(conn, "x-qory-run-configuration") == []
     end
 
     test "the context writes no policy, whichever surface asks", %{scope: scope} do
@@ -179,16 +156,18 @@ defmodule ApiaryWeb.FeaturesTest do
                live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
     end
 
-    test "the contract names the run section of a managed workspace", ctx do
+    test "a registration of a managed workspace is answered its policy, and so is a reload",
+         ctx do
       {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
       %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
+      run_id = Ecto.UUID.generate()
 
-      conn = signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration")
-      assert Map.has_key?(Jason.decode!(conn.resp_body), "run")
+      conn = signed_register(build_conn(), key.key_id, secret, registration(run_id))
+      assert %{"security_policy" => _} = json_response(conn, 200)
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, true)
-             ]
+      reload = signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
+      assert reload.resp_body == conn.resp_body
     end
   end
 end

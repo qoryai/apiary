@@ -82,6 +82,10 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :invitation}},
       {:"invitation.revoke", :other_owner, "/:other_org/settings/people", "revoke_invitation",
        %{"id" => :invitation}, answer: :not_found},
+      {:"invitation.renew", :member, "/:org/settings/people", "renew_invitation",
+       %{"id" => :invitation}},
+      {:"invitation.renew", :other_owner, "/:other_org/settings/people", "renew_invitation",
+       %{"id" => :invitation}, answer: :not_found},
       # Suspending and activating a person's membership: an owner acts on admins and
       # members, an admin on members only. A member cannot open a member's suspension, so
       # their `suspend` arrives without it and the page refuses it for their role; the
@@ -104,6 +108,20 @@ defmodule ApiaryWeb.RefusalsRows do
       # opened is made an owner meanwhile, and the event reaches the server's check.
       {:"member.suspend", :owner, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
+      # A password link is an instance admin's, while no mail is set: none of the world's
+      # people is one, and the page offers it to none of them.
+      {:"account.password_link", :owner, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :admin, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :member, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      # The instance's mail is an instance admin's: none of the world's people is one, and
+      # its page does not exist for them.
+      {:"instance.mail_save", :owner, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
+      {:"instance.mail_save", :admin, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
@@ -329,13 +347,7 @@ defmodule ApiaryWeb.RefusalsRows do
        "delete_variable", %{}, needs: :secrets},
       {:"variable.edit", :other_owner,
        "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
-       answer: :refused_at_mount, needs: :secrets},
-
-      # A run.
-      {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}]},
-      {:"run.close", :other_owner, "/:other_org/:other_ws/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}], answer: :not_found}
+       answer: :refused_at_mount, needs: :secrets}
     ]
   end
 
@@ -351,6 +363,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # Turning the instance's mail on is following the test link a save sent, a controller's
+  # redirect, not a page's event: the link's tests refuse it to anyone but the instance
+  # admin it was sent to (`test/apiary/mail_settings_test.exs`,
+  # `test/apiary_web/live/instance_live/mail_test.exs`).
   @impl true
   def exempt do
     %{
@@ -366,6 +382,7 @@ defmodule ApiaryWeb.RefusalsRows do
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
+      link: [:"instance.mail_on"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],

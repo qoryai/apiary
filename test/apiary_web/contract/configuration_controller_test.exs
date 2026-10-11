@@ -35,39 +35,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
   defp key!(key), do: Repo.get!(AccessKey, key.id)
 
-  @tag needs: :security
-  test "a workspace whose policy somebody made is named the run section; the digest differs",
-       %{scope: scope, key: key, secret: secret} do
-    unmanaged = signed_get(build_conn(), key.key_id, secret)
-    {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
-    managed = signed_get(build_conn(), key.key_id, secret)
-    base = ApiaryWeb.Endpoint.url()
-
-    assert json_response(managed, 200) == %{
-             "version" => 1,
-             "node_id" => key.node.public_id,
-             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
-             "run" => %{"url" => base <> "/v1/run-configuration"},
-             "apiary_public_key" => SigningKey.apiary_public_key()
-           }
-
-    [digest] = get_resp_header(managed, "x-qory-configuration")
-    assert digest == ApiaryWeb.Contract.ConfigurationController.digest(managed.resp_body)
-    assert digest == Configuration.digest(key.node, true)
-    assert [digest] != get_resp_header(unmanaged, "x-qory-configuration")
-    assert signed_answer?(managed)
-
-    # Another workspace's policy changes nothing here.
-    %{scope: other} = sign_up_fixture()
-    %{access_key: other_key, secret: other_secret} = contract_key_fixture(other)
-
-    refute Map.has_key?(
-             json_response(signed_get(build_conn(), other_key.key_id, other_secret), 200),
-             "run"
-           )
-  end
-
-  test "a valid request gets the version 1 document, signed, with its node and digest",
+  test "a valid request gets the version 1 document, signed, with its node, its workspace, the run endpoint and the digest",
        %{conn: conn, key: key, secret: secret} do
     conn = signed_get(conn, key.key_id, secret, contract_version: 1)
     base = ApiaryWeb.Endpoint.url()
@@ -75,24 +43,50 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert json_response(conn, 200) == %{
              "version" => 1,
              "node_id" => key.node.public_id,
+             "workspaces" => [key.workspace.public_id],
              "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
+             "run" => %{"url" => base <> "/v1/runs"},
              "apiary_public_key" => SigningKey.apiary_public_key()
            }
 
     # The contract's order of members.
-    assert conn.resp_body =~ ~r/\A\{"version":1,"node_id":"nd_[^"]+","events":/
-
-    # No run section until somebody has made the workspace's policy: until then its
-    # machines keep the policy of their own Forager file.
-    refute Map.has_key?(json_response(conn, 200), "run")
+    assert conn.resp_body =~
+             ~r/\A\{"version":1,"node_id":"nd_[^"]+","workspaces":\["ws_[^"]+"\],"events":\{[^}]+\},"run":\{"url":"[^"]+"\},"apiary_public_key":/
 
     [digest] = get_resp_header(conn, "x-qory-configuration")
     assert digest == ApiaryWeb.Contract.ConfigurationController.digest(conn.resp_body)
-    assert digest == Configuration.digest(key.node, false)
+    assert digest == Configuration.digest(key)
     assert digest =~ ~r/^sha256=[0-9a-f]{64}$/
 
     assert signed_answer?(conn)
     assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
+  end
+
+  test "the run endpoint's URL has no query, no fragment and no trailing slash",
+       %{key: key, secret: secret} do
+    url = json_response(signed_get(build_conn(), key.key_id, secret), 200)["run"]["url"]
+    uri = URI.parse(url)
+
+    assert uri.scheme in ["http", "https"]
+    assert uri.query == nil
+    assert uri.fragment == nil
+    refute String.ends_with?(url, "/")
+    assert uri.path == "/v1/runs"
+    assert url == ApiaryWeb.Endpoint.url() <> Configuration.run_path()
+  end
+
+  # Only the security feature lets a workspace have a policy.
+  @tag needs: :security
+  test "a workspace's policy changes neither the document nor its digest",
+       %{scope: scope, key: key, secret: secret} do
+    before = signed_get(build_conn(), key.key_id, secret)
+    {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+    later = signed_get(build_conn(), key.key_id, secret)
+
+    assert later.resp_body == before.resp_body
+
+    assert get_resp_header(later, "x-qory-configuration") ==
+             get_resp_header(before, "x-qory-configuration")
   end
 
   test "each node has its own document and digest; a pool's names the pool",
@@ -105,21 +99,38 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
     assert json_response(other, 200)["node_id"] == pool.public_id
     assert pool.public_id =~ ~r/\Anp_/
+    assert json_response(other, 200)["workspaces"] == [scope.workspace.public_id]
 
     assert get_resp_header(one, "x-qory-configuration") !=
              get_resp_header(other, "x-qory-configuration")
   end
 
+  test "a key lists the workspace its node belongs to, each workspace its own",
+       %{scope: scope, key: key, secret: secret} do
+    workspace = workspace_fixture(scope.organisation)
+    inside = workspace_scope(scope.user, workspace)
+    %{access_key: other_key, secret: other_secret} = contract_key_fixture(inside)
+
+    one = json_response(signed_get(build_conn(), key.key_id, secret), 200)
+    other = json_response(signed_get(build_conn(), other_key.key_id, other_secret), 200)
+
+    assert one["workspaces"] == [scope.workspace.public_id]
+    assert other["workspaces"] == [workspace.public_id]
+    assert workspace.public_id != scope.workspace.public_id
+    assert Configuration.digest(key) != Configuration.digest(other_key)
+  end
+
   @tag :contract
-  test "the document's bytes are the contract's known answer for its node, URL and key" do
-    %{"apiary_public_key" => keys} = known = known_answers!("discovery")
+  test "the document's bytes are the contract's known answer for its node, workspace, URL and key" do
+    %{"apiary_public_key" => keys, "workspaces" => [workspace_id]} =
+      known = known_answers!("discovery")
 
     body =
       Configuration.encode(%{
         node_id: known["node_id"],
+        workspace_id: workspace_id,
         url: "https://qory.example",
-        apiary_public_key: keys,
-        run?: false
+        apiary_public_key: keys
       })
 
     assert body == contract_file!("known-answers/discovery.json")

@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.Contract.SignedRequestTest do
   @moduledoc """
-  The contract's order of refusals on discovery, the run configuration and the events
+  The contract's order of refusals on discovery, the run endpoint and the events
   endpoint (`ApiaryWeb.Contract.SignedRequest`), which answers are signed and which are
   not, the instance id, a key enrolled with a code, and what a verified request leaves.
   """
@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
   alias Apiary.Runs.Run
 
   @discovery "/.well-known/qory-configuration"
-  @run_configuration "/v1/run-configuration"
+  @runs "/v1/runs"
   @unauthorized %{"error" => "unauthorized"}
 
   setup do
@@ -37,11 +37,10 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
 
     [
       signed_get(build_conn(), key_id, secret, @discovery, opts),
-      signed_post(build_conn(), key_id, secret, batch, opts)
-    ] ++
-      if Apiary.Features.on?(:security),
-        do: [signed_get(build_conn(), key_id, secret, @run_configuration, opts)],
-        else: []
+      signed_post(build_conn(), key_id, secret, batch, opts),
+      signed_register(build_conn(), key_id, secret, registration(), opts),
+      signed_get(build_conn(), key_id, secret, @runs <> "/" <> Ecto.UUID.generate(), opts)
+    ]
   end
 
   describe "the instance id" do
@@ -181,7 +180,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
     test "the rate limit comes after verification and before the instance id", ctx do
       bucket = Apiary.Runs.RateLimit
       later = System.monotonic_time(:millisecond) + :timer.hours(1)
-      :ets.insert(bucket, {ctx.key.id, 0, later})
+      :ets.insert(bucket, {ctx.key.id, 0, later, later})
       {_subject, batch} = first_events()
 
       conn = signed_post(build_conn(), ctx.key.key_id, "another key", batch)

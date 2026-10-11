@@ -2,11 +2,21 @@ defmodule ApiaryWeb.UserLive.Registration do
   @moduledoc """
   The sign-up page, `/users/register`. With an invitation's token it creates the account
   that joins the invitation's workspace, and asks for the address alone. Without one it
-  offers what `Apiary.Organisations.sign_up_offer/1` answers on mount: the instance's
-  first sign-up, which creates the organisation its first user owns; a later sign-up,
-  where the edition opens one, of an organisation; and nothing where none is open,
-  where the page says sign-up is by invitation. `Apiary.Organisations.sign_up_user/3`
-  asks again when the form is sent.
+  offers what `Apiary.Organisations.sign_up_offer/1` answers on mount: before the
+  instance is set up, nothing, and the page says to use its set-up link
+  (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation; and
+  nothing where none is open, where the page says sign-up is by invitation.
+  `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
+
+  **With mail** (`Apiary.Mail.configured?/0`) the account is made and a link to confirm
+  it is emailed; the page says so in place. When the email cannot be sent, the account
+  stays made, and the person is sent to the log-in page, which asks for a new link.
+
+  **Without mail** the form asks for a password too (`ApiaryWeb.CoreComponents.new_password_fields/1`),
+  an invitation's address cannot be changed, and once the account is made the same form
+  is submitted to the log-in controller (`phx-trigger-action`, as the log-in page does),
+  which signs the person in with the password the browser holds. The account is
+  unconfirmed until mail is set and a log-in link is followed.
 
   An edition whose sign-up asks more of the form serves its own page at this path
   (`ApiaryWeb.Routes`, `except:`).
@@ -31,9 +41,14 @@ defmodule ApiaryWeb.UserLive.Registration do
       <div :if={!@sent_to && by_invitation_only?(assigns)} id="sign-up-closed" class="grid gap-4">
         <Layouts.auth_heading>
           {gettext("Sign-up is by invitation")}
-          <:subtitle>
+          <:subtitle :if={@mail?}>
             {gettext(
               "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+            )}
+          </:subtitle>
+          <:subtitle :if={!@mail?}>
+            {gettext(
+              "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
             )}
           </:subtitle>
         </Layouts.auth_heading>
@@ -43,16 +58,35 @@ defmodule ApiaryWeb.UserLive.Registration do
         </.button>
       </div>
 
-      <div :if={!@sent_to && !by_invitation_only?(assigns)} class="grid gap-4">
+      <div :if={!@sent_to && not_set_up?(assigns)} id="sign-up-not-set-up" class="grid gap-4">
+        <Layouts.auth_heading>
+          {gettext("Create your account")}
+          <:subtitle>{ApiaryWeb.SetupLive.not_set_up_line()}</:subtitle>
+        </Layouts.auth_heading>
+      </div>
+
+      <div
+        :if={!@sent_to && !by_invitation_only?(assigns) && !not_set_up?(assigns)}
+        class="grid gap-4"
+      >
         <Layouts.auth_heading>
           {gettext("Create your account")}
           <:subtitle>{subtitle(assigns)}</:subtitle>
         </Layouts.auth_heading>
 
-        <.notice :if={@invitation} kind={:info}>
+        <.notice :if={@invitation && @mail?} kind={:info}>
           <.rich text={
             rich_gettext(
               "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm.",
+              workspace: {:b, @invitation.workspace.name},
+              organisation: {:b, @invitation.organisation.name}
+            )
+          } />
+        </.notice>
+        <.notice :if={@invitation && !@mail?} kind={:info}>
+          <.rich text={
+            rich_gettext(
+              "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it.",
               workspace: {:b, @invitation.workspace.name},
               organisation: {:b, @invitation.organisation.name}
             )
@@ -62,8 +96,10 @@ defmodule ApiaryWeb.UserLive.Registration do
         <.form
           for={@form}
           id="registration_form"
+          action={!@mail? && ~p"/users/log-in"}
           phx-submit="save"
           phx-change="validate"
+          phx-trigger-action={@trigger_submit}
           class="grid gap-4"
           novalidate
         >
@@ -75,7 +111,8 @@ defmodule ApiaryWeb.UserLive.Registration do
             autocomplete="username"
             spellcheck="false"
             required
-            phx-mounted={JS.focus()}
+            readonly={fixed_email?(assigns)}
+            phx-mounted={!fixed_email?(assigns) && JS.focus()}
           />
           <.input
             :if={!@invitation}
@@ -90,6 +127,12 @@ defmodule ApiaryWeb.UserLive.Registration do
               )
             }
             required
+          />
+          <.new_password_fields
+            :if={!@mail?}
+            password={@form[:password]}
+            confirmation={@form[:password_confirmation]}
+            size="md"
           />
           <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Creating")}>
             {gettext("Create account")}
@@ -109,17 +152,31 @@ defmodule ApiaryWeb.UserLive.Registration do
 
   # What the page says it creates: an organisation. The first sign-up of an instance
   # creates an organisation like any other, to the person who makes it.
-  defp subtitle(%{invitation: %{}}),
+  defp subtitle(%{invitation: %{}, mail?: true}),
     do: gettext("We will email you a link to confirm; no password needed.")
 
-  defp subtitle(_assigns),
+  defp subtitle(%{invitation: %{}}), do: gettext("Choose a password to sign in with.")
+
+  defp subtitle(%{mail?: true}),
     do:
       gettext(
         "Start an organisation and its first workspace. We will email you a link to confirm; no password needed."
       )
 
+  defp subtitle(_assigns),
+    do:
+      gettext("Start an organisation and its first workspace. Choose a password to sign in with.")
+
+  # Without mail, an invitation's link is the inviter's word for its address: the page
+  # shows it, and the sign-up takes it whatever is sent.
+  defp fixed_email?(%{invitation: %{}, mail?: false}), do: true
+  defp fixed_email?(_assigns), do: false
+
   defp by_invitation_only?(%{invitation: nil, offer: :closed}), do: true
   defp by_invitation_only?(_assigns), do: false
+
+  defp not_set_up?(%{invitation: nil, offer: :not_set_up}), do: true
+  defp not_set_up?(_assigns), do: false
 
   @impl true
   def mount(_params, _session, %{assigns: %{current_scope: %{user: user}}} = socket)
@@ -127,7 +184,18 @@ defmodule ApiaryWeb.UserLive.Registration do
     {:ok, redirect(socket, to: ApiaryWeb.UserAuth.signed_in_path(socket))}
   end
 
-  def mount(params, _session, socket) do
+  # An invitation's token counts against the limit of the pages a link opens
+  # (`ApiaryWeb.AttemptLimits`) before it is looked up.
+  def mount(%{"invitation" => _} = params, session, socket) do
+    case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
+      {:ok, socket} -> mount_page(params, session, socket)
+      {:limited, socket} -> {:ok, socket}
+    end
+  end
+
+  def mount(params, session, socket), do: mount_page(params, session, socket)
+
+  defp mount_page(params, _session, socket) do
     token = params["invitation"]
     invitation = token && Organisations.get_invitation_by_token(token)
     email = if invitation, do: invitation.email, else: nil
@@ -140,6 +208,8 @@ defmodule ApiaryWeb.UserLive.Registration do
       |> assign(:invitation_token, if(invitation, do: token, else: nil))
       |> assign(:invitation, invitation)
       |> assign(:offer, offer)
+      |> assign(:mail?, Apiary.Mail.configured?())
+      |> assign(:trigger_submit, false)
       # Where the sign-up comes from, for its audit entry: known while the page mounts.
       |> assign(:origin, ApiaryWeb.Origin.from_socket(socket))
 
@@ -149,33 +219,67 @@ defmodule ApiaryWeb.UserLive.Registration do
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
+    # With mail the page asks for no password, and sends none: the address is confirmed
+    # by email first.
+    user_params =
+      if socket.assigns.mail?,
+        do: Map.drop(user_params, ~w(password password_confirmation)),
+        else: user_params
+
     case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
            origin: socket.assigns.origin
          ) do
-      {:ok, %{user: user}} ->
-        {:ok, _} =
-          Accounts.deliver_login_instructions(
-            user,
-            &url(~p"/users/log-in/#{&1}")
-          )
+      # Without mail, a password was set: the same form goes to the log-in controller,
+      # with the address the account has, and signs the person in.
+      {:ok, %{user: %{hashed_password: hash} = user}}
+      when is_binary(hash) and not socket.assigns.mail? ->
+        {:noreply,
+         socket
+         |> assign_form(change_sign_up(socket, %{"email" => user.email}))
+         |> assign(:trigger_submit, true)}
 
-        {:noreply, assign(socket, :sent_to, user.email)}
+      {:ok, %{user: user}} ->
+        {:noreply, confirm_by_email(socket, user)}
+
+      # The instance is not set up: nobody signs up before its set-up link is used.
+      {:error, :not_set_up} ->
+        {:noreply, assign(socket, :offer, :not_set_up)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         # What the instance offers may have changed since the page mounted: another
-        # sign-up was the instance's first.
+        # sign-up was the instance's first. So may its mail, which decides whether the
+        # form asks for a password.
         socket =
           if socket.assigns.invitation,
             do: socket,
             else: assign(socket, :offer, Organisations.sign_up_offer())
 
-        {:noreply, assign_form(socket, changeset)}
+        {:noreply, socket |> assign(:mail?, Apiary.Mail.configured?()) |> assign_form(changeset)}
     end
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = change_sign_up(socket, user_params)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  end
+
+  # The link that confirms the account, emailed. One that cannot be sent leaves the
+  # account made: the log-in page sends a new link.
+  defp confirm_by_email(socket, user) do
+    case Accounts.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}")) do
+      {:ok, _email} ->
+        assign(socket, :sent_to, user.email)
+
+      {:error, _reason} ->
+        socket
+        |> put_flash(
+          :error,
+          gettext(
+            "Your account is made, but the email with its link could not be sent. Ask for a new link on the log-in page in a few minutes."
+          )
+        )
+        |> push_navigate(to: ~p"/users/log-in")
+    end
   end
 
   defp change_sign_up(socket, params) do

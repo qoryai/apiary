@@ -114,6 +114,7 @@ defmodule Apiary.RunEventsFixtures do
     Map.merge(
       %{
         "opened_by" => "session",
+        "credential" => "none",
         "runtime" => "claude",
         "runtime_version" => "2.1.0",
         "command" => "claude",
@@ -139,6 +140,7 @@ defmodule Apiary.RunEventsFixtures do
     Map.merge(
       %{
         "opened_by" => "gateway",
+        "credential" => "issuer",
         "forager_version" => "v0.6.0",
         "labels" => %{
           "forge" => "git.example.com",

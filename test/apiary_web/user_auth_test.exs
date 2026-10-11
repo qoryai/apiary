@@ -8,6 +8,8 @@ defmodule ApiaryWeb.UserAuthTest do
 
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
+  import Phoenix.LiveViewTest
 
   alias Apiary.Organisations
 
@@ -494,6 +496,61 @@ defmodule ApiaryWeb.UserAuthTest do
       assert_raise ApiaryWeb.NotFound, fn ->
         UserAuth.on_mount(:load_path_scope, params, session, socket)
       end
+    end
+  end
+
+  describe "the workspace last used in an organisation" do
+    setup %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: main} = signed_up = sign_up_fixture()
+      staging = workspace_fixture(organisation, "Staging")
+      %{conn: log_in_user(conn, user), signed_up: signed_up, main: main, staging: staging}
+    end
+
+    defp last_used(user) do
+      Apiary.Repo.all(
+        from l in Apiary.Organisations.LastWorkspace,
+          where: l.user_id == ^user.id,
+          select: {l.organisation_id, l.workspace_id}
+      )
+    end
+
+    test "a workspace's page records it, a full load and a live navigation alike", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+
+      {:ok, view, _html} = live(conn, ~p"/#{organisation}/#{ctx.main}/runs")
+      assert last_used(user) == [{organisation.id, ctx.main.id}]
+
+      # A live navigation to another workspace's page, with no request of its own.
+      {:ok, _view, _html} = live_redirect(view, to: ~p"/#{organisation}/#{ctx.staging}/nodes")
+      assert last_used(user) == [{organisation.id, ctx.staging.id}]
+
+      # Its organisation's own page opens it, and records nothing.
+      conn = get(conn, ~p"/#{organisation}")
+      assert get_session(conn, :last_workspace_id) == ctx.staging.id
+      assert last_used(user) == [{organisation.id, ctx.staging.id}]
+    end
+
+    test "one row per organisation", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+      other = sign_up_fixture()
+      join_fixture(other.scope, user)
+
+      get(conn, ~p"/#{organisation}/#{ctx.staging}")
+      get(conn, ~p"/#{other.organisation}/#{other.workspace}/runs")
+
+      assert Enum.sort(last_used(user)) ==
+               Enum.sort([
+                 {organisation.id, ctx.staging.id},
+                 {other.organisation.id, other.workspace.id}
+               ])
+    end
+
+    test "a request that is no page records nothing", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+
+      get(conn, ~p"/#{organisation}/#{ctx.staging}/jump")
+      get(conn, ~p"/#{organisation}/#{ctx.staging}/switch/runs")
+      assert last_used(user) == []
     end
   end
 

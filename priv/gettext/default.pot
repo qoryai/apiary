@@ -133,7 +133,12 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "%{count} places match."
+msgid "%{count} organisations match."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} workspaces match."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -158,12 +163,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -849,6 +854,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -1001,6 +1007,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} host matches"
 msgid_plural "%{number} hosts match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} hour"
+msgid_plural "%{number} hours"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1600,6 +1613,11 @@ msgstr ""
 msgid "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{product} menu"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
@@ -1643,11 +1661,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{runtime} %{version} on %{host}, without a wall"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "%{run} is closed."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -1749,11 +1762,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{time} by %{person}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{time} by a member"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -1985,7 +1993,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "1 place matches."
+msgid "1 organisation matches."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2008,6 +2016,11 @@ msgstr ""
 msgid "1 target sets its own and observes."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "1 workspace matches."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1, one instance at a time"
@@ -2021,6 +2034,11 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "14 days"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "587 for STARTTLS; 465 for TLS from the start."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -2456,6 +2474,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3008,6 +3031,11 @@ msgstr ""
 msgid "Already have an account?"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Always"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
@@ -3165,6 +3193,11 @@ msgstr ""
 msgid "As served"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an admin of this Qory Apiary for a password link."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"
@@ -3176,6 +3209,7 @@ msgstr ""
 msgid "Asking"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "At least 12 characters."
@@ -3312,6 +3346,13 @@ msgstr ""
 msgid "Cancel the deletion of %{name}"
 msgstr ""
 
+#: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled a command to connect a node"
@@ -3322,9 +3363,19 @@ msgstr ""
 msgid "Cancelled a workspace's deletion"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled after %{duration}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled the organisation's deletion"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -3405,6 +3456,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Change version"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change your own password in Account settings."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -3523,6 +3579,11 @@ msgstr ""
 msgid "Changes to this target's rules, newest first"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Check the fields below."
@@ -3551,6 +3612,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a day to jump to."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a password to sign in with."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3650,21 +3716,10 @@ msgstr ""
 msgid "Clearing"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Close"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Close %{run}"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Close %{run}?"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3672,62 +3727,9 @@ msgstr ""
 msgid "Close menu"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Close run"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Close this run?"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closed"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed %{date}"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Closed a run"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed by a member on %{date}. The run never posted its exit."
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed by a member. The run never posted its exit."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when a new policy denied the host."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Closed."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closing"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3762,6 +3764,21 @@ msgctxt "plain"
 msgid "Compared with the policy applied at %{sequence}: %{difference}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Completed"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Completed %{duration} after it started"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Completed."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
@@ -3783,9 +3800,15 @@ msgstr ""
 msgid "Confirm my account"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Confirm new password"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm password"
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -3930,6 +3953,16 @@ msgstr ""
 msgid "Copy the run id"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy this link and send it to %{email} yourself."
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy this password link and send it to %{email} yourself."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Copy variable"
@@ -3967,11 +4000,6 @@ msgstr ""
 msgid "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Counted with the runs that ended badly."
-msgstr ""
-
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Create account"
@@ -3992,6 +4020,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Create custom API"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create invitation link"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -4028,6 +4061,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Creating"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Creating…"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -4494,12 +4532,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Deny rules and locks are already applied: the text lists what remains allowed."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "Deny rules and locks are not in the document: they decide what it lists."
+msgid "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -4602,6 +4635,7 @@ msgid "Domains"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -4687,11 +4721,17 @@ msgid "Elapsed at the last heartbeat. The clock stops counting when heartbeats s
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Email"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Email me a link"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -4704,12 +4744,16 @@ msgstr ""
 msgid "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Empty when the relay takes mail without logging in."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended"
@@ -4848,6 +4892,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every alive state"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every cancelled state"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -5155,6 +5204,16 @@ msgstr ""
 msgid "Find a variable by name or value"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find a workspace"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find a workspace…"
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Find an action"
@@ -5339,6 +5398,11 @@ msgstr ""
 msgid "Forever"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Forgot your password?"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/people.ex
@@ -5432,6 +5496,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "From the next heartbeat, about 30 s, %{effect} in the runs that name no target: every other connection is let through and recorded."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "From the start (port 465)"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -5536,6 +5605,7 @@ msgid "Go to the first page"
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Go to your workspace"
 msgstr ""
@@ -5888,6 +5958,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Invitation accepted"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Invitation renewed"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6788,8 +6863,10 @@ msgstr ""
 
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/confirmation.ex
 #: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Log in"
@@ -6847,6 +6924,11 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
+msgid "Log-in links work once and for a short time."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
 msgid "Log-in links work once and for a short time. Ask for a new one."
 msgstr ""
 
@@ -6875,7 +6957,17 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
+msgid "Lost, end not recorded"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
 msgid "Lost, never posted its exit"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Lost, stopped responding"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -6920,12 +7012,58 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Made a new link for an invitation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Made a password link for a person"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Made a password link, by a command run on Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Made a person an owner, by a command run on Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Made an owner a member, by a command run on Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail"
+msgstr ""
+
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Mail is on, and your email address is confirmed."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Mail settings saved"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turned on"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turns on when the admin who saved these settings follows the link we sent them."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turns on when you follow the link we sent to %{email}, signed in as you."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -6936,6 +7074,26 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Main session"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link for %{email}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link for %{email}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -7145,6 +7303,11 @@ msgstr ""
 msgid "Network access, narrowed to %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Never"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Never ran"
@@ -7201,6 +7364,7 @@ msgstr ""
 msgid "New node pool"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "New password"
@@ -7417,6 +7581,16 @@ msgstr ""
 msgid "No member's email has %{text}."
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "No new version: the document did not change."
@@ -7558,6 +7732,16 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "No runs cancelled %{range}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs cancelled."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "No runs ended badly %{range}."
 msgstr ""
 
@@ -7667,6 +7851,11 @@ msgstr ""
 msgid "No targets yet"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "No test link is waiting: save the settings again to send one."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No variable matches"
@@ -7680,6 +7869,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "No version yet"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace matches."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -7775,6 +7969,7 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8084,6 +8279,16 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Off: invitations and password links are copied by hand."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Off: the saved password cannot be read. Enter it again and save."
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -8124,6 +8329,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "On Forager's deny list"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "On port 465, TLS from the start, whatever this says."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "On since %{day}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8180,6 +8395,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "Only a rule of the workspace can be locked: a lock is what holds it against the targets."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an admin of this Qory Apiary makes password links, while it sends no email."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -8421,6 +8641,7 @@ msgstr ""
 msgid "Organisation deleted"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation name"
@@ -8547,10 +8768,22 @@ msgstr ""
 msgid "Pages are in English, the one language this instance has."
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Password"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Password link made"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -8706,6 +8939,11 @@ msgstr ""
 msgid "Pool"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Port"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Prefer a password? You can set one in account settings."
@@ -8849,19 +9087,14 @@ msgstr ""
 msgid "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}."
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary menu"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary menu, version %{version}"
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -8946,11 +9179,6 @@ msgstr ""
 msgid "Reason"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Recent"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Recent runs"
@@ -8996,6 +9224,12 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the tool %{tool}."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Registered only"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9421,14 +9655,24 @@ msgstr ""
 msgid "Run %{id}"
 msgstr ""
 
-#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Run closed"
+msgid "Run cancelled."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Run closed."
+msgid "Run cancelled: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run completed after %{duration}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run completed."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -9438,12 +9682,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run ended"
+msgid "Run did not start"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run did not start."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run exited"
+msgid "Run ended"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -9478,6 +9727,11 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Run lost: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Run not found"
 msgstr ""
 
@@ -9505,21 +9759,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run started."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run succeeded after %{duration}."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run succeeded."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run timed out."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -9627,6 +9866,12 @@ msgstr ""
 msgid "Runtimes"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "SMTP relay"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -9660,6 +9905,21 @@ msgstr ""
 msgid "Save variable"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the mail settings, which sent a test link"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9670,6 +9930,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saving sends a test link to %{email}. Mail is off until you follow it."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -9782,6 +10047,12 @@ msgstr ""
 msgid "Send your first run"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Sender"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -9864,9 +10135,19 @@ msgstr ""
 msgid "Set by a target too"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Set by the server's environment (%{variable}); change it there."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Set in the application's configuration"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Set password"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -9905,6 +10186,7 @@ msgid "Set to follow the workspace"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
+#: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Set up"
 msgstr ""
@@ -9912,6 +10194,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set up API"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Set up Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -9944,9 +10231,20 @@ msgstr ""
 msgid "Set when the workspace was created. It decides the words its pages use."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Set your password"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Setting"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Setting up"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -10034,6 +10332,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show the rule"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Show the workspaces of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/narrowing.ex
@@ -10171,6 +10474,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
+msgid "Start an organisation and its first workspace. Choose a password to sign in with."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
 msgid "Start an organisation and its first workspace. We will email you a link to confirm; no password needed."
 msgstr ""
 
@@ -10195,11 +10503,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Stays on %{name}; it is never shown"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Stopped by the workspace: a member closed it after it went quiet."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10257,21 +10560,6 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded %{duration} after it started"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Suggestions"
@@ -10326,12 +10614,17 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Switch organisation or workspace"
+msgid "Switch organisation"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Switch workspace"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -10343,6 +10636,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "System"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "TLS"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10426,6 +10724,11 @@ msgstr ""
 msgid "That API is neither built in nor a custom API of this workspace."
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That account cannot log in at the moment, so it gets no password link."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command no longer works: it was run, cancelled or expired."
@@ -10464,12 +10767,23 @@ msgstr ""
 #: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
+msgid "That link has expired."
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
 msgid "That link has expired. Ask for a new one below."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That member is no longer in the organisation."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "That password link has expired"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -10525,6 +10839,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The Forager file's lines for this key. Nothing here is secret."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The address email comes from. Empty: %{address}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10782,6 +11101,11 @@ msgstr ""
 msgid "The link works once, for 15 minutes. If you did not ask for it, ignore this email."
 msgstr ""
 
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "The link works once, for 60 minutes, and only for you. If you did not save these settings, ignore this email."
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10814,6 +11138,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The mail server Qory Apiary sends its email through: invitations, log-in links and password links."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The mail server's host name, such as smtp.example.com."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -11045,11 +11379,6 @@ msgstr ""
 msgid "The rules stay as they are, locked ones too."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "The run could not be closed."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run has not reloaded yet."
@@ -11058,6 +11387,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run has reported it."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run is registered. Its first event has not arrived."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11095,6 +11429,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's end was not recorded; how it went is not known."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -11250,16 +11589,6 @@ msgstr ""
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The workspace takes no more events for it. A close is final."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace's default is enforce."
@@ -11344,7 +11673,18 @@ msgstr ""
 msgid "They leave %{organisation} and lose access to its workspaces and their runs at once. Their account stays; you can invite them again."
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "This Qory Apiary is already set up."
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "This Qory Apiary is not set up yet: use the set-up link from its install."
+msgstr ""
+
 #: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
 msgstr ""
@@ -11444,6 +11784,16 @@ msgstr ""
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
 msgstr ""
 
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#, elixir-autogen, elixir-format
+msgid "This link no longer turns mail on."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "This link works once. Setting the password logs this account out everywhere."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "This list"
@@ -11505,19 +11855,9 @@ msgstr ""
 msgid "This run had no wall. A program that ignores the proxy is not seen."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This run has ended; its record keeps the end it posted."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run has ended; the next run of the target has it."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "This run has ended; there is nothing to close."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11528,11 +11868,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This run is behind the policy in force."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This run is no longer in this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -11663,21 +11998,6 @@ msgstr ""
 msgid "Time zone"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out after %{duration}"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Timeline"
@@ -11730,6 +12050,11 @@ msgstr ""
 msgid "Today, %{time}"
 msgstr ""
 
+#: lib/apiary_web/attempt_limits.ex
+#, elixir-autogen, elixir-format
+msgid "Too many attempts. Try again in a few minutes."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tool"
@@ -11768,6 +12093,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Turn finished"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on mail for Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned mail on, by the test link"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -11895,6 +12230,12 @@ msgstr ""
 msgid "Used by"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Username"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Usually your company's name. Owners can change it later in the organisation's settings."
@@ -12203,6 +12544,11 @@ msgstr ""
 msgid "When"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "When the server offers it"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Where it is released"
@@ -12271,6 +12617,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrew an invitation that could not be delivered"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Works once, until %{time} (%{validity}). It is shown only now."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -12357,6 +12708,11 @@ msgstr ""
 msgid "Workspaces"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces of %{name}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Wrap"
@@ -12380,12 +12736,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, clear"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, close"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -12457,6 +12807,11 @@ msgstr ""
 msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it."
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "You are invited to the %{workspace} workspace of the %{organisation} organisation, as a member."
@@ -12475,7 +12830,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this workspace."
@@ -12504,6 +12858,11 @@ msgid "You are the only owner of this organisation. Make another member an owner
 msgid_plural "You are the only owner of these organisations. Make another member an owner of each, or delete it, before you delete your account."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You become this instance's admin."
+msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -12556,6 +12915,11 @@ msgstr ""
 msgid "You choose the targets on its page, once it is set up."
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "You get one command to run on %{name}. It carries a one-time code, not a key, which works once within 15 minutes."
@@ -12576,11 +12940,15 @@ msgstr ""
 msgid "You left %{name}."
 msgstr ""
 
+#: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
 msgid "You must log in to access this page."
 msgstr ""
 
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/live/instance_live/mail.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
@@ -12590,6 +12958,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "You no longer have access to this workspace."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -12621,6 +12994,16 @@ msgstr ""
 #: lib/apiary_web/controllers/user_session_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Your account is deleted."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the log-in page in a few minutes."
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Your address is confirmed. The password set before it was confirmed is removed: set a new one in Account settings if you want one."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -12663,10 +13046,20 @@ msgstr ""
 msgid "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "Your organisation and its first workspace."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Your organisations"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Your password is set. Log in with it."
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex
@@ -12852,9 +13245,9 @@ msgstr ""
 msgid "by rule"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "closed"
+msgid "cancelled"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12865,6 +13258,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "copy the item's link"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "couldn't check whether the run may go on: no answer"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "couldn't check whether the run may go on: unreadable answer"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12914,6 +13317,16 @@ msgstr ""
 msgid "details"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "did not start"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "did not start: %{code}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "digest"
@@ -12927,6 +13340,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "elapsed %{seconds} s"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "end not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -12967,6 +13385,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "esc"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "events refused"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13021,13 +13444,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "gateway (no session)"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "gateway lost"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -13100,6 +13516,11 @@ msgstr ""
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "input"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "interrupted"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -13246,6 +13667,27 @@ msgstr ""
 msgid "next and previous item"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} hour"
+msgid_plural "no activity for %{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} minute"
+msgid_plural "no activity for %{number} minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} second"
+msgid_plural "no activity for %{number} seconds"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "no day"
@@ -13326,6 +13768,11 @@ msgstr ""
 #: lib/apiary_web/controllers/run_log_controller.ex
 #, elixir-autogen, elixir-format
 msgid "not found"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "not recorded"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -13413,6 +13860,11 @@ msgstr ""
 msgid "path"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "permission to run expired"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "plain setting"
@@ -13432,27 +13884,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "qory printed a fingerprint on %{name} when it ran the command. If it isn't this one, revoke the key on the Access key tab."
 msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} hour"
-msgid_plural "quiet for %{number} hours"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} minute"
-msgid_plural "quiet for %{number} minutes"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} second"
-msgid_plural "quiet for %{number} seconds"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -13492,12 +13923,6 @@ msgstr ""
 msgid "run %{id}"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "run credential expired"
-msgstr ""
-
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "secret variable environment token value"
@@ -13506,13 +13931,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "session lost"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13539,6 +13957,21 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "starting or running"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped responding"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped, no outcome given"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13573,12 +14006,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "terminal"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "the issuer reported the run ended"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13653,13 +14080,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "timed out"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "timeout"
+msgid "time limit reached"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

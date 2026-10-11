@@ -9,19 +9,23 @@ defmodule Mix.Tasks.Apiary.Demo do
       mix apiary.demo --key ak_0123456789abcdef
       mix apiary.demo --file priv/demo/failed-run/events.jsonl
 
-  Every `priv/demo/*/events.jsonl` is one run, one CloudEvent of the server contract per
-  line, all of it synthetic. `--file` replays one file instead. The run lands in the
+  Every directory of `priv/demo` is one run, all of it synthetic: `registration.json`, the
+  body of its registration (`POST /v1/runs`), and `events.jsonl`, the events it posted,
+  one CloudEvent of the server contract per line, from sequence 2, since the registration
+  stands for sequence 1; `registered-only`'s is empty, a run that registered and posted
+  nothing. `--file` replays one `events.jsonl` instead, with the registration beside it. The run lands in the
   workspace of the access key named by `--key`, a node's key id, on that key's node;
   without it, in the first workspace that has a key that is not revoked, under its newest
-  such key: on a new instance, the Main workspace of the organisation the first
-  user signed up with, once they have added a key to a node there. Signing up needs no
-  setting: the instance's first sign-up is always open.
+  such key: on a new instance, the Main workspace of the organisation its set-up link
+  made (`Apiary.Setup`), once a key is added to a node there.
 
-  Nothing is inserted from here. A file goes the way a delivery goes: cut into batches of
-  20 events, each parsed by `Apiary.Runs.Batch` and stored by `Apiary.Runs.Ingest`, the
-  function the receiver calls once it has verified a request, and then projected. Each
-  invocation makes new runs: the run id and every event id are fresh, and the times are
-  shifted so that the last event of the file happens now. A run that exits has just
+  Nothing is inserted from here. A run goes the way Forager's goes: its registration, read
+  by `Apiary.Runs.Registration.parse/1` and stored by `Apiary.Runs.Registration.register/3`,
+  then its events, cut into batches of 20, each parsed by `Apiary.Runs.Batch` and stored
+  by `Apiary.Runs.Ingest`, the functions the receiver calls once it has verified a
+  request, and then projected. Each invocation makes new runs: the run id and every event
+  id are fresh, and the times are shifted so that the last event of the file, or the
+  registration of a run that posted none, happens now. A run that exits has just
   exited; one that does not has just beaten, and is found lost once its heartbeats have
   been missing for three of its intervals, like any run that stops talking.
 
@@ -45,11 +49,10 @@ defmodule Mix.Tasks.Apiary.Demo do
   alias Apiary.Organisations.{Workspace, Membership}
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Ingest, Projector, Target, Run}
+  alias Apiary.Runs.{Batch, Ingest, Projector, Registration, Target, Run}
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
-  @ping "dev.qory.ping"
   @policy_applied "dev.qory.run.policy_applied"
 
   @impl Mix.Task
@@ -194,7 +197,10 @@ defmodule Mix.Tasks.Apiary.Demo do
     end
   end
 
-  @doc "The recorded runs that ship with the repository, in the order of their names."
+  @doc """
+  The recorded runs that ship with the repository, each its `events.jsonl`, in the order of
+  their names.
+  """
   def files do
     demo_dir() |> Path.join("*/events.jsonl") |> Path.wildcard() |> Enum.sort()
   end
@@ -202,28 +208,82 @@ defmodule Mix.Tasks.Apiary.Demo do
   defp demo_dir, do: Application.app_dir(:apiary, "priv/demo")
 
   @doc """
-  Replays one `events.jsonl` as a new run in the workspace of `access_key`, its last event
-  happening at `now`, and projects it. `{:ok, run}` with the run as projected;
-  `{:error, reason}` when the file holds no events, a batch does not parse or the
-  workspace does not take it.
+  Replays one `events.jsonl` as a new run in the workspace of `access_key`, registered by
+  the `registration.json` beside it, its last event happening at `now`, and projects it.
+  `{:ok, run}` with the run as projected; `{:error, reason}` when a file is not what it
+  should be, a batch does not parse or the workspace does not take the run.
   """
   def replay(%AccessKey{} = access_key, file, now \\ DateTime.utc_now()) do
-    with {:ok, events} <- read(file) do
-      events = renew(events, Ecto.UUID.generate(version: 7), now)
-      meta = meta(events)
+    with {:ok, events} <- read(file),
+         {:ok, body} <- read_registration(file) do
+      {body, events} = renew(body, events, Ecto.UUID.generate(version: 7), now)
+      meta = meta(body, events)
 
-      events
-      |> Enum.chunk_every(@batch_size)
-      |> Enum.reduce_while({:error, :empty}, fn chunk, _last ->
-        case deliver(access_key, chunk, meta) do
-          {:ok, run} -> {:cont, {:ok, run}}
-          {:error, reason} -> {:halt, {:error, reason}}
+      # Everything is read before anything is stored: a file that is not a record stores
+      # nothing.
+      with {:ok, registration} <- parse_registration(body),
+           {:ok, batches} <- batches(events),
+           {:ok, run} <- register(access_key, registration, body) do
+        batches
+        |> Enum.reduce_while({:ok, run}, fn batch, _last ->
+          case deliver(access_key, batch, meta) do
+            {:ok, run} -> {:cont, {:ok, run}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end)
+        |> case do
+          {:ok, run} -> Projector.project(run)
+          {:error, reason} -> {:error, reason}
         end
-      end)
-      |> case do
-        {:ok, run} -> Projector.project(run)
-        {:error, reason} -> {:error, reason}
       end
+    end
+  end
+
+  defp parse_registration(body) do
+    case Registration.parse(body) do
+      {:ok, registration} -> {:ok, registration}
+      {:error, :invalid_request, member} -> {:error, {:not_a_registration, member}}
+    end
+  end
+
+  defp batches(events) do
+    events
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.reduce_while({:ok, []}, fn chunk, {:ok, batches} ->
+      case parse(chunk) do
+        {:ok, batch} -> {:cont, {:ok, [batch | batches]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, batches} -> {:ok, Enum.reverse(batches)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The registration's body, as Forager posts it: stored by the receiver's own function.
+  defp register(access_key, registration, body) do
+    meta = %{
+      body: Jason.encode!(body),
+      contract_version: 1,
+      forager_version: body["forager_version"]
+    }
+
+    case Registration.register(access_key, registration, meta) do
+      {:ok, %{run: run}} -> {:ok, run}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp read_registration(file) do
+    path = file |> Path.dirname() |> Path.join("registration.json")
+
+    with {:ok, bytes} <- File.read(path),
+         {:ok, %{"time" => time} = body} when is_binary(time) <- Jason.decode(bytes) do
+      {:ok, body}
+    else
+      {:error, :enoent} -> {:error, :no_registration}
+      _ -> {:error, :not_a_registration}
     end
   end
 
@@ -239,33 +299,36 @@ defmodule Mix.Tasks.Apiary.Demo do
       end)
       |> case do
         :error -> {:error, :not_events}
-        [] -> {:error, :empty}
         events -> {:ok, Enum.reverse(events)}
       end
     end
   end
 
   # A new run made of new events, ending now: what the record said relative to its own
-  # end, it says relative to this moment.
-  defp renew(events, subject, now) do
-    last = events |> Enum.map(&time!/1) |> Enum.max(DateTime)
+  # end, it says relative to this moment. The registration's time is to the whole second,
+  # as the contract writes it.
+  defp renew(registration, events, subject, now) do
+    last = [registration | events] |> Enum.map(&time!/1) |> Enum.max(DateTime)
     shift = DateTime.diff(now, last, :millisecond)
+    at = &(&1 |> time!() |> DateTime.add(shift, :millisecond) |> DateTime.truncate(&2))
 
-    for event <- events do
-      time =
-        event
-        |> time!()
-        |> DateTime.add(shift, :millisecond)
-        |> DateTime.truncate(:millisecond)
-        |> DateTime.to_iso8601()
+    events =
+      for event <- events do
+        Map.merge(event, %{
+          "id" => Ecto.UUID.generate(),
+          "subject" => subject,
+          "source" => @source_prefix <> subject,
+          "time" => event |> at.(:millisecond) |> DateTime.to_iso8601()
+        })
+      end
 
-      Map.merge(event, %{
-        "id" => Ecto.UUID.generate(),
-        "subject" => subject,
-        "source" => @source_prefix <> subject,
-        "time" => time
+    registration =
+      Map.merge(registration, %{
+        "run_id" => subject,
+        "time" => registration |> at.(:second) |> DateTime.to_iso8601()
       })
-    end
+
+    {registration, events}
   end
 
   defp time!(%{"time" => time}) do
@@ -275,11 +338,9 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   # What the gateway's request would have said in its headers: revision 1 of the contract,
   # as on every request.
-  defp meta(events) do
-    ping = data(events, @ping)
-
+  defp meta(registration, events) do
     %{
-      forager_version: ping["forager_version"],
+      forager_version: registration["forager_version"],
       contract_version: 1,
       run_configuration: data(events, @policy_applied)["run_configuration"]
     }
@@ -289,12 +350,9 @@ defmodule Mix.Tasks.Apiary.Demo do
     Enum.find_value(events, %{}, fn event -> if event["type"] == type, do: event["data"] end)
   end
 
-  defp deliver(access_key, events, meta) do
-    with {:ok, batch} <- parse(events),
-         {:ok, %{status: 202, run: run}} <-
-           Ingest.ingest(access_key, batch, Map.put(meta, :delivery_id, Ecto.UUID.generate())) do
-      {:ok, run}
-    else
+  defp deliver(access_key, batch, meta) do
+    case Ingest.ingest(access_key, batch, Map.put(meta, :delivery_id, Ecto.UUID.generate())) do
+      {:ok, %{status: 202, run: run}} -> {:ok, run}
       {:ok, %{status: status}} -> {:error, {:refused, status}}
       {:error, reason} -> {:error, reason}
     end

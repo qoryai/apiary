@@ -15,8 +15,7 @@ exclude =
     true ->
       IO.puts(
         "Excluding the :contract tests: no Forager contract directory " <>
-          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout, " <>
-          "or fetch #{Apiary.ContractFixtures.pinned_ref()} into ../../forager/main)"
+          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout)"
       )
 
       [:contract]
@@ -34,14 +33,28 @@ end
 
 # A test tagged `needs: feature` exercises that feature; the suite runs in CI under more
 # than one QORY_FEATURES, and a run without the feature leaves such tests out.
+#
+# A test tagged `with_features:` runs under the features it names, whatever the suite's
+# (`Apiary.DataCase.setup_features/1`), and so passes or fails alike under each: it runs
+# where the suite has every feature, and a run with fewer leaves it out.
+off = Apiary.Features.all() -- Apiary.Features.enabled()
+
 exclude =
   exclude ++
-    for(feature <- Apiary.Features.all() -- Apiary.Features.enabled(), do: {:needs, feature})
+    for(feature <- off, do: {:needs, feature}) ++ if(off == [], do: [], else: [:with_features])
+
+# The tests tagged :load measure the receiver under a gateway's backlog, for long and outside
+# the sandbox: they run only when asked for, with `mix test --only load`.
+exclude = exclude ++ [:load]
+
+# The tests tagged :database_tls connect to a Postgres that serves TLS, which CI's job
+# "Database over TLS" starts: they run only when asked for, with `mix test --only database_tls`.
+exclude = exclude ++ [:database_tls]
 
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 
-# The instance has had its first sign-up, committed before the sandbox takes over: a
-# sign-up in a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`).
+# The instance is set up, committed before the sandbox takes over: a sign-up in a test is
+# a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`).
 Apiary.OrganisationsFixtures.ensure_instance_organisation!()
 
 Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)

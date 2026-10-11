@@ -65,6 +65,12 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(
+      :"invitation.renew",
+      "make a new link for a pending invitation, whose old link stops working at once",
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
       :"invitation.accept",
       "accept an invitation: its token allows it, and no role, so nobody is asked",
       asked_of: :organisation
@@ -88,6 +94,23 @@ defmodule Apiary.Access do
     Action.new(
       :"instance_admin.revoke",
       "make an owner of the instance's organisation a member of it: a release command, which no role takes",
+      asked_of: :organisation
+    ),
+    # An account's password, without mail.
+    Action.new(
+      :"account.password_link",
+      "make a one-time link that sets an account's password: an instance admin while the instance sends no mail, or a release command, which no role takes (Apiary.Accounts.build_password_link/3)",
+      asked_of: :organisation
+    ),
+    # The instance's mail, in Instance settings › Mail.
+    Action.new(
+      :"instance.mail_save",
+      "save the mail settings, which sends a test link to the admin who saved them: an instance admin after a recent sign-in, which no role takes (Apiary.Mail.save_settings/3)",
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"instance.mail_on",
+      "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in, which no role takes (Apiary.Mail.turn_on/2)",
       asked_of: :organisation
     ),
     # The audit trail.
@@ -168,10 +191,6 @@ defmodule Apiary.Access do
       roles: @members,
       audited: {:not, @read}
     ),
-    Action.new(:"run.close", "close a run that has not ended",
-      feature: :observability,
-      roles: @members
-    ),
     Action.new(:"retention.edit", "set how long the record is kept",
       feature: :observability,
       roles: @admins
@@ -246,7 +265,7 @@ defmodule Apiary.Access do
       roles: @admins
     ),
     # The server contract.
-    Action.new(:"run.post_events", "post a run's events",
+    Action.new(:"run.post_events", "open a run and post its events",
       feature: :observability,
       roles: [:access_key],
       audited: {:not, "the events the gateway posts are the record, not the audit trail"}
@@ -277,7 +296,8 @@ defmodule Apiary.Access do
     :"member.remove",
     :"member.suspend",
     :"member.activate",
-    :"invitation.revoke"
+    :"invitation.revoke",
+    :"invitation.renew"
   ]
   @acts_on %{owner: [:owner, :admin, :member], admin: [:member]}
 
@@ -361,7 +381,8 @@ defmodule Apiary.Access do
      without a membership where the scope is, unless the edition gives them a role there;
      the page decides whether it says forbidden or not found.
   8. **Whom the action is over**, for the actions over people: inviting, changing a
-     level, removing, suspending, activating and revoking an invitation. An owner takes
+     level, removing, suspending, activating, and revoking an invitation or making a new
+     link for it. An owner takes
      them over anyone (suspending and activating over admins and members), within the
      rule that an organisation keeps an owner (`Apiary.Organisations`); an admin over
      members only, never over an owner or an admin (`acts_on?/2`). Asked of the
@@ -413,9 +434,10 @@ defmodule Apiary.Access do
   they may change there is its role's. The edition may give a person another way in
   (`c:Apiary.Edition.reach/1`), which the scope's `reach` carries, and a role there
   without a membership (`c:Apiary.Edition.role/1`): such a person reads every workspace of
-  the organisation. `reach/1` says which way the scope carries, `level/1` the level they
-  act at, which only a membership there gives, and `reader/1` how one without a
-  membership reaches it. `Apiary.Organisations.resolve_scope/4` finds the reach a page's
+  the organisation, and changes there what that role holds. `reach/1` says which way the
+  scope carries, `level/1` the level they act at, which only a membership there gives,
+  and `reader/1` how one without a membership reaches it while their role there changes
+  nothing (`reads_only?/1`). `Apiary.Organisations.resolve_scope/4` finds the reach a page's
   path opens; `reload/2`, in `authorize/3`, reads the membership again, and the edition
   what it gave, and fails closed.
 
@@ -425,7 +447,12 @@ defmodule Apiary.Access do
   run the instance: `instance_admin?/1` says whether a scope's person is one, and is the
   one place that says so. A release command makes an account one or ends it
   (`instance_admin.grant`, `instance_admin.revoke`), which no role takes. Inside the
-  organisation they act at their level as anyone there.
+  organisation they act at their level as anyone there. Beyond it, while the instance sends
+  no mail, an instance admin makes a one-time link that sets an account's password
+  (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
+  either: the context function asks `instance_admin?/1`. So do saving the mail settings
+  and turning them on (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
+  `instance.mail_on`, `Apiary.Mail.turn_on/2`), which also ask for a recent sign-in.
 
   ## Features
 
@@ -604,15 +631,33 @@ defmodule Apiary.Access do
 
   @doc """
   reader/1 says how the scope's person reads the scope's organisation when they have no
-  membership there, as the scope carries it: the edition's name for its reach; nil for
-  anyone with a membership there, and for anyone who does not reach it. A reader reads
-  and changes nothing a membership would: a page says so, rather than the level a change
-  would take.
+  membership there and change nothing in it, as the scope carries it: the edition's name
+  for its reach, while the role the edition gives them there (`c:Apiary.Edition.role/1`)
+  holds no action that changes anything (`reads_only?/1`). Nil for anyone with a
+  membership there, for one whose role there changes something, and for anyone who does
+  not reach it. A reader reads and changes nothing: a page says so, rather than the level
+  a change would take. What the role holds answers, not the name of the reach.
   """
   @spec reader(Scope.t() | nil) :: atom | nil
   def reader(scope) do
-    if own_level(scope), do: nil, else: edition_reach(scope)
+    with nil <- own_level(scope),
+         name when not is_nil(name) <- edition_reach(scope),
+         true <- reads_only?(Map.get(roles(), Edition.role(scope), [])) do
+      name
+    else
+      _membership_or_none_or_writes -> nil
+    end
   end
+
+  @doc """
+  reads_only?/1 says whether a role that holds `actions`, a list of names of
+  `actions/0`, changes nothing: none of them leaves an entry in the audit trail, which
+  every change worth one does (`Apiary.Access.Action`'s `audited`). True for none at all.
+  `reader/1` asks it of the role the edition gives a person without a membership.
+  """
+  @spec reads_only?([action]) :: boolean
+  def reads_only?(actions) when is_list(actions),
+    do: not Enum.any?(actions, &(action(&1).audited == true))
 
   @doc """
   reaches_every_workspace_in?/1 says whether the scope's person reaches every workspace of

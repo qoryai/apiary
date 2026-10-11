@@ -51,7 +51,7 @@ erl_crash.dump
 .env
 .env.*
 mise.local.toml
-docker-compose.yml
+compose.yaml
 README.md
 AGENTS.md
 docs/

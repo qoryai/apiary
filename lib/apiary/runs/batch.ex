@@ -15,9 +15,10 @@ defmodule Apiary.Runs.Batch do
   `data` nested no deeper than `max_depth/0`, a `time` Postgres has a timestamp
   for, no NUL in a `type`.
 
-  One event's `data` is read beyond the envelope, because the contract refuses the batch
-  otherwise: a ping (`dev.qory.ping`) carries `interval_seconds`, an integer from 1 to
-  `max_interval_seconds/0`, 300, the heartbeat interval its run uses.
+  Two types are refused, because the contract refuses a batch that holds one: the ping
+  (`dev.qory.ping`), which the contract no longer has, a run starting by its registration
+  (`Apiary.Runs.Registration`) instead, and `dev.qory.run.registered`, which is the
+  record's alone and never posted.
 
   Pure: nothing here touches the database or logs.
   """
@@ -35,7 +36,8 @@ defmodule Apiary.Runs.Batch do
   @max_events 1000
   @max_depth 64
   @years 1970..9999
-  @ping "dev.qory.ping"
+  # Never in a batch: the ping the contract no longer has, and the record's registration.
+  @refused ["dev.qory.ping", "dev.qory.run.registered"]
   @max_interval_seconds 300
 
   @doc "The most events a batch may hold."
@@ -44,8 +46,33 @@ defmodule Apiary.Runs.Batch do
   @doc "The deepest `data` may nest, the object itself being level one."
   def max_depth, do: @max_depth
 
-  @doc "The longest heartbeat interval a ping may announce, in seconds."
+  @doc "The longest heartbeat interval a run may announce, in seconds."
   def max_interval_seconds, do: @max_interval_seconds
+
+  @doc """
+  Whether `value` is a UUID as an event's `id` and `subject` are written: lower-case hex in
+  the hyphenated form. The rule for a run id wherever the contract sends one.
+  """
+  @spec uuid?(term) :: boolean
+  def uuid?(value), do: is_binary(value) and Regex.match?(@uuid, value)
+
+  @doc """
+  An RFC 3339 timestamp from 1970 to 9999, as an event's `time` is read: `{:ok, time}`
+  in microseconds, or `:error`.
+  """
+  @spec time(term) :: {:ok, DateTime.t()} | :error
+  def time(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, %DateTime{year: year, microsecond: {microsecond, _precision}} = time, _offset}
+      when year in @years ->
+        {:ok, %{time | microsecond: {microsecond, 6}}}
+
+      _ ->
+        :error
+    end
+  end
+
+  def time(_value), do: :error
 
   @doc "Parses the raw body of a delivery."
   def parse(body) when is_binary(body) do
@@ -81,13 +108,13 @@ defmodule Apiary.Runs.Batch do
        })
        when is_binary(id) and is_binary(subject) and is_binary(sequence) and is_binary(time) and
               source_subject == subject do
-    with true <- Regex.match?(@uuid, id),
-         true <- Regex.match?(@uuid, subject),
+    with true <- uuid?(id),
+         true <- uuid?(subject),
          true <- Regex.match?(@sequence, sequence),
          sequence = String.to_integer(sequence),
          true <- sequence >= 1,
          true <- storable?(type),
-         true <- ping_interval?(type, data),
+         true <- type not in @refused,
          {:ok, time} <- time(time),
          {:ok, data} <- data(data) do
       {:ok,
@@ -105,23 +132,6 @@ defmodule Apiary.Runs.Batch do
   end
 
   defp event(_item), do: :error
-
-  defp ping_interval?(@ping, %{"interval_seconds" => seconds}) when is_integer(seconds),
-    do: seconds in 1..@max_interval_seconds
-
-  defp ping_interval?(@ping, _data), do: false
-  defp ping_interval?(_type, _data), do: true
-
-  defp time(value) do
-    case DateTime.from_iso8601(value) do
-      {:ok, %DateTime{year: year, microsecond: {microsecond, _precision}} = time, _offset}
-      when year in @years ->
-        {:ok, %{time | microsecond: {microsecond, 6}}}
-
-      _ ->
-        :error
-    end
-  end
 
   # Postgres holds no NUL in text or in jsonb. A type with one is no type; in
   # `data` it is replaced with U+FFFD, the one place an event is not stored

@@ -47,6 +47,11 @@ defmodule Apiary.Accounts.User do
     changeset =
       changeset
       |> validate_required([:email])
+      # A NUL or another control character, which Postgres may refuse to store, is no
+      # address's.
+      |> validate_format(:email, ~r/\A[^[:cntrl:]]*\z/,
+        message: dgettext_noop("errors", "must not contain control characters")
+      )
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
         message: dgettext_noop("errors", "must have the @ sign and no spaces")
       )
@@ -100,6 +105,10 @@ defmodule Apiary.Accounts.User do
     changeset
     |> validate_required([:password])
     |> validate_length(:password, min: 12, max: 72)
+    # Bcrypt reads a password up to its first NUL, and would ignore what follows.
+    |> validate_format(:password, ~r/\A[^\x00]*\z/,
+      message: dgettext_noop("errors", "must not contain a NUL byte")
+    )
     # Examples of additional password validation:
     # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
     # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")

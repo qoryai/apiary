@@ -193,8 +193,10 @@ defmodule Apiary.MixProject do
         Operation: [
           Apiary.Release,
           ~r/^Apiary\.Release\./,
+          Apiary.Mail,
           Apiary.Mailer,
           Apiary.Repo,
+          Apiary.DatabaseUrl,
           ~r/^Apiary\.Job(\.|$)/,
           Apiary.LogMetadata
         ],

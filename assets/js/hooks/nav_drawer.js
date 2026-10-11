@@ -48,6 +48,9 @@ export const NavDrawer = {
     this.el.addEventListener("click", e => {
       if (e.target.closest("[data-drawer-open]")) set(true)
       else if (e.target.closest("[data-drawer-close]")) set(false)
+      // A chevron of the drawer's head: the drawer closes, and its menu opens under the bar
+      // (the Switcher hook), which takes the focus.
+      else if (e.target.closest("#sidebar [data-switcher-open]")) set(false, false)
       else if (e.target.closest("[data-sidebar-collapse]")) this.fold(!this.folded())
     })
     toggle?.addEventListener("change", () => sync(true))

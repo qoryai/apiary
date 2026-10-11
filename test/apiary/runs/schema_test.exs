@@ -37,10 +37,10 @@ defmodule Apiary.Runs.SchemaTest do
     end
   end
 
-  test "the database takes every state of the list, ended among them" do
+  test "the database takes every state of the list, and every old name" do
     %{scope: scope} = sign_up_fixture()
 
-    for state <- Run.states() do
+    for state <- Run.states() ++ Run.old_states() do
       assert %Run{state: ^state} = Repo.get!(Run, run_fixture(scope, %{state: state}).id)
     end
   end

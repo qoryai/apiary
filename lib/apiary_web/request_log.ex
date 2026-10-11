@@ -3,10 +3,12 @@ defmodule ApiaryWeb.RequestLog do
   The production request log: one JSON line per request, written by
   `LoggerJSON.Plug` from the endpoint's stop event.
 
-  Four routes carry a bearer token in the path (an invitation, a log-in link, an
-  email change). The path is logged, so the token segment is replaced with
-  `:token` before the line is written: a reader of the log must not be able to
-  sign in or join an organisation with what it finds there.
+  Six routes carry a bearer token in the path (an invitation, a log-in link, an
+  email change, a password link, the test link of Instance settings › Mail), and one the
+  instance's set-up code. The path is logged, so the token segment is replaced with
+  `:token`, and the code with `:code`, before the line is written: a reader of the log
+  must not be able to sign in, set a password, join an organisation or set the instance up
+  with what it finds there.
   """
 
   @handler_id "apiary-request-log"
@@ -39,28 +41,9 @@ defmodule ApiaryWeb.RequestLog do
 
   @doc """
   The request path with the token segment of the token-bearing routes replaced
-  by `:token`. Any other path is returned as it is.
+  by `:token`, and the set-up code by `:code`. Any other path is returned as it is. The
+  routes are `Apiary.SecretLogFilter`'s, which keeps the same tokens out of every other
+  log line (`Apiary.SecretLogFilter.redact_path/1`).
   """
-  def redact_path(path) when is_binary(path) do
-    # Empty segments are dropped the way the router drops them, so a doubled or
-    # trailing slash does not get a token past the redaction.
-    case String.split(path, "/", trim: true) do
-      ["invitations", _token] ->
-        "/invitations/:token"
-
-      ["invitations", _token, "continue"] ->
-        "/invitations/:token/continue"
-
-      ["users", "log-in", _token] ->
-        "/users/log-in/:token"
-
-      ["users", "settings", "confirm-email", _token] ->
-        "/users/settings/confirm-email/:token"
-
-      _ ->
-        path
-    end
-  end
-
-  def redact_path(path), do: path
+  defdelegate redact_path(path), to: Apiary.SecretLogFilter
 end

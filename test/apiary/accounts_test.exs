@@ -35,6 +35,27 @@ defmodule Apiary.AccountsTest do
     end
   end
 
+  describe "get_user_by_email/1 and get_user_by_email_and_password/2 for text Postgres refuses" do
+    test "find nobody for an address holding a NUL, without asking the database" do
+      user = user_fixture() |> set_password()
+
+      refute Accounts.get_user_by_email(user.email <> <<0>>)
+      refute Accounts.get_user_by_email(<<0>> <> user.email)
+      refute Accounts.get_user_by_email(<<0xFF>> <> user.email)
+      refute Accounts.get_user_by_email_and_password(user.email <> <<0>>, valid_user_password())
+    end
+  end
+
+  describe "get_user_by_email_and_password/2 for an unconfirmed account" do
+    test "returns it: an account made without mail signs in with its password" do
+      %{id: id} = user = unconfirmed_user_fixture() |> set_password()
+      assert is_nil(user.confirmed_at)
+
+      assert %User{id: ^id} =
+               Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+    end
+  end
+
   describe "get_user!/1" do
     test "raises if id is invalid" do
       assert_raise Ecto.NoResultsError, fn ->
@@ -75,6 +96,13 @@ defmodule Apiary.AccountsTest do
       # Now try with the uppercased email too, to check that email case is ignored.
       {:error, changeset} = Accounts.register_user(%{email: String.upcase(email)})
       assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "refuses an address holding a NUL or another control character" do
+      for email <- ["a\0b@example.com", "ab@example.com\0", "a\x7Fb@example.com"] do
+        {:error, changeset} = Accounts.register_user(%{email: email})
+        assert "must not contain control characters" in errors_on(changeset).email
+      end
     end
 
     test "registers users without password" do
@@ -256,6 +284,89 @@ defmodule Apiary.AccountsTest do
 
       refute Repo.get_by(UserToken, user_id: user.id)
     end
+
+    test "refuses a NUL in the password, where bcrypt would stop reading", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, %{password: "first part\0second part"})
+
+      assert "must not contain a NUL byte" in errors_on(changeset).password
+    end
+
+    test "with the caller's session token, sets nothing once that session ended", %{user: user} do
+      session = Accounts.generate_user_session_token(user)
+      {loaded, _at} = Accounts.get_user_by_session_token(session)
+      :ok = Accounts.delete_user_session_token(session)
+
+      assert {:error, :stale} =
+               Accounts.update_user_password(loaded, %{password: "new valid password"},
+                 session_token: session
+               )
+
+      refute Accounts.get_user_by_email_and_password(user.email, "new valid password")
+    end
+
+    test "on an unconfirmed account, keeps the log-in links sent to its address: the owner's still removes the password" do
+      user = unconfirmed_user_fixture()
+      {link, _hashed} = generate_user_magic_link_token(user)
+
+      # Whoever signed up with the address sets a password, signs in, and changes it again.
+      {:ok, {user, _ended}} =
+        Accounts.update_user_password(user, %{password: "a pass phrase set first"})
+
+      session = Accounts.generate_user_session_token(user)
+
+      assert {:ok, {_user, ended}} =
+               Accounts.update_user_password(user, %{password: "a pass phrase set again"},
+                 session_token: session
+               )
+
+      assert Enum.any?(ended, &(&1.token == session))
+      refute Enum.any?(ended, &(&1.context == "login"))
+      session = Accounts.generate_user_session_token(user)
+
+      # The owner follows the link sent before either change.
+      assert {:ok, {confirmed, ended}, :password_removed} =
+               Accounts.login_user_by_magic_link(link)
+
+      assert confirmed.confirmed_at
+      assert is_nil(confirmed.hashed_password)
+      assert Enum.any?(ended, &(&1.token == session))
+      refute Accounts.get_user_by_session_token(session)
+      refute Accounts.get_user_by_email_and_password(user.email, "a pass phrase set again")
+    end
+
+    test "on a confirmed account, ends its log-in links too", %{user: user} do
+      {link, _hashed} = generate_user_magic_link_token(user)
+
+      assert {:ok, {_user, ended}} =
+               Accounts.update_user_password(user, %{password: "new valid password"})
+
+      assert Enum.any?(ended, &(&1.context == "login"))
+      assert {:error, :not_found} = Accounts.login_user_by_magic_link(link)
+    end
+
+    test "a session loaded before the first log-in link removed the password sets none after it" do
+      user = unconfirmed_user_fixture() |> set_password()
+      session = Accounts.generate_user_session_token(user)
+      # What a request of whoever set the password loaded, before the owner's link.
+      {stale, _at} = Accounts.get_user_by_session_token(session)
+
+      {link, _hashed} = generate_user_magic_link_token(user)
+      assert {:ok, {_user, _ended}, :password_removed} = Accounts.login_user_by_magic_link(link)
+
+      attrs = %{password: "a later pass phrase", password_confirmation: "a later pass phrase"}
+
+      assert {:error, :stale} =
+               Accounts.update_user_password(stale, attrs, session_token: session)
+
+      # Without the token too: the account is confirmed since it was loaded.
+      assert {:error, :stale} = Accounts.update_user_password(stale, attrs)
+
+      reloaded = Accounts.get_user!(user.id)
+      assert reloaded.confirmed_at
+      assert is_nil(reloaded.hashed_password)
+      refute Accounts.get_user_by_email_and_password(user.email, "a later pass phrase")
+    end
   end
 
   describe "generate_user_session_token/1" do
@@ -356,19 +467,35 @@ defmodule Apiary.AccountsTest do
       assert {:error, :not_found} = Accounts.login_user_by_magic_link(encoded_token)
     end
 
-    test "raises when unconfirmed user has password set" do
-      user = unconfirmed_user_fixture()
-
-      {1, nil} =
-        Repo.update_all(from(u in User, where: u.id == ^user.id),
-          set: [hashed_password: "hashed"]
-        )
-
+    test "an unconfirmed account's password, set before its address was confirmed, goes at its first link log-in, and so do its sessions" do
+      user = unconfirmed_user_fixture() |> set_password()
+      assert is_nil(user.confirmed_at)
+      session = Accounts.generate_user_session_token(user)
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
-      assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->
-        Accounts.login_user_by_magic_link(encoded_token)
-      end
+      assert {:ok, {user, expired}, :password_removed} =
+               Accounts.login_user_by_magic_link(encoded_token)
+
+      assert user.confirmed_at
+      assert is_nil(user.hashed_password)
+      assert Enum.any?(expired, &(&1.token == session))
+      refute Accounts.get_user_by_session_token(session)
+      refute Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+
+      reloaded = Accounts.get_user!(user.id)
+      assert reloaded.confirmed_at
+      assert is_nil(reloaded.hashed_password)
+
+      # The link worked once.
+      assert {:error, :not_found} = Accounts.login_user_by_magic_link(encoded_token)
+    end
+
+    test "a confirmed account keeps its password at a link log-in" do
+      user = user_fixture() |> set_password()
+      {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
+
+      assert {:ok, {_user, []}} = Accounts.login_user_by_magic_link(encoded_token)
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
     end
   end
 

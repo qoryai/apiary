@@ -30,7 +30,10 @@ defmodule Apiary.Accounts do
 
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    # Text Postgres refuses, a NUL or bytes that are not UTF-8, is no account's address.
+    if String.valid?(email) and not String.contains?(email, <<0>>) do
+      Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    end
   end
 
   @doc """
@@ -159,6 +162,18 @@ defmodule Apiary.Accounts do
 
   Returns a tuple with the updated user, as well as a list of expired tokens.
 
+  The account's row is held while the password is set, as a log-in link's confirmation
+  holds it (`login_user_by_magic_link/1`), so the two take turns. `{:error, :stale}` when
+  `user` is not the account as it is now: its confirmation differs, as after a first
+  log-in link that removed a password set before it (case 3 there), or it is deleted; and,
+  with `session_token:`, the caller's session token, when that session no longer exists.
+  Nothing is set then.
+
+  Every token of the account ends, its sessions included, but for an account whose address
+  is not confirmed: its log-in links stay. Whoever set its password may not be the
+  address's owner, and the owner's link is what removes that password (case 3 of
+  `login_user_by_magic_link/1`); a change of password does not end it.
+
   ## Examples
 
       iex> update_user_password(user, %{password: ...})
@@ -168,10 +183,36 @@ defmodule Apiary.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_user_password(user, attrs) do
-    user
-    |> User.password_changeset(attrs)
-    |> update_user_and_delete_all_tokens()
+  @spec update_user_password(%User{}, map, keyword) ::
+          {:ok, {%User{}, [%UserToken{}]}} | {:error, Ecto.Changeset.t() | :stale}
+  def update_user_password(%User{} = user, attrs, opts \\ []) do
+    # Hashed before the transaction, which holds the account's row meanwhile.
+    case User.password_changeset(user, attrs) do
+      %Ecto.Changeset{valid?: false} = changeset ->
+        {:error, %{changeset | action: :update}}
+
+      changeset ->
+        Repo.transact(fn ->
+          with {:ok, locked} <- lock_account(user.id),
+               true <- locked.confirmed_at == user.confirmed_at,
+               true <- session_alive?(user, Keyword.get(opts, :session_token)) do
+            update_user_and_delete_all_tokens(%{changeset | data: locked},
+              keep_login_links: is_nil(locked.confirmed_at)
+            )
+          else
+            _stale -> {:error, :stale}
+          end
+        end)
+    end
+  end
+
+  defp session_alive?(_user, nil), do: true
+
+  defp session_alive?(%User{id: id}, token) when is_binary(token) do
+    Repo.exists?(
+      from t in UserToken,
+        where: t.token == ^token and t.context == "session" and t.user_id == ^id
+    )
   end
 
   @doc """
@@ -205,8 +246,8 @@ defmodule Apiary.Accounts do
   its id stays, with the time it was deleted, and its email address, password and
   preferences are erased. Its memberships are deleted, each an entry in its
   organisation's trail (`Apiary.Organisations.end_memberships/2`), and so are its session
-  and email tokens. What the person made in a workspace, an access key, a rule, a run's
-  closing, stays with the workspace and names the tombstone. All of it in one
+  and email tokens. What the person made in a workspace, an access key or a rule, stays with
+  the workspace and names the tombstone. All of it in one
   transaction.
 
   Given the person's scope, the person deletes their own account: the page asks for a
@@ -323,35 +364,31 @@ defmodule Apiary.Accounts do
 
   There are three cases to consider:
 
-  1. The user has already confirmed their email. They are logged in
-     and the magic link is expired.
+  1. The account's address is confirmed. It is logged in and the link is used up:
+     `{:ok, {user, []}}`.
 
-  2. The user has not confirmed their email and no password is set.
-     In this case, the user gets confirmed, logged in, and all tokens -
-     including session ones - are expired. In theory, no other tokens
-     exist but we delete all of them for best security practices.
+  2. The address is not confirmed and no password is set. The link confirms it, logs the
+     account in and ends every token of the account, its sessions included:
+     `{:ok, {user, tokens}}`, with the tokens deleted, whose sessions the caller
+     disconnects.
 
-  3. The user has not confirmed their email but a password is set.
-     This cannot happen in the default implementation but may be the
-     source of security pitfalls. See the "Mixing magic link and password registration" section of
-     `mix help phx.gen.auth`.
+  3. The address is not confirmed and a password is set: one chosen at a sign-up without
+     mail, or in Account settings, before anyone showed the address was theirs. Whoever
+     set it may not be the address's owner, who now follows a link sent to it. The link
+     confirms the address, **removes the password** and ends every token of the account,
+     its sessions included, so whoever set it keeps no way in:
+     `{:ok, {user, tokens}, :password_removed}`, and the page says so. This is
+     phx.gen.auth's guard for mixing log-in links and passwords ("Mixing magic link and
+     password registration" in `mix help phx.gen.auth`).
   """
   @spec login_user_by_magic_link(String.t()) ::
-          {:ok, {%User{}, [%UserToken{}]}} | {:error, atom | Ecto.Changeset.t()}
+          {:ok, {%User{}, [%UserToken{}]}}
+          | {:ok, {%User{}, [%UserToken{}]}, :password_removed}
+          | {:error, atom | Ecto.Changeset.t()}
   def login_user_by_magic_link(token) do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
 
     case Repo.one(query) do
-      # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
-      {%User{confirmed_at: nil, hashed_password: hash}, _token} when not is_nil(hash) ->
-        raise """
-        magic link log in is not allowed for unconfirmed users with a password set!
-
-        This cannot happen with the default implementation, which indicates that you
-        might have adapted the code to a different use case. Please make sure to read the
-        "Mixing magic link and password registration" section of `mix help phx.gen.auth`.
-        """
-
       {user, token} ->
         case sign_in_refusal(user) do
           # An account the edition refuses signs in nowhere; the link is used up.
@@ -368,15 +405,275 @@ defmodule Apiary.Accounts do
     end
   end
 
-  defp log_in(%User{confirmed_at: nil} = user, _token) do
-    user
-    |> User.confirm_changeset()
-    |> update_user_and_delete_all_tokens()
+  # An unconfirmed account: confirmed, its password removed if it has one (case 3 above),
+  # every token ended (cases 2 and 3). The account is read again under its lock, so a
+  # password set meanwhile goes too, and the answer says what was done.
+  defp log_in(%User{confirmed_at: nil, id: id}, token) do
+    Repo.transact(fn ->
+      locked =
+        Repo.one(
+          from u in User,
+            where: u.id == ^id and is_nil(u.deleted_at),
+            lock: "FOR NO KEY UPDATE"
+        )
+
+      confirm(locked, token)
+    end)
+    |> case do
+      {:ok, {:password_removed, result}} -> {:ok, result, :password_removed}
+      {:ok, {_kept, result}} -> {:ok, result}
+      {:error, _reason} = error -> error
+    end
   end
 
   defp log_in(user, token) do
     Repo.delete!(token)
     {:ok, {user, []}}
+  end
+
+  defp confirm(nil, _token), do: {:error, :not_found}
+
+  # Confirmed by another link meanwhile: logged in as a confirmed account is, while this
+  # link is still there to use up. The confirmation ended every token, this link's too
+  # when it was the one that confirmed, so a second use of it finds it gone.
+  defp confirm(%User{confirmed_at: %DateTime{}} = user, token) do
+    case Repo.delete_all(from t in UserToken, where: t.id == ^token.id) do
+      {1, _} -> {:ok, {:kept, {user, []}}}
+      {0, _} -> {:error, :not_found}
+    end
+  end
+
+  defp confirm(%User{hashed_password: hash} = user, _token) do
+    changeset =
+      user
+      |> User.confirm_changeset()
+      |> Ecto.Changeset.put_change(:hashed_password, nil)
+
+    with {:ok, result} <- update_user_and_delete_all_tokens(changeset) do
+      {:ok, {if(is_binary(hash), do: :password_removed, else: :kept), result}}
+    end
+  end
+
+  ## Password links
+
+  @doc """
+  build_password_link/3 makes a one-time link that sets the password of `user`'s account,
+  for a person who forgot theirs while the instance sends no mail, or for a release
+  command: `url_fun` turns the token into the link (`/users/password/:token`,
+  `set_password_by_link/2`). `{:ok, url, expires_at}`.
+
+  **Who makes one.** `by` is the scope of whoever asks:
+
+  - an instance admin (`Apiary.Access.instance_admin?/1`), while no mail is set
+    (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`,
+    or until mail is set, which ends it (`Apiary.Mail.end_password_links/0`).
+    `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
+    when the person asks for a log-in link instead. Never for their own account,
+    `{:error, :own_account}`: they change their own password in Account settings, behind
+    a recent sign-in, which a link would get around. And only after a recent sign-in
+    (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session
+    left open is not enough, `{:error, :sudo}`, and the person signs in again first;
+  - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
+    instance's machine, which controls it already, mail or not: a link that works for an
+    hour, context `"password:release"`.
+
+  **The token** is 32 random bytes; only its SHA-256 hash is stored, in `users_tokens`,
+  with the account's address (`Apiary.Accounts.UserToken`). It works once. The account
+  has one password link at a time: a new one ends the one before. Nothing else changes
+  until the link is used: the password the account has, if any, and its sessions stay.
+
+  **The trail.** Each link is an `account.password_link` entry in the instance's
+  organisation's trail (`c:Apiary.Edition.instance_organisation_id/0`), by the person or
+  the instance, from the scope's origin: about the account's membership there when it has
+  one, else about the organisation, naming the account by user id in `details`, never the
+  link. `{:error, :no_instance_organisation}` before the instance's first sign-up.
+
+  `{:error, :not_found}` for an account deleted, and the edition's refusal for one it
+  refuses (`sign_in_refusal/1`), which gets no link.
+  """
+  @spec build_password_link(Scope.t(), %User{}, (String.t() -> String.t())) ::
+          {:ok, String.t(), DateTime.t()}
+          | {:error,
+             :forbidden
+             | :mail_set
+             | :own_account
+             | :sudo
+             | :not_found
+             | :no_instance_organisation
+             | atom}
+  def build_password_link(%Scope{} = by, %User{id: user_id}, url_fun)
+      when is_function(url_fun, 1) do
+    context = if by.instance and is_nil(by.user), do: "password:release", else: "password"
+
+    Repo.transact(fn ->
+      with :ok <- may_make_password_link(by),
+           :ok <- not_own_account(by, user_id),
+           :ok <- signed_in_recently(by),
+           {:ok, organisation} <- instance_organisation(),
+           {:ok, user} <- lock_account(user_id),
+           :ok <- not_refused(user) do
+        Repo.delete_all(
+          from t in UserToken,
+            where: t.user_id == ^user.id and t.context in ^UserToken.password_link_contexts()
+        )
+
+        {encoded_token, user_token} = UserToken.build_password_link_token(user, context)
+        user_token = Repo.insert!(user_token)
+
+        expires_at =
+          DateTime.add(
+            user_token.inserted_at,
+            UserToken.password_link_validity_in_minutes(context) * 60
+          )
+
+        with {:ok, _entry} <-
+               Apiary.Audit.record(
+                 Repo,
+                 audit_scope(by, organisation),
+                 :"account.password_link",
+                 password_link_subject(organisation, user),
+                 %{details: %{user_id: user.id, expires_at: expires_at}}
+               ),
+             do: {:ok, {url_fun.(encoded_token), expires_at}}
+      end
+    end)
+    |> case do
+      {:ok, {url, expires_at}} -> {:ok, url, expires_at}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # The instance, in a release command, may make one, mail or not; a person only as an
+  # instance admin, and only while no mail is set.
+  defp may_make_password_link(%Scope{instance: true, user: nil, access_key: nil}), do: :ok
+
+  defp may_make_password_link(%Scope{user: %User{}} = scope) do
+    cond do
+      not Apiary.Access.instance_admin?(scope) -> {:error, :forbidden}
+      Apiary.Mail.configured?() -> {:error, :mail_set}
+      true -> :ok
+    end
+  end
+
+  defp may_make_password_link(_scope), do: {:error, :forbidden}
+
+  # A person's own password is changed in Account settings, behind a recent sign-in.
+  defp not_own_account(%Scope{user: %User{id: id}}, id), do: {:error, :own_account}
+  defp not_own_account(_by, _user_id), do: :ok
+
+  # A person makes one only after a recent sign-in; the instance, in a release command,
+  # signs in to nothing.
+  defp signed_in_recently(%Scope{user: %User{} = user}),
+    do: if(sudo_mode?(user), do: :ok, else: {:error, :sudo})
+
+  defp signed_in_recently(_by), do: :ok
+
+  defp instance_organisation do
+    with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),
+         %Apiary.Organisations.Organisation{} = organisation <-
+           Repo.get(Apiary.Organisations.Organisation, id) do
+      {:ok, organisation}
+    else
+      _none -> {:error, :no_instance_organisation}
+    end
+  end
+
+  # The account, while it is not deleted, held for the transaction: its deletion waits, or
+  # is seen.
+  defp lock_account(user_id) do
+    case Repo.one(
+           from u in User,
+             where: u.id == ^user_id and is_nil(u.deleted_at),
+             lock: "FOR NO KEY UPDATE"
+         ) do
+      %User{} = user -> {:ok, user}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp not_refused(user) do
+    case sign_in_refusal(user) do
+      nil -> :ok
+      reason -> {:error, reason}
+    end
+  end
+
+  defp audit_scope(%Scope{instance: true, user: nil} = by, organisation),
+    do: organisation |> Scope.for_instance() |> Scope.put_origin(by.origin)
+
+  defp audit_scope(by, organisation), do: Scope.in_organisation(by, organisation)
+
+  defp password_link_subject(organisation, user) do
+    Repo.get_by(Apiary.Organisations.Membership,
+      organisation_id: organisation.id,
+      user_id: user.id
+    ) || organisation
+  end
+
+  @doc """
+  get_user_by_password_link/1 is the account a password link sets the password of, while
+  the link works (`build_password_link/3`); nil for a token that is none, used, ended by a
+  newer one or expired, and for an account deleted or whose address changed since.
+  """
+  @spec get_user_by_password_link(String.t()) :: %User{} | nil
+  def get_user_by_password_link(token) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_password_link_token_query(token),
+         {user, _token} <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  set_password_by_link/2 sets the password of the account a password link is for
+  (`build_password_link/3`), from `attrs`' `password` and `password_confirmation`, checked
+  as `User.password_changeset/3` checks them, and uses the link up. It ends every token of
+  the account, its sessions included, as a change of password in Account settings ends
+  its sessions; the caller disconnects them: `{:ok, {user, tokens}}`.
+
+  A password that is refused is `{:error, changeset}`, and the link still works. A link
+  that does not work is `{:error, :invalid}`; of two uses at once, one sets the password
+  and the other gets that. Nothing is done for an account the edition refuses
+  (`sign_in_refusal/1`), asked before the password is hashed and again under the
+  account's lock: `{:error, reason}`, and the link still works.
+  """
+  @spec set_password_by_link(String.t(), map) ::
+          {:ok, {%User{}, [%UserToken{}]}} | {:error, :invalid | atom | Ecto.Changeset.t()}
+  def set_password_by_link(token, attrs) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_password_link_token_query(token),
+         {user, user_token} <- Repo.one(query),
+         :ok <- not_refused(user) do
+      # Hashed before the transaction, which holds the account's row meanwhile.
+      user
+      |> User.password_changeset(attrs)
+      |> set_password(user_token)
+    else
+      {:error, reason} when is_atom(reason) -> {:error, reason}
+      _invalid -> {:error, :invalid}
+    end
+  end
+
+  defp set_password(%Ecto.Changeset{valid?: false} = changeset, _user_token),
+    do: {:error, %{changeset | action: :update}}
+
+  defp set_password(changeset, user_token) do
+    Repo.transact(fn ->
+      # The account first, as `build_password_link/3` holds it before it ends the
+      # account's links, so the two take their locks in one order. A use at the same
+      # moment waits on the account, then finds the link gone. The edition is asked again
+      # under the lock, of the account as it is now; then the link is used up.
+      with {:ok, user} <- lock_account(user_token.user_id),
+           :ok <- not_refused(user),
+           {1, _} <- Repo.delete_all(from t in UserToken, where: t.id == ^user_token.id),
+           true <- user.email == user_token.sent_to do
+        update_user_and_delete_all_tokens(%{changeset | data: user})
+      else
+        {:error, :not_found} -> {:error, :invalid}
+        {:error, refusal} when is_atom(refusal) -> {:error, refusal}
+        _gone -> {:error, :invalid}
+      end
+    end)
   end
 
   @doc ~S"""
@@ -416,10 +713,16 @@ defmodule Apiary.Accounts do
 
   ## Token helper
 
-  defp update_user_and_delete_all_tokens(changeset) do
+  # Every token of the account, or, with `keep_login_links: true`, every one but its log-in
+  # links.
+  defp update_user_and_delete_all_tokens(changeset, opts \\ []) do
     Repo.transact(fn ->
       with {:ok, user} <- Repo.update(changeset) do
-        tokens_to_expire = Repo.all_by(UserToken, user_id: user.id)
+        tokens_to_expire =
+          if Keyword.get(opts, :keep_login_links, false),
+            do:
+              Repo.all(from t in UserToken, where: t.user_id == ^user.id and t.context != "login"),
+            else: Repo.all_by(UserToken, user_id: user.id)
 
         Repo.delete_all(from(t in UserToken, where: t.id in ^Enum.map(tokens_to_expire, & &1.id)))
 

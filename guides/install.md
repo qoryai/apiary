@@ -10,23 +10,47 @@ page is the reference for an installation that stays.
 
 ## The pieces
 
-- **The image** is built from the `Dockerfile` of the repository. It holds the release and
-  nothing else, runs as the user `nobody`, and its command is `bin/server`, which migrates
-  and serves. `bin/migrate` runs the same migrations by hand, and `bin/apiary version`
-  prints the release's version.
-- **Postgres.** The `docker-compose.yml` of the repository starts Postgres 18 with the role
-  `apiary`, the database `apiary` and the volume `postgres-data`, and starts the `apiary`
-  service once the database is healthy, publishing port 4100. An external Postgres is one
-  `DATABASE_URL` away; the role needs the right to create and alter tables in its
-  database, since the release migrates it.
+- **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
+  CI builds it on every pull request and push and publishes nothing; only a release
+  publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
+  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
+  `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and
+  serves. `bin/migrate` runs the same migrations by hand, `bin/apiary version` prints the
+  release's version, and `bin/keys` generates the keys
+  ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
+  was built from is its label `org.opencontainers.image.revision` and `revision` at
+  [`GET /health`](#health).
+- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as three
+  services. `env.example` is the repository's `.env.example` with the release's version in
+  `APIARY_VERSION`, and becomes `.env`. `keys` runs once at every
+  start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
+  in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
+  Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
+  `apiary` starts once `keys` has finished and the database is healthy, and publishes port
+  4100 on `127.0.0.1` only. An external Postgres is one `DATABASE_URL` away, with the line
+  `COMPOSE_PROFILES=postgres` taken out of `.env`
+  ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
+  tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
-- **An SMTP relay.** People sign in with a link sent by email and are invited by email, so
-  the release does not boot without a way to deliver mail.
+- **An SMTP relay, optional.** Without one the release starts all the same, sends no
+  email, and says so in its log: people sign up and log in with a password, an invitation
+  is a link that whoever invites copies and sends themselves, and a forgotten password is a
+  link an instance admin makes ([Mail](#mail)). With `SMTP_RELAY` set, people log in with
+  a link sent by email, or with a password, and are invited by email.
+
+Download the two files into a directory of their own, and rename `env.example` to `.env`:
 
 ```sh
-cp .env.example .env    # fill in the values
-docker compose up --build -d
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/compose.yaml
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/env.example
+mv env.example .env
 ```
+
+A given release's files are under `releases/download/vX.Y.Z/` in place of
+`releases/latest/download/`. With `compose.yaml` and its `.env` in one directory,
+`docker compose up -d` starts the three services, and `docker compose logs apiary` shows
+the boot. [From nothing to a first run](quickstart.md) does the same for a trial on one
+machine.
 
 ## TLS and the reverse proxy
 
@@ -50,16 +74,21 @@ machine, and the URLs in the discovery document are all built from `PUBLIC_URL`,
 from the request's `Host` header. A `PUBLIC_URL` that is not the address machines and
 people use gives them links that do not work.
 
-The audit trail records the address each change came from. Behind a proxy that is the
-proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
-front of the release, separated by commas. For a request from one of them the release
-reads `X-Forwarded-For` from its right-most hop leftwards, passes over the hops the
-trusted proxies added, and takes the first address that is not one of them. What the
-client wrote to the left of that is never read, so a client cannot choose the address
-recorded. Name only the proxies that set the header themselves, and leave it unset when
-nothing is in front of the release: a proxy the release trusts is believed about every
-address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
+The audit trail records the address each change came from, and the limits on signing in
+count attempts by it, an IPv6 address with the rest of its /64; the tries at one email
+address are counted per client network, an IPv4 /24 or an IPv6 /48, under a larger limit
+for that email address from all networks. Behind a proxy that is the proxy's, unless
+`TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in front of the
+release, separated by commas.
+For a request from one of them the release reads `X-Forwarded-For` from its right-most
+hop leftwards, passes over the hops the trusted proxies added, and takes the first address
+that is not one of them. What the client wrote to the left of that is never read, so a
+client cannot choose the address recorded. Name only the proxies that set the header
+themselves, and leave it unset when nothing is in front of the release: a proxy the
+release trusts is believed about every address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
 since it would believe any client about its own address. A hop's port is left out.
+Behind a proxy the release does not trust, every client counts as the proxy, and they
+share its limits on signing in.
 
 ```sh
 TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
@@ -72,8 +101,8 @@ TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"status":"ok","database":"ok","version":"0.1.0"}` | the database answered; `version` is the release's |
-| `503` | `{"status":"degraded","database":"error"}` | the database did not answer |
+| `200` | `{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database answered; `version` is the release's, `revision` the commit its image was built from, `null` in a build without one |
+| `503` | `{"status":"degraded","database":"error","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database did not answer |
 
 ## Logs
 
@@ -89,7 +118,7 @@ they are.
 | `metadata` | of an explicit list and nothing else: `request_id`, `organisation_id`, `workspace_id`, `user_id`, `duration_us`, `application`, `domain`, `mfa`, `module`, `function`, `file`, `line`, `pid`, `crash_reason`, `initial_call`, `registered_name` |
 | `request` | on the one line written per request: `connection` with `protocol`, `method`, `path` and `status`, and `client` with `user_agent` and `ip` |
 
-A line written while the apiary works for an organisation carries its id as
+A line written while Qory Apiary works for an organisation carries its id as
 `metadata.organisation_id`, and `metadata.workspace_id` when the work is in a workspace: a
 page under `/:org/…` and its reads, a gateway's request, the projection of a run's events,
 a background job, and the line that says a job failed, was cancelled or was discarded. A
@@ -104,13 +133,16 @@ everything that happened for it without the log holding a customer's or a person
 the job, its attempt and the kind of error, never its arguments or the error's message.
 
 A request line's duration is `metadata.duration_us`, in microseconds. No header and no
-body is ever logged, and neither is anything a gateway signed or sent. Four routes carry a
-secret in their path, an invitation, its continuation, a log-in link and an email change;
-their secret segment is logged as `:token`, so a reader of the log cannot sign in or join
-an organisation with what it finds there.
+body is ever logged, and neither is anything a gateway signed or sent. Five routes carry a
+secret in their path, an invitation, its continuation, a log-in link, an email change and
+a password link; their secret segment is logged as `:token`, so a reader of the log cannot
+sign in, set a password or join an organisation with what it finds there. The set-up
+link's code is logged as `:code` in a request's line; the log holds the code only in the
+line each start writes until the instance is set up
+([Set up a new instance](#set-up-a-new-instance)).
 
-The exception is `MAIL_TO_LOG=true`, which writes whole emails to the log, links included.
-It is for a trial on one machine only.
+The test link of **Instance settings › Mail** is logged the same way, its token as
+`:token`.
 
 ## Environment variables
 
@@ -121,23 +153,73 @@ without it and exits with the message shown.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `DATABASE_URL` | required | The connection URL, `ecto://USER:PASS@HOST/DATABASE`. With the compose file the host is `postgres` and the role and database are `apiary`. A password with characters that mean something in a URL has to be percent-encoded. |
+| `DATABASE_URL` | required; with `compose.yaml`, `postgres://apiary@postgres/apiary` | The connection URL, `postgres://USER:PASS@HOST/DATABASE` (`postgresql://` and `ecto://` work as well), with TLS as its `sslmode` says ([Postgres over TLS](#postgres-over-tls)). `compose.yaml` gives the bundled Postgres's URL unless `.env` sets another; a `DATABASE_URL` set in the shell that runs `docker compose` wins over `.env`'s. A password with characters that mean something in a URL has to be percent-encoded. |
+| `DATABASE_PASSWORD` | none; with `compose.yaml`, generated at first start | The password when `DATABASE_URL` carries none; an empty one in the URL counts as none. Passed as it is, so it needs no percent-encoding. With `compose.yaml` the service `keys` generates it, and the bundled Postgres takes it as the password of the role `apiary` ([The keys generated at first start](#the-keys-generated-at-first-start)). |
 | `POOL_SIZE` | `10` | Connections in the pool. An integer. |
 | `ECTO_IPV6` | off | `true` or `1` connects to the database over IPv6. Anything else is off. |
 | `MIGRATE_ON_BOOT` | `true` | `false`, `0` or `no` leaves pending migrations to `bin/migrate`. Anything else runs them at boot. |
 
 ```text
 environment variable DATABASE_URL is missing.
-For example: ecto://USER:PASS@HOST/DATABASE
+For example: postgres://USER:PASS@HOST/DATABASE
+```
+
+### Postgres over TLS
+
+`DATABASE_URL` takes libpq's `sslmode` and `sslrootcert`, as managed Postgres services
+print them, so a pasted URL connects with TLS as it says:
+
+```text
+postgres://USER:PASS@HOST:5432/DATABASE?sslmode=verify-full
+```
+
+| `sslmode` | The connection |
+|---|---|
+| none | Not encrypted, unless Ecto's own `ssl=true` asks for TLS, checked against the system's CAs. |
+| `disable` | Not encrypted. |
+| `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
+| `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`. Said once at boot, as a warning. |
+
+Two differences from libpq. An `sslrootcert` without an `sslmode` is not read here, and
+the connection is as with no `sslmode` (the first row above), where libpq takes
+`sslrootcert=system` alone as `verify-full`. And `require` with an `sslrootcert` checks
+nothing here, where libpq checks the certificate against that file. Write
+`sslmode=verify-full` for a checked connection.
+
+A CA your provider does not publish to the system's store is a file you mount into the
+container, with a `compose.override.yaml` beside `compose.yaml`, and name with
+`sslrootcert`. Written as `postgres://`, the same URL serves `pg_dump` and `psql` too
+([Backup and restore](backup.md)).
+
+```text
+The database connection is encrypted, and the server's certificate is not checked (sslmode=require).
+```
+
+Any other `sslmode`, `prefer`, `allow` and `verify-ca` among them, stops the boot, and so
+does an `sslrootcert` file that cannot be read under `verify-full`:
+
+```text
+environment variable DATABASE_URL asks sslmode=prefer, which Qory does not take.
+Use sslmode=verify-full, which checks the server's certificate, or sslmode=require, which encrypts without checking it.
+```
+
+```text
+environment variable DATABASE_URL names sslrootcert=/certs/ca.pem, which cannot be read.
 ```
 
 ### Secrets
 
+With `compose.yaml` the service `keys` generates the three at first start, with
+`DATABASE_PASSWORD` ([The keys generated at first start](#the-keys-generated-at-first-start)).
+Set one in `.env` only for a value of your own, such as one restored from a backup: a
+value set in the environment always wins. A variable left blank counts as not set.
+
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
-| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `SECRET_KEY_BASE` | required; with `compose.yaml`, generated at first start | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
+| `APIARY_ENCRYPTION_SECRET` | required; with `compose.yaml`, generated at first start | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -148,15 +230,17 @@ value, for good.
 ```text
 environment variable SECRET_KEY_BASE is missing.
 You can generate one by calling: mix phx.gen.secret
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
 environment variable APIARY_ENCRYPTION_SECRET is missing.
 It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
-environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
+environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
 Generate one with: openssl rand -base64 32
 ```
 
@@ -164,10 +248,11 @@ Generate one with: openssl rand -base64 32
 environment variable APIARY_SIGNING_SECRET is missing.
 It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
 Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
-environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
 Generate one with: openssl rand -base64 32
 ```
 
@@ -185,13 +270,112 @@ Generate one with: openssl rand -base64 32
 APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
 ```
 
+### The keys generated at first start
+
+`bin/keys`, which the service `keys` of `compose.yaml` runs at every start before Postgres
+and the server, keeps the instance's keys in the volume `keys`, in the file
+`/var/lib/apiary/keys/apiary.env`: `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`,
+`APIARY_SIGNING_SECRET` and `DATABASE_PASSWORD`, one `NAME=value` line each, mode 0600,
+owned by `nobody`. For each name:
+
+- set in the environment, that is in `.env`: it is not generated, and the file does not
+  keep it;
+- held by the file: it is kept, never changed;
+- else: it is generated with `openssl`, `SECRET_KEY_BASE` from 48 random bytes, each of the
+  two 32-byte keys from 32 bytes of its own, in base64, and the database password from 24
+  bytes, in hex.
+
+It also writes the database password to `/var/lib/apiary/keys/postgres-password`, mode
+0644, which the bundled Postgres reads as `POSTGRES_PASSWORD_FILE`. Postgres sets it when
+its volume is first created. Each file is written whole to a temporary file and renamed,
+so a crash leaves no half file. `bin/keys` prints names and paths, never a value:
+
+```text
+Generated SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and DATABASE_PASSWORD in /var/lib/apiary/keys/apiary.env.
+Keep a copy apart from the database backups: without APIARY_ENCRYPTION_SECRET no access key is trusted. To print the file: docker compose exec apiary cat /var/lib/apiary/keys/apiary.env
+```
+
+```text
+The keys in /var/lib/apiary/keys/apiary.env are kept; none was generated.
+```
+
+A name set in the environment, which the file does not hold, and one the file holds:
+
+```text
+APIARY_SIGNING_SECRET is set in the environment: not generated, not kept here.
+```
+
+```text
+APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its own.
+```
+
+When it cannot write, it exits non-zero, and nothing that depends on it starts:
+
+```text
+Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user nobody.
+```
+
+The release reads the file at boot, from the directory `APIARY_KEYS_DIR` names, which the
+image sets to `/var/lib/apiary/keys`, for each of the four names the environment does not
+set: the environment always wins. The two 32-byte keys may be in base64 (44 characters)
+or in hex (64 characters, either case); both are decoded to the same bytes.
+
+Keep a copy of the keys apart from the database backups ([Backup and restore](backup.md)).
+`docker compose down --volumes` deletes the volume `keys` with the database's: with the
+bundled Postgres the two go together. With an external Postgres, a start on a new volume
+generates new keys against the old database, and the key check below stops it.
+
+**The key check at boot.** At its first boot the instance records a check value of
+`APIARY_ENCRYPTION_SECRET`, which tells nothing of the secret, and the fingerprint of its
+signing key, in its own row of `instance_settings`. At every boot, once the migrations
+have run and before it serves, it compares both with the keys it runs with; before it
+records the check value on a database that already holds data, the oldest row made under
+an `APIARY_ENCRYPTION_SECRET` must have been made under this one, so a wrong secret is
+not recorded as the right one. A boot with another `APIARY_ENCRYPTION_SECRET` stops, and
+the log says first:
+
+```text
+APIARY_ENCRYPTION_SECRET is not the one this instance first started with.
+```
+
+and then to put back the value kept with your backups. A boot with another
+`APIARY_SIGNING_SECRET` stops with both fingerprints, which are public: they are what
+every machine pins.
+
+```text
+APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is <new>, the pinned one is <recorded>.
+Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=<new> and start Qory Apiary again.
+```
+
+To change the signing key on purpose, which means pinning every machine again, set
+`APIARY_ACCEPT_SIGNING_FINGERPRINT` to the new key's fingerprint, the `<new>` the message
+names. With `compose.yaml`, put it in `.env`, then:
+
+```sh
+docker compose up -d
+```
+
+The boot records the new key's fingerprint as the instance's, says so in the log, and
+starts:
+
+```text
+The signing key with fingerprint <new> is now the instance's. Pin it on every machine again.
+```
+
+Any other value changes nothing, and the boot stops as before. The variable names one key,
+so it needs no reset: left set, it matches the key it named, and should the key change
+again, the boot stops again with the next fingerprint. Taking the line out of `.env` later
+is tidy, not required. The boot reads it only once `APIARY_ENCRYPTION_SECRET` is the one
+the instance first started with. `APIARY_ENCRYPTION_SECRET` has no such variable: it never
+changes once an access key exists.
+
 ### Public address and port
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `PUBLIC_URL` | required | The address people and machines use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because Forager refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. Forager accepts plain `http` only to an address of its own machine, so for other machines the public URL is `https`. |
 | `PHX_HOST` | none | Read only when `PUBLIC_URL` is not set: the public address is then `https://` and this host. `.env.example` does not list it; set `PUBLIC_URL`. |
-| `PORT` | `4100` | The port the release listens on inside the container. An integer. The compose file publishes 4100, so change both or neither. |
+| `PORT` | `4100` | The port the release listens on inside the container. An integer. `compose.yaml` publishes 4100, on `127.0.0.1`, so change both or neither. |
 | `PHX_SERVER` | set by `bin/server` | Any value makes the release serve HTTP. `bin/server` sets it; whoever starts `bin/apiary start` directly sets it too. |
 
 ```text
@@ -219,19 +403,53 @@ For example: https://qory.example
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `SMTP_RELAY` | required, unless `MAIL_TO_LOG=true` | The host of the SMTP relay. Empty counts as not set. |
-| `MAIL_TO_LOG` | off | Read only when `SMTP_RELAY` is not set. Exactly `true` writes every email to the log in full, at level `info`, instead of sending it. For a trial on one machine only: log-in links and invitation links are credentials, and with this setting they reach everyone and everything that reads the log. |
-| `SMTP_PORT` | `587` | The relay's port. An integer. `465` means implicit TLS on connect; any other port uses STARTTLS as `SMTP_TLS` says. |
+| `SMTP_RELAY` | none | The host of the SMTP relay. Empty counts as not set. Not set, and with no other mail settings, the release sends no email, and says so in one line of its log at each start, at level `info`. |
+| `SMTP_PORT` | `587` | The relay's port. An integer. `465` means implicit TLS on connect; any other port uses STARTTLS as `SMTP_TLS` says. TLS checks the relay's certificate against the system's certificate authorities and the relay's host name; a relay given as an IP address needs a certificate that names that address. |
 | `SMTP_USERNAME` | none | The relay's user. Not set, or left empty as `.env.example` has it, means no authentication; set means the release always authenticates. |
 | `SMTP_PASSWORD` | none | The relay's password. |
-| `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
+| `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. `if_available` sends in plain text when the relay offers no STARTTLS, which anyone on the way can hide, and `never` always does, `SMTP_PASSWORD` included: with a username, use `always` or port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
 
-```text
-no mail delivery is configured.
-Set SMTP_RELAY to the host of an SMTP relay, or, for a trial on one machine only,
-set MAIL_TO_LOG=true to write every email (log-in links included) to the log.
+An instance admin can set mail in **Instance settings › Mail** instead: the relay, its
+port, TLS, username and password, and the sender, kept in the database with the password
+encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`. With a username, TLS is
+**Always**, but on port 465. The page asks for a recent sign-in, as **Account** settings
+do. Saving sends a test link to that admin, and mail from those settings is on once they
+follow it, signed in as themselves. With `SMTP_RELAY` set, these variables win whole, and
+that page shows them read only.
+
+**Logging in.** Without mail, the log-in page asks for the email address and the
+password, and says to ask an admin of the instance for a password link when the password
+is forgotten. With mail, it emails a log-in link by default, which works once, for 15
+minutes; **Use a password instead** asks for the password of an account that has one, and
+there **Email me a link** sends a log-in link to the address typed.
+
+Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
+person in as soon as the account is made. An invited person's address is the invitation's
+and cannot be changed there. Such an account is unconfirmed: the first log-in link it
+follows, once mail is set, confirms its address and removes the password set before,
+which can be set again in **Account** settings, and signs the account out everywhere
+else. Until then, **Account** settings do not change the email address, since a link sent
+to the new address confirms it.
+
+**A forgotten password, without mail.** An instance admin opens **People** in the
+instance's organisation's settings and, in the ⋯ menu of the person's row, selects
+**Make a password link**. It needs a recent sign-in, as **Account** settings do: an admin
+who signed in more than 20 minutes ago logs in again first. The page shows the link once,
+to copy and send to the person; it works once, for 24 hours, and a new one ends the one
+before; once mail is set, by **Instance settings › Mail** or a start with `SMTP_RELAY`,
+every such link ends. Following it, the person sets a new password, and every session of
+the account ends. Each link is an entry in the organisation's activity. Once mail is set,
+the menu has no such item: the person asks for
+a log-in link on the log-in page. Whoever has a shell on the release prints such a link,
+mail or not, for an hour:
+
+```sh
+bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
 ```
+
+It prints the link and until when it works, and never the address. Whoever has the link
+may set the account's password, so send it to that person alone.
 
 ```text
 environment variable SMTP_TLS must be always, if_available or never
@@ -250,7 +468,7 @@ environment variable SMTP_TLS must be always, if_available or never
 | `QORY_FEATURES` | `all` | The features this instance has: `all`; `all-` and the features left out, separated by commas; or the features on, separated by commas. Not set, or empty, is `all`. |
 
 - `observability`: the record, the runs with their terminals and timelines, the
-  connections, and retention. Every instance has it, and every other feature needs it.
+  connections, and retention. Every instance has it.
 <!-- feature: security -->
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
@@ -305,7 +523,7 @@ whole database schema whatever its features, so nothing is migrated.
 |---|---|---|
 | `AUDIT_RETENTION_DAYS` | `90` | How many days the audit trail keeps an entry: a whole number from `30` to `90`. Not set, or empty, is `90`. |
 | `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is `90`, or the value of `AUDIT_RETENTION_DAYS` when that is shorter. |
-| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
+| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from, and the address the limits on signing in count by: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
 its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
@@ -377,17 +595,20 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation sends in 24 hours: a whole number from `1`. Not set, or empty, is `20`. |
+| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is `20`. |
 
-The first person who signs up on a new instance creates its organisation, with its
-workspace **Main**, and is its owner. The instance has that one organisation and that one
-workspace. The organisation is the instance's own, and its owners are the instance's
-**instance admins** ([The instance admins](#the-instance-admins)); to everyone in it, it
-is an organisation like any other. The first sign-up is always offered.
+A new instance is set up with its **set-up link**
+([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
+instance's organisation, with its workspace **Main**, and is its owner. The instance has
+that one organisation and that one workspace. The organisation is the instance's own, and
+its owners are the instance's **instance admins**
+([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
+like any other. Until the link is used nobody signs up: the sign-up and log-in pages say
+"This Qory Apiary is not set up yet: use the set-up link from its install."
 
-After the first, nobody signs up without an invitation: the sign-up page says sign-up is by
+After it, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
-from an owner or an admin of the organisation, sent from its **Members** page. Someone with
+from an owner or an admin of the organisation, sent from its **People** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
 organisation.
 
@@ -398,11 +619,18 @@ not name the person who sent it; only someone whose account is confirmed can sen
 organisation's name cannot hold a web address (`://` or `www.`), quotation marks other
 than an apostrophe, straight or curly, control characters or invisible Unicode characters;
 a name like `Acme.io` or `Dana’s` is fine, though a mail client may turn a bare domain into
-a link. Once the organisation has sent `INVITATIONS_PER_DAY` invitations in the last 24
-hours, whoever sends the next is told so, and it sends no more until the oldest of them is
+a link. Once the organisation has made `INVITATIONS_PER_DAY` invitations in the last 24
+hours, whoever makes the next is told so, and it makes no more until the oldest of them is
 a day old; an invitation that was accepted, revoked or deleted since still counts, and one
 whose email could not be delivered does not. Every invitation tried, delivered or not, counts against three times
 `INVITATIONS_PER_DAY`, so the organisation cannot keep sending to addresses that bounce.
+
+Without mail, nothing is sent: the invite page shows the invitation's link once, for
+whoever invites to copy and send themselves, and their account need not be confirmed.
+Only the link's hash is kept, so it cannot be shown again; **Make a new link** on the
+pending invitation makes another, which works for seven days again, and the old one stops
+working at once. A link copied, and each new link made, count against
+`INVITATIONS_PER_DAY` as an emailed invitation does.
 
 A value it does not accept stops the boot:
 
@@ -441,33 +669,54 @@ bin/apiary eval 'Apiary.Release.delete_account("dana@example.com")'
 It deletes an account by its address, as the person would, and refuses while the person is
 the organisation's only owner: make another member an owner first.
 
+### Set up a new instance
+
+Until it is set up, every start of a new instance writes one line to its log, the same
+link every time:
+
+```text
+Set up Qory Apiary at https://qory.example.com/setup/<code>.
+```
+
+With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
+the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
+`message`. Open the link: its page asks for your email address, a password and its
+confirmation, and your organisation's name, and **Set up** creates the instance's
+organisation, its workspace Main and your account as its owner, an instance admin, and
+signs you in. The code is 32 random bytes, kept in the database until it is used; it does
+not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
+already set up." and leads to the log-in page. Anyone who can read the log can use the
+link before you do, so open it as soon as the instance is up. On an instance that is set
+up, a restored one included, a start writes no such line. The address in the link is the
+instance's own (`PUBLIC_URL`).
+
 ### The instance admins
 
-The instance admins are the owners of the instance's organisation, the one the instance's
-first user signed up with. Inside the organisation they act at their level, as any owner
-does. Two commands, for whoever has a shell on the release, make an account one and take
-it away, for an install that is scripted and for recovery when no admin is left:
+The instance admins are the owners of the instance's organisation, the one its set-up
+created. Inside the organisation they act at their level, as any owner does. Two
+commands, for whoever has a shell on the release, make an account one and take it away,
+for an install that is scripted and for recovery when no admin is left:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com")'
 bin/apiary eval 'Apiary.Release.revoke_instance_admin("dana@example.com")'
 ```
 
-**Claim a fresh instance before its address is public** with the first, given the name of
-your organisation too:
+**Set up a new instance from a shell** with the first command too, in place of the
+set-up link, given the name of your organisation:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'
 ```
 
-On an instance nobody has signed up to, it is the instance's first sign-up: it creates the
-organisation, its workspace Main and the account as its owner, and emails the account its
-log-in link, as the sign-up page would. Without the name it is refused and says so. Should
-the email not go out, the instance is claimed all the same, and the command says to ask
+On an instance that is not set up, it sets it up: it creates the organisation, its
+workspace Main and the account as its owner, makes the set-up link work no more, and
+emails the account its log-in link. Without the name it is refused and says so. Should
+the email not go out, the instance is set up all the same, and the command says to ask
 for a link at `/users/log-in` once the mail settings work; it never prints the address or
-the link. With `MAIL_TO_LOG=true` the email, its log-in link included, is written to the
-command's output, as it is to the log. Should someone sign up on the web a moment before,
-theirs is the first sign-up, and the command does what it does on any instance.
+the link. Without mail it prints a password link for the account instead, which works
+once, for an hour, and never the address: open it to set your password. Should the set-up
+link be used a moment before, the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the
@@ -477,7 +726,7 @@ refuses the last instance admin: grant another first. Each is an entry in the
 organisation's activity, by Qory Apiary rather than by a person.
 
 **Suspending** a member pauses and removes nothing, and **Activate** undoes it; each is an
-entry in the activity. On the organisation's **Members** page an owner suspends an admin or
+entry in the activity. On the organisation's **People** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
 open pages follow. **The access keys they added keep working**: an access key belongs to
@@ -490,9 +739,26 @@ back.
 
 ### Compose only
 
+`docker compose` reads these, and the release does not. Compose takes a variable from the
+shell that runs it before `.env`: a value exported in the shell wins over the line in
+`.env`.
+
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `POSTGRES_PASSWORD` | required by `docker compose` | The password of the role `apiary` in the bundled Postgres. The release never reads it: it is for the `postgres` service, and the password inside `DATABASE_URL` has to match it. Compose refuses to start without it and says `set POSTGRES_PASSWORD in .env`. Postgres applies it when the volume is first created; changing the variable later does not change the role's password. |
+| `APIARY_VERSION` | required by `docker compose` | The tag of the image to run: a release's version, without the `v`. A release's `env.example` names that release. The repository's `.env.example` leaves it empty, and compose refuses to start without it and says `set APIARY_VERSION in .env`. |
+| `APIARY_IMAGE` | `ghcr.io/qoryai/apiary` | The image, without its tag. |
+| `COMPOSE_PROFILES` | `postgres` in `.env.example` | `postgres` runs the bundled Postgres. Take the line out, or leave it empty, with an external Postgres in `DATABASE_URL`. |
+
+`compose.yaml` publishes the release's port on `127.0.0.1:4100` only, for a reverse proxy
+on the same machine. For a proxy elsewhere, a `compose.override.yaml` beside it publishes
+the port on an address that proxy reaches, as well:
+
+```yaml
+services:
+  apiary:
+    ports:
+      - "10.0.0.5:4100:4100"
+```
 
 `POOL_SIZE`, `PORT` and `SMTP_PORT` have to be integers. A value that is not one stops the
 boot with an error that does not name the variable.
@@ -501,9 +767,9 @@ boot with an error that does not name the variable.
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
 three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
-`SECRET_KEY_BASE`.
-[Backup and restore](backup.md) has the commands for the compose installation and for an
-external Postgres, what is lost without each key, and a restore drill. A deleted account
+`SECRET_KEY_BASE`, which `compose.yaml` keeps in the volume `keys`.
+[Backup and restore](backup.md) has the commands for the compose installation, its keys
+and an external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so
 how long you keep dumps bounds how long a deletion takes to be complete. What the server
 deletes with age, and how to keep less or more, is in [Retention](retention.md).

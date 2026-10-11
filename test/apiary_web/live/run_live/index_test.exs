@@ -121,21 +121,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
-      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed"))
+      view = open(conn, runs(scope, "?state=failed,lost"))
       assert has_element?(view, "h2", "No runs ended badly.")
       assert has_element?(view, "#runs-hidden", "1 run is hidden by them.")
 
-      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed&since=7d"))
+      view = open(conn, runs(scope, "?state=failed,lost&since=7d"))
       assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
 
-      view = open(conn, runs(scope, "?state=succeeded,ended&from=2026-09-01&to=2026-09-02"))
+      view = open(conn, runs(scope, "?state=completed&from=2026-09-01&to=2026-09-02"))
       assert has_element?(view, "h2", "No runs ended well from 1 Sept 2026 to 2 Sept 2026.")
+
+      view = open(conn, runs(scope, "?state=cancelled"))
+      assert has_element?(view, "h2", "No runs cancelled.")
+
+      view = open(conn, runs(scope, "?state=cancelled&since=7d"))
+      assert has_element?(view, "h2", "No runs cancelled in the last 7 days.")
 
       # A part of a family, or two families, is not one family's sentence.
       view = open(conn, runs(scope, "?state=failed"))
       assert has_element?(view, "h2", "No runs match these filters")
 
-      view = open(conn, runs(scope, "?state=succeeded,failed,timed_out,lost,closed"))
+      view = open(conn, runs(scope, "?state=completed,failed,lost"))
       assert has_element?(view, "h2", "No runs match these filters")
     end
 
@@ -221,11 +227,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), exit: %{"state" => "succeeded", "exit_code" => 0})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-st-succeeded .q-st-w.sr-only", "Succeeded")
+      assert has_element?(view, "#{row(run)} .q-st-completed .q-st-w.sr-only", "Completed")
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run a gateway opened that ended quiet: Ended, grey, no session for its runtime, counted with the runs that ended well",
+    test "a run a gateway opened that ended quiet: Cancelled, its word shown, no session for its runtime, counted with the cancelled runs",
          %{conn: conn, scope: scope} do
       ended =
         started_run(
@@ -240,8 +246,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, scope)
       cells = text(view, row(ended))
 
-      assert has_element?(view, "#{row(ended)} .q-st-ended .q-st-w:not(.sr-only)", "Ended")
-      refute has_element?(view, "#{row(ended)} .q-st-ended [data-tip]")
+      assert has_element?(
+               view,
+               "#{row(ended)} .q-st-cancelled .q-st-w:not(.sr-only)",
+               "Cancelled"
+             )
+
+      refute has_element?(view, "#{row(ended)} .q-st-cancelled [data-tip]")
       assert has_element?(view, "#{row(ended)} td.q-rl-c4.q-rl-faint", "no session")
       assert has_element?(view, "#{row(ended)} td.q-rl-host", "n/a")
       assert cells =~ "10 m 35 s"
@@ -252,18 +263,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       assert text(view, "#filter-state-form") =~
-               "Ended well Succeeded Ended 1 Ended badly Failed 1"
+               "Ended well Completed Cancelled Cancelled 1 Ended badly Failed 1"
 
-      view = open(conn, runs(scope, "?state=ended"))
+      view = open(conn, runs(scope, "?state=cancelled"))
       assert has_element?(view, row(ended))
       refute has_element?(view, row(failed))
-      assert token(view, "state") == "state:ended"
+      assert token(view, "state") == "state:cancelled"
 
-      view = open(conn, runs(scope, "?state=succeeded,ended"))
-      assert has_element?(view, row(ended))
+      view = open(conn, runs(scope, "?state=completed"))
+      refute has_element?(view, row(ended))
       assert token(view, "state") == "state:ended_well"
 
-      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed"))
+      view = open(conn, runs(scope, "?state=failed,lost"))
       refute has_element?(view, row(ended))
       assert has_element?(view, row(failed))
     end
@@ -448,17 +459,89 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert render(view) =~ "Heartbeats are due every 30 s."
     end
 
-    test "lost and closed runs keep at least", %{conn: conn, scope: scope} do
+    test "lost runs keep at least", %{conn: conn, scope: scope} do
       lost = started_run(scope, %{}, ago: 4000, heartbeat: {3000, 2490, 30})
       Liveness.check()
       view = open(conn, scope)
 
       assert text(view, row(lost)) =~ "Lost"
       assert text(view, row(lost)) =~ "at least 41 m 30 s"
+    end
 
-      {:ok, _} = Runs.close_run(scope, lost)
-      assert text(view, row(lost)) =~ "Closed"
-      assert text(view, row(lost)) =~ "at least 41 m 30 s"
+    test "a run that ended Lost by its exit shows the duration its exit gave; a silent one keeps at least",
+         %{conn: conn, scope: scope} do
+      session_lost =
+        started_run(scope, shop(),
+          exit: %{
+            "state" => "failed",
+            "exit_code" => -1,
+            "reason" => "session_lost",
+            "duration_ms" => 720_000
+          }
+        )
+
+      gateway_lost =
+        started_run(scope, shop("gitlab.example"),
+          exit: %{
+            "state" => "failed",
+            "exit_code" => -1,
+            "reason" => "gateway_lost",
+            "duration_ms" => 720_000
+          }
+        )
+
+      silent = started_run(scope, %{}, ago: 4000, heartbeat: {3000, 2490, 30})
+      Liveness.check()
+      view = open(conn, scope)
+
+      for run <- [session_lost, gateway_lost] do
+        assert has_element?(view, "#{row(run)} .q-st-lost")
+        assert text(view, "#{row(run)} .q-rl-dur") == "12 m 00 s"
+      end
+
+      assert has_element?(view, "#{row(silent)} .q-st-lost")
+      assert text(view, "#{row(silent)} .q-rl-dur") =~ ~r/^at least 41 m 30 s/
+    end
+
+    test "a run that did not start has an empty Duration cell and no Duration in its preview; a silent Lost run and a running one keep theirs",
+         %{conn: conn, scope: scope} do
+      refused = started_run(scope, shop(), about: %{"title" => "refused"})
+      event_fixture(refused, 50, "run.refused", %{"code" => "image_unknown"})
+      {:ok, refused} = Projector.project(refused)
+
+      silent =
+        started_run(scope, %{},
+          about: %{"title" => "silent"},
+          ago: 4000,
+          heartbeat: {3000, 2490, 30}
+        )
+
+      Liveness.check()
+
+      running =
+        started_run(scope, shop("gitlab.example"), ago: 100, heartbeat: {5, 90, 30})
+
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(refused)} .q-st-failed")
+      assert has_element?(view, "#{row(refused)} td.q-rl-dur")
+      assert text(view, "#{row(refused)} .q-rl-dur") == ""
+      assert text(view, "#{row(silent)} .q-rl-dur") =~ ~r/^at least 41 m 30 s/
+      assert text(view, "#{row(running)} .q-rl-dur") =~ ~r/^1 m 3\d s$/
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      render_hook(view, "select", %{"id" => refused.run_id})
+      render_async(view)
+      assert has_element?(view, "#runs-preview h2", "refused")
+      refute has_element?(view, "#runs-preview dt", "Duration")
+
+      render_hook(view, "select", %{"id" => silent.run_id})
+      render_async(view)
+      assert has_element?(view, "#runs-preview h2", "silent")
+      assert has_element?(view, "#runs-preview dt", "Duration")
+      assert text(view, "#runs-preview .q-pv-kv") =~ "at least 41 m 30 s"
     end
 
     test "another workspace's runs are not listed", %{conn: conn, scope: scope} do
@@ -670,7 +753,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, row(running))
     end
 
-    test "the State section reads as three families, each heading a checkbox over its states",
+    test "the State section reads as four families, each heading a checkbox over its states",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
       form = "#filter-state-form"
@@ -678,6 +761,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       for {key, name} <- [
             {"alive", "Every alive state"},
             {"ended_well", "Every state that ended well"},
+            {"cancelled", "Every cancelled state"},
             {"ended_badly", "Every state that ended badly"}
           ] do
         assert has_element?(
@@ -688,18 +772,45 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Pending Running 1 Ended well Succeeded Ended Ended badly Failed 1 Timed out Lost Closed"
+               "Alive Pending Running 1 Ended well Completed Cancelled Cancelled Ended badly Failed 1 Lost"
 
-      assert has_element?(
-               view,
-               "#{form} input[name='state[]'][value=closed][aria-describedby=filter-state-tip-closed]"
-             )
-
-      assert text(view, "#filter-state-tip-closed") =~
-               "Stopped by the workspace: a member closed it after it went quiet. Counted with the runs that ended badly."
+      refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
       refute has_element?(view, "#{form} input[name=family_alive][checked]")
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
+    end
+
+    test "the State section and the views count every state in its family, an old name in its new state's",
+         %{conn: conn, scope: scope} do
+      # Beside the setup's running and failed runs.
+      at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+          do: run_fixture(scope, %{state: state, started_at: at})
+
+      view = open(conn, scope)
+      form = "#filter-state-form"
+
+      headings =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#{form} .q-filter-family")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+      assert headings == ["Alive", "Ended well", "Cancelled", "Ended badly"]
+
+      assert text(view, form) =~
+               "Alive Pending 1 Running 2 Ended well Completed 2 Cancelled Cancelled 3 Ended badly Failed 2 Lost 1"
+
+      for state <- ~w(pending running completed failed cancelled lost),
+          do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
+
+      for old <- ~w(succeeded timed_out ended),
+          do: refute(has_element?(view, "#{form} input[name='state[]'][value=#{old}]"))
+
+      assert text(view, "#runs-view-all") == "All 11"
+      assert text(view, "#runs-view-alive") == "Alive 3"
+      assert text(view, "#runs-view-ended-badly") == "Ended badly 3"
     end
 
     test "ticking a family fills its states into the URL, and the view is that family's",
@@ -712,7 +823,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> render_change(%{"_target" => ["family_ended_badly"], "family_ended_badly" => "1"})
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=failed,timed_out,lost,closed"
+               "#{workspace_path(scope)}/runs?state=failed,lost"
 
       render_async(view)
       assert has_element?(view, row(failed))
@@ -728,11 +839,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> render_change(%{
         "_target" => ["family_alive"],
         "family_alive" => "1",
-        "state" => ~w(pending running failed timed_out lost closed)
+        "state" => ~w(pending running failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=pending,running,failed,timed_out,lost,closed"
+               "#{workspace_path(scope)}/runs?state=pending,running,failed,lost"
 
       render_async(view)
       assert text(view, "#runs-filter-value-state") == "alive, ended badly"
@@ -744,7 +855,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_change(view, "filter", %{
         "_filter" => "state",
         "_target" => ["family_ended_badly"],
-        "state" => ~w(pending running failed timed_out lost closed)
+        "state" => ~w(pending running failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
@@ -1538,6 +1649,36 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert_redirect(view, "#{workspace_path(scope)}/runs/#{older.run_id}")
     end
 
+    test "a run stopped where it was started is Cancelled in its row, and interrupted in the preview, whatever its exit",
+         %{conn: conn, scope: scope} do
+      for exit <- [
+            %{"exit_code" => 0},
+            %{"exit_code" => 130},
+            %{"exit_code" => 130, "signal" => "SIGINT"},
+            %{"exit_code" => -1, "signal" => "SIGTERM"}
+          ] do
+        data =
+          Map.merge(
+            %{"state" => "cancelled", "reason" => "interrupted", "duration_ms" => 12_000},
+            exit
+          )
+
+        run = started_run(scope, shop(), about: %{"title" => "stopped here"}, exit: data)
+        view = open(conn, runs(scope, "?run=#{run.run_id}"))
+        render_hook(view, "viewport", %{"wide" => true})
+        render_async(view)
+        case_ = inspect(exit)
+
+        assert text(view, "#{row(run)} .q-rl-st") == "Cancelled", case_
+        assert has_element?(view, "#{row(run)} .q-st-cancelled"), case_
+        refute has_element?(view, "#{row(run)} .q-st-code"), case_
+
+        assert has_element?(view, "#runs-preview .q-st-cancelled", "Cancelled"), case_
+        assert text(view, "#runs-preview .q-st-code") == "interrupted", case_
+        refute text(view, "#runs-preview .q-pv-h") =~ ~r/exit|SIG|Completed/, case_
+      end
+    end
+
     test "a link with a run shows it; a run of another workspace or no run at all is not shown",
          %{conn: conn, older: older, scope: scope} do
       view = open(conn, runs(scope, "?run=#{older.run_id}"))
@@ -1597,6 +1738,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       conn: conn,
       scope: scope
     } do
+      # Taken before the runs: their day is this one or, past midnight, the next.
+      at = DateTime.utc_now()
       for _ <- 1..51, do: run_fixture(scope)
       view = open(conn, scope)
 
@@ -1614,9 +1757,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert text(view, "#runs-footer") == "1–25 of 51"
 
-      # Every run was pinged today: a day before it is past the last of them.
+      # Every run was pinged on the day of `at` or after: a day before it is past the last of
+      # them, whenever the clock turns midnight.
       view
-      |> form("#runs-jump-form", %{"date" => Date.to_iso8601(Date.add(Date.utc_today(), -1))})
+      |> form("#runs-jump-form", %{"date" => Date.to_iso8601(Date.add(DateTime.to_date(at), -1))})
       |> render_submit()
 
       assert_patch(view, runs(scope, "?page=3&per=25"))
@@ -1666,7 +1810,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       {:ok, _} = Projector.project(run)
 
-      assert text(view, row(run)) =~ "Succeeded"
+      assert text(view, row(run)) =~ "Completed"
       assert text(view, row(run)) =~ "30 s"
       render_async(view)
       assert text(view, "#runs-view-alive") == "Alive 0"

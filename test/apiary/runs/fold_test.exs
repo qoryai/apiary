@@ -66,6 +66,7 @@ defmodule Apiary.Runs.FoldTest do
       Map.merge(
         %{
           "opened_by" => "session",
+          "credential" => "none",
           "runtime" => "claude",
           "runtime_version" => "2.1.0",
           "command" => "claude",
@@ -186,9 +187,10 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "a gateway's start says no session: no runtime, command, host or terminal" do
-      start =
+      start = fn credential ->
         event(2, "run.started", %{
           "opened_by" => "gateway",
+          "credential" => credential,
           "forager_version" => "0.6.0",
           "labels" => %{
             "forge" => "git.example.com",
@@ -197,8 +199,12 @@ defmodule Apiary.Runs.FoldTest do
           },
           "about" => %{"details" => %{"requester" => "example-requester"}}
         })
+      end
 
-      %{run: run} = Fold.fold(@run, [start])
+      %{run: run} = Fold.fold(@run, [start.("starter")])
+
+      # An older Forager names the run credential's source `issuer`: read the same.
+      assert Fold.fold(@run, [start.("issuer")]).run == run
 
       assert run.opened_by == "gateway"
       assert Apiary.Runs.Run.no_session?(run)
@@ -239,13 +245,8 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(@run, [exited(9, %{"state" => "succeeded"})])
       %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 9})
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.runtime == "claude"
-    end
-
-    test "a closed run stays closed" do
-      %{run: run} = Fold.fold(%{@run | state: "closed"}, [started(2)])
-      assert run.state == "closed"
     end
 
     test "arriving for a lost run, the run is running and no longer lost" do
@@ -735,6 +736,31 @@ defmodule Apiary.Runs.FoldTest do
       assert run.lost_at == nil
     end
 
+    test "a beat revives by the registration's interval, before its own" do
+      # The run's beats arrive 100 s after their time; this one 550 s after, so it counts as
+      # heard at 407 s (its time, the offset and the tolerance), 150 s before its arrival:
+      # within three intervals of 100 s, not of 30 or 10.
+      lost =
+        %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
+        |> Map.put(:clock_offset_ms, 100_000)
+
+      late = fn interval -> %{heartbeat(7, 120, interval) | received_at: at(557)} end
+      latest = %{"dev.qory.run.heartbeat" => 4}
+      registered = Map.put(lost, :registration_interval_seconds, 100)
+
+      assert %{state: "lost", last_heartbeat_at: heard} = Fold.fold(lost, [late.(0)], latest).run
+      assert heard == at(407)
+      assert Fold.fold(registered, [late.(0)], latest).run.state == "running"
+      assert Fold.fold(registered, [late.(30)], latest).run.state == "running"
+
+      # The registration's interval wins when it is the shorter too.
+      short = Map.put(lost, :registration_interval_seconds, 10)
+      assert Fold.fold(short, [late.(100)], latest).run.state == "lost"
+
+      # Without a registration, the beat's own interval decides.
+      assert Fold.fold(lost, [late.(100)], latest).run.state == "running"
+    end
+
     test "an earlier beat arriving late does not revive a lost run" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
       %{run: run} = Fold.fold(lost, [heartbeat(3, 5)], %{"dev.qory.run.heartbeat" => 4})
@@ -744,10 +770,130 @@ defmodule Apiary.Runs.FoldTest do
       assert run.last_heartbeat_at == at(10)
     end
 
-    test "a succeeded or a closed run is not revived" do
-      for state <- ~w(succeeded failed timed_out closed) do
+    test "a run that ended is not revived" do
+      for state <- ~w(completed failed cancelled succeeded ended timed_out) do
         %{run: run} = Fold.fold(%{@run | state: state}, [heartbeat(5, 30)])
         assert run.state == state
+      end
+    end
+
+    test "a beat counts by its own time within the run's clock offset, never after its arrival" do
+      # The offset the run's beats set: received 100 s after their time.
+      run = %{@run | state: "running"} |> Map.put(:clock_offset_ms, 100_000)
+
+      # Received on time, a little faster than the others, or an hour late.
+      fast = %{heartbeat(5, 30) | received_at: at(95)}
+      late = %{heartbeat(6, 60) | received_at: at(3606)}
+
+      assert %{last_heartbeat_at: heard, clock_offset_ms: 90_000} = Fold.fold(run, [fast]).run
+      assert heard == at(95)
+
+      assert %{last_heartbeat_at: heard, clock_offset_ms: 100_000} = Fold.fold(run, [late]).run
+      assert heard == at(6 + 100 + 300)
+    end
+
+    test "the offset is the smallest over every beat, whatever its sequence or order" do
+      beats = [
+        %{heartbeat(5, 30) | received_at: at(120)},
+        %{heartbeat(6, 60) | received_at: at(70)},
+        %{heartbeat(7, 90) | received_at: at(500)}
+      ]
+
+      offsets =
+        for order <- [beats, Enum.reverse(beats), [Enum.at(beats, 2), Enum.at(beats, 0)]] do
+          Enum.reduce(order, {@run, %{}}, fn beat, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [beat], latest)
+            {run, latest}
+          end)
+          |> elem(0)
+          |> Map.get(:clock_offset_ms)
+        end
+
+      assert offsets == [64_000, 64_000, 115_000]
+    end
+
+    test "a replayed beat never moves the offset, and revives no lost run" do
+      lost =
+        %{@run | state: "lost", lost_at: at(400), last_heartbeat_at: at(105)}
+        |> Map.put(:clock_offset_ms, 100_000)
+
+      # Recorded at 200 s, sent at 3600 s.
+      replayed = %{heartbeat(9, 200, 30, 200) | received_at: at(3600)}
+      %{run: run} = Fold.fold(lost, [replayed], %{"dev.qory.run.heartbeat" => 4})
+
+      assert run.clock_offset_ms == 100_000
+      assert run.last_heartbeat_at == at(600)
+      assert run.state == "lost"
+      assert run.lost_at == at(400)
+
+      # Nor a run whose start has not arrived.
+      pending = Map.put(@run, :clock_offset_ms, 100_000)
+      assert Fold.fold(pending, [replayed]).run.state == "pending"
+    end
+
+    test "a lost run revives on a beat heard within three of its intervals of its arrival" do
+      lost = %{@run | state: "lost", lost_at: at(10)} |> Map.put(:clock_offset_ms, 100_000)
+
+      # Heard at 3 × 30 s before its arrival, then a moment earlier.
+      within = %{heartbeat(7, 120, 30, 3000) | received_at: at(3490)}
+      without = %{within | received_at: at(3491)}
+
+      assert Fold.fold(lost, [within]).run.state == "running"
+      assert Fold.fold(lost, [without]).run.state == "lost"
+    end
+
+    test "a lower offset counts the last beat again, from what was projected" do
+      # A beat folded alone counted at its arrival and revived the run; the start that
+      # brings the ping's lower offset comes after it.
+      run = %{@run | state: "running", opened_by: "gateway", last_heartbeat_at: at(3600)}
+      run = Map.put(run, :clock_offset_ms, 3_000_000)
+      beat = %{time: at(600), received_at: at(3600)}
+      projected = %{ping_offset: 100_000, beat: beat}
+      latest = %{"dev.qory.run.heartbeat" => 9}
+
+      %{run: counted} =
+        Fold.fold(run, [started(2, %{"opened_by" => "gateway"})], latest, projected)
+
+      assert counted.clock_offset_ms == 100_000
+      assert counted.last_heartbeat_at == at(600 + 100 + 300)
+
+      # The same beat folded with the lower offset already there counts the same.
+      %{run: direct} =
+        Fold.fold(
+          %{@run | state: "lost", opened_by: "gateway"} |> Map.put(:clock_offset_ms, 100_000),
+          [%{heartbeat(9, 270, 30, 600) | received_at: at(3600)}]
+        )
+
+      assert direct.last_heartbeat_at == counted.last_heartbeat_at
+      assert direct.state == "lost"
+    end
+
+    test "a run a gateway opened takes its ping's offset, whichever comes first; a session's does not" do
+      ping =
+        event(
+          1,
+          "ping",
+          %{"forager_version" => "v0.6.0", "contract_version" => 1, "interval_seconds" => 30}
+        )
+
+      ping = %{ping | received_at: at(51)}
+      gateway = started(2, %{"opened_by" => "gateway", "credential" => "issuer"})
+
+      assert Fold.fold(@run, [ping, gateway]).run.clock_offset_ms == 50_000
+
+      %{run: run} = Fold.fold(@run, [gateway])
+      assert Map.get(run, :clock_offset_ms) == nil
+      assert Fold.fold(run, [ping], %{"dev.qory.run.started" => 2}).run.clock_offset_ms == 50_000
+
+      # Across passes, the projector hands over the offset of the pings already projected.
+      projected = %{ping_offset: 50_000}
+
+      assert Fold.fold(@run, [gateway], %{"dev.qory.ping" => 1}, projected).run.clock_offset_ms ==
+               50_000
+
+      for credential <- ["none", "starter", "issuer"] do
+        session = started(2, %{"credential" => credential})
+        assert Map.get(Fold.fold(@run, [ping, session]).run, :clock_offset_ms) == nil
       end
     end
   end
@@ -958,13 +1104,28 @@ defmodule Apiary.Runs.FoldTest do
   end
 
   describe "dev.qory.run.exited" do
+    # The run as a session opened it, and as a gateway opened it with no session, each
+    # with its exit: the same `data`, with an exit code on the session's alone.
+    defp both(data, sequence \\ 18) do
+      gateway = %{"opened_by" => "gateway", "credential" => "starter"}
+
+      session =
+        Fold.fold(@run, [started(2), exited(sequence, Map.put_new(data, "exit_code", -1))]).run
+
+      gateway =
+        Fold.fold(@run, [
+          started(2, gateway),
+          event(sequence, "run.exited", Map.merge(%{"duration_ms" => 1200}, data))
+        ]).run
+
+      %{session: session, gateway: gateway}
+    end
+
     test "maps the contract's states onto the run's" do
       for {data, state} <- [
-            {%{"state" => "succeeded"}, "succeeded"},
+            {%{"state" => "succeeded"}, "completed"},
             {%{"state" => "failed", "exit_code" => 2}, "failed"},
-            {%{"state" => "failed", "reason" => "timeout"}, "timed_out"},
-            {%{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}, "failed"},
-            {%{"state" => "evaporated", "reason" => "unheard of"}, "failed"}
+            {%{"state" => "cancelled", "exit_code" => -1, "signal" => "SIGTERM"}, "cancelled"}
           ] do
         %{run: run} = Fold.fold(%{@run | state: "running"}, [exited(18, data)])
 
@@ -973,6 +1134,116 @@ defmodule Apiary.Runs.FoldTest do
         assert run.reason == data["reason"]
         assert run.exit_code == Map.get(data, "exit_code", 0)
         assert run.duration_ms == 1200
+        assert run.lost_at == nil
+      end
+    end
+
+    test "one rule, the first step that applies, the same for a session's run and a gateway's" do
+      for {data, state} <- [
+            # 1. A stop an older Forager wrote as failed is cancelled.
+            {%{"state" => "failed", "reason" => "timeout"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "run_ended_at_issuer"}, "cancelled"},
+            # 2. Nobody knows how it ended.
+            {%{"state" => "failed", "reason" => "session_lost"}, "lost"},
+            {%{"state" => "failed", "reason" => "gateway_lost"}, "lost"},
+            # 3. The state decides, whatever the reason.
+            {%{"state" => "succeeded"}, "completed"},
+            {%{"state" => "succeeded", "reason" => "all_checks_passed"}, "completed"},
+            {%{"state" => "succeeded", "reason" => "session_lost"}, "completed"},
+            {%{"state" => "failed"}, "failed"},
+            {%{"state" => "failed", "reason" => "checks_failed"}, "failed"},
+            {%{"state" => "failed", "reason" => "batch_refused"}, "failed"},
+            {%{"state" => "failed", "reason" => "credential_check_unreachable"}, "failed"},
+            {%{"state" => "failed", "reason" => "credential_check_invalid"}, "failed"},
+            {%{"state" => "failed", "reason" => "issuer_unreachable"}, "failed"},
+            {%{"state" => "failed", "reason" => "issuer_answer_invalid"}, "failed"},
+            {%{"state" => "failed", "reason" => "run_closed"}, "failed"},
+            {%{"state" => "cancelled"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "stopped"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "interrupted"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "interrupted"}, "failed"},
+            {%{"state" => "succeeded", "reason" => "interrupted"}, "completed"},
+            {%{"state" => "cancelled", "reason" => "timeout"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "credential_expired"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "gateway_lost"}, "cancelled"},
+            # 4. No state, as an older Forager wrote it: the reason decides.
+            {%{"reason" => "timeout"}, "cancelled"},
+            {%{"reason" => "credential_expired"}, "cancelled"},
+            {%{"reason" => "stopped"}, "cancelled"},
+            {%{"reason" => "run_ended_at_issuer"}, "cancelled"},
+            {%{"reason" => "session_lost"}, "lost"},
+            {%{"reason" => "gateway_lost"}, "lost"},
+            {%{"reason" => "issuer_unreachable"}, "failed"},
+            {%{"reason" => "run_closed"}, "failed"},
+            {%{"reason" => "interrupted"}, "failed"},
+            {%{"reason" => "example_reason"}, "failed"},
+            {%{}, "failed"}
+          ] do
+        %{session: session, gateway: gateway} = both(data)
+
+        for {kind, run} <- [session: session, gateway: gateway] do
+          assert run.state == state, inspect({kind, data})
+          assert run.reason == data["reason"], inspect({kind, data})
+          assert run.exited_at == at(18)
+          assert run.lost_at == if(state == "lost", do: at(18)), inspect({kind, data})
+        end
+
+        assert session.exit_code == -1
+        assert gateway.exit_code == nil
+      end
+
+      quiet = %{"reason" => "quiet", "quiet_seconds" => 1800}
+
+      for data <- [quiet, Map.put(quiet, "state", "cancelled")] do
+        %{session: session, gateway: gateway} = both(data)
+        assert {session.state, gateway.state} == {"cancelled", "cancelled"}
+      end
+    end
+
+    # A rebuild folds the stored exit again from the start, as here.
+    test "an older Forager's failed exit at its time limit or for no activity is cancelled" do
+      for data <- [
+            %{"state" => "failed", "reason" => "timeout"},
+            %{"state" => "failed", "reason" => "quiet", "quiet_seconds" => 1800}
+          ] do
+        %{session: session, gateway: gateway} = both(data)
+
+        for {kind, run} <- [session: session, gateway: gateway] do
+          assert {run.state, run.reason} == {"cancelled", data["reason"]}, inspect({kind, data})
+          assert run.exited_at == at(18)
+          assert run.lost_at == nil
+        end
+      end
+    end
+
+    test "a state other than the three, and a reason that is not a code, read as absent" do
+      long = "a" <> String.duplicate("b", 63)
+
+      for {data, state, reason} <- [
+            {%{"state" => "evaporated", "reason" => "session_lost"}, "lost", "session_lost"},
+            {%{"state" => "ended", "reason" => "quiet", "quiet_seconds" => 60}, "cancelled",
+             "quiet"},
+            {%{"state" => "Succeeded"}, "failed", nil},
+            {%{"state" => 1, "reason" => "timeout"}, "cancelled", "timeout"},
+            {%{"state" => "failed", "reason" => "unheard of"}, "failed", nil},
+            {%{"state" => "cancelled", "reason" => "no-longer-needed"}, "cancelled", nil},
+            {%{"reason" => "Timeout"}, "failed", nil},
+            {%{"reason" => "timeout\n"}, "failed", nil},
+            {%{"reason" => "_quiet"}, "failed", nil},
+            {%{"reason" => "1st_reason"}, "failed", nil},
+            {%{"reason" => 5}, "failed", nil},
+            {%{"state" => "failed", "reason" => long}, "failed", long},
+            {%{"state" => "failed", "reason" => long <> "c"}, "failed", nil},
+            {%{"state" => "failed", "reason" => "session_lost" <> String.duplicate("x", 60)},
+             "failed", nil}
+          ] do
+        %{session: session, gateway: gateway} = both(data)
+
+        for run <- [session, gateway] do
+          assert {run.state, run.reason} == {state, reason}, inspect(data)
+        end
       end
     end
 
@@ -1003,51 +1274,35 @@ defmodule Apiary.Runs.FoldTest do
       lost = %{@run | state: "lost", lost_at: at(100)}
       %{run: run} = Fold.fold(lost, [exited(18, %{"state" => "succeeded"})])
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.lost_at == nil
+
+      # An exit that is lost itself is lost from the exit's time.
+      %{run: run} =
+        Fold.fold(lost, [exited(18, %{"state" => "failed", "reason" => "gateway_lost"})])
+
+      assert {run.state, run.lost_at} == {"lost", at(18)}
     end
 
-    test "an exit without a state, a gateway's, reads its reason" do
-      for {reason, state} <- [
-            {"quiet", "ended"},
-            {"credential_expired", "ended"},
-            {"run_ended_at_issuer", "ended"},
-            {"timeout", "timed_out"},
-            {"run_closed", "closed"},
-            {"gateway_lost", "failed"},
-            {"session_lost", "failed"},
-            {"unheard of", "failed"},
-            {nil, "failed"}
-          ] do
-        data =
-          %{"reason" => reason, "duration_ms" => 1_804_900}
-          |> Map.merge(if reason == "quiet", do: %{"quiet_seconds" => 1800}, else: %{})
-          |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    test "a lost exit is final: no later start or heartbeat revives it" do
+      for data <- [
+            %{"state" => "failed", "reason" => "session_lost"},
+            %{"state" => "failed", "reason" => "gateway_lost"},
+            %{"reason" => "gateway_lost"}
+          ],
+          opener <- [%{}, %{"opened_by" => "gateway", "credential" => "issuer"}] do
+        %{run: run, latest: latest} =
+          Fold.fold(%{@run | state: "running"}, [heartbeat(10, 300), exited(18, data)])
 
-        %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+        assert {run.state, run.lost_at} == {"lost", at(18)}
 
-        assert run.state == state, inspect(reason)
-        assert run.reason == reason
-        assert run.exit_code == nil
-        assert run.exited_at == at(18)
-        assert run.duration_ms == 1_804_900
-      end
-    end
+        # A heartbeat heard at once, which revives a run Apiary marked lost itself.
+        beat = %{heartbeat(20, 600) | received_at: at(20)}
+        %{run: run} = Fold.fold(run, [beat], latest)
+        assert {run.state, run.lost_at} == {"lost", at(18)}
 
-    test "with a state, the state decides, whatever the reason" do
-      for {data, state} <- [
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "quiet"}, "failed"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "credential_expired"},
-             "failed"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "run_ended_at_issuer"},
-             "failed"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "run_closed"}, "failed"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "session_lost"}, "failed"},
-            {%{"state" => "succeeded", "reason" => "credential_expired"}, "succeeded"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout"}, "timed_out"}
-          ] do
-        %{run: run} = Fold.fold(%{@run | state: "running"}, [exited(18, data)])
-        assert run.state == state, inspect(data)
+        %{run: run} = Fold.fold(run, [started(2, opener)], latest)
+        assert {run.state, run.lost_at} == {"lost", at(18)}
       end
     end
 
@@ -1062,30 +1317,141 @@ defmodule Apiary.Runs.FoldTest do
 
       for seconds <- [0, -1, 2_147_483_648, "1800", 1.5] do
         assert quiet.(seconds).quiet_seconds == nil
-        assert quiet.(seconds).state == "ended"
+        assert quiet.(seconds).state == "cancelled"
       end
 
       assert Fold.fold(@run, [exited(18, %{"state" => "succeeded"})]).run.quiet_seconds == nil
     end
 
-    test "an ended run is final: a later start or heartbeat does not undo it" do
-      data = %{"reason" => "quiet", "quiet_seconds" => 1800, "duration_ms" => 5}
-      %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
-      assert run.state == "ended"
+    test "a session's run stopped where it was started is Cancelled, interrupted, with its exit as observed" do
+      for exit <- [
+            %{"exit_code" => 0},
+            %{"exit_code" => 130},
+            %{"exit_code" => -1, "signal" => "SIGINT"},
+            %{"exit_code" => -1, "signal" => "SIGTERM"},
+            %{"exit_code" => -1, "signal" => "SIGKILL"}
+          ] do
+        data = Map.merge(%{"state" => "cancelled", "reason" => "interrupted"}, exit)
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [started(2), exited(18, data)])
 
-      %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 18})
-      assert run.state == "ended"
-
-      %{run: run} = Fold.fold(run, [heartbeat(20, 600)], %{"dev.qory.run.exited" => 18})
-      assert run.state == "ended"
+        assert run.state == "cancelled", inspect(exit)
+        assert run.reason == "interrupted", inspect(exit)
+        assert run.exit_code == exit["exit_code"], inspect(exit)
+        assert run.signal == exit["signal"], inspect(exit)
+        assert run.lost_at == nil
+        assert run.state in Apiary.Runs.Filters.family_states("cancelled")
+      end
     end
 
-    test "a closed run stays closed and keeps the result" do
-      %{run: run} = Fold.fold(%{@run | state: "closed"}, [exited(18, %{"state" => "failed"})])
+    test "a cancelled run is final: a later start or heartbeat does not undo it" do
+      data = %{"reason" => "quiet", "quiet_seconds" => 1800, "duration_ms" => 5}
+      %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+      assert run.state == "cancelled"
 
-      assert run.state == "closed"
-      assert run.exit_code == 0
-      assert run.exited_at == at(18)
+      %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 18})
+      assert run.state == "cancelled"
+
+      %{run: run} = Fold.fold(run, [heartbeat(20, 600)], %{"dev.qory.run.exited" => 18})
+      assert run.state == "cancelled"
+    end
+
+    # The contract's exits of a session's run, as the gateway writes them, and the exits it
+    # names invalid: the receiver stores what it receives and the fold reads each, as
+    # untrusted, by the same rule.
+    @tag :contract
+    test "the contract's exits fold by the rule, its invalid ones too" do
+      for {file, state, reason} <- [
+            {"invalid/link-batch-exited-credential-check-unreachable.json", "failed",
+             "credential_check_unreachable"},
+            {"invalid/link-batch-exited-credential-check-invalid.json", "failed",
+             "credential_check_invalid"},
+            {"invalid/link-batch-exited-batch-refused.json", "failed", "batch_refused"},
+            {"invalid/link-batch-exited-run-closed.json", "failed", "run_closed"},
+            {"invalid/link-batch-exited-credential-expired.json", "cancelled",
+             "credential_expired"},
+            {"invalid/link-batch-exited-stopped.json", "cancelled", "stopped"},
+            {"invalid/link-batch-exited-run-ended-at-issuer.json", "cancelled",
+             "run_ended_at_issuer"},
+            {"invalid/link-batch-exited-quiet.json", "cancelled", "quiet"},
+            {"invalid/link-batch-exited-session-lost.json", "lost", "session_lost"},
+            {"invalid/link-batch-exited-gateway-lost.json", "lost", "gateway_lost"},
+            {"invalid/link-batch-exited-timeout-succeeded.json", "completed", "timeout"},
+            {"invalid/event-exited-without-state.json", "failed", nil},
+            {"invalid/event-exited-unknown-state.json", "failed", nil},
+            {"invalid/event-exited-reason-not-a-code.json", "failed", nil},
+            {"invalid/event-exited-gateway-lost-cancelled.json", "cancelled", "gateway_lost"}
+          ] do
+        data =
+          case Apiary.ContractFixtures.contract_json!(file) do
+            %{"type" => "dev.qory.run.exited", "data" => data} ->
+              data
+
+            events ->
+              Enum.find_value(events, &(&1["type"] == "dev.qory.run.exited" && &1["data"]))
+          end
+
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+        assert {run.state, run.reason} == {state, reason}, file
+      end
+    end
+  end
+
+  describe "dev.qory.run.refused" do
+    test "a run that did not start is failed, with the refusal's code, and no exit" do
+      for {data, reason} <- [
+            {%{"code" => "image_unknown", "names" => ["example/agent:1"]}, "image_unknown"},
+            {%{"code" => "not_found", "status" => 404}, "not_found"},
+            {%{"code" => "example_server_code", "status" => 409}, "example_server_code"},
+            {%{"code" => "Not a code"}, nil},
+            {%{}, nil}
+          ] do
+        %{run: run} = Fold.fold(@run, [event(1, "ping", %{}), event(2, "run.refused", data)])
+
+        assert {run.state, run.reason, run.exited_at, run.lost_at} == {"failed", reason, nil, nil}
+      end
+    end
+
+    test "a refused run never turns lost, nor running" do
+      refused = event(2, "run.refused", %{"code" => "image_unknown"})
+
+      # Marked lost before the refusal arrived: the refusal decides.
+      lost = %{@run | state: "lost", lost_at: at(100)}
+      %{run: run, latest: latest} = Fold.fold(lost, [refused])
+      assert {run.state, run.lost_at} == {"failed", nil}
+
+      beat = %{heartbeat(3, 30) | received_at: at(3)}
+      assert Fold.fold(run, [beat], latest).run.state == "failed"
+      assert Fold.fold(run, [started(4)], latest).run.state == "failed"
+    end
+
+    test "an exit decides over a refusal, in either order" do
+      refused = event(2, "run.refused", %{"code" => "run_configuration_invalid"})
+      exit = exited(18, %{"state" => "cancelled", "reason" => "no_longer_needed"})
+
+      for events <- [[refused, exit], [exit, refused]] do
+        %{run: run} = Fold.fold(@run, events)
+        assert {run.state, run.reason, run.exited_at} == {"cancelled", "no_longer_needed", at(18)}
+
+        {run, _latest} =
+          Enum.reduce(events, {@run, %{}}, fn event, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [event], latest)
+            {run, latest}
+          end)
+
+        assert {run.state, run.reason} == {"cancelled", "no_longer_needed"}
+      end
+    end
+
+    test "ranks: the refusal with the highest sequence decides" do
+      assert Fold.ranks("dev.qory.run.refused") == ["dev.qory.run.refused"]
+
+      %{run: run} =
+        Fold.fold(@run, [
+          event(3, "run.refused", %{"code" => "image_unknown"}),
+          event(2, "run.refused", %{"code" => "tool_unknown"})
+        ])
+
+      assert run.reason == "image_unknown"
     end
   end
 

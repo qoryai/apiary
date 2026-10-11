@@ -2,10 +2,10 @@ defmodule Apiary.AccessKeys.AccessKey do
   @moduledoc """
   A workspace's credential for the server contract, named by its key id, `ak_` and
   sixteen characters (`Apiary.PublicId`): one Ed25519 public key (`public_key`, 32 bytes)
-  on a node or a node pool of the workspace (`node_id`). Apiary holds no secret of it. It
-  arrived (`arrived_by`) by an enrolment code (`:code`), or made in a browser that sent
-  its public key alone (`:browser`); it is active from the moment it is made until it is
-  revoked, and carries the stored-secrets flag (`allow_secrets`) it was made with.
+  on a node or a node pool of the workspace (`node_id`). Qory Apiary holds no secret of
+  it. It arrived (`arrived_by`) by an enrolment code (`:code`), or made in a browser that
+  sent its public key alone (`:browser`); it is active from the moment it is made until it
+  is revoked, and carries the stored-secrets flag (`allow_secrets`) it was made with.
 
   A key's node, public key, stored-secrets flag and arrival are fixed when it is made
   (`insert_changeset/2`): no changeset casts them after, and the database refuses an

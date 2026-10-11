@@ -1,6 +1,6 @@
 Qory Apiary is the control plane for coding agent runs: a Phoenix 1.8 / LiveView
-application on Postgres. This repository is its free edition, the core that every edition
-builds on ([EDITIONS.md](EDITIONS.md)). This file is for an agent working in the
+application on Postgres. This repository is Qory Apiary Community, the core that every
+edition builds on ([EDITIONS.md](EDITIONS.md)). This file is for an agent working in the
 repository; the rules for people are the same, and are written out in
 [CONTRIBUTING.md](CONTRIBUTING.md) and the developer documentation under [docs/](docs/).
 
@@ -59,13 +59,14 @@ repository; the rules for people are the same, and are written out in
   it asks `Apiary.Edition` and `ApiaryWeb.Edition`, which the configuration points at
   one, at the places an edition may add to the core or narrow it
   ([docs/architecture.md](docs/architecture.md)). `EDITIONS.md` is the one file that names
-  what the paid editions add, and only as the product does.
+  what Qory Apiary Pro adds, and only as the product does.
 - **Developer documentation** lives under `docs/`: `architecture.md` (layout, organisation
   keys, the edition seams),
   `conventions.md` (migrations, tests, doc comments, vocabulary), `access.md`, `lingo.md`,
   `ui.md` (the rules the pages follow), `contract-assumptions.md`, `releases.md`.
-  `CONTRIBUTING.md` says only how to contribute (where contributions go, the CLA, the
-  licence, running the checkout, pull requests); how the code is built or what rule it
+  `CONTRIBUTING.md` says how to contribute (where contributions go, the CLA, the licence,
+  running it from a checkout, the toolchain, commands, contract tests and CI, an index of
+  `docs/`, releases, pull requests); how the code is built or what rule it
   follows goes in `docs/`, changed in the same pull request as the code it describes.
 - **Documentation.** It ships with the application: the guides are Markdown under
   `guides/`, built with the module reference by ExDoc (`mix docs`, an alias of

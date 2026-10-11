@@ -62,8 +62,8 @@ Deleting a workspace and cancelling it (`workspace.delete`, `workspace.restore`)
 admin's as well as an owner's: an admin manages the workspaces.
 
 Over people, an admin acts on members only. Inviting, changing a level, removing,
-revoking an invitation, suspending and activating (`member.suspend`, `member.activate`)
-are **actions over people**: asked of the membership they are about, whose level decides,
+revoking an invitation, making a new link for one (`invitation.renew`), suspending and
+activating (`member.suspend`, `member.activate`) are **actions over people**: asked of the membership they are about, whose level decides,
 or of the invitation, which is at member: an invitation is an email address and nothing
 else, and its person joins as a member, whom an owner makes an admin or an owner
 afterwards. An owner takes them on anyone, within the last-owner rule, but suspends and
@@ -72,8 +72,11 @@ and on any invitation, never on an owner or an admin. Nobody suspends or activat
 own membership, whatever their level. Asked of a workspace or the organisation, as a page
 asks whether to show a button at all, the role alone answers; the context function asks
 of the row. An invitation is the organisation's whichever workspace it was sent from, so
-an owner or an admin revokes it from any page of the organisation. An edition's own
-action over people asks the same rule (`Apiary.Access.acts_on?/2`).
+an owner or an admin revokes it, or makes a new link for it, from any page of the
+organisation. An edition's own
+action over people asks the same rule (`Apiary.Access.acts_on?/2`). An edition that
+makes a new link with an action of its own asks it itself, and passes it as `action:`
+(`Apiary.Organisations.renew_invitation/4`), which then does not ask `invitation.renew`.
 
 ## Reach
 
@@ -87,8 +90,11 @@ An edition may let a person into an organisation where they hold no membership
 a person reaches every workspace of it, and holds what that role holds.
 `Apiary.Access.level/1` is the level of a membership there, and nil for one the edition
 lets in without one; `Apiary.Access.reader/1` names the edition's way in for a person
-without a membership there, or is nil, and a page says so to them
-(`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a change would take. The
+without a membership there whose role holds no change (`Apiary.Access.reads_only?/1`: no
+action of it leaves an audit entry), or is nil, and a page tells such a reader they read
+it and change nothing (`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a
+change would take. One let in with a role that changes something is no reader: a
+refusal tells them what it tells anyone else. The
 path scope (`Apiary.Organisations.resolve_scope/4`) opens an organisation for its members
 and for whom the edition lets in (`Apiary.Organisations.put_reach/2`); the switcher lists
 the places the edition gives (`Apiary.Organisations.list_places/1`,
@@ -148,11 +154,24 @@ else compares a level for it.
 
 Granting and revoking an instance admin (`instance_admin.grant`, `instance_admin.revoke`,
 `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1`) are release
-commands, taken on the strength of a shell on the release, which no role has. Revoking
-the last owner who may act is refused, `{:error, :last_owner}`.
+commands, taken on the strength of a shell on the release, which no role has. A password
+link (`account.password_link`, `Apiary.Accounts.build_password_link/3`), a one-time link
+that sets an account's password, is no role's either: an instance admin makes one while
+the instance sends no mail, after a recent sign-in (`Apiary.Accounts.sudo_mode?/2`), asked
+by `Apiary.Access.instance_admin?/1` in the context function, and a release command makes
+one mail or not (`Apiary.Release.password_link/1`).
+Saving the instance's mail settings and turning them on by the test link
+(`instance.mail_save`, `Apiary.Mail.save_settings/3`; `instance.mail_on`,
+`Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
+`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Revoking
+the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a new
+instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its log
+shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
+instance that has its organisation.
 
-The instance's own organisation is never deleted nor purged: an instance without it would
-give its next sign-up the instance. `Apiary.Deletion` refuses to mark or purge it,
+The instance's own organisation is never deleted nor purged: an instance without it is
+one that is not set up, where nobody signs up, and its next start would log a new set-up
+link (`Apiary.Setup`) that gives whoever opens it the instance. `Apiary.Deletion` refuses to mark or purge it,
 `:instance_organisation`, the core edition's answer to
 `c:Apiary.Edition.deletion_refusal/2`. An edition may also refuse `organisation.delete` on
 it for every role (`c:Apiary.Edition.check/3`), which its settings page asks through
@@ -357,7 +376,11 @@ The modes keep a row that only names another out of it:
 - An invitation locks the row of the organisation whose allowance it counts against
   `FOR NO KEY UPDATE` while it is counted and written: the organisation's own for
   `member.invite`, or the one an edition's invitation names
-  (`Apiary.Organisations.insert_invitation/3`).
+  (`Apiary.Organisations.insert_invitation/3`). A new link for a pending invitation
+  (`Apiary.Organisations.renew_invitation/4`) reads the invitation without a lock to find
+  the allowance it was counted against, locks that allowance's row the same way, then
+  the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
+  (`action:`) runs inside its own transaction, which may hold the allowance's row already.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
   it `FOR SHARE`, before the account and the invitation, so the organisation's marking,
@@ -374,8 +397,8 @@ The modes keep a row that only names another out of it:
   change an edition locks so, first and alone.
 
 - A node's instance limit is checked under the node's row, `FOR UPDATE`
-  (`Apiary.Nodes.check_instance_limit/3`), before the batch that would create a run
-  locks the run's row: two starts for a node's last slot take turns, and the second
+  (`Apiary.Nodes.check_instance_limit/3`), before the registration that would create a
+  run inserts the run's row: two starts for a node's last slot take turns, and the second
   counts the first's run and is refused. Clearing an instance (`node.clear_instance`)
   locks the node's row the same way before it marks the instance's runs lost, so a
   clearing and a start take turns too. Nothing locks a run and then its node. A node's

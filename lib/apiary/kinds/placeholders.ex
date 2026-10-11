@@ -8,7 +8,7 @@ defmodule Apiary.Kinds.Placeholders do
   (`QORY_*`), on the built-in deny list, or a name Forager, a runtime or the harness
   sets, and the server refuses the same on save, for the names it knows then: a tool
   role's `placeholders` in an integration's description, and a service declaration's
-  `name`. The names Apiary knows are `Apiary.Variables.Denied`'s list and pattern, matched
+  `name`. The names Qory Apiary knows are `Apiary.Variables.Denied`'s list and pattern, matched
   without case, and every variable a runtime of the catalogue declares or reserves
   (`Apiary.Kinds.Runtimes.variables/0`), matched exactly.
   """

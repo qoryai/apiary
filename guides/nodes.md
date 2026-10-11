@@ -224,8 +224,8 @@ for display, the audit and the instance limit: what a request is allowed rests o
 alone.
 
 An instance counts as running while one of its runs is alive. A node runs one at a time,
-and a pool up to its limit: the ping that starts a run, from an instance beyond the limit,
-is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
+and a pool up to its limit: the registration that starts a run, from an instance beyond
+the limit, is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
 the starts refused. Lowering a limit stops nothing that runs; new instances wait
 until fewer run.
 
@@ -237,6 +237,37 @@ Every run records its node and its instance. A run's page names both, beside its
 key; the node's **Overview** lists its recent runs; and on **Runs**, `node:build-01` in the
 filter, or **Node** in the Filter menu, keeps a node's runs alone.
 
+## After an outage
+
+When the machines could not reach Qory Apiary for a while, each gateway keeps what its
+runs recorded and sends it once Qory Apiary answers again. Qory Apiary reads a heartbeat
+by when it was recorded, not when it arrived, so the catch-up shows what happened:
+
+- A run that ended during the outage stays **Lost**, and under **To review** on the
+  Overview, until its end arrives; then it shows how it ended. A run that is still alive
+  comes back as soon as its recent heartbeats arrive.
+- The alive counts, in the sidebar and on the Overview, count only the runs alive now.
+- An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
+  minutes for the machine's clock, and never later than it arrived.
+- A new run opens during a catch-up, on a node or pool the catching-up runs had filled
+  too: old heartbeats hold no instance's place. Its registration has a rate of its own,
+  which a catch-up never spends.
+- Every event is kept, however late it arrives, while its run is: retention keeps a lost
+  run for 7 days after it was lost, however short its settings
+  ([Retention](retention.md)).
+
+Three limits stay:
+
+- After an outage shorter than about 6½ minutes, a run that ended during it can look alive
+  again for a moment, at most three heartbeat intervals, 90 seconds.
+- A session's run whose heartbeats all arrive late, because the outage began before its
+  first one, comes back while they arrive, and is lost again three heartbeat intervals
+  after the last, unless its end arrives first. Its heartbeats move its key's **Last
+  heartbeat** to their arrival.
+- A run whose machine's clock ran more than about 6½ minutes ahead and was then set back
+  reads **Lost** until its end arrives; a little less, and it can read Lost between its
+  heartbeats.
+
 ## A separate gateway
 
 A gateway on a machine of its own, which the agents on other machines connect through, is
@@ -247,8 +278,9 @@ it hold no access key and need no node: their runs reach Qory Apiary through the
 A run through the gateway belongs to the gateway's node and instance, and its key is the
 gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
 for a program that reports no session has no host and no runtime; its page says it has no
-session. The one who starts a run ends it: such a run ends by the end the gateway reports,
-and neither its page nor the Overview offers **Close** for it.
+session, and it ends by the end the gateway reports. A session's run through the gateway
+ends with its agent, or at the gateway. Qory Apiary records what a run reports and never
+ends a run it did not start; it starts none today.
 <!-- feature: secrets -->
 
 Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory

@@ -32,6 +32,9 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       flunk("no demo run #{name}")
   end
 
+  defp registration_of(name),
+    do: name |> file() |> Path.dirname() |> Path.join("registration.json")
+
   defp events(run),
     do: Repo.all(from e in Event, where: e.run_id == ^run.id, order_by: e.sequence)
 
@@ -57,13 +60,15 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, %Run{} = run} = Demo.replay(access_key, file("session-with-subagents"), now)
 
       # Through the receiver's own function: the run is the workspace's, under the key,
-      # and the deliveries are recorded, 101 events in batches of 20.
+      # and the deliveries are recorded: the registration, then 100 events in batches of 20,
+      # from sequence 2.
       assert run.id == Runs.get_run!(scope, run.id).id
       assert run.access_key_id == access_key.id
-      assert run.event_count == 101
+      assert %DateTime{} = run.registered_at
+      assert run.event_count == 100
       assert run.projected_sequence == 101
 
-      assert [20, 20, 20, 20, 20, 1] ==
+      assert [20, 20, 20, 20, 20] ==
                Repo.all(
                  from d in Delivery,
                    where: d.run_id == ^run.run_id,
@@ -71,7 +76,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                    select: d.inserted_count
                )
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
@@ -169,7 +174,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     } do
       assert {:ok, run} = Demo.replay(access_key, file("timed-out"))
 
-      assert run.state == "timed_out"
+      assert run.state == "cancelled"
       assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
       assert {run.target_system, run.target_path} == {"github.com", "acme/shop"}
       assert run.denied_count == 0
@@ -181,7 +186,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("no-session"))
 
       assert {run.state, run.opened_by, run.reason, run.quiet_seconds} ==
-               {"ended", "gateway", "quiet", 600}
+               {"cancelled", "gateway", "quiet", 600}
 
       assert {run.runtime, run.command, run.host, run.exit_code} == {nil, nil, nil, nil}
       assert run.duration_ms == 635_000
@@ -190,12 +195,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.denied_count == 1
     end
 
-    test "ping-only is a run the workspace knows by its subject and nothing else", %{
+    test "registered-only is a run the workspace knows by its registration and nothing else", %{
       access_key: access_key
     } do
-      assert {:ok, run} = Demo.replay(access_key, file("ping-only"))
+      assert {:ok, run} = Demo.replay(access_key, file("registered-only"))
 
       assert run.state == "pending"
+      assert %DateTime{} = run.registered_at
+      assert {run.event_count, run.projected_sequence} == {0, 1}
       assert {run.started_at, run.runtime, run.target_id} == {nil, nil, nil}
       assert run.forager_version == "0.10.0"
     end
@@ -205,7 +212,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     } do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
 
       assert {run.target_system, run.target_path, run.labels["task"], run.wall} ==
                {nil, nil, nil, nil}
@@ -229,16 +236,26 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       scope: scope,
       access_key: access_key
     } do
-      path =
-        Path.join(System.tmp_dir!(), "apiary-demo-#{System.unique_integer([:positive])}.jsonl")
-
-      on_exit(fn -> File.rm(path) end)
+      dir = Path.join(System.tmp_dir!(), "apiary-demo-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf(dir) end)
+      path = Path.join(dir, "events.jsonl")
+      registration = Path.join(dir, "registration.json")
 
       File.write!(path, "")
-      assert {:error, :empty} = Demo.replay(access_key, path)
+      assert {:error, :no_registration} = Demo.replay(access_key, path)
 
+      File.write!(registration, ~s({"time":"2026-09-18T09:00:00Z"}))
+      assert {:error, {:not_a_registration, _member}} = Demo.replay(access_key, path)
+
+      File.cp!(registration_of("registered-only"), registration)
+
+      # The ping has left the contract: a batch that holds one is not one.
       File.write!(path, ~s({"type":"dev.qory.ping","time":"2026-09-18T09:00:00.000Z"}\n))
       assert {:error, :not_a_batch} = Demo.replay(access_key, path)
+
+      File.write!(path, "not json\n")
+      assert {:error, :not_events} = Demo.replay(access_key, path)
 
       assert {:error, :enoent} = Demo.replay(access_key, path <> ".none")
       assert Runs.list_runs(scope) == []

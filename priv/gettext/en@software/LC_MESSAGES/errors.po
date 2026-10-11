@@ -56,10 +56,17 @@ msgstr ""
 
 ## From Ecto.Changeset.cast/4
 #: lib/apiary/integrations.ex
+#: lib/apiary/mail.ex
 #: lib/apiary/secrets.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen
 msgid "can't be blank"
+msgstr ""
+
+## From Ecto.Changeset.cast/4
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "can't be blank with a password"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -89,6 +96,16 @@ msgstr ""
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
 msgid "does not match password"
+msgstr ""
+
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "enter it again: the relay, port, TLS or username changed"
+msgstr ""
+
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "enter it again: the saved one cannot be read"
 msgstr ""
 
 ## From Ecto.Changeset.unique_constraint/3
@@ -244,10 +261,20 @@ msgstr ""
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
 msgstr ""
 
+#: lib/apiary/mail/settings.ex
+#, elixir-autogen, elixir-format
+msgid "must be Always with a username"
+msgstr ""
+
 #: lib/apiary/secrets/value.ex
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
 msgid "must be UTF-8 text"
+msgstr ""
+
+#: lib/apiary/mail/settings.ex
+#, elixir-autogen, elixir-format
+msgid "must be a host name, such as smtp.example.com"
 msgstr ""
 
 #: lib/apiary/integrations.ex
@@ -312,11 +339,13 @@ msgid "must be owner/repo"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
+#: lib/apiary/mail/settings.ex
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"
 msgstr ""
 
+#: lib/apiary/accounts/user.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain a NUL byte"
@@ -328,6 +357,7 @@ msgid "must not contain a web address; a name like acme.io is fine"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
+#: lib/apiary/accounts/user.ex
 #: lib/apiary/connections.ex
 #: lib/apiary/nodes/node.ex
 #: lib/apiary/organisations/organisation.ex
@@ -431,7 +461,7 @@ msgstr ""
 
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
-msgid "was not invited: this organisation has sent %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+msgid "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
 msgstr ""
 
 #: lib/apiary/organisations.ex

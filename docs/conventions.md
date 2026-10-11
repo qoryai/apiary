@@ -42,9 +42,10 @@ the page.
 
 One row is outside the sandbox on purpose: the instance's own organisation
 (`c:Apiary.Edition.instance_organisation_id/0`). `test/test_helper.exs` commits it before
-the sandbox takes over, with its confirmed admin, through the instance's first sign-up
-(`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`), and every run finds it
-again. Without it the first sign-up of each test would be the instance's first, which
+the sandbox takes over, with its confirmed admin, through the instance's set-up
+(`Apiary.Setup.set_up/3`, in `Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`),
+and every run finds it again; the set-up's row of `instance_settings` is deleted after
+it, so the suite's database holds none, as the key check's tests expect. Without it the first sign-up of each test would be the instance's first, which
 creates the instance's organisation whatever the test asked for. A test of the first
 sign-up hides it inside its own sandbox; a test outside the sandbox that does puts it
 back before it ends. A sweep over every organisation or workspace visits it too.
@@ -77,13 +78,17 @@ edition's too. No file of the core names an edition's module
 (`test/apiary/edition_boundary_test.exs`).
 
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
-at the commit in `.forager-contract-ref`: `FORAGER_CONTRACT_DIR`, or else that commit's
-`contracts/forager/v1`, taken once with `git archive` from the checkout `../../forager/main`
-into `_build/` (that checkout is only read, whatever it has checked out). Without either
-they are excluded and a line says so; CI checks Forager out at that commit and sets
-`CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
-Forager's `main` branch, pinned by its id. The end to end job builds qory against
+at the commit in `.forager-contract-ref`. They take it from `FORAGER_CONTRACT_DIR`, set to
+`contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
+excluded and a line says so; CI checks Forager out at that commit
+and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is
+one on Forager's `next` branch, pinned by its id. The end to end job builds qory against
 Forager at `.forager-e2e-ref`, pinned apart.
+
+The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
+suite leaves them out (`test/test_helper.exs`). The one of a gateway's backlog flushed
+after an outage runs with `QORY_FEATURES` unset:
+`mix test --only load test/apiary_web/contract/backlog_load_test.exs`.
 
 ## Doc comments
 
@@ -107,7 +112,7 @@ node's credential for the server contract, an Ed25519 key; **key id** is its id,
 and sixteen characters; **secret** is the part that signs, which stays on the machine;
 **run** is one execution of one session on a machine of the workspace; **event** is one
 thing a run reports, delivered to the events URL; **receiver** is what answers the events
-URL; **run configuration** is what the gateway fetches before a run; **security policy** is
+URL; **run configuration** is what the server answers a run's registration with; **security policy** is
 `SECURITY.md`. An organisation is never a team, a tenant or an account; a
 workspace is never a team, a project or a hive; an access key is never an API key or a
 token; a secret is never a password. The product surface is the one place with other

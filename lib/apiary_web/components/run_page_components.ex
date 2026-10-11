@@ -46,8 +46,6 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
-  @ended_reasons Apiary.Runs.Fold.ended_reasons()
-
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
                   )
@@ -197,10 +195,14 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
 
+  attr :registered, :boolean,
+    default: false,
+    doc: "for `:not_started`: whether the run registered, else it only pinged"
+
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
     <.notice class="q-limits">
-      <.limit_sentence reason={@reason} runtime={@runtime} />
+      <.limit_sentence reason={@reason} runtime={@runtime} registered={@registered} />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
       </span>
@@ -216,7 +218,13 @@ defmodule ApiaryWeb.RunPageComponents do
       title={limit_title(@reason, @live)}
       class="q-limits"
     >
-      <.limit_sentence :if={@reason != :no_log} reason={@reason} runtime={@runtime} at={@at} />
+      <.limit_sentence
+        :if={@reason != :no_log}
+        reason={@reason}
+        runtime={@runtime}
+        at={@at}
+        registered={@registered}
+      />
       <.listening
         :if={@reason == :not_started or (@reason == :no_log and @live)}
         class="mt-3 justify-center"
@@ -232,6 +240,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :reason, :atom, required: true
   attr :runtime, :string, default: nil
   attr :at, :any, default: nil
+  attr :registered, :boolean, default: false
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -248,6 +257,13 @@ defmodule ApiaryWeb.RunPageComponents do
       "This run's log output was pruned on %{date}, under the workspace's retention. The timeline and the connections are whole.",
       date: Format.date(@at)
     )}
+    """
+  end
+
+  # A run stored before the registration replaced the ping has only pinged.
+  defp limit_sentence(%{reason: :not_started, registered: true} = assigns) do
+    ~H"""
+    {gettext("The run is registered. Its first event has not arrived.")}
     """
   end
 
@@ -495,6 +511,7 @@ defmodule ApiaryWeb.RunPageComponents do
       "q-lane-#{@item.lane.color}",
       @look.shape == :square && "q-n-sys",
       @look.tone == :fail && "q-n-fail",
+      @look.tone == :warn && "q-n-warn",
       @look.tone == :solid && "q-n-solid",
       @look.tone == :info && "q-n-run"
     ]}>
@@ -513,15 +530,19 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :policy_applied}),
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
-  # An end that is no failure, such as a quiet period, stops neutrally.
-  defp node_look(%{kind: :run_exited, reason: reason}) when reason in @ended_reasons,
+  # The run's end is marked as its state is: a check for Completed, a neutral stop for
+  # Cancelled, an amber signal-slash for Lost, a red x-mark for Failed.
+  defp node_look(%{kind: :run_exited, state: "completed"}),
+    do: %{glyph: "hero-check-micro", shape: :square, tone: nil}
+
+  defp node_look(%{kind: :run_exited, state: "cancelled"}),
     do: %{glyph: "hero-stop-micro", shape: :square, tone: nil}
 
-  defp node_look(%{kind: :run_exited} = item) do
-    if item.exit_code == 0 and is_nil(item.signal) and is_nil(item.reason),
-      do: %{glyph: "hero-check-micro", shape: :square, tone: nil},
-      else: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
-  end
+  defp node_look(%{kind: :run_exited, state: "lost"}),
+    do: %{glyph: "hero-signal-slash-micro", shape: :square, tone: :warn}
+
+  defp node_look(%{kind: kind}) when kind in [:run_exited, :run_refused],
+    do: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
 
   defp node_look(%{kind: :session_started}),
     do: %{glyph: "hero-command-line-micro", shape: :round, tone: nil}
@@ -865,23 +886,31 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # A run that was quiet, whose run credential expired or whose issuer reported it ended,
-  # ended: why, in words, then how long it ran.
-  defp item_body(%{item: %{kind: :run_exited, reason: reason}} = assigns)
-       when reason in @ended_reasons do
+  # Every end of a run: why it ended, in words, else the program's exit, then how long it ran.
+  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+    assigns = assign(assigns, :words, end_words(assigns.item))
+
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
-      {RunComponents.reason_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+      {@words}
+      <span :if={@item.duration_ms}><span :if={@words}> · </span><.duration ms={@item.duration_ms} /></span>
     </.head>
     """
   end
 
-  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+  # A run refused at its start: the refusal's code as given, an earlier name read as the new
+  # one.
+  defp item_body(%{item: %{kind: :run_refused}} = assigns) do
+    assigns = assign(assigns, :code, RunComponents.refusal_code(assigns.item.code))
+
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run exited")}>
-      {exit_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={gettext("Run did not start")}
+    >
+      <span :if={@code} class="font-mono">{@code}</span>
     </.head>
     """
   end
@@ -1214,18 +1243,21 @@ defmodule ApiaryWeb.RunPageComponents do
   defp policy_source("none"), do: gettext("no policy, every connection is observed")
   defp policy_source(_other), do: gettext("source n/a")
 
-  @doc "The source of a policy in words, for the Details tab too."
+  @doc "The source of a policy in words, for Details too."
   def policy_source_words(source), do: policy_source(source)
 
-  defp exit_words(%{reason: "timeout"}), do: gettext("timeout")
-  defp exit_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
-  defp exit_words(%{reason: "session_lost"}), do: gettext("session lost")
-  defp exit_words(%{signal: signal}) when is_binary(signal), do: signal
+  # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's
+  # signal or exit code. `-1` with no signal is the gateway's placeholder for an exit it
+  # wrote, not the program's, and an exit with neither has none: nothing is said of either,
+  # and the item says how long the run ran alone.
+  defp end_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
 
-  defp exit_words(%{exit_code: code}) when is_integer(code),
+  defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
+
+  defp exit_code_words(%{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("exit %{code}", code: code)
 
-  defp exit_words(_item), do: gettext("n/a")
+  defp exit_code_words(_item), do: nil
 
   defp result_words(item) do
     [

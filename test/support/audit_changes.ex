@@ -11,7 +11,6 @@ defmodule Apiary.AuditChanges do
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
-  import Apiary.RunEventsFixtures
   import Ecto.Query
 
   alias Apiary.{
@@ -25,13 +24,21 @@ defmodule Apiary.AuditChanges do
     Policy,
     Repo,
     Retention,
-    Runs,
     Secrets,
     Variables
   }
 
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
+
+  @mail_attrs %{
+    "smtp_relay" => "smtp.example.com",
+    "smtp_port" => "587",
+    "smtp_tls" => "always",
+    "smtp_username" => "qory",
+    "smtp_password" => "a relay password",
+    "mail_from" => ""
+  }
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
@@ -45,11 +52,15 @@ defmodule Apiary.AuditChanges do
       :"member.change_level",
       :"member.remove",
       :"invitation.revoke",
+      :"invitation.renew",
       :"invitation.accept",
       :"member.suspend",
       :"member.activate",
       :"instance_admin.grant",
       :"instance_admin.revoke",
+      :"account.password_link",
+      :"instance.mail_save",
+      :"instance.mail_on",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -64,7 +75,6 @@ defmodule Apiary.AuditChanges do
       :"node.edit",
       :"node.delete",
       :"node.clear_instance",
-      :"run.close",
       :"retention.edit",
       :"security_policy.edit",
       :"security_policy.lock",
@@ -124,6 +134,16 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"invitation", invitation.id}, before: before}
   end
 
+  def make(:"invitation.renew", %{scope: scope}) do
+    %{invitation: invitation} = invitation_fixture(scope)
+    before = entries()
+
+    {:ok, _renewed} =
+      Organisations.renew_invitation(scope, invitation.id, &"http://localhost/invitations/#{&1}")
+
+    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
+  end
+
   def make(:"invitation.accept", %{scope: scope}) do
     %{invitation: invitation, token: token} = invitation_fixture(scope)
     %{user: user} = sign_up_fixture()
@@ -155,6 +175,69 @@ defmodule Apiary.AuditChanges do
     {:ok, %{membership: membership}} = Organisations.grant_instance_admin(user)
     instance = Scope.for_instance(instance_organisation())
     %{scope: instance, actor: :instance, subject: {"membership", membership.id}, before: before}
+  end
+
+  # An instance admin's, while no mail is set, in the trail of the instance's organisation:
+  # for an account with no membership there, about the organisation. The link is the
+  # secret the entry must not keep.
+  def make(:"account.password_link", _ctx) do
+    # Signed in just now: a link needs a recent sign-in.
+    admin = password_link_admin() |> mail_signed_in(0)
+    user = Apiary.AccountsFixtures.user_fixture()
+    Apiary.Mail.put_test_source(:none)
+    before = entries()
+
+    {:ok, url, _expires_at} =
+      Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")
+
+    [_, token] = Regex.run(~r{/users/password/(.+)$}, url)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: token
+    }
+  end
+
+  # An instance admin's, after a recent sign-in, in the trail of the instance's
+  # organisation, about the organisation. The relay's password is the secret the entry must
+  # not keep.
+  def make(:"instance.mail_save", _ctx) do
+    admin = mail_admin()
+    before = entries()
+
+    {:ok, _settings, :sent} =
+      Apiary.Mail.save_settings(
+        admin,
+        @mail_attrs,
+        &"http://localhost/instance/mail/confirm/#{&1}"
+      )
+
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: @mail_attrs["smtp_password"]
+    }
+  end
+
+  # The admin who saved, by the test link the save sent them. The link is the secret.
+  def make(:"instance.mail_on", _ctx) do
+    {admin, token} = mail_saved()
+    before = entries()
+    {:ok, _settings} = Apiary.Mail.turn_on(admin, token)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: token
+    }
   end
 
   # What an edition records beside the revocation, in actions of its own, is not the one
@@ -258,13 +341,6 @@ defmodule Apiary.AuditChanges do
     before = entries()
     {:ok, _} = Nodes.clear_instance(scope, node, instance.instance_id)
     %{scope: scope, subject: {"node", node.id}, before: before}
-  end
-
-  def make(:"run.close", %{scope: scope}) do
-    run = run_fixture(scope)
-    before = entries()
-    {:ok, _} = Runs.close_run(scope, run)
-    %{scope: scope, subject: {"run", run.id}, before: before}
   end
 
   def make(:"retention.edit", %{scope: scope}) do
@@ -389,6 +465,33 @@ defmodule Apiary.AuditChanges do
     {before, Organisations.grant_instance_admin(user)}
   end
 
+  # An instance admin, once mail is set: the person asks for a log-in link instead.
+  def refuse(:"account.password_link", _ctx) do
+    admin = password_link_admin()
+    user = Apiary.AccountsFixtures.user_fixture()
+    before = entries()
+    {before, Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")}
+  end
+
+  # An instance admin whose sign-in is no longer recent signs in again first.
+  def refuse(:"instance.mail_save", _ctx) do
+    admin = mail_admin() |> mail_signed_in(-21)
+    before = entries()
+
+    {before,
+     Apiary.Mail.save_settings(
+       admin,
+       @mail_attrs,
+       &"http://localhost/instance/mail/confirm/#{&1}"
+     )}
+  end
+
+  def refuse(:"instance.mail_on", _ctx) do
+    {admin, token} = mail_saved()
+    before = entries()
+    {before, Apiary.Mail.turn_on(mail_signed_in(admin, -21), token)}
+  end
+
   # The instance's last admin, the suite's first user, stays one.
   def refuse(:"instance_admin.revoke", _ctx) do
     [admin] =
@@ -425,6 +528,7 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"member.change_level", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"member.remove", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"invitation.revoke", %{scope: scope}), do: invitation_fixture(scope).invitation
+  defp prepare(:"invitation.renew", %{scope: scope}), do: invitation_fixture(scope).invitation
   defp prepare(:"member.suspend", %{scope: scope}), do: member_fixture(scope).membership
 
   defp prepare(:"member.activate", %{scope: scope}) do
@@ -445,7 +549,6 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
-  defp prepare(:"run.close", %{scope: scope}), do: run_fixture(scope)
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -509,6 +612,14 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"invitation.revoke", scope, invitation),
     do: Organisations.revoke_invitation(scope, invitation.id)
 
+  defp attempt(:"invitation.renew", scope, invitation),
+    do:
+      Organisations.renew_invitation(
+        scope,
+        invitation.id,
+        &"http://localhost/invitations/#{&1}"
+      )
+
   defp attempt(:"member.suspend", scope, membership),
     do: Organisations.suspend_member(scope, membership.id)
 
@@ -540,8 +651,6 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"node.clear_instance", scope, {node, instance_id}),
     do: Nodes.clear_instance(scope, node, instance_id)
-
-  defp attempt(:"run.close", scope, run), do: Runs.close_run(scope, run)
 
   defp attempt(:"secret.write", scope, _),
     do: Secrets.create_secret(scope, %{name: "API_TOKEN", value: "s3cr3t-audit-value"})
@@ -582,6 +691,44 @@ defmodule Apiary.AuditChanges do
   # The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`).
   defp instance_organisation,
     do: Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+
+  # A fresh instance admin, by a release command: their scope.
+  defp password_link_admin do
+    %{user: admin} = sign_up_fixture()
+    {:ok, _} = Organisations.grant_instance_admin(admin)
+    Scope.for_user(admin)
+  end
+
+  # A fresh instance admin, signed in just now, on an instance whose mail comes from no
+  # environment: their scope.
+  defp mail_admin do
+    admin = password_link_admin() |> mail_signed_in(0)
+    Apiary.Mail.put_test_source(:none)
+    admin
+  end
+
+  defp mail_signed_in(%Scope{} = scope, minutes),
+    do: put_in(scope.user.authenticated_at, DateTime.add(DateTime.utc_now(), minutes, :minute))
+
+  # Mail settings saved by a fresh instance admin: their scope, and the test link's token.
+  defp mail_saved do
+    admin = mail_admin()
+
+    {:ok, _settings, :sent} =
+      Apiary.Mail.save_settings(
+        admin,
+        @mail_attrs,
+        &"http://localhost/instance/mail/confirm/#{&1}"
+      )
+
+    receive do
+      {:email, %Swoosh.Email{subject: "Turn on mail for Qory Apiary", text_body: body}} ->
+        [_, token] = Regex.run(~r{/instance/mail/confirm/([A-Za-z0-9_-]+)}, body)
+        {admin, token}
+    after
+      0 -> raise "no test link was sent"
+    end
+  end
 
   # The entries of `entries` of the edition's own actions (`Apiary.Edition.actions/0`).
   defp of_the_edition(entries) do

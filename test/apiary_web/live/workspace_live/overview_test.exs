@@ -8,14 +8,15 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Repo
   alias Apiary.Policy
   alias Apiary.Retention
-  alias Apiary.Runs
   alias Apiary.Runs.{Liveness, Projector, Run}
+  alias ApiaryWeb.Format
 
   setup :register_and_log_in_user
 
@@ -610,7 +611,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       # The page's today is the clock's, on which a run a minute back is yesterday's for the
       # first minute after midnight UTC: the three start now, the quiet one after the
-      # running one, which makes it the target's last run.
+      # running one, which makes it the target's last run. They start and the page is read
+      # clear of midnight, so the day does not turn between them.
+      day = clear_of_midnight()
       running = started_run(scope, shop(), host: "build-01", ago: 0)
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30}, ago: 0)
 
@@ -652,7 +655,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         html |> LazyHTML.from_document() |> LazyHTML.query("#days a[data-day]") |> Enum.to_list()
 
       assert length(slots) == 14
-      today = Date.to_iso8601(Date.utc_today())
+      today = Date.to_iso8601(day)
 
       assert has_element?(
                view,
@@ -661,7 +664,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 2 alive or ended badly), 0 denied attempts']"
+               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 0 cancelled, 2 alive or ended badly), 0 denied attempts']"
              )
 
       assert has_element?(view, "#days .q-col-runs.q-col-today")
@@ -683,6 +686,61 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#days svg")
       render_hook(view, "chart_table", %{"on" => false})
       assert has_element?(view, "#days svg")
+    end
+
+    test "the tiles, the table and the spoken days count every state in its family, Cancelled apart",
+         %{conn: conn, scope: scope} do
+      # Today's runs start now, and the page is read clear of midnight, as above.
+      clear_of_midnight()
+      now = DateTime.utc_now()
+      today = DateTime.to_date(now)
+      yesterday = Date.add(today, -1)
+      noon = DateTime.new!(yesterday, ~T[12:00:00.000000], "Etc/UTC")
+
+      # Yesterday, every state that ends, with the names an older release stored:
+      # succeeded ended well, timed_out and ended were cancelled.
+      for state <- ~w(completed succeeded cancelled timed_out ended failed lost),
+          do: run_fixture(scope, %{state: state, started_at: noon})
+
+      for state <- ~w(pending running completed cancelled failed),
+          do: run_fixture(scope, %{state: state, started_at: now})
+
+      view = open(conn, scope)
+
+      assert text(view, "#overview-strip-alive .q-sum-v") == "2"
+      assert text(view, "#overview-strip-runs .q-sum-v") == "12"
+      assert text(view, "#overview-strip-runs") =~ "3 ended well"
+      # Failed and Lost: a cancelled run does not raise Ended badly.
+      assert text(view, "#overview-strip-bad .q-sum-v") == "3"
+      assert text(view, "#overview-strip-bad") =~ "25% of the runs"
+
+      assert has_element?(view, "#overview-strip-bad[href*='state=failed%2Clost']")
+
+      day = Date.to_iso8601(yesterday)
+
+      assert has_element?(
+               view,
+               "#days a[data-day='#{day}'][aria-label^='#{Format.short_date(yesterday)}: 7 runs (2 ended well, 3 cancelled, 2 ended badly), 0 denied attempts, open that day']"
+             )
+
+      assert has_element?(
+               view,
+               "#days a[data-day='#{Date.to_iso8601(today)}'][aria-label^='Today: 5 runs (1 ended well, 1 cancelled, 3 alive or ended badly), 0 denied attempts']"
+             )
+
+      view |> element("#days-toggle") |> render_click()
+
+      headings =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#days table th")
+        |> Enum.map(&LazyHTML.text/1)
+
+      assert headings == ["Day", "Runs", "Ended well", "Cancelled", "Denied attempts"]
+
+      assert text(view, "#days-row-#{day}") == "#{Format.short_date(yesterday)} 7 2 3 0"
+
+      assert text(view, "#days-row-#{Date.to_iso8601(today)}") == "Today 5 1 1 0"
     end
 
     test "the active targets are the eight with the most runs; a path on two systems names them",
@@ -940,8 +998,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id}-act[aria-label='Close nightly-mirror']",
-               "Close"
+               "#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']",
+               "Open"
              )
 
       assert has_element?(
@@ -1108,80 +1166,74 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
-    test "close a lost run in place: the row stays struck, the count drops, the page says so",
+    test "a lost run offers Open, never Close, whatever opened it",
          %{conn: conn, scope: scope} do
-      lost = lost_run(scope)
-      started_run(scope, shop())
-      view = open(conn, scope)
-      # With `security` the unmanaged policy is the second item, and focus goes to it;
-      # without it the lost run is the only one, and focus goes to All runs.
-      security? = Apiary.Features.on?(:security)
-      assert text(view, "#attention-n") == if(security?, do: "2", else: "1")
+      runs =
+        for {opener, n} <- Enum.with_index([nil, "session", "gateway"]) do
+          lost_run(scope, %{about_title: "nightly-mirror-#{n}", opened_by: opener})
+        end
 
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-
-      # The row itself asks, in place: no modal over the page.
-      assert has_element?(
-               view,
-               "#att-run-#{lost.run_id}.q-confirming #close-run",
-               "Close nightly-mirror?"
-             )
-
-      refute has_element?(view, "dialog#close-run")
-      refute has_element?(view, "#att-run-#{lost.run_id}-act")
-
-      view |> element("#close-run-cancel") |> render_click()
-      refute has_element?(view, "#close-run")
-      close_act = "att-run-#{lost.run_id}-act"
-      assert_push_event(view, "overview:focus", %{id: ^close_act})
-
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-      view |> element("#att-run-#{lost.run_id} #close-confirm", "Yes, close") |> render_click()
-
-      assert %Run{state: "closed"} = Runs.get_run!(scope, lost.id)
-      assert has_element?(view, "#att-run-#{lost.run_id}.q-resolved .q-mark-closed")
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Closed."
-      refute has_element?(view, "#att-run-#{lost.run_id}-act")
-      assert text(view, "#attention-n") == if(security?, do: "1", else: "0")
-      assert text(view, "#overview-announcer") == "nightly-mirror is closed."
-
-      next = if security?, do: "att-policy-unmanaged-act", else: "activity-all"
-      assert_push_event(view, "overview:focus", %{id: ^next})
-    end
-
-    test "a lost run a gateway opened offers Open, never Close, and a crafted close is refused",
-         %{conn: conn, scope: scope} do
-      lost = lost_run(scope, %{opened_by: "gateway"})
-      session = lost_run(scope, %{about_title: "weekly-sync", opened_by: "session"})
       view = open(conn, scope)
 
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+      for run <- runs do
+        assert text(view, "#att-run-#{run.run_id}") =~ "Lost, never posted its exit"
 
-      assert has_element?(
-               view,
-               "a#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']" <>
-                 "[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
-               "Open"
-             )
+        assert has_element?(
+                 view,
+                 "a#att-run-#{run.run_id}-act[aria-label='Open #{run.about_title}']" <>
+                   "[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
+                 "Open"
+               )
 
-      refute has_element?(view, "button#att-run-#{lost.run_id}-act")
+        refute has_element?(view, "button#att-run-#{run.run_id}-act")
+      end
 
-      assert has_element?(
-               view,
-               "button#att-run-#{session.run_id}-act[aria-label='Close weekly-sync']",
-               "Close"
-             )
-
-      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
+      refute render(view) =~ ~r/>\s*Close\s*</
       refute has_element?(view, "#close-run")
-      render_hook(view, "close_confirm", %{})
-
-      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
-      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
     end
 
-    test "a lost run's Close question isolates its title, so a bidi override flips nothing",
+    test "a run that ended Lost lists with its own words; Apiary's own Lost keeps its line",
+         %{conn: conn, scope: scope} do
+      own = lost_run(scope)
+
+      silent =
+        started_run(scope, shop(),
+          about: %{"title" => "nightly-build"},
+          exit: %{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}
+        )
+
+      unrecorded =
+        started_run(scope, shop(),
+          about: %{"title" => "nightly-sync"},
+          exit: %{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}
+        )
+
+      assert %Run{state: "lost", lost_at: %DateTime{}} = Repo.reload!(silent)
+      view = open(conn, scope)
+
+      assert text(view, "#att-run-#{own.run_id}") =~ "Lost, never posted its exit"
+
+      assert has_element?(
+               view,
+               "#att-run-#{own.run_id} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
+             )
+
+      for {run, words} <- [
+            {silent, "Lost, stopped responding"},
+            {unrecorded, "Lost, end not recorded"}
+          ] do
+        assert has_element?(view, "#att-run-#{run.run_id}[data-kind=lost]", "Lost")
+        assert text(view, "#att-run-#{run.run_id}") =~ words
+        refute text(view, "#att-run-#{run.run_id}") =~ "never posted its exit"
+
+        assert has_element?(
+                 view,
+                 ~s(#att-run-#{run.run_id} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
+               )
+      end
+    end
+
+    test "a lost run's title is isolated, so a bidi override flips nothing",
          %{conn: conn, scope: scope} do
       title = "nightly\u202Erorrim"
       lost = lost_run(scope, %{about_title: title})
@@ -1189,13 +1241,45 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(view, "#att-run-#{lost.run_id} .q-ar-t > bdi", title)
       # The label for a screen reader stays plain text.
-      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Close #{title}"]))
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
+      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Open #{title}"]))
+    end
 
-      assert has_element?(view, "#close-run-question > bdi", title)
+    test "a lost run whose heartbeats are sent late keeps its row until its exit arrives",
+         %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+      # Its heartbeats had set its clock offset, a second behind, before it was lost.
+      lost = lost_run(scope, %{clock_offset_ms: 1000})
+      view = open(conn, scope)
+      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
 
-      assert view |> element("#close-run-question") |> render() =~
-               ~r/>Close <bdi[^>]*>#{title}<\/bdi>\?</
+      # The heartbeats of the hour it was lost for, sent now.
+      for k <- 1..20 do
+        event_fixture(
+          lost,
+          10 + k,
+          "run.heartbeat",
+          %{"elapsed_seconds" => 510 + 30 * k, "interval_seconds" => 30},
+          time: DateTime.add(now, -3600 + 30 * k, :second),
+          received_at: now
+        )
+      end
+
+      assert {:ok, %Run{state: "lost"}} = Projector.project(lost)
+      render_async(view, 5_000)
+      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
+
+      event_fixture(
+        lost,
+        31,
+        "run.exited",
+        %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1},
+        time: DateTime.add(now, -2900, :second),
+        received_at: now
+      )
+
+      assert {:ok, %Run{state: "failed"}} = Projector.project(lost)
+      refute has_element?(open(conn, scope), "#att-run-#{lost.run_id}")
     end
 
     @tag needs: :security
@@ -1415,6 +1499,42 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
       assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item to review."
+    end
+
+    test "a quiet run that ends resolves its row with its state: Completed, Failed, Cancelled",
+         %{conn: conn, scope: scope} do
+      runs =
+        for exit <- [
+              %{"state" => "succeeded", "exit_code" => 0},
+              %{"state" => "failed", "exit_code" => 1},
+              %{"state" => "cancelled", "reason" => "no_longer_needed"}
+            ] do
+          {started_run(scope, shop(), heartbeat: {45, 100, 30}), exit}
+        end
+
+      view = open(conn, scope)
+
+      for {run, _exit} <- runs,
+          do: assert(has_element?(view, "#att-run-#{run.run_id}[data-kind=quiet]"))
+
+      for {run, exit} <- runs do
+        event_fixture(run, 41, "run.exited", Map.put(exit, "duration_ms", 1000),
+          time: DateTime.utc_now(),
+          received_at: DateTime.utc_now()
+        )
+
+        {:ok, _} = Projector.project(run)
+      end
+
+      render_async(view, 5_000)
+
+      for {{run, _exit}, words} <- Enum.zip(runs, ["Completed.", "Failed.", "Cancelled."]) do
+        assert has_element?(view, "#att-run-#{run.run_id}.q-resolved")
+        assert text(view, "#att-run-#{run.run_id}") =~ words
+      end
+
+      # Nothing arrived, so the announcer says nothing.
+      assert text(view, "#overview-announcer") == ""
     end
 
     test "a quiet run the check finds lost turns its row to Lost in place", %{

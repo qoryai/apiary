@@ -97,7 +97,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   # The recordings replayed into Main, by how long before now each ended.
   @replays [
-    {"ping-only", 20},
+    {"registered-only", 20},
     {"no-session", 45},
     {"unassigned", 95},
     {"session-with-subagents", 170},
@@ -302,13 +302,14 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   defp scope_of_second(owner, %Scope{workspace: workspace}), do: scope!(owner, workspace.slug)
 
-  # The instance's first sign-up, as the sign-up page makes it, then a log-in link
-  # followed, which confirms the address, and a password set, as Settings would.
+  # The instance's set-up, as its set-up link makes it, then a log-in link followed,
+  # which confirms the address, and a password set, as Settings would.
   defp sign_up!() do
     {:ok, %{user: user}} =
-      Organisations.sign_up_user(
+      Apiary.Setup.set_up(
+        Apiary.Setup.code!(),
         %{"email" => @owner, "organisation_name" => @organisation},
-        nil,
+        password: :optional,
         origin: %{worker: "demo"}
       )
 
