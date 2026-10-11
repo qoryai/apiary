@@ -1934,8 +1934,10 @@ defmodule Apiary.Organisations do
   before those that hold none. With the core's edition, it is the order of their ids.
 
   It takes the organisations, as `%Organisation{}` structs, and returns their ids in the
-  order to lock them, one for each organisation given. It is pure: it locks nothing, and
-  asks the edition only `c:Apiary.Edition.places_to_lock/1`, once for each organisation.
+  order to lock them, one for each organisation given. It locks nothing, and asks the
+  edition only `c:Apiary.Edition.places_to_lock/1`, once for each organisation. The
+  core's edition answers that without reading; an edition may read there, but must lock
+  nothing, since its locks belong to `c:Apiary.Edition.lock_rows/1`.
   """
   @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
   def lock_order(organisations) do

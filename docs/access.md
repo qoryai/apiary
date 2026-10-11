@@ -355,8 +355,10 @@ for each other and never on each other at once:
    order of several organisations whenever it locks the rows of more than one: first
    those the edition holds another organisation with, then the rest, each in the order of
    their ids, so an organisation that holds others comes before those that hold none;
-   with the core's edition, in the order of their ids. Then the edition's own rows for the
-   change (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
+   with the core's edition, in the order of their ids. The organisations an edition names
+   besides an organisation's own hold none of their own, which makes this one order that
+   every change agrees on. Then the edition's own rows for the change
+   (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does

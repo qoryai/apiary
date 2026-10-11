@@ -185,6 +185,11 @@ defmodule Apiary.Edition do
   locked in the order of `Apiary.Organisations.lock_order/1`, which asks this callback:
   those it names another organisation for first, then the rest, each in the order of
   their ids.
+
+  The organisations it names besides the organisation's own hold none of their own: for
+  each of them, this callback names that organisation alone. This is what makes
+  `Apiary.Organisations.lock_order/1` one order that every change agrees on. It may read,
+  but it locks nothing: the edition's locks belong to `c:lock_rows/1`.
   """
   @callback places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
 
