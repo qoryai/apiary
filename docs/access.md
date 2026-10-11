@@ -272,6 +272,22 @@ serves (`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
 enrolment code of an organisation out of use is found by none. A workspace's gateway is
 held to its organisation's use as any node is.
 
+A gateway acts for a run only while it may serve the run's workspace
+(`Apiary.Gateways.may_serve?/2`, asked at the registration, at each attach, batch,
+heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is refused
+with nothing of the run told: no policy, no event, no outcome, no digest. Two things
+stay known to such a gateway, and are accepted:
+
+- **Whether the run is still sending.** The sender's check comes first at the events
+  endpoint. A batch from another instance of the gateway than the one that attached the
+  run is `409` `wrong_gateway` while the run is still sending, and the `410`
+  `workspace_not_served` once it has ended. Only a gateway that once attached the run
+  knows its id to ask.
+- **Whether the run's place is in use.** The place's check comes before the serving
+  check, as it does for every key, at the events endpoint, the reload and the attach:
+  `401` while the run's workspace or organisation is out of use, `404` while a feature it
+  needs is off there, and only then the serving check's answer.
+
 ## Leaving
 
 Anyone with a membership may remove their own, whatever their level: leaving the
