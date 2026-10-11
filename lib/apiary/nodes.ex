@@ -337,10 +337,12 @@ defmodule Apiary.Nodes do
   nothing changes. A deleted gateway loses its default mark; when no default resolves
   any more for a workspace it served and gateways remain that may serve it, the oldest
   of them at its level becomes the default, with its entry of `node.edit`. No node moves.
+  `{:error, changeset}` when the database refuses that mark, and nothing changes.
   """
   @spec delete_node(Scope.t(), Node.t()) ::
           {:ok, Node.t()}
-          | {:error, Access.reason() | {:gateway_in_use, Gateways.blockers()}}
+          | {:error,
+             Ecto.Changeset.t() | Access.reason() | {:gateway_in_use, Gateways.blockers()}}
   def delete_node(%Scope{user: user} = scope, %Node{} = node) do
     gateway_mutate(scope, :"node.delete", node, fn current ->
       served = Gateways.serves(current)

@@ -14,8 +14,8 @@ defmodule Apiary.Nodes.Node do
   `~p"/\#{organisation}/\#{workspace}/nodes/\#{node}"` uses it.
 
   A gateway has an address, `url` (`validate_url/1`), no instance limit, and may be its
-  workspace's default gateway (`default_gateway`, which `Apiary.Nodes` sets, never a
-  changeset). A node or a pool has neither, and records a choice of gateway
+  workspace's default gateway (`default_gateway`, which `Apiary.Nodes` sets through
+  `default_changeset/2`; `changeset/2` never casts it). A node or a pool has neither, and records a choice of gateway
   (`gateway_choice`, `t:choice/0`): `:direct`, `:default`, its workspace's default
   gateway, or `:named`, the gateway `gateway_id` names. The field's default is `:direct`;
   `Apiary.Nodes.create_node/2` starts a new one on `:default` when a default gateway
