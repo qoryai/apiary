@@ -551,6 +551,29 @@ defmodule Apiary.EditionStubs do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end
 
+  defmodule LinksTheLevel do
+    @moduledoc """
+    The level above the workspace's policy has a page, `/8wonders/policy`, and a New rule
+    page, which the reader may use (`above_policy_link/1`), as an edition that keeps a
+    level may answer.
+    """
+    def above_policy_link(_scope),
+      do: %{
+        path: "/8wonders/policy",
+        can_change: true,
+        new_rule_path: "/8wonders/policy/rules/new"
+      }
+  end
+
+  defmodule LinksTheLevelWithoutNewRule do
+    @moduledoc """
+    The level above the workspace's policy has a page, `/8wonders/policy`, and no New rule
+    page (`above_policy_link/1`).
+    """
+    def above_policy_link(_scope),
+      do: %{path: "/8wonders/policy", can_change: true, new_rule_path: nil}
+  end
+
   defmodule ReadsThePolicy do
     @moduledoc """
     A person reads the security policy and changes none of its rules

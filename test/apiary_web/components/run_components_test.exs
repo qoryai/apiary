@@ -1305,7 +1305,7 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "only the level above allows a host: Allow leads there, else a lock" do
       elsewhere = %{rule_option: :can_allow, deny: true, allow_elsewhere: %{name: "Main"}}
 
-      doc = acts(Map.put(elsewhere, :allow_path, "/main/policy?allow=api.example.com"))
+      doc = acts(Map.put(elsewhere, :allow_path, "/main/policy/rules/new?host=api.example.com"))
       assert slots(doc) == ["r-allow", "r-deny"]
       assert attr_of(doc, "#r-allow", "data-tip") == ["Allow api.example.com in Main's policy"]
       assert attr_of(doc, "#r-allow", "aria-label") == ["Allow api.example.com in Main's policy"]

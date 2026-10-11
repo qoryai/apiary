@@ -445,6 +445,36 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert has_element?(view, "button##{new}-deny")
     end
 
+    test "where only the level allows a host, Allow leads to its New rule page with the host and the way back",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevel)
+      above!([], own_allows: false)
+      view = open(conn, workspace_path(scope, "/network"))
+      new = dst("new.example")
+
+      view |> element("button##{new}-allow") |> render_click()
+
+      back = workspace_path(scope, "/network")
+
+      href =
+        "/8wonders/policy/rules/new?" <>
+          URI.encode_query(%{"host" => "new.example", "back" => back})
+
+      assert has_element?(view, ~s(#rule-panel a[href="#{href}"]))
+      refute render(view) =~ "allow="
+    end
+
+    test "where the level has no New rule page, Allow is a lock", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevelWithoutNewRule)
+      above!([], own_allows: false)
+      view = open(conn, workspace_path(scope, "/network"))
+      new = dst("new.example")
+
+      assert has_element?(view, "span##{new}-lock.q-act-lock")
+      refute has_element?(view, "##{new}-allow")
+      assert has_element?(view, "button##{new}-deny")
+    end
+
     test "a row's rule option says what the level decides" do
       above =
         above!([rule("deny", "*.paste.example"), rule("allow", "api.example")], own_allows: false)
@@ -572,7 +602,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
         rule_option: :can_allow,
         deny: true,
         allow_elsewhere: %{name: "Eight Wonders"},
-        allow_path: "/8wonders/policy?allow=new.example"
+        allow_path: "/8wonders/policy/rules/new?host=new.example"
       )
 
     # Its name holds its hint's words.
@@ -585,7 +615,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       rule_option: :can_allow,
       deny: true,
       allow_elsewhere: %{name: "Eight Wonders"},
-      allow_path: "/8wonders/policy?allow=new.example"
+      allow_path: "/8wonders/policy/rules/new?host=new.example"
     }
 
     # The row's Allow asks; it does not navigate on its own.
@@ -601,7 +631,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
     assert html =~ ~s(data-action="allow")
     assert html =~ "rule_open"
-    refute html =~ "/8wonders/policy?allow=new.example"
+    refute html =~ "/8wonders/policy/rules/new?host=new.example"
     assert html =~ ~s(id="a-deny")
 
     html =
@@ -611,13 +641,13 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
           host: "new.example",
           action: :allow,
           refusal: :elsewhere,
-          elsewhere: %{name: "Eight Wonders", path: "/8wonders/policy?allow=new.example"}
+          elsewhere: %{name: "Eight Wonders", path: "/8wonders/policy/rules/new?host=new.example"}
         }
       )
 
     assert html =~ "Eight Wonders allows only the hosts on its list"
     assert html =~ "Open Eight Wonders&#39;s policy"
-    assert html =~ "/8wonders/policy?allow=new.example"
+    assert html =~ "/8wonders/policy/rules/new?host=new.example"
     # In the page's flow, not an overlay: no popover and no dialog; Escape cancels.
     refute html =~ "popover="
     refute html =~ ~s(role="dialog")

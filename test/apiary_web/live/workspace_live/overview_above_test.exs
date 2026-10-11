@@ -103,6 +103,46 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
     assert Policy.list_rules(scope, nil) == []
   end
 
+  test "where the edition gives the level's New rule page, the item leads there with the host and the way back",
+       %{conn: conn, scope: scope} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevel)
+    above!([rule("allow", "*.wonders.example")], own_allows: false)
+
+    started_run(scope, shop(),
+      egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]
+    )
+
+    view = open(conn, scope)
+    item = item(view, "flags.example")
+
+    href =
+      "/8wonders/policy/rules/new?" <>
+        URI.encode_query(%{"host" => "flags.example", "back" => workspace_path(scope)})
+
+    assert has_element?(
+             view,
+             ~s(a##{item}-act[href="#{href}"]),
+             "Allow in Eight Wonders's policy"
+           )
+
+    refute render(view) =~ "allow="
+  end
+
+  test "where the level has no New rule page, the item is a lock", %{conn: conn, scope: scope} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevelWithoutNewRule)
+    above!([rule("allow", "*.wonders.example")], own_allows: false)
+
+    started_run(scope, shop(),
+      egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]
+    )
+
+    view = open(conn, scope)
+    item = item(view, "flags.example")
+
+    assert has_element?(view, "span##{item}-act.q-act-lock")
+    refute has_element?(view, "a##{item}-act")
+  end
+
   test "a deny of the level above: its words and a lock, not an allow",
        %{conn: conn, scope: scope} do
     above!([rule("deny", "paste.example")], own_allows: true)

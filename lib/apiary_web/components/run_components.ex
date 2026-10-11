@@ -3385,7 +3385,7 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :allow_path, :string,
     default: nil,
-    doc: "the level above's page with the host, to allow it there"
+    doc: "the level above's New rule page with the host, to allow it there"
 
   def rule_actions(%{rule_option: option} = assigns) when option in [:can_allow, :can_deny] do
     host = assigns.connection.host

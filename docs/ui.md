@@ -719,7 +719,7 @@ version in force is exported; another version's path sends on to it.
   where known); a locked rule's lock opens its refusal in place, with the way to the
   rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
-  here would not be in force and leads to that level's policy with the host, for a reader
+  here would not be in force and leads to that level's New rule page with the host, for a reader
   who may change it there, and with the way back to this page (`back`,
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The

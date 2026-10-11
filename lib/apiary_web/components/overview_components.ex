@@ -732,21 +732,30 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_act(%{item: %{kind: :denied, elsewhere: %{} = level}} = assigns) do
+    # The level's New rule page with the host, for one who may change it there and where
+    # the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`).
+    new_rule_path =
+      case level.link do
+        %{can_change: true, new_rule_path: path} when is_binary(path) -> path
+        _ -> nil
+      end
+
     assigns =
       assign(assigns,
         level: level,
+        new_rule_path: new_rule_path,
         tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
       )
 
     ~H"""
     <.link
-      :if={@level.link && @level.link.can_change}
+      :if={@new_rule_path}
       id={"#{@item.id}-act"}
       navigate={
-        @level.link.path <>
+        @new_rule_path <>
           "?" <>
           URI.encode_query(%{
-            "allow" => @item.host,
+            "host" => @item.host,
             "back" => ~p"/#{@scope.organisation}/#{@scope.workspace}"
           })
       }
@@ -757,7 +766,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
     <span
-      :if={!(@level.link && @level.link.can_change)}
+      :if={!@new_rule_path}
       id={"#{@item.id}-act"}
       class="q-act-lock"
       title={@tip}
