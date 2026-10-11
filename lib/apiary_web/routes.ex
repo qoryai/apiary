@@ -462,6 +462,35 @@ defmodule ApiaryWeb.Routes do
               # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
+              # The organisation's gateways, which nodes in any of its workspaces can use,
+              # where an organisation may have more than one workspace
+              # (`ApiaryWeb.NodeComponents.organisation_gateways?/0`): the list, with New
+              # gateway a page of its own, and a gateway's page, its tabs and its acts at the
+              # paths of a workspace's node's page, under `/gateways/:node_id`.
+              live "/gateways", NodeLive.Gateways, :index
+              live "/gateways/new", NodeLive.Gateways, :new
+              live "/gateways/:node_id", NodeLive.Show, :overview
+              live "/gateways/:node_id/settings", NodeLive.Show, :settings
+              live "/gateways/:node_id/settings/delete", NodeLive.Show, :delete
+              live "/gateways/:node_id/access-key", NodeLive.AccessKey, :index
+              live "/gateways/:node_id/access-key/generate", NodeLive.AccessKey, :generate
+              live "/gateways/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
+
+              live "/gateways/:node_id/access-key/keys/:key_id/revoke",
+                   NodeLive.AccessKey,
+                   :revoke
+
+              live "/gateways/:node_id/access-key/keys/:key_id/forager-file",
+                   NodeLive.AccessKey,
+                   :forager_file
+
+              live "/gateways/:node_id/access-key/keys/:key_id/generated",
+                   NodeLive.AccessKey,
+                   :generated
+
+              live "/gateways/:node_id/access-key/codes/:code_id/revoke",
+                   NodeLive.AccessKey,
+                   :revoke_code
             end
 
             unquote(@block)

@@ -524,18 +524,45 @@ defmodule Apiary.Gateways do
         %DateTime{} = now \\ DateTime.utc_now()
       ) do
     nodes =
-      from(n in Node,
-        where: is_nil(n.deleted_at),
-        where:
-          ^dynamic(
-            [n],
-            (n.gateway_choice == :named and n.gateway_id == ^id) or ^defaulting(gateway)
-          ),
-        order_by: [asc: n.name, asc: n.id]
-      )
+      gateway
+      |> using_query()
+      |> order_by([n], asc: n.name, asc: n.id)
       |> Repo.all()
 
     %{nodes: nodes, runs: holding_runs(id, now)}
+  end
+
+  @doc """
+  workspaces_using/1 is the workspaces whose nodes or node pools use `gateway` now: name
+  it, or are on `:default` and resolve to it, as `delete_blockers/1` finds them; each with
+  its organisation, by the organisation's name, then the workspace's. A gateway's page says
+  who uses it from them, naming only the workspaces its reader reaches.
+  """
+  @spec workspaces_using(Node.t()) :: [%Workspace{}]
+  def workspaces_using(%Node{kind: :gateway} = gateway) do
+    ids = gateway |> using_query() |> select([n], n.workspace_id) |> distinct(true)
+
+    from(w in Workspace,
+      join: o in assoc(w, :organisation),
+      where: w.id in subquery(ids),
+      order_by: [asc: o.name, asc: w.name, asc: w.id],
+      preload: [organisation: o]
+    )
+    |> Repo.all()
+  end
+
+  def workspaces_using(%Node{}), do: []
+
+  # The nodes in use that name `gateway`, or are on `:default` and resolve to it now.
+  defp using_query(%Node{id: id} = gateway) do
+    from(n in Node,
+      where: is_nil(n.deleted_at),
+      where:
+        ^dynamic(
+          [n],
+          (n.gateway_choice == :named and n.gateway_id == ^id) or ^defaulting(gateway)
+        )
+    )
   end
 
   # The nodes on `:default` whose default resolves to `gateway` now: none unless it is its
