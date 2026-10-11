@@ -158,19 +158,21 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
   same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost
   lists on the Overview as "Lost, stopped responding" or "Lost, end not recorded".
-- Signed requests and signed answers. Every request the gateway makes names a node's access
-  key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
-  `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
-  clock for a GET and a registration's `time`; every answer to a verified request is signed with the server's own
-  Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
-  `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
-  refusals come in the contract's order, coded: a header sent twice or an instance id
-  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`), its
-  workspace (`workspaces`) and the server's keys (`apiary_public_key`), so its digest
-  differs by node and workspace. The tests replay the contract's own fixtures at the
-  commit `.forager-contract-ref` pins, c7777da on Forager's next.
+- Signed requests and signed answers. Every request the gateway makes names a node's
+  access key and its instance and is signed with that key, Ed25519
+  (`X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300
+  seconds of the server's clock for a GET and a registration's `time`; every answer to a
+  verified request is signed with the server's own Ed25519 key, which every machine pins
+  as `apiary_public_key`, and sent with `Cache-Control: no-store, no-transform`, while
+  every `401` goes out unsigned. The refusals come in the contract's order, coded: a
+  header sent twice or an instance id absent or malformed is `400` `bad_request` on every
+  endpoint. Discovery names the key's node (`node_id`), its workspace (`workspaces`) and
+  the server's keys (`apiary_public_key`), so its digest differs by node and workspace.
+  The tests replay the contract's own fixtures at the commit `.forager-contract-ref` pins,
+  85ea92e on Forager's next.
 - A workspace's id in the server contract: every workspace has one, `ws_` and 16
-  characters, made when it is created, and discovery lists it as `workspaces`, the one
+  characters, made when it is created, and for a workspace that was already there by the
+  migration that adds it (Migrations, below). Discovery lists it as `workspaces`, the one
   workspace an access key may name, that of its node or node pool. Only the contract
   names a workspace by it: the console neither shows nor uses it. With it every access
   key's discovery digest changes once, when this is deployed, so each Forager reads
@@ -526,6 +528,10 @@ only on a run that registered.
 `ws_` and 16 characters, made for every existing workspace by the function
 `workspace_public_id()`, which is also the column's default; unique, with a check on its
 shape.
+`20261011120000_fix_the_workspace_id_function_s_search_path` sets
+`workspace_public_id()`'s `search_path` to `pg_catalog`, so the function finds
+`gen_random_uuid()` and the others it calls there alone, whatever the session's
+`search_path`; it changes no row.
 
 ### Upgrading
 

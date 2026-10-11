@@ -106,9 +106,10 @@ fragment: a reload appends `/` and the run's id. `apiary_public_key` lists the
 server's signing key, for information: the gateway verifies answers under the key it pinned.
 The members are in the contract's order (`ApiaryWeb.Contract.Configuration`).
 
-The `run` section is always there, so the document differs by node, never by the
-workspace's policy, and so does its digest, here and in every answer to a batch. Whether a workspace has a
-policy shows in the answer to a run's registration instead (The run endpoint, below). A
+The `run` section is always there, so the document differs by node and workspace, never
+by the workspace's policy, and so does its digest, here and in every answer to a batch.
+Whether a workspace has a policy shows in the answer to a run's registration instead (The
+run endpoint, below). A
 workspace nobody has given a policy answers every registration `{"version":1}`, no policy,
 and its machines run under the policy of their own `forager.yaml`, as the contract has it
 for a server with no policy. So an upgrade, or a workspace nobody has looked at, never

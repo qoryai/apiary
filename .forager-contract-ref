@@ -2,6 +2,6 @@
 # in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's next
 # branch, pinned by its id: the contract of Forager in three parts over one core, the session,
 # the gateway and the wall, with a gateway between the session and Qory Apiary, every
-# run's exit saying how the run ended, and discovery listing the workspace an access key
-# may name.
-c7777da0310356aeeedb474c53051bfd7174dc78
+# run's exit saying how the run ended, and discovery listing the one workspace an access
+# key's node or node pool belongs to.
+85ea92e42343cb7927c739ec3626c6748b2267ca

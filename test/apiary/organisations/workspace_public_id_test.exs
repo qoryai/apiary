@@ -110,6 +110,11 @@ defmodule Apiary.Organisations.WorkspacePublicIdTest do
     assert {"has already been taken", _} = changeset.errors[:public_id]
   end
 
+  test "workspace_public_id() runs with its search_path set to pg_catalog" do
+    assert %{rows: [[["search_path=pg_catalog"]]]} =
+             Repo.query!("SELECT proconfig FROM pg_proc WHERE proname = 'workspace_public_id'")
+  end
+
   test "workspace_public_id() makes ids of the shape, all different, over many calls" do
     %{rows: rows} =
       Repo.query!("SELECT workspace_public_id() FROM generate_series(1, 5000)")
