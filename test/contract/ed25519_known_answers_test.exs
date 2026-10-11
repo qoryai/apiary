@@ -307,13 +307,13 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
     end
 
     test "Qory Apiary's own document for the fixture node, workspace, URL and key is the body, and its signed answer the known answer" do
-      %{"node_id" => node_id, "workspaces" => [workspace_id], "apiary_public_key" => keys} =
+      %{"node_id" => node_id, "workspaces" => [_] = workspaces, "apiary_public_key" => keys} =
         known_answers!("discovery")
 
       body =
         ApiaryWeb.Contract.Configuration.encode(%{
           node_id: node_id,
-          workspace_id: workspace_id,
+          workspaces: workspaces,
           url: "https://qory.example",
           apiary_public_key: keys
         })

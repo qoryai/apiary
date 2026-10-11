@@ -110,18 +110,7 @@ defmodule Apiary.AccessKeys do
   """
   @spec fetch_for_verification(term) :: {:ok, AccessKey.t()} | :error | {:error, :integrity}
   def fetch_for_verification(key_id) when is_binary(key_id) do
-    query =
-      from(k in AccessKey,
-        join: w in assoc(k, :workspace),
-        join: o in assoc(k, :organisation),
-        as: :organisation,
-        join: n in assoc(k, :node),
-        where: k.key_id == ^key_id and is_nil(k.revoked_at),
-        where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
-        where: is_nil(n.deleted_at),
-        preload: [workspace: w, node: n]
-      )
-      |> Apiary.Edition.active_organisations(:organisation)
+    query = where(verifiable_query(), [k], k.key_id == ^key_id)
 
     case Repo.one(query) do
       %AccessKey{} = access_key ->
@@ -140,6 +129,37 @@ defmodule Apiary.AccessKeys do
   end
 
   def fetch_for_verification(_key_id), do: :error
+
+  @doc """
+  active_key?/1 says whether `node` holds an active access key now: a key
+  `fetch_for_verification/1` would answer with, not revoked, of a node in use, of a
+  workspace and an organisation in use (`c:Apiary.Edition.active_organisations/2`), whose
+  integrity code holds. A gateway without one can serve no run.
+  """
+  @spec active_key?(Node.t()) :: boolean
+  def active_key?(%Node{id: node_id}) do
+    verifiable_query()
+    |> where([k], k.node_id == ^node_id)
+    |> Repo.all()
+    |> Enum.any?(&(AccessKey.verify_integrity(&1) == :ok))
+  end
+
+  # The keys a request could be verified under, with their workspace and node: not
+  # revoked, of a node in use, of a workspace and an organisation neither marked for
+  # deletion nor out of use.
+  defp verifiable_query do
+    from(k in AccessKey,
+      join: w in assoc(k, :workspace),
+      join: o in assoc(k, :organisation),
+      as: :organisation,
+      join: n in assoc(k, :node),
+      where: is_nil(k.revoked_at),
+      where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
+      where: is_nil(n.deleted_at),
+      preload: [workspace: w, node: n]
+    )
+    |> Apiary.Edition.active_organisations(:organisation)
+  end
 
   # The key id is public; nothing of the row is in the line but the organisation and
   # workspace ids, as metadata.
