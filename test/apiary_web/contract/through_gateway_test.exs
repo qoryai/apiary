@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
 
   alias Apiary.Nodes.Node
   alias Apiary.{Repo, SigningKey}
-  alias Apiary.Runs.{Attach, Delivery, Event, Run, RunKey}
+  alias Apiary.Runs.{Attach, Batch, Delivery, Event, Ingest, Run, RunKey}
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -552,6 +552,114 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       # Ended, the run is attached no more.
       run_key = RunKey.encode(run(run_id).run_key_payload, SigningKey.current())
       assert response(attach(ctx.gateway_key, run_id, attach_body(run_key)), 410) == ""
+    end
+  end
+
+  describe "what a run through a gateway is held to" do
+    test "a repeat of its registration is given the run key it was first given, byte for byte",
+         ctx do
+      body = gateway_registration()
+      first = register(ctx.key, body)
+      %{"run_id" => run_id, "run_key" => run_key} = json_response(first, 200)
+
+      # The run keeps the signature it was given: a repeat signs nothing again, so a
+      # change of the instance's signing key cannot give it a run key that verifies nowhere.
+      assert {payload, signature} = RunKey.parts(run_key)
+      run = run(run_id)
+      assert {run.run_key_payload, run.run_key_signature} == {payload, signature}
+
+      other = :crypto.strong_rand_bytes(64)
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id), set: [run_key_signature: other])
+
+      assert %{"run_key" => again} = json_response(register(ctx.key, body), 200)
+      assert again == RunKey.assemble(payload, other)
+    end
+
+    test "a run found lost before its gateway attached it is run_key_expired, and stays lost",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      # As the lost-run check leaves it at its attach_by, or a person's clearing of its
+      # instance does, its window not yet past on the clock.
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [state: "lost", lost_at: now()]
+      )
+
+      conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert json_response(conn, 409) == %{"error" => "run_key_expired"}
+      assert signed_answer?(conn)
+
+      run = run(run_id)
+      assert {run.state, run.attached_at} == {"lost", nil}
+    end
+
+    test "a gateway of another organisation is wrong_gateway, and the run stays unattached",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      %{scope: elsewhere} = sign_up_fixture()
+      foreign = gateway_fixture(elsewhere)
+      %{access_key: key, secret: secret} = contract_key_fixture(elsewhere, node: foreign)
+
+      conn = attach({key, secret}, run_id, attach_body(run_key))
+      assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
+      assert signed_answer?(conn)
+      assert run(run_id).attached_at == nil
+    end
+
+    test "out of use, the run's organisation refuses the attach and the batches, 401", ctx do
+      {run_id, run_key} = registered(ctx)
+      {gateway_key, _secret} = ctx.gateway_key
+      {:ok, body} = Attach.parse(attach_body(run_key))
+      run_id_attached = attached(ctx)
+      {_subject, events} = first_events(run_id_attached)
+      {:ok, batch} = events |> Jason.encode!() |> Batch.parse()
+
+      # Out of use as the edition puts an organisation out of use: marked for deletion here.
+      :ok = Apiary.EditionKit.module().hide_instance_organisation(ctx.scope.organisation.id)
+
+      # Over the wire the gateway's own key, of the same organisation, no longer verifies.
+      conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+      assert unsigned_answer?(conn)
+      conn = deliver(ctx.gateway_key, events)
+      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+      assert unsigned_answer?(conn)
+
+      # And the run's own place is refused whatever the key: the key verified before the mark.
+      assert Attach.attach(gateway_key, run_id, body, %{}) == {:error, :unauthorized}
+
+      assert Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()}) ==
+               {:error, :unauthorized}
+
+      assert run(run_id).attached_at == nil
+      assert Repo.aggregate(Event, :count) == 0
+    end
+
+    test "a gateway that is deleted attaches nothing and sends nothing", ctx do
+      {run_id, run_key} = registered(ctx)
+      attached_id = attached(ctx)
+      {_subject, events} = first_events(attached_id)
+
+      Repo.update_all(from(n in Node, where: n.id == ^ctx.gateway.id),
+        set: [deleted_at: DateTime.utc_now(), default_gateway: false]
+      )
+
+      conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+      assert json_response(deliver(ctx.gateway_key, events), 401) == %{"error" => "unauthorized"}
+      assert run(run_id).attached_at == nil
+      assert Repo.aggregate(Event, :count) == 0
+    end
+
+    test "a run whose registering node is deleted still takes its gateway's batches", ctx do
+      run_id = attached(ctx)
+      {_subject, events} = first_events(run_id)
+
+      Repo.update_all(from(n in Node, where: n.id == ^ctx.node.id),
+        set: [deleted_at: DateTime.utc_now()]
+      )
+
+      assert response(deliver(ctx.gateway_key, events), 202) == ""
+      assert run(run_id).event_count == 1
     end
   end
 end
