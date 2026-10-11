@@ -3,9 +3,9 @@ defmodule Apiary.Policy.Rule do
   One rule of the security policy: of the workspace's baseline when `target_id` is nil, of
   a target otherwise.
 
-  A `host` rule allows a host (the contract's grammar: a lower-case name or a `*.` suffix)
-  on every path (`paths` nil) or on the paths listed (an empty list is no path at all), or
-  denies it. `host` is the one kind of rule there is.
+  A `host` rule allows a host (the contract's grammar: a lower-case name or a `*.` suffix,
+  an address only as `a.b.c.d`, `Apiary.Policy.Grammar.host?/1`) on every path (`paths`
+  nil) or on the paths listed (an empty list is no path at all), or denies it. `host` is the one kind of rule there is.
 
   A deny is written to the document's `egress.deny`, which the gateway decides first and in
   either mode, and takes the allow entries it covers out of what is rendered. Only a rule
@@ -68,15 +68,29 @@ defmodule Apiary.Policy.Rule do
     changeset
     |> validate_required([:host], message: dgettext_noop("errors", "Name the host."))
     |> validate_change(:host, fn :host, host ->
-      if Grammar.host?(host),
-        do: [],
-        else: [
-          host:
-            dgettext_noop(
-              "errors",
-              "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
-            )
-        ]
+      cond do
+        Grammar.host?(host) ->
+          []
+
+        # An address in a form other than `a.b.c.d`: the gateway would refuse the document.
+        Grammar.ends_in_number?(host) ->
+          [
+            host:
+              dgettext_noop(
+                "errors",
+                "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+              )
+          ]
+
+        true ->
+          [
+            host:
+              dgettext_noop(
+                "errors",
+                "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+              )
+          ]
+      end
     end)
     |> drop_paths_on_deny()
     |> validate_change(:paths, &validate_paths/2)

@@ -1806,6 +1806,11 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
+msgid "%{suffix} leads a host name, never an address."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
 msgid "%{suffix} may only lead a host: %{example} matches every host below %{domain}."
 msgstr ""
 
@@ -3200,6 +3205,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "An access key"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as %{address}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -8463,6 +8473,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Not in force: a rule on this target decides it"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

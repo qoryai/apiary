@@ -692,6 +692,21 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A host rule takes an address only as four numbers from 0 to 255 with dots between them
+  and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
+  digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1`, `10.0.0.256` and `*.0.0.1` were taken as host names, and the
+  gateway refuses a whole document holding one. They are now refused by the rule form ("An
+  address is four numbers from 0 to 255 with dots between them and no leading zeros, such
+  as 10.0.0.12.", or for `*.` before an address "*. leads a host name, never an address."),
+  by every rule write (the rule's changeset, `Apiary.Policy.Grammar.host?/1`) and by
+  requested changes, and a rendered document is held to the same grammar before it is
+  stored. A rule stored before is kept, not in force, and left out of every rendered
+  document; its row says "Not in force" and offers Remove alone, and a requested removal
+  still removes it. A connection to an address matches a rule only when it names the
+  address in that form and the rule is the same: an address in another form, an IPv6
+  address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
+  a connection reads as not allowed.
 
 ### Removed
 
