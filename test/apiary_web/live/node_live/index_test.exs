@@ -88,7 +88,10 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   describe "New node and New node pool" do
     setup :register_and_log_in_user
 
-    test "the header has New node, then New node pool, alike", %{conn: conn, scope: scope} do
+    test "the header has New node, New node pool, then New gateway, alike", %{
+      conn: conn,
+      scope: scope
+    } do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
       ids =
@@ -97,7 +100,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
         |> LazyHTML.query("#page-header-actions a")
         |> LazyHTML.attribute("id")
 
-      assert ids == ["new-node", "new-node-pool"]
+      assert ids == ["new-node", "new-node-pool", "new-gateway"]
       refute has_element?(lv, "#page-header-actions .btn-primary")
       # No line under it sends the reader to a workspace's access keys: there are none.
       refute has_element?(lv, "#not-on-runs")

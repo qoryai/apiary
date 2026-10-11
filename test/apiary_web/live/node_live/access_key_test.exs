@@ -139,7 +139,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
 
       assert words(lv, "#node-connect-intro") ==
-               "build-01 connects to Qory with a key. Choose one of two ways to give it one."
+               "build-01 connects to Qory Apiary with a key. Choose one of two ways to give it one."
 
       refute has_element?(lv, "#node-keys")
       refute has_element?(lv, "#node-codes")
@@ -1190,7 +1190,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect spot-runners?")
 
       assert words(lv, "#node-connect-intro") ==
-               "spot-runners connects to Qory with a key; its instances share one. Choose one of two ways to give it one."
+               "spot-runners connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one."
 
       assert ways(lv, "#node-ways") ==
                {~w(key-generate-button code-new-button), ["key-generate-button"]}

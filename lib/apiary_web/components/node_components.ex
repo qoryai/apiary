@@ -7,7 +7,8 @@ defmodule ApiaryWeb.NodeComponents do
   what the two places that give a person the command that connects a machine share, the
   Access key tab's command page and the workspace overview's first-run box: the command
   (`enrol_command/3`), and the notice that machines can't reach a loopback address
-  (`unreachable_server/1`).
+  (`unreachable_server/1`). And what a node that chose a gateway is told wherever it is
+  told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -85,7 +86,8 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   node_header/1 is the header of a node's page: its name, the page's `<h1>`; its public id
-  beside it; and one muted line, its kind, its state and who made it and when.
+  beside it, and Default beside a gateway that is its workspace's default gateway; and one
+  muted line, its kind, its state and who made it and when.
   """
   attr :node, Node, required: true
   attr :activity, :map, required: true, doc: "the node's `t:Apiary.Nodes.activity/0`"
@@ -97,6 +99,9 @@ defmodule ApiaryWeb.NodeComponents do
         <span id="node-public-id" class="q-mono text-[13px] font-normal text-muted">
           {@node.public_id}
         </span>
+        <.badge :if={@node.kind == :gateway && @node.default_gateway} class="ml-2 font-normal">
+          <span id="node-default">{gettext("Default")}</span>
+        </.badge>
       </:badge>
       <:description>
         <span id="node-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -221,8 +226,231 @@ defmodule ApiaryWeb.NodeComponents do
     end
   end
 
-  @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool."
+  @doc """
+  through_gateway/1 is what a node's enrol instructions say of its choice of gateway
+  (`Apiary.Gateways.chosen/1`), as the choice leads now: that its runs go through that
+  gateway, named with its URL, and, while the gateway holds no active access key, that it
+  isn't connected; for a node on Default gateway while no gateway is the default, only
+  that. The enrol command and the Forager file are the same either way: they point at Qory
+  Apiary. Nothing for a node that goes direct, a gateway, or a node whose named gateway is
+  gone.
+  """
+  attr :id, :string, required: true
+  attr :node, Node, required: true
+  attr :gateway, :any, required: true, doc: "the gateway the node's runs go through, or nil"
+  attr :connected, :boolean, required: true, doc: "whether the gateway holds an active key"
+
+  def through_gateway(assigns) do
+    assigns =
+      assign(assigns,
+        no_default:
+          is_nil(assigns.gateway) and assigns.node.kind != :gateway and
+            assigns.node.gateway_choice == :default
+      )
+
+    ~H"""
+    <div :if={@gateway} id={@id}>
+      <.notice kind={:info}>
+        <.rich text={
+          rich_gettext(
+            "Runs of %{name} go through the gateway %{gateway}, at %{url}.",
+            name: @node.name,
+            gateway: @gateway.name,
+            url: {:m, @gateway.url}
+          )
+        } />
+        <span :if={!@connected} id={"#{@id}-unconnected"}>
+          {gettext("%{gateway} has no active access key, so it isn't connected.",
+            gateway: @gateway.name
+          )}
+        </span>
+      </.notice>
+    </div>
+    <div :if={@no_default} id={@id}>
+      <.notice kind={:info}>{gettext("No gateway is the default now.")}</.notice>
+    </div>
+    """
+  end
+
+  @doc """
+  gateway_field/1 is the field of a node's or a pool's form that chooses its gateway,
+  `node[gateway]`: Default gateway, offered only where `offer_default` (a default
+  resolves for the workspace, or the node is on it already, which keeping asks nothing
+  of); Direct; and each gateway the node may name, by name. It shows the errors
+  `Apiary.Nodes` gives `gateway_choice` and `gateway_id` once the form was sent.
+  `choice_params/1` turns what it sends into those two fields.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :gateways, :list, required: true, doc: "the gateways the node may name"
+  attr :default, :any, required: true, doc: "the workspace's default gateway, or nil"
+  attr :offer_default, :boolean, required: true
+  attr :disabled, :boolean, default: false
+
+  def gateway_field(assigns) do
+    changeset = assigns.form.source
+    choice = Ecto.Changeset.get_field(changeset, :gateway_choice)
+    named = Ecto.Changeset.get_field(changeset, :gateway_id)
+    ids = Enum.map(assigns.gateways, & &1.id)
+
+    # A gateway the node names that is no longer among those it may name: kept as it is,
+    # so that saving something else does not move the node.
+    gone =
+      if choice == :named and named not in ids,
+        do: [{gettext("A gateway that is gone"), named || ""}],
+        else: []
+
+    options =
+      if(assigns.offer_default, do: [{gettext("Default gateway"), "default"}], else: []) ++
+        [{gettext("Direct"), "direct"}] ++
+        Enum.map(assigns.gateways, &{&1.name, &1.id}) ++ gone
+
+    errors =
+      if changeset.action,
+        do:
+          for(
+            {field, error} <- changeset.errors,
+            field in [:gateway_choice, :gateway_id],
+            do: ApiaryWeb.CoreComponents.translate_error(error)
+          ),
+        else: []
+
+    assigns =
+      assign(assigns,
+        options: options,
+        value: if(choice == :named, do: named || "", else: to_string(choice)),
+        errors: errors,
+        name: assigns.form[:gateway].name,
+        input_id: assigns.form[:gateway].id
+      )
+
+    ~H"""
+    <.input
+      id={@input_id}
+      name={@name}
+      type="select"
+      label={gettext("Gateway")}
+      value={@value}
+      options={@options}
+      errors={@errors}
+      hint={
+        @default &&
+          gettext(
+            "On Default gateway, runs go through %{name}, this workspace's default. On Direct, they go through no gateway.",
+            name: @default.name
+          )
+      }
+      disabled={@disabled}
+    />
+    """
+  end
+
+  @doc """
+  choice_params/1 is a node's form's parameters with what `gateway_field/1` sent, `gateway`,
+  turned into the fields `Apiary.Nodes` takes: `default` and `direct` as the
+  `gateway_choice` they name, anything else as `named` with that `gateway_id`. Parameters
+  without it are as they were.
+  """
+  @spec choice_params(map) :: map
+  def choice_params(%{"gateway" => value} = params) when value in ["default", "direct"],
+    do: params |> Map.delete("gateway") |> Map.put("gateway_choice", value)
+
+  def choice_params(%{"gateway" => value} = params),
+    do:
+      params
+      |> Map.delete("gateway")
+      |> Map.merge(%{"gateway_choice" => "named", "gateway_id" => value})
+
+  def choice_params(params), do: params
+
+  # How many names or run ids a refusal to delete a gateway shows before "and N more".
+  @shown 5
+
+  @doc """
+  in_use_words/2 is why a gateway was not deleted, from what
+  `Apiary.Gateways.delete_blockers/1` answered: the nodes that point to it, and the runs
+  going through it (`runs`, when the answer has them). Only the nodes and runs of the
+  scope's workspace are named, by name and by run id, the first #{@shown} of each, then
+  "and N more", which counts the rest and those of any other workspace too. Nil when
+  nothing stops the deletion.
+  """
+  @spec in_use_words(Apiary.Accounts.Scope.t(), map) :: String.t() | nil
+  def in_use_words(scope, blockers) do
+    nodes = listed(scope, Map.get(blockers, :nodes, []), & &1.name, :nodes)
+    runs = listed(scope, Map.get(blockers, :runs, []), & &1.run_id, :runs)
+
+    cond do
+      nodes && runs ->
+        gettext(
+          "Nodes use this gateway: %{nodes}. Runs are going through it: %{runs}. Delete it once the nodes point elsewhere and the runs end.",
+          nodes: nodes,
+          runs: runs
+        )
+
+      nodes ->
+        gettext(
+          "Nodes use this gateway: %{nodes}. Point them to another gateway or to direct, then delete it.",
+          nodes: nodes
+        )
+
+      runs ->
+        gettext("Runs are going through this gateway: %{runs}. Delete it once they end.",
+          runs: runs
+        )
+
+      true ->
+        nil
+    end
+  end
+
+  # The names or ids of the scope's workspace's rows, the first few, then how many more,
+  # those of another workspace among them, never named.
+  defp listed(scope, rows, name, what) do
+    {here, elsewhere} =
+      Enum.split_with(
+        rows,
+        &(&1.organisation_id == scope.organisation.id and &1.workspace_id == scope.workspace.id)
+      )
+
+    {shown, rest} = here |> Enum.map(name) |> Enum.split(@shown)
+    more = length(rest) + length(elsewhere)
+
+    cond do
+      rows == [] -> nil
+      shown == [] -> elsewhere_words(what, more)
+      more == 0 -> Enum.join(shown, ", ")
+      true -> Enum.join(shown, ", ") <> " " <> more_words(more)
+    end
+  end
+
+  defp more_words(more),
+    do: ngettext("and %{number} more", "and %{number} more", more, number: Format.number(more))
+
+  defp elsewhere_words(:nodes, count),
+    do:
+      ngettext(
+        "%{number} node of another workspace",
+        "%{number} nodes of other workspaces",
+        count,
+        number: Format.number(count)
+      )
+
+  defp elsewhere_words(:runs, count),
+    do:
+      ngettext(
+        "%{number} run of another workspace",
+        "%{number} runs of other workspaces",
+        count,
+        number: Format.number(count)
+      )
+
+  @doc "url_hint/0 is what a gateway's URL field says under it, as it is made and changed."
+  @spec url_hint() :: String.t()
+  def url_hint,
+    do: gettext("Where nodes reach the gateway: https://, a host, and a port if needed.")
+
+  @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool, Gateway."
   @spec kind_label(Node.kind()) :: String.t()
   def kind_label(:node), do: gettext("Node")
   def kind_label(:pool), do: gettext("Node pool")
+  def kind_label(:gateway), do: gettext("Gateway")
 end

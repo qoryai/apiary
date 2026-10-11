@@ -22,6 +22,19 @@ defmodule ApiaryWeb.NodeLive.Show do
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
     place, at `/nodes/:node_id/settings/delete`.
 
+  **A gateway's page** has the same tabs. Its Overview leads with the gateway: its URL,
+  and whether it is the workspace's default gateway, with Make default for one that is
+  not (`Apiary.Nodes.make_default_gateway/2`, `node.edit`); then its recent runs and
+  About, without instances or an instance limit. Its Settings › General changes its name
+  and its URL. Deleting it is confirmed in place as a node's is; a gateway that nodes
+  point to, or runs go through, is not deleted, and the danger zone says so under its
+  line (`ApiaryWeb.NodeComponents.in_use_words/2`), naming the nodes and runs of this
+  workspace, the first few, and counting the rest, those of other workspaces among them.
+
+  A node's and a pool's Settings › General choose its gateway
+  (`ApiaryWeb.NodeComponents.gateway_field/1`), and its About says where its choice leads:
+  Direct, Default gateway and the gateway it is now, or the gateway it names.
+
   Everyone in the workspace reads the page (`node.read`); owners and admins change the
   node (`node.edit`), set a pool's limit (`node.set_limit`), delete it (`node.delete`) and
   clear an instance (`node.clear_instance`). A member reads Settings with its fields
@@ -41,7 +54,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Nodes, Runs}
+  alias Apiary.{Access, Gateways, Nodes, Runs}
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Runs.{Filters, Run}
   alias ApiaryWeb.{NodeComponents, People, SettingsComponents, UserAuth}
@@ -60,7 +73,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           socket
           |> assign(page_title: node.name, node: node, paths: paths(scope, node.public_id))
           |> assign(sections: SettingsComponents.sections(scope, {:node, node}))
-          |> assign(clearing: nil, recent: nil, reload_scheduled: false)
+          |> assign(clearing: nil, recent: nil, reload_scheduled: false, delete_refused: nil)
+          |> assign_gateways()
           |> assign_may()
           |> assign_form(Nodes.change_node(node))
           |> assign_activity()
@@ -88,6 +102,21 @@ defmodule ApiaryWeb.NodeLive.Show do
       may_delete: Access.can?(scope, :"node.delete", node),
       may_clear: Access.can?(scope, :"node.clear_instance", node),
       may_runs: Access.can?(scope, :"run.read", scope.workspace)
+    )
+  end
+
+  # The gateways the node's form chooses from, the workspace's default, and the gateway
+  # the node's choice leads to now; none of it for a gateway.
+  defp assign_gateways(%{assigns: %{node: %Node{kind: :gateway}}} = socket),
+    do: assign(socket, gateways: [], default: nil, through: nil)
+
+  defp assign_gateways(socket) do
+    %{current_scope: scope, node: node} = socket.assigns
+
+    assign(socket,
+      gateways: Gateways.gateway_choices(scope),
+      default: Gateways.default_gateway_for(scope.workspace),
+      through: Gateways.chosen(node)
     )
   end
 
@@ -134,7 +163,7 @@ defmodule ApiaryWeb.NodeLive.Show do
     do: {:noreply, apply_action(socket, socket.assigns.live_action, params)}
 
   defp apply_action(socket, :overview, _params),
-    do: assign(socket, page_title: socket.assigns.node.name, clearing: nil)
+    do: assign(socket, page_title: socket.assigns.node.name, clearing: nil, delete_refused: nil)
 
   defp apply_action(socket, :clear_instance, %{"instance" => instance_id}) do
     cond do
@@ -165,7 +194,7 @@ defmodule ApiaryWeb.NodeLive.Show do
 
   defp apply_action(socket, :delete, _params) do
     if socket.assigns.may_delete do
-      assign(socket, :page_title, settings_title(socket.assigns.node))
+      assign(socket, page_title: settings_title(socket.assigns.node), delete_refused: nil)
     else
       socket
       |> put_flash(
@@ -202,7 +231,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   def handle_event("validate", %{"node" => params}, socket) do
     changeset =
       socket.assigns.node
-      |> Nodes.change_node(params)
+      |> Nodes.change_node(NodeComponents.choice_params(params))
       |> Map.put(:action, :validate)
 
     {:noreply, assign_form(socket, changeset)}
@@ -211,13 +240,14 @@ defmodule ApiaryWeb.NodeLive.Show do
   def handle_event("save", %{"node" => params}, socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    case Nodes.update_node(scope, node, params) do
+    case Nodes.update_node(scope, node, NodeComponents.choice_params(params)) do
       {:ok, updated} ->
         updated = %{updated | created_by: node.created_by}
 
         {:noreply,
          socket
          |> assign(node: updated, page_title: settings_title(updated))
+         |> assign_gateways()
          |> assign_form(Nodes.change_node(updated))
          |> put_flash(:info, gettext("%{name} is saved.", name: updated.name))}
 
@@ -241,6 +271,18 @@ defmodule ApiaryWeb.NodeLive.Show do
          socket
          |> put_flash(:info, gettext("%{name} is deleted.", name: deleted.name))
          |> push_navigate(to: ~p"/#{scope.organisation}/#{scope.workspace}/nodes")}
+
+      {:error, {:gateway_in_use, blockers}} ->
+        {:noreply,
+         socket
+         |> assign(:delete_refused, NodeComponents.in_use_words(scope, blockers))
+         |> push_patch(to: node_path(socket, :settings))}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Nothing was changed. Try again."))
+         |> push_patch(to: node_path(socket, :settings))}
 
       {:error, :not_found} ->
         {:noreply, gone(socket)}
@@ -269,6 +311,44 @@ defmodule ApiaryWeb.NodeLive.Show do
            gettext("Only owners and admins delete nodes."),
            :settings
          )}
+  end
+
+  # Make default, on a gateway's Overview: asked of the context whatever the page shows,
+  # so one who may not is refused there, and a gateway that is the default already stays so.
+  def handle_event("make_default", _params, %{assigns: %{node: %Node{kind: :gateway}}} = socket) do
+    %{current_scope: scope, node: node} = socket.assigns
+
+    if socket.assigns.may_edit do
+      case Nodes.make_default_gateway(scope, node) do
+        {:ok, updated} ->
+          {:noreply,
+           socket
+           |> assign(:node, %{updated | created_by: node.created_by})
+           |> assign_form(Nodes.change_node(updated))
+           |> put_flash(
+             :info,
+             gettext("%{name} is the default gateway now.", name: updated.name)
+           )}
+
+        {:error, %Ecto.Changeset{}} ->
+          {:noreply, put_flash(socket, :error, gettext("Nothing was changed. Try again."))}
+
+        {:error, :not_found} ->
+          {:noreply, gone(socket)}
+
+        {:error, :forbidden} ->
+          {:noreply, refused_default(socket)}
+      end
+    else
+      {:noreply, refused_default(socket)}
+    end
+  end
+
+  # Make default on a node that is not a gateway: a page that offered none.
+  def handle_event("make_default", _params, socket) do
+    if socket.assigns.may_edit,
+      do: {:noreply, socket},
+      else: {:noreply, refused_default(socket)}
   end
 
   def handle_event(
@@ -333,6 +413,9 @@ defmodule ApiaryWeb.NodeLive.Show do
         instance: instance_label(clearing)
       )
 
+  defp refused_default(socket),
+    do: refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :overview)
+
   defp instance_label(%{name: name}) when is_binary(name), do: name
   defp instance_label(%{instance_id: instance_id}), do: instance_id
 
@@ -369,8 +452,15 @@ defmodule ApiaryWeb.NodeLive.Show do
     %{current_scope: scope, node: node} = socket.assigns
 
     case Nodes.get_node(scope, node.public_id) do
-      %Node{} = current -> socket |> assign(:node, current) |> assign_activity() |> load_recent()
-      nil -> gone(socket)
+      %Node{} = current ->
+        socket
+        |> assign(:node, current)
+        |> assign_gateways()
+        |> assign_activity()
+        |> load_recent()
+
+      nil ->
+        gone(socket)
     end
   end
 
@@ -483,8 +573,10 @@ defmodule ApiaryWeb.NodeLive.Show do
         activity={@activity}
         paths={@paths}
         may_clear={@may_clear}
+        may_edit={@may_edit}
         may_runs={@may_runs}
         recent={@recent}
+        through={@through}
         clearing={@live_action == :clear_instance && @may_clear && @clearing}
       />
 
@@ -497,7 +589,9 @@ defmodule ApiaryWeb.NodeLive.Show do
         title={gettext("General")}
       >
         <:subtitle>
-          {gettext("The node's name, its kind and how many instances may run at once.")}
+          {if @node.kind == :gateway,
+            do: gettext("The gateway's name, its kind and its URL."),
+            else: gettext("The node's name, its kind and how many instances may run at once.")}
         </:subtitle>
         <.general
           scope={@current_scope}
@@ -507,6 +601,9 @@ defmodule ApiaryWeb.NodeLive.Show do
           may_set_limit={@may_set_limit}
           may_delete={@may_delete}
           deleting={@live_action == :delete}
+          delete_refused={@delete_refused}
+          gateways={@gateways}
+          default={@default}
           paths={@paths}
         />
       </SettingsComponents.layout>
@@ -519,8 +616,10 @@ defmodule ApiaryWeb.NodeLive.Show do
   attr :activity, :map, required: true
   attr :paths, :map, required: true
   attr :may_clear, :boolean, required: true
+  attr :may_edit, :boolean, required: true
   attr :may_runs, :boolean, required: true
   attr :recent, :any, required: true
+  attr :through, :any, required: true, doc: "the gateway the node's choice leads to, or nil"
   attr :clearing, :any, required: true, doc: "the instance asked to be cleared, or false"
 
   # The operational side: a Node's instance or a pool's running instances, what the
@@ -533,7 +632,10 @@ defmodule ApiaryWeb.NodeLive.Show do
 
     ~H"""
     <div id="node-overview" class="grid max-w-[60rem] gap-8">
+      <.gateway_part :if={@node.kind == :gateway} node={@node} may_edit={@may_edit} />
+
       <SettingsComponents.part
+        :if={@node.kind != :gateway}
         id="node-instances"
         title={if @node.kind == :pool, do: gettext("Running instances"), else: gettext("Instance")}
         level={:h2}
@@ -704,8 +806,12 @@ defmodule ApiaryWeb.NodeLive.Show do
           </dd>
           <dt class="text-faint">{gettext("Id")}</dt>
           <dd class="q-mono">{@node.public_id}</dd>
-          <dt class="text-faint">{gettext("Instance limit")}</dt>
-          <dd id="node-about-limit">{limit_words(@node)}</dd>
+          <dt :if={@node.kind != :gateway} class="text-faint">{gettext("Instance limit")}</dt>
+          <dd :if={@node.kind != :gateway} id="node-about-limit">{limit_words(@node)}</dd>
+          <dt :if={@node.kind != :gateway} class="text-faint">{gettext("Gateway")}</dt>
+          <dd :if={@node.kind != :gateway} id="node-about-gateway">
+            <.choice_words scope={@scope} node={@node} through={@through} />
+          </dd>
           <dt :if={@node.created_by} class="text-faint">{gettext("Made")}</dt>
           <dd :if={@node.created_by}>
             {gettext("by %{person}, %{date}",
@@ -725,6 +831,88 @@ defmodule ApiaryWeb.NodeLive.Show do
         </p>
       </SettingsComponents.part>
     </div>
+    """
+  end
+
+  attr :node, Node, required: true
+  attr :may_edit, :boolean, required: true
+
+  # A gateway's Overview leads with the gateway: its URL, and whether it is the
+  # workspace's default gateway, with Make default for one that is not.
+  defp gateway_part(assigns) do
+    ~H"""
+    <SettingsComponents.part id="gateway-overview" title={gettext("Gateway")} level={:h2}>
+      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] items-baseline gap-x-6 gap-y-2 text-[13px]/5">
+        <dt class="text-faint">{gettext("URL")}</dt>
+        <dd class="flex min-w-0 items-center gap-1">
+          <span id="gateway-url" class="q-mono break-all">{@node.url}</span>
+          <.copy_button
+            id="gateway-url-copy"
+            text={@node.url}
+            label={gettext("Copy the URL of %{name}", name: @node.name)}
+            placement="right"
+            icon_only
+          />
+        </dd>
+        <dt class="text-faint">{gettext("Default")}</dt>
+        <dd id="gateway-default" class="grid gap-2">
+          <span>
+            {if @node.default_gateway,
+              do: gettext("This workspace's default gateway."),
+              else: gettext("Not the default.")}
+            <span class="text-muted">
+              {gettext("Runs of nodes and node pools on Default gateway go through the default.")}
+            </span>
+          </span>
+          <span :if={@may_edit and not @node.default_gateway}>
+            <.button id="gateway-make-default" size="xs" phx-click="make_default">
+              {gettext("Make default")}
+            </.button>
+          </span>
+        </dd>
+      </dl>
+    </SettingsComponents.part>
+    """
+  end
+
+  attr :scope, :map, required: true
+  attr :node, Node, required: true
+  attr :through, :any, required: true
+
+  # Where a node's choice of gateway leads: Direct; Default gateway, and the gateway that
+  # is the default now; or the gateway it names, each gateway a link to its page.
+  defp choice_words(assigns) do
+    ~H"""
+    <%= case @node.gateway_choice do %>
+      <% :direct -> %>
+        {gettext("Direct")}
+      <% :default -> %>
+        {gettext("Default gateway")}
+        <span :if={@through} class="text-muted">
+          · <.gateway_link scope={@scope} gateway={@through} />
+        </span>
+        <span :if={!@through} class="text-muted">
+          · {gettext("No gateway is the default now.")}
+        </span>
+      <% :named -> %>
+        <.gateway_link :if={@through} scope={@scope} gateway={@through} />
+        <span :if={!@through} class="text-muted">{gettext("A gateway that is gone")}</span>
+    <% end %>
+    """
+  end
+
+  attr :scope, :map, required: true
+  attr :gateway, Node, required: true
+
+  defp gateway_link(assigns) do
+    ~H"""
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@gateway}"}
+      class="text-accent hover:underline"
+    >
+      {@gateway.name}
+    </.link>
+    <span class="q-mono text-muted">{@gateway.url}</span>
     """
   end
 
@@ -864,9 +1052,17 @@ defmodule ApiaryWeb.NodeLive.Show do
   attr :may_set_limit, :boolean, required: true
   attr :may_delete, :boolean, required: true
   attr :deleting, :boolean, required: true, doc: "whether the deletion's confirmation is open"
+
+  attr :delete_refused, :any,
+    required: true,
+    doc: "why a gateway's deletion was refused, in words, or nil"
+
+  attr :gateways, :list, required: true
+  attr :default, :any, required: true
   attr :paths, :map, required: true
 
-  # Settings › General: the name, the kind as it is, a pool's limit, and the danger zone.
+  # Settings › General: the name, the kind as it is, a pool's limit, a gateway's URL or a
+  # node's choice of gateway, and the danger zone.
   defp general(assigns) do
     ~H"""
     <div :if={!@may_edit and !@may_set_limit} id="node-settings-readonly">
@@ -927,6 +1123,27 @@ defmodule ApiaryWeb.NodeLive.Show do
           <span class="font-medium">{gettext("Instance limit")}</span>
           <span>{gettext("1. A node runs one instance at a time.")}</span>
         </div>
+        <.input
+          :if={@node.kind == :gateway}
+          field={@form[:url]}
+          type="text"
+          inputmode="url"
+          label={gettext("URL")}
+          hint={NodeComponents.url_hint()}
+          debounce="200"
+          autocomplete="off"
+          spellcheck="false"
+          disabled={!@may_edit}
+          required
+        />
+        <NodeComponents.gateway_field
+          :if={@node.kind != :gateway and (@gateways != [] or @node.gateway_choice != :direct)}
+          form={@form}
+          gateways={@gateways}
+          default={@default}
+          offer_default={@default != nil or @node.gateway_choice == :default}
+          disabled={!@may_edit}
+        />
         <SettingsComponents.save :if={@may_edit or @may_set_limit}>
           <.button
             id="node-save"
@@ -945,37 +1162,65 @@ defmodule ApiaryWeb.NodeLive.Show do
     <SettingsComponents.danger_zone :if={@may_delete} id="node-danger">
       <SettingsComponents.danger_action
         id="delete-node"
-        title={
-          if @node.kind == :pool,
-            do: gettext("Delete this node pool"),
-            else: gettext("Delete this node")
-        }
-        button={
-          if @node.kind == :pool,
-            do: gettext("Delete node pool…"),
-            else: gettext("Delete node…")
-        }
+        title={delete_title(@node.kind)}
+        button={delete_button(@node.kind)}
         open={@deleting}
         open_path={@paths.delete}
         close_path={@paths.settings}
         question={gettext("Delete %{name}?", name: @node.name)}
         submit="delete"
       >
-        {gettext(
-          "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
-        )}
+        {if @node.kind == :gateway,
+          do:
+            gettext(
+              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
+            ),
+          else:
+            gettext(
+              "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
+            )}
         <:lost>
-          {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
-            name: @node.name
-          )}
+          {if @node.kind == :gateway,
+            do:
+              gettext(
+                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
+                name: @node.name
+              ),
+            else:
+              gettext(
+                "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
+                name: @node.name
+              )}
         </:lost>
       </SettingsComponents.danger_action>
+      <.delete_refused :if={@delete_refused} words={@delete_refused} />
     </SettingsComponents.danger_zone>
     """
   end
 
+  attr :words, :string, required: true
+
+  # Why a gateway was not deleted, under its line, in an error notice.
+  defp delete_refused(assigns) do
+    ~H"""
+    <div id="delete-node-refused">
+      <.notice kind={:error}>{@words}</.notice>
+    </div>
+    """
+  end
+
+  defp delete_title(:node), do: gettext("Delete this node")
+  defp delete_title(:pool), do: gettext("Delete this node pool")
+  defp delete_title(:gateway), do: gettext("Delete this gateway")
+
+  defp delete_button(:node), do: gettext("Delete node…")
+  defp delete_button(:pool), do: gettext("Delete node pool…")
+  defp delete_button(:gateway), do: gettext("Delete gateway…")
+
   defp kind_sentence(:node), do: gettext("Node: one permanent machine.")
+
+  defp kind_sentence(:gateway),
+    do: gettext("Gateway: the runs of nodes and node pools that choose it go through it.")
 
   defp kind_sentence(:pool),
     do: gettext("Node pool: short-lived instances that share one access key.")

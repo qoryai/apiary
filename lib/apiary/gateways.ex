@@ -24,6 +24,8 @@ defmodule Apiary.Gateways do
     specific level that has one, or none.
   - `resolve/1` is where a node's choice leads now: directly, to a gateway, or nowhere,
     with the reason.
+  - `chosen/1` is the gateway a node's choice names now, whether or not it holds an
+    active key: the one a page names beside the node.
   - `serves/1` is the workspaces a gateway may serve, the list its discovery document names.
   - `gateway_choices/1` is the gateways a node of a workspace may name.
   - `delete_blockers/1` is what stops a gateway from being deleted.
@@ -252,6 +254,26 @@ defmodule Apiary.Gateways do
       gateway -> with_key(gateway)
     end
   end
+
+  @doc """
+  chosen/1 is the gateway the choice of `node` names now, from the records as they are:
+  the gateway it names, when that gateway may serve the node's workspace, or its
+  workspace's default gateway; nil for a node that goes direct, a choice that leads to
+  no gateway, and a gateway. Unlike `resolve/1`, it asks nothing of the gateway's access
+  key: a gateway not yet connected is still the one the node's runs go through.
+  """
+  @spec chosen(Node.t()) :: Node.t() | nil
+  def chosen(%Node{kind: :gateway}), do: nil
+  def chosen(%Node{gateway_choice: :direct}), do: nil
+  def chosen(%Node{gateway_choice: :named, gateway_id: nil}), do: nil
+
+  def chosen(%Node{gateway_choice: :named, gateway_id: gateway_id} = node) do
+    gateway = Repo.get(Node, gateway_id)
+    if gateway && may_serve?(gateway, workspace_of(node)), do: gateway
+  end
+
+  def chosen(%Node{gateway_choice: :default} = node),
+    do: default_gateway_for(workspace_of(node))
 
   defp with_key(gateway) do
     if AccessKeys.active_key?(gateway),

@@ -21,8 +21,8 @@ defmodule ApiaryWeb.RefusalsRows do
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
   instance, an active key and an outstanding enrolment code, a node pool with a limit, a
-  run that has not ended, and a pending invitation; and another organisation, with its
-  owner.
+  gateway, the workspace's default, and a second gateway, a run that has not ended, and a
+  pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -258,6 +258,27 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"node" => %{"name" => "renamed"}}, answer: :not_found_at_mount},
       {:"node.delete", :other_owner, "/:other_org/:other_ws/nodes/:node/settings/delete",
        "delete", %{}, answer: :not_found_at_mount},
+      # A gateway: made on New gateway, its default mark moved by Make default on its
+      # Overview, and deleted from its Settings; a node's choice of gateway, saved with it.
+      {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new-gateway", "create",
+       %{"node" => %{"name" => "edge-09", "url" => "https://edge-09.example.com"}}},
+      {:"node.edit", :member, "/:org/:workspace/nodes/:gateway", "make_default", %{}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:second_gateway", "make_default",
+       %{}},
+      {:"node.edit", :removed_member, "/:org/:workspace/nodes/:second_gateway", "make_default",
+       %{}},
+      {:"node.edit", :other_owner, "/:other_org/:other_ws/nodes/:second_gateway", "make_default",
+       %{}, answer: :not_found_at_mount},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:gateway/settings", "save",
+       %{"node" => %{"url" => "https://renamed.example.com"}}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:node/settings", "save",
+       %{"node" => %{"gateway" => "default"}}},
+      {:"node.delete", :member, "/:org/:workspace/nodes/:second_gateway/settings", "delete", %{}},
+      {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:second_gateway/settings/delete",
+       "delete", %{}},
+      {:"node.delete", :other_owner,
+       "/:other_org/:other_ws/nodes/:second_gateway/settings/delete", "delete", %{},
+       answer: :not_found_at_mount},
       {:"node.clear_instance", :member, "/:org/:workspace/nodes/:node", "clear_instance", %{}},
       {:"node.clear_instance", :demoted_admin,
        "/:org/:workspace/nodes/:node/instances/:instance/clear", "clear_instance", %{}},
@@ -442,6 +463,9 @@ defmodule ApiaryWeb.RefusalsRows do
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
+    # After the node and the pool, which stay direct.
+    gateway = gateway_fixture(owner, name: "edge-01")
+    second_gateway = gateway_fixture(owner, name: "edge-02")
     run = started_run(owner)
     %{invitation: invitation} = invitation_fixture(owner)
     admin = RefusalsCase.person(owner, :admin)
@@ -484,6 +508,8 @@ defmodule ApiaryWeb.RefusalsRows do
       node: node,
       pool: pool,
       node_key: node_key,
+      gateway: gateway,
+      second_gateway: second_gateway,
       code: code,
       public_key: ed25519_key_pair().encoded,
       instance: instance,
@@ -516,6 +542,8 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
+  def value(:gateway, world), do: {:id, world.gateway.public_id}
+  def value(:second_gateway, world), do: {:id, world.second_gateway.public_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id

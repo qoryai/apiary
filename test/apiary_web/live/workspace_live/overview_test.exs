@@ -465,6 +465,42 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert ways(view) == {["onboarding-enrol", "onboarding-generate"], ["onboarding-enrol"]}
     end
 
+    test "a gateway with a used key is not a node: the box reads as before, step 1 current",
+         %{conn: conn, scope: scope} do
+      gateway = gateway_fixture(scope, %{name: "edge-01"})
+      %{access_key: key} = node_key_fixture(scope, gateway, %{label: "edge-01"})
+
+      {:ok, _} =
+        AccessKeys.touch(key, %{last_forager_version: "v0.4.2", last_contract_version: 1})
+
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding .q-step-current", "Add a node")
+      refute has_element?(view, "#onboarding .q-step-done")
+      refute text(view, "#onboarding") =~ "The machine has verified with its key."
+      refute text(view, "#onboarding") =~ "edge-01"
+      refute has_element?(view, "#onboarding-target")
+      assert has_element?(view, "#onboarding-new-node")
+    end
+
+    test "a gateway with no key is never the node to connect", %{conn: conn, scope: scope} do
+      node = node_fixture(scope, %{name: "build-01"})
+      gateway_fixture(scope, %{name: "edge-01"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='2']")
+      assert text(view, "#onboarding-target") == "build-01 has no key yet."
+      refute text(view, "#onboarding") =~ "edge-01"
+
+      # Once the node holds a key, a key-less gateway brings no step 2 back.
+      node_key_fixture(scope, node, %{label: "build-01"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='3']")
+      refute has_element?(view, "#onboarding-target")
+    end
+
     test "a key a command brought ticks step 2: it is active as it arrives", %{
       conn: conn,
       scope: scope

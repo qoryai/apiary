@@ -81,6 +81,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     store, set its id, set Qory Apiary's public key, point qory at Qory Apiary. Either way
     it says truly where the key's secret is.
 
+  **A node's gateway.** A node or a pool whose choice of gateway leads to one
+  (`Apiary.Gateways.chosen/1`) is told so wherever it is told how to connect, on the tab,
+  the command's page, Key for a node and a key's Forager file: its runs go through that
+  gateway, named with its URL, and, while the gateway holds no active key, the gateway
+  isn't connected; one on Default gateway while no gateway is the default is told that
+  instead (`ApiaryWeb.NodeComponents.through_gateway/1`). The command and the Forager file
+  are the same either way: they point at Qory Apiary.
+
+  **A gateway's tab.** A gateway's own tab has the same layout, in its own words: its key
+  enrols the gateway and registers no run.
+
   **The server's part.** The address and `QORY_APIARY_PUBLIC_KEY`, the instance's own
   signing key, are Qory Apiary's, the same for every machine connected to it, so the pages
   name them as Qory Apiary's, apart from the key's own values, from
@@ -105,7 +116,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, AccessKeys, Nodes, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo, Runs}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.Enrolment
   alias Apiary.Nodes.Node
@@ -149,6 +160,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          |> assign(shown: nil, expiry_timer: nil)
          |> assign_may()
          |> assign_activity()
+         |> assign_through()
          |> load()
          |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
 
@@ -171,6 +183,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp assign_activity(socket) do
     %{current_scope: scope, node: node} = socket.assigns
     assign(socket, :activity, Map.fetch!(Nodes.activity(scope, [node]), node.id))
+  end
+
+  # The gateway the node's runs go through, as its choice leads now, and whether that
+  # gateway holds an active key.
+  defp assign_through(socket) do
+    through = Gateways.chosen(socket.assigns.node)
+
+    assign(socket,
+      through: through,
+      through_connected: through && AccessKeys.active_key?(through)
+    )
   end
 
   # The node's keys and outstanding codes, with who made and revoked each, and
@@ -624,8 +647,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     %{current_scope: scope, node: node} = socket.assigns
 
     case Nodes.get_node(scope, node.public_id) do
-      %Node{} = current -> {:noreply, socket |> assign(:node, current) |> assign_activity()}
-      nil -> {:noreply, gone(socket)}
+      %Node{} = current ->
+        {:noreply, socket |> assign(:node, current) |> assign_activity() |> assign_through()}
+
+      nil ->
+        {:noreply, gone(socket)}
     end
   end
 
@@ -1016,6 +1042,92 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     end)
   end
 
+  # The tab's lines that differ by the node's kind: a gateway's key enrols the gateway and
+  # registers no run.
+  defp connect_intro(%Node{kind: :pool, name: name}),
+    do:
+      gettext(
+        "%{name} connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one.",
+        name: name
+      )
+
+  defp connect_intro(%Node{kind: :gateway, name: name}),
+    do:
+      gettext(
+        "%{name} connects to Qory Apiary with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one.",
+        name: name
+      )
+
+  defp connect_intro(%Node{name: name}),
+    do:
+      gettext(
+        "%{name} connects to Qory Apiary with a key. Choose one of two ways to give it one.",
+        name: name
+      )
+
+  defp keys_intro(%Node{kind: :pool, name: name}),
+    do:
+      gettext(
+        "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
+        name: name
+      )
+
+  defp keys_intro(%Node{kind: :gateway, name: name}),
+    do:
+      gettext(
+        "%{name} signs every request with its key, which enrols this gateway and registers no run. Qory Apiary keeps only the public half.",
+        name: name
+      )
+
+  defp keys_intro(%Node{name: name}),
+    do:
+      gettext(
+        "%{name} signs every request with its key. Qory Apiary keeps only the public half.",
+        name: name
+      )
+
+  defp full_words(%Node{kind: :pool, name: name}),
+    do:
+      gettext(
+        "%{name} holds two keys, the most a node pool can. Revoke the one it no longer uses to add another.",
+        name: name
+      )
+
+  defp full_words(%Node{kind: :gateway, name: name}),
+    do:
+      gettext(
+        "%{name} holds two keys, the most a gateway can. Revoke the one it no longer uses to add another.",
+        name: name
+      )
+
+  defp full_words(%Node{name: name}),
+    do:
+      gettext(
+        "%{name} holds two keys, the most a node can. Revoke the one it no longer uses to add another.",
+        name: name
+      )
+
+  defp add_intro(%Node{kind: :pool, name: name}),
+    do:
+      gettext(
+        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node pool holds two keys at most.",
+        name: name
+      )
+
+  defp add_intro(%Node{kind: :gateway, name: name}),
+    do:
+      gettext(
+        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A gateway holds two keys at most.",
+        name: name
+      )
+
+  defp add_intro(%Node{name: name}),
+    do:
+      gettext(
+        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node holds two keys at most.",
+        name: name
+      )
+
   defp way_icon(:new_code), do: "hero-command-line"
   defp way_icon(:generate), do: "hero-key"
 
@@ -1126,6 +1238,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <%= case @state do %>
               <% :waiting -> %>
                 <NodeComponents.unreachable_server id="code-issued-unreachable" url={@server} />
+                <NodeComponents.through_gateway
+                  id="code-issued-gateway"
+                  node={@node}
+                  gateway={@through}
+                  connected={!!@through_connected}
+                />
                 <div class="grid gap-1.5">
                   <p id="code-issued-run" class="text-[13px]/5">
                     {gettext("On %{name}, run:", name: @node.name)}
@@ -1353,6 +1471,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </.notice>
           </div>
 
+          <NodeComponents.through_gateway
+            :if={@live_action == :generated}
+            id="key-generated-gateway"
+            node={@node}
+            gateway={@through}
+            connected={!!@through_connected}
+          />
+
           <.how_to :if={@live_action == :generated} id="key-generated-steps">
             <:step title={gettext("Store the secret.")}>
               <p class="text-muted">
@@ -1511,6 +1637,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </.page_header>
 
         <div class="grid gap-6 text-[13px]/5">
+          <NodeComponents.through_gateway
+            id="key-forager-file-gateway"
+            node={@node}
+            gateway={@through}
+            connected={!!@through_connected}
+          />
           <%= if @key.arrived_by == :code do %>
             <div class="grid gap-1.5">
               <p>
@@ -1620,6 +1752,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <NodeComponents.node_tabs node={@node} paths={@paths} current={:access_key} view={:access_key} />
 
       <div id="node-access-key" class="grid max-w-[72rem] gap-8">
+        <NodeComponents.through_gateway
+          id="node-gateway"
+          node={@node}
+          gateway={@through}
+          connected={!!@through_connected}
+        />
+
         <%!-- No key in use: the question, and the ways as cards, the kind's own first and
              primary. --%>
         <SettingsComponents.part
@@ -1629,17 +1768,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           level={:h2}
         >
           <p id="node-connect-intro" class="text-[13px]/5 text-muted">
-            {if @node.kind == :pool,
-              do:
-                gettext(
-                  "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one.",
-                  name: @node.name
-                ),
-              else:
-                gettext(
-                  "%{name} connects to Qory with a key. Choose one of two ways to give it one.",
-                  name: @node.name
-                )}
+            {connect_intro(@node)}
           </p>
           <div
             id="node-ways"
@@ -1680,17 +1809,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           level={:h2}
         >
           <p id="node-keys-intro" class="text-[13px]/5 text-muted">
-            {if @node.kind == :pool,
-              do:
-                gettext(
-                  "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
-                  name: @node.name
-                ),
-              else:
-                gettext(
-                  "%{name} signs every request with its key. Qory Apiary keeps only the public half.",
-                  name: @node.name
-                )}
+            {keys_intro(@node)}
           </p>
           <p
             :if={!@manages and @active > 0}
@@ -1728,17 +1847,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           level={:h2}
         >
           <p :if={@full} id="node-add-full" class="text-[13px]/5 text-muted">
-            {if @node.kind == :pool,
-              do:
-                gettext(
-                  "%{name} holds two keys, the most a node pool can. Revoke the one it no longer uses to add another.",
-                  name: @node.name
-                ),
-              else:
-                gettext(
-                  "%{name} holds two keys, the most a node can. Revoke the one it no longer uses to add another.",
-                  name: @node.name
-                )}
+            {full_words(@node)}
           </p>
           <%!-- At the limit, no way is offered, but a command still waiting stays, with
                its Cancel the command…: it can still be run, so it can still be
@@ -1752,17 +1861,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             paths={@paths}
           />
           <p :if={!@full} id="node-add-intro" class="text-[13px]/5 text-muted">
-            {if @node.kind == :pool,
-              do:
-                gettext(
-                  "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node pool holds two keys at most.",
-                  name: @node.name
-                ),
-              else:
-                gettext(
-                  "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node holds two keys at most.",
-                  name: @node.name
-                )}
+            {add_intro(@node)}
           </p>
           <div
             :if={!@full}

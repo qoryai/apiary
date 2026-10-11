@@ -718,7 +718,8 @@ defmodule ApiaryWeb.RunLive.Index do
        security:
          Features.on?(scope, :security) and
            Access.can?(scope, :"security_policy.read", scope.workspace),
-       has_nodes: Nodes.count_nodes(scope) |> Map.values() |> Enum.sum() > 0,
+       has_nodes:
+         Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
        may_add_node: Access.can?(scope, :"node.create", scope.workspace)
      )}
   end

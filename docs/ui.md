@@ -880,9 +880,11 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.Index`,
 `…Show`; the reads and changes are `Apiary.Nodes`'s). A **node** is one permanent machine,
 which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
-which run up to its instance limit, or any number without one. The kind is chosen when one
-is made and never changes. A node is named in a path by its public id, `nd_…` for a node
-and `np_…` for a pool. Nodes is an entry of the workspace's sidebar, in Record after
+which run up to its instance limit, or any number without one. A **gateway**, the third
+kind, is an address the runs of its nodes and pools may go through, as each chooses
+(`Apiary.Gateways`); its key enrols the gateway and registers no run. The kind is chosen when one is made and never changes. A node is
+named in a path by its public id, `nd_…` for a node, `np_…` for a pool and `ng_…` for a
+gateway. Nodes is an entry of the workspace's sidebar, in Record after
 Targets (`#nav-nodes`, for a reader of `node.read`); the list, a node's page and the New
 node forms pass `nav={:nodes}`, so it is the current entry on all of them.
 
@@ -896,17 +898,19 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   node with no instance and no key ever used.
 - **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
   above): one line a node, its name the title with its public id beside it in `q-side`,
-  its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), its
-  state, and from `md` the Forager version it last reported. Under a pool's line, its
+  and the state word Default beside the workspace's default gateway, its kind in words
+  only for a pool ("Pool") and a gateway ("Gateway"; a node, the usual kind, says
+  nothing), its state, and from `md` the Forager version it last reported. Under a pool's line, its
   running instances as indented lines (name, id in `q-side`, "Running since", its run),
   ten at most, then "and 12 more", which leads to the pool's page; an instance shows only
   while it runs, and a Node has none, its one instance being its line. The views are
   All, Running and Not running (`?view=running`, `?view=idle`), counted under the search
   and the kind; one search, `?q=`, words of a name or an id, and the Filter menu's Kind
-  (`?kind=node`, `?kind=pool`), each a token under the bar; Sort by Name or Last seen
-  (`?sort=seen`: running first, never seen last). Owners and admins have **New node**
-  and **New node pool**, side by side and alike, in the header; with no node yet, the
-  empty state offers both, and tells a member that an owner or admin adds nodes.
+  (`?kind=node`, `?kind=pool`, `?kind=gateway`), each a token under the bar; Sort by Name
+  or Last seen (`?sort=seen`: running first, never seen last). Owners and admins have
+  **New node**, **New node pool** and **New gateway**, side by side and alike, in the
+  header; with no node of any kind yet, the empty state offers the first two, and tells a
+  member that an owner or admin adds nodes.
 - **New node and New node pool** are pages of the Nodes section at paths of their own,
   `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
@@ -916,9 +920,16 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   pool its instance limit (a whole number up to 10,000, or empty for none), left out for
   one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
   foot,
-  Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
-  save stays on the page, the error under its field; adding one opens its page on
-  Access key with a flash, where its machine gets its key.
+  Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). Once the
+  workspace has a gateway, a node's and a pool's form ask its **Gateway** too, a select
+  (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default
+  resolves for the workspace, and then the one the form starts on; Direct, which it
+  starts on otherwise; and each gateway by name; under it, which gateway the default is.
+  **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
+  hint saying what a URL may be, and Add gateway. A refused save stays on the page, the
+  error under its field, in core's words (a URL's, or a gateway's, such as "has no
+  default gateway in this workspace"); adding one opens its page on Access key with a
+  flash, where its machine gets its key.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
   side first and Settings last, set apart at the bar's right end
@@ -941,11 +952,38 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
   taking the focus.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
-  record. A node the workspace does not have, or a deleted one, is not found.
-- **Access key**, a node's tab. While the node holds no active key, owners and admins read
-  "How do you want to connect build-01?", "build-01 connects to Qory with a key. Choose
-  one of two ways to give it one." (a pool's: "spot-runners connects to Qory with a key;
-  its instances share one. Choose one of two ways to give it one."), and
+  record. A node the workspace does not have, or a deleted one, is not found. A node's and
+  a pool's About has a Gateway row: Direct; Default gateway, then the gateway it is now
+  (a link to its page, with its URL); or the gateway it names. Its Settings' General
+  chooses it, as the forms do, once the workspace has a gateway or the node is not
+  direct.
+- **A gateway's page** has the same header, with a Default badge beside the public id of
+  the workspace's default, and the same tabs. Its Overview leads with Gateway: its URL
+  with Copy, and Default, "This workspace's default gateway." or "Not the default.", with
+  Make default (`Apiary.Nodes.make_default_gateway/2`, `node.edit`) for one that is not,
+  which moves the mark at once with a flash; then its recent runs and About, without
+  instances or an instance limit. Its Settings' General changes its name and its URL.
+  Delete gateway… is confirmed in place as a node's is, with a gateway's own sentence;
+  a gateway that nodes still point to, or that runs still go through
+  (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line an
+  error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
+  build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
+  and for runs going through it, where the refusal names any, "Runs are going through
+  this gateway: … Delete it once they end.", or both in one notice. It names the first
+  five of this workspace, then "and 3 more", which counts those of other workspaces too,
+  never named.
+- **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
+  (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
+  for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
+  gateway edge-01, at https://edge.example.com.", and, while the gateway holds no active
+  key, "edge-01 has no active access key, so it isn't connected."; one on Default gateway
+  while no gateway is the default reads "No gateway is the default now."; a direct one
+  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file are
+  the same either way: they point at Qory Apiary. A gateway's own tab has the same
+  layout in its own words: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
+  "How do you want to connect build-01?", "build-01 connects to Qory Apiary with a key.
+  Choose one of two ways to give it one." (a pool's: "spot-runners connects to Qory Apiary
+  with a key; its instances share one. Choose one of two ways to give it one."), and
   two options of equal weight, side by side from `md`, stacked below it, of one height
   (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
   happens in two muted sentences, then the same four facts in the same rows (a `dl` of two
