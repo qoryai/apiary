@@ -682,7 +682,7 @@ defmodule Apiary.GatewaysTest do
       set(cancelled_old_name, state: "timed_out")
       # Refused at its start: failed, with no exit and no outcome, as the fold stores it.
       refused = attach(through, register(through))
-      set(refused, state: "failed")
+      set(refused, state: "failed", refused_at: now)
 
       :ok = go_direct(scope, through)
       assert Gateways.delete_blockers(through.gateway) == %{nodes: [], runs: []}
