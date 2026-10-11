@@ -356,6 +356,9 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Registries**: add features, and say what an organisation or a workspace has of the
   instance's (`features/0`, `features_of/3`); add schemas an audit entry may be about
   (`subject_kinds/0`).
+- **Audit trail**: add keys of its own to each entry's details as it is written, such as
+  how the actor reached the organisation, cheaply and inside the change's transaction
+  (`audit_details/3`); it changes none of the core's.
 - **Runtime**: check its settings at boot (`boot!/0`), start processes after the core's
   (`children/0`), schedule jobs (`crontab/0`), add folders of migrations
   (`migrations_paths/0`) and run a step after them (`after_migrate/0`).
@@ -371,7 +374,8 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   (`reader_sentence/2`, `refusal_sentence/1`); settings sections (`settings_tabs/1`,
   `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
   pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
-  (`activity_describer/0`); the names its own paths take (`reserved_slugs/0`); and the
+  (`activity_describer/0`), and who made an entry, in its Who column
+  (`activity_actor/2`); the names its own paths take (`reserved_slugs/0`); and the
   product's name on the Qory Apiary menu's button (`product_name/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only

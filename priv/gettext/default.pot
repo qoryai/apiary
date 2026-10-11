@@ -3036,8 +3036,8 @@ msgstr ""
 msgid "Always"
 msgstr ""
 
+#: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/activity/describer/core.ex
-#: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "An access key"
 msgstr ""
@@ -5403,8 +5403,8 @@ msgstr ""
 msgid "Forgot your password?"
 msgstr ""
 
+#: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/activity/describer/core.ex
-#: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/people.ex
 #, elixir-autogen, elixir-format
 msgid "Former member"
@@ -9066,7 +9066,7 @@ msgstr ""
 msgid "QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary."
 msgstr ""
 
-#: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary"
@@ -14201,7 +14201,7 @@ msgstr ""
 msgid "yesterday"
 msgstr ""
 
-#: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/activity/actor.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/member_live/workspace.ex

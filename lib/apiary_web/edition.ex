@@ -39,7 +39,8 @@ defmodule ApiaryWeb.Edition do
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
-    edition's actions in words on the Activity page; `c:above_policy_link/1`, where the
+    edition's actions in words on the Activity page; `c:activity_actor/2`, who made an
+    entry, in the Activity page's Who column; `c:above_policy_link/1`, where the
     level above a workspace's policy (`c:Apiary.Edition.above_workspace/1`) is read and
     changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
@@ -168,6 +169,21 @@ defmodule ApiaryWeb.Edition do
   @callback activity_describer() :: module | nil
 
   @doc """
+  Who made `entry`, as the Activity page's Who column draws it (`ApiaryWeb.Activity.Actor`),
+  or nil for the core's words, which `assigns.actor` holds (`t:ApiaryWeb.Activity.Actor.words/0`):
+  such as the person and how they reached the organisation, from what the edition wrote
+  into the entry's details (`c:Apiary.Edition.audit_details/3`). `assigns`, a function
+  component's, which `Phoenix.Component.assign/3` and `~H` take, holds the core's
+  words (`actor`), the names the page read (`names`, `Apiary.Audit.names/2`, which name the
+  organisation a details key ending in `_id` holds) and the page's scope (`scope`). Asked
+  once for each entry when the page lays out the rows it read, so it reads nothing of its
+  own: what it says comes from the entry and the names. The column keeps its cell and its
+  id around what it renders.
+  """
+  @callback activity_actor(Apiary.Audit.Entry.t(), assigns :: map) ::
+              Phoenix.LiveView.Rendered.t() | nil
+
+  @doc """
   Where the level above the workspace's policy is read and changed, for the scope's
   reader: its `path`, and `can_change`, whether the reader may change it there; nil where
   the edition keeps no such level, or the reader may not read it. The core's pages draw
@@ -221,6 +237,7 @@ defmodule ApiaryWeb.Edition do
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,
+    activity_actor: 2,
     above_policy_link: 1,
     reserved_slugs: 0,
     product_name: 0,

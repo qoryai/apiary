@@ -60,6 +60,9 @@ defmodule ApiaryWeb.Edition.Core do
   def activity_describer, do: nil
 
   @impl true
+  def activity_actor(_entry, _assigns), do: nil
+
+  @impl true
   def above_policy_link(_scope), do: nil
 
   @impl true
