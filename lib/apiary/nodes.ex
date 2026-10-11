@@ -27,16 +27,23 @@ defmodule Apiary.Nodes do
   changed; a deletion's time; the instance a clearing cleared.
 
   **Gateways.** A gateway is made, changed and deleted as a node is, under the same
-  actions. A node's or a pool's choice of gateway is saved with it; given none, a new
-  one starts on `:default` when a default resolves for the workspace, and on `:direct`
-  otherwise. `:named` must name one of `Apiary.Gateways.gateway_choices/1`, and
-  `:default` needs a default that resolves for the workspace. A gateway made when no
-  default resolves for its workspace becomes its default; `make_default_gateway/2` moves
-  the mark. A gateway is deleted only when nothing points to it and no run through it is
-  live or waiting (`Apiary.Gateways.delete_blockers/1`), and the deletion then marks the
-  oldest gateway left as the default when none resolves any more. Each of these takes the
-  workspace's gateway lock first (`Apiary.Gateways.lock/1`), and a mark that moves leaves
-  an entry of `node.edit` for each gateway it moved on or off.
+  actions. It lives at a workspace, or at an organisation, with no workspace
+  (`Apiary.Gateways`): an organisation's gateways are listed, made and read through
+  `list_organisation_gateways/1`, `create_organisation_gateway/2` and
+  `get_organisation_gateway/2`, with a scope of the organisation, and asked of
+  `Apiary.Access` at the organisation's place; `update_node/3`, `make_default_gateway/2`
+  and `delete_node/2` take either. A node's or a pool's choice of gateway is saved with
+  it; given none, a new one starts on `:default` when a default resolves for the
+  workspace, and on `:direct` otherwise. `:named` must name one of
+  `Apiary.Gateways.gateway_choices/1`, and `:default` needs a default that resolves for
+  the workspace. A gateway made when no default resolves for it at its level or after
+  (`Apiary.Gateways.default_resolves?/1`) becomes its level's default;
+  `make_default_gateway/2` moves the mark. A gateway is deleted only when nothing points
+  to it and no run through it is live or waiting (`Apiary.Gateways.delete_blockers/1`),
+  and the deletion then marks the oldest gateway left at its level as the default when a
+  workspace it served resolves none any more. Each of these takes the gateways' locks
+  first (`Apiary.Gateways.lock/1`), and a mark that moves leaves an entry of `node.edit`
+  for each gateway it moved on or off.
 
   **Instances.** An instance is what Forager, under a node's access key, reports itself as
   (`Apiary.Nodes.Instance`): a claim, for display, the audit and the instance limit, never
@@ -149,6 +156,70 @@ defmodule Apiary.Nodes do
       where: is_nil(n.deleted_at)
   end
 
+  # The scope's organisation's gateways in use, those with no workspace.
+  defp organisation_query(%Scope{organisation: %Organisation{id: organisation_id}}) do
+    from n in Node,
+      where: n.organisation_id == ^organisation_id and is_nil(n.workspace_id),
+      where: n.kind == :gateway and is_nil(n.deleted_at)
+  end
+
+  # The nodes in use at the place of `node`, of the scope: its workspace's, the scope's,
+  # or its organisation's gateways.
+  defp place_query(scope, %Node{workspace_id: nil}), do: organisation_query(scope)
+  defp place_query(scope, %Node{}), do: live_query(scope)
+
+  @doc """
+  list_organisation_gateways/1 is the scope's organisation's gateways in use, those that
+  live at the organisation, by name.
+  """
+  @spec list_organisation_gateways(Scope.t()) :: [Node.t()]
+  def list_organisation_gateways(%Scope{} = scope) do
+    scope
+    |> organisation_query()
+    |> order_by([n], asc: n.name, asc: n.id)
+    |> Repo.all()
+  end
+
+  @doc """
+  get_organisation_gateway/2 is the scope's organisation's gateway in use whose public id
+  is `public_id`, with the account that made it (`created_by`), or nil for one that is
+  deleted, of a workspace, of another organisation, or none.
+  """
+  @spec get_organisation_gateway(Scope.t(), String.t()) :: Node.t() | nil
+  def get_organisation_gateway(%Scope{} = scope, public_id) when is_binary(public_id) do
+    scope
+    |> organisation_query()
+    |> where([n], n.public_id == ^public_id)
+    |> preload(:created_by)
+    |> Repo.one()
+  end
+
+  def get_organisation_gateway(%Scope{}, _public_id), do: nil
+
+  @doc """
+  list_serving_gateways/2 is the organisation-level gateways in use that may serve the
+  scope's workspace (`Apiary.Gateways.may_serve?/2`): its organisation's, then those of
+  the organisations that serve it, as `Apiary.Gateways.gateway_choices/1` orders them,
+  narrowed by `filters` as `list_nodes/2` narrows the workspace's own.
+  """
+  @spec list_serving_gateways(Scope.t(), filters) :: [Node.t()]
+  def list_serving_gateways(%Scope{} = scope, filters \\ %{}) do
+    gateways = scope |> Gateways.gateway_choices() |> Enum.filter(&is_nil(&1.workspace_id))
+
+    if gateways == [] or Map.get(filters, :kind) not in [nil, :gateway] do
+      []
+    else
+      matching =
+        from(n in Node, where: n.id in ^Enum.map(gateways, & &1.id))
+        |> narrow(Map.delete(filters, :kind))
+        |> select([n], n.id)
+        |> Repo.all()
+        |> MapSet.new()
+
+      Enum.filter(gateways, &MapSet.member?(matching, &1.id))
+    end
+  end
+
   ## Changes
 
   @doc """
@@ -183,6 +254,8 @@ defmodule Apiary.Nodes do
   for the workspace is made its default. `{:ok, node}`, `{:error, changeset}`, or
   `{:error, :forbidden}` for
   one who may not, `{:error, :not_found}` where the workspace is out of their reach.
+
+  It takes the gateways' locks of the workspace first (`Apiary.Gateways.lock/1`).
   """
   @spec create_node(Scope.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
@@ -237,14 +310,67 @@ defmodule Apiary.Nodes do
   defp created(%Node{} = node),
     do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :gateway_choice])
 
-  # A new gateway is its workspace's default when no default resolves for the workspace.
+  # A new gateway is its level's default when no default resolves for it at its level or
+  # after it (`Apiary.Gateways.default_resolves?/1`).
   defp default_if_none(%Node{kind: :gateway} = gateway, workspace) do
-    if Gateways.default_gateway_for(workspace),
+    level =
+      case Gateways.level(gateway) do
+        {:workspace, _id} -> {:workspace, workspace}
+        organisation -> organisation
+      end
+
+    if Gateways.default_resolves?(level),
       do: {:ok, gateway},
       else: gateway |> Node.default_changeset(true) |> Repo.update()
   end
 
   defp default_if_none(node, _workspace), do: {:ok, node}
+
+  @doc """
+  create_organisation_gateway/2 makes a gateway of the scope's organisation, one that
+  lives at the organisation with no workspace (`node.create`, asked of the organisation:
+  owners and admins in the core), from `attrs`, its `name` and `url`. It is made its
+  organisation's default when no default resolves for it
+  (`Apiary.Gateways.default_resolves?/1`). It takes the organisation's gateways' locks
+  first (`Apiary.Gateways.lock/1`). `{:ok, gateway}`, `{:error, changeset}`,
+  `{:error, :forbidden}`, or `{:error, :not_found}` for an organisation out of reach.
+  """
+  @spec create_organisation_gateway(Scope.t(), map) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def create_organisation_gateway(
+        %Scope{user: user, organisation: %Organisation{id: organisation_id} = organisation} =
+          scope,
+        attrs
+      ) do
+    Repo.transact(fn ->
+      with :ok <- Gateways.lock({:organisation, organisation_id}),
+           asking = Access.reload(scope),
+           :ok <- Access.check(asking, :"node.create", organisation),
+           changeset =
+             Node.create_changeset(
+               %Node{organisation_id: organisation_id, workspace_id: nil, created_by_id: user.id},
+               Map.put(stringify(attrs), "kind", :gateway)
+             ),
+           {:ok, gateway} <- Repo.insert(changeset),
+           {:ok, gateway} <- default_if_none(gateway, nil),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"node.create", gateway, %{after: created(gateway)}) do
+        {:ok, gateway}
+      end
+    end)
+  end
+
+  @doc """
+  change_new_organisation_gateway/1 is the changeset of an organisation's gateway not yet
+  made, for the form that makes one.
+  """
+  @spec change_new_organisation_gateway(map) :: Ecto.Changeset.t()
+  def change_new_organisation_gateway(attrs \\ %{}),
+    do:
+      Node.create_changeset(
+        %Node{kind: :gateway, instance_limit: nil},
+        Map.put(stringify(attrs), "kind", :gateway)
+      )
 
   # A node's or a pool's choice, when it changes, against the gateways as they are, under
   # the workspace's gateway lock: a gateway it names must be one it may name, and a
@@ -270,7 +396,7 @@ defmodule Apiary.Nodes do
         Ecto.Changeset.add_error(
           changeset,
           :gateway_choice,
-          dgettext_noop("errors", "has no default gateway in this workspace")
+          dgettext_noop("errors", "has no default gateway")
         )
 
       true ->
@@ -290,12 +416,12 @@ defmodule Apiary.Nodes do
   """
   @spec update_node(Scope.t(), Node.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
-  def update_node(%Scope{workspace: workspace} = scope, %Node{id: id} = node, attrs) do
+  def update_node(%Scope{} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
-      with :ok <- Gateways.lock(workspace),
+      with :ok <- Gateways.lock_for(scope, node),
            asking = Access.reload(scope),
            :ok <- may_change(asking, node),
-           %Node{} = current <- lock_node(scope, id) || {:error, :not_found},
+           %Node{} = current <- lock_node(scope, node) || {:error, :not_found},
            changeset = current |> Node.changeset(attrs) |> validate_gateway(scope),
            :ok <- check_each(asking, edit_actions(changeset), current),
            {:ok, updated} <- Repo.update(changeset),
@@ -306,13 +432,14 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
-  make_default_gateway/2 marks `gateway` as its workspace's default gateway (`node.edit`,
+  make_default_gateway/2 marks `gateway` as its level's default gateway, its workspace's or
+  its organisation's (`node.edit`,
   owners and admins), and takes the mark off the gateway that held it, each change with
   its entry. The nodes on `:default` resolve to it from then on (`Apiary.Gateways.resolve/1`).
   `{:ok, gateway}`, unchanged when it was the default already; `{:error, changeset}` when
   the database refuses the mark; `{:error, :forbidden}`; or
-  `{:error, :not_found}` for a gateway that is deleted, not the workspace's, or a node
-  that is not a gateway.
+  `{:error, :not_found}` for a gateway that is deleted, not of the scope's workspace or
+  organisation, or a node that is not a gateway.
   """
   @spec make_default_gateway(Scope.t(), Node.t()) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
@@ -353,14 +480,16 @@ defmodule Apiary.Nodes do
   (`Apiary.AccessKeys.revoke_node_keys/3`). `{:ok, node}`, `{:error, :forbidden}`, or
   `{:error, :not_found}` for a node that is deleted already or not the workspace's.
 
-  A gateway is deleted only when nothing points to it and no run through it is live or
-  waiting: otherwise `{:error, {:gateway_in_use, blockers}}`, which names the nodes and
+  A gateway, at a workspace or at the organisation, is deleted only when nothing points to
+  it and no run through it is live or waiting: otherwise
+  `{:error, {:gateway_in_use, blockers}}`, which names the nodes, wherever they are, and
   the runs (`Apiary.Gateways.delete_blockers/1`), and nothing changes. The runs are read
   with the gateway's row held `FOR UPDATE`, so a registration through it or an attach by
   it that commits first is among them, and one that commits after finds it deleted. A
-  deleted gateway loses its default mark; when no default resolves any more for a
-  workspace it served and gateways remain that may serve it, the oldest of them at its
-  level becomes the default, with its entry of `node.edit`. No node moves.
+  deleted gateway loses its default mark; when a workspace it served resolves no default
+  any more and gateways remain at its level, the oldest of them becomes the level's
+  default (`Apiary.Gateways.needs_default_after_deletion?/1`), with its entry of
+  `node.edit`. No node moves.
   `{:error, changeset}` when the database refuses that mark, and nothing changes.
   """
   @spec delete_node(Scope.t(), Node.t()) ::
@@ -369,8 +498,6 @@ defmodule Apiary.Nodes do
              Ecto.Changeset.t() | Access.reason() | {:gateway_in_use, Gateways.blockers()}}
   def delete_node(%Scope{user: user} = scope, %Node{} = node) do
     gateway_mutate(scope, :"node.delete", node, fn current ->
-      served = Gateways.serves(current)
-
       with :ok <- unblocked(current),
            {:ok, key_ids} <- AccessKeys.revoke_node_keys(scope, current, :node_deleted),
            {:ok, deleted} <-
@@ -391,7 +518,7 @@ defmodule Apiary.Nodes do
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> put_default_gateway(current)
              }),
-           :ok <- default_after_deletion(scope, current, served) do
+           :ok <- default_after_deletion(scope, current) do
         {:ok, deleted}
       end
     end)
@@ -412,39 +539,42 @@ defmodule Apiary.Nodes do
 
   defp put_default_gateway(details, %Node{}), do: details
 
-  # After a gateway's deletion, each workspace it served that no default resolves for any
-  # more gets the oldest gateway left at its level that may serve it, if there is one.
-  defp default_after_deletion(scope, %Node{kind: :gateway} = gateway, served) do
+  # After a gateway's deletion, when a workspace it served resolves no default any more,
+  # the oldest gateway left at its level becomes the level's default, if there is one.
+  defp default_after_deletion(scope, %Node{kind: :gateway} = gateway) do
     level = Gateways.level(gateway)
+    workspace = level_workspace(level)
 
-    Enum.reduce_while(served, :ok, fn workspace, :ok ->
-      with nil <- Gateways.default_gateway_for(workspace),
-           %Node{} = oldest <- Gateways.oldest_at(level, workspace),
-           {:ok, _marked} <- mark(scope, oldest) do
-        {:cont, :ok}
-      else
-        {:error, reason} -> {:halt, {:error, reason}}
-        _resolved_or_none -> {:cont, :ok}
-      end
-    end)
+    with true <- Gateways.needs_default_after_deletion?(gateway),
+         %Node{} = oldest <- Gateways.oldest_at(level, workspace),
+         {:ok, _marked} <- mark(scope, oldest) do
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+      _resolved_or_none -> :ok
+    end
   end
 
-  defp default_after_deletion(_scope, %Node{}, _served), do: :ok
+  defp default_after_deletion(_scope, %Node{}), do: :ok
 
-  # `mutate/4` under the workspace's gateway lock, taken first, before the node's row.
-  defp gateway_mutate(%Scope{workspace: workspace} = scope, action, node, fun) do
+  defp level_workspace({:workspace, id}), do: Repo.get(Workspace, id)
+  defp level_workspace({:organisation, _id}), do: nil
+
+  # `mutate/4` under the gateways' locks of the node's place, taken first, before the
+  # node's row (`Apiary.Gateways.lock_for/2`).
+  defp gateway_mutate(%Scope{} = scope, action, node, fun) do
     Repo.transact(fn ->
-      with :ok <- Gateways.lock(workspace), do: mutate(scope, action, node, fun)
+      with :ok <- Gateways.lock_for(scope, node), do: mutate(scope, action, node, fun)
     end)
   end
 
   # Asks `action` of the caller's membership as it is now, then hands `fun` the node as
-  # it is now, in use and the scope's workspace's, locked for the rest of the
-  # transaction.
-  defp mutate(scope, action, %Node{id: id} = node, fun) do
+  # it is now, in use and the scope's workspace's, or the organisation's for an
+  # organisation-level gateway, locked for the rest of the transaction.
+  defp mutate(scope, action, %Node{} = node, fun) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, action, node),
-           %Node{} = current <- lock_node(scope, id) do
+           %Node{} = current <- lock_node(scope, node) do
         fun.(current)
       else
         nil -> {:error, :not_found}
@@ -453,10 +583,15 @@ defmodule Apiary.Nodes do
     end)
   end
 
-  # The node as it is now, in use and the scope's workspace's, locked for the rest of the
+  # The node as it is now, in use at its place of the scope, locked for the rest of the
   # transaction; nil for none.
-  defp lock_node(scope, id),
-    do: scope |> live_query() |> where([n], n.id == ^id) |> lock("FOR UPDATE") |> Repo.one()
+  defp lock_node(scope, %Node{id: id} = node),
+    do:
+      scope
+      |> place_query(node)
+      |> where([n], n.id == ^id)
+      |> lock("FOR UPDATE")
+      |> Repo.one()
 
   # Whether the person, as `reload/2` read them, may change something of `node`: its edit
   # or its limit. The answer of `node.edit` when they may neither.
@@ -571,16 +706,30 @@ defmodule Apiary.Nodes do
         }
 
   @doc """
-  topic/1 is the topic of a workspace's nodes: `{:nodes_touched, workspace_id}` whenever
-  an instance of one of them was seen or cleared.
+  topic/1 is the topic of a workspace's nodes, or of an organisation's gateways, by the
+  workspace's or the organisation's id: `{:nodes_touched, id}` whenever an instance of
+  one of them was seen or cleared.
   """
   @spec topic(Ecto.UUID.t()) :: String.t()
   def topic(workspace_id), do: "nodes:" <> workspace_id
 
-  @doc "subscribe/1 subscribes the caller to `topic/1` of the scope's workspace."
-  @spec subscribe(Scope.t()) :: :ok | {:error, term}
-  def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}),
+  @doc """
+  subscribe/1 subscribes the caller to `topic/1` of the scope's workspace;
+  `subscribe/2` with `:organisation`, of the scope's organisation's gateways.
+  """
+  @spec subscribe(Scope.t(), :workspace | :organisation) :: :ok | {:error, term}
+  def subscribe(scope, place \\ :workspace)
+
+  def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}, :workspace),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id))
+
+  def subscribe(%Scope{organisation: %Organisation{id: organisation_id}}, :organisation),
+    do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(organisation_id))
+
+  # Where a node's instances are announced: its workspace, or an organisation-level
+  # gateway's organisation.
+  defp place_id(%Node{workspace_id: nil, organisation_id: organisation_id}), do: organisation_id
+  defp place_id(%Node{workspace_id: workspace_id}), do: workspace_id
 
   defp broadcast_touched(workspace_id),
     do:
@@ -677,7 +826,7 @@ defmodule Apiary.Nodes do
         )
     end
 
-    broadcast_touched(node.workspace_id)
+    broadcast_touched(place_id(node))
   end
 
   defp over_bound?(node, now) do
@@ -858,7 +1007,7 @@ defmodule Apiary.Nodes do
 
     with {:ok, %{runs: runs}} <- result do
       Enum.each(runs, &Runs.broadcast_changed/1)
-      broadcast_touched(node.workspace_id)
+      broadcast_touched(place_id(node))
     end
 
     result
@@ -873,21 +1022,31 @@ defmodule Apiary.Nodes do
   ## Reading instances
 
   @doc """
-  get_instance/3 is the instance `instance_id` of `node`, a node of the scope's workspace,
-  or nil when the node has no row of it.
+  get_instance/3 is the instance `instance_id` of `node`, a node of the scope's workspace
+  or a gateway of its organisation, or nil when the node has no row of it.
   """
   @spec get_instance(Scope.t(), Node.t() | Ecto.UUID.t(), String.t()) :: Instance.t() | nil
+  def get_instance(scope, %Node{id: id, workspace_id: nil}, instance_id)
+      when is_binary(instance_id),
+      do: get_instance_at(scope, :organisation, id, instance_id)
+
   def get_instance(scope, %Node{id: id}, instance_id), do: get_instance(scope, id, instance_id)
 
   def get_instance(%Scope{} = scope, node_id, instance_id)
       when is_binary(node_id) and is_binary(instance_id) do
-    scope
-    |> instances_query()
-    |> where([i], i.node_id == ^node_id and i.instance_id == ^instance_id)
-    |> Repo.one()
+    get_instance_at(scope, nil, node_id, instance_id)
   end
 
   def get_instance(%Scope{}, _node_id, _instance_id), do: nil
+
+  # Of a node of the scope's workspace, or, `place` `:organisation`, of one of the scope's
+  # organisation's gateways.
+  defp get_instance_at(scope, place, node_id, instance_id) do
+    scope
+    |> instances_query(place)
+    |> where([i], i.node_id == ^node_id and i.instance_id == ^instance_id)
+    |> Repo.one()
+  end
 
   @doc """
   instance_of/2 is the row of the instance `run`, a run of the scope's workspace, ran as:
@@ -902,7 +1061,8 @@ defmodule Apiary.Nodes do
   def instance_of(%Scope{}, %Run{}), do: nil
 
   @doc """
-  activity/3 is what each of `nodes`, nodes of the scope's workspace, is doing at `now`
+  activity/3 is what each of `nodes`, nodes the caller read under the scope (of its
+  workspace, or gateways of its organisation or of one that serves it), is doing at `now`
   (`t:activity/0`), by node id: its instances running now, those with a run alive by the
   lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; the instance
   seen last; and when one of its keys was last used, which still says the node was seen
@@ -919,8 +1079,7 @@ defmodule Apiary.Nodes do
     runs = alive_runs(scope, ids, now)
 
     last =
-      scope
-      |> instances_query()
+      from(i in Instance, where: ^of_scope(scope))
       |> where([i], i.node_id in ^ids)
       |> distinct([i], i.node_id)
       |> order_by([i], asc: i.node_id, desc: i.last_seen_at, desc: i.id)
@@ -935,8 +1094,7 @@ defmodule Apiary.Nodes do
       if instance_ids == [],
         do: %{},
         else:
-          scope
-          |> instances_query()
+          from(i in Instance, where: ^of_scope(scope))
           |> where([i], i.node_id in ^ids and i.instance_id in ^instance_ids)
           |> Repo.all()
           |> Map.new(&{{&1.node_id, &1.instance_id}, &1})
@@ -972,17 +1130,32 @@ defmodule Apiary.Nodes do
     end)
   end
 
+  # The rows of nodes the scope reads: of its workspace, of its organisation's own
+  # gateways, and of the gateways of the organisations that serve it.
+  defp of_scope(%Scope{organisation: %Organisation{id: organisation_id}, workspace: workspace}) do
+    serving = Gateways.serving_organisations(organisation_id)
+
+    own =
+      case workspace do
+        %Workspace{id: workspace_id} ->
+          dynamic([r], is_nil(r.workspace_id) or r.workspace_id == ^workspace_id)
+
+        nil ->
+          dynamic([r], is_nil(r.workspace_id))
+      end
+
+    dynamic(
+      [r],
+      (r.organisation_id == ^organisation_id and ^own) or
+        (r.organisation_id in ^serving and is_nil(r.workspace_id))
+    )
+  end
+
   # When each node's keys were last used, revoked keys too, by node id: a node none of
   # whose keys was used is not among them.
-  defp keys_used(
-         %Scope{
-           organisation: %Organisation{id: organisation_id},
-           workspace: %Workspace{id: workspace_id}
-         },
-         ids
-       ) do
+  defp keys_used(scope, ids) do
     from(k in AccessKey,
-      where: k.organisation_id == ^organisation_id and k.workspace_id == ^workspace_id,
+      where: ^of_scope(scope),
       where: k.node_id in ^ids and not is_nil(k.last_used_at),
       group_by: k.node_id,
       select: {k.node_id, max(k.last_used_at)}
@@ -990,6 +1163,8 @@ defmodule Apiary.Nodes do
     |> Repo.all()
     |> Map.new()
   end
+
+  defp alive_runs(%Scope{workspace: nil}, _ids, _now), do: []
 
   defp alive_runs(%Scope{organisation: organisation, workspace: workspace}, ids, now) do
     from(r in Run,
@@ -1030,10 +1205,18 @@ defmodule Apiary.Nodes do
     |> Map.new(&{&1.id, &1})
   end
 
-  defp instances_query(%Scope{
-         organisation: %Organisation{id: organisation_id},
-         workspace: %Workspace{id: workspace_id}
-       }) do
+  defp instances_query(%Scope{organisation: %Organisation{id: organisation_id}}, :organisation) do
+    from i in Instance,
+      where: i.organisation_id == ^organisation_id and is_nil(i.workspace_id)
+  end
+
+  defp instances_query(
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{id: workspace_id}
+         },
+         nil
+       ) do
     from i in Instance,
       where: i.organisation_id == ^organisation_id and i.workspace_id == ^workspace_id
   end

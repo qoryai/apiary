@@ -41,7 +41,8 @@ defmodule Apiary.AccessKeysTest do
       %{scope: other_scope} = sign_up_fixture()
       %{access_key: key} = access_key_fixture(scope)
 
-      assert_raise FunctionClauseError, fn -> AccessKeys.revoke_access_key(other_scope, key) end
+      assert {:error, :not_found} = AccessKeys.revoke_access_key(other_scope, key)
+      assert Repo.reload!(key).revoked_at == nil
     end
   end
 

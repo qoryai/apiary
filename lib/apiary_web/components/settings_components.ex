@@ -140,7 +140,11 @@ defmodule ApiaryWeb.SettingsComponents do
         key: :general,
         label: gettext("General"),
         icon: "hero-adjustments-horizontal",
-        path: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings"
+        path:
+          if(node.workspace_id,
+            do: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings",
+            else: ~p"/#{organisation}/gateways/#{node}/settings"
+          )
       }
     ]
   end

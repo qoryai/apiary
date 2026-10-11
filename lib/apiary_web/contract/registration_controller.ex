@@ -29,7 +29,9 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   another instance of the gateway attached and a run its batches created among them, and
   so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
-  started.
+  started. A run behind a gateway that may no longer serve its workspace
+  (`Apiary.Runs.Sender.serves?/2`) is `410` `workspace_not_served`, with no run
+  configuration.
 
   The answer is `200`, `application/json`, the run configuration's bytes, with
   `X-Qory-Run-Configuration: sha256=<hex>`, the same string quoted as the `ETag`, and
@@ -98,6 +100,7 @@ defmodule ApiaryWeb.Contract.RegistrationController do
     case Registration.fetch(conn.assigns.access_key, run_id, conn.assigns.instance_id) do
       {:ok, answer} -> answer(conn, answer)
       {:error, :not_found} -> conn |> put_status(404) |> json(%{error: "not_found"})
+      {:error, :workspace_not_served} -> gone(conn, "workspace_not_served")
       {:error, _reason} -> unavailable(conn)
     end
   rescue
@@ -126,6 +129,8 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   end
 
   defp unavailable(conn), do: conn |> put_status(503) |> json(%{error: "unavailable"})
+
+  defp gone(conn, code), do: conn |> put_status(410) |> json(%{error: code})
 
   defp parse(raw_body) do
     case Jason.decode(raw_body) do

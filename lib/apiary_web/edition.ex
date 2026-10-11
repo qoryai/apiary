@@ -48,6 +48,10 @@ defmodule ApiaryWeb.Edition do
     changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
+  - **Gateways and nodes**: `c:gateway_reach_sentence/2`, what the pages of an
+    organisation's gateways say of the workspaces whose nodes can use them;
+    `c:nodes_managed_by_sentence/1`, what the nodes' pages say of who manages the nodes
+    and their access keys, in place of the core's sentence of who may.
   - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
     menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
     `c:gettext_backend/0`, the Gettext backend of the edition's own sentences, beside the
@@ -55,7 +59,7 @@ defmodule ApiaryWeb.Edition do
   """
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryWeb.Nav.Entry
 
   @doc """
@@ -198,6 +202,39 @@ defmodule ApiaryWeb.Edition do
   @callback who_may_sentence(about :: atom, Scope.t()) :: String.t() | nil
 
   @doc """
+  What the pages of an organisation's gateways say of the workspaces whose nodes and node
+  pools can use them, of `organisation`, the gateways' organisation: one sentence,
+  translated. `kind` says where it stands:
+
+  - `:intro`, under the heading of the organisation's Gateways page;
+  - `:who_can_use`, on an organisation-level gateway's Overview;
+  - `:default_row`, the same Overview's line for the gateway that is the organisation's
+    default.
+
+  The core's sentences name the workspaces of `organisation` alone, as the core's
+  gateways serve no other organisation's: "Nodes in any workspace of Acme can use the
+  gateways added here. A workspace can also add gateways that only its nodes use.",
+  "Nodes in any workspace of Acme can use it." and "The default gateway for workspaces in
+  Acme that don't set one.". An edition whose organisation-level gateways also serve the
+  workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
+  in its own words.
+  """
+  @callback gateway_reach_sentence(
+              kind :: :intro | :who_can_use | :default_row,
+              organisation :: %Organisation{}
+            ) :: String.t()
+
+  @doc """
+  What the nodes' pages say of who manages the nodes, node pools and access keys of
+  `organisation`, the page's: one sentence, translated, or nil for the core's own, which
+  says who may by level ("Only owners and admins add nodes.", "An owner or admin adds
+  nodes."). It stands in place of them on a node's page and its Access key tab, where a
+  person may not change the node or its keys, and on the empty Nodes list, where they may
+  not add one.
+  """
+  @callback nodes_managed_by_sentence(organisation :: %Organisation{}) :: String.t() | nil
+
+  @doc """
   The sections the edition adds to the organisation's settings, each a page of its own, in
   the list beside the settings (`ApiaryWeb.SettingsComponents`), after the core's.
   """
@@ -288,7 +325,9 @@ defmodule ApiaryWeb.Edition do
     above_policy_link: 1,
     reserved_slugs: 0,
     product_name: 0,
-    gettext_backend: 0
+    gettext_backend: 0,
+    gateway_reach_sentence: 2,
+    nodes_managed_by_sentence: 1
   ]
 
   defmacro __using__(_opts) do

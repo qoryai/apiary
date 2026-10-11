@@ -44,7 +44,11 @@ defmodule Apiary.Policy.Resolution do
      it finds first). A `*.` allow of the level above held to paths overrides every lower
      allow it covers instead, whatever its rank: the level above is never refused for a
      rule below it.
-  5. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
+  5. **A rule whose host the grammar refuses** (`Apiary.Policy.Grammar.host?/1`), stored
+     before the grammar refused it, such as the address `127.1`, is not in force
+     (`Apiary.Policy.Entry`'s `reason: :out_of_grammar`) and is left out of the document:
+     the gateway would refuse the whole document for it.
+  6. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
      the connection by `deny`, then by `allow`, and only then the request by `paths`
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
@@ -127,6 +131,7 @@ defmodule Apiary.Policy.Resolution do
     entries =
       entries
       |> only_above_allows(above)
+      |> out_of_grammar()
       |> same_subject()
       |> covered_by_deny()
       |> under_allow()
@@ -181,6 +186,17 @@ defmodule Apiary.Policy.Resolution do
   end
 
   defp only_above_allows(entries, _above), do: entries
+
+  # A rule stored before the grammar refused its host (an address such as `127.1`, which
+  # the gateway refuses the whole document for) is struck before anything meets: it is in
+  # no list, covers nothing, and the page says why.
+  defp out_of_grammar(entries) do
+    Map.new(entries, fn {index, entry} ->
+      if Grammar.host?(entry.host),
+        do: {index, entry},
+        else: {index, %{entry | in_force: false, reason: :out_of_grammar}}
+    end)
+  end
 
   # Rules that meet on the same host: the highest precedence decides it whole.
   defp same_subject(entries) do

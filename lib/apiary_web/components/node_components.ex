@@ -9,6 +9,11 @@ defmodule ApiaryWeb.NodeComponents do
   (`enrol_command/3`), and the notice that machines can't reach a loopback address
   (`unreachable_server/1`). And what a node that chose a gateway is told wherever it is
   told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`).
+  And what the pages say of a gateway wherever it lives: where its page is
+  (`gateway_path/2`), its name, with its organisation's where that is not the node's
+  (`gateway_name/2`), whether the console offers gateways at the organisation
+  (`organisation_gateways?/0`), and who uses an organisation's gateway now
+  (`using_words/2`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -21,7 +26,9 @@ defmodule ApiaryWeb.NodeComponents do
   """
   use ApiaryWeb, :html
 
+  alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Organisation
   alias ApiaryWeb.People
 
   attr :id, :string, required: true
@@ -298,6 +305,11 @@ defmodule ApiaryWeb.NodeComponents do
   attr :gateway, :any, required: true, doc: "the gateway the node's runs go through, or nil"
   attr :connected, :boolean, required: true, doc: "whether the gateway holds an active key"
 
+  attr :path, :string,
+    default: nil,
+    doc:
+      "the page of a gateway of another organisation, where the reader opens it (`gateway_path/2`)"
+
   def through_gateway(assigns) do
     assigns =
       assign(assigns,
@@ -309,14 +321,29 @@ defmodule ApiaryWeb.NodeComponents do
     ~H"""
     <div :if={@gateway} id={@id}>
       <.notice kind={:info}>
-        <.rich text={
-          rich_gettext(
-            "Runs of %{name} go through the gateway %{gateway}, at %{url}.",
-            name: @node.name,
-            gateway: @gateway.name,
-            url: {:m, @gateway.url}
-          )
-        } />
+        <.rich
+          :if={@gateway.organisation_id == @node.organisation_id}
+          text={
+            rich_gettext(
+              "Runs of %{name} go through the gateway %{gateway}, at %{url}.",
+              name: @node.name,
+              gateway: @gateway.name,
+              url: {:m, @gateway.url}
+            )
+          }
+        />
+        <.rich
+          :if={@gateway.organisation_id != @node.organisation_id}
+          text={
+            rich_gettext(
+              "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}.",
+              name: @node.name,
+              gateway: if(@path, do: {:link, @path, @gateway.name}, else: @gateway.name),
+              organisation: organisation_name(@gateway),
+              url: {:m, @gateway.url}
+            )
+          }
+        />
         <span :if={!@connected} id={"#{@id}-unconnected"}>
           {gettext("%{gateway} has no active access key, so it isn't connected.",
             gateway: @gateway.name
@@ -334,12 +361,19 @@ defmodule ApiaryWeb.NodeComponents do
   gateway_field/1 is the field of a node's or a pool's form that chooses its gateway,
   `node[gateway]`: Default gateway, offered only where `offer_default` (a default
   resolves for the workspace, or the node is on it already, which keeping asks nothing
-  of); Direct; and each gateway the node may name, by name. It shows the errors
+  of); Direct; and each gateway the node may name, by name (`Apiary.Gateways.gateway_choices/1`,
+  by level). Where the gateways are of more than one level, they are grouped by it: "This
+  workspace", then the node's organisation, then each organisation that serves it in the
+  order their defaults resolve (`Apiary.Gateways.levels/1`), each named. It shows the errors
   `Apiary.Nodes` gives `gateway_choice` and `gateway_id` once the form was sent.
   `choice_params/1` turns what it sends into those two fields.
   """
   attr :form, Phoenix.HTML.Form, required: true
-  attr :gateways, :list, required: true, doc: "the gateways the node may name"
+
+  attr :gateways, :list,
+    required: true,
+    doc: "the gateways the node may name, by level, each with its organisation"
+
   attr :default, :any, required: true, doc: "the workspace's default gateway, or nil"
   attr :offer_default, :boolean, required: true
   attr :disabled, :boolean, default: false
@@ -359,8 +393,7 @@ defmodule ApiaryWeb.NodeComponents do
 
     options =
       if(assigns.offer_default, do: [{gettext("Default gateway"), "default"}], else: []) ++
-        [{gettext("Direct"), "direct"}] ++
-        Enum.map(assigns.gateways, &{&1.name, &1.id}) ++ gone
+        [{gettext("Direct"), "direct"}] ++ gateway_options(assigns.gateways) ++ gone
 
     errors =
       if changeset.action,
@@ -390,17 +423,49 @@ defmodule ApiaryWeb.NodeComponents do
       value={@value}
       options={@options}
       errors={@errors}
-      hint={
-        @default &&
-          gettext(
-            "On Default gateway, runs go through %{name}, this workspace's default. On Direct, they go through no gateway.",
-            name: @default.name
-          )
-      }
+      hint={@default && default_hint(@default)}
       disabled={@disabled}
     />
     """
   end
+
+  # The gateways a node may name, as the select offers them: by name, in one list while
+  # they are all of one level, else in a group a level.
+  defp gateway_options(gateways) do
+    case Enum.chunk_by(gateways, &level_key/1) do
+      [] ->
+        []
+
+      [one] ->
+        Enum.map(one, &{&1.name, &1.id})
+
+      levels ->
+        Enum.map(levels, fn [first | _] = level ->
+          {level_label(first), Enum.map(level, &{&1.name, &1.id})}
+        end)
+    end
+  end
+
+  defp level_key(%Node{workspace_id: nil, organisation_id: id}), do: {:organisation, id}
+  defp level_key(%Node{workspace_id: id}), do: {:workspace, id}
+
+  defp level_label(%Node{workspace_id: nil} = gateway), do: organisation_name(gateway)
+  defp level_label(%Node{}), do: gettext("This workspace")
+
+  defp default_hint(%Node{workspace_id: nil} = default),
+    do:
+      gettext(
+        "On Default gateway, runs go through %{name}, the default for %{organisation}. On Direct, they go through no gateway.",
+        name: default.name,
+        organisation: organisation_name(default)
+      )
+
+  defp default_hint(%Node{} = default),
+    do:
+      gettext(
+        "On Default gateway, runs go through %{name}, this workspace's default. On Direct, they go through no gateway.",
+        name: default.name
+      )
 
   @doc """
   choice_params/1 is a node's form's parameters with what `gateway_field/1` sent, `gateway`,
@@ -424,17 +489,20 @@ defmodule ApiaryWeb.NodeComponents do
   @shown 5
 
   @doc """
-  in_use_words/2 is why a gateway was not deleted, from what
+  in_use_words/3 is why a gateway was not deleted, from what
   `Apiary.Gateways.delete_blockers/1` answered: the nodes that point to it, and the runs
-  going through it (`runs`, when the answer has them). Only the nodes and runs of the
-  scope's workspace are named, by name and by run id, the first #{@shown} of each, then
-  "and N more", which counts the rest and those of any other workspace too. Nil when
-  nothing stops the deletion.
+  going through it (`runs`, when the answer has them). Only the nodes and runs the reader
+  may open are named, by name and by run id, the first #{@shown} of each, then
+  "and N more", which counts the rest and those of any other workspace too. For a
+  workspace's gateway, those are the ones of the scope's workspace; for an organisation's,
+  `reached`, the ids of the workspaces the reader reaches (`reached_workspaces/1`), and
+  the rest are counted as in workspaces they don't have access to. Nil when nothing stops
+  the deletion.
   """
-  @spec in_use_words(Apiary.Accounts.Scope.t(), map) :: String.t() | nil
-  def in_use_words(scope, blockers) do
-    nodes = listed(scope, Map.get(blockers, :nodes, []), & &1.name, :nodes)
-    runs = listed(scope, Map.get(blockers, :runs, []), & &1.run_id, :runs)
+  @spec in_use_words(Scope.t(), map, MapSet.t() | nil) :: String.t() | nil
+  def in_use_words(scope, blockers, reached \\ nil) do
+    nodes = listed(scope, reached, Map.get(blockers, :nodes, []), & &1.name, :nodes)
+    runs = listed(scope, reached, Map.get(blockers, :runs, []), & &1.run_id, :runs)
 
     cond do
       nodes && runs ->
@@ -460,30 +528,30 @@ defmodule ApiaryWeb.NodeComponents do
     end
   end
 
-  # The names or ids of the scope's workspace's rows, the first few, then how many more,
+  # The names or ids of the rows the reader may open, the first few, then how many more,
   # those of another workspace among them, never named.
-  defp listed(scope, rows, name, what) do
-    {here, elsewhere} =
-      Enum.split_with(
-        rows,
-        &(&1.organisation_id == scope.organisation.id and &1.workspace_id == scope.workspace.id)
-      )
-
+  defp listed(scope, reached, rows, name, what) do
+    {here, elsewhere} = Enum.split_with(rows, &named_here?(scope, reached, &1))
     {shown, rest} = here |> Enum.map(name) |> Enum.split(@shown)
     more = length(rest) + length(elsewhere)
 
     cond do
       rows == [] -> nil
-      shown == [] -> elsewhere_words(what, more)
+      shown == [] -> elsewhere_words(what, reached, more)
       more == 0 -> Enum.join(shown, ", ")
       true -> Enum.join(shown, ", ") <> " " <> more_words(more)
     end
   end
 
+  defp named_here?(scope, nil, row),
+    do: row.organisation_id == scope.organisation.id and row.workspace_id == scope.workspace.id
+
+  defp named_here?(_scope, reached, row), do: MapSet.member?(reached, row.workspace_id)
+
   defp more_words(more),
     do: ngettext("and %{number} more", "and %{number} more", more, number: Format.number(more))
 
-  defp elsewhere_words(:nodes, count),
+  defp elsewhere_words(:nodes, nil, count),
     do:
       ngettext(
         "%{number} node of another workspace",
@@ -492,7 +560,7 @@ defmodule ApiaryWeb.NodeComponents do
         number: Format.number(count)
       )
 
-  defp elsewhere_words(:runs, count),
+  defp elsewhere_words(:runs, nil, count),
     do:
       ngettext(
         "%{number} run of another workspace",
@@ -500,6 +568,238 @@ defmodule ApiaryWeb.NodeComponents do
         count,
         number: Format.number(count)
       )
+
+  defp elsewhere_words(:nodes, _reached, count),
+    do:
+      ngettext(
+        "%{number} node in a workspace you don't have access to",
+        "%{number} nodes in workspaces you don't have access to",
+        count,
+        number: Format.number(count)
+      )
+
+  defp elsewhere_words(:runs, _reached, count),
+    do:
+      ngettext(
+        "%{number} run in a workspace you don't have access to",
+        "%{number} runs in workspaces you don't have access to",
+        count,
+        number: Format.number(count)
+      )
+
+  @doc """
+  using_words/2 says which workspaces' nodes use an organisation's gateway now, from
+  `Apiary.Gateways.workspaces_using/1`: "Nodes in Acme › Main, Beta › Build and 2 more
+  workspaces use it now.", naming each workspace the reader reaches (`reached`, from
+  `reached_workspaces/1`) by its organisation and its name, and counting the rest; "No
+  node uses it now." when there are none.
+  """
+  @spec using_words([%Apiary.Organisations.Workspace{}], MapSet.t()) :: String.t()
+  def using_words([], _reached), do: gettext("No node uses it now.")
+
+  def using_words(workspaces, reached) do
+    {named, others} = Enum.split_with(workspaces, &MapSet.member?(reached, &1.id))
+
+    names =
+      Enum.map(
+        named,
+        &gettext("%{organisation} › %{workspace}",
+          organisation: &1.organisation.name,
+          workspace: &1.name
+        )
+      )
+
+    list =
+      case {names, length(others)} do
+        {names, 0} ->
+          Enum.join(names, ", ")
+
+        {[], count} ->
+          ngettext("%{number} workspace", "%{number} workspaces", count,
+            number: Format.number(count)
+          )
+
+        {names, count} ->
+          Enum.join(names, ", ") <>
+            " " <>
+            ngettext("and %{number} more workspace", "and %{number} more workspaces", count,
+              number: Format.number(count)
+            )
+      end
+
+    gettext("Nodes in %{list} use it now.", list: list)
+  end
+
+  @doc """
+  reached_workspaces/1 is the ids of the workspaces the reader reaches, from the places
+  the console lists for them (`Apiary.Organisations.list_places/1`, the pages'
+  `memberships`): the workspaces a page may name to them.
+  """
+  @spec reached_workspaces([map]) :: MapSet.t()
+  def reached_workspaces(places) when is_list(places),
+    do: MapSet.new(for place <- places, %{id: id} <- Map.get(place, :workspaces, []), do: id)
+
+  @doc """
+  organisation_gateways?/0 says whether the console offers gateways at an organisation:
+  its Gateways page, the sidebar's entry and New's, where an organisation may have more
+  than one workspace (`c:Apiary.Edition.limits/0`). With one workspace an organisation's
+  gateways stay at the workspace.
+  """
+  @spec organisation_gateways?() :: boolean
+  def organisation_gateways?, do: Apiary.Edition.limits().workspaces != 1
+
+  @doc """
+  gateway_path/2 is the page of `gateway` the reader of `scope` opens: a workspace's
+  gateway under the workspace's Nodes, an organisation's under its Gateways. A gateway of
+  another organisation, whose organisation must be loaded, is under that organisation's
+  Gateways where the reader may read it there (`node.read` at that organisation, their
+  membership of it read from the database); nil where they may not.
+  """
+  @spec gateway_path(Scope.t(), Node.t()) :: String.t() | nil
+  def gateway_path(%Scope{organisation: %{id: id} = organisation}, %Node{
+        organisation_id: id,
+        workspace_id: nil,
+        public_id: public_id
+      }),
+      do: ~p"/#{organisation}/gateways/#{public_id}"
+
+  def gateway_path(%Scope{organisation: %{id: id} = organisation, workspace: workspace}, %Node{
+        organisation_id: id,
+        public_id: public_id
+      })
+      when not is_nil(workspace),
+      do: ~p"/#{organisation}/#{workspace}/nodes/#{public_id}"
+
+  def gateway_path(
+        %Scope{user: %Apiary.Accounts.User{}} = scope,
+        %Node{workspace_id: nil, organisation: %Organisation{} = organisation} = gateway
+      ) do
+    if organisation_gateways?() and reads_gateway_at?(scope, organisation, gateway),
+      do: ~p"/#{organisation}/gateways/#{gateway.public_id}"
+  end
+
+  def gateway_path(_scope, _gateway), do: nil
+
+  # Whether the person of `scope` reads `gateway` at its organisation, another than the
+  # scope's, as their membership of that organisation stands.
+  defp reads_gateway_at?(scope, organisation, gateway) do
+    scope
+    |> Scope.in_organisation(organisation)
+    |> Apiary.Access.reload()
+    |> Apiary.Access.can?(:"node.read", gateway)
+  end
+
+  @doc """
+  gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
+  names it: its name alone, or "edge-1 of Acme" for a gateway of another organisation,
+  whose organisation must be loaded.
+  """
+  @spec gateway_name(Ecto.UUID.t(), Node.t()) :: String.t()
+  def gateway_name(organisation_id, %Node{organisation_id: organisation_id, name: name}),
+    do: name
+
+  def gateway_name(_organisation_id, %Node{} = gateway),
+    do:
+      gettext("%{gateway} of %{organisation}",
+        gateway: gateway.name,
+        organisation: organisation_name(gateway)
+      )
+
+  @doc """
+  managed_by/3 is what a nodes' page says, to a person of `scope` who may not take
+  `action`, of who manages the nodes: the edition's sentence
+  (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`), else who may take it
+  (`ApiaryWeb.Access.who_may/3`, `default` in the core's words).
+  """
+  @spec managed_by(Scope.t(), atom, String.t()) :: String.t()
+  def managed_by(%Scope{} = scope, action, default),
+    do:
+      ApiaryWeb.Edition.nodes_managed_by_sentence(scope.organisation) ||
+        ApiaryWeb.Access.who_may(scope, action, default)
+
+  defp organisation_name(%Node{organisation: %Organisation{name: name}}), do: name
+
+  @doc """
+  limit_refused/1 is what a node's pages say to a person of `scope` who changes the node
+  but not a pool's instance limit (`node.set_limit`): the edition's words of who may
+  (`ApiaryWeb.Access.who_may/3`), else "You can't change the instance limit.".
+  """
+  @spec limit_refused(Scope.t()) :: String.t()
+  def limit_refused(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"node.set_limit",
+        gettext("You can't change the instance limit.")
+      )
+
+  @doc """
+  node_place/1 is where a node's page stands, from its path's parameters: `:workspace`,
+  under a workspace's Nodes, or `:organisation`, under the organisation's Gateways.
+  """
+  @spec node_place(map) :: :workspace | :organisation
+  def node_place(%{"workspace" => _workspace}), do: :workspace
+  def node_place(%{}), do: :organisation
+
+  @doc """
+  find_node/3 is the node a page at `place` opens: a node, pool or gateway of the scope's
+  workspace in use, or a gateway in use of the scope's organisation, where the console
+  offers them (`organisation_gateways?/0`); nil for any other.
+  """
+  @spec find_node(Scope.t(), :workspace | :organisation, String.t()) :: Node.t() | nil
+  def find_node(scope, :workspace, public_id), do: Apiary.Nodes.get_node(scope, public_id)
+
+  def find_node(scope, :organisation, public_id) do
+    if organisation_gateways?(),
+      do: Apiary.Nodes.get_organisation_gateway(scope, public_id)
+  end
+
+  @doc """
+  nodes_path/2 is the list a node's page at `place` belongs to: the workspace's Nodes, or
+  the organisation's Gateways.
+  """
+  @spec nodes_path(Scope.t(), :workspace | :organisation) :: String.t()
+  def nodes_path(scope, :workspace), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+  def nodes_path(scope, :organisation), do: ~p"/#{scope.organisation}/gateways"
+
+  @doc "node_base/3 is the path of the page at `place` of the node `public_id`."
+  @spec node_base(Scope.t(), :workspace | :organisation, String.t()) :: String.t()
+  def node_base(scope, :workspace, public_id),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{public_id}"
+
+  def node_base(scope, :organisation, public_id),
+    do: ~p"/#{scope.organisation}/gateways/#{public_id}"
+
+  @doc "nodes_label/1 is the name of the list a node's page at `place` belongs to."
+  @spec nodes_label(:workspace | :organisation) :: String.t()
+  def nodes_label(:workspace), do: gettext("Nodes")
+  def nodes_label(:organisation), do: gettext("Gateways")
+
+  @doc "nodes_nav/1 is the sidebar's entry of the list a node's page at `place` belongs to."
+  @spec nodes_nav(:workspace | :organisation) :: :nodes | :gateways
+  def nodes_nav(:workspace), do: :nodes
+  def nodes_nav(:organisation), do: :gateways
+
+  @doc """
+  reads_nodes?/2 says whether the person of `scope` still reads the nodes at `place`: the
+  workspace's, or the organisation's gateways.
+  """
+  @spec reads_nodes?(Scope.t(), :workspace | :organisation) :: boolean
+  def reads_nodes?(scope, :workspace),
+    do: Apiary.Access.can?(scope, :"node.read", scope.workspace)
+
+  def reads_nodes?(scope, :organisation),
+    do: Apiary.Access.can?(scope, :"node.read", scope.organisation)
+
+  @doc """
+  no_longer_member/1 tells one whose membership no longer reaches the page's place, a
+  workspace's or the organisation's, that it is gone.
+  """
+  @spec no_longer_member(:workspace | :organisation) :: String.t()
+  def no_longer_member(:workspace), do: gettext("You are no longer a member of this workspace.")
+
+  def no_longer_member(:organisation),
+    do: gettext("You are no longer a member of this organisation.")
 
   @doc "url_hint/0 is what a gateway's URL field says under it, as it is made and changed."
   @spec url_hint() :: String.t()

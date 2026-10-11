@@ -5,6 +5,7 @@
 # run's exit saying how the run ended, discovery listing the one workspace an access
 # key's node or node pool belongs to, and a run that goes through a gateway: the run key,
 # the registration's gateway shape, the attach, the outcome and the end member, a
-# gateway's key in discovery and enrolment, and a gateway's enrolment request and its
-# signed answer.
-55f2d9f4e930345f6d518a674a4ab8c13d50aa94
+# gateway's key in discovery and enrolment, a gateway's enrolment request and its signed
+# answer, a gateway's discovery document without workspaces, and the refusals of a
+# gateway that may no longer serve a run's workspace.
+0acc90a7bef0c45e624fc380d51759eeea940d23

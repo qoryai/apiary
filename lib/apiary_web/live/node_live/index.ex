@@ -43,7 +43,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Gateways, Nodes, Runs}
+  alias Apiary.{Access, Gateways, Nodes, Repo, Runs}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
   alias ApiaryWeb.NodeComponents
@@ -101,8 +101,15 @@ defmodule ApiaryWeb.NodeLive.Index do
     if socket.assigns.may_create do
       kind = form_kind(action)
       scope = socket.assigns.current_scope
-      default = if kind != :gateway, do: Gateways.default_gateway_for(scope.workspace)
-      gateways = if kind != :gateway, do: Gateways.gateway_choices(scope), else: []
+
+      default =
+        if kind != :gateway,
+          do: scope.workspace |> Gateways.default_gateway_for() |> Repo.preload(:organisation)
+
+      gateways =
+        if kind != :gateway,
+          do: scope |> Gateways.gateway_choices() |> Repo.preload(:organisation),
+          else: []
 
       socket
       |> assign(gateways: gateways, default: default)
@@ -149,7 +156,14 @@ defmodule ApiaryWeb.NodeLive.Index do
     scope = socket.assigns.current_scope
     filters = socket.assigns.filters
     now = DateTime.utc_now()
-    nodes = Nodes.list_nodes(scope, Map.take(filters, [:q, :kind]))
+    narrowing = Map.take(filters, [:q, :kind])
+
+    nodes =
+      Enum.sort_by(
+        Nodes.list_nodes(scope, narrowing) ++ organisation_gateways(scope, narrowing),
+        &{&1.name, &1.id}
+      )
+
     activity = Nodes.activity(scope, nodes, now)
     running? = &(activity[&1.id].running != [])
     shown = Enum.filter(nodes, &in_view?(filters.view, running?.(&1)))
@@ -163,8 +177,27 @@ defmodule ApiaryWeb.NodeLive.Index do
         running: Enum.count(nodes, running?),
         idle: Enum.count(nodes, &(not running?.(&1)))
       },
-      counts: Nodes.count_nodes(scope)
+      counts:
+        Map.update!(
+          Nodes.count_nodes(scope),
+          :gateway,
+          &(&1 + length(organisation_gateways(scope, %{})))
+        ),
+      default_id:
+        case Gateways.default_gateway_for(scope.workspace) do
+          nil -> nil
+          default -> default.id
+        end
     )
+  end
+
+  # The gateways of the workspace's organisation that live at the organisation, which its
+  # nodes can use: rows of the list beside the workspace's own. Those of any other
+  # organisation are not; a node that uses one names it on its page.
+  defp organisation_gateways(scope, narrowing) do
+    scope
+    |> Nodes.list_serving_gateways(narrowing)
+    |> Enum.filter(&(&1.organisation_id == scope.organisation.id))
   end
 
   defp in_view?(:running, running?), do: running?
@@ -294,16 +327,16 @@ defmodule ApiaryWeb.NodeLive.Index do
     if Access.can?(scope, :"node.create", scope.workspace) do
       socket
       |> assign(:may_set_limit, false)
-      |> put_flash(:error, gettext("You can't change the instance limit."))
+      |> put_flash(:error, NodeComponents.limit_refused(scope))
     else
       refused(socket)
     end
   end
 
-  # Who may add a node, in the edition's words where it has some.
+  # Who may add a node, or who manages the nodes, in the edition's words where it has some.
   defp only_admins_add(scope),
     do:
-      ApiaryWeb.Access.who_may(
+      NodeComponents.managed_by(
         scope,
         :"node.create",
         gettext("Only owners and admins add nodes.")
@@ -362,7 +395,10 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp row_id({:more, node, _more}), do: "node-#{node.public_id}-more"
 
-  defp node_path(scope, node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}"
+  # A node's page: the workspace's under its Nodes, an organisation's gateway's under the
+  # organisation's Gateways.
+  defp node_path(scope, node),
+    do: NodeComponents.gateway_path(scope, node)
 
   # Forager's version a node's line says: its running instance's, else the last seen's.
   defp forager_version(%{running: [%{forager_version: version} | _]}) when is_binary(version),
@@ -506,7 +542,10 @@ defmodule ApiaryWeb.NodeLive.Index do
               "Add a node for a machine that is always there, or a node pool for instances that come and go."
             )}
           </p>
-          <p :if={!@may_create}>{gettext("An owner or admin adds nodes.")}</p>
+          <p :if={!@may_create}>
+            {ApiaryWeb.Edition.nodes_managed_by_sentence(@current_scope.organisation) ||
+              gettext("An owner or admin adds nodes.")}
+          </p>
           <:actions :if={@may_create}>
             <.button patch={new_path(@current_scope, :node)}>{gettext("New node")}</.button>
             <.button patch={new_path(@current_scope, :pool)}>{gettext("New node pool")}</.button>
@@ -640,10 +679,16 @@ defmodule ApiaryWeb.NodeLive.Index do
                     {node.name}
                   </.link>
                   <span class="q-side q-mono">{node.public_id}</span>
-                  <.state_word
-                    :if={node.kind == :gateway and node.default_gateway}
-                    id={"node-#{node.public_id}-default"}
+                  <span
+                    :if={is_nil(node.workspace_id)}
+                    id={"node-#{node.public_id}-level"}
+                    class="q-side"
                   >
+                    {gettext("Set for %{organisation}",
+                      organisation: @current_scope.organisation.name
+                    )}
+                  </span>
+                  <.state_word :if={node.id == @default_id} id={"node-#{node.public_id}-default"}>
                     {gettext("Default")}
                   </.state_word>
                 </span>

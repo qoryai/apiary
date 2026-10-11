@@ -229,6 +229,22 @@ defmodule Apiary.Runs.Sender do
     do: if(opts[:lock], do: Ecto.Query.lock(query, "FOR UPDATE"), else: query)
 
   @doc """
+  Whether the gateway of `access_key` may still serve `run`'s workspace
+  (`Apiary.Gateways.may_serve?/2`), for a run through a gateway: asked at each batch,
+  heartbeat, reload and repeated attach, as at the registration and the first attach, so
+  a gateway acts for no run of a workspace it may no longer serve. Always true for a
+  direct run. The key's node must be loaded.
+  """
+  @spec serves?(Run.t(), AccessKey.t()) :: boolean
+  def serves?(%Run{} = run, %AccessKey{node: %Node{} = gateway}) do
+    not Run.through_gateway?(run) or
+      Apiary.Gateways.may_serve?(gateway, %Workspace{
+        id: run.workspace_id,
+        organisation_id: run.organisation_id
+      })
+  end
+
+  @doc """
   The key `run`'s place is read under, for what `access_key` asks of it: `access_key`
   itself for a direct run, whose node is the key's; for a run through a gateway, a key
   that stands for the run's own workspace and organisation, which is never stored and
