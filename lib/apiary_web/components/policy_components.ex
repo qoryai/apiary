@@ -1042,7 +1042,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   An error is said under the field it is about, with its repair as a link, and marks the
   field (`aria-invalid`, `aria-describedby`); a refusal, the reading's or the domain's
-  (`error`), stands in the reading's place, above the foot. The button is never off: the
+  (`error`, until the form is edited again), stands in the reading's place, above the foot. The button is never off: the
   page answers a press with what is wrong and the focus on the first field it names.
 
   The events are the page's (`ApiaryWeb.PolicyLive.Common`): `rule_validate` on a change,
@@ -1215,7 +1215,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <%!-- Polite, and keyed by the kind of reading: a new kind is announced, a reading
              that only follows the typing is not. --%>
         <div
-          :if={!@refusal? && @reading.preview}
+          :if={!@refusal? && !@error && @reading.preview}
           id={"#{@id}-preview"}
           class={["q-rule-preview", "q-rule-preview-#{elem(@reading.preview, 0)}"]}
           aria-live="polite"

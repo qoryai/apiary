@@ -556,6 +556,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   defp fields(_params, _names), do: %{}
 
+  # The rule form edited again: the domain's refusal of the last save is taken back, and
+  # the read-back stands in its place once more. The composer keeps its line until a save.
+  defp edited(socket, "rule_" <> _event), do: assign(socket, :write_error, nil)
+  defp edited(socket, _composer_event), do: socket
+
   @doc "The shared events of the rule form and the composer. Returns `{:halt, socket}` when it handled the event, `:cont` otherwise."
   def handle_event(event, params, socket)
       when event in ~w(rule_validate composer_change) and is_map(params) do
@@ -573,7 +578,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         do: Map.put(params, "every", "false"),
         else: params
 
-    {:halt, read(socket, params)}
+    {:halt, socket |> edited(event) |> read(params)}
   end
 
   def handle_event("composer_action", %{"action" => action}, socket)
@@ -596,7 +601,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
     field = if params["focus"] == "paths", do: "#{form}-paths", else: "#{form}-host"
 
     {:halt,
-     socket |> assign(:composer_open, true) |> read(values) |> set_fields() |> focus(field)}
+     socket
+     |> edited(event)
+     |> assign(:composer_open, true)
+     |> read(values)
+     |> set_fields()
+     |> focus(field)}
   end
 
   # Every path, asked for in so many words: on the form the focus goes to Paths, the field
@@ -605,7 +615,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
     form = socket.assigns.form_id
     to = if form == "policy-composer", do: "#{form}-add", else: "#{form}-paths"
 
-    {:halt, socket |> read(%{"every" => "true", "paths" => ""}) |> set_fields() |> focus(to)}
+    {:halt,
+     socket
+     |> edited(event)
+     |> read(%{"every" => "true", "paths" => ""})
+     |> set_fields()
+     |> focus(to)}
   end
 
   def handle_event(event, %{"hosts" => hosts}, socket)

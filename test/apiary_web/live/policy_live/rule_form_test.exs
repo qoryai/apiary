@@ -512,10 +512,26 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert has_element?(view, "#policy-rule-title", "New rule")
       refute rule(scope, "files.cdn.example")
 
+      # The refusal stands in the read-back's place, above the foot.
+      refute has_element?(view, "#policy-rule-preview")
       html = render(view)
 
       assert :binary.match(html, ~s(id="policy-rule-write-error")) <
                :binary.match(html, ~s(id="policy-rule-save"))
+
+      # Edited again, the read-back is back and the refusal gone.
+      type(view, %{host: "files.cdn.example", paths: "/v1/files/*"})
+      refute has_element?(view, "#policy-rule-write-error")
+      assert has_element?(view, "#policy-rule-preview")
+      assert read(view, "#policy-rule-reads") =~ "Allow files.cdn.example on 1 path"
+
+      # A repair link is an edit too.
+      type(view, %{host: "files.cdn.example", paths: ""})
+      add(view)
+      refute has_element?(view, "#policy-rule-preview")
+      render_click(view, "rule_use", %{"host" => "files.cdn.example", "paths" => "/v1/a"})
+      refute has_element?(view, "#policy-rule-write-error")
+      assert has_element?(view, "#policy-rule-preview")
 
       # Cancel leaves the refusal on the form.
       view |> element("#policy-rule-save-cancel") |> render_click()
@@ -648,6 +664,40 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       render_patch(view, workspace_path(scope, "/policy/rules/new"))
       assert_patch(view, workspace_path(scope, "/policy"))
       refute has_element?(view, "#policy-rule-form")
+    end
+
+    test "a hand-made save is refused, and nothing is written",
+         %{conn: conn, scope: scope} = context do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      as_reader(context)
+      view = open(conn, scope)
+
+      for {change, save} <- [{"rule_validate", "rule_save"}, {"composer_change", "composer_save"}] do
+        render_hook(view, change, %{"rule" => %{"host" => "crafted.example", "paths" => ""}})
+        render_hook(view, save, %{})
+      end
+
+      assert Process.alive?(view.pid)
+      refute rule(scope, "crafted.example")
+      assert length(Policy.list_rules(scope, nil)) == 1
+    end
+
+    test "is sent back from a target's form addresses to its Policy tab",
+         %{conn: conn, scope: scope} = context do
+      started_run(scope, shop())
+      [%{target: target}] = Policy.list_targets(scope)
+      {:ok, own} = Policy.allow(scope, target, %{host: "mcp.acme.example"})
+      path = target_path(scope, target.system, target.path, ["policy"])
+      as_reader(context)
+
+      for rest <- ["/rules/new", "/rules/#{own.id}/edit"] do
+        {:ok, view, _html} = live(conn, path <> rest)
+        render_async(view, 5_000)
+        assert text(view, "#flash-error") == "You can read this policy but not change it."
+        refute has_element?(view, "#policy-rule-form")
+        assert has_element?(view, "#policy-rules")
+        refute has_element?(view, "#policy-rules-add")
+      end
     end
   end
 
