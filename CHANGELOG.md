@@ -177,6 +177,28 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   names a workspace by it: the console neither shows nor uses it. With it every access
   key's discovery digest changes once, when this is deployed, so each Forager reads
   discovery again once.
+- Gateways, a third kind of node beside the node and the node pool: `ng_` and 16
+  characters, with an address (`url`: `https://`, or `http://` to a loopback host, a host
+  and an optional port, nothing more, at most 2048 characters) and no instance limit. A
+  gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
+  node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
+  gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
+  may serve, sorted. Each node and node pool chooses how its runs reach Qory Apiary:
+  directly, through its workspace's default gateway, or through a gateway it names, one
+  that may serve its workspace; the choice can be changed, applies to the registrations
+  after it, and is direct for every node and pool there before and for a new one unless it
+  says otherwise. A workspace's first gateway becomes its default, and only a gateway made
+  when no default resolves does so by itself, so adding a second one moves no node; a
+  person moves the mark (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only
+  when no node names it and no node on the default resolves to it; the refusal names those
+  nodes. After a deletion no node moves, and when no default resolves for the workspace any
+  more, the oldest gateway left becomes the default. Making, changing and deleting a
+  gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
+  as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
+  workspace's default gateway, where a node's next run goes, the workspaces a gateway may
+  serve and the gateways a node may name. Nothing in the console shows gateways yet.
+- `gateways` is a reserved workspace slug, refused as the organisation's own page names
+  are; a workspace named Gateways gets the slug `gateways-2`.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a bucket of
   their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
@@ -532,6 +554,20 @@ shape.
 `workspace_public_id()`'s `search_path` to `pg_catalog`, so the function finds
 `gen_random_uuid()` and the others it calls there alone, whatever the session's
 `search_path`; it changes no row.
+`20261011130000_make_a_gateway_a_kind_of_node` lets `nodes.kind` be `gateway`, with an
+`ng_` public id and no instance limit, widening `nodes_kind_check`,
+`nodes_public_id_check` and `nodes_instance_limit_check`; adds `nodes.url`, a gateway's
+address, required for a gateway and NULL otherwise (`nodes_url_check`), and
+`nodes.default_gateway`, false for every existing row, held to a gateway in use
+(`nodes_default_gateway_check`) and to one a workspace (`nodes_default_gateway_index`).
+Rolled back, it refuses while any gateway row is there.
+`20261011131000_let_a_node_choose_its_gateway` adds `nodes.gateway_choice` (`direct`,
+`default` or `named`), `direct` for every existing row and the column's default, and
+`nodes.gateway_id`, a reference to the named gateway's row, NULL for every existing row,
+set NULL when that row is purged while the choice stays `named`, with the check
+`nodes_gateway_choice_check`, an index, and the trigger `nodes_gateway_is_a_gateway`,
+which refuses a reference to a row that is not a gateway in use. Rolled back, every node is
+direct again.
 
 ### Upgrading
 
