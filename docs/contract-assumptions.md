@@ -732,9 +732,9 @@ counts by its own `time`, corrected by the run's clock offset (the smallest arri
 contract's liveness for the server says; a run's first heartbeat with no offset before it
 counts at its arrival. Only the server's clock is compared.
 
-Every event of a run reaches the server from one gateway: the node's own, for a run that
-goes directly, or the gateway that attached it, for a run through a gateway; a session's
-heartbeats come through it. So `lost`
+Every event of a run reaches the server from one gateway: Forager's gateway on the node,
+under the node's own keys, for a run that goes directly, or the gateway that attached it,
+for a run through a gateway; a session's heartbeats come through it. So `lost`
 means the gateway sent nothing recent for the run. A session that falls silent is the
 gateway's to notice, and it ends the run `failed` with `session_lost`, an exit the server
 reads as Lost, and final (How a run ends). The lost-run check's `lost` is not final: a
