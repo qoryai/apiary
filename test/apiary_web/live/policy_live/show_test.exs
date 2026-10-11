@@ -852,6 +852,30 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_patch(view, workspace_path(scope, "/policy/rules/#{id}/edit"))
     end
 
+    test "the old Edit paths event leads only an id in a rule id's form to Edit rule",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      # A crafted id leads nowhere, and the page stays up.
+      for bad <- [
+            %{},
+            %{"id" => %{}},
+            %{"id" => 7},
+            %{"id" => String.duplicate("a", 65)},
+            %{"id" => "a/b"},
+            %{"id" => "../x"},
+            %{"id" => "x?y=1"}
+          ] do
+        render_click(view, "edit_paths", bad)
+        refute_patched(view)
+        assert has_element?(view, "#policy-rules")
+      end
+
+      id = rule(scope, "api.example").id
+      render_click(view, "edit_paths", %{"id" => id})
+      assert_patch(view, workspace_path(scope, "/policy/rules/#{id}/edit"))
+    end
+
     test "the menu changes a rule's action, and the toast names the version",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
