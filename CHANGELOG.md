@@ -276,8 +276,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   change its name and URL; its deletion is confirmed in place, and refused while nodes
   point to it or runs go through it: "Nodes use this gateway: …", the first five of the
   workspace by name, then "and N more", which counts the rest and any of other
-  workspaces, and "Runs are going through this gateway: …", the first five by run id,
-  then "and N more"; both lists when both hold.
+  workspaces, and "Runs are going through this gateway: …", the first five to
+  register, named by run id, then "and N more"; both lists when both hold.
   New node, New node pool and a node's Settings choose its Gateway once the workspace has
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where

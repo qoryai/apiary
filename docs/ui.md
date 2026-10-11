@@ -964,12 +964,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   which moves the mark at once with a flash; then its recent runs and About, without
   instances or an instance limit. Its Settings' General changes its name and its URL.
   Delete gateway… is confirmed in place as a node's is, with a gateway's own sentence;
-  a gateway that nodes still point
-  to, or that runs still go through (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line
-  an error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
+  a gateway that nodes still point to, or that runs still go through
+  (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line an
+  error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
   build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
   and for runs going through it, where the refusal names any, "Runs are going through
-  this gateway: … Delete it once they end.", or both in one sentence. It names the first
+  this gateway: … Delete it once they end.", or both in one notice. It names the first
   five of this workspace, then "and 3 more", which counts those of other workspaces too,
   never named.
 - **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
