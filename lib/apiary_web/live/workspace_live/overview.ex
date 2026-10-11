@@ -1655,9 +1655,16 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   # What the empty workspace's box reads: the nodes and pools in use, their keys not
   # revoked, whether the reader may add a node, the newest node or pool that holds no
   # active key and whether the reader may give it one, and the address the command names.
+  # A gateway is neither: its key connects no machine that runs, so a workspace with
+  # gateways alone reads as one with no node yet.
   defp read_onboarding(scope) do
     counts = Nodes.count_nodes(scope)
-    keys = AccessKeys.list_workspace_node_keys(scope)
+
+    keys =
+      scope
+      |> AccessKeys.list_workspace_node_keys()
+      |> Enum.filter(&(&1.node.kind in Nodes.Node.kinds()))
+
     target = keyless_target(scope, counts, keys)
     may_key? = &Apiary.Access.can?(scope, &1, target)
 
@@ -1682,6 +1689,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     scope
     |> Nodes.list_nodes()
+    |> Enum.filter(&(&1.kind in Nodes.Node.kinds()))
     |> Enum.reject(&MapSet.member?(keyed, &1.id))
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.public_id}, fn -> nil end)
   end
