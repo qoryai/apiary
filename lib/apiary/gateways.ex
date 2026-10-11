@@ -52,8 +52,10 @@ defmodule Apiary.Gateways do
 
   These are the rules by which an attach finds a run ended or its window closed
   (`Apiary.Runs.Attach`). A lost run holds nothing, though a later heartbeat through the
-  gateway would bring it back while the gateway is in use; a deletion revokes the
-  gateway's keys, so nothing arrives through it after.
+  gateway would bring it back while the gateway is in use. A deletion revokes the
+  gateway's keys, so no request through it is verified once the deletion commits; one
+  verified before may still be stored, and a run it brings back is found lost again by
+  the lost-run check (`Apiary.Runs.Liveness`), as nothing follows it.
 
   **The lock.** The gateways of a workspace, their default mark and the choices of its
   nodes change under one lock per workspace (`lock/1`), taken first in the transaction,
