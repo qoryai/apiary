@@ -439,6 +439,58 @@ defmodule Apiary.Runs.LivenessTest do
     end
   end
 
+  describe "a run through a gateway" do
+    # A run whose registration was given a run key, its attach window closing at
+    # `attach_by`: written straight into the table, as the registration stores it.
+    defp through_gateway(scope, inserted_at, attach_by, attrs \\ %{}) do
+      run_fixture(
+        scope,
+        Map.merge(
+          %{
+            inserted_at: inserted_at,
+            registered_at: inserted_at,
+            registration_labels: %{},
+            registration_about: %{},
+            registration_digest: :crypto.hash(:sha256, "registration"),
+            run_key_payload: ~s({"version":1}),
+            run_key_issued_at: inserted_at,
+            attach_by: attach_by
+          },
+          attrs
+        )
+      )
+    end
+
+    test "waits for its gateway until its attach window ends, and is lost then", %{scope: scope} do
+      waiting = through_gateway(scope, ago(500), DateTime.add(@now, 100, :second))
+      closed = through_gateway(scope, ago(700), ago(1))
+
+      assert [%Run{id: id, state: "lost", lost_at: @now}] = Liveness.check(@now)
+      assert id == closed.id
+      assert state(waiting) == "pending"
+    end
+
+    test "once attached, is held to the interval its attach announced, from the attach", %{
+      scope: scope
+    } do
+      attached = fn attached_at ->
+        through_gateway(scope, ago(2000), ago(1400), %{
+          attached_at: attached_at,
+          attach_time: attached_at,
+          attach_interval_seconds: 10,
+          attach_answer_digest: "sha256=" <> String.duplicate("0", 64)
+        })
+      end
+
+      silent = attached.(ago(31))
+      fresh = attached.(ago(29))
+
+      assert [%Run{id: id}] = Liveness.check(@now)
+      assert id == silent.id
+      assert state(fresh) == "pending"
+    end
+  end
+
   test "a run that has ended or is lost is left alone", %{scope: scope} do
     runs =
       for state <- ~w(succeeded ended failed timed_out lost) do

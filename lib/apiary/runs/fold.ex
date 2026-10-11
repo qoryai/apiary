@@ -72,7 +72,9 @@ defmodule Apiary.Runs.Fold do
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
   The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
   heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
-  registration's (`registered_at` less `registration_time`) and its ping's, whose clock is
+  registration's (`registered_at` less `registration_time`; for a run through a gateway,
+  whose registration came from its starter, its attach's, `attached_at` less
+  `attach_time`) and its ping's, whose clock is
   the gateway's, as its heartbeats' are: a minimum, so it is the same in any order. A
   session's heartbeats are on the session's machine's clock, which behind a separate
   gateway is not the gateway's. Whenever a pass folds a later heartbeat or
@@ -558,9 +560,11 @@ defmodule Apiary.Runs.Fold do
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
-    # The registration's interval, else the heartbeats': the rule of the lost-run check.
+    # The registration's interval, else the attach's, else the heartbeats': the rule of the
+    # lost-run check.
     interval =
-      Map.get(run, :registration_interval_seconds) || Map.get(run, :heartbeat_interval_seconds)
+      Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
+        Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
       do: %{acc | run: revive(run)},
@@ -597,7 +601,16 @@ defmodule Apiary.Runs.Fold do
   defp ping_clock(acc), do: acc
 
   # The registration's time on the gateway's clock and its arrival at this server, as a
-  # ping's time and arrival were: nil for a run that did not register.
+  # ping's time and arrival were: nil for a run that did not register. For a run through a
+  # gateway, whose registration came from its starter, on another clock, the attach's,
+  # which the gateway sent: nil until it is attached.
+  defp registration_offset(%{run_key_payload: payload} = run) when is_binary(payload) do
+    case {Map.get(run, :attached_at), Map.get(run, :attach_time)} do
+      {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)
+      _ -> nil
+    end
+  end
+
   defp registration_offset(run) do
     case {Map.get(run, :registered_at), Map.get(run, :registration_time)} do
       {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)

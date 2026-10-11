@@ -403,10 +403,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The heartbeat interval the run is held to, in seconds: the one its registration stated,
-  else its heartbeats', within bounds, else 30.
+  or for a run through a gateway its attach, else its heartbeats', within bounds, else 30.
   """
   def beat(run) do
-    case Map.get(run, :registration_interval_seconds) ||
+    case Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
            Map.get(run, :heartbeat_interval_seconds) do
       interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
       _ -> @default_beat
