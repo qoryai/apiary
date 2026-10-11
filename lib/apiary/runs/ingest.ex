@@ -26,7 +26,12 @@ defmodule Apiary.Runs.Ingest do
   active keys of the node or node pool it is bound to (`Apiary.Runs.Sender`): the node
   whose key registered it, or whose key's batch opened it. A batch of a run of another
   node is refused whole, `{:error, :wrong_node}`, and nothing of it is stored: a batch is
-  one run's, every event's subject the same.
+  one run's, every event's subject the same. A run through a gateway takes them from the
+  gateway that attached it, under any of its active keys, and from the instance that
+  attached it alone (`meta.instance_id`): a batch from another node's key, or from
+  another instance of the gateway, is refused whole, `{:error, :wrong_gateway}`. A run
+  attached before its instance was known takes the instance of the first batch its
+  gateway sends, under the run's row lock.
 
   **The end.** Once the run's starter has given its outcome (`Apiary.Runs.Outcome`), every
   answer for the run says so, `end` in the result, until the run's `dev.qory.run.exited`
@@ -81,7 +86,9 @@ defmodule Apiary.Runs.Ingest do
   gave none), while the run has one and no `dev.qory.run.exited` has arrived, else nil.
   `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
   the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
-  when the run is another node's (`Apiary.Runs.Sender`), with nothing stored.
+  when the run is another node's, and `{:error, :wrong_gateway}` when the run goes
+  through a gateway and the batch is not from the gateway that attached it and its
+  attaching instance (`Apiary.Runs.Sender`), with nothing stored.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -149,18 +156,31 @@ defmodule Apiary.Runs.Ingest do
   end
 
   defp store(access_key, batch, meta, delivery_id, now) do
-    run = held(access_key, batch, meta, now)
-
-    cond do
+    case held(access_key, batch, meta, now) do
       # A gateway's batch of a run that is not one it attached: a gateway opens no run.
-      is_nil(run) ->
+      nil ->
         {:error, :wrong_gateway}
 
-      # Another node's run: refused whole, before anything of the batch is recorded, and
-      # the transaction rolls back.
-      not Sender.may_send?(run, access_key) ->
-        {:error, Sender.refusal(run)}
+      run ->
+        with {:ok, run} <- sender(run, access_key, meta),
+             do: stored(run, access_key, batch, meta, delivery_id, now)
+    end
+  end
 
+  # Another node's run, or another instance's of the gateway that attached it: refused
+  # whole, before anything of the batch is recorded, and the transaction rolls back. A
+  # run through a gateway whose attaching instance is not known yet takes this one's.
+  defp sender(run, access_key, meta) do
+    with true <- Sender.may_send?(run, access_key, meta[:instance_id]),
+         {:ok, run} <- Sender.take_instance(run, meta[:instance_id]) do
+      {:ok, run}
+    else
+      _refused -> {:error, Sender.refusal(run)}
+    end
+  end
+
+  defp stored(run, access_key, batch, meta, delivery_id, now) do
+    cond do
       # A run through a gateway is held to its own place, as a key of it would be.
       (refused = place_refusal(run, access_key)) != :ok ->
         refused

@@ -155,7 +155,7 @@ first refusal that applies is the answer:
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
-| `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
+| `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
@@ -177,13 +177,17 @@ that node's active keys alone, whichever of them signs, so a second key of the n
 one is replaced, keeps the run going (`Apiary.Runs.Sender`).
 
 A run through a gateway (The run endpoint, below) takes its batches from the active keys
-of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), and from
-nobody before the attach, its own node included. A gateway's key finds its run by the
-gateway and the run's id, whatever workspace the run is in, and never opens one: a batch
-for a run it did not attach is `409 wrong_gateway`, and nothing is stored. The run's
-workspace, node and instance stay the registration's. What is read for it, the run
-configuration its answers carry and the features its events are kept under, is read under
-the run's own workspace and organisation (`Apiary.Runs.Sender.place_key/2`), and the
+of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), signed
+with the instance id that attached it (`runs.attach_instance_id`), and from nobody before
+the attach, its own node included: another instance of the gateway is `409 wrong_gateway`,
+under any of its keys. A run attached before its instance was kept takes the instance of
+the next attach, batch or heartbeat its gateway sends, written under the run's row lock
+and only while it has none, so of two instances one holds it. A gateway's key finds its
+run by the gateway and the run's id, whatever workspace the run is in, and never opens
+one: a batch for a run it did not attach is `409 wrong_gateway`, and nothing is stored.
+The run's workspace, node and instance stay the registration's. What is read for it, the
+run configuration its answers carry and the features its events are kept under, is read
+under the run's own workspace and organisation (`Apiary.Runs.Sender.place_key/2`), and the
 delivery is recorded in the run's workspace. Events after the run's end are taken from the
 gateway as from any node.
 
@@ -423,32 +427,37 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `400` | the run key does not verify under the instance's signing key, its `run_id` is not the path's, or it is not, byte for byte, the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
-| `200` | a repeat: the gateway that attached the run, under any of its active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
+| `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
 | `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
-| `409` | another gateway attached the run | `{"error":"run_attached"}` |
+| `409` | another gateway node attached the run, or another instance of this one, while the run is live | `{"error":"run_attached"}` |
 | `503` | the run configuration cannot be read, or the attach cannot be stored | `{"error":"unavailable"}` |
 | `200` | attached | the run configuration, with `labels` and `about` |
 
 The checks after the run key run under the run's projection lock and its row lock, so two
 attaches of one run take turns. The run key names the gateway the run was registered for,
-and a repeat is that gateway's, so `run_attached` is only reached by a gateway the run key
-names that did not attach the run, which cannot be. The answer is the run configuration
-in force for the run's labels, read under the run's own workspace and organisation, its
-bytes with `,"labels":…` and `,"about":…` added before the closing brace, each only when
-the registration had some, with `X-Qory-Run-Configuration` and `ETag` of the
-configuration's digest, not the body's, so that a reload and the run's batches carry the
-same digest, and `X-Qory-Configuration`. The run keeps `attached_at`,
-`attach_interval_seconds`, the digest given
-(`attach_answer_digest`), and the attach's Forager version (the `User-Agent`'s first) and
-contract version.
+so another gateway node is refused `wrong_gateway` before `run_attached`; `run_attached`
+is reached by another instance of the gateway that attached the run, the instance id its
+`X-Qory-Instance-Id` names. A gateway that restarts keeps its instance id, so it takes its
+run on again. A run attached before the instance was kept has none, and the first instance
+of its gateway that attaches it again is given the answer and holds it from then on. The
+answer is the run configuration in force for the run's labels, read under the run's own
+workspace and organisation, its bytes with `,"labels":…` and `,"about":…` added before the
+closing brace, each only when the registration had some, with `X-Qory-Run-Configuration`
+and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
+batches carry the same digest, and `X-Qory-Configuration`. The run keeps `attached_at`,
+`attach_interval_seconds`, the digest given (`attach_answer_digest`), the instance id the
+attach was signed with (`attach_instance_id`), and the attach's Forager version (the
+`User-Agent`'s first) and contract version.
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
 to the active keys of the node that registered the run, or, for a run through a gateway,
-of the gateway that attached it (`Apiary.Runs.Sender`), under the run's own workspace: a
-run through a gateway not attached yet is `404` to everyone; a run id the
+of the gateway that attached it and from the instance that attached it
+(`Apiary.Runs.Sender`), under the run's own workspace: a run through a gateway not
+attached yet is `404` to everyone, and so is a reload from another instance of its
+gateway; a run id the
 key's workspace does not hold, a run another node registered, a run its batches created
 without a registration, even for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the

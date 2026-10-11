@@ -37,13 +37,14 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
   defp register({key, secret}, body),
     do: signed_register(build_conn(), key.key_id, secret, Jason.encode!(body))
 
-  defp attach({key, secret}, run_id, body),
-    do: signed_attach(build_conn(), key.key_id, secret, run_id, Jason.encode!(body))
+  defp attach({key, secret}, run_id, body, opts \\ []),
+    do: signed_attach(build_conn(), key.key_id, secret, run_id, Jason.encode!(body), opts)
 
-  defp deliver({key, secret}, events), do: signed_post(build_conn(), key.key_id, secret, events)
+  defp deliver({key, secret}, events, opts \\ []),
+    do: signed_post(build_conn(), key.key_id, secret, events, opts)
 
-  defp reload({key, secret}, run_id),
-    do: signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
+  defp reload({key, secret}, run_id, opts \\ []),
+    do: signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id, opts)
 
   defp outcome({key, secret}, run_id, body) do
     signed_post(build_conn(), key.key_id, secret, Jason.encode!(body),
@@ -54,6 +55,15 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
   end
 
   defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+
+  # Another running copy of the gateway, under a key of the same gateway node.
+  @other_instance "i_another-copy-of-the-gateway"
+
+  # The run as one attached before its attaching instance was kept is left.
+  defp without_instance(run_id) do
+    Repo.update_all(from(r in Run, where: r.run_id == ^run_id), set: [attach_instance_id: nil])
+    assert run(run_id).attach_instance_id == nil
+  end
 
   defp now, do: ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!()
 
@@ -580,6 +590,163 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       # Ended, the run is attached no more.
       run_key = RunKey.encode(run(run_id).run_key_payload, SigningKey.current())
       assert response(attach(ctx.gateway_key, run_id, attach_body(run_key)), 410) == ""
+    end
+  end
+
+  describe "one instance of the gateway" do
+    test "the attach keeps the instance it was signed with", ctx do
+      run_id = attached(ctx)
+      assert run(run_id).attach_instance_id == instance_id()
+    end
+
+    test "the same instance under another active key of the node is given the stored answer",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      first = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      %{access_key: second, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      again = attach({second, secret}, run_id, attach_body(run_key, %{"interval_seconds" => 60}))
+      assert again.status == 200
+      assert signed_answer?(again)
+      assert again.resp_body == first.resp_body
+      assert run(run_id).attach_instance_id == instance_id()
+    end
+
+    test "another instance of the node is 409 run_attached while the run is live, under any key",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+      attached = Map.take(run(run_id), [:attached_at, :attach_instance_id, :updated_at])
+      %{access_key: second, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      for key <- [ctx.gateway_key, {second, secret}] do
+        conn = attach(key, run_id, attach_body(run_key), instance_id: @other_instance)
+        assert json_response(conn, 409) == %{"error" => "run_attached"}
+        assert signed_answer?(conn)
+      end
+
+      assert Map.take(run(run_id), [:attached_at, :attach_instance_id, :updated_at]) == attached
+    end
+
+    test "after the run is lost or ended, any instance's attach is 410", ctx do
+      {run_id, run_key} = registered(ctx)
+      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [state: "lost", lost_at: now()]
+      )
+
+      for instance <- [instance_id(), @other_instance] do
+        conn = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: instance)
+        assert response(conn, 410) == ""
+        assert signed_answer?(conn)
+      end
+    end
+
+    test "a batch or a heartbeat from another instance is 409 wrong_gateway, nothing stored",
+         ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      %{access_key: second, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      for key <- [ctx.gateway_key, {second, secret}], events <- [[started], [beat(run_id, 2)]] do
+        conn = deliver(key, events, instance_id: @other_instance)
+        assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
+        assert signed_answer?(conn)
+      end
+
+      assert Repo.aggregate(Event, :count) == 0
+      assert Repo.aggregate(Delivery, :count) == 0
+
+      # The attaching instance, under either key, is taken.
+      assert response(deliver({second, secret}, [started, beat(run_id, 3)]), 202) == ""
+      assert run(run_id).event_count == 2
+    end
+
+    @tag needs: :security
+    test "a reload from another instance is 404", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.scope, nil, %{host: "api.example"})
+      run_id = attached(ctx)
+
+      assert reload(ctx.gateway_key, run_id).status == 200
+
+      conn = reload(ctx.gateway_key, run_id, instance_id: @other_instance)
+      assert json_response(conn, 404) == %{"error" => "not_found"}
+      assert signed_answer?(conn)
+    end
+  end
+
+  describe "a run attached before its instance was kept" do
+    test "takes the instance of the next attach, and refuses any other from then on", ctx do
+      {run_id, run_key} = registered(ctx)
+      first = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      without_instance(run_id)
+
+      again = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: @other_instance)
+      assert again.status == 200
+      assert again.resp_body == first.resp_body
+      assert run(run_id).attach_instance_id == @other_instance
+
+      conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert json_response(conn, 409) == %{"error" => "run_attached"}
+
+      {_subject, [started]} = first_events(run_id)
+
+      assert json_response(deliver(ctx.gateway_key, [started]), 409) == %{
+               "error" => "wrong_gateway"
+             }
+
+      assert response(deliver(ctx.gateway_key, [started], instance_id: @other_instance), 202) ==
+               ""
+    end
+
+    test "takes the instance of the next batch or heartbeat, and refuses any other from then on",
+         ctx do
+      run_id = attached(ctx)
+      without_instance(run_id)
+
+      assert response(
+               deliver(ctx.gateway_key, [beat(run_id, 2)], instance_id: @other_instance),
+               202
+             ) ==
+               ""
+
+      assert run(run_id).attach_instance_id == @other_instance
+
+      {_subject, [started]} = first_events(run_id)
+
+      assert json_response(deliver(ctx.gateway_key, [started]), 409) == %{
+               "error" => "wrong_gateway"
+             }
+
+      assert run(run_id).event_count == 1
+    end
+
+    test "a refused batch gives it no instance", ctx do
+      run_id = attached(ctx)
+      without_instance(run_id)
+
+      # Another gateway node's batch is refused, and the run waits for its own gateway's.
+      {_subject, [started]} = first_events(run_id)
+
+      assert json_response(deliver(other_gateway(ctx), [started]), 409) == %{
+               "error" => "wrong_gateway"
+             }
+
+      assert run(run_id).attach_instance_id == nil
+    end
+
+    @tag needs: :security
+    test "is reloaded by any instance of its gateway, and a reload gives it none", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.scope, nil, %{host: "api.example"})
+      run_id = attached(ctx)
+      without_instance(run_id)
+
+      for instance <- [instance_id(), @other_instance] do
+        assert reload(ctx.gateway_key, run_id, instance_id: instance).status == 200
+      end
+
+      assert run(run_id).attach_instance_id == nil
     end
   end
 

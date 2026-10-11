@@ -84,9 +84,10 @@ defmodule Apiary.Runs.Registration do
   its active keys, at most two, and the attach window granted; the run configuration is
   given to the gateway at the attach, never to the node that registered the run.
 
-  `fetch/2` is the reload: the run configuration in force for a run, read by its
+  `fetch/3` is the reload: the run configuration in force for a run, read by its
   registration's labels, for the active keys of the node that registered it alone, or of
-  the gateway that attached it for a run through a gateway (`Apiary.Runs.Sender`).
+  the gateway that attached it and its attaching instance for a run through a gateway
+  (`Apiary.Runs.Sender`).
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -719,27 +720,31 @@ defmodule Apiary.Runs.Registration do
 
   @doc """
   The reload: the run configuration in force for the run `run_id`, for the key (an access
-  key, or its scope). `{:ok, settings}` (`t:settings/0`), read by the labels the run
-  registered with.
+  key, or its scope) and the instance id the request was signed with. `{:ok, settings}`
+  (`t:settings/0`), read by the labels the run registered with.
 
   `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
-  node registered (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
+  node registered, a run through a gateway that another instance of the gateway attached
+  (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
   workspace that serves no run configuration: nobody has made its policy, the
   `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
   last is never the document of no policy, which would take the policy in force off a run
   that started under it: a policy removed mid-run never loosens a run already started.
   `{:error, :unavailable}` when the configuration cannot be read.
   """
-  @spec fetch(AccessKey.t() | Scope.t(), term) ::
+  @spec fetch(AccessKey.t() | Scope.t(), term, String.t() | nil) ::
           {:ok, settings} | {:error, :not_found | :unavailable}
-  def fetch(%Scope{access_key: %AccessKey{} = access_key}, run_id), do: fetch(access_key, run_id)
+  def fetch(key, run_id, instance_id \\ nil)
 
-  def fetch(%AccessKey{} = access_key, run_id) do
+  def fetch(%Scope{access_key: %AccessKey{} = access_key}, run_id, instance_id),
+    do: fetch(access_key, run_id, instance_id)
+
+  def fetch(%AccessKey{} = access_key, run_id, instance_id) do
     access_key = Repo.preload(access_key, [:workspace, :node])
 
     with true <- Batch.uuid?(run_id),
          %Run{} = run <- Repo.one(Sender.run_query(access_key, run_id)),
-         true <- reload_allowed?(access_key, run) do
+         true <- reload_allowed?(access_key, run, instance_id) do
       case Serving.fetch(Sender.place_key(run, access_key), run.registration_labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
           {:ok, settings(document, digest, true)}
@@ -757,13 +762,14 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Who may reload a run: an active key of the node that registered it, and no other. A run
-  # its batches created, which never registered, and a run whose node is gone are reloaded
-  # by none.
-  defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run),
-    do: Sender.may_send?(run, access_key)
+  # Who may reload a run: an active key of the node that registered it, and no other; for a
+  # run through a gateway, the instance of the gateway that attached it. A reload reads,
+  # and gives a run whose attaching instance is not known yet none. A run its batches
+  # created, which never registered, and a run whose node is gone are reloaded by none.
+  defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),
+    do: Sender.may_send?(run, access_key, instance_id)
 
-  defp reload_allowed?(_access_key, _run), do: false
+  defp reload_allowed?(_access_key, _run, _instance_id), do: false
 
   # A reload where the workspace serves no run configuration (nobody has made its policy,
   # the `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`)
