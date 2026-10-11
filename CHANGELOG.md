@@ -650,7 +650,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   refuses a host that is neither a name nor an address in canonical form, in either
   mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
   names link-local addresses: "The wall refuses link-local addresses and the machine's
-  addresses, in either mode."
+  addresses, in either mode.", and so does the Policy page's hint for a rule written as an
+  address.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting

@@ -3160,7 +3160,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
-msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says."
+msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
