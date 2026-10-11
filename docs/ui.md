@@ -483,7 +483,7 @@ name or the latest change.
   variables / New secret` (and `Secrets and variables / New variable`), the section
   leading back to the tab the page was opened from, with its query.
 - **The targets of a variable** are a page of the section too, to read
-  (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
+  (`/settings/variables/:id/targets`, "Targets that set NODE_ENV"): each with its own
   value or its value set aside by the lock, found by their path past ten, and Back to the
   variables at its foot. Its row's count of them in the list leads there.
 - **Deletions confirm in place**, on the row they act on (No modals, above): Delete
@@ -575,7 +575,7 @@ views (`PolicyComponents.mode_card/1`); a version opened from the History (the o
 force too) and the export, which state their own mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
 "Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
-workspace, by its name, or Its own; Required by the level), one sentence of what the mode
+workspace, by its name, or Overridden; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
 The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
@@ -721,9 +721,10 @@ version in force is exported; another version's path sends on to it.
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
   card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
-  last lines of its log as plain text. The `RunList` hook tells the page the width, turns
-  a row's click into a choice there, and moves it with ↑ and ↓; Enter or a second click
-  opens the run. Below 1920 px a row is a link to its page.
+  last lines of its log as plain text for a reader who may read the log (`run.read_log`;
+  without it, no line is read and the preview has no terminal). The `RunList` hook tells
+  the page the width, turns a row's click into a choice there, and moves it with ↑ and ↓;
+  Enter or a second click opens the run. Below 1920 px a row is a link to its page.
 - **Nothing to show** is an empty state with no table and no pages, in words and without
   a tile (`<.empty_state icon={nil}>`): what the filters hide, the last filter to remove
   ("Remove host:gpu-01") and Clear filters.
@@ -996,7 +997,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   columns, the labels faint: Key made, Secret, By hand, Needs), a waiting command where
   it is the command's, and one button at the foot (`mt-auto`), so the buttons line up.
   No steps, no code, no variable and no Copy. **Connect with a command**: "Choose it when
-  you can open a terminal on build-01: a laptop, or a server of your own.", "You get one
+  you can open a terminal on build-01: a laptop, or your server.", "You get one
   command to run on build-01. It carries a one-time code, not a key, which works once
   within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public
   half, and saves everything else there itself.", Key made "On build-01, by qory", Secret

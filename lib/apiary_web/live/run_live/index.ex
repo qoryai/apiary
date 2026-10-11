@@ -1227,7 +1227,11 @@ defmodule ApiaryWeb.RunLive.Index do
     end)
   end
 
+  # The log's last lines are `run.read_log`'s, as the run page's Terminal tab is: for a
+  # reader who may not, none is read, and the preview has no terminal.
   defp preview_of(scope, run) do
+    log? = Access.can?(scope, :"run.read_log", run)
+
     denials =
       if run.denied_count > 0,
         do: Record.connections(scope, run, decision: "denied"),
@@ -1236,7 +1240,8 @@ defmodule ApiaryWeb.RunLive.Index do
     %{
       run: run,
       quiet: not is_nil(quiet_for(run)),
-      lines: Record.log_tail(scope, run, @preview_lines),
+      log?: log?,
+      lines: if(log?, do: Record.log_tail(scope, run, @preview_lines), else: []),
       denials: Enum.take(denials.rows, @preview_denials),
       more_denials: max(denials.total - @preview_denials, 0)
     }

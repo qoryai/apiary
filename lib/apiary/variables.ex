@@ -20,7 +20,7 @@ defmodule Apiary.Variables do
     * a name that breaks the rule, `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, or a value over 4096
       bytes, or with a NUL, a carriage return or a line feed;
     * a name beginning `QORY_`, whatever its case, at every level: "names beginning QORY_
-      are Forager's own" (`Apiary.Variables.Denied.refused?/1`); any other name on
+      are reserved for Forager" (`Apiary.Variables.Denied.refused?/1`); any other name on
       Forager's deny list is saved, and the page warns (`Apiary.Variables.Denied.denied?/1`);
     * a name the level already sets, compared without case;
     * a name a level above locks;
