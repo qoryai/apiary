@@ -183,7 +183,7 @@ defmodule Apiary.Runs.Outcome do
         is_nil(run) ->
           {:error, :not_found}
 
-        not Sender.may_send?(run, access_key) ->
+        not Sender.registered_by?(run, access_key) ->
           {:error, :not_found}
 
         run.outcome_digest == digest ->
