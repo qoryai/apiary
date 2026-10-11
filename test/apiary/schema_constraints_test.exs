@@ -279,6 +279,8 @@ defmodule Apiary.SchemaConstraintsTest do
     for url <- [
           nil,
           "gateway.example",
+          "http://gateway.example:8080",
+          "http://localhost:8080",
           "https://gateway.example/",
           "https://a@gateway.example",
           "https://gateway.example?x",
@@ -293,7 +295,7 @@ defmodule Apiary.SchemaConstraintsTest do
     end)
 
     assert %{num_rows: 1} =
-             update!("nodes", gateway.id, "url = 'http://gateway.example:8080'")
+             update!("nodes", gateway.id, "url = 'https://gateway.example:8443'")
 
     # One default a workspace; never a node, never a deleted gateway.
     assert gateway.default_gateway

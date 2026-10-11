@@ -486,7 +486,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ "Last event #"
 
       # Two events stored and not read yet: two, by either kind of run.
-      started = %{"opened_by" => "session", "credential" => "none", "forager_version" => "0.10.0"}
+      started = %{"opened_by" => "session", "forager_version" => "0.10.0"}
       running = %{state: "running", started_at: DateTime.utc_now(), event_count: 2}
 
       for {attrs, first} <- [{registered(running), 2}, {running, 1}] do
@@ -844,7 +844,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "a run that did not start: no sentence on session events, and no n/a for its duration",
          %{conn: conn, scope: scope} do
-      for started <- [started_data(), gateway_started_data()] do
+      for started <- [started_data()] do
         run =
           projected(scope, [
             {1, "run.started", started},
@@ -1819,20 +1819,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "no Close" do
-    test "no run page offers a Close, whatever opened the run, its credential and its state", %{
+    test "no run page offers a Close, whatever its state", %{
       conn: conn,
       scope: scope
     } do
-      starts = [
-        started_data(),
-        started_data(%{"credential" => "issuer"}),
-        Map.delete(started_data(), "credential"),
-        gateway_started_data()
-      ]
-
       runs =
-        for data <- starts, state <- ~w(running lost) do
-          run = projected(scope, [{1, "run.started", data}])
+        for state <- ~w(running lost) do
+          run = projected(scope, [{1, "run.started", started_data()}])
           if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
           run
         end
@@ -2180,151 +2173,15 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
   end
 
-  defp gateway_run(scope, exit) do
+  defp ended_run(scope, exit) do
     projected(scope, [
-      {1, "run.started", gateway_started_data()},
+      {1, "run.started", started_data()},
       {2, "run.egress", egress_data()},
       {3, "run.exited", exit}
     ])
   end
 
-  describe "a run with no session" do
-    setup %{scope: scope} do
-      %{run: demo(scope, "no-session")}
-    end
-
-    test "the header: Cancelled and why, no runtime and no host", %{
-      conn: conn,
-      run: run,
-      scope: scope
-    } do
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
-
-      assert has_element?(lv, "#run-meta #run-state.q-sdot-cancelled", "Cancelled")
-      assert has_element?(lv, "#run-meta #run-state + #run-reason", "no activity for 10 minutes")
-      refute has_element?(lv, "#run-runtime")
-      refute has_element?(lv, "#run-host")
-      refute has_element?(lv, "#run-meta", "exit")
-      assert has_element?(lv, "#run-duration-line", "10 m 35 s")
-      assert has_element?(lv, "#run-denied", "1 denied")
-
-      # the tabs are a session run's, and Details is beside them
-      for tab <- ~w(timeline terminal connections),
-          do: assert(has_element?(lv, "#run-tab-#{tab}"))
-
-      refute has_element?(lv, "#run-tab-details")
-      assert has_element?(lv, "#run-page > #run-details")
-    end
-
-    test "the timeline: started by a gateway, ended quiet on a neutral stop, and no notice", %{
-      conn: conn,
-      run: run,
-      scope: scope
-    } do
-      {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
-
-      assert has_element?(lv, "#e-2", "Run started")
-      assert has_element?(lv, "#e-2", "by a gateway with no session")
-      refute html =~ "without a wall"
-
-      assert has_element?(lv, "#e-10", "Run ended")
-      assert has_element?(lv, "#e-10", "no activity for 10 minutes")
-      assert has_element?(lv, "#e-10", "10 m 35 s")
-      assert has_element?(lv, "#e-10 .hero-stop-micro")
-      refute has_element?(lv, "#e-10 .hero-x-mark-micro")
-      refute html =~ "Run exited"
-
-      # the lane key and the switch stay; nothing says the run had no session here
-      assert has_element?(lv, ".q-tl-bar", "Main session")
-      assert has_element?(lv, "#toggle-connections", "Connections inline")
-      refute html =~ "No session."
-      refute has_element?(lv, "#run-timeline .q-limits")
-    end
-
-    test "the Terminal tab: the terminal, empty, with the note, its controls disabled", %{
-      conn: conn,
-      run: run,
-      scope: scope
-    } do
-      {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
-
-      assert has_element?(lv, "#terminal[phx-hook='Terminal'][data-empty='true']")
-      assert has_element?(lv, "#terminal-note.q-term-msg b", "No session.")
-
-      assert has_element?(
-               lv,
-               "#terminal-note",
-               "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
-             )
-
-      refute html =~ "This run wrote no output"
-
-      for control <- [
-            "input[data-find]",
-            "[data-follow]",
-            "[data-wrap]",
-            ~s([data-size-step="-1"]),
-            ~s([data-size-step="1"]),
-            "[data-download]"
-          ] do
-        assert has_element?(lv, "#terminal-bar #{control}[disabled]")
-      end
-
-      # nothing to download: no link to the log in the box
-      refute has_element?(lv, "#terminal a[download]")
-      # Focus stays
-      assert has_element?(lv, "#terminal-bar [data-focus]:not([disabled])", "Focus")
-      assert has_element?(lv, "#terminal .q-term-foot", "Ended")
-      assert has_element?(lv, "#terminal .q-term-foot", "0 B")
-      # no caption under the box
-      refute has_element?(lv, ".q-term-note")
-    end
-
-    test "the Network access tab lists its connections", %{conn: conn, run: run, scope: scope} do
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
-
-      assert has_element?(lv, "#run-connections", "api.example")
-      assert has_element?(lv, "#run-connections", "metrics.example")
-    end
-
-    test "the Details: opened by a gateway, the Forager that reported it, no session's facts", %{
-      conn: conn,
-      run: run,
-      scope: scope
-    } do
-      {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
-
-      assert has_element?(lv, "#run-facts .q-sdot-cancelled", "Cancelled")
-      assert has_element?(lv, "#run-facts #rail-reason", "no activity for 10 minutes")
-      assert has_element?(lv, "#run-opened-by", "gateway (no session)")
-      assert has_element?(lv, "#run-forager", "0.10.0 · contract 1")
-
-      terms = run_terms(lv)
-      assert Enum.take(terms, 2) == ["State", "Opened by"]
-      for term <- ["Started", "Duration", "Key", "Forager"], do: assert(term in terms)
-      for term <- ["Exit", "Runtime", "Host", "Wall"], do: refute(term in terms)
-
-      # the Forager row sits after Node and before Instance, where they are
-      forager = Enum.find_index(terms, &(&1 == "Forager"))
-      key = Enum.find_index(terms, &(&1 == "Key"))
-      assert forager > key
-
-      if node = Enum.find_index(terms, &(&1 == "Node")), do: assert(forager == node + 1)
-
-      if instance = Enum.find_index(terms, &(&1 == "Instance")),
-        do: assert(instance == forager + 1)
-
-      # the Command section is gone, and the Session is none
-      refute has_element?(lv, "#rail-command")
-      refute html =~ "Arguments"
-      assert html =~ ~r{<dt>Session</dt>\s*<dd class="font-mono">\s*none\s*</dd>}
-    end
-
+  describe "a run's end in words" do
     test "every reason in words, after the state and under it", %{
       conn: conn,
       scope: scope
@@ -2336,7 +2193,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {%{"reason" => "session_lost"}, "lost", "stopped responding"},
             {%{"reason" => "timeout"}, "cancelled", "time limit reached"}
           ] do
-        run = gateway_run(scope, exit)
+        run = ended_run(scope, exit)
 
         {:ok, lv, _html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -2344,9 +2201,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, "#run-meta #run-state.q-sdot-#{state}")
         assert has_element?(lv, "#run-reason", words)
         assert has_element?(lv, "#rail-reason", words)
-        # a run with no session has no exit to show
         refute has_element?(lv, "#run-meta", "exit")
-        refute "Exit" in run_terms(lv)
       end
     end
 
@@ -2354,7 +2209,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       scope: scope
     } do
-      run = gateway_run(scope, %{"reason" => "run_closed"})
+      run = ended_run(scope, %{"reason" => "run_closed"})
 
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -2368,7 +2223,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          %{conn: conn, scope: scope} do
       run =
         projected(scope, [
-          {1, "run.started", gateway_started_data()},
+          {1, "run.started", started_data()},
           {2, "run.refused", %{"code" => "image_unknown"}}
         ])
 
@@ -2396,7 +2251,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {"gateway_lost", "end not recorded", "q-n-warn .hero-signal-slash-micro"},
             {"timeout", "time limit reached", "q-n.q-n-sys .hero-stop-micro"}
           ] do
-        run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
+        run = ended_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
 
         {:ok, lv, html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -2416,7 +2271,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {"issuer_answer_invalid",
              "couldn't check whether the run may go on: unreadable answer"}
           ] do
-        run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 130_000})
+        run = ended_run(scope, %{"reason" => reason, "duration_ms" => 130_000})
         assert run.state == "failed"
 
         {:ok, lv, _html} =
@@ -2426,7 +2281,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, "#run-meta #run-state + #run-reason", words)
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#run-facts #rail-reason", words)
-        refute "Exit" in run_terms(lv)
         assert has_element?(lv, "#e-3", "Run ended")
         assert has_element?(lv, "#e-3", words)
         assert has_element?(lv, "#e-3", "2 m 10 s")
@@ -2436,7 +2290,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "a run with a session, beside one with none" do
+  describe "a run with a session" do
     test "its page is as it was; the reason's words stand under the state", %{
       conn: conn,
       scope: scope
@@ -2455,21 +2309,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-runtime")
       assert html =~ "Run ended"
       refute html =~ "Run exited"
-      refute html =~ "by a gateway with no session"
 
       terms = run_terms(lv)
       for term <- ["Exit", "Runtime", "Host", "Wall"], do: assert(term in terms)
-      refute "Opened by" in terms
       refute "Forager" in terms
-      refute has_element?(lv, "#run-opened-by")
       assert has_element?(lv, "#rail-command")
       assert has_element?(lv, "#rail-command + dl", "Forager")
 
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
 
-      assert has_element?(lv, "#terminal[data-empty='false']")
-      refute has_element?(lv, "#terminal-note")
+      assert has_element?(lv, "#terminal")
       refute has_element?(lv, "#terminal-bar [disabled]:not([data-size-step])")
       assert has_element?(lv, "#terminal a[download]")
       assert has_element?(lv, ".q-term-note")
@@ -2492,14 +2342,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#rail-reason", "end not recorded")
       assert "Exit" in run_terms(lv)
       assert exit_row(lv) == "not recorded"
-      refute has_element?(lv, "#run-opened-by")
 
       # with no output, it says so, as before
       {:ok, _lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
 
       assert html =~ "This run wrote no output"
-      refute html =~ "No session."
     end
 
     test "a lost session is said once on the meta line, and as its exit in the rail and timeline",
@@ -2735,7 +2583,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "a gateway's run: the same words, and no Exit row", %{conn: conn, scope: scope} do
+    test "an exit with no exit code: the same words", %{conn: conn, scope: scope} do
       for {exit, state, words} <- [
             {%{"state" => "cancelled", "reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
              "no activity for 30 minutes"},
@@ -2752,27 +2600,26 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "Cancelled",
              "no longer needed"}
           ] do
-        run = gateway_run(scope, Map.put(exit, "duration_ms", 1_804_000))
+        run = ended_run(scope, Map.put(exit, "duration_ms", 1_804_000))
         {:ok, lv, _html} = run_page(conn, scope, run)
         case_ = inspect(exit)
 
         assert words_of(lv, "#run-meta #run-state") == state, case_
         assert words_of(lv, "#run-meta #run-state + #run-reason") == words, case_
         assert words_of(lv, "#run-facts #rail-reason") == words, case_
-        refute exit_row(lv), case_
         assert words_of(lv, "#e-3 .q-k") == "Run ended", case_
         assert words_of(lv, "#e-3 .q-s") == "#{words} · 30 m 04 s", case_
         assert has_element?(lv, "#e-3 #{@marks[state]}"), case_
       end
     end
 
-    test "a gateway's run with no reason and no exit code: Run ended and how long, no n/a",
+    test "an exit with no reason and no exit code: Run ended and how long, no n/a",
          %{conn: conn, scope: scope} do
       for {exit, says} <- [
             {%{"state" => "failed", "duration_ms" => 720_000}, "12 m 00 s"},
             {%{"state" => "failed"}, ""}
           ] do
-        run = gateway_run(scope, exit)
+        run = ended_run(scope, exit)
         {:ok, lv, _html} = run_page(conn, scope, run)
         case_ = inspect(exit)
 
@@ -2785,7 +2632,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "a run that did not start: Failed, why after it and under it, no Exit row, and its item",
          %{conn: conn, scope: scope} do
-      for started <- [started_data(), gateway_started_data()] do
+      for started <- [started_data()] do
         run =
           projected(scope, [
             {1, "run.started", started},

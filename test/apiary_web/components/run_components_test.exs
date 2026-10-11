@@ -182,6 +182,29 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    test "an outcome sent with no state reads the starter gave no outcome" do
+      run = %{state: "cancelled", reason: "stopped", outcome_state: "cancelled"}
+
+      assert RunComponents.reason_words(Map.put(run, :outcome_reason, "stopped")) ==
+               "the starter gave no outcome"
+
+      # The starter's end with no outcome is Forager's stopped, or its earlier name.
+      for reason <- ["stopped", "run_ended_at_issuer"],
+          outcome <- [%{}, %{outcome_state: nil, outcome_reason: nil}] do
+        assert RunComponents.reason_words(
+                 Map.merge(%{state: "cancelled", reason: reason}, outcome)
+               ) ==
+                 "stopped, no outcome given"
+      end
+
+      # A starter's own cancelled reason is shown as given.
+      assert RunComponents.reason_words(
+               %{run | reason: "no_longer_needed"}
+               |> Map.put(:outcome_reason, "no_longer_needed")
+             ) ==
+               "no longer needed"
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},

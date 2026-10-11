@@ -235,9 +235,9 @@ defmodule Apiary.Nodes.Node do
   end
 
   @doc """
-  validate_url/1 checks `changeset`'s `url`, a gateway's address: `https://`, or
-  `http://` to a loopback host (`localhost`, `127.0.0.0/8` or `::1`), then a host and an
-  optional port, and nothing else: no user, path, query or fragment.
+  validate_url/1 checks `changeset`'s `url`, a gateway's address: `https://`, then a host
+  and an optional port, and nothing else: no user, path, query or fragment. A run key
+  names the gateway by it, and only over TLS (`Apiary.Runs.RunKey`).
   """
   @spec validate_url(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_url(changeset) do
@@ -256,11 +256,9 @@ defmodule Apiary.Nodes.Node do
     with true <- url =~ @address,
          {:ok, %URI{scheme: scheme, host: host, port: port}}
          when is_binary(host) and host != "" and port in 1..65_535 <- URI.new(url) do
-      if scheme == "https" or (scheme == "http" and loopback?(host)),
+      if scheme == "https",
         do: :ok,
-        else:
-          {:error,
-           dgettext_noop("errors", "must start with https://, or http:// for a loopback host")}
+        else: {:error, dgettext_noop("errors", "must start with https://")}
     else
       _not_an_address ->
         {:error,
@@ -268,15 +266,6 @@ defmodule Apiary.Nodes.Node do
            "errors",
            "must be a scheme and a host, with a port if needed, and nothing more"
          )}
-    end
-  end
-
-  defp loopback?(host) do
-    case :inet.parse_address(String.to_charlist(host)) do
-      {:ok, {127, _, _, _}} -> true
-      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
-      {:ok, _other} -> false
-      {:error, _not_an_address} -> String.downcase(host) == "localhost"
     end
   end
 

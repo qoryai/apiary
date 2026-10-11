@@ -124,8 +124,9 @@ defmodule ApiaryWeb.Routes do
           content_type: "application/cloudevents-batch+json"
       end
 
-      # The same, for the run endpoint, which takes a registration, answers a reload, and
-      # spends a bucket of the key's own, apart from the events endpoint's.
+      # The same, for the run endpoint, which takes a registration, an attach and an
+      # outcome, answers a reload, and spends a bucket of the key's own, apart from the
+      # events endpoint's.
       pipeline :contract_registration do
         plug :accepts, ["json"]
 
@@ -165,8 +166,8 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
-      # The server contract: signed requests, discovery, events, a run's registration and
-      # reload.
+      # The server contract: signed requests, discovery, events, a run's registration,
+      # reload, attach and outcome.
       scope "/.well-known", ApiaryWeb.Contract do
         pipe_through :contract
 
@@ -192,6 +193,8 @@ defmodule ApiaryWeb.Routes do
 
         post "/runs", RegistrationController, :create
         get "/runs/:run_id", RegistrationController, :show
+        post "/runs/:run_id/attach", AttachController, :create
+        post "/runs/:run_id/outcome", OutcomeController, :create
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts

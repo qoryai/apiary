@@ -124,7 +124,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
   mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
-  revision 1: discovery, a run's registration and reload, events and enrolment): the
+  revision 1: discovery, a run's registration, attach, reload and outcome, events and
+  enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and
   how the run ended.
 - A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
@@ -133,23 +134,65 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   in `names`; the answer is its run configuration, `{"version":1}` where the workspace
   serves no policy, always with `X-Qory-Run-Configuration`, an `ETag` and
   `X-Qory-Configuration`. The same bytes
-  sent again under the same access key get the same answer; the run id under another key,
-  or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
+  sent again under any active key of the node that registered the run get the same answer;
+  the run id from another node, or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
   `410`; a run configuration that cannot be read is `503`, never no policy. No run is
   stored on any refusal. `GET /v1/runs/<run_id>` reloads a run's configuration for the
-  access key that registered it, by its registration's labels, and is `404` for any other
-  key, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
+  active keys of the node that registered it, by its registration's labels, and is `404`
+  for a key of any other node, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
   holds `dev.qory.ping` or `dev.qory.run.registered` is `400` `invalid_request`: a
   Forager that opens its runs with a ping starts none, so Forager and Qory Apiary are run
   from the same release.
-- A run a gateway opened, with no session: no runtime, command or host, and no exit
-  status. The runs list's Runtime column says "no session". Its page says how it ended in
-  words after its state, as every run's does; its Terminal tab is the terminal, empty,
-  with a note that the run has no session, and search, follow, wrap, the text size and the
-  download disabled; its timeline starts "by a gateway with no session"; and its Details
-  say what opened it and which Forager reported it, with no
-  Command section, and its Session "none". A run through a separate gateway belongs to the
-  gateway's node and instance, and its Host is the agent's machine.
+- A run's outcome, from its starter. `POST /v1/runs/<run_id>/outcome`, signed by any
+  active key of the run's node, says how the run went:
+  `{"version":1, "state":"succeeded", "reason":"all_checks_passed", "time":"…"}`. The state
+  is `succeeded`, `failed` or `cancelled`, and none is `cancelled` with the reason
+  `stopped`; a reason that is not a code, or is one of Forager's own, is dropped and the
+  outcome kept; a `time` more than 300 seconds from the server's clock is `401`. The
+  outcome sets the run's state and reason whenever it arrives, before the run's exit or
+  after it, and the exit's code, signal and reason stay on record beside it. Each run gets
+  one: the same state and reason again, whatever the bytes or the `time`, get the same
+  answer, `200` `{"version":1}`, and change nothing; another state or reason is `409`
+  `outcome_given`. A run of another node, one the workspace does not hold, and one whose
+  events retention pruned are `404` `not_found`. Where the outcome's state differs from
+  what the run's exit said, the run page says both, for example "Succeeded, as its starter
+  said; the runtime exited 1". A run refused at its start says the outcome's state alone:
+  "Succeeded, as its starter said". A run whose starter sent its outcome with no state says no such sentence: it
+  reads as any cancelled run, "Cancelled", with "the starter gave no outcome" after it.
+- The end of a run, in the answers to its batches. Once a run's starter has given its
+  outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
+  carries `end` with the outcome's state and reason, as `application/json`,
+  `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, under the answer's
+  signature. Every other answer to a batch has an empty body, as before.
+- A run through a gateway. A run's registration resolves its node's choice of gateway as
+  the records are then. A node that goes directly registers as before; a node whose
+  choice leads to a gateway registers without `forager_version`, `contract_version`,
+  `interval_seconds` and `events`, and may ask for an attach window, `attach_seconds`
+  (600 seconds unless asked, at most 3600: `config :apiary, Apiary.Runs.Registration`,
+  `attach_seconds` and `max_attach_seconds`). Its answer is no run configuration but the
+  run's id and a run key, `{"version":1,"run_id":"…","run_key":"qrk_…"}`, with neither
+  `X-Qory-Run-Configuration` nor `ETag`. A run key (`Apiary.Runs.RunKey`) is `qrk_`, a
+  payload and its Ed25519 signature under the instance's signing key, at most 2048
+  characters; the payload names the run, its workspace, the node that registered it, the
+  gateway with its `https` address and active public keys, the instance, when it was made
+  and the end of its attach window. Before the instance limit, a registration is a signed
+  `409`: `gateway_key` from a gateway's own key, `node_is_direct` and `node_uses_gateway`
+  for a body whose shape does not match the node's choice, `no_default_gateway`,
+  `gateway_not_serving` and `gateway_without_key` for a choice that leads nowhere. A
+  gateway attaches the run with a signed `POST /v1/runs/<run_id>/attach` under its own
+  key, with the run key and what a direct registration announces
+  (`Apiary.Runs.Attach`); the answer is the run's run configuration, read under the run's
+  own workspace, with the registration's `labels` and `about`. Its refusals, in order:
+  `409` `not_a_gateway`, `400` `run_key_invalid`, the same gateway attaching the live run
+  again is given the same answer, `410` for a run that has ended, then `409`
+  `run_key_expired`, `wrong_gateway`, `workspace_not_served` and `run_attached`. Once
+  attached, the run's batches, heartbeats and reloads are the gateway's alone, under any
+  of its active keys, and a batch from any other key is a signed `409` `wrong_gateway`;
+  a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
+  interval its attach announced, from its attach, and a run its gateway never attaches is
+  lost at the end of its window. The console does not show a run's gateway or its attach.
+- A run through a gateway belongs to the node that registered it and its instance, never
+  to the gateway, and its Host is the machine the runtime ran on.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
   none today. No run offers Close, on its page or as a lost run on the Overview, and a run
   has no Closed state. The events endpoint answers `410` only to a run whose events
@@ -162,8 +205,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Cancelled heading, and the Overview's chart table a Cancelled column. Completed is a
   green check, Cancelled a grey stop, Failed a red x-mark and Lost an amber
   signal-slash.
-- How a run ended, by one rule for a session's run and a run a gateway opened alike, from
-  its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
+- How a run ended, by one rule, from its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
   `succeeded` is Completed, `cancelled` Cancelled and `failed` Failed, but a failed exit
   with `session_lost` or `gateway_lost` is Lost, for good, and a failed exit an older
   Forager wrote when it stopped a run itself (`timeout`, `quiet`, `credential_expired`,
@@ -202,34 +244,40 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   key's discovery digest changes once, when this is deployed, so each Forager reads
   discovery again once.
 - Gateways, a third kind of node beside the node and the node pool: `ng_` and 16
-  characters, with an address (`url`: `https://`, or `http://` to a loopback host, a host
+  characters, with an address (`url`: `https://`, a host
   and an optional port, nothing more, at most 2048 characters) and no instance limit. A
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
   gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
   may serve, sorted. Each node and node pool records a choice of gateway: direct, its
   workspace's default gateway, or a gateway it names, one that may serve its workspace,
-  checked when the choice is saved; nothing at a run's registration reads it. The choice
-  can be changed. Every node and pool there before is direct; a new one given no choice
+  checked when the choice is saved, and resolved again at each run's registration (a run
+  through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
   starts on the default when a default gateway resolves for its workspace, and on direct
   otherwise. A workspace's first gateway becomes its default, and only a gateway made
   when no default resolves does so by itself, so adding a second one moves no node; a
   person moves the mark (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only
-  when no node names it and no node on the default resolves to it; the refusal names those
-  nodes. After a deletion no node moves, and when no default resolves for the workspace any
-  more, the oldest gateway left becomes the default. Making, changing and deleting a
-  gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
-  as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
-  workspace's default gateway, where a node's choice leads, the workspaces a gateway may
-  serve and the gateways a node may name, and `Apiary.Gateways.chosen/1` the gateway a
-  node's choice names now, with a key or not. On the console, Nodes lists gateways, with
-  their kind, Gateway, the default's mark, Default, and Kind's Gateway in the Filter menu.
+  when no node names it, no node on the default resolves to it, and no run through it is
+  live (attached and not ended) or waiting for its attach (registered for it, not
+  attached, not lost or ended, and within its attach window); the refusal names those
+  nodes and runs. A run's registration or attach that meets the gateway's deletion
+  waits for it, and is then refused as for a deleted gateway. After a deletion no node
+  moves, and when no default resolves for the workspace any more, the oldest gateway left
+  becomes the default. Making, changing and deleting a gateway, and moving the mark, are
+  `node.create`, `node.edit` and `node.delete` entries, as for any node. `Apiary.Gateways`
+  answers whether a gateway may serve a workspace, the workspace's default gateway, where
+  a node's choice leads, the workspaces a gateway may serve and the gateways a node may
+  name, and `Apiary.Gateways.chosen/1` the gateway a node's choice names now, with a key
+  or not. On the console, Nodes lists gateways, with their kind, Gateway, the default's
+  mark, Default, and Kind's Gateway in the Filter menu.
   New gateway (`/nodes/new-gateway`) asks a name and a URL, with the URL's errors under
   its field, and opens the gateway's Access key tab as a new node's does. A gateway's
   Overview shows its URL and whether it is the default, with Make default; its Settings
   change its name and URL; its deletion is confirmed in place, and refused while nodes
-  point to it: "Nodes use this gateway: …", the first five of the workspace by name, then
-  "and N more", which counts the rest and any of other workspaces.
+  point to it or runs go through it: "Nodes use this gateway: …", the first five of the
+  workspace by name, then "and N more", which counts the rest and any of other
+  workspaces, and "Runs are going through this gateway: …", the first five by run id,
+  then "and N more"; both lists when both hold.
   New node, New node pool and a node's Settings choose its Gateway once the workspace has
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where
@@ -366,7 +414,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An edition locks its own rows for a
   change at one point, right after the organisation rows and before any membership
   (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
-  stay allowed. A test may have a stub answer some of the edition's callbacks in its own
+  stay allowed. Several organisations are locked in one order,
+  `Apiary.Organisations.lock_order/1`, which an edition must use whenever it locks the
+  rows of more than one, and in one statement, `Apiary.Organisations.lock_organisations/2`,
+  which reads the order again and locks once more when Postgres refuses its lock as a
+  deadlock.
+  A test may have a stub answer some of the edition's callbacks in its own
   processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
@@ -540,6 +593,29 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
   browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
 
+### Changed
+
+- A run takes its batches, heartbeats among them, its reloads and its repeated
+  registration from the active keys of one node: the node or node pool whose key
+  registered it, or whose key's batch opened it. Before, any active key of the workspace
+  could post events to any of its runs. A second key of the same node, as while a key is
+  replaced, keeps the run going; a batch from a key of another node is a signed `409`
+  `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
+  `404`. A run through a gateway takes them from the gateway that attached it instead,
+  and its repeated registration and its outcome from the node that registered it.
+- `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
+  `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
+  and its organisation are in use, as a key's verification does.
+
+### Removed
+
+- Runs a gateway opens with no session, and run credentials. A run is opened by a Forager
+  session alone: a batch whose `dev.qory.run.started` has an `opened_by` other than
+  `session`, or a `credential` member, is refused, a signed `400` `invalid_request`, and
+  nothing of it is stored. A run's clock offset is its heartbeats' alone, never its
+  registration's, its attach's or a ping's. The demo recording of a run with no session is
+  gone.
+
 ### Migrations
 
 The baseline, on an empty database, creates the schema an instance has, whatever its
@@ -627,6 +703,43 @@ set NULL when that row is purged while the choice stays `named`, with the check
 `nodes_gateway_choice_check`, an index, and the trigger `nodes_gateway_is_a_gateway`,
 which refuses a reference to a row that is not a gateway in use. Rolled back, every node is
 direct again.
+`20261011140000_record_a_run_s_outcome` adds a run's outcome, `runs.outcome_state`,
+`outcome_reason`, `outcome_time`, `outcome_received_at` and `outcome_digest` (32 bytes),
+and what its exit said, `runs.exit_state` and `exit_reason`, all NULL for every existing
+row, with a check that a run holds the outcome whole or not at all and one on the exit's
+state, both added NOT VALID, so neither scans the table under a lock that blocks writes.
+`exit_state` and `exit_reason` are filled as a run's exit is folded, and for an earlier
+run by a rebuild (`mix apiary.rebuild`). `20261011140100_validate_a_run_s_outcome_checks`
+validates the two checks.
+`20261011150000_let_a_run_go_through_a_gateway` adds what a run through a gateway keeps:
+`runs.gateway_id`, a reference to the gateway's row, set NULL when that row is purged;
+`run_key_payload`, the run key's payload, at most 2048 bytes; `run_key_issued_at`,
+`attach_by`, `attached_at`, `attach_time`, `attach_interval_seconds` (1 to 300) and
+`attach_answer_digest`; all NULL for every existing row. It lets a run that registered
+through a gateway have no interval and no answer digest, widening
+`runs_registration_check`, and adds `runs_run_key_check` and `runs_attach_check`, each
+holding its columns whole or not at all; the three checks and the reference are added NOT
+VALID, so none scans the table under a lock that blocks writes. Rolled back, it refuses
+while any run went through a gateway. `20261011150100_validate_a_run_s_gateway_checks`
+validates them. `20261011150200_index_a_gateway_s_runs` adds a unique index on a run
+through a gateway's gateway and run id, built concurrently.
+`20261011150300_hold_a_gateway_s_address_to_https` holds `nodes.url` to `https://`
+(`nodes_url_check`, re-created NOT VALID), and
+`20261011150400_validate_a_gateway_s_address_check` validates it: a gateway recorded at an
+`http://` address must be given an `https://` one first. Rolled back, `http://` is
+allowed again. `20261011150500_keep_a_run_key_s_signature` adds
+`runs.run_key_signature`, the 64-byte signature of a run's run key, NULL for every
+existing row, held to a run that has a payload (`runs_run_key_signature_check`, NOT
+VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
+`20261011150700_forget_what_a_run_without_a_session_needed` drops `runs.opened_by`,
+`runs.registration_time` and `runs.attach_time`, with `runs_opened_by_check` and
+`runs_registration_time_check`, and re-creates `runs_attach_check` without `attach_time`,
+NOT VALID; `20261011150800_validate_a_run_s_attach_check` validates it. Rolled back, the
+columns and their checks come back, empty but `attach_time`, which takes `attached_at`.
+`20261011160000_keep_when_a_run_was_refused` adds `runs.refused_at`, the time of a run's
+`dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
+existing row. Existing rows need no backfill: the column changes only what a run given an
+outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
 
 ### Upgrading
 

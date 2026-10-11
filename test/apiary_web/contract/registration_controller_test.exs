@@ -134,7 +134,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
     assert allow(reload(ctx, run_id)) == ["api.example", "cdn.example"]
 
-    # Another key of the workspace, a run its batches created under this key, a run the
+    # A key of another node, a run its batches created under this key, a run the
     # workspace does not hold, a run id that is not one: 404, signed.
     %{access_key: other, secret: other_secret} = contract_key_fixture(ctx.scope)
     {unregistered, events} = first_events()
@@ -336,7 +336,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       other_bytes = registration(run_id, %{"labels" => %{"task" => "other"}})
 
       for conn <- [
-            # Other bytes under the same key; the same bytes under another key.
+            # Other bytes under the same key; the same bytes under a key of another node.
             signed_register(build_conn(), ctx.key.key_id, ctx.secret, other_bytes),
             signed_register(build_conn(), other.key_id, other_secret, body)
           ] do

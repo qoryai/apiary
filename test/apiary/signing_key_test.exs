@@ -19,9 +19,9 @@ defmodule Apiary.SigningKeyTest do
   @next_fingerprint "52vzzF--Ic7qH_eZWi5K2A"
 
   # Every 32-byte value the contract publishes or has published: the fixture access key's
-  # seed, the ephemeral key of the sealed fixture of earlier commits, the signing keys', and
-  # the seed of the second fixture access key.
-  @published [1..32, 33..64, 65..96, 161..192, 193..224]
+  # seed, the ephemeral key of the sealed fixture of earlier commits, the signing keys', the
+  # gateway key's, and the seed of the second fixture access key.
+  @published [1..32, 33..64, 65..96, 97..128, 161..192, 193..224]
              |> Enum.map(&:binary.list_to_bin(Enum.to_list(&1)))
 
   # The request signature of the GET of discovery under the fixture access key

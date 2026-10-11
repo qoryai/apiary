@@ -2,13 +2,8 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
   @moduledoc """
   The discovery documents of a node's, a pool's and a gateway's keys against
   `configuration.schema.json` of Forager's contract at the commit in
-  `.forager-contract-ref`.
-
-  A node's and a pool's documents validate. The contract at the pin knows no gateway: its
-  schema takes a node id of `nd_` or `np_` alone. So the gateway's document is held to
-  fail that schema for its `ng_` node id and nothing else. A pin whose contract knows a
-  gateway's id fails the assertion below, and the gateway's document is then validated as
-  the others are.
+  `.forager-contract-ref`, and the contract's gateway fixtures: a gateway's document
+  validates as a node's does, and it alone may list more than one workspace.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -17,6 +12,7 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.ContractSchema
+  alias ApiaryWeb.Contract.Configuration
 
   @moduletag :contract
 
@@ -30,16 +26,40 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
     |> json_response(200)
   end
 
-  test "a node's and a pool's documents validate; a gateway's fails for its ng_ id alone" do
+  test "a node's, a pool's and a gateway's documents validate" do
     %{scope: scope} = sign_up_fixture()
 
     assert :ok = ContractSchema.validate(schema(), document(scope, node_fixture(scope)))
     assert :ok = ContractSchema.validate(schema(), document(scope, pool_fixture(scope)))
 
     gateway = document(scope, gateway_fixture(scope))
-    assert "ng_" <> id = gateway["node_id"]
+    assert "ng_" <> _id = gateway["node_id"]
+    assert gateway["workspaces"] == [scope.workspace.public_id]
+    assert :ok = ContractSchema.validate(schema(), gateway)
+  end
 
-    assert {:error, _unknown_prefix} = ContractSchema.validate(schema(), gateway)
-    assert :ok = ContractSchema.validate(schema(), %{gateway | "node_id" => "np_" <> id})
+  test "only a gateway's document may list more than one workspace" do
+    two = contract_json!("configuration/gateway.json")
+    assert ["ng_" <> _id, [_, _]] = [two["node_id"], two["workspaces"]]
+    assert :ok = ContractSchema.validate(schema(), two)
+
+    assert {:error, _} =
+             ContractSchema.validate(schema(), %{two | "node_id" => "np_f1xt0re000000000"})
+  end
+
+  test "known-answers/discovery-gateway.json is the document this server builds for the fixture gateway" do
+    known = contract_file!("known-answers/discovery-gateway.json")
+    document = Jason.decode!(known)
+    assert :ok = ContractSchema.validate(schema(), document)
+
+    built =
+      Configuration.encode(%{
+        node_id: document["node_id"],
+        workspaces: document["workspaces"],
+        url: "https://qory.example",
+        apiary_public_key: document["apiary_public_key"]
+      })
+
+    assert built == String.trim(known)
   end
 end

@@ -5,8 +5,8 @@ defmodule Apiary.Repo.Migrations.LetANodeChooseItsGateway do
   # `Apiary.Gateways.resolve/1` answers for: `gateway_choice` is `direct`, `default` (the
   # default gateway of its workspace) or `named`, with the named gateway in `gateway_id`.
   # Every row that is there when the column is added is `direct`, and so is a row written
-  # without one. A gateway itself is always `direct`. Nothing at a run's registration reads
-  # the choice.
+  # without one. A gateway itself is always `direct`. A run's registration reads the choice,
+  # as it resolves then.
   #
   # `gateway_id` is a plain reference to the gateway's own row, not the composite key a
   # node's other references use: whether a gateway may serve the node's workspace is the

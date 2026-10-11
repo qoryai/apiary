@@ -23,6 +23,9 @@ defmodule Apiary.Contract.SignedMessage do
   for no body; the answer's `X-Qory-Configuration`, and its `X-Qory-Run-Configuration`,
   each empty when the answer has none.
 
+  **The run key's message** (`run_key/1`): `qory-run-key-ed25519-v1`, then the payload's
+  bytes, on the next line and to the end.
+
   **The answer string of an enrolment** (`enrolment_answer/3`) has its own first line,
   `qory-enrol-answer-ed25519-v1`, and the request's `proof` as line 3; the rest is as
   `answer/5`'s, lines 5 and 6 empty, since an enrolment answer carries neither digest
@@ -40,6 +43,17 @@ defmodule Apiary.Contract.SignedMessage do
   @enrolment_tag "qory-enrol-ed25519-v1"
   @answer_tag "qory-answer-ed25519-v1"
   @enrolment_answer_tag "qory-enrol-answer-ed25519-v1"
+  @run_key_tag "qory-run-key-ed25519-v1"
+
+  @doc ~S"""
+  run_key/1 is the message a run key's signature covers (`Apiary.Runs.RunKey`): its domain
+  line, `qory-run-key-ed25519-v1`, a line feed, then the payload's exact bytes.
+
+      iex> Apiary.Contract.SignedMessage.run_key(~s({"version":1}))
+      "qory-run-key-ed25519-v1\n{\"version\":1}"
+  """
+  @spec run_key(binary) :: binary
+  def run_key(payload) when is_binary(payload), do: @run_key_tag <> "\n" <> payload
 
   @doc ~S"""
   request/5 is the request string of a request under `access_key_id` from `instance_id`

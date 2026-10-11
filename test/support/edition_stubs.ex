@@ -301,6 +301,120 @@ defmodule Apiary.EditionStubs do
     def lock_rows(about), do: LocksItsRows.lock_rows(about)
   end
 
+  defmodule HoldsOthers do
+    @moduledoc """
+    Holds other organisations after some (`c:Apiary.Edition.places_to_lock/1`): an
+    organisation the test names (`Process.put(:places_held, %{id => other_ids})` in the
+    test's process) is locked with those after its own id; every other one as the core's
+    edition locks it (`Apiary.Edition.Core`), whichever edition is configured, so the
+    test means the core's order for them.
+    """
+    alias Apiary.Organisations.Organisation
+
+    def places_to_lock(%Organisation{id: id} = organisation) do
+      case Process.get(:places_held, %{}) do
+        %{^id => others} -> [id | others]
+        _held -> Apiary.Edition.Core.places_to_lock(organisation)
+      end
+    end
+  end
+
+  defmodule ReadsPlaces do
+    @moduledoc """
+    Reads the organisation's row before it answers `c:Apiary.Edition.places_to_lock/1`, as
+    an edition may, and locks nothing; then answers as the core's edition does
+    (`Apiary.Edition.Core`).
+    """
+    import Ecto.Query
+
+    alias Apiary.Organisations.Organisation
+
+    def places_to_lock(%Organisation{id: id} = organisation) do
+      _row = Apiary.Repo.one(from o in Organisation, where: o.id == ^id, select: o.id)
+      send(self(), {:places_read, id})
+      Apiary.Edition.Core.places_to_lock(organisation)
+    end
+  end
+
+  defmodule Classifies do
+    @moduledoc """
+    Names other organisations after some (`c:Apiary.Edition.places_to_lock/1`) as a table
+    the test keeps says, which it may change while a change runs, as an edition's
+    classification changes between a read and a lock: `start/0` makes the table,
+    `holds/2` says what an organisation names besides its own id, and `pause_at/1` the
+    calls, counted from the first, after whose answer is read the change pauses until the
+    test lets it go (`{:classified, pid}` to the test, `:go` back). Every other
+    organisation names itself alone, as the core's edition does.
+    """
+    alias Apiary.Organisations.Organisation
+
+    @table __MODULE__
+
+    def start do
+      :ets.new(@table, [:named_table, :public])
+      :ets.insert(@table, [{:calls, 0}, {:pause_at, []}])
+      :ok
+    end
+
+    def holds(id, others), do: :ets.insert(@table, {{:holds, id}, others})
+    def pause_at(calls), do: :ets.insert(@table, {:pause_at, calls})
+
+    def places_to_lock(%Organisation{id: id}) do
+      answer =
+        case :ets.lookup(@table, {:holds, id}) do
+          [{_key, others}] -> [id | others]
+          [] -> [id]
+        end
+
+      call = :ets.update_counter(@table, :calls, 1)
+      [{:pause_at, pauses}] = :ets.lookup(@table, :pause_at)
+
+      if call in pauses do
+        [test | _] = Process.get(:"$callers", [self()])
+        send(test, {:classified, self()})
+
+        receive do
+          :go -> :ok
+        after
+          10_000 -> :ok
+        end
+      end
+
+      answer
+    end
+  end
+
+  defmodule OutOfUse do
+    @moduledoc """
+    Holds out of use the organisations the test names
+    (`Process.put(:out_of_use, ids)` in the test's process, which the processes it starts
+    read too): `c:Apiary.Edition.active_organisations/2` leaves them out, and every other
+    organisation as the configured edition does.
+    """
+    import Ecto.Query
+
+    def active_organisations(query, binding) do
+      ids = out_of_use()
+
+      query
+      |> Apiary.Edition.module().active_organisations(binding)
+      |> where([{^binding, o}], o.id not in ^ids)
+    end
+
+    defp out_of_use do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:out_of_use)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :out_of_use}) do
+            {{:dictionary, :out_of_use}, ids} when is_list(ids) -> ids
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end

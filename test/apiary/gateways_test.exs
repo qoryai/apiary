@@ -3,12 +3,14 @@ defmodule Apiary.GatewaysTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, Gateways, Nodes}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.{Attach, Liveness, Run}
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -70,21 +72,30 @@ defmodule Apiary.GatewaysTest do
              }
     end
 
-    test "its address is https, or http to a loopback host, with a host and a port alone",
-         %{scope: scope} do
-      for url <- ~w(https://gateway.example https://10.0.0.7:8443 http://localhost:8080
-                    http://127.0.0.1 http://127.9.9.9:9000 http://[::1]:8080
-                    https://[2001:db8::1]) do
+    test "the database holds a gateway's address to https too", %{scope: scope} do
+      gateway = gateway_fixture(scope)
+
+      assert_raise Postgrex.Error, ~r/nodes_url_check/, fn ->
+        Repo.update_all(from(n in Node, where: n.id == ^gateway.id),
+          set: [url: "http://localhost:8080"]
+        )
+      end
+    end
+
+    test "its address is https, with a host and a port alone", %{scope: scope} do
+      for url <- ~w(https://gateway.example https://10.0.0.7:8443 https://localhost:8443
+                    https://127.0.0.1 https://[2001:db8::1]) do
         assert {:ok, %Node{url: ^url}} =
                  Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: url}),
                url
       end
 
-      for url <- ~w(http://gateway.example http://10.0.0.7 ftp://gateway.example) do
+      for url <- ~w(http://gateway.example http://10.0.0.7 http://localhost:8080
+                    http://127.0.0.1 http://[::1]:8080 ftp://gateway.example) do
         assert {:error, changeset} =
                  Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
 
-        assert %{url: ["must start with https://, or http:// for a loopback host"]} =
+        assert %{url: ["must start with https://"]} =
                  errors_on(changeset),
                url
       end
@@ -530,8 +541,8 @@ defmodule Apiary.GatewaysTest do
       other = gateway_fixture(scope)
       node = node_fixture(scope, gateway_choice: "default")
 
-      assert Gateways.delete_blockers(gateway) == %{nodes: [reload(node)]}
-      assert Gateways.delete_blockers(other) == %{nodes: []}
+      assert Gateways.delete_blockers(gateway) == %{nodes: [reload(node)], runs: []}
+      assert Gateways.delete_blockers(other) == %{nodes: [], runs: []}
 
       assert {:error, {:gateway_in_use, %{nodes: [%Node{id: id}]}}} =
                Nodes.delete_node(scope, gateway)
@@ -542,7 +553,7 @@ defmodule Apiary.GatewaysTest do
       third = gateway_fixture(scope)
       assert {:ok, _} = Nodes.delete_node(scope, other)
       {:ok, _} = Nodes.make_default_gateway(scope, third)
-      assert Gateways.delete_blockers(gateway) == %{nodes: []}
+      assert Gateways.delete_blockers(gateway) == %{nodes: [], runs: []}
       assert {:ok, _} = Nodes.delete_node(scope, gateway)
       assert reload(third).default_gateway
       assert Gateways.default_gateway_for(scope.workspace).id == third.id
@@ -605,6 +616,181 @@ defmodule Apiary.GatewaysTest do
       assert {:ok, _} = Nodes.delete_node(scope, gateway)
       assert AccessKeys.fetch_for_verification(key.key_id) == :error
       refute AccessKeys.active_key?(gateway)
+    end
+  end
+
+  describe "deleting a gateway runs go through" do
+    # A gateway with a key, and a node of the workspace that names it, with a key of its
+    # own: the node registers runs through the gateway, and the gateway attaches them.
+    defp through(scope) do
+      %{access_key: gateway_key} = contract_key_fixture(scope, node: gateway_fixture(scope))
+      gateway = reload(gateway_key.node)
+      node = node_fixture(scope, gateway_choice: "named", gateway_id: gateway.id)
+      %{access_key: node_key} = contract_key_fixture(scope, node: node)
+      %{gateway: gateway, gateway_key: gateway_key, node: node, node_key: node_key}
+    end
+
+    defp register(%{node_key: key}) do
+      {:ok, %{run: run, run_key: run_key}} =
+        register_run(key, gateway_registration(), instance_id())
+
+      {run, run_key}
+    end
+
+    defp attach(%{gateway_key: key}, {run, run_key}) do
+      {:ok, body} = Attach.parse(attach_body(run_key))
+      {:ok, %{run: attached}} = Attach.attach(key, run.run_id, body, %{})
+      attached
+    end
+
+    # The node goes directly from now on; the runs it registered keep their gateway.
+    defp go_direct(scope, %{node: node}) do
+      {:ok, _} = Nodes.update_node(scope, reload(node), %{gateway_choice: "direct"})
+      :ok
+    end
+
+    defp set(run, changes),
+      do: Repo.update_all(from(r in Run, where: r.id == ^run.id), set: changes)
+
+    defp ids(runs), do: Enum.map(runs, & &1.id)
+
+    defp reload_run(run), do: Repo.get!(Run, run.id)
+
+    test "refused while a run it attached is live, naming the run", %{scope: scope} do
+      through = through(scope)
+      run = attach(through, register(through))
+      :ok = go_direct(scope, through)
+
+      assert {:error, {:gateway_in_use, %{nodes: [], runs: [%Run{id: id}]}}} =
+               Nodes.delete_node(scope, through.gateway)
+
+      assert id == run.id
+      assert reload(through.gateway).deleted_at == nil
+    end
+
+    test "refused while a run waits for it to attach, naming the run", %{scope: scope} do
+      through = through(scope)
+      {run, _run_key} = register(through)
+      :ok = go_direct(scope, through)
+
+      assert run.attached_at == nil
+
+      assert {:error, {:gateway_in_use, %{nodes: [], runs: [%Run{id: id}]}}} =
+               Nodes.delete_node(scope, through.gateway)
+
+      assert id == run.id
+    end
+
+    test "a run that ended, was lost, or whose attach window closed does not hold it",
+         %{scope: scope} do
+      through = through(scope)
+      now = DateTime.utc_now()
+
+      completed = attach(through, register(through))
+      set(completed, state: "completed", exited_at: now)
+      exited = attach(through, register(through))
+      set(exited, exited_at: now)
+      given_outcome = attach(through, register(through))
+
+      set(given_outcome,
+        outcome_state: "succeeded",
+        outcome_time: now,
+        outcome_received_at: now,
+        outcome_digest: :crypto.hash(:sha256, "outcome")
+      )
+
+      pruned = attach(through, register(through))
+      set(pruned, events_pruned_at: now)
+      lost_attached = attach(through, register(through))
+      set(lost_attached, state: "lost", lost_at: now)
+      {lost_waiting, _run_key} = register(through)
+      set(lost_waiting, state: "lost", lost_at: now)
+      {expired, _run_key} = register(through)
+
+      set(expired,
+        run_key_issued_at: DateTime.add(now, -601, :second),
+        attach_by: DateTime.add(now, -1, :second)
+      )
+
+      {cancelled_old_name, _run_key} = register(through)
+      set(cancelled_old_name, state: "timed_out")
+      # Refused at its start: failed, with no exit and no outcome, as the fold stores it.
+      refused = attach(through, register(through))
+      set(refused, state: "failed", refused_at: now)
+
+      :ok = go_direct(scope, through)
+      assert Gateways.delete_blockers(through.gateway) == %{nodes: [], runs: []}
+      assert {:ok, _deleted} = Nodes.delete_node(scope, through.gateway)
+    end
+
+    test "a run waits to the end of its attach window, that instant included",
+         %{scope: scope} do
+      through = through(scope)
+      {run, _run_key} = register(through)
+      :ok = go_direct(scope, through)
+      attach_by = reload_run(run).attach_by
+
+      assert %{runs: [%Run{id: id}]} = Gateways.delete_blockers(through.gateway, attach_by)
+      assert id == run.id
+
+      after_it = DateTime.add(attach_by, 1, :microsecond)
+      assert Gateways.delete_blockers(through.gateway, after_it) == %{nodes: [], runs: []}
+    end
+
+    test "a run through another gateway does not hold it", %{scope: scope} do
+      through = through(scope)
+      other = through(scope)
+      attach(other, register(other))
+      register(other)
+      :ok = go_direct(scope, through)
+
+      assert Gateways.delete_blockers(through.gateway) == %{nodes: [], runs: []}
+      assert {:ok, _deleted} = Nodes.delete_node(scope, through.gateway)
+      assert reload(other.gateway).deleted_at == nil
+    end
+
+    test "nodes and runs are named together, each in its order", %{scope: scope} do
+      through = through(scope)
+      waiting = register(through) |> elem(0)
+      live = attach(through, register(through))
+
+      # Registered in this order, the live run after the waiting one.
+      set(live, registered_at: DateTime.add(waiting.registered_at, 1, :second))
+
+      pool =
+        pool_fixture(scope,
+          name: "a-pool",
+          gateway_choice: "named",
+          gateway_id: through.gateway.id
+        )
+
+      assert {:error, {:gateway_in_use, %{nodes: nodes, runs: runs}}} =
+               Nodes.delete_node(scope, through.gateway)
+
+      assert ids(nodes) == Enum.sort_by([pool, through.node], & &1.name) |> ids()
+      assert ids(runs) == [waiting.id, live.id]
+    end
+
+    test "deleted once its runs end", %{scope: scope} do
+      through = through(scope)
+      {waiting, _run_key} = register(through)
+      live = attach(through, register(through))
+      :ok = go_direct(scope, through)
+
+      assert {:error, {:gateway_in_use, %{runs: [_, _]}}} =
+               Nodes.delete_node(scope, through.gateway)
+
+      # The live run exits; the waiting one is lost at the end of its attach window.
+      set(live, state: "completed", exited_at: DateTime.utc_now())
+
+      assert {:error, {:gateway_in_use, %{runs: [%Run{id: id}]}}} =
+               Nodes.delete_node(scope, through.gateway)
+
+      assert id == waiting.id
+      assert [%Run{id: ^id}] = Liveness.check(DateTime.add(waiting.attach_by, 1, :second))
+
+      assert {:ok, deleted} = Nodes.delete_node(scope, through.gateway)
+      assert deleted.deleted_at
     end
   end
 

@@ -101,6 +101,10 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         # The run endpoint starts a run, as the events endpoint records it; a workspace
         # without security answers a registration with no policy.
         assert ApiaryWeb.Contract.RegistrationController.__feature__() == :observability
+        # A run's attach, as its gateway gives it, and its outcome, as its starter gives
+        # it, belong with the run endpoint.
+        assert ApiaryWeb.Contract.AttachController.__feature__() == :observability
+        assert ApiaryWeb.Contract.OutcomeController.__feature__() == :observability
       end
 
       test "the stored secrets', variables' and integrations' pages belong to secrets" do

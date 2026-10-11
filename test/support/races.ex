@@ -224,6 +224,32 @@ defmodule Apiary.Races do
     """)
   end
 
+  @doc """
+  Waits as `await_blocked/2` does, and then until `waiter` has waited half the server's
+  `deadlock_timeout`: should `holder` now wait on `waiter`, the two wait on each other,
+  and `waiter`, which has waited longer by that half, is the one whose check finds it
+  first, and the one Postgres refuses (`deadlock_detected`).
+  """
+  def await_waited(waiter, holder) when is_integer(waiter) and is_integer(holder) do
+    Repo.query!("""
+    DO $$
+    BEGIN
+      FOR i IN 1..#{div(@blocked_ms, 10)} LOOP
+        IF #{holder} = ANY (pg_blocking_pids(#{waiter})) AND EXISTS (
+          SELECT 1 FROM pg_locks
+          WHERE pid = #{waiter} AND NOT granted
+            AND waitstart <= clock_timestamp() - current_setting('deadlock_timeout')::interval / 2
+        ) THEN
+          RETURN;
+        END IF;
+        PERFORM pg_sleep(0.01);
+      END LOOP;
+      RAISE EXCEPTION 'backend % did not wait on backend % long enough', #{waiter}, #{holder};
+    END
+    $$
+    """)
+  end
+
   @doc "Runs the changes, each on a connection of its own, let go at once: their answers, in order."
   def together(funs) do
     parent = self()

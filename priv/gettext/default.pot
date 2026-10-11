@@ -2167,11 +2167,6 @@ msgstr ""
 msgid "A file outside the checkout, given with: %{command}"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
-msgstr ""
-
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3431,6 +3426,31 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled the organisation's deletion"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime's exit was not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -5154,6 +5174,31 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Failed with exit %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime's exit was not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -7918,11 +7963,6 @@ msgstr ""
 msgid "No session timeline"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "No session."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target active this week matches"
@@ -8762,11 +8802,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Open version %{version}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Opened by"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -10722,6 +10757,31 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Subjects"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime's exit was not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -13432,11 +13492,6 @@ msgstr ""
 msgid "by %{version} after %{time}"
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "by a gateway with no session"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
@@ -13636,11 +13691,6 @@ msgstr ""
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "from %{from} to %{to}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "gateway (no session)"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -13921,11 +13971,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "no policy, every connection is observed"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "no session"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -14235,6 +14280,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "the starter gave no outcome"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

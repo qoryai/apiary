@@ -17,14 +17,14 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   seconds from the server's clock is `401`, unsigned, as a GET's stale timestamp is; then
   `Apiary.Runs.Registration.register/3`: a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; the same bytes again under
-  the same key are given the same answer; a run whose events retention has pruned is
+  any active key of the node that registered the run are given the same answer; a run whose events retention has pruned is
   `410`, with no body; an instance beyond its node's limit is `409` `instance_limit`; a
   run id the workspace already holds otherwise is `409` `run_id_used`; else the run is
   stored and answered `200`.
 
-  **A reload** is answered only for a run the same access key registered
-  (`Apiary.Runs.Registration.fetch/2`); anything else is `404`, a run its batches created
-  among them, and so is a workspace that
+  **A reload** is answered only for a run the key's own node registered, under any of its
+  active keys (`Apiary.Runs.Registration.fetch/2`, `Apiary.Runs.Sender`); anything else is
+  `404`, a run another node registered and a run its batches created among them, and so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
   started.
 
@@ -46,6 +46,19 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   alias Apiary.Runs.Registration
   alias ApiaryWeb.Contract.{Configuration, SignedRequest}
 
+  # The registration's signed 409s, each its own code: the resolution's, in the
+  # contract's order, then the instance limit and a run id that is used.
+  @conflicts [
+    :gateway_key,
+    :node_is_direct,
+    :node_uses_gateway,
+    :no_default_gateway,
+    :gateway_not_serving,
+    :gateway_without_key,
+    :instance_limit,
+    :run_id_used
+  ]
+
   def create(conn, _params) do
     access_key = conn.assigns.access_key
 
@@ -66,11 +79,8 @@ defmodule ApiaryWeb.Contract.RegistrationController do
       {:error, :gone} ->
         send_resp(conn, 410, "")
 
-      {:error, :instance_limit} ->
-        conn |> put_status(409) |> json(%{error: "instance_limit"})
-
-      {:error, :run_id_used} ->
-        conn |> put_status(409) |> json(%{error: "run_id_used"})
+      {:error, code} when code in @conflicts ->
+        conn |> put_status(409) |> json(%{error: Atom.to_string(code)})
 
       {:error, :unavailable} ->
         unavailable(conn)
@@ -89,6 +99,18 @@ defmodule ApiaryWeb.Contract.RegistrationController do
     end
   rescue
     _exception -> unavailable(conn)
+  end
+
+  # A run through a gateway is answered its id and its run key alone: no run configuration,
+  # so neither its digest nor an `ETag`.
+  defp answer(conn, %{run: run, run_key: run_key}) do
+    body =
+      Jason.encode!(Jason.OrderedObject.new(version: 1, run_id: run.run_id, run_key: run_key))
+
+    conn
+    |> put_resp_header("x-qory-configuration", Configuration.digest(conn.assigns.access_key))
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, body)
   end
 
   defp answer(conn, %{settings: settings, digest: digest, etag: etag}) do

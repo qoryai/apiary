@@ -143,10 +143,10 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
       assert code == :any or data["exit_code"] == code, reason
     end
 
-    started = for {run, "dev.qory.run.started", data} <- events, into: %{}, do: {run, data}
-
-    for run <- runs, run.reason in @starter_reasons do
-      assert started[run.id]["credential"] == "starter"
+    # A session opens every run, and its start names no credential.
+    for {_run, "dev.qory.run.started", data} <- events do
+      assert data["opened_by"] == "session"
+      refute Map.has_key?(data, "credential")
     end
   end
 

@@ -13,8 +13,10 @@ defmodule Apiary.Gateways do
   A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
   its workspace's default gateway; or `:named`, one gateway it names (`gateway_id`). The
   choice is checked when it is saved (`Apiary.Nodes`), and `resolve/1` answers where it
-  leads from the records as they are when it is asked. Nothing at a run's registration
-  reads it.
+  leads from the records as they are when it is asked. A run's registration asks it
+  (`Apiary.Runs.Registration`): the run goes directly, or through the gateway it resolves
+  to, which then attaches the run (`Apiary.Runs.Attach`). A change of choice applies to
+  the registrations after it; a run already registered keeps its gateway.
 
   - `may_serve?/2` says whether a gateway may serve a workspace: a gateway of the
     workspace's level, in use.
@@ -33,15 +35,38 @@ defmodule Apiary.Gateways do
   default by itself only when no default resolves for the workspace it serves at all, so
   making a second gateway never moves a node; otherwise a person marks one, and the mark
   moves (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only when nothing
-  points to it (`delete_blockers/1`): no node names it, and no node on `:default` resolves
-  to it now. After a deletion no node moves; when no default
-  resolves for a workspace any more and gateways remain that may serve it, the oldest of
-  them at the deleted gateway's level becomes the default (`oldest_at/2`).
+  points to it and no run goes through it (`delete_blockers/1`): no node names it, no node
+  on `:default` resolves to it now, and no run through it is live or waiting. After a
+  deletion no node moves; when no default resolves for a workspace any more and gateways
+  remain that may serve it, the oldest of them at the deleted gateway's level becomes the
+  default (`oldest_at/2`).
+
+  **The runs that hold a gateway.** A run goes through the gateway its registration
+  resolved to (`gateway_id` of `Apiary.Runs.Run`), and holds it while it is:
+
+  - **live**: attached (`attached_at` set) and not ended. A run has ended when its state
+    is completed, failed or cancelled (or a name an older release stored for one of
+    them), or lost; when its exit arrived (`exited_at`); when its starter gave its outcome
+    (`outcome_state`); or when retention pruned its events (`events_pruned_at`);
+  - **waiting**: registered for the gateway and not attached (`attached_at` nil), not
+    ended as above, not lost, and its attach window still open (`attach_by` not before
+    now).
+
+  These are the rules by which an attach finds a run ended or its window closed
+  (`Apiary.Runs.Attach`). A lost run holds nothing, though a later heartbeat through the
+  gateway would bring it back while the gateway is in use. A deletion revokes the
+  gateway's keys, so no request through it is verified once the deletion commits; one
+  verified before may still be stored, and a run it brings back is found lost again by
+  the lost-run check (`Apiary.Runs.Liveness`), as nothing follows it.
 
   **The lock.** The gateways of a workspace, their default mark and the choices of its
   nodes change under one lock per workspace (`lock/1`), taken first in the transaction,
   before any row lock: a choice is checked against the gateways as they are, and a
-  deletion against the nodes as they are.
+  deletion against the nodes as they are. A deletion then holds the gateway's row
+  `FOR UPDATE` while it reads the runs that hold it; a registration through the gateway
+  and an attach by it read the gateway's row `FOR SHARE` before they store anything, and
+  refuse a gateway that is deleted. So the two take turns on the row: either the deletion
+  finds the run, or the registration or attach finds the gateway deleted.
 
   Every question about a gateway's access key goes through
   `Apiary.AccessKeys.active_key?/1`, which keeps to the keys a verified request could use.
@@ -53,6 +78,7 @@ defmodule Apiary.Gateways do
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.Run
 
   @typedoc """
   A level of a workspace (`levels/1`): the workspace itself, or its organisation.
@@ -76,9 +102,9 @@ defmodule Apiary.Gateways do
 
   @typedoc """
   What stops a gateway from being deleted (`delete_blockers/1`): the nodes that point to
-  it, by name or by the default.
+  it, by name or by the default, and the runs through it that are live or waiting.
   """
-  @type blockers :: %{nodes: [Node.t()]}
+  @type blockers :: %{nodes: [Node.t()], runs: [Run.t()]}
 
   ## Levels
 
@@ -262,11 +288,16 @@ defmodule Apiary.Gateways do
 
   @doc """
   delete_blockers/1 is what stops `gateway` from being deleted (`t:blockers/0`): the nodes
-  in use that name it, and those on `:default` whose default resolves to it now, by name.
-  Nothing stops it when there are none.
+  in use that name it, and those on `:default` whose default resolves to it now, by name;
+  and the runs through it that are live or waiting as of `now`, the clock unless given
+  (see the moduledoc), in the order they registered, then by run id. Nothing stops it
+  when there are none.
   """
-  @spec delete_blockers(Node.t()) :: blockers
-  def delete_blockers(%Node{kind: :gateway, id: id} = gateway) do
+  @spec delete_blockers(Node.t(), DateTime.t()) :: blockers
+  def delete_blockers(
+        %Node{kind: :gateway, id: id} = gateway,
+        %DateTime{} = now \\ DateTime.utc_now()
+      ) do
     defaulting =
       for workspace <- serves(gateway),
           match?(%Node{id: ^id}, default_gateway_for(workspace)),
@@ -282,6 +313,19 @@ defmodule Apiary.Gateways do
       )
       |> Repo.all()
 
-    %{nodes: nodes}
+    %{nodes: nodes, runs: holding_runs(id, now)}
+  end
+
+  # The runs through the gateway that are live or waiting as of `now`: not ended and not
+  # lost, and attached or within their attach window.
+  defp holding_runs(gateway_id, now) do
+    from(r in Run,
+      where: r.gateway_id == ^gateway_id,
+      where: r.state not in ^Run.with_old_names(~w(completed failed cancelled lost)),
+      where: is_nil(r.exited_at) and is_nil(r.outcome_state) and is_nil(r.events_pruned_at),
+      where: not is_nil(r.attached_at) or r.attach_by >= ^now,
+      order_by: [asc: r.registered_at, asc: r.run_id]
+    )
+    |> Repo.all()
   end
 end

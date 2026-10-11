@@ -101,7 +101,7 @@ defmodule Apiary.Contract.Ed25519Test do
         assert Ed25519.decode_public_key(encoded) == {:error, :fixture}
       end
 
-      assert length(Ed25519.fixture_keys()) == 4
+      assert length(Ed25519.fixture_keys()) == 5
       assert Ed25519.encode(hd(Ed25519.fixture_keys())) == @fixture_access_key
     end
 

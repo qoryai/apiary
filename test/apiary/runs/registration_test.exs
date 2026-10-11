@@ -299,13 +299,14 @@ defmodule Apiary.Runs.RegistrationTest do
       assert node_of(key).instance_limit_refused == 0
     end
 
-    test "the run id with any other bytes, or under another key, is used",
+    test "the run id with any other bytes, or by another node, is used",
          %{scope: scope, key: key} do
       body = body()
-      assert {:ok, _} = register(key, body)
+      assert {:ok, %{run: run}} = register(key, body)
 
-      # Other labels; the same labels at another time; the same bytes under another key of
-      # the same node, and under a key of another node.
+      # Other labels; the same labels at another time; the same bytes under a key of
+      # another node. The same bytes under another key of the same node are a repeat: a key
+      # replaced while the run waits.
       other_labels = Map.put(body, "labels", %{"forge" => "git.example.com"})
       later = Map.put(body, "time", now_z(1))
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
@@ -313,7 +314,9 @@ defmodule Apiary.Runs.RegistrationTest do
 
       assert register(key, other_labels) == {:error, :run_id_used}
       assert register(key, later) == {:error, :run_id_used}
-      assert register(same_node, body) == {:error, :run_id_used}
+      assert register(same_node, later) == {:error, :run_id_used}
+      assert {:ok, %{run: again, repeated: true}} = register(same_node, body)
+      assert again.id == run.id
       assert register(other_node, body, "i_other") == {:error, :run_id_used}
       assert length(runs()) == 1
     end
@@ -586,7 +589,6 @@ defmodule Apiary.Runs.RegistrationTest do
       assert rebuilt.registered_at == run.registered_at
       assert rebuilt.registration_digest == run.registration_digest
       assert rebuilt.registration_answer_digest == run.registration_answer_digest
-      assert rebuilt.registration_time == run.registration_time
       assert rebuilt.projected_sequence == 2
     end
   end
@@ -616,40 +618,15 @@ defmodule Apiary.Runs.RegistrationTest do
   end
 
   describe "the clock offset" do
-    # A start as the gateway records it, `opened_by` as given.
-    defp start(run_id, opened_by) do
-      {_subject, [started]} = first_events(run_id)
-
-      data = %{"opened_by" => opened_by, "credential" => "issuer", "forager_version" => "0.8.0"}
-      batch!([%{started | "data" => data}])
-    end
-
-    test "of a run a gateway opened is its registration's: arrival less the gateway's time",
+    test "of a registered run is its heartbeats' alone, never its registration's",
          %{key: key} do
-      # The gateway's clock two minutes behind this server's.
+      # The registering machine's clock two minutes behind this server's.
       body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
       assert {:ok, %{run: run}} = register(key, body)
 
-      assert run.registration_time ==
-               body["time"] |> DateTime.from_iso8601() |> elem(1) |> DateTime.add(0, :microsecond)
-
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "gateway"), meta)
-      assert {:ok, projected} = Projector.project(Repo.get!(Run, run.id))
-      expected = div(DateTime.diff(run.registered_at, run.registration_time, :microsecond), 1000)
-      assert projected.clock_offset_ms == expected
-      assert expected in 119_000..122_000
-
-      # A rebuild finds it again.
-      assert {:ok, %Run{clock_offset_ms: ^expected}} = Projector.rebuild(projected)
-    end
-
-    test "of a run a session opened is its heartbeats' alone", %{key: key} do
-      body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
-      assert {:ok, %{run: run}} = register(key, body)
-
-      meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "session"), meta)
+      assert {:ok, _} = Ingest.ingest(key, batch!([started]), meta)
       assert {:ok, %Run{clock_offset_ms: nil}} = Projector.project(Repo.get!(Run, run.id))
     end
   end
@@ -671,7 +648,7 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     @tag needs: :security
-    test "is the configuration in force for the run's registration labels, for its own key alone",
+    test "is the configuration in force for the run's registration labels, for its own node alone",
          %{scope: scope, key: key} do
       shop = target_fixture(scope, "git.example.com", "acme/shop")
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
@@ -697,15 +674,17 @@ defmodule Apiary.Runs.RegistrationTest do
 
       assert digest == own.digest
 
-      # Another key of the same node, a key of another node, and another workspace's key
-      # find no such run.
+      # Another key of the same node reads the same: a key replaced while the run is live.
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
+      assert {:ok, %{digest: ^digest}} = Registration.fetch(same_node, run.run_id)
+
+      # A key of another node, and another workspace's key, find no such run.
       %{access_key: other_node} = contract_key_fixture(scope)
       %{scope: other} = sign_up_fixture()
       {:ok, _} = Policy.allow(other, nil, %{host: "api.example"})
       %{access_key: other_workspace} = contract_key_fixture(other)
 
-      for other_key <- [same_node, other_node, other_workspace] do
+      for other_key <- [other_node, other_workspace] do
         assert Registration.fetch(other_key, run.run_id) == {:error, :not_found}
       end
     end

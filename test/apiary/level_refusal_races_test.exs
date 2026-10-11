@@ -57,8 +57,15 @@ defmodule Apiary.LevelRefusalRacesTest do
   defp level(%Membership{id: id}), do: Repo.get!(Membership, id).level
   defp level(%{membership: membership}), do: level(membership)
 
+  # How long each change may take to answer once let go. A deadlock is found after the
+  # database's `deadlock_timeout`, a second, and the change that remains then commits;
+  # on a loaded CI machine one has taken longer than ten seconds to answer.
+  @answer_ms 30_000
+
   # Starts each change, waits until each holds its first rows, then lets them go on
-  # together: their answers, a deadlock as `{:deadlock, message}`.
+  # together: their answers, a deadlock as `{:deadlock, message}`. A change's first rows
+  # are waited for as long as the change waits for its go
+  # (`Apiary.EditionStubs.rendezvous/0`), five seconds.
   defp each_holding(changes) do
     sides = for change <- changes, do: start(fn -> deadlock_as_answer(change) end)
 
@@ -69,7 +76,7 @@ defmodule Apiary.LevelRefusalRacesTest do
       end
 
     for pid <- held, do: send(pid, :level_refusal_go)
-    for side <- sides, do: Task.await(side.task, 10_000)
+    for side <- sides, do: Task.await(side.task, @answer_ms)
   end
 
   defp deadlock_as_answer(change) do

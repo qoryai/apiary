@@ -398,7 +398,7 @@ msgstr ""
 
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
-msgid "must start with https://, or http:// for a loopback host"
+msgid "must start with https://"
 msgstr ""
 
 #: lib/apiary/variables.ex
