@@ -170,11 +170,15 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   describe "known-answers/signatures.json, the enrolment proofs" do
     test "each is the body's proof of the five lines SignedMessage builds, under the body's key" do
       %{"enrolment" => enrolments} = known_answers!("signatures")
-      access_key = fixture_key!("access_key")
-      assert length(enrolments) == 2
+      assert length(enrolments) == 3
 
       for %{"lines" => lines, "length" => length, "body" => path} <- enrolments do
         body = path |> body() |> Jason.decode!()
+
+        # A gateway's code is redeemed under the fixture gateway key, a node's under the
+        # fixture access key.
+        access_key =
+          fixture_key!(if path =~ "gateway", do: "gateway_key", else: "access_key")
 
         assert lines == [
                  "qory-enrol-ed25519-v1",
@@ -212,7 +216,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
         Enum.map(requests, & &1["signature"]) ++
           Enum.map(enrolments, &(&1["body"] |> body() |> Jason.decode!() |> Map.fetch!("proof")))
 
-      assert length(answers) == 9
+      assert length(answers) == 10
 
       for %{"lines" => lines, "length" => length, "signature" => signature} = answer <- answers do
         [domain, status, request_signature, hash, configuration, run] = lines

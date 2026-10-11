@@ -4,6 +4,7 @@
 # the gateway and the wall, with a gateway between the session and Qory Apiary, every
 # run's exit saying how the run ended, discovery listing the one workspace an access
 # key's node or node pool belongs to, and a run that goes through a gateway: the run key,
-# the registration's gateway shape, the attach, the outcome and the end member, and a
-# gateway's key in discovery and enrolment.
-d351c2c541af9f4e745550ec81715d8a1971575b
+# the registration's gateway shape, the attach, the outcome and the end member, a
+# gateway's key in discovery and enrolment, and a gateway's enrolment request and its
+# signed answer.
+55f2d9f4e930345f6d518a674a4ab8c13d50aa94
