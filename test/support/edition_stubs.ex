@@ -447,6 +447,12 @@ defmodule Apiary.EditionStubs do
     @doc "out_of_use/1 holds the organisations `ids` out of use, as `OutOfUse` reads it."
     def out_of_use(ids) when is_list(ids), do: Process.put(:out_of_use, ids)
 
+    @doc """
+    switch/1 turns the serving off (`:off`), as an edition whose flag for it is off: both
+    answers are none, whatever `put/1` named, until it is turned `:on` again.
+    """
+    def switch(state) when state in [:on, :off], do: Process.put(:serves_across_switch, state)
+
     def serving_organisations(id), do: for({serving, ^id} <- pairs(), do: serving)
 
     def served_organisations(id), do: for({^id, served} <- pairs(), do: served)
@@ -454,13 +460,17 @@ defmodule Apiary.EditionStubs do
     def active_organisations(query, binding), do: OutOfUse.active_organisations(query, binding)
 
     defp pairs do
-      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+      if read(:serves_across_switch) == :off, do: [], else: read(:serves_across) || []
+    end
+
+    defp read(key) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
         pid when pid == self() ->
-          Process.get(:serves_across)
+          Process.get(key)
 
         pid ->
-          case Process.info(pid, {:dictionary, :serves_across}) do
-            {{:dictionary, :serves_across}, pairs} when is_list(pairs) -> pairs
+          case Process.info(pid, {:dictionary, key}) do
+            {{:dictionary, ^key}, value} -> value
             _unset -> nil
           end
       end)

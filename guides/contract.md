@@ -378,6 +378,7 @@ configuration in force now for the labels the run registered with.
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | the run is not one this key's node registered, or, through a gateway, attached from this instance: an unknown run id, a run another node registered, a run through a gateway not yet attached, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway that may no longer serve the run's workspace: never its policy | `{"error":"workspace_not_served"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
@@ -420,6 +421,7 @@ contract version, the body, the `time`); the first that applies is the answer:
 | `400` | the run key does not verify, its run id is not the path's, or it is not the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use, as a key of it would be | `{"error":"unauthorized"}` |
 | `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
+| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance that attached the run, under any of the node's active keys, attaching it again while the run is live | the answer it was given |
 | `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
 | `409` | the run was never attached and its attach window has closed: past `attach_by`, or the run already found lost | `{"error":"run_key_expired"}` |
@@ -522,6 +524,7 @@ this order, and the first refusal that applies is the answer:
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
+| `410` | the run goes through a gateway that may no longer serve the run's workspace, and the delivery is a new one (one already recorded is `202` again): nothing of the batch is stored | `{"error":"workspace_not_served"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's end (below) |
 

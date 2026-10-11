@@ -728,8 +728,20 @@ defmodule Apiary.OrganisationGatewaysTest do
     test "a node without a workspace is a gateway", %{scope: scope} do
       node = node_fixture(scope)
 
+      # A row like the node's, with no workspace: its place is fixed once made, so the
+      # check is met as a row is inserted.
+      row =
+        Node.__schema__(:fields)
+        |> then(&Map.take(node, &1))
+        |> Map.merge(%{
+          id: Ecto.UUID.generate(),
+          public_id: "nd_" <> String.duplicate("a", 16),
+          name: "placeless",
+          workspace_id: nil
+        })
+
       assert_raise Postgrex.Error, ~r/nodes_place_check/, fn ->
-        Repo.update_all(from(n in Node, where: n.id == ^node.id), set: [workspace_id: nil])
+        Repo.insert_all(Node, [row])
       end
     end
 
@@ -766,6 +778,24 @@ defmodule Apiary.OrganisationGatewaysTest do
         assert_raise Postgrex.Error, ~r/node_place_matches/, fn ->
           Repo.update_all(from(r in schema, where: r.id == ^id), set: [workspace_id: nil])
         end
+      end
+    end
+
+    test "a node's place is fixed: no workspace is given to or taken from it",
+         %{scope: scope} do
+      gateway = organisation_gateway_fixture(scope)
+      node = node_fixture(scope)
+
+      for {id, workspace_id} <- [{gateway.id, scope.workspace.id}, {node.id, nil}] do
+        assert_raise Postgrex.Error, ~r/nodes_place_fixed/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^id), set: [workspace_id: workspace_id])
+        end
+      end
+
+      other = workspace_fixture(scope.organisation)
+
+      assert_raise Postgrex.Error, ~r/nodes_place_fixed/, fn ->
+        Repo.update_all(from(n in Node, where: n.id == ^node.id), set: [workspace_id: other.id])
       end
     end
 

@@ -163,12 +163,13 @@ first refusal that applies is the answer:
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
+| `410` | a new delivery for a run through a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Gateways.may_serve?/2`), after the checks above and a delivery already recorded, which is `202` again; nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
 
 Every answer after the `401` is signed.
 
-Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the digest the
+Every `202`, and the `410` of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the
 workspace's discovery answer carries, and, for a workspace whose policy somebody has made,
 `X-Qory-Run-Configuration`, the digest of the run configuration for the repository the
 run registered with (see "Assumed" for a run that did not register). A workspace without a
@@ -443,6 +444,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `400` | the run key does not verify under the instance's signing key, its `run_id` is not the path's, or it is not, byte for byte, the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
+| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
 | `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
@@ -478,7 +480,9 @@ key's workspace does not hold, a run another node registered, a run its batches 
 without a registration, even for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the
 run registered with, and no others, with the headers above. A run whose events retention
-has pruned is reloaded all the same: `200`, never `410`. A reload on a workspace with no policy, or a
+has pruned is reloaded all the same: `200`, never `410`. A run through a gateway that may no
+longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
+`{"error":"workspace_not_served"}`, never its policy. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`. A policy removed mid-run never loosens a run that's
 already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,

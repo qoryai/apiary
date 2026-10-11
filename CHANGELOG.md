@@ -315,10 +315,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   of the organisation (`node.create`, `node.read`); a gateway's changes, keys and codes
   are asked at its place. A change of an organisation's gateways takes turns with every
   change of a node's choice in a workspace it may serve, on the organisations' rows
-  (`Apiary.Gateways.lock/1`, `docs/access.md`). A gateway's key is checked while its
+  (`Apiary.Gateways.lock/1`, `docs/access.md`). An organisation's gateway's key is checked while its
   organisation is out of use, not marked for deletion, and acts for a run only while the
   run's workspace is in use, the gateway may serve it, and either the gateway's
-  organisation is in use or the run is another organisation's. The console offers an
+  organisation is in use or the run is another organisation's. A gateway acts for a run
+  only while it may serve the run's workspace, asked again at each batch, heartbeat,
+  reload and repeated attach: once it may not, a new batch or heartbeat is a signed `410`
+  `workspace_not_served` with nothing of it stored, a reload the same `410` with no
+  policy, and a repeated attach a signed `409` `workspace_not_served`; the run goes lost
+  by liveness. A workspace's gateway's key is held to its organisation's use as any
+  node's is. The console offers an
   organisation's gateways only where an organisation may have more than one workspace
   (`c:Apiary.Edition.limits/0`): with one workspace, as here, Organisation › Gateways, its
   sidebar entry and New gateway in New are not offered, and their paths are not found.
@@ -819,6 +825,9 @@ checks and keys are added NOT VALID, and
 `20261011160600_validate_a_gateway_s_organisation_keys` validates them. Nothing is
 backfilled: every row keeps its workspace. Rolled back, it refuses while any row without
 a workspace is there.
+`20261011160650_fix_a_node_s_place` adds the trigger `nodes_place_fixed`, which refuses a
+change of `nodes.workspace_id`, as `nodes_kind_fixed` refuses a change of kind: a node's
+keys, codes and instances stay at its place. Nothing is backfilled.
 
 ### Upgrading
 

@@ -98,10 +98,12 @@ defmodule Apiary.AccessKeys do
   cancelled, and for a key of a node or a node pool of an organisation
   the edition stopped (`c:Apiary.Edition.active_organisations/2`), which answers so until it
   is in use again: a key is a workspace's, not a person's, so a suspended membership or an
-  account out of use leaves the keys working. A gateway's key is verified while its
-  organisation is out of use, and acts for a run only while the run's own place is in use
-  (`place_in_use?/2`): it keeps carrying the runs of the other organisations it serves,
-  and none of its own organisation's.
+  account out of use leaves the keys working. The key of an organisation's gateway is
+  verified while its organisation is out of use, and acts for a run only while the run's
+  own place is in use (`place_in_use?/2`): it keeps carrying the runs of the other
+  organisations it serves, and none of its own organisation's. It keeps the keys it holds
+  and enrols no new one: an enrolment is refused while its organisation is out of use, as
+  every enrolment code of an organisation out of use is. A workspace's gateway is held to its organisation's use as any node is.
 
   Its integrity code is checked first: a row that does not match it, changed outside the
   application, is `{:error, :integrity}`, with a line in the log.
@@ -174,9 +176,10 @@ defmodule Apiary.AccessKeys do
 
   # The keys a request could be verified under, with their workspace and node: not
   # revoked, of a node in use, of a workspace and an organisation neither marked for
-  # deletion nor, for a node or a node pool, out of use. A gateway's key is verified while
-  # its organisation is out of use: a gateway may serve the workspaces of other
-  # organisations, whose runs it keeps carrying. For each run, its own place is checked
+  # deletion nor, but for an organisation's gateway, out of use. The key of a gateway of an
+  # organisation, which has no workspace, is verified while its organisation is out of
+  # use: it may serve the workspaces of other organisations, whose runs it keeps carrying.
+  # A workspace's gateway serves that workspace alone, and is held to it as any node is. For each run, its own place is checked
   # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
   # of use.
   defp verifiable_query do
@@ -191,7 +194,7 @@ defmodule Apiary.AccessKeys do
       where: is_nil(k.revoked_at),
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
-      where: n.kind == :gateway or o.id in subquery(in_use),
+      where: (n.kind == :gateway and is_nil(n.workspace_id)) or o.id in subquery(in_use),
       preload: [workspace: w, node: n, organisation: o]
     )
   end

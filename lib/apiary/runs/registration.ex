@@ -734,10 +734,12 @@ defmodule Apiary.Runs.Registration do
   `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
   last is never the document of no policy, which would take the policy in force off a run
   that started under it: a policy removed mid-run never loosens a run already started.
+  `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
+  the run's workspace (`Apiary.Runs.Sender.serves?/2`).
   `{:error, :unavailable}` when the configuration cannot be read.
   """
   @spec fetch(AccessKey.t() | Scope.t(), term, String.t() | nil) ::
-          {:ok, settings} | {:error, :not_found | :unavailable}
+          {:ok, settings} | {:error, :not_found | :workspace_not_served | :unavailable}
   def fetch(key, run_id, instance_id \\ nil)
 
   def fetch(%Scope{access_key: %AccessKey{} = access_key}, run_id, instance_id),
@@ -748,7 +750,8 @@ defmodule Apiary.Runs.Registration do
 
     with true <- Batch.uuid?(run_id),
          %Run{} = run <- Repo.one(Sender.run_query(access_key, run_id)),
-         true <- reload_allowed?(access_key, run, instance_id) do
+         true <- reload_allowed?(access_key, run, instance_id),
+         true <- Sender.serves?(run, access_key) || :not_served do
       case Serving.fetch(Sender.place_key(run, access_key), run.registration_labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
           {:ok, settings(document, digest, true)}
@@ -760,6 +763,7 @@ defmodule Apiary.Runs.Registration do
           {:error, :unavailable}
       end
     else
+      :not_served -> {:error, :workspace_not_served}
       _not_found -> {:error, :not_found}
     end
   rescue

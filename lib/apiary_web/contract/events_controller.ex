@@ -17,13 +17,15 @@ defmodule ApiaryWeb.Contract.EventsController do
   `Apiary.Runs.Ingest`: a run bound to another node than the key's (`Apiary.Runs.Sender`)
   is `409` `wrong_node`, the whole batch refused and nothing of it stored; a run whose
   events retention has pruned is `410`, even for a delivery already recorded; any other
-  delivery already recorded is `202` again; anything else is stored and answered `202`,
-  with nothing projected yet. A run starts by its registration
+  delivery already recorded is `202` again; a run behind a gateway that may no longer
+  serve its workspace (`Apiary.Runs.Sender.serves?/2`) is `410` `workspace_not_served`,
+  nothing of the batch stored; anything else is stored and answered `202`, with nothing
+  projected yet. A run starts by its registration
   (`ApiaryWeb.Contract.RegistrationController`), which the instance limit admits; a batch
   is held to no limit.
 
-  Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202` and `410`
-  carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
+  Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202`, and the `410`
+  of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
   answer carries, and, for a workspace whose policy somebody has made,
   `X-Qory-Run-Configuration`, the digest of the run configuration for the run's target
   (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which is how a run
@@ -68,6 +70,9 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       {:error, :unauthorized} ->
         conn |> put_status(401) |> json(%{error: "unauthorized"})
+
+      {:error, :workspace_not_served} ->
+        conn |> put_status(410) |> json(%{error: "workspace_not_served"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})
