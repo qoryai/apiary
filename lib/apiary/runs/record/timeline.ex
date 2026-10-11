@@ -1101,7 +1101,17 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(slim_text(:stdout, stdout || nil, limit, true))
     |> Map.merge(slim_text(:stderr, stderr || nil, limit, true))
     |> Map.merge(slim_text(:response_json, json, limit, false))
+    |> egress_host()
   end
+
+  @doc false
+  # An egress event's host as its connection keeps it: at most 255 bytes, cut on a
+  # character boundary by the fold's cut (`Apiary.Runs.Fold`), so a long host reads
+  # the same in the timeline as on its connection's row. Any other event's is as it is.
+  def egress_host(%{type: @prefix <> "run.egress", host: host} = event) when is_binary(host),
+    do: %{event | host: Fold.cut(host, 255)}
+
+  def egress_host(event), do: event
 
   defp slim_text(key, text, limit, lines?) when is_binary(text) and text != "" do
     base = %{key => String.slice(text, 0, limit), :"#{key}_bytes" => byte_size(text)}

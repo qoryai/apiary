@@ -721,6 +721,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   address in that form and the rule is the same: an address in another form, an IPv6
   address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
   a connection reads as not allowed.
+- What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
+  registration, events, attach, outcome and reload, and its run configuration, whatever a
+  level above the workspace shows. An edition can no longer switch a feature off below the
+  instance.
 
 ### Removed
 
@@ -738,6 +742,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Before, it read and showed them to anyone who could read the runs.
 - A connection's host is isolated wherever it shows, so a right-to-left character in it
   reorders nothing around it.
+- The Overview and the Policy pages offer no Allow for a destination no rule can change:
+  the wall's refusals and a host no rule can name. The row still shows, and still counts,
+  with no act. Before, its Allow opened and the rule was refused, or was written and changed
+  nothing. The run's timeline shows a long host as its connection's row does, cut at 255
+  bytes on a whole character; before, it showed up to 400 characters.
 
 ### Migrations
 

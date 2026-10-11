@@ -927,7 +927,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
-      %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item ->
+      %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item
+      when item.unchangeable != true ->
         {:noreply, open_panel(socket, item, level)}
 
       _ ->
@@ -1171,10 +1172,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   ## The attention list: built from the record in assigns, merged into what is shown.
 
-  # A denied destination that only the level above could allow: no locked rule and no deny
-  # of that level holds it, and the level allows only its own hosts.
+  # A denied destination that only the level above could allow: a rule can change it, no
+  # locked rule and no deny of that level holds it, and the level allows only its own hosts.
   defp elsewhere(%{own_allows: false} = level, %{} = row) do
-    if is_nil(row[:locked]) and is_nil(row[:above]), do: level
+    if is_nil(row[:locked]) and is_nil(row[:above]) and row[:unchangeable] != true, do: level
   end
 
   defp elsewhere(_level, _row), do: nil

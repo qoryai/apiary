@@ -557,6 +557,7 @@ defmodule Apiary.Policy do
           path: String.t() | nil,
           attempts: non_neg_integer,
           tool: String.t() | nil,
+          unchangeable: boolean,
           runs: non_neg_integer,
           last_seen_at: DateTime.t(),
           targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
@@ -571,6 +572,8 @@ defmodule Apiary.Policy do
   it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
   a request to it in the range named one, handed to the tool or refused by a path rule
   before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
+  `unchangeable` is true when no rule can allow it: the wall refused the last attempt of
+  its most recently seen connection, or its host is none a rule can name.
 
   Read from `connections` by the workspace and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -613,6 +616,7 @@ defmodule Apiary.Policy do
           held: boolean,
           locked: String.t() | nil,
           above: String.t() | nil,
+          unchangeable: boolean,
           denied: pos_integer,
           tool: String.t() | nil,
           runs: pos_integer,
@@ -630,9 +634,11 @@ defmodule Apiary.Policy do
   that only an owner changes it, and `above` the deny of the level above that covers it,
   when one does, which no rule of the workspace changes; `tool` names the tool whose host it is, whenever a
   request to it in the range named one: a request to a tool that a path rule refused is a
-  denied request to that tool. The 50 with the most denials, most first, with the
-  targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
-  the cap.
+  denied request to that tool. `unchangeable` is true when no rule can change it: the
+  wall refused the last attempt of its most recently seen connection, or its host is
+  none a rule can name; `locked` and `above` are then nil. The 50 with the most denials,
+  most first, with the targets whose runs were denied. Bounded as `uncovered/2` is,
+  `:unavailable` beyond the cap.
   """
   @spec denied_destinations(Scope.t(), DateTime.t()) :: {:ok, [denied_destination]} | :unavailable
   def denied_destinations(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),

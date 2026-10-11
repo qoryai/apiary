@@ -603,4 +603,23 @@ defmodule Apiary.EditionStubs do
     def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
+
+  defmodule WithoutRecordOrPolicy do
+    @moduledoc """
+    Every organisation and workspace has the instance's features but `observability` and
+    `security` (`c:Apiary.Edition.features_of/3`), as an edition that switches them off
+    below the instance would. It reads nothing.
+    """
+    def features_of(_organisation, _workspace, enabled),
+      do: enabled -- [:observability, :security]
+  end
+
+  defmodule WithoutSecrets do
+    @moduledoc """
+    Every organisation and workspace has the instance's features but `secrets`
+    (`c:Apiary.Edition.features_of/3`), as an edition that switches it off below the
+    instance would. It reads nothing.
+    """
+    def features_of(_organisation, _workspace, enabled), do: enabled -- [:secrets]
+  end
 end

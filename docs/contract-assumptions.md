@@ -401,9 +401,9 @@ holds in a repository's document whatever its mode, and a deny holds in either m
 nothing else, and `allow` says what `enforce` would reach. `about` never selects a policy:
 the policy is chosen by the registration's labels alone.
 
-A workspace whose policy nobody has made, one without the `security` feature, and a key
-`Apiary.Access` refuses `run_configuration.fetch` serve no run configuration: a
-registration is answered `{"version":1}`, the document of no policy
+A workspace whose policy nobody has made, or any workspace on an instance without the
+`security` feature, and a key `Apiary.Access` refuses `run_configuration.fetch` serve no
+run configuration: a registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is

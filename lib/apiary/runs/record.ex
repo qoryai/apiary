@@ -265,6 +265,8 @@ defmodule Apiary.Runs.Record do
           tool_use_id: fragment("left(? ->> 'tool_use_id', 255)", e.data),
           agent_id: fragment("left(? ->> 'agent_id', 255)", e.data),
           agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
+          # 255 characters hold the 255 bytes the fold keeps of an egress event's host,
+          # cut below as the fold cuts it (`Timeline.egress_host/1`).
           host: fragment("left(? ->> 'host', 255)", e.data),
           port: fragment("left(? ->> 'port', 12)", e.data),
           decision: fragment("left(? ->> 'decision', 12)", e.data),
@@ -301,7 +303,7 @@ defmodule Apiary.Runs.Record do
         query
       end
 
-    Repo.all(query)
+    query |> Repo.all() |> Enum.map(&Timeline.egress_host/1)
   end
 
   @doc """
@@ -469,6 +471,8 @@ defmodule Apiary.Runs.Record do
       {key, ""} -> {key, nil}
       pair -> pair
     end)
+    # 400 characters hold the 255 bytes the fold keeps of an egress event's host.
+    |> Timeline.egress_host()
   end
 
   defp utc(%NaiveDateTime{} = time), do: DateTime.from_naive!(time, "Etc/UTC")
