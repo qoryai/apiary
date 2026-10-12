@@ -154,39 +154,49 @@ defmodule Apiary.Access do
     Action.new(
       :"access_key.create_code",
       "make an enrolment code for a node, with the settings of the key it brings",
+      part: :nodes,
       roles: @admins
     ),
     Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+      part: :nodes,
       roles: @admins
     ),
     Action.new(:"access_key.add", "add an access key to a node by its public key",
+      part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),
+    Action.new(:"access_key.revoke", "revoke a node's access key",
+      part: :nodes,
+      roles: @admins
+    ),
     # The workspace's nodes and node pools, the places its runs run.
     Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+      part: :nodes,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"node.create",
       "make a node or a node pool, whose kind is fixed from then on",
+      part: :nodes,
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node or a node pool", roles: @admins),
+    Action.new(:"node.edit", "rename a node or a node pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.set_limit",
       "set a node pool's instance limit, as it is made or after",
+      part: :nodes,
       roles: @admins,
       audited:
         {:not,
          "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
            "node.edit, records it with what else the change made"}
     ),
-    Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
+    Action.new(:"node.delete", "delete a node or a node pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.clear_instance",
       "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      part: :nodes,
       roles: @admins
     ),
     # The record.
@@ -348,12 +358,13 @@ defmodule Apiary.Access do
     (`Apiary.Accounts.Scope.for_instance/2`). Any other scope without a person may
     nothing.
   - **`action`** is a verb of the engine, one of `actions/0`, each an
-    `Apiary.Access.Action` named once, with the feature it belongs to, and the part of it
-    where it belongs to one, in the table below; an edition adds further actions
+    `Apiary.Access.Action` named once, with the feature it belongs to, and the part where
+    it belongs to one, a part of its feature or, for an action of no feature, a part of
+    none, in the table below; an edition adds further actions
     (`c:Apiary.Edition.actions/0`). The registry of both is built once, checked, and kept
     for the node: an action named twice, a role or a feature nobody knows, or a part that
-    is not one of its feature's, stops it. An action that is in neither raises
-    `ArgumentError`.
+    is not one of its feature's, or of no feature for an action of none, stops it. An
+    action that is in neither raises `ArgumentError`.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
     as a run, a rule, an access key, a node, an invitation or a membership, which carries
     `organisation_id`, and `workspace_id` when it belongs to a workspace. Deleting a
@@ -362,10 +373,10 @@ defmodule Apiary.Access do
 
   The answer is read in this order:
 
-  1. **The feature** the action belongs to, or the part of it (`Apiary.Features.visible?/2`).
-     An action of a feature that is off, or of a feature or a part hidden from the scope's
-     person, is `{:error, :not_found}`: a feature that is off or hidden is absent, not
-     forbidden, and so is a hidden part.
+  1. **The feature** the action belongs to, or the part (`shown_as/1`,
+     `Apiary.Features.visible?/2`). An action of a feature that is off, or of a feature or
+     a part hidden from the scope's person, is `{:error, :not_found}`: a feature that is
+     off or hidden is absent, not forbidden, and so is a hidden part.
   2. **The edition** (`c:Apiary.Edition.check/3`), asked once: it may answer, for what it
      adds or narrows, or leave the answer to the steps below. The core's own edition
      leaves every answer to them.
@@ -419,7 +430,8 @@ defmodule Apiary.Access do
   | Action | What | Feature |
   |---|---|---|
   #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
-      action.part -> "`#{action.feature}`, its part `#{action.part}`"
+      action.part && action.feature -> "`#{action.feature}`, its part `#{action.part}`"
+      action.part -> "every instance, the part `#{action.part}`"
       action.feature -> "`#{action.feature}`"
       true -> "every instance"
     end} |" end)}
@@ -482,16 +494,24 @@ defmodule Apiary.Access do
 
   ## Features
 
-  The feature an action belongs to, or the part of it where it belongs to one, is asked of
-  `Apiary.Features.visible?/2` with the scope, which carries what its person is not shown
-  in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`); `reload/2` reads it again
-  after the edition's reload, under its locks. A part is hidden where it or its feature
-  is. An access key's scope and the instance's answer as the instance.
+  The feature an action belongs to, or the part where it belongs to one (`shown_as/1`), is
+  asked of `Apiary.Features.visible?/2` with the scope, which carries what its person is
+  not shown in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`); `reload/2` reads
+  it again after the edition's reload, under its locks. A part of a feature is hidden where
+  it or its feature is; a part of no feature where it is. An access key's scope and the
+  instance's answer as the instance.
 
   `run.read_log` belongs to the part `observability.terminal`, the run's Terminal: an
   edition that hides it from a person hides the run's whole log from them, its terminal,
   stdout and stderr, on the run page, at its address and as a download, and the last lines
   the runs list previews.
+
+  The `node.*` and `access_key.*` actions belong to no feature and to the part `nodes`: an
+  edition that hides it from a person hides from them the nodes, the node pools, their
+  access keys and the gateways, their pages and every action on them, while the nodes keep
+  working. What a node is served asks an access key's scope or the instance's, which is
+  never asked what is hidden; an enrolment code's maker approves the key it brings by
+  their role and place alone (`check_role_and_place/3`).
   """
 
   @typedoc "An action, one of `actions/0`."
@@ -538,6 +558,17 @@ defmodule Apiary.Access do
   @doc "The feature `action` belongs to, nil for an action every instance has."
   @spec feature(action) :: Features.feature() | nil
   def feature(action), do: action(action).feature
+
+  @doc """
+  shown_as/1 is what `Apiary.Features.visible?/2` is asked of `action`: the part it belongs
+  to, else its feature; nil for an action of no feature and no part, which every person is
+  shown.
+  """
+  @spec shown_as(action) :: Features.name() | nil
+  def shown_as(action) do
+    %Action{feature: feature, part: part} = action(action)
+    part || feature
+  end
 
   @doc """
   roles/0 is the roles, the core's and the edition's, with the actions each holds: the
@@ -847,16 +878,29 @@ defmodule Apiary.Access do
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
   def check(scope, action, subject) do
-    %Action{feature: feature, part: part} = action(action)
+    shown_as = shown_as(action)
 
-    # A part is shown only where its feature is too (`Apiary.Features.visible?/2`).
-    if not is_nil(feature) and not Features.visible?(scope, part || feature) do
-      {:error, :not_found}
-    else
-      case Edition.check(scope, action, subject) do
-        :continue -> check_in_place(scope, action, subject)
-        answer -> answer
-      end
+    # A part of a feature is shown only where its feature is too
+    # (`Apiary.Features.visible?/2`).
+    if not is_nil(shown_as) and not Features.visible?(scope, shown_as),
+      do: {:error, :not_found},
+      else: check_role_and_place(scope, action, subject)
+  end
+
+  @doc """
+  check_role_and_place/3 is the answer of `check/3` without asking what the scope's
+  person is shown (step 1 of the moduledoc): the edition's answer, the place's and the
+  role's, steps 2 to 8. For a context function that asks whether a person's role still
+  backs what they approved, whatever the edition hides from them, as an enrolment code's
+  maker approves the key it brings (`Apiary.AccessKeys.enrol/2`).
+  """
+  @spec check_role_and_place(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
+  def check_role_and_place(scope, action, subject) do
+    %Action{} = action(action)
+
+    case Edition.check(scope, action, subject) do
+      :continue -> check_in_place(scope, action, subject)
+      answer -> answer
     end
   end
 

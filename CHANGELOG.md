@@ -683,6 +683,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Terminal tab does.
 - Workspace settings leave out the size of the log a retention pass deleted for a reader
   the run's Terminal is hidden from.
+- A feature part can belong to no feature; the nodes, node pools, access keys and gateways
+  are the part `nodes`, which an edition may hide from a person while nodes keep working.
 
 ### Changed
 

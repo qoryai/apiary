@@ -688,6 +688,65 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
+  describe "the nodes hidden from the reader" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+    end
+
+    test "the empty workspace has no box, only the line under it", %{conn: conn, scope: scope} do
+      node_fixture(scope, name: "build-01")
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      refute has_element?(view, "#onboarding")
+      refute has_element?(view, "#onboarding-new-node")
+      refute has_element?(view, "#onboarding-nodes")
+      refute render(view) =~ "/nodes"
+      refute render(view) =~ "Send your first run"
+
+      assert text(view, ".q-onb-after") =~ "fill in once the first run lands"
+    end
+
+    test "shown again, the box is back", %{conn: conn, scope: scope} do
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding-new-node")
+    end
+
+    @tag needs: :security
+    test "To review leads nowhere on the nodes page", %{conn: conn, scope: scope} do
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # An allow rule under observe, with a run this week: the enforce nudge, the sixth.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      # Shown the nodes, the list overflows.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      assert has_element?(open(conn, scope), "#attention-more")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      assert text(view, "#attention-n") == "5"
+      refute has_element?(view, "#attention-more")
+      refute has_element?(view, "#att-key-#{idle.id}")
+      refute render(view) =~ "/nodes"
+    end
+  end
+
   describe "the activity" do
     test "the summary counts the runs, the ended badly and the denials; the cost is a caption",
          %{conn: conn, scope: scope} do

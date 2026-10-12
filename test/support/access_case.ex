@@ -53,8 +53,8 @@ defmodule Apiary.AccessCase do
     (`@moduletag with_features:`); a test tagged with other features raises, and belongs
     in a module of its own on `:test`. The `feature_off` actor takes its feature away
     inside the test, from the actors as made, and asks the same on either; so does the
-    `hidden` actor, which has the edition hide the feature from people, or the part of it
-    the action belongs to;
+    `hidden` actor, which has the edition hide the feature from people, or the part the
+    action belongs to, of its feature or of none;
   - what lives in a process is the test's own: `setup_all` runs in a process no test has
     among its `$callers`, so an edition's stub (`Apiary.Edition.put_test_stub/1`) or
     another entry of the process dictionary is set in each test's `setup`, never for the
@@ -299,17 +299,13 @@ defmodule Apiary.AccessCase do
     end
   end
 
-  # Runs `fun` with the scope read again where the edition hides from people the part of
-  # its feature the action belongs to, else the action's feature
-  # (`Apiary.EditionStubs.HidesNamed`), as a page's scope carries it; an action every
-  # instance has hides nothing.
+  # Runs `fun` with the scope read again where the edition hides from people the part the
+  # action belongs to, of its feature or of none, else the action's feature
+  # (`Apiary.Access.shown_as/1`, `Apiary.EditionStubs.HidesNamed`), as a page's scope
+  # carries it; an action of no feature and no part hides nothing.
   defp hiding_feature(action, scope, fun) do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
-
-    :ok =
-      Apiary.EditionStubs.HidesNamed.put(
-        List.wrap(Access.action(action).part || Access.feature(action))
-      )
+    :ok = Apiary.EditionStubs.HidesNamed.put(List.wrap(Access.shown_as(action)))
 
     fun.(Access.reload(scope))
   end

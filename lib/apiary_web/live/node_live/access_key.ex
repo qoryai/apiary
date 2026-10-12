@@ -827,6 +827,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     scope = Access.reload(socket.assigns.current_scope)
 
     cond do
+      # The nodes hidden from them meanwhile: the page leaves as it does once it hears of
+      # it (`ApiaryWeb.UserAuth.reload_scope/1`).
+      not Apiary.Features.visible?(scope, :nodes) ->
+        ApiaryWeb.UserAuth.reload_scope(socket)
+
       Access.reader(scope) ->
         socket
         |> assign(may: Map.new(@acts, fn {act, _} -> {act, false} end), manages: false)

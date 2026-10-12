@@ -168,4 +168,75 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       assert has_element?(view, "#run-instance", "i_1")
     end
   end
+
+  describe "the nodes hidden from the reader" do
+    # An edition may hide the nodes from a person (the part `nodes`): the record still
+    # names a run's node, without a link to a page they cannot open.
+    setup %{scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      run = node_run_fixture(node, "i_1")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      %{node: node, run: run}
+    end
+
+    test "the list names the node with no link, and still keeps its runs", %{
+      conn: conn,
+      scope: scope,
+      node: node,
+      run: run
+    } do
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, "#{row(run)} td.q-rl-c5", "build-01")
+      refute has_element?(view, "#{row(run)} td.q-rl-c5 a")
+      refute render(view) =~ "/nodes"
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert has_element?(view, "#runs-preview-node", "build-01")
+      refute has_element?(view, "#runs-preview-node a")
+      assert has_element?(view, "#runs-preview-instance", "i_1")
+
+      for value <- [node.public_id, "build-01"] do
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+        assert has_element?(view, row(run))
+
+        assert view |> element("#runs-narrowed-what") |> render() |> plain() ==
+                 "Showing the runs of build-01 only."
+
+        refute has_element?(view, "a#runs-narrowed-name")
+        refute render(view) =~ "/nodes"
+      end
+    end
+
+    test "the run page names the node with no link", %{conn: conn, scope: scope, run: run} do
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.run_id}"))
+
+      assert has_element?(view, "#run-node", "build-01")
+      refute has_element?(view, "#run-node a")
+      assert has_element?(view, "#run-instance", "build-01.example.com")
+      refute render(view) =~ "/nodes"
+    end
+
+    test "shown again, each links to the node's page", %{
+      conn: conn,
+      scope: scope,
+      node: node,
+      run: run
+    } do
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      node_page = workspace_path(scope, "/nodes/#{node.public_id}")
+
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, ~s(#{row(run)} td.q-rl-c5 a[href="#{node_page}"]), "build-01")
+
+      view = open(conn, workspace_path(scope, "/runs?node=#{node.public_id}"))
+      assert has_element?(view, ~s(a#runs-narrowed-name[href="#{node_page}"]), "build-01")
+
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.run_id}"))
+      assert has_element?(view, ~s(#run-node a[href="#{node_page}"]), "build-01")
+    end
+  end
 end

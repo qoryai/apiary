@@ -17,7 +17,11 @@ defmodule ApiaryWeb.Access do
   (`run.read_log`) or the log endpoint's refusal, but where an edition hides from them
   what they ask (`c:Apiary.Edition.hidden/1`): the run's Terminal, the part
   `observability.terminal` that `run.read_log` belongs to, takes the tab, its address and
-  the log endpoint with it, and the tests of the run page and of the log endpoint show it.
+  the log endpoint with it, and the tests of the run page and of the log endpoint show it;
+  the nodes, the part `nodes` that `node.read` belongs to, take every page of the nodes,
+  the node pools, their access keys and the gateways, and the tests of those pages show
+  it. A page open when what it asks is hidden from its reader leaves, as one of a hidden
+  feature does (`ApiaryWeb.UserAuth.reload_scope/1`).
 
   A reader (`Apiary.Access.reader/1`), who reads the organisation through the edition's
   reach with no membership there, in a role that holds no change, reads everything and
@@ -62,11 +66,13 @@ defmodule ApiaryWeb.Access do
     do: edition.who_may_sentence(about, scope) || default
 
   @doc false
+  # The action is kept with the page, so that an open page whose action's feature or part
+  # is hidden from the reader meanwhile leaves (`ApiaryWeb.UserAuth.reload_scope/1`).
   def on_mount(action, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
     if Apiary.Access.can?(scope, action, scope.workspace || scope.organisation),
-      do: {:cont, socket},
+      do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
   end
 end

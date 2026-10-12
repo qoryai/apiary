@@ -13,8 +13,9 @@ defmodule Apiary.AccessRows do
       feature_off   whoever the action is for, an owner, an access key or the instance, on
                     an instance without the action's feature
       hidden        whoever the action is for, as feature_off, where the edition hides the
-                    action's feature from people, or the part of it the action belongs
-                    to: a person meets it as not found, and an access key and the
+                    action's feature from people, or the part the action belongs to, of
+                    its feature or of none, as the nodes' and their access keys' part
+                    `nodes`: a person meets it as not found, and an access key and the
                     instance are never asked what is hidden
 
   Accepting an invitation is taken on the strength of the token, which no role is, and
@@ -71,16 +72,16 @@ defmodule Apiary.AccessRows do
       {:"workspace.delete", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"workspace.restore", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"workspace.purge", yes: [:instance, :feature_off, :hidden]},
-      {:"access_key.create_code", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"access_key.cancel_code", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"access_key.add", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"access_key.revoke", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"node.read", yes: @owners ++ [:member, :admin, :feature_off, :hidden]},
-      {:"node.create", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"node.edit", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"node.set_limit", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"node.delete", yes: @owners ++ [:admin, :feature_off, :hidden]},
-      {:"node.clear_instance", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"access_key.create_code", yes: @owners ++ [:admin, :feature_off]},
+      {:"access_key.cancel_code", yes: @owners ++ [:admin, :feature_off]},
+      {:"access_key.add", yes: @owners ++ [:admin, :feature_off]},
+      {:"access_key.revoke", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.read", yes: @owners ++ [:member, :admin, :feature_off]},
+      {:"node.create", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.edit", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.set_limit", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.delete", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.clear_instance", yes: @owners ++ [:admin, :feature_off]},
       {:"run.read", yes: @owners ++ [:member, :admin]},
       {:"run.read_log", yes: @owners ++ [:member, :admin]},
       {:"retention.edit", yes: @owners ++ [:admin]},
@@ -129,13 +130,14 @@ defmodule Apiary.AccessRows do
 
   @doc """
   refusal/3 is why the core's answer is no where it is not the role: a feature that is off
-  or hidden is not found, and so is anything of another organisation, and an organisation
-  that does not exist yet, which is no place.
+  or hidden is not found, and so is a hidden part, anything of another organisation, and
+  an organisation that does not exist yet, which is no place.
   """
   @spec refusal(atom, atom, term) :: :not_found | nil
   def refusal(action, actor, _subject) do
     cond do
-      actor in [:feature_off, :hidden] and Apiary.Access.feature(action) != nil -> :not_found
+      actor == :feature_off and Apiary.Access.feature(action) != nil -> :not_found
+      actor == :hidden and Apiary.Access.shown_as(action) != nil -> :not_found
       actor == :other_owner -> :not_found
       Apiary.Access.action(action).asked_of == :new_organisation -> :not_found
       true -> nil

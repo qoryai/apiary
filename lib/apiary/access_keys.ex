@@ -725,13 +725,15 @@ defmodule Apiary.AccessKeys do
   # account before it, in the lock order of docs/access.md, before the node is locked: a
   # change of the maker's level, a suspension or a removal waits for the enrolment, or
   # comes first and refuses the code. A code whose maker's account is gone, or that names
-  # none, is refused too.
+  # none, is refused too. Their role and place are asked, never what they are shown: an
+  # edition that hides the nodes from the maker (`Apiary.Features`, `:nodes`) leaves their
+  # codes working.
   defp maker_may_enrol(%EnrolmentCode{created_by_id: maker_id} = code)
        when is_binary(maker_id) do
     with {:ok, scope} <-
            Apiary.Organisations.job_scope(code.organisation_id, code.workspace_id, maker_id),
          %Scope{user: %Apiary.Accounts.User{}} = scope <- Access.reload(scope, lock: :share),
-         :ok <- Access.check(scope, :"access_key.create_code", code) do
+         :ok <- Access.check_role_and_place(scope, :"access_key.create_code", code) do
       :ok
     else
       _refused -> {:error, :unauthorized}

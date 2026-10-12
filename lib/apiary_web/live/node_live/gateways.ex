@@ -118,6 +118,11 @@ defmodule ApiaryWeb.NodeLive.Gateways do
     path = list_path(socket.assigns.current_scope)
 
     cond do
+      # The nodes hidden from them meanwhile: the page leaves as it does once it hears of
+      # it (`ApiaryWeb.UserAuth.reload_scope/1`).
+      not Apiary.Features.visible?(scope, :nodes) ->
+        ApiaryWeb.UserAuth.reload_scope(socket)
+
       Access.reader(scope) ->
         socket |> put_flash(:error, ApiaryWeb.Access.reads_only(scope)) |> push_patch(to: path)
 

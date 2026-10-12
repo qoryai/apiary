@@ -28,7 +28,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   or log line, until the page goes, the command expires, it is cancelled on the tab, or
   the machine runs it. The page hears the last two on the node's topic
   (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
-  on.
+  on. A reader not shown the nodes (`node.read`; an edition may hide them) reads no box,
+  only the line under it, and no link of To review leads them to the nodes page.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -127,6 +128,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           through={@onboarding.through}
           through_connected={@onboarding.through_connected}
           landed={@landed}
+          box={Common.may?(@current_scope, :"node.read")}
         />
 
         <div :if={@live?} class="q-ov">
@@ -1461,19 +1463,24 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             )
         }
 
+      # The nodes page, where the reader is shown it: an edition may hide the nodes.
       _ ->
-        %{
-          count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
-          title:
-            ngettext(
-              "%{number} more item, on the nodes page",
-              "%{number} more items, on the nodes page",
-              count,
-              number: Format.number(count)
-            )
-        }
+        if Common.may?(scope, :"node.read"), do: nodes_more(scope, count)
     end
+  end
+
+  defp nodes_more(scope, count) do
+    %{
+      count: count,
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
+      title:
+        ngettext(
+          "%{number} more item, on the nodes page",
+          "%{number} more items, on the nodes page",
+          count,
+          number: Format.number(count)
+        )
+    }
   end
 
   # What became of an item that is no longer on the record's list, in words.

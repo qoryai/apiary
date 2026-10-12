@@ -7,9 +7,9 @@ defmodule Apiary.Access.Action do
   - `feature`: the feature it belongs to (`Apiary.Features`), nil for one every instance
     has. An action of a feature that is off, or hidden from the person who asks, is not
     found.
-  - `part`: the part of its feature it belongs to (`Apiary.Features.parts/0`), nil for
-    none. An action of a part hidden from the person who asks is not found, as one of a
-    hidden feature is.
+  - `part`: the part it belongs to (`Apiary.Features.parts/0`), a part of its feature or,
+    for an action of no feature, a part of none; nil for none. An action of a part hidden
+    from the person who asks is not found, as one of a hidden feature is.
   - `what`: one line saying what it is, which the documentation tabulates.
   - `roles`: the roles that hold it, the rows of the role table it is in. An action no
     role holds is taken on the strength of something else, a sign-up, an invitation's
@@ -56,7 +56,8 @@ defmodule Apiary.Access.Action do
   (nil), `part:` (nil), `roles:` (none), `audited:` (`true`) and `asked_of:`
   (`:workspace`). Raises `ArgumentError` for a name that is not an atom, a description
   that is not a string, a part that is not an atom, or an option it does not know.
-  Whether the part is one of its feature's is checked by `Apiary.Access`'s registry.
+  Whether the part is one of its feature's, or of none for an action of none, is checked
+  by `Apiary.Access`'s registry.
   """
   @spec new(atom, String.t(), keyword) :: t
   def new(name, what, opts \\ []) when is_atom(name) and is_binary(what) do

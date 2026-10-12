@@ -359,7 +359,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   walk, purged before the core's (`deletion_tables/0`).
 - **Registries**: add features (`features/0`); add schemas an audit entry may be about
   (`subject_kinds/0`).
-- **What a person is shown**: hide features the instance has, or parts of them, from a
+- **What a person is shown**: hide features the instance has, or parts, from a
   person in an organisation (`hidden/1`).
 - **Audit trail**: add keys of its own to each entry's details as it is written, such as
   how the actor reached the organisation, cheaply and inside the change's transaction
@@ -402,9 +402,11 @@ An edition's features are listed after the core's (`c:Apiary.Edition.features/0`
 organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
 where `QORY_FEATURES` lists it by name, and is never one of those. A feature may have
 **parts** (`Apiary.Features.parts/0`), which an edition may hide apart from the rest of the
-feature, and which are never on or off apart from it: the core's one part is the run's
-Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs to (an
-action's `part`).
+feature, and which are never on or off apart from it: the core's one part of a feature is
+the run's Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs
+to (an action's `part`). A part may belong to no feature, and is then on in every
+instance: the core's one is `nodes`, the nodes, the node pools, their access keys and the
+gateways, which the `node.*` and `access_key.*` actions belong to.
 
 - **Absent, as off on the instance.** A feature that is off, or a feature or a part
   hidden from a person, is absent for them: the feature gates of the pages and the

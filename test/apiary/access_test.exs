@@ -493,6 +493,134 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "the part of no feature, nodes" do
+    @nodes_actions [
+      :"access_key.create_code",
+      :"access_key.cancel_code",
+      :"access_key.add",
+      :"access_key.revoke",
+      :"node.read",
+      :"node.create",
+      :"node.edit",
+      :"node.set_limit",
+      :"node.delete",
+      :"node.clear_instance"
+    ]
+
+    test "every action of the nodes and their access keys belongs to it, and no other" do
+      for action <- Access.actions() do
+        if action in @nodes_actions do
+          assert %Apiary.Access.Action{feature: nil, part: :nodes} = Access.action(action)
+          assert Access.shown_as(action) == :nodes
+        else
+          refute Access.action(action).part == :nodes, inspect(action)
+        end
+      end
+
+      assert Access.shown_as(:"run.read_log") == :"observability.terminal"
+      assert Access.shown_as(:"run.read") == :observability
+      assert Access.shown_as(:"workspace.rename") == nil
+    end
+
+    test "hidden from a person, its actions are not found and nothing else is" do
+      %{scope: owner} = sign_up_fixture()
+      %{access_key: key, node: node} = access_key_fixture(owner)
+      run = run_fixture(owner)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      subjects = [owner.workspace, owner.organisation, node, key]
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      shown = Access.reload(owner)
+
+      answers =
+        for a <- @nodes_actions, s <- subjects, into: %{}, do: {{a, s}, Access.check(shown, a, s)}
+
+      assert answers[{:"node.read", owner.workspace}] == :ok
+      assert answers[{:"access_key.revoke", key}] == :ok
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      scope = Access.reload(owner)
+      assert scope.hidden == [:nodes]
+
+      for action <- @nodes_actions, subject <- subjects do
+        assert Access.check(scope, action, subject) == {:error, :not_found}, inspect(action)
+        assert Access.authorize(owner, action, subject) == {:error, :not_found}
+        refute Access.can?(scope, action, subject)
+      end
+
+      assert Access.check(scope, :"run.read", run) == :ok
+      assert Access.check(scope, :"run.read_log", run) == :ok
+      assert Access.check(scope, :"workspace.rename", owner.workspace) == :ok
+
+      # Shown again, every answer is as it was.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      shown = Access.reload(owner)
+
+      for {{action, subject}, answer} <- answers,
+          do: assert(Access.check(shown, action, subject) == answer)
+
+      # An access key, and the instance, are never asked what is hidden.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      instance = Scope.for_instance(owner.organisation, owner.workspace)
+      key_scope = Scope.for_access_key(key)
+
+      for action <- @nodes_actions do
+        assert Access.check(%{instance | hidden: [:nodes]}, action, owner.workspace) ==
+                 Access.check(instance, action, owner.workspace)
+
+        assert Access.check(%{key_scope | hidden: [:nodes]}, action, owner.workspace) ==
+                 Access.check(key_scope, action, owner.workspace)
+      end
+
+      assert Access.check(key_scope, :"run.post_events", owner.workspace) == :ok
+      assert Access.check(key_scope, :"run_configuration.fetch", owner.workspace) == :ok
+    end
+
+    test "check_role_and_place/3 answers as check/3 but never asks what is shown" do
+      %{scope: owner} = sign_up_fixture()
+      member = member_fixture(owner, :member).scope
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      owner = Access.reload(owner)
+      member = Access.reload(member)
+      other = Access.reload(sign_up_fixture().scope)
+
+      assert Access.check(owner, :"access_key.create_code", owner.workspace) ==
+               {:error, :not_found}
+
+      assert Access.check_role_and_place(owner, :"access_key.create_code", owner.workspace) ==
+               :ok
+
+      assert Access.check_role_and_place(member, :"access_key.create_code", owner.workspace) ==
+               {:error, :forbidden}
+
+      assert Access.check_role_and_place(other, :"access_key.create_code", owner.workspace) ==
+               {:error, :not_found}
+
+      assert_raise ArgumentError, fn ->
+        Access.check_role_and_place(owner, :"no.such_action", owner.workspace)
+      end
+    end
+
+    test "the registry takes the part of no feature only on an action of no feature" do
+      action = &Apiary.Access.Action.new(:"report.read", "read a report", &1)
+
+      assert %{names: names} = Access.build_registry([action.(part: :nodes)], %{})
+      assert :"report.read" in names
+
+      for opts <- [
+            [feature: :observability, part: :nodes],
+            [feature: :security, part: :nodes]
+          ] do
+        assert_raise ArgumentError, ~r/report.read belongs to the part :nodes/, fn ->
+          Access.build_registry([action.(opts)], %{})
+        end
+      end
+    end
+  end
+
   # What an action is asked of in `place`, as the rows say: the organisation, the
   # workspace, or a new organisation.
   defp subject(place, action) do
