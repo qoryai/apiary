@@ -243,6 +243,7 @@ defmodule Apiary.FeaturesTest do
       part = :"observability.terminal"
 
       assert Features.hidden_of([part]) == [part]
+
       assert Features.hidden_of([part, :security, part]) ==
                Enum.filter(Features.enabled(), &(&1 == :security)) ++ [part]
 

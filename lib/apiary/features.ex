@@ -134,9 +134,15 @@ defmodule Apiary.Features do
     %{all: all, part_of: part_of} = registry()
 
     cond do
-      name in all -> name
-      is_map_key(part_of, name) -> Map.fetch!(part_of, name)
-      true -> raise ArgumentError, "#{inspect(name)} is not a feature of Apiary.Features, nor a part of one"
+      name in all ->
+        name
+
+      is_map_key(part_of, name) ->
+        Map.fetch!(part_of, name)
+
+      true ->
+        raise ArgumentError,
+              "#{inspect(name)} is not a feature of Apiary.Features, nor a part of one"
     end
   end
 
@@ -169,7 +175,12 @@ defmodule Apiary.Features do
     end
 
     opt_in = for {name, opts} <- features, opts[:default] == false, do: name
-    part_of = for {name, opts} <- features, part <- Keyword.get(opts, :parts, []), do: {part_name(name, part), name}
+
+    part_of =
+      for {name, opts} <- features,
+          part <- Keyword.get(opts, :parts, []),
+          do: {part_name(name, part), name}
+
     parts = Enum.map(part_of, &elem(&1, 0))
 
     # A part's name is its feature's and its own: listed twice, or the name of a feature,
