@@ -777,7 +777,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   panel and the workspace overview; the Lock confirm keeps the core's words. It follows
   the sentence that says what is locked (`ApiaryWeb.Access.who_may_after/4`); the core's
   edition gives none, so the texts are as before.
-- The URL of a new gateway says it's the address your nodes reach the machine running
+- The URL hint of a new gateway says it's the address your nodes reach the machine running
   qory gateway at, and that its Settings change it later; the guide's Gateways section
   walks through adding one.
 <!-- feature: secrets -->
