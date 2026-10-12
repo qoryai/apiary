@@ -22,9 +22,11 @@ the release body from the changelog, builds the image from the `Dockerfile` for
 `linux/amd64` and `linux/arm64`, and publishes it as `ghcr.io/qoryai/apiary`, tagged
 `X.Y.Z`, `X.Y` and `latest`. It publishes the GitHub release with three files attached:
 `compose.yaml`; `env.example`, a copy of `.env.example` that names `X.Y.Z` in
-`APIARY_VERSION`; and `apiary.yaml`, the AWS template `deploy/aws/apiary.yaml` with the
-version written in. `deploy/aws/stack-policy.json` is not attached: the template job
-uploads it to the S3 bucket beside the template, and only when the repository variables
+`APIARY_VERSION`; and `apiary.yaml`, the release copy of the AWS template
+`deploy/aws/apiary.yaml`, with the version written in and the template's test parts left
+out (`scripts/aws-template-release.py --copy release`, the default).
+`deploy/aws/stack-policy.json` is not attached: the template job uploads it to the S3
+bucket beside the template, and only when the repository variables
 `AWS_TEMPLATE_BUCKET` and `AWS_TEMPLATE_ROLE_ARN` are set. Without them, nothing goes to
 S3. `scripts/changelog-section.sh 0.1.0` prints the section the workflow would take, and
 fails when there is none, which is what stops a tag from publishing without one. Check
@@ -44,5 +46,17 @@ push to any other branch or on a schedule. It builds the image as `release.yml` 
 pushes it to `ghcr.io/qoryai/apiary-prerelease` alone, as `sha-` and the commit's first
 seven characters, and as `next` when the ref is `next`. That package stays private: GHCR
 sets visibility per package, so pre-release tags never sit beside a release's. Its old
-`sha-` tags are deleted by hand. A test stack names one under Test image, in the AWS
-template's For testing only group, with a download key whose account can read the package.
+`sha-` tags are deleted by hand. A test stack names one under Test image, in the For
+testing only group of the AWS template's test copy, with a download key whose account can
+read the package. The repository's `deploy/aws/apiary.yaml` is the test copy with no
+version written in; this writes a test copy that names a release's versions, as the
+release copy does:
+
+```sh
+cp deploy/aws/apiary.yaml apiary-test.yaml
+python3 scripts/aws-template-release.py apiary-test.yaml --copy test \
+  --edition-default "Qory Apiary Community" --community-version X.Y.Z --pro-version ""
+```
+
+The test copy is never published: no release attaches it, no workflow uploads it, and it
+is no Actions artifact. CI writes it only to check it.

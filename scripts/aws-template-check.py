@@ -1,12 +1,14 @@
 """Check deploy/aws/apiary.yaml against its stack policy, and against a release's template.
 
     python scripts/aws-template-check.py policy
-    python scripts/aws-template-check.py outputs
+    python scripts/aws-template-check.py outputs [FILE ...]
     python scripts/aws-template-check.py kept
     python scripts/aws-template-check.py mappings
     python scripts/aws-template-check.py editions [FILE ...]
     python scripts/aws-template-check.py ascii [FILE ...]
     python scripts/aws-template-check.py secrets previous-apiary.yaml
+    python scripts/aws-template-check.py release FILE ...
+    python scripts/aws-template-check.py copies RELEASE TEST
 
 policy: every resource stack-policy.json names exists in the template; the database and the
 four key secrets are each denied Update:Replace and Update:Delete; and the policy the stack
@@ -25,7 +27,8 @@ or update, where CloudFormation refuses it: no custom resource's function, and n
 but the rule's target, calls set_stack_policy, and no other role allows
 cloudformation:SetStackPolicy.
 
-outputs: no output's value is a command (none starts with "aws "), in any branch of its
+outputs: in the template, or in each FILE given (such as a release's copy of the
+template), no output's value is a command (none starts with "aws "), in any branch of its
 Fn::If: the person installs from the console alone.
 
 kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
@@ -62,18 +65,28 @@ secrets: the four secrets are the same in the template as in the one given (the 
 release's): their type, condition, deletion and replacement policies and properties. A
 changed property can replace a secret, and a replaced secret is generated anew.
 
+release: each FILE, a release's copy written by scripts/aws-template-release.py --copy
+release, holds no test copy marker, no TestImage or HasTestImage and no test wording,
+comments included: the script's check (release_copy_failures), run again on the file the
+release attaches.
+
+copies: RELEASE and TEST, the release copy and the test copy the script writes with the same
+edition and versions. The release copy holds none of the test parts (TEST_PARTS, and no
+TestImage anywhere), and the test copy holds them all. And the test copy's template, its
+test parts taken out, the Fn::And items on TestImage dropped and each Fn::If on
+HasTestImage replaced by its value without a test image, is the release copy's.
+
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
-!Ref, as their long forms).
+!Ref, as their long forms), except for release.
 """
 
+import importlib.util
 import itertools
 import json
 import re
 import sys
 import unicodedata
 from pathlib import Path
-
-from cfnlint.decode import decode
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "deploy" / "aws" / "apiary.yaml"
@@ -91,6 +104,8 @@ COMMAND = re.compile(r"\s*aws\s")
 
 
 def load(path):
+    from cfnlint.decode import decode
+
     template, matches = decode(str(path))
     if matches or template is None:
         for match in matches:
@@ -364,12 +379,13 @@ def texts(value):
     return [""]
 
 
-def check_outputs():
+def check_outputs(paths):
     failures = []
-    for name, output in load(TEMPLATE).get("Outputs", {}).items():
-        commands = [text for text in texts(output.get("Value")) if COMMAND.match(text)]
-        if commands:
-            failures.append(f"the {name} output is a command: {commands[0]}")
+    for path in paths:
+        for name, output in load(path).get("Outputs", {}).items():
+            commands = [text for text in texts(output.get("Value")) if COMMAND.match(text)]
+            if commands:
+                failures.append(f"{path}: the {name} output is a command: {commands[0]}")
     return failures
 
 
@@ -577,11 +593,113 @@ def check_secrets(previous_path):
     return failures
 
 
+def release_script():
+    """scripts/aws-template-release.py, whose name is not a module's."""
+    spec = importlib.util.spec_from_file_location("aws_template_release", ROOT / "scripts" / "aws-template-release.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def check_release(paths):
+    script = release_script()
+    return [
+        f"{path}: {failure}"
+        for path in paths
+        for failure in script.release_copy_failures(Path(path).read_text(encoding="utf-8"))
+    ]
+
+
+TEST_IMAGE = {"Ref": "TestImage"}
+HAS_TEST_IMAGE = "HasTestImage"
+# The test parts, by their keys from the top. The form's group, For testing only, is the
+# ParameterGroups item whose Parameters are [TestImage].
+TEST_PARTS = [
+    ("Metadata", "AWS::CloudFormation::Interface", "ParameterLabels", "TestImage"),
+    ("Parameters", "TestImage"),
+    ("Rules", "TestImageNeedsDownloadKey"),
+    ("Conditions", HAS_TEST_IMAGE),
+]
+
+
+def test_group(template):
+    groups = template.get("Metadata", {}).get("AWS::CloudFormation::Interface", {}).get("ParameterGroups", [])
+    return [group for group in groups if group.get("Parameters") == ["TestImage"]]
+
+
+def has_path(template, path):
+    value = template
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return False
+        value = value[key]
+    return True
+
+
+def compares_test_image(value):
+    return isinstance(value, dict) and TEST_IMAGE in (value.get("Fn::Equals") or [])
+
+
+def without_test_parts(value):
+    """A value with each Fn::If on HasTestImage replaced by its third item, and each Fn::And
+    item that compares TestImage dropped."""
+    if isinstance(value, dict):
+        if list(value) == ["Fn::If"] and isinstance(value["Fn::If"], list) and value["Fn::If"][:1] == [HAS_TEST_IMAGE]:
+            return without_test_parts(value["Fn::If"][2])
+        result = {}
+        for key, item in value.items():
+            if key == "Fn::And" and isinstance(item, list):
+                item = [part for part in item if not compares_test_image(part)]
+            result[key] = without_test_parts(item)
+        return result
+    if isinstance(value, list):
+        return [without_test_parts(item) for item in value]
+    return value
+
+
+def check_copies(release_path, test_path):
+    release, test = load(release_path), load(test_path)
+    failures = []
+    for path in TEST_PARTS:
+        if has_path(release, path):
+            failures.append(f"{release_path} holds {'.'.join(path)}, a test part")
+        if not has_path(test, path):
+            failures.append(f"{test_path} does not hold {'.'.join(path)}, a test part")
+    if test_group(release):
+        failures.append(f"{release_path} holds the form's group of TestImage, a test part")
+    if len(test_group(test)) != 1:
+        failures.append(f"{test_path} does not hold the form's group of TestImage once")
+    if "TestImage" in json.dumps(release):
+        failures.append(f"{release_path} names TestImage")
+    if any(HAS_TEST_IMAGE not in json.dumps(test.get(section, {})) for section in ("Resources", "Outputs")):
+        failures.append(f"{test_path} has no Fn::If on {HAS_TEST_IMAGE} in its resources and outputs")
+
+    stripped = json.loads(json.dumps(test))
+    for path in TEST_PARTS:
+        parent = stripped
+        for key in path[:-1]:
+            parent = parent.get(key, {})
+        parent.pop(path[-1], None)
+    interface = stripped.get("Metadata", {}).get("AWS::CloudFormation::Interface", {})
+    if "ParameterGroups" in interface:
+        interface["ParameterGroups"] = [
+            group for group in interface["ParameterGroups"] if group.get("Parameters") != ["TestImage"]
+        ]
+    stripped = without_test_parts(stripped)
+    if stripped != release:
+        for section in sorted(set(stripped) | set(release)):
+            if stripped.get(section) != release.get(section):
+                failures.append(
+                    f"{test_path} without its test parts is not {release_path}: they differ in {section}"
+                )
+    return failures
+
+
 def main(argv):
     if argv[1:] == ["policy"]:
         failures = check_policy()
-    elif argv[1:] == ["outputs"]:
-        failures = check_outputs()
+    elif argv[1:2] == ["outputs"]:
+        failures = check_outputs(argv[2:] or [TEMPLATE])
     elif argv[1:] == ["kept"]:
         failures = check_kept()
     elif argv[1:] == ["mappings"]:
@@ -592,6 +710,10 @@ def main(argv):
         failures = check_ascii(argv[2:] or [TEMPLATE, POLICY])
     elif len(argv) == 3 and argv[1] == "secrets":
         failures = check_secrets(argv[2])
+    elif len(argv) >= 3 and argv[1] == "release":
+        failures = check_release(argv[2:])
+    elif len(argv) == 4 and argv[1] == "copies":
+        failures = check_copies(argv[2], argv[3])
     else:
         sys.exit(__doc__)
 

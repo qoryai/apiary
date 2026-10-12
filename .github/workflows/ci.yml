@@ -149,22 +149,38 @@ jobs:
       - name: Check the AWS template is ASCII alone
         run: python scripts/aws-template-check.py ascii
 
+      # The release script's tests: the release copy and the test copy of the repository's
+      # template, and what the script refuses.
+      - name: Test the AWS template's release script
+        run: python3 -m unittest discover -s scripts -p "test_*.py"
+
       # A release writes its versions into a copy of the template, as release.yml does for
       # Qory Apiary Community (the Qory Apiary Pro version empty) and as a release naming
       # both does, with Qory Apiary Pro first; the script fails unless it writes every place
-      # exactly once. cfn-lint then reads each copy, and each is checked for its comparisons
-      # with Edition and for ASCII alone.
-      - name: Write a release's template, and lint it
+      # exactly once. Each is written twice: the release copy, which a release attaches,
+      # without the test parts, and the test copy, never published, with them. cfn-lint
+      # then reads each of the four, and each is checked for its comparisons with Edition,
+      # for ASCII alone and for an output that is a command. Each release copy holds no test
+      # part or test wording, comments included, and is its test copy without the test parts.
+      - name: Write a release's copies of the template, and lint them
         run: |
-          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community.yaml"
-          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community.yaml" \
-            --edition-default "Qory Apiary Community" --community-version 0.0.0 --pro-version ""
-          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro.yaml"
-          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro.yaml" \
-            --edition-default "Qory Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
-          cfn-lint "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
-          python scripts/aws-template-check.py editions "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
-          python scripts/aws-template-check.py ascii "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+          copies=()
+          for copy in release test; do
+            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community-$copy.yaml"
+            python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community-$copy.yaml" --copy "$copy" \
+              --edition-default "Qory Apiary Community" --community-version 0.0.0 --pro-version ""
+            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro-$copy.yaml"
+            python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro-$copy.yaml" --copy "$copy" \
+              --edition-default "Qory Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
+            copies+=("$RUNNER_TEMP/apiary-community-$copy.yaml" "$RUNNER_TEMP/apiary-pro-$copy.yaml")
+          done
+          cfn-lint "${copies[@]}"
+          python scripts/aws-template-check.py editions "${copies[@]}"
+          python scripts/aws-template-check.py ascii "${copies[@]}"
+          python scripts/aws-template-check.py outputs "${copies[@]}"
+          python scripts/aws-template-check.py release "$RUNNER_TEMP/apiary-community-release.yaml" "$RUNNER_TEMP/apiary-pro-release.yaml"
+          python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-community-release.yaml" "$RUNNER_TEMP/apiary-community-test.yaml"
+          python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-pro-release.yaml" "$RUNNER_TEMP/apiary-pro-test.yaml"
 
       # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
       # included, which replaces a restored database with an empty one. The guides name
