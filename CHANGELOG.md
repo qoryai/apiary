@@ -681,6 +681,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   last lines, and the sentences on session events name no terminal. The terminal's size on
   the run's Details now asks whether the person may read the log (`run.read_log`), as the
   Terminal tab does.
+- Workspace settings leave out the size of the log a retention pass deleted for a reader
+  the run's Terminal is hidden from.
 
 ### Changed
 
