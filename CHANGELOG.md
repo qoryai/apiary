@@ -705,12 +705,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
 - Pages say secret where they said credential.
-- A connection the gateway refused for the form of its host says so in words: "The
-  gateway refuses a host that is neither a name nor an address in canonical form, in
-  either mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+- A connection Forager refused for the form of its host says so in words: "Forager
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
   names link-local addresses: "The wall refuses link-local addresses and the machine's
   addresses, in either mode.", and so does the Policy page's hint for a rule written as an
   address.
+- The Policy page says the wall lets the machine's addresses through for a host the policy
+  allows by name; the host-form row names Forager; and a refused connection's tooltip says
+  what refused it.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
