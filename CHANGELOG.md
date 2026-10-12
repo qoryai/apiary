@@ -573,7 +573,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack turns it on once the service is first healthy, so a create that fails
-  before then rolls back whole, and an Update with No turns it off before a delete. The
+  before then rolls back whole, and an Update with No turns it off before a delete. Under
+  Advanced, `ErlangOptions`, empty by default, is passed as `ELIXIR_ERL_OPTIONS` only when
+  set: extra options for the Erlang runtime when Qory Apiary starts. The
   stack sets its stack policy itself, refusing any update that would replace or delete the
   database or a key's secret: an EventBridge rule sends this stack's status changes to a
   function of the stack's, which sets the policy once the create completes, and again

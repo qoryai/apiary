@@ -37,6 +37,8 @@ Metadata:
         Parameters: [KeysFromStack, DatabaseSnapshot]
       - Label: { default: Recovery }
         Parameters: [AcceptSigningKey, DatabaseDeletionProtection]
+      - Label: { default: Advanced }
+        Parameters: [ErlangOptions]
       # [test copy]
       - Label: { default: For testing only }
         Parameters: [TestImage]
@@ -54,6 +56,7 @@ Metadata:
       DatabaseSnapshot: { default: Database snapshot to restore (optional) }
       AcceptSigningKey: { default: Accept a new signing key (fingerprint) }
       DatabaseDeletionProtection: { default: Protect the database from deletion }
+      ErlangOptions: { default: Extra Erlang options (optional) }
       TestImage: { default: Test image (leave empty) }  # [test copy]
 
 Parameters:
@@ -110,6 +113,12 @@ Parameters:
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
     Description: "Yes turns it on once Qory Apiary first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+  # Passed to the container as ELIXIR_ERL_OPTIONS, and only when set. The release's start
+  # script puts it on the Erlang runtime's command line; the image sets none.
+  ErlangOptions:
+    Type: String
+    Default: ""
+    Description: "Extra options for the Erlang runtime when Qory Apiary starts, passed as ELIXIR_ERL_OPTIONS. Leave empty unless you know you need it."
   # [test copy]
   # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
   # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
@@ -193,6 +202,7 @@ Conditions:
   # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
+  HasErlangOptions: !Not [!Equals [!Ref ErlangOptions, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   CreateCertificate: !Equals [!Ref CertificateArn, ""]
@@ -608,7 +618,8 @@ Resources:
   # [test copy]
   # With Test image, exactly the image it names.
   # [/test copy]
-  # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is.
+  # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is, and
+  # ELIXIR_ERL_OPTIONS only when Extra Erlang options is.
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -666,6 +677,11 @@ Resources:
               - HasAcceptSigningKey
               - Name: APIARY_ACCEPT_SIGNING_FINGERPRINT
                 Value: !Ref AcceptSigningKey
+              - !Ref AWS::NoValue
+            - !If
+              - HasErlangOptions
+              - Name: ELIXIR_ERL_OPTIONS
+                Value: !Ref ErlangOptions
               - !Ref AWS::NoValue
           # A secret given by name is read from this account and region.
           Secrets:
