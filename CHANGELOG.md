@@ -745,6 +745,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `c:Apiary.Edition.features_of/3`, `Apiary.Features.of/2` and `Apiary.Features.on?/2` are
   gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
   is shown.
+- The organisation slugs `admin`, `api` and `new`, and the workspace slugs `api` and `new`,
+  are reserved; an organisation or workspace holding one moves to the slug with `-2`.
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person
@@ -939,6 +941,10 @@ VALID), and
 validation fails while any gateway, deleted ones included, has a URL outside the check,
 and its error names those gateways; give each a URL the check holds, then migrate again.
 Rolled back, the host may hold any character a URI's host allows again.
+`20261012100000_move_the_slugs_kept_back` moves an organisation whose slug is `admin`,
+`api` or `new`, and a workspace whose slug is `api` or `new`, to the first free slug of
+`-2`, `-3`, …: an organisation's among all organisations, a workspace's within its
+organisation. Rolled back, nothing moves back.
 
 ### Upgrading
 

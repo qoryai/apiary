@@ -11,8 +11,9 @@ defmodule ApiaryWeb.ReservedSlugs do
   pages (`/:org/settings`, `/:org/audit-log`). `organisation/0` and `workspace/0` name
   them.
 
-  The core reserves the paths it serves, and `gateways` among the organisation's pages,
-  which no workspace slug may take. An edition reserves the paths it adds, and
+  The core reserves the paths it serves, `gateways` among the organisation's pages,
+  which no workspace slug may take, and a few names kept back: `admin`, `api` and `new`
+  as organisation slugs, `api` and `new` as workspace slugs. An edition reserves the paths it adds, and
   settles for itself a slug an instance of the core gave out before the edition took the
   instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of the router the endpoint
   dispatches to, a static path or a socket of the endpoint takes a segment these lists do
@@ -30,16 +31,17 @@ defmodule ApiaryWeb.ReservedSlugs do
   @behaviour Plug
 
   # The first segments of the instance's own paths: the routes, the endpoint's sockets
-  # and static files, and the development routes.
+  # and static files, and the development routes; and a few names kept back (`admin`,
+  # `api`, `new`).
   @instance ~w(
-    .well-known assets dev docs favicon-32.png favicon.ico favicon.svg fonts health images
-    instance invitations live phoenix robots.txt setup users v1
+    .well-known admin api assets dev docs favicon-32.png favicon.ico favicon.svg fonts health
+    images instance invitations live new phoenix robots.txt setup users v1
   )
 
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
   # there and the switcher's link to the organisation (`-`); `gateways` is reserved as a
-  # workspace slug too.
-  @organisation_pages ~w(- activity audit-log gateways jump members settings)
+  # workspace slug too, and a few names kept back (`api`, `new`).
+  @organisation_pages ~w(- activity api audit-log gateways jump members new settings)
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the

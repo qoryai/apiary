@@ -143,6 +143,43 @@ defmodule ApiaryWeb.PathScopeTest do
     end
   end
 
+  # A slug set as an instance of an earlier release could have given it, past the checks
+  # of today's code.
+  defp held!(%{__struct__: schema, id: id}, slug) do
+    table = schema.__schema__(:source)
+    Repo.query!("UPDATE #{table} SET slug = $2 WHERE id = $1", [Ecto.UUID.dump!(id), slug])
+  end
+
+  test "a name kept back is never an organisation or a workspace, even one that holds it: it answers as an unknown path",
+       %{conn: conn, scope: scope} do
+    held!(scope.workspace, "new")
+    held!(workspace_fixture(scope.organisation, "Second"), "api")
+    organisation = scope.organisation.slug
+
+    paths =
+      for {name, path} <- [
+            {"admin", "/settings"},
+            {"api", "/main/runs"},
+            {"new", "/main"}
+          ] do
+        %{organisation: held, user: owner} = sign_up_fixture()
+        held!(held, name)
+        {log_in_user(build_conn(), owner), "/#{name}#{path}"}
+      end
+
+    for {signed_in, path} <-
+          paths ++
+            for(
+              path <- ["/api", "/api/runs", "/new", "/new/settings"],
+              do: {conn, "/#{organisation}#{path}"}
+            ),
+        conn <- [signed_in, build_conn()] do
+      assert answer(fn -> get(conn, path) end) ==
+               answer(fn -> get(conn, "/no/such/path/at/all/here") end),
+             path
+    end
+  end
+
   test "a shared link survives the log-in: the icon a browser asks for on the way does not take its place",
        %{scope: scope} do
     link = workspace_path(scope, "/runs?state=failed")
