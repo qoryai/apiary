@@ -1819,6 +1819,11 @@ msgstr ""
 msgid "%{runs}: %{events} and %{bytes} of log output in %{chunks}."
 msgstr ""
 
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs}: %{events}."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{runtime} %{version} on %{host}, behind a %{wall} wall"
