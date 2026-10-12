@@ -828,10 +828,22 @@ defmodule ApiaryWeb.NodeComponents do
   def no_longer_member(:organisation),
     do: gettext("You are no longer a member of this organisation.")
 
-  @doc "url_hint/0 is what a gateway's URL field says under it, as it is made and changed."
-  @spec url_hint() :: String.t()
-  def url_hint,
-    do: gettext("Where nodes reach the gateway: https://, a host, and a port if needed.")
+  @doc """
+  url_hint/1 is what a gateway's URL field says under it: on New gateway (`:new`), which
+  adds that the gateway's Settings change it later, and in those Settings (`:settings`).
+  """
+  @spec url_hint(:new | :settings) :: String.t()
+  def url_hint(:new),
+    do:
+      gettext(
+        "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+      )
+
+  def url_hint(:settings),
+    do:
+      gettext(
+        "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+      )
 
   @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool, Gateway."
   @spec kind_label(Node.kind()) :: String.t()

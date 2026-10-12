@@ -5,7 +5,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
   (`docs/ui.md`, Lists): one row a gateway, its name the title with its public id beside
   it, its URL, Default beside the organisation's default gateway, and whether it is
   connected, holding an active access key (`Apiary.AccessKeys.active_key?/1`). The
-  sentence under the heading says whose nodes can use them
+  sentence under the heading, and the body of the empty state, say whose nodes can use them
   (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`).
 
   The console offers it only where an organisation may have more than one workspace
@@ -204,7 +204,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
             inputmode="url"
             label={gettext("URL")}
             placeholder="https://gateway.example.com"
-            hint={NodeComponents.url_hint()}
+            hint={NodeComponents.url_hint(:new)}
             autocomplete="off"
             spellcheck="false"
             required
@@ -259,9 +259,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
       <div :if={@gateways == []} id="gateways-empty">
         <.empty_state icon="hero-arrows-right-left" tone="neutral" title={gettext("No gateways yet")}>
           <p>
-            {gettext("Add one so the nodes in %{organisation}'s workspaces can send runs through it.",
-              organisation: @current_scope.organisation.name
-            )}
+            {ApiaryWeb.Edition.gateway_reach_sentence(:empty, @current_scope.organisation)}
           </p>
           <:actions :if={@may_create}>
             <.button patch={~p"/#{@current_scope.organisation}/gateways/new"}>

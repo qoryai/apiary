@@ -684,6 +684,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the run's Terminal is hidden from.
 - A feature part can belong to no feature; the nodes, node pools, access keys and gateways
   are the part `nodes`, which an edition may hide from a person while nodes keep working.
+- An edition may give other words for the invitation's description, a level's hint on
+  People (`c:ApiaryWeb.Edition.people_sentence/3`) and the empty Gateways page
+  (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`); the core edition keeps
+  today's.
 
 ### Changed
 
@@ -704,12 +708,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
 - Pages say secret where they said credential.
-- A connection the gateway refused for the form of its host says so in words: "The
-  gateway refuses a host that is neither a name nor an address in canonical form, in
-  either mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+- A connection Forager refused for the form of its host says so in words: "Forager
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
   names link-local addresses: "The wall refuses link-local addresses and the machine's
   addresses, in either mode.", and so does the Policy page's hint for a rule written as an
   address.
+- The Policy page says the wall lets the machine's addresses through for a host the policy
+  allows by name; the host-form row names Forager; and a refused connection's tooltip says
+  what refused it.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
@@ -762,6 +769,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   panel and the workspace overview. It follows the sentence that says what is locked
   (`ApiaryWeb.Access.who_may_after/4`); the core's edition gives none, so the texts are as
   before.
+- The URL of a new gateway says it's the address your nodes reach the machine running
+  qory gateway at, and that its Settings change it later; the guide's Gateways section
+  walks through adding one.
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person

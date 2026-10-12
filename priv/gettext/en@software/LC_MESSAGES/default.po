@@ -2886,7 +2886,7 @@ msgstr ""
 msgid "Add node pool"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/gateways.ex
+#: lib/apiary_web/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Add one so the nodes in %{organisation}'s workspaces can send runs through it."
 msgstr ""
@@ -3283,7 +3283,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
-msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says."
+msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses whatever the policy says, and the machine's addresses unless the policy allows that host by name."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex
@@ -5749,6 +5749,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Forager has pinged. The run's first event has not arrived."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Forager refuses a host that is neither a name nor an address in canonical form,"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -11638,11 +11643,6 @@ msgstr ""
 msgid "The gateway fetched its run configuration again; the digest is the one it had."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "The gateway refuses a host that is neither a name nor an address in canonical form,"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The gateway's name, its kind and its URL."
@@ -13134,7 +13134,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
+msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: the policy or the wall denied it, or a new policy closed it."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -13238,11 +13238,6 @@ msgstr ""
 msgid "Where it is set up"
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "Where nodes reach the gateway: https://, a host, and a port if needed."
-msgstr ""
-
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Where the runs of this workspace reached out to, and what the policy made of it."
@@ -13256,6 +13251,16 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Where you are"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

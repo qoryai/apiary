@@ -55,7 +55,8 @@ defmodule ApiaryWeb.Edition do
   - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
     menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
     `c:gettext_backend/0`, the Gettext backend of the edition's sentences, beside the
-    core's (`ApiaryWeb.Gettext.Backends`).
+    core's (`ApiaryWeb.Gettext.Backends`); `c:people_sentence/3`, what the People pages
+    say of an invitation and of a level (`ApiaryWeb.Access.people_sentence/4`).
   """
 
   alias Apiary.Accounts.Scope
@@ -213,20 +214,43 @@ defmodule ApiaryWeb.Edition do
   - `:intro`, under the heading of the organisation's Gateways page;
   - `:who_can_use`, on an organisation-level gateway's Overview;
   - `:default_row`, the same Overview's line for the gateway that is the organisation's
-    default.
+    default;
+  - `:empty`, the body of the Gateways page's empty state, under No gateways yet.
 
   The core's sentences name the workspaces of `organisation` alone, as the core's
   gateways serve no other organisation's: "Nodes in any workspace of Acme can use the
   gateways added here. A workspace can also add gateways that only its nodes use.",
   "Nodes in any workspace of Acme can use it." and "The default gateway for workspaces in
-  Acme that don't set one.". An edition whose organisation-level gateways also serve the
+  Acme that don't set one.", and for `:empty`, "Add one so the nodes in Acme's workspaces
+  can send runs through it.". An edition whose organisation-level gateways also serve the
   workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
   in its answer.
   """
   @callback gateway_reach_sentence(
-              kind :: :intro | :who_can_use | :default_row,
+              kind :: :intro | :who_can_use | :default_row | :empty,
               organisation :: %Organisation{}
             ) :: String.t()
+
+  @doc """
+  What the People pages say, in the organisation of `scope`, for `about`: one sentence,
+  translated, with `bindings` interpolated. An edition may give other words for these
+  sentences; nil keeps the core's.
+
+  `about` says which sentence:
+
+  - `:invite_by_mail`, the Invite people form's description where the invitation is
+    emailed, and `:invite_by_link`, where the person who invites gets a link to send;
+    `bindings` holds `workspace`, the workspace's name, and `organisation`, the
+    organisation's;
+  - `{:level_hint, level}`, the hint beside a level, `:owner`, `:admin` or `:member`,
+    where a member's level is changed; `bindings` is empty.
+  """
+  @callback people_sentence(
+              about ::
+                :invite_by_mail | :invite_by_link | {:level_hint, :owner | :admin | :member},
+              Scope.t(),
+              bindings :: map
+            ) :: String.t() | nil
 
   @doc """
   What the nodes' pages say of who manages the nodes, node pools and access keys of
@@ -335,7 +359,8 @@ defmodule ApiaryWeb.Edition do
     product_name: 0,
     gettext_backend: 0,
     gateway_reach_sentence: 2,
-    nodes_managed_by_sentence: 1
+    nodes_managed_by_sentence: 1,
+    people_sentence: 3
   ]
 
   defmacro __using__(_opts) do

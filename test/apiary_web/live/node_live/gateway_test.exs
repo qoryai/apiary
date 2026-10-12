@@ -142,6 +142,16 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert page_title(lv) =~ "New gateway"
     end
 
+    test "its URL's hint says where nodes reach it, and that its Settings change it later", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
+
+      assert text(lv, "#new-node-form #node_url-hint") ==
+               "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+    end
+
     test "shows the URL's errors as core gives them", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
 
@@ -282,6 +292,19 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
 
       assert %Node{name: "edge-east", url: "https://east.example.com"} =
                Repo.get!(Node, gateway.id)
+    end
+
+    test "Settings › General's URL hint says where nodes reach it, and nothing of later", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope, name: "edge-01")
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings"))
+
+      assert text(lv, "#node-form #node_url-hint") ==
+               "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+
+      refute render(lv) =~ "You can change it later"
     end
 
     test "is deleted through its confirmation in place, when nothing points to it", %{
