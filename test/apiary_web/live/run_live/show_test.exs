@@ -972,6 +972,49 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert "Terminal" in details_terms(lv)
       assert html =~ "120×40"
     end
+
+    test "the sentences on session events name no terminal; shown, they do as before",
+         %{conn: conn, scope: scope} do
+      other_runtime = demo(scope, "failed-run")
+
+      walled =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"wall" => "docker", "image" => "registry.example/agent:1"})},
+          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      no_hooks =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      sentences = [
+        {other_runtime,
+         "Session events exist only for Claude Code. This run used make, so it has connections and no timeline.",
+         "Session events exist only for Claude Code. This run used make, so it has a terminal and connections, and no timeline."},
+        {walled,
+         "where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
+         "where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline."},
+        {no_hooks,
+         "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections.",
+         "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."}
+      ]
+
+      for {run, hidden, shown} <- sentences do
+        path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+
+        :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+        {:ok, lv, _html} = live(conn, path)
+        assert limits_text(lv) =~ hidden
+        refute limits_text(lv) =~ "terminal"
+
+        :ok = Apiary.EditionStubs.HidesNamed.put([])
+        {:ok, lv, _html} = live(conn, path)
+        assert limits_text(lv) =~ shown
+      end
+    end
   end
 
   describe "live (P6, P7)" do
@@ -2281,6 +2324,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query("#run-details dt")
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  # The words of the page's limits notice, as a reader reads them.
+  defp limits_text(lv) do
+    lv
+    |> element(".q-limits")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
   end
 
   defp run_terms(lv) do

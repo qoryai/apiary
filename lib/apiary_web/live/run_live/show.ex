@@ -519,6 +519,7 @@ defmodule ApiaryWeb.RunLive.Show do
         runtime={@run.runtime}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
+        terminal={Access.can?(@current_scope, :"run.read_log", @run)}
       />
 
       <.background_tasks background={@index.background} ended={!alive?(@run)} />
