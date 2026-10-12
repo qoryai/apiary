@@ -68,10 +68,10 @@ being one. Every variable named here is described in [Install and configure](ins
 
 - **Health.** Point the load balancer or the monitor at `GET /health`: `200` with
   `"status":"ok"` when the database answers, `503` when it does not, both with the
-  release's `version` and `revision`. It needs no credentials and says nothing about any
+  release's `version` and `revision`. It needs no secret and says nothing about any
   workspace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
-  A line never holds a request's headers or body, and the paths that carry a credential
+  A line never holds a request's headers or body, and the paths that carry a secret
   are rewritten before they are logged. The set-up link is written whole, by each start
   until the instance is set up: that line is how you get it.
 - **Sign-up.** Once the instance is set up, nobody signs up without an invitation: people
