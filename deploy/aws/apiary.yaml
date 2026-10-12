@@ -614,15 +614,16 @@ Resources:
   #
   # CloudFormation sends the resource an update only when one of its properties changes, so
   # its properties are every value on the form but the download key, Look for a newer
-  # release included, and the template's version: an update that changes anything but the key looks up the newest release
-  # again, and Look for a newer release does it when nothing else changes. Each create and
-  # update answers with a new resource ID, the version and digest in it, so that a later
-  # step failing returns the stack to the old ID and its image; an update sent while the
-  # stack's update rolls back answers with the version and digest of the ID it is given,
-  # looking nothing up. A typed version older than the one the stack runs is refused, and
-  # a release of a newer minor than the template's (the Template mapping, empty in the
-  # repository, which skips that check): migrations only go forward, and a patch release
-  # never needs a template change. A delete changes nothing.
+  # release included, and the template's version: an update that changes anything but the
+  # key looks up the newest release again, and Look for a newer release does it when nothing
+  # else changes. Each create and update answers with a new resource ID, the version, digest
+  # and edition in it, so that a later step failing returns the stack to the old ID and its
+  # image; an update sent while the stack's update rolls back answers with the version and
+  # digest of the ID it is given, looking nothing up. A version older than the one the stack
+  # runs is refused, typed or found: within the edition by X.Y.Z, from another edition by
+  # X.Y alone. So is a release of a newer minor than the template's (the Template mapping,
+  # empty in the repository, which skips that check): migrations only go forward, and a
+  # patch release never needs a template change. A delete changes nothing.
   #
   # The function never logs the request, the key or the registry's token, and never follows
   # a redirect, which would carry the key or the token to another host. It answers
@@ -691,6 +692,7 @@ Resources:
           import os
           import re
           import urllib.error
+          import urllib.parse
           import urllib.request
 
           import boto3
@@ -698,7 +700,9 @@ Resources:
 
           CONFIG = Config(connect_timeout=5, read_timeout=15, retries={"total_max_attempts": 2, "mode": "standard"})
           RELEASE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
-          RUNS = re.compile(r"(\d+\.\d+\.\d+)@(sha256:[0-9a-f]{64})/")
+          # The resource's ID: <version>@<digest>/<edition, quoted>/<request>, or before the
+          # edition was in it, <version>@<digest>/<request>.
+          RUNS = re.compile(r"(\d+\.\d+\.\d+)@(sha256:[0-9a-f]{64})/(?:([^/]*)/)?[^/]*$")
           NEXT = re.compile(r'<(?:https://ghcr\.io)?(/v2/[^>]+)>;\s*rel="?next"?')
           ACCEPT = ", ".join(
               "application/vnd." + kind
@@ -715,6 +719,7 @@ Resources:
           ANONYMOUS = "{r} cannot be read without a download key that reads it."
           UNREACHABLE = "ghcr.io could not be reached to find the version: update again later."
           OLDER = "Version {v} is older than the {o} the stack runs: Qory Apiary does not go back to an older version."
+          BACK = "{e} {v} is older than the {re} {o} the stack runs: Qory Apiary does not go back to an older version."
           NEWER = "{e} {v} needs a newer template: update the stack with the newest apiary.yaml."
 
 
@@ -785,10 +790,25 @@ Resources:
               repository, secret = p["Repository"], p["DownloadKeySecret"]
               path = repository.removeprefix("ghcr.io/")
               runs = RUNS.match(event.get("PhysicalResourceId", ""))
+              if runs:
+                  was = urllib.parse.unquote(runs[3]) if runs[3] else event.get("OldResourceProperties", {}).get("Edition", edition)
 
               def fits(version):
                   if template and number(version)[:2] > number(template)[:2]:
                       raise Refused(NEWER.format(e=edition, v=version))
+
+              # Never back to an older version than the one the stack runs: within the edition by
+              # X.Y.Z, from another edition by X.Y. A create, a restore included, is never refused.
+              def forward(version):
+                  if not runs:
+                      return
+                  older, running = number(version), number(runs[1])
+                  if was != edition:
+                      older, running = older[:2], running[:2]
+                  if older < running:
+                      if typed and was == edition:
+                          raise Refused(OLDER.format(v=version, o=runs[1]))
+                      raise Refused(BACK.format(e=edition, v=version, re=was, o=runs[1]))
 
               if event["RequestType"] == "Update":
                   cloudformation = boto3.client("cloudformation", config=CONFIG)
@@ -798,8 +818,7 @@ Resources:
               if typed:
                   if not RELEASE.fullmatch(typed):
                       raise Refused(MISSING.format(e=edition, v=typed))
-                  if runs and number(typed) < number(runs[1]):
-                      raise Refused(OLDER.format(v=typed, o=runs[1]))
+                  forward(typed)
                   fits(typed)
               headers = {}
               if secret:
@@ -818,6 +837,7 @@ Resources:
                   version = typed or newest(path, headers)
                   if not version:
                       raise Missing
+                  forward(version)
                   fits(version)
                   with call(f"{base}/manifests/{version}", headers, "HEAD") as response:
                       digest = response.headers.get("Docker-Content-Digest") or ""
@@ -829,7 +849,7 @@ Resources:
                   raise Refused((MISSING if typed else NONE).format(e=edition, v=typed, r=repository)) from None
               if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
                   raise ValueError("the registry gave no digest")
-              return version, digest, f"{version}@{digest}/{event['RequestId']}"
+              return version, digest, f"{version}@{digest}/{urllib.parse.quote(edition, safe='')}/{event['RequestId']}"
 
 
           def handler(event, context):

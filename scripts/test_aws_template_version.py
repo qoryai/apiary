@@ -166,7 +166,7 @@ class Context:
     log_stream_name = "2026/10/12/[$LATEST]0123456789abcdef"
 
 
-def event(request="Create", edition=COMMUNITY, version="", template="", physical=None, secret=None):
+def event(request="Create", edition=COMMUNITY, version="", template="", physical=None, secret=None, old_edition=None):
     properties = {
         "ServiceToken": "arn:aws:lambda:us-east-1:123456789012:function:qory-VersionFunction",
         "ServiceTimeout": "360",
@@ -189,10 +189,18 @@ def event(request="Create", edition=COMMUNITY, version="", template="", physical
     }
     if physical is not None:
         result["PhysicalResourceId"] = physical
+    if old_edition is not None:
+        result["OldResourceProperties"] = dict(properties, Edition=old_edition)
     return result
 
 
-def physical_id(version):
+def physical_id(version, edition=COMMUNITY):
+    """The ID the function answers with: the version, digest and edition (quoted)."""
+    return f"{version}@{digest_of(version)}/{urllib.parse.quote(edition, safe='')}/request-create"
+
+
+def old_physical_id(version):
+    """The ID before it named the edition."""
     return f"{version}@{digest_of(version)}/request-create"
 
 
@@ -366,6 +374,57 @@ class Lookup(unittest.TestCase):
                 answer = self.run_function(event("Update", version=typed, physical=physical_id("0.3.0")))
                 self.assertEqual(answer["Status"], "SUCCESS", answer)
 
+    def test_message_8_a_found_version_older_than_the_one_the_stack_runs(self):
+        answer = self.run_function(event("Update", physical=physical_id("0.4.1")))
+        self.assert_failed(
+            answer,
+            "Qory Apiary Community 0.3.0 is older than the Qory Apiary Community 0.4.1 the stack runs: "
+            "Qory Apiary does not go back to an older version.",
+        )
+        self.assertEqual(answer["PhysicalResourceId"], physical_id("0.4.1"))
+
+    def test_message_8_another_edition_at_an_older_minor_typed_or_found(self):
+        self.registry.pages = [["0.3.1", "0.3.2"]]
+        self.registry.manifests["0.3.2"] = digest_of("0.3.2")
+        for typed in ("0.3.2", ""):
+            with self.subTest(typed=typed):
+                answer = self.run_function(event("Update", edition=PRO, version=typed, physical=physical_id("0.4.1", COMMUNITY)))
+                self.assert_failed(
+                    answer,
+                    "Qory Apiary Pro 0.3.2 is older than the Qory Apiary Community 0.4.1 the stack runs: "
+                    "Qory Apiary does not go back to an older version.",
+                )
+
+    def test_another_edition_at_the_same_minor_with_a_lower_patch_is_allowed(self):
+        self.registry.pages = [["0.4.0"]]
+        self.registry.manifests["0.4.0"] = digest_of("0.4.0")
+        for typed in ("0.4.0", ""):
+            with self.subTest(typed=typed):
+                answer = self.run_function(event("Update", edition=PRO, version=typed, physical=physical_id("0.4.1", COMMUNITY)))
+                self.assertEqual(answer["Status"], "SUCCESS", answer)
+                self.assertEqual(answer["Data"]["Version"], "0.4.0")
+                self.assertTrue(answer["PhysicalResourceId"].startswith(f"0.4.0@{digest_of('0.4.0')}/Qory%20Apiary%20Pro/"))
+
+    def test_another_edition_at_a_newer_minor_is_allowed(self):
+        self.registry.pages = [["0.5.0"]]
+        self.registry.manifests["0.5.0"] = digest_of("0.5.0")
+        for typed in ("0.5.0", ""):
+            with self.subTest(typed=typed):
+                answer = self.run_function(event("Update", version=typed, physical=physical_id("0.4.9", PRO)))
+                self.assertEqual(answer["Status"], "SUCCESS", answer)
+
+    def test_an_id_without_the_edition_takes_the_running_edition_from_the_old_properties(self):
+        self.registry.pages = [["0.4.0"]]
+        self.registry.manifests["0.4.0"] = digest_of("0.4.0")
+        allowed = self.run_function(event("Update", edition=PRO, physical=old_physical_id("0.4.1"), old_edition=COMMUNITY))
+        self.assertEqual(allowed["Status"], "SUCCESS", allowed)
+        refused = self.run_function(event("Update", edition=PRO, physical=old_physical_id("0.4.1"), old_edition=PRO))
+        self.assert_failed(
+            refused,
+            "Qory Apiary Pro 0.4.0 is older than the Qory Apiary Pro 0.4.1 the stack runs: "
+            "Qory Apiary does not go back to an older version.",
+        )
+
     def test_message_7_a_release_of_a_newer_minor_than_the_template(self):
         self.registry.pages = [["0.3.0", "0.4.0"]]
         self.registry.manifests["0.4.0"] = digest_of("0.4.0")
@@ -484,6 +543,14 @@ class Lookup(unittest.TestCase):
         )
         self.assertEqual(self.registry.requests[:-1], [])
         self.assertNotIn("get_secret_value", [name for name, _argument in self.aws.calls])
+
+    def test_an_update_while_the_stack_rolls_back_accepts_an_id_without_the_edition(self):
+        self.aws.status = "UPDATE_ROLLBACK_IN_PROGRESS"
+        answer = self.run_function(event("Update", physical=old_physical_id("0.3.0")))
+        self.assertEqual(answer["Status"], "SUCCESS", answer)
+        self.assertEqual(answer["PhysicalResourceId"], old_physical_id("0.3.0"))
+        self.assertEqual(answer["Data"]["Version"], "0.3.0")
+        self.assertEqual(answer["Data"]["Digest"], digest_of("0.3.0"))
 
     def test_a_delete_changes_nothing(self):
         answer = self.run_function(event("Delete", physical=physical_id("0.3.0")))
