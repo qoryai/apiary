@@ -29,8 +29,8 @@ defmodule Apiary.Accounts.Scope do
   the instance's role by; a scope without a person that does not carry it may nothing.
   What a scope may do is `Apiary.Access`'s answer.
 
-  `hidden` is what the person is not shown in the organisation, the features the edition
-  hides from them (`c:Apiary.Edition.hidden/1`, as `Apiary.Features.hidden_of/1` keeps it),
+  `hidden` is what the person is not shown in the organisation, the features and the parts
+  of them the edition hides from them (`c:Apiary.Edition.hidden/1`, as `Apiary.Features.hidden_of/1` keeps it),
   read when the scope was loaded or read again (`Apiary.Access.reload/2`), which
   `Apiary.Features.visible?/2` answers from; nil, nothing hidden, where nothing loaded it,
   as in an access key's scope and the instance's jobs, which then answer as the instance.
