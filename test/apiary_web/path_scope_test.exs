@@ -160,7 +160,8 @@ defmodule ApiaryWeb.PathScopeTest do
       for {name, path} <- [
             {"admin", "/settings"},
             {"api", "/main/runs"},
-            {"new", "/main"}
+            {"new", "/main"},
+            {"settings", "/main/runs"}
           ] do
         %{organisation: held, user: owner} = sign_up_fixture()
         held!(held, name)
