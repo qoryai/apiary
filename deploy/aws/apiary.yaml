@@ -622,7 +622,8 @@ Resources:
   # repository, which skips that check): migrations only go forward, and a patch release
   # never needs a template change. A delete changes nothing.
   #
-  # The function never logs the request, the key or the registry's token. It answers
+  # The function never logs the request, the key or the registry's token, and never follows
+  # a redirect, which would carry the key or the token to another host. It answers
   # CloudFormation even when it fails. Its role may read the download key's secret, read
   # this stack, and write VersionLogGroup, which is kept as the task's is. The runtime is
   # pinned, and kept current with each release.
@@ -731,19 +732,29 @@ Resources:
               pass
 
 
+          # Never follows a redirect: the key or the token would go with it to another host.
+          # A 3xx is then an HTTPError.
+          class Stay(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *arguments):
+                  return None
+
+
+          OPENER = urllib.request.build_opener(Stay)
+
+
           def number(version):
               return tuple(map(int, version.split(".")))
 
 
           def call(url, headers, method="GET"):
               try:
-                  return urllib.request.urlopen(urllib.request.Request(url, headers=headers, method=method), timeout=10)
+                  return OPENER.open(urllib.request.Request(url, headers=headers, method=method), timeout=10)
               except urllib.error.HTTPError as error:
                   if error.code in (401, 403):
                       raise Denied from None
                   if error.code == 404:
                       raise Missing from None
-                  if error.code < 500:
+                  if 400 <= error.code < 500:
                       raise
                   raise Unreachable from None
               except OSError:

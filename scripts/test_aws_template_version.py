@@ -10,12 +10,16 @@ The standard library alone: the template is read as text, and boto3 and botocore
 import base64
 import contextlib
 import hashlib
+import http.client
 import io
 import json
 import sys
 import types
 import unittest
 import urllib.error
+import urllib.parse
+import urllib.request
+import urllib.response
 from pathlib import Path
 from unittest import mock
 
@@ -213,7 +217,11 @@ class Lookup(unittest.TestCase):
         self.registry.answers.clear()
         module = load(self.aws)
         output = io.StringIO()
-        with mock.patch("urllib.request.urlopen", self.registry.urlopen), contextlib.redirect_stdout(output):
+        with (
+            mock.patch.object(module.OPENER, "open", self.registry.urlopen),
+            mock.patch("urllib.request.urlopen", self.registry.urlopen),
+            contextlib.redirect_stdout(output),
+        ):
             module.handler(request, Context())
         self.log = output.getvalue()
         self.assertEqual(len(self.registry.answers), 1)
@@ -461,6 +469,86 @@ class Lookup(unittest.TestCase):
         self.assertLess(len(json.dumps(answer).encode()), 4096)
         long = self.run_function(event(edition=PRO, version="9" * 3000))
         self.assertLess(len(json.dumps(long).encode()), 4096)
+
+
+class Redirects(unittest.TestCase):
+    """The function's calls through urllib's real handlers, the network stubbed below them:
+    a redirect from ghcr.io is never followed, so the key and the token never leave it."""
+
+    LOCATIONS = (
+        "https://attacker.example/steal",
+        "http://attacker.example/steal",
+        "http://ghcr.io/v2/qoryai/apiary-pro/tags/list?n=1000",
+    )
+
+    def setUp(self):
+        self.aws = Aws()
+        environment = mock.patch.dict("os.environ", {"STACK_ID": STACK_ID})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def network(self, stage, location):
+        """http_open and https_open: ghcr.io answers, but at stage with a 302 to location."""
+        sent, answers = [], []
+
+        def answer(request, code=200, body=b"", headers=()):
+            message = http.client.HTTPMessage()
+            for key, value in headers:
+                message[key] = value
+            response = urllib.response.addinfourl(io.BytesIO(body), message, request.full_url, code)
+            response.msg = "Found" if code == 302 else "OK"
+            return response
+
+        def open_(handler, request):
+            url = urllib.parse.urlsplit(request.full_url)
+            headers = {key.lower(): value for key, value in request.header_items()}
+            sent.append((url.scheme, url.hostname, request.full_url, headers))
+            if request.full_url == RESPONSE_URL:
+                answers.append(json.loads(request.data))
+                return answer(request)
+            if (url.scheme, url.hostname) != ("https", "ghcr.io"):
+                return answer(request, body=json.dumps({"token": "x", "tags": ["9.9.9"]}).encode())
+            if stage in url.path:
+                return answer(request, 302, headers=[("Location", location)])
+            if url.path == "/token":
+                return answer(request, body=json.dumps({"token": TOKEN}).encode())
+            if url.path.endswith("/tags/list"):
+                return answer(request, body=json.dumps({"tags": ["0.3.0"]}).encode())
+            return answer(request, headers=[("Docker-Content-Digest", digest_of("0.3.0"))])
+
+        return open_, sent, answers
+
+    def test_a_redirect_is_never_followed_and_no_credential_leaves_ghcr_io(self):
+        for stage in ("/token", "/tags/list", "/manifests/"):
+            for location in self.LOCATIONS:
+                with self.subTest(stage=stage, location=location):
+                    open_, sent, answers = self.network(stage, location)
+                    module = load(self.aws)
+                    with (
+                        mock.patch.object(urllib.request.HTTPSHandler, "https_open", open_),
+                        mock.patch.object(urllib.request.HTTPHandler, "http_open", open_),
+                        contextlib.redirect_stdout(io.StringIO()),
+                    ):
+                        module.handler(event(edition=PRO), Context())
+                    self.assertEqual(len(answers), 1)
+                    self.assertEqual(answers[0]["Status"], "FAILED")
+                    self.assertEqual(answers[0]["Reason"], "ghcr.io could not be reached to find the version: update again later.")
+                    for scheme, host, url, headers in sent:
+                        if "authorization" in headers:
+                            self.assertEqual((scheme, host), ("https", "ghcr.io"), url)
+                    self.assertNotIn(location, [url for _scheme, _host, url, _headers in sent])
+
+    def test_without_a_redirect_the_same_network_installs(self):
+        open_, sent, answers = self.network("/none/", "")
+        module = load(self.aws)
+        with (
+            mock.patch.object(urllib.request.HTTPSHandler, "https_open", open_),
+            mock.patch.object(urllib.request.HTTPHandler, "http_open", open_),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            module.handler(event(edition=PRO), Context())
+        self.assertEqual(answers[0]["Status"], "SUCCESS", answers[0])
+        self.assertEqual(answers[0]["Data"]["Version"], "0.3.0")
 
 
 if __name__ == "__main__":
