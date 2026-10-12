@@ -796,6 +796,7 @@ defmodule ApiaryWeb.RunLive.Show do
     assigns =
       assign(assigns,
         labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
+        key_shown: Apiary.Features.visible?(assigns.scope, :nodes),
         # The terminal's size is the log's, as the Terminal tab is.
         terminal_size:
           assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
@@ -852,8 +853,10 @@ defmodule ApiaryWeb.RunLive.Show do
               {@run.image}
             </span>
           </dd>
-          <dt>{gettext("Key")}</dt>
-          <dd>
+          <%!-- The run's access key, where the reader is shown the nodes: their keys are the
+          part `nodes` an edition may hide (`Apiary.Features.visible?/2`). --%>
+          <dt :if={@key_shown}>{gettext("Key")}</dt>
+          <dd :if={@key_shown}>
             <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
               <span class="font-mono">{@run.access_key.label}</span>
               <span class="q-rail-sub font-mono">{@run.access_key.key_id}</span>

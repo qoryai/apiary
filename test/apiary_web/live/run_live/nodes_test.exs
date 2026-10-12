@@ -4,6 +4,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
 
@@ -30,6 +31,14 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
   # The words of the line a list narrowed to a node has.
   defp narrowed(view), do: view |> element("#runs-narrowed-what") |> render() |> plain()
+
+  # The runs list, wide, its preview open on the first run.
+  defp preview(conn, scope) do
+    view = open(conn, workspace_path(scope, "/runs"))
+    render_hook(view, "viewport", %{"wide" => true})
+    render_async(view)
+    view
+  end
 
   describe "the runs list" do
     test "keeps a node's runs by its id or its name, said as a token", %{
@@ -373,6 +382,55 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       assert narrowed(view) == "Showing the runs of #{idle.public_id} only."
       refute render(view) =~ "never-ran"
+    end
+  end
+
+  describe "a run's access key" do
+    setup %{scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      %{access_key: key} = node_key_fixture(scope, node, label: "ci-runner")
+      run = node_run_fixture(node, "i_1", %{access_key_id: key.id})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      %{key: key, run: run}
+    end
+
+    test "is named on the run page and in the preview", %{
+      conn: conn,
+      scope: scope,
+      key: key,
+      run: run
+    } do
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.run_id}"))
+      assert has_element?(view, "#run-facts dd", "ci-runner")
+      assert has_element?(view, "#run-facts dd", key.key_id)
+
+      view = preview(conn, scope)
+      assert has_element?(view, "#runs-preview dd", "ci-runner")
+    end
+
+    test "is left out, label and key id, where the nodes are hidden", %{
+      conn: conn,
+      scope: scope,
+      key: key,
+      run: run
+    } do
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.run_id}"))
+      assert has_element?(view, "#run-node", "build-01")
+      html = view |> element("#run-details") |> render()
+      refute html =~ "ci-runner"
+      refute html =~ key.key_id
+      refute html =~ ">Key<"
+
+      view = preview(conn, scope)
+      assert has_element?(view, "#runs-preview-node", "build-01")
+      html = view |> element("#runs-preview") |> render()
+      refute html =~ "ci-runner"
+      refute html =~ "Access key"
     end
   end
 end
