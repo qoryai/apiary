@@ -286,6 +286,8 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       end
     end
 
+    # A control: the old lookup found such a node, but printed its name, which is the value
+    # typed, with no link for this reader; nothing on the page told the two apart.
     test "a node no run names, by its name, reads as a name nothing has", %{
       conn: conn,
       scope: scope

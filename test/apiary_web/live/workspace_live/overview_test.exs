@@ -734,16 +734,20 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       scope: scope
     } do
       started_run(scope, shop())
+      # A lost run keeps the list, and its count, once the idle key leaves.
+      lost_run(scope)
       idle = node_key(scope, "old-runner")
       long_ago(idle, 34)
       :ok = Apiary.EditionStubs.HidesNamed.put([])
       view = open(conn, scope)
       assert has_element?(view, "#att-key-#{idle.id}")
+      shown = String.to_integer(text(view, "#attention-n"))
 
       :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
       send(view.pid, {:membership_changed, :level})
 
       refute has_element?(view, "#att-key-#{idle.id}")
+      assert String.to_integer(text(view, "#attention-n")) == shown - 1
       refute render(view) =~ "Revoked."
       refute render(view) =~ "/nodes"
     end
