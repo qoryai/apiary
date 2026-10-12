@@ -466,7 +466,7 @@ defmodule ApiaryWeb.NodeLive.Index do
             inputmode="url"
             label={gettext("URL")}
             placeholder="https://gateway.example.com"
-            hint={NodeComponents.url_hint()}
+            hint={NodeComponents.url_hint(:new)}
             autocomplete="off"
             spellcheck="false"
             required

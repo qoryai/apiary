@@ -1200,7 +1200,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           type="text"
           inputmode="url"
           label={gettext("URL")}
-          hint={NodeComponents.url_hint()}
+          hint={NodeComponents.url_hint(:settings)}
           debounce="200"
           autocomplete="off"
           spellcheck="false"

@@ -21,13 +21,34 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 ## Gateways
 
-A **gateway** is a separate kind on **Nodes**, beside the node and the node pool,
-`edge-01` say. Its key enrols the gateway and registers no run. **New gateway** asks its
-name and its **URL**: `https://`, a host, and a port if needed, nothing more. The host is
-a DNS name, such as `edge.example.com`, an IPv4 address, such as `10.0.0.5`, or an IPv6
-address in brackets, such as `[2001:db8::1]`; a port is 1 to 65535. Like a node,
-it opens on its **Access key** tab and gets its key either way. On the list it reads
-**Gateway**, and **Kind** in the Filter menu keeps the gateways alone.
+A **gateway** is a machine of yours that the runs of your nodes and node pools go through:
+the machine where you run `qory gateway`. On **Nodes** it is a separate kind, beside the
+node and the node pool, `edge-01` say. Its key enrols the gateway and registers no run.
+
+To add one:
+
+1. **Choose the machine and its address.** The machine runs `qory gateway` and reaches
+   Qory Apiary directly. Its address is where your nodes will reach it: `https://`, a
+   host, and a port if needed, nothing more. The host is a DNS name, such as
+   `edge.example.com`, an IPv4 address, such as `10.0.0.5`, or an IPv6 address in
+   brackets, such as `[2001:db8::1]`; a port is 1 to 65535. With
+   `gateway.listen: 0.0.0.0:8443` on the machine, the address is
+   `https://edge.example.com:8443`.
+2. **Add the gateway.** On **Nodes**, select **New gateway**, give its **Name** and that
+   address as its **URL**, and select **Add gateway**. It opens on its **Access key** tab.
+3. **Give the machine its key.** On the **Access key** tab, select **Get the command** and
+   run the command on the gateway's machine, or select **Generate a key**
+   ([The access key](#the-access-key)). The command writes the `gateway.server` section
+   of `~/.config/qory/forager.yaml` there.
+4. **Start the gateway.** On the machine, set `gateway.listen` and `gateway.tls`, its
+   certificate and key, in `forager.yaml`, then run `qory gateway`.
+
+You can change the URL later in the gateway's **Settings**. A machine connected through
+the gateway with `--via` keeps reaching it at the address in its Forager file,
+`gateway.server.via.url`, until you change it there.
+
+On the list a gateway reads **Gateway**, and **Kind** in the Filter menu keeps the
+gateways alone.
 
 The workspace's first gateway is its **default**, marked **Default** on the list and on
 its page. A second one moves nothing: its **Overview** shows its URL, says "Not the
