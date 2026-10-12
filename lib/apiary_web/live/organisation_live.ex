@@ -17,7 +17,7 @@ defmodule ApiaryWeb.OrganisationLive do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Features, Organisations, Policy, Runs}
+  alias Apiary.{Access, Organisations, Policy, Runs}
   alias ApiaryWeb.UserAuth
 
   # The workspaces shown; beyond them, the link to all of them.
@@ -337,11 +337,21 @@ defmodule ApiaryWeb.OrganisationLive do
   end
 
   # Where each workspace's link leads: the first page its sidebar shows the reader there
-  # (`ApiaryWeb.Layouts.workspace_landing/1`), asked with what that workspace has.
+  # (`ApiaryWeb.Layouts.workspace_landing/1`), asked with the scope they would have in it
+  # (`Apiary.Organisations.workspace_scopes/1`), one read for them all; the page's
+  # workspace with the page's scope, and a workspace that read did not find at its
+  # overview, as before.
   defp landings(scope, workspaces) do
+    scopes = Map.put(Organisations.workspace_scopes(scope), scope.workspace.id, scope)
+
     for workspace <- workspaces, into: %{} do
-      here = %{scope | workspace: workspace, features: Features.of(scope.organisation, workspace)}
-      {workspace.id, Layouts.workspace_landing(here)}
+      landing =
+        case Map.fetch(scopes, workspace.id) do
+          {:ok, here} -> Layouts.workspace_landing(here)
+          :error -> ~p"/#{scope.organisation}/#{workspace}"
+        end
+
+      {workspace.id, landing}
     end
   end
 

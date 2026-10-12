@@ -91,6 +91,51 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       end
     end
 
+    test "each workspace's link is asked with the scope the member would have in it", %{
+      conn: conn
+    } do
+      %{scope: owner, organisation: organisation} = sign_up_fixture()
+      platform = workspace_fixture(organisation, "Platform")
+      %{user: user} = member_fixture(owner, :member)
+      # The edition marks each workspace a member reaches, and the scope reaches only the
+      # workspace its mark names.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachMarked)
+      conn = log_in_user(conn, user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{organisation}")
+
+      for workspace <- [owner.workspace, platform] do
+        assert has_element?(
+                 view,
+                 ~s(#workspace-#{workspace.id} a[href="/#{organisation.slug}/#{workspace.slug}"]),
+                 workspace.name
+               )
+      end
+    end
+
+    test "a member added to a workspace while the page is open is offered its first page", %{
+      conn: conn
+    } do
+      %{scope: owner, organisation: organisation} = sign_up_fixture()
+      %{user: user} = member_fixture(owner, :member)
+      # The member reaches no workspace yet, and the organisation shows no overview.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachNamedWithoutRecord)
+      Apiary.EditionStubs.MembersReachNamed.put([])
+      conn = log_in_user(conn, user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{organisation}")
+      assert has_element?(view, "#not-added")
+
+      Apiary.EditionStubs.MembersReachNamed.put([owner.workspace.id])
+      send(view.pid, {:membership_changed, :added})
+
+      assert has_element?(
+               view,
+               ~s(#added-open[href="/#{organisation.slug}/#{owner.workspace.slug}/nodes"]),
+               owner.workspace.name
+             )
+    end
+
     test "an admin opens every workspace", %{conn: conn} do
       %{scope: owner, organisation: organisation} = sign_up_fixture()
       platform = workspace_fixture(organisation, "Platform")
