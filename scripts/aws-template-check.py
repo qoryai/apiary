@@ -80,8 +80,9 @@ version: in the template, or in each FILE given (such as a release's copy of the
 one Custom::Version resource finds the version to install. Its function's role is trusted
 by Lambda alone and allows exactly three things: secretsmanager:GetSecretValue on
 RegistryCredentials, under LooksUpWithDownloadKey (a download key, and Qory Apiary Pro);
-cloudformation:DescribeStacks on this stack; and writing to the function's log group; and no AWS::IAM::Policy, ManagedPolicy or
-RolePolicy attaches more to it, by a reference to the role or by its RoleName. Neither the
+cloudformation:DescribeStacks on this stack; and writing to the function's log group. No
+AWS::IAM::Policy, ManagedPolicy or RolePolicy attaches more to it, by a reference to the
+role or by its RoleName. Neither the
 resource, the function nor the role is given the download key itself, ProDownloadKey, or a
 dynamic reference ({{resolve:...}}) that could resolve to it. RegistryCredentials, the key's
 secret, is named only where it is needed: the resource's DownloadKeySecret, the role's
