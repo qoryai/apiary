@@ -3417,16 +3417,6 @@ msgstr ""
 msgid "As a member"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "As a plain setting."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "As a plain setting. It stays on the Access key tab."
-msgstr ""
-
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "As a table"
@@ -9584,12 +9574,12 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "QORY_ACCESS_KEY_ID, a plain setting."
+msgid "QORY_ACCESS_KEY_ID."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+msgid "QORY_ACCESS_KEY_ID: the ID of the key the machine uses, on its card above."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -9599,7 +9589,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary."
+msgid "QORY_APIARY_PUBLIC_KEY. The same for every machine connected to this Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
@@ -14555,11 +14545,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "permission to run expired"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "plain setting"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

@@ -1599,7 +1599,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 <div class="grid gap-1">
                   <dt class="flex flex-wrap items-center gap-2">
                     <span class="q-mono">QORY_ACCESS_KEY_SECRET</span>
-                    <.value_tag secret>{gettext("secret · shown once")}</.value_tag>
+                    <.value_tag>{gettext("secret · shown once")}</.value_tag>
                   </dt>
                   <dd class="flex items-center gap-2">
                     <%!-- The secret's slot: never patched or read by LiveView, empty from the
@@ -1652,7 +1652,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:step>
             <:step title={gettext("Set the key's ID.")}>
               <p class="text-muted">
-                {gettext("As a plain setting. It stays on the Access key tab.")}
+                {gettext("It stays on the Access key tab.")}
               </p>
               <dl class="grid gap-3">
                 <.value_row
@@ -1664,9 +1664,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:step>
             <:step title={gettext("Set Qory Apiary's public key.")}>
               <p class="text-muted">
-                {gettext("As a plain setting.")} {same_note()} {gettext(
-                  "It stays on the Access key tab."
-                )}
+                {same_note()} {gettext("It stays on the Access key tab.")}
               </p>
               <dl class="grid gap-3">
                 <.value_row
@@ -1796,7 +1794,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 </p>
               </:step>
               <:step title={gettext("Set the key's ID.")}>
-                <p class="text-muted">{gettext("As a plain setting.")}</p>
                 <.code_block
                   id="key-forager-file-key-env"
                   code={variable_line(AccessKeys.key_variable(@key))}
@@ -1805,7 +1802,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
               </:step>
               <:step title={gettext("Set Qory Apiary's public key.")}>
-                <p class="text-muted">{gettext("As a plain setting.")}</p>
                 <.code_block
                   id="key-forager-file-server-env"
                   code={variable_line(server_variable())}
@@ -2214,19 +2210,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     """
   end
 
-  attr :secret, :boolean, default: false
   slot :inner_block, required: true
 
-  # What a value is to the system that runs qory: a plain setting, or a secret.
+  # What a value is to the system that runs qory: a secret, tagged so beside its name.
   defp value_tag(assigns) do
     ~H"""
-    <span class={[
-      "rounded-selector px-1.5 py-0.5 text-[11.5px]/4",
-      if(@secret,
-        do: "bg-primary-soft font-medium text-primary-soft-content",
-        else: "bg-base-200 text-muted"
-      )
-    ]}>
+    <span class="rounded-selector bg-primary-soft px-1.5 py-0.5 text-[11.5px]/4 font-medium text-primary-soft-content">
       {render_slot(@inner_block)}
     </span>
     """
@@ -2259,13 +2248,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :name, :string, required: true
   attr :value, :string, required: true
 
-  # A plain setting: its name, tagged so, and its value with Copy.
+  # A value: its name, and the value with Copy.
   defp value_row(assigns) do
     ~H"""
     <div class="grid gap-1">
       <dt class="flex flex-wrap items-center gap-2">
         <span class="q-mono">{@name}</span>
-        <.value_tag>{gettext("plain setting")}</.value_tag>
       </dt>
       <dd class="flex items-center gap-2">
         <code
@@ -2326,7 +2314,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <:step title={gettext("Set Qory Apiary's public key.")}>
             <p class="text-muted">
               {gettext(
-                "QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary."
+                "QORY_APIARY_PUBLIC_KEY. The same for every machine connected to this Qory Apiary."
               )}
             </p>
             <.value_field id={"#{@id}-pin"} name={@pin_name} value={@pin} />
@@ -2334,12 +2322,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <:step title={gettext("Set the key's ID.")}>
             <%= case @keys do %>
               <% [key] -> %>
-                <p class="text-muted">{gettext("QORY_ACCESS_KEY_ID, a plain setting.")}</p>
+                <p class="text-muted">{gettext("QORY_ACCESS_KEY_ID.")}</p>
                 <.value_field id={"#{@id}-key-id"} name="QORY_ACCESS_KEY_ID" value={key.key_id} />
               <% _keys -> %>
                 <p id={"#{@id}-key-id-pointer"} class="text-muted">
                   {gettext(
-                    "QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+                    "QORY_ACCESS_KEY_ID: the ID of the key the machine uses, on its card above."
                   )}
                 </p>
             <% end %>

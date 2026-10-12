@@ -146,10 +146,10 @@ where the machine runs qory." Then four numbered steps:
    edge-01.**, the lines carry `via` and its `url`, and it adds "via sends every request
    to Qory Apiary through edge-01."; a pool's adds "A starter that reaches Qory Apiary
    directly can leave via out."
-2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, a plain setting, with
-   **Copy**. The same for every machine connected to this Qory Apiary.
-3. **Set the key's ID.** `QORY_ACCESS_KEY_ID`, a plain setting: with one active key, its
-   ID, with **Copy**; with two, the ID of the key the machine uses, on its card above.
+2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, with **Copy**. The
+   same for every machine connected to this Qory Apiary.
+3. **Set the key's ID.** `QORY_ACCESS_KEY_ID`: with one active key, its ID, with
+   **Copy**; with two, the ID of the key the machine uses, on its card above.
 4. **Keep the key's secret in a secret store.** `QORY_ACCESS_KEY_SECRET`. It was shown
    once, when the key was generated, and is never shown here. If it is lost, generate a
    new key and revoke the old one.
@@ -256,11 +256,11 @@ description below). What it shows depends on how the key came:
   numbered steps. **Keep the secret in a secret store**: it was shown once, when the key
   was generated, and belongs in `QORY_ACCESS_KEY_SECRET` in the secret store of the
   system that runs `qory`; if it is lost, generate a new key and revoke this one. **Set
-  the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
-  key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
-  connected to this Qory Apiary. **Point the node at Qory Apiary**: the lines the Forager
-  file needs, `gateway.server.url`, and, behind a gateway, `gateway.server.via.url`,
-  under **Point the node at Qory Apiary, through edge-01.**
+  the key's ID**, `QORY_ACCESS_KEY_ID`. **Set Qory Apiary's public key**,
+  `QORY_APIARY_PUBLIC_KEY`: the same for every machine connected to this Qory Apiary.
+  **Point the node at Qory Apiary**: the lines the Forager file needs,
+  `gateway.server.url`, and, behind a gateway, `gateway.server.via.url`, under **Point
+  the node at Qory Apiary, through edge-01.**
 
 ### For a CI
 
@@ -273,7 +273,7 @@ the settings, one `NAME=value` line each.
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
 
 Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the id and the pin are
-plain settings, and the CI's `forager.yaml` then needs `gateway.server.url` alone.
+not secret, and the CI's `forager.yaml` then needs `gateway.server.url` alone.
 `QORY_APIARY_PUBLIC_KEY` is JSON: in a shell, put its value in single quotes
 ([The Forager file's `server` section](forager-file.md#the-id-and-the-pin-in-the-environment)).
 A fleet of short-lived CI runners is a node pool with one key.
@@ -295,11 +295,9 @@ A fleet of short-lived CI runners is a node pool with one key.
    1. **Store the secret.** In the secret store of the system that runs spot-runners,
       such as your CI's: `QORY_ACCESS_KEY_SECRET`, which is `qak_` and the key's secret,
       tagged "secret · shown once".
-   2. **Set the key's ID.** As a plain setting: `QORY_ACCESS_KEY_ID`. It stays on the
-      **Access key** tab.
-   3. **Set Qory Apiary's public key.** As a plain setting: `QORY_APIARY_PUBLIC_KEY`. The
-      same for every machine connected to this Qory Apiary. It stays on the **Access
-      key** tab.
+   2. **Set the key's ID.** `QORY_ACCESS_KEY_ID`. It stays on the **Access key** tab.
+   3. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`. The same for
+      every machine connected to this Qory Apiary. It stays on the **Access key** tab.
    4. **Point the node pool at Qory Apiary.** In the Forager file. It is required:
       without it, `qory` ignores the three variables. With **Copy lines**:
 

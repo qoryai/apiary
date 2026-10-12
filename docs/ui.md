@@ -980,11 +980,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   gateway's "Point the gateway at Qory Apiary."; behind a gateway "Point the node at Qory
   Apiary, through edge-01.", the text adding "via sends every request to Qory Apiary through edge-01.",
   and a pool's "A starter that reaches Qory Apiary directly can leave via out.", the
-  lines ending `via:` / `url: https://edge.example.com`), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
-  a plain setting. The same for every machine connected to this Qory Apiary.", the value
-  with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
-  setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
-  of the key the machine uses, on its card above."), 4 "Keep the key's secret in a secret
+  lines ending `via:` / `url: https://edge.example.com`), 2 "Set Qory Apiary's public
+  key." ("QORY_APIARY_PUBLIC_KEY.
+  The same for every machine connected to this Qory Apiary.", the value with Copy), 3
+  "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID." and its ID with Copy;
+  with two, "QORY_ACCESS_KEY_ID: the ID of the key the machine uses, on its card
+  above."), 4 "Keep the key's secret in a secret
   store." ("QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is
   never shown here. If it is lost, generate a new key and revoke the old one.", text
   alone, never a value or a Copy).
@@ -1043,10 +1044,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   can't be seen again.", the notice "**The secret is shown once.** …", then four numbered
   steps, each value with Copy. 1 "Store the secret." ("In the secret store of the system
   that runs build-01, such as your CI's.", `QORY_ACCESS_KEY_SECRET`, tagged "secret ·
-  shown once"), 2 "Set the key's ID." ("As a plain setting. It stays on the Access key
-  tab.", `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("As a plain setting.
-  The same for every machine connected to this Qory Apiary. It stays on the Access key
-  tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point the node at Qory Apiary."
+  shown once"), 2 "Set the key's ID." ("It stays on the Access key tab.",
+  `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("The same for every machine
+  connected to this Qory Apiary. It stays on the Access key tab.",
+  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point the node at Qory Apiary."
   ("In the Forager file. It is required: without it, qory ignores the three variables.", the
   three lines `gateway:`, `server:` and `url: https://apiary.example.com` with Copy
   lines; behind a gateway as Configure a machine's first step says). The server's address and public key are the instance's, the same for every
@@ -1078,10 +1079,15 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   screen." A generated key: four numbered steps. 1 "Keep the secret in a secret store."
   ("It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET
   in the secret store of the system that runs qory. If it is lost, generate a new key and
-  revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
-  `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
-  plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
-  machine connected to this Qory Apiary."), 4 "Point the node at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines; behind a gateway "Point the node at Qory Apiary, through edge-01.", "via sends every request to Qory Apiary through edge-01." and a pool's sentence above it, the lines ending `via:` / `url:`). A command key's lines behind a gateway end with `via:` and its `url`, marked `# the gateway edge-01`. Done goes back to the
+  revoke this one."), 2 "Set the key's ID."
+  (`QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key."
+  (`QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every machine
+  connected to this Qory Apiary."), 4 "Point the node at Qory Apiary." (`gateway:` /
+  `server:` / `url:` with Copy lines; behind a gateway "Point the node at Qory Apiary,
+  through edge-01.", "via sends every request to Qory Apiary through edge-01." and a
+  pool's sentence above it, the lines ending `via:` / `url:`). A command key's lines
+  behind a gateway end with `via:` and its `url`, marked `# the gateway edge-01`. Done
+  goes back to the
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
