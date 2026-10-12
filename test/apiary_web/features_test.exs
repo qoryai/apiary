@@ -170,4 +170,43 @@ defmodule ApiaryWeb.FeaturesTest do
       assert reload.resp_body == conn.resp_body
     end
   end
+
+  describe "hidden from the person, on an instance with it" do
+    @describetag with_features: Apiary.Features.all()
+
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+    end
+
+    test "the policy's pages answer the person as a path that does not exist, a page's and a controller's alike",
+         %{conn: conn, scope: scope} do
+      for rest <- @policy_paths do
+        path = workspace_path(scope, rest)
+        {status, _body, _headers} = answer(fn -> get(conn, path) end)
+        assert status == 404, path
+      end
+    end
+
+    test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+
+      assert {%{status: 404, reason: "reload"}, _call} =
+               catch_exit(
+                 live_redirect(view, to: ~p"/#{scope.organisation}/#{scope.workspace}/policy")
+               )
+    end
+
+    test "a node is still served the workspace's policy", ctx do
+      # The policy made while the person was shown it.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      assert {:error, %Policy.Error{reason: :not_found}} = Policy.set_mode(ctx.scope, "enforce")
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
+
+      conn = signed_register(build_conn(), key.key_id, secret, registration(Ecto.UUID.generate()))
+      assert %{"security_policy" => _} = json_response(conn, 200)
+    end
+  end
 end

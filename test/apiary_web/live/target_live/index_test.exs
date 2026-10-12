@@ -223,4 +223,19 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     view = open(conn, scope)
     assert has_element?(view, "#targets-empty", "No repository yet")
   end
+
+  @tag needs: :security
+  test "the Policy filters and column are left out where the policy is hidden from the reader",
+       %{conn: conn, scope: scope} do
+    view = open(conn, scope)
+    assert has_element?(view, "#targets-filter-follows")
+
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+    :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+    view = open(conn, scope)
+
+    assert rows(view) != []
+    refute has_element?(view, "#targets-filter-follows")
+    refute has_element?(view, "#targets th", "Policy")
+  end
 end

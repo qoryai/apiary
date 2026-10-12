@@ -264,6 +264,19 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
   end
 
   @tag needs: :security
+  test "the Policy tab is not there where the policy is hidden from the reader",
+       %{conn: conn, scope: scope} do
+    started_run(scope, repo("github.example", "acme/billing"))
+    path = workspace_path(scope, "/targets/acme/billing")
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+    :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+
+    view = open(conn, path)
+    refute has_element?(view, "a[href='#{path}/-/policy']")
+    assert_raise Ecto.NoResultsError, fn -> live(conn, path <> "/-/policy") end
+  end
+
+  @tag needs: :security
   test "an old address of a tab is sent on to the same tab, with its query",
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/billing"))
