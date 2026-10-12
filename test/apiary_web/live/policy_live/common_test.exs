@@ -86,16 +86,16 @@ defmodule ApiaryWeb.PolicyLive.CommonTest do
       changed = change("rule_changed", [@credential], [%{@credential | "argument" => "acme/lib"}])
 
       assert flat(Common.change_sentence(added, "dana")) ==
-               "dana added the credential forge-token acme/shop"
+               "dana added the secret forge-token acme/shop"
 
       assert flat(Common.change_sentence(removed, "dana")) ==
-               "dana removed the credential forge-token acme/shop"
+               "dana removed the secret forge-token acme/shop"
 
       assert flat(Common.change_sentence(changed, "dana")) ==
-               "dana changed the argument of the credential forge-token acme/lib"
+               "dana changed the argument of the secret forge-token acme/lib"
 
-      assert Common.change_words(added) == "Credential forge-token"
-      assert flat(Common.rule_words(@credential)) == "Credential forge-token acme/shop"
+      assert Common.change_words(added) == "Secret forge-token"
+      assert flat(Common.rule_words(@credential)) == "Secret forge-token acme/shop"
       assert %{added: [@credential]} = Apiary.Policy.diff(added)
     end
   end

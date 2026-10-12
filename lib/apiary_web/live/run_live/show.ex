@@ -1035,7 +1035,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">
             {strings(@policy.terminated, @policy.terminated_count) || gettext("none")}
           </dd>
-          <dt>{gettext("Credentials")}</dt>
+          <dt>{gettext("Secrets")}</dt>
           <.named_hosts
             id="policy-credentials"
             named={@policy.credentials}
@@ -1190,7 +1190,7 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       terminated:
         gettext(
-          "A host whose requests the proxy reads, because the run holds a credential, a tool or path rules for it. Every other host is a blind tunnel."
+          "A host whose requests the proxy reads, because the run holds a secret, a tool or path rules for it. Every other host is a blind tunnel."
         ),
       tools:
         gettext(

@@ -1229,7 +1229,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
       # The policy no longer names credentials; a change made while it did reads as it was.
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
-        rich_gettext("%{who} added the credential %{credential}",
+        rich_gettext("%{who} added the secret %{credential}",
           who: who,
           credential: credential_chips(rule)
         )
@@ -1238,7 +1238,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         added_sentence(who, rule)
 
       {"rule_removed", %{removed: [%{"kind" => "credential"} = rule | _]}} ->
-        rich_gettext("%{who} removed the credential %{credential}",
+        rich_gettext("%{who} removed the secret %{credential}",
           who: who,
           credential: credential_chips(rule)
         )
@@ -1308,7 +1308,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   defp changed_sentence(who, %{"kind" => "credential"}, new),
     do:
-      rich_gettext("%{who} changed the argument of the credential %{credential}",
+      rich_gettext("%{who} changed the argument of the secret %{credential}",
         who: who,
         credential: credential_chips(new)
       )
@@ -1370,7 +1370,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         gettext("Mode set to %{mode}", mode: to)
 
       {"rule_added", %{added: [%{"kind" => "credential", "name" => name} | _]}} ->
-        gettext("Credential %{name}", name: name)
+        gettext("Secret %{name}", name: name)
 
       {"rule_added", %{added: [%{"action" => "deny"} = rule | _]}} ->
         gettext("Denied %{host}", host: rule["host"])
@@ -1458,8 +1458,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     chips = credential_chips(rule)
 
     if rule["locked"],
-      do: rich_gettext("Credential %{credential}, locked", credential: chips),
-      else: rich_gettext("Credential %{credential}", credential: chips)
+      do: rich_gettext("Secret %{credential}, locked", credential: chips),
+      else: rich_gettext("Secret %{credential}", credential: chips)
   end
 
   def rule_words(%{"action" => "allow"} = rule) do

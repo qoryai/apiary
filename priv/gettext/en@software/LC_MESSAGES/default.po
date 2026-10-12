@@ -2029,7 +2029,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "%{who} added the credential %{credential}"
+msgid "%{who} added the secret %{credential}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -2054,7 +2054,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "%{who} changed the argument of the credential %{credential}"
+msgid "%{who} changed the argument of the secret %{credential}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -2094,12 +2094,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "%{who} removed the credential %{credential}"
+msgid "%{who} removed the deny rule %{host}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "%{who} removed the deny rule %{host}"
+msgid "%{who} removed the secret %{credential}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -2324,7 +2324,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "A host whose requests the proxy reads, because the run holds a credential, a tool or path rules for it. Every other host is a blind tunnel."
+msgid "A host whose requests the proxy reads, because the run holds a secret, a tool or path rules for it. Every other host is a blind tunnel."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3368,7 +3368,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
+msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -4359,31 +4359,6 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Creating…"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Credential %{credential}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Credential %{credential}, locked"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Credential %{name}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Credential files"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Credentials"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10501,7 +10476,28 @@ msgstr ""
 msgid "Secret"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Secret %{credential}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Secret %{credential}, locked"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Secret %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Secret files"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
+#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secrets"
@@ -13943,11 +13939,6 @@ msgstr ""
 msgid "couldn't check whether the run may go on: unreadable answer"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "credential"
-msgstr ""
-
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "dana@example.com"
@@ -14584,6 +14575,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "run %{id}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "secret"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex

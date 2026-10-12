@@ -40,8 +40,9 @@ A rule allows or denies one thing:
 
 Paths need a wall. Without one Forager refuses to start a run whose policy has them.
 
-Credentials are not part of the policy: the run configuration this server renders selects
-none, and a run uses no credential of its machine's.
+Secrets are not part of the policy: the run configuration this server renders selects none
+of the machine's `credentials` (the Forager file's `gateway.credentials`), so Forager's
+proxy sets none of them on a run's requests.
 
 The policy document the gateway reads has a deny list and an allow list. The gateway decides
 the deny list first, in either mode: a host a deny rule names is denied under observe as

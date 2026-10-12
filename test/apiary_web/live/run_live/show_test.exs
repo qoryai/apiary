@@ -2234,6 +2234,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
+      # The page calls them secrets, and says a secret is why the proxy reads a host.
+      assert has_element?(lv, "dt:has(+ dd#policy-credentials)", "Secrets")
+      refute has_element?(lv, "dt", "Credentials")
+
+      assert has_element?(
+               lv,
+               "abbr.term[data-tip='A host whose requests the proxy reads, because the run holds a secret, a tool or path rules for it. Every other host is a blind tunnel.']",
+               "Reads requests to"
+             )
+
       # The uses of one credential show as one, its argument once, the hosts of every use.
       assert has_element?(
                lv,
