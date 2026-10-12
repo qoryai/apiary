@@ -1,12 +1,9 @@
-"""Write a release's versions into a copy of the AWS template, deploy/aws/apiary.yaml.
+"""Write a release's copy of the AWS template, deploy/aws/apiary.yaml, with its version.
 
-    python3 scripts/aws-template-release.py TEMPLATE [--copy release|test] \\
-        --edition-default EDITION --community-version X.Y.Z --pro-version [X.Y.Z]
+    python3 scripts/aws-template-release.py TEMPLATE [--copy release|test] [--version X.Y.Z]
 
-TEMPLATE is written in place, and must be the repository's template, whose Release mapping
-is empty. EDITION, the edition the form offers first, is "Qory Apiary Community" or
-"Qory Apiary Pro". --pro-version may be empty, unless EDITION is Qory Apiary Pro: the copy
-then installs Qory Apiary Pro only with a version typed under Version, and a Rule says so.
+TEMPLATE is written in place, and must be the repository's template, whose Template mapping
+is empty.
 
 --copy says which copy is written. The repository's template holds the test parts, each a
 block of lines between a "# [test copy]" line and a "# [/test copy]" line, or a line ending
@@ -22,12 +19,12 @@ image field, its group, its rule and its comments.
 
 Either way the template must hold marked parts, each block closed and none inside another.
 
-Written in: the Release mapping's CommunityVersion and ProVersion, and the same versions in
-the Rules that refuse an edition with no version; Edition's default and help; Version's
-(VersionOverride's) label and help, the label naming EDITION and its version when
---pro-version is given; and the Version output's description, naming EDITION and its
-version. Each is found by its place in the template, its keys from the top, and must be
-there exactly once and be written exactly once, in ASCII alone, or nothing is written.
+--version, the release's version X.Y.Z, is written into the Template mapping's
+Release.Version, the template's version: the stack refuses a release of a newer minor than
+it. Without --version the mapping stays empty, and the stack makes no such check. The
+version is found by its place in the template, its keys from the top, and must be there
+exactly once and be written exactly once, or nothing is written. No edition's version is
+written: the stack finds the version to install when it is created or updated.
 
 The template is read as text: the standard library has no YAML reader, and the lines
 written keep the rest of the file, its comments included, as it is.
@@ -41,9 +38,8 @@ import re
 import sys
 from pathlib import Path
 
-COMMUNITY = "Qory Apiary Community"
-PRO = "Qory Apiary Pro"
-VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?")
+# A release's version: digits alone, as the stack compares them.
+VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
 RELEASE = "release"
 TEST = "test"
@@ -55,54 +51,13 @@ TEST_WORDING = re.compile(r"\b(test(s|ed|ing)?|pre-?releases?)\b", re.IGNORECASE
 TEST_NAMES = re.compile(r"TestImage")
 IF_LINE = re.compile(r"^(?P<head> *(?:- )?[^\s#-][^#]*?:) !If$")
 
-EDITION_HELP = "Qory Apiary Community is free and open source. Qory Apiary Pro needs the download key we sent you."
-PRO_TEMPLATE_HELP = "For Qory Apiary Pro, use the Qory Apiary Pro template we sent you."
-WAY_BACK_HELP = "Moving from Qory Apiary Community to Qory Apiary Pro is possible later; the way back is not."
-VERSION_HELP = "Leave empty to install the version this template names."
 
-
-def texts(edition_default, community_version, pro_version):
-    """The values written in, by their place in the template."""
-    version = pro_version if edition_default == PRO else community_version
-    named = f"{edition_default} {version}"
-    edition_help = [EDITION_HELP, WAY_BACK_HELP] + ([] if pro_version else [PRO_TEMPLATE_HELP])
-    # The approved labels: of a copy that names no Qory Apiary Pro version, as release.yml writes
-    # it, and of a copy that names both.
-    label = f"Version (leave empty for {named})" if pro_version else "Version (leave empty for this template's)"
-
-    return [
-        # The Release mapping, which the image's tag reads; a repository's template has both empty.
-        (("Mappings", "Release", "Versions", "CommunityVersion"), '""', quote(community_version)),
-        (("Mappings", "Release", "Versions", "ProVersion"), '""', quote(pro_version)),
-        # The same versions, in the Rules that refuse an edition whose version is empty.
-        (
-            ("Rules", "CommunityVersionNamed", "Assertions", "- Assert"),
-            '!Not [!Equals [!Ref VersionOverride, ""]]',
-            f"!Not [!Equals [!Ref VersionOverride, {quote(community_version)}]]",
-        ),
-        (
-            ("Rules", "ProVersionNamed", "Assertions", "- Assert"),
-            '!Not [!Equals [!Ref VersionOverride, ""]]',
-            f"!Not [!Equals [!Ref VersionOverride, {quote(pro_version)}]]",
-        ),
-        (("Parameters", "Edition", "Default"), None, quote(edition_default)),
-        (("Parameters", "Edition", "Description"), None, quote(" ".join(edition_help))),
-        (
-            ("Parameters", "VersionOverride", "Description"),
-            None,
-            quote(VERSION_HELP),
-        ),
-        (
-            ("Metadata", "AWS::CloudFormation::Interface", "ParameterLabels", "VersionOverride"),
-            None,
-            f"{{ default: {quote(label)} }}",
-        ),
-        (
-            ("Outputs", "Version", "Description"),
-            None,
-            quote(f"The version the stack runs. This template's is {named}."),
-        ),
-    ]
+def texts(version):
+    """The values written in, by their place in the template: the template's version, when
+    one is given."""
+    if not version:
+        return []
+    return [(("Mappings", "Template", "Release", "Version"), '""', quote(version))]
 
 
 def quote(value):
@@ -270,7 +225,7 @@ def release_copy_failures(text):
 
 
 def make_copy(text, copy):
-    """The release or the test copy of the repository's template, before its versions are
+    """The release or the test copy of the repository's template, before its version is
     written. Raises ValueError when the template cannot make it."""
     lines = text.split("\n")
     blocks, ends = marked_parts(lines)
@@ -288,7 +243,7 @@ def make_copy(text, copy):
 
 
 def write_copy(text, copy, targets):
-    """The copy, its versions written, and what refuses it."""
+    """The copy, its version written, and what refuses it."""
     try:
         text = make_copy(text, copy)
     except ValueError as error:
@@ -301,7 +256,7 @@ def write_copy(text, copy, targets):
 
 def main(argv):
     parser = argparse.ArgumentParser(
-        description="Write a release's versions into a copy of deploy/aws/apiary.yaml, in place."
+        description="Write a release's copy of deploy/aws/apiary.yaml, with its version, in place."
     )
     parser.add_argument("template", type=Path)
     parser.add_argument(
@@ -310,23 +265,13 @@ def main(argv):
         default=RELEASE,
         help="release (the default): without the test parts; test: with them, never published",
     )
-    parser.add_argument("--edition-default", required=True, choices=[COMMUNITY, PRO])
-    parser.add_argument("--community-version", required=True)
-    parser.add_argument("--pro-version", required=True, help="may be empty")
+    parser.add_argument("--version", default="", help="the release's version X.Y.Z, written into the Template mapping")
     args = parser.parse_args(argv[1:])
 
-    if not VERSION.fullmatch(args.community_version):
-        parser.error(f"--community-version {args.community_version!r} is not a version such as 0.2.0")
-    if args.pro_version and not VERSION.fullmatch(args.pro_version):
-        parser.error(f"--pro-version {args.pro_version!r} is not a version such as 0.2.0, or empty")
-    if args.edition_default == PRO and not args.pro_version:
-        parser.error(f"--edition-default {PRO!r} needs --pro-version")
+    if args.version and not VERSION.fullmatch(args.version):
+        parser.error(f"--version {args.version!r} is not a version such as 0.2.0")
 
-    text, failures = write_copy(
-        args.template.read_text(encoding="utf-8"),
-        args.copy,
-        texts(args.edition_default, args.community_version, args.pro_version),
-    )
+    text, failures = write_copy(args.template.read_text(encoding="utf-8"), args.copy, texts(args.version))
     if failures:
         for failure in failures:
             print(f"{args.template}: {failure}", file=sys.stderr)
