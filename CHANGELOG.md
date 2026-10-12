@@ -743,6 +743,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `c:Apiary.Edition.features_of/3`, `Apiary.Features.of/2` and `Apiary.Features.on?/2` are
   gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
   is shown.
+<!-- feature: secrets -->
+- The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
+  `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person
+  when a feature it needs is hidden.
+<!-- /feature -->
 
 ### Removed
 

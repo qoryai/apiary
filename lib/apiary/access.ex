@@ -231,47 +231,47 @@ defmodule Apiary.Access do
     Action.new(
       :"secret.read",
       "read the stored secrets: their names, notes and value IDs, never a value",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"secret.write",
       "create a stored secret, change its name, note and values, and delete it",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     Action.new(
       :"secret.use",
       "link a stored secret to what uses it",
-      feature: :security,
+      feature: :secrets,
       roles: @admins,
       audited:
         {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
     ),
     Action.new(:"variable.read", "read the variables of the workspace and its repositories",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"variable.edit",
       "set, change, lock and remove the variables of the workspace and its repositories",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     # What a run is connected to: runtimes, integrations and services.
     Action.new(
       :"connection.read",
       "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"connection.write",
       "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     # The server contract.

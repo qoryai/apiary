@@ -522,7 +522,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       component_stories: component_stories
     }
 
-    Map.merge(base, security_params(scope, target))
+    base
+    |> Map.merge(security_params(scope))
+    |> Map.merge(secrets_params(scope, target))
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is
@@ -547,10 +549,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   # The records of the `security` feature; placeholders where the instance has not got
   # it, whose pages answer as paths that do not exist.
-  defp security_params(scope, target) do
+  defp security_params(scope) do
     if Features.on?(:security) do
       {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      %{rule_id: rule.id}
+    else
+      %{rule_id: Ecto.UUID.generate()}
+    end
+  end
 
+  # The records of the `secrets` feature, as `security_params/1` has the policy's.
+  defp secrets_params(scope, target) do
+    if Features.on?(:secrets) do
       {:ok, secret} =
         Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x", value_id: "main-app"})
 
@@ -590,7 +600,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         })
 
       %{
-        rule_id: rule.id,
         secret_id: secret.public_id,
         single_secret_id: single.public_id,
         value_id: "bot-app",
@@ -603,7 +612,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       }
     else
       %{
-        rule_id: Ecto.UUID.generate(),
         secret_id: "sec_none",
         single_secret_id: "sec_none",
         value_id: "none",

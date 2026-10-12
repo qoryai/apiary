@@ -310,7 +310,11 @@ who may act cannot leave.
 
 The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
 scope, and a feature that is off, or hidden from the scope's person, is
-`{:error, :not_found}`: absent, as a feature the instance lacks. An action that belongs to
+`{:error, :not_found}`: absent, as a feature the instance lacks. A feature is hidden from a
+person where a feature it needs is, directly or through another: hiding `security` hides
+`secrets`, and hiding `observability` hides both (`Apiary.Features.hidden_of/1` adds them).
+The stored secrets', the variables' and the integrations' actions (`secret.*`, `variable.*`,
+`connection.*`) belong to `secrets`, the feature of their pages. An action that belongs to
 a part of its feature is asked of the part, which is hidden where it or its feature is:
 `run.read_log` belongs to `observability.terminal`, the run's Terminal, so an edition that
 hides it hides the run's whole log from that person, the Terminal tab, the log's address

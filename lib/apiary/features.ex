@@ -48,10 +48,11 @@ defmodule Apiary.Features do
   and parts of them, as `hidden_of/1` keeps it; the core's answer is nothing. The scope a
   person's page or a context function holds carries it, `hidden`, loaded with it
   (`Apiary.Organisations.resolve_scope/4`) and read again with its membership
-  (`Apiary.Access.reload/2`), so `visible?/2` reads nothing. A hidden feature is absent for
-  that person as one the instance lacks is: its pages, menu entries and actions are not
-  found. A hidden part is absent for that person the same way, and so is every part of a
-  hidden feature: an action of the part (`Apiary.Access.Action`, `part`) is not found.
+  (`Apiary.Access.reload/2`), so `visible?/2` reads nothing. A feature that needs a hidden
+  one is hidden with it (`hidden_of/1`). A hidden feature is absent for that person as one
+  the instance lacks is: its pages, menu entries and actions are not found. A hidden part
+  is absent for that person the same way, and so is every part of a hidden feature: an
+  action of the part (`Apiary.Access.Action`, `part`) is not found.
   What is hidden still works in full for everything that does not ask what a person is
   shown, which follows the instance's features alone (`on?/1`): what a node is served (a
   run's registration, events, attach, outcome and reload, and its run configuration),
@@ -388,9 +389,10 @@ defmodule Apiary.Features do
   Whether `name`, a feature or a part of one, is shown where `scope` is: its feature on for
   the instance (`on?/1`) and, for a person's `Apiary.Accounts.Scope`, neither the name nor
   its feature among what the scope hides (`hidden`, the edition's answer,
-  `c:Apiary.Edition.hidden/1`). An access key, an access key's scope, the instance's scope,
-  a scope that carries no `hidden`, as the scope of a job no person enqueued, and `nil`
-  answer as the instance. Raises `ArgumentError` for a name that is no feature or part.
+  `c:Apiary.Edition.hidden/1`, with the features that need a hidden one, as `hidden_of/1`
+  keeps it). An access key, an access key's scope, the instance's scope, a scope that
+  carries no `hidden`, as the scope of a job no person enqueued, and `nil` answer as the
+  instance. Raises `ArgumentError` for a name that is no feature or part.
   """
   @spec visible?(Scope.t() | AccessKey.t() | nil, name) :: boolean
   def visible?(%Scope{access_key: nil, instance: false, hidden: hidden}, name)
@@ -403,15 +405,29 @@ defmodule Apiary.Features do
 
   @doc """
   hidden_of/1 is the edition's answer to `c:Apiary.Edition.hidden/1` as a scope keeps it,
-  `hidden`: the features in the order of `all/0`, then the parts in the order of
-  `parts/0`, without a feature the instance lacks or a part of one. Raises `ArgumentError`
-  on a name that is no feature or part: an edition's mistake, as `registry/1` treats one.
+  `hidden`, with the features that depend on a hidden one added: a feature that needs a
+  hidden feature, directly or through another (`needs/1`), is hidden too. The features
+  come in the order of `all/0`, then the parts in the order of `parts/0`, without a
+  feature the instance lacks or a part of one. Raises `ArgumentError` on a name that is
+  no feature or part: an edition's mistake, as `registry/1` treats one.
   """
   @spec hidden_of([name]) :: [name]
   def hidden_of(names) when is_list(names) do
     Enum.each(names, &feature_of/1)
+    names = with_dependants(names, registry().needs)
     enabled = enabled()
     Enum.filter(enabled ++ parts(), &(&1 in names and feature_of(&1) in enabled))
+  end
+
+  # `names` with every feature that needs one of them, directly or through another.
+  defp with_dependants(names, needs) do
+    dependants =
+      for {feature, its} <- needs,
+          feature not in names,
+          Enum.any?(its, &(&1 in names)),
+          do: feature
+
+    if dependants == [], do: names, else: with_dependants(names ++ dependants, needs)
   end
 
   @doc """

@@ -49,7 +49,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    @tag needs: :security
+    @tag needs: :secrets
     test "names a stored secret and a variable by name, never by value",
          %{conn: conn, scope: scope} do
       {:ok, secret} =

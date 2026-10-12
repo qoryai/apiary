@@ -82,7 +82,7 @@ defmodule Apiary.Secrets do
   list_secrets/1 is the scope's workspace's secrets, by name whatever its case, each with
   its values, their value ids and when they were set, never their ciphertext:
   `{:ok, secrets}`, for a reader who may `secret.read`; else `{:error, reason}`,
-  `:not_found` where the `security` feature is off.
+  `:not_found` where the `secrets` feature is off.
   """
   @spec list_secrets(Scope.t()) :: {:ok, [Secret.t()]} | {:error, Access.reason()}
   def list_secrets(%Scope{} = scope) do
