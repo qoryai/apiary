@@ -359,9 +359,9 @@ defmodule Apiary.Access do
 
   The answer is read in this order:
 
-  1. **The feature** the action belongs to (`Apiary.Features.on?/2`). An action of a
-     feature that is off is `{:error, :not_found}`: a feature that is off is absent, not
-     forbidden.
+  1. **The feature** the action belongs to (`Apiary.Features.visible?/2`). An action of a
+     feature that is off, or hidden from the scope's person, is `{:error, :not_found}`: a
+     feature that is off or hidden is absent, not forbidden.
   2. **The edition** (`c:Apiary.Edition.check/3`), asked once: it may answer, for what it
      adds or narrows, or leave the answer to the steps below. The core's own edition
      leaves every answer to them.
@@ -474,9 +474,10 @@ defmodule Apiary.Access do
 
   ## Features
 
-  The feature an action belongs to is asked of `Apiary.Features.on?/2` with the scope,
-  which carries what its organisation and workspace have (`Apiary.Features.of/2`);
-  `reload/2` reads them again after its locks.
+  The feature an action belongs to is asked of `Apiary.Features.visible?/2` with the scope,
+  which carries what its person is not shown in the organisation (`hidden`,
+  `c:Apiary.Edition.hidden/1`); `reload/2` reads it again after the edition's reload, under
+  its locks. An access key's scope and the instance's answer as the instance.
   """
 
   @typedoc "An action, one of `actions/0`."
@@ -494,7 +495,10 @@ defmodule Apiary.Access do
   """
   @type subject :: struct()
 
-  @typedoc "Why the answer is no: a feature that is off or a subject out of reach, or the role."
+  @typedoc """
+  Why the answer is no: a feature that is off or hidden, or a subject out of reach, or the
+  role.
+  """
   @type reason :: :not_found | :forbidden
 
   ## The registry
@@ -801,8 +805,9 @@ defmodule Apiary.Access do
   @doc """
   Whether `scope` may take `action` on `subject`, with the person's membership, and what
   the edition put on the scope, read again from the database: `:ok`;
-  `{:error, :not_found}` where the action's feature is off, the subject is not in the
-  scope's organisation and workspace, or the person does not reach its workspace;
+  `{:error, :not_found}` where the action's feature is off or hidden from the person, the
+  subject is not in the scope's organisation and workspace, or the person does not reach
+  its workspace;
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
   included, or allows it over other people than the subject's.
   `check(reload(scope), action, subject)`.
@@ -822,7 +827,7 @@ defmodule Apiary.Access do
   def check(scope, action, subject) do
     %Action{feature: feature} = action(action)
 
-    if not is_nil(feature) and not Features.on?(scope, feature) do
+    if not is_nil(feature) and not Features.visible?(scope, feature) do
       {:error, :not_found}
     else
       case Edition.check(scope, action, subject) do
@@ -900,7 +905,8 @@ defmodule Apiary.Access do
   @doc """
   The scope with the person's membership as the database has it now, its level as it is or
   no membership when it is gone or suspended, or when their account is no longer in use,
-  and what the edition put on it read again (`c:Apiary.Edition.reload/2`). An access key's
+  what the edition put on it read again (`c:Apiary.Edition.reload/2`), and what the person
+  is not shown in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`). An access key's
   scope is returned as it is: the key was verified on the request that carries it; the
   instance's has only its marks to read again. Any other scope, one without a user or an
   organisation, comes back without a membership, so it may nothing a role would allow.
@@ -913,7 +919,8 @@ defmodule Apiary.Access do
   `lock: :share`, for a caller inside a transaction, takes its locks in the lock order of
   docs/access.md: the organisation `FOR SHARE`, with whatever the edition holds beside it
   (`lock_places/1`); the workspace `FOR KEY SHARE`; the membership `FOR SHARE`; what the
-  edition reads again, under its own locks; then the account `FOR SHARE`, reading again
+  edition reads again and what the person is not shown, under the edition's locks; then
+  the account `FOR SHARE`, reading again
   whether it is still in use. A change of the level, a member's suspension, an account
   going out of use or a marking waits until the transaction ends, so what was asked stays
   true while the change is written, and one that came first is seen.
@@ -932,15 +939,16 @@ defmodule Apiary.Access do
 
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
 
+    # What the person is not shown, asked once the edition's reach is read again: with
+    # `lock: :share` under the edition's locks, which `lock_places/1` took.
+    scope = %{scope | hidden: Features.hidden_of(Edition.hidden(scope))}
+
     # The account is read again under its lock: a deletion, or the edition holding it out
     # of use, that came first, and was waited for, leaves the person no reach, as a
     # membership read after it would.
-    scope =
-      if lock? and not active_account?(user_id),
-        do: %{scope | membership: nil, reach: nil},
-        else: scope
-
-    %{scope | features: Features.of(scope.organisation, scope.workspace)}
+    if lock? and not active_account?(user_id),
+      do: %{scope | membership: nil, reach: nil},
+      else: scope
   end
 
   def reload(%Scope{instance: true, user: nil, access_key: nil} = scope, _opts) do

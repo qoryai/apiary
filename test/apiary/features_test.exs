@@ -2,7 +2,7 @@ defmodule Apiary.FeaturesTest do
   use ExUnit.Case, async: true
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Accounts.Scope
+  alias Apiary.Accounts.{Scope, User}
   alias Apiary.Features
   alias Apiary.Organisations.{Organisation, Workspace}
 
@@ -138,15 +138,17 @@ defmodule Apiary.FeaturesTest do
       end
 
       assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
-        Features.on?(nil, :dispatch)
+        Features.visible?(nil, :dispatch)
+      end
+
+      assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
+        Features.visible?(%Scope{user: %User{}, hidden: []}, :dispatch)
       end
     end
   end
 
-  describe "on?/2 with an access key" do
+  describe "visible?/2" do
     setup do
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
-
       organisation = %Organisation{id: Ecto.UUID.generate()}
       workspace = %Workspace{id: Ecto.UUID.generate(), organisation_id: organisation.id}
 
@@ -156,32 +158,66 @@ defmodule Apiary.FeaturesTest do
         workspace: workspace
       }
 
-      %{organisation: organisation, workspace: workspace, key: key}
+      person = %Scope{user: %User{}, organisation: organisation, workspace: workspace}
+      %{organisation: organisation, workspace: workspace, key: key, person: person}
     end
 
-    test "answers the instance, where the edition leaves the feature out of the organisation",
-         ctx do
-      below = Features.of(ctx.organisation, ctx.workspace)
-      refute :observability in below
-      refute :security in below
+    test "a person is shown what the instance has and the scope does not hide", ctx do
+      for hidden <- [[], [:observability], [:security, :secrets], Features.all()] do
+        scope = %{ctx.person | hidden: hidden}
 
-      for feature <- Features.all() do
-        assert Features.on?(ctx.key, feature) == Features.on?(feature), inspect(feature)
-
-        assert Features.on?(Scope.for_access_key(ctx.key), feature) == Features.on?(feature),
-               inspect(feature)
+        for feature <- Features.all() do
+          assert Features.visible?(scope, feature) ==
+                   (Features.on?(feature) and feature not in hidden),
+                 inspect({hidden, feature})
+        end
       end
     end
 
-    test "while a person's scope there still answers what the edition leaves it", ctx do
-      scope = %Scope{
-        organisation: ctx.organisation,
-        workspace: ctx.workspace,
-        features: Features.of(ctx.organisation, ctx.workspace)
-      }
+    test "an access key, its scope, the instance's, nil and a scope with hidden nil answer the instance",
+         ctx do
+      hidden = Features.all()
 
-      refute Features.on?(scope, :observability)
-      refute Features.on?(scope, :security)
+      scopes = [
+        ctx.key,
+        %{Scope.for_access_key(ctx.key) | hidden: hidden},
+        %{Scope.for_instance(ctx.organisation, ctx.workspace) | hidden: hidden},
+        nil,
+        %{ctx.person | hidden: nil}
+      ]
+
+      for scope <- scopes, feature <- Features.all() do
+        assert Features.visible?(scope, feature) == Features.on?(feature),
+               inspect({scope, feature})
+      end
+    end
+
+    test "a person's scope keeps what the edition hides, as the core asks it", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+      scope = %{ctx.person | hidden: Features.hidden_of(Apiary.Edition.hidden(ctx.person))}
+
+      refute Features.visible?(scope, :observability)
+      refute Features.visible?(scope, :security)
+
+      for feature <- Features.all() do
+        assert Features.visible?(ctx.key, feature) == Features.on?(feature), inspect(feature)
+      end
+    end
+  end
+
+  describe "hidden_of/1" do
+    test "keeps the features the instance has, in the order of all/0" do
+      assert Features.hidden_of([]) == []
+      assert Features.hidden_of(Enum.reverse(Features.all())) == Features.enabled()
+
+      assert Features.hidden_of([:security, :observability, :security]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security]))
+    end
+
+    test "raises on a name that is no feature: an edition's mistake" do
+      assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
+        Features.hidden_of([:observability, :dispatch])
+      end
     end
   end
 
@@ -330,14 +366,14 @@ defmodule Apiary.FeaturesBootTest do
     end)
   end
 
-  test "boot!/0 fixes what QORY_FEATURES lists, and on?/1 and on?/2 answer from it" do
+  test "boot!/0 fixes what QORY_FEATURES lists, and on?/1 and visible?/2 answer from it" do
     Application.put_env(:apiary, :features_setting, "observability,security")
     assert Features.boot!() == [:observability, :security]
     assert Features.enabled() == [:observability, :security]
     assert Features.on?(:security)
 
     for feature <- Features.all() -- [:observability, :security],
-        do: refute(Features.on?(nil, feature))
+        do: refute(Features.on?(feature) or Features.visible?(nil, feature))
   end
 
   test "boot!/0 leaves an opt-in feature off unless QORY_FEATURES names it" do

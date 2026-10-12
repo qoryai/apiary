@@ -549,16 +549,15 @@ defmodule Apiary.EditionStubs do
   defmodule MembersReachNamedWithoutRecord do
     @moduledoc """
     A member reaches the workspaces the test names (`MembersReachNamed`, whose `put/1` names
-    them), and every organisation and workspace has the instance's features but
-    `observability` and `security` (`WithoutRecordOrPolicy`).
+    them), and every person is shown the instance's features but `observability`,
+    `security` and `secrets` (`WithoutRecordOrPolicy`).
     """
     defdelegate limits, to: MembersReachNamed
     defdelegate every_workspace_levels, to: MembersReachNamed
     defdelegate reached_workspaces(query, scope), to: MembersReachNamed
     defdelegate reaches_workspace?(scope, workspace_id, opts), to: MembersReachNamed
 
-    defdelegate features_of(organisation, workspace, enabled),
-      to: Apiary.EditionStubs.WithoutRecordOrPolicy
+    defdelegate hidden(scope), to: Apiary.EditionStubs.WithoutRecordOrPolicy
   end
 
   defmodule GatewaysWorded do
@@ -645,20 +644,46 @@ defmodule Apiary.EditionStubs do
 
   defmodule WithoutRecordOrPolicy do
     @moduledoc """
-    Every organisation and workspace has the instance's features but `observability` and
-    `security` (`c:Apiary.Edition.features_of/3`), as an edition that switches them off
-    below the instance would. It reads nothing.
+    Every person is shown the instance's features but `observability` and `security`, and
+    `secrets`, which needs `security` (`c:Apiary.Edition.hidden/1`), as an edition that
+    hides them below the instance would. It reads nothing.
     """
-    def features_of(_organisation, _workspace, enabled),
-      do: enabled -- [:observability, :security]
+    def hidden(_scope), do: [:observability, :security, :secrets]
+  end
+
+  defmodule HidesNamed do
+    @moduledoc """
+    Every person is shown the instance's features but the ones the test names (`put/1` in
+    the test's process, which the processes it starts read too), as an edition that hides
+    them below the instance would (`c:Apiary.Edition.hidden/1`). It reads nothing.
+    """
+
+    @doc "put/1 names the features a person is not shown."
+    def put(features) when is_list(features) do
+      Process.put(:hides_named, features)
+      :ok
+    end
+
+    def hidden(_scope) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:hides_named)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :hides_named}) do
+            {{:dictionary, :hides_named}, features} when is_list(features) -> features
+            _unset -> nil
+          end
+      end)
+    end
   end
 
   defmodule WithoutSecrets do
     @moduledoc """
-    Every organisation and workspace has the instance's features but `secrets`
-    (`c:Apiary.Edition.features_of/3`), as an edition that switches it off below the
-    instance would. It reads nothing.
+    Every person is shown the instance's features but `secrets`
+    (`c:Apiary.Edition.hidden/1`), as an edition that hides it below the instance would.
+    It reads nothing.
     """
-    def features_of(_organisation, _workspace, enabled), do: enabled -- [:secrets]
+    def hidden(_scope), do: [:secrets]
   end
 end

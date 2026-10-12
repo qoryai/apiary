@@ -380,18 +380,18 @@ defmodule ApiaryWeb.ActivityLive do
   end
 
   # The actions a reader can filter by: those that change something, of the features the
-  # instance has, that every describer offers the reader, each by the words of its filter.
+  # reader is shown, that every describer offers the reader, each by the words of its filter.
   defp action_options(scope) do
     describers = Describer.describers()
 
     for action <- Audit.audited_actions(),
-        feature_on?(scope, Access.feature(action)),
+        shown?(scope, Access.feature(action)),
         Enum.all?(describers, & &1.offered?(scope, action)),
         do: {Atom.to_string(action), action_label(describers, action)}
   end
 
-  defp feature_on?(_scope, nil), do: true
-  defp feature_on?(scope, feature), do: Features.on?(scope, feature)
+  defp shown?(_scope, nil), do: true
+  defp shown?(scope, feature), do: Features.visible?(scope, feature)
 
   defp action_label(describers, action),
     do: first(describers, :label, [action]) || Atom.to_string(action)

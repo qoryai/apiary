@@ -53,7 +53,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   import Ecto.Query, only: [from: 2]
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Repo, Runs, Targets}
+  alias Apiary.{Access, Repo, Runs, Targets}
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.PolicyLive
 
@@ -65,9 +65,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     scope = socket.assigns.current_scope
     {segments, rest} = split_glob(glob)
 
-    security =
-      Features.on?(scope, :security) and
-        Access.can?(scope, :"security_policy.read", scope.workspace)
+    security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
     case {resolve(scope, segments), tab(rest, security)} do
       # The old tabs: nothing is read; `handle_params/3` sends them on with their query.

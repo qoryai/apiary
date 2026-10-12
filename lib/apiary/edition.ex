@@ -42,8 +42,9 @@ defmodule Apiary.Edition do
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
   - **Audit trail** (`Apiary.Audit`): `audit_details/3`, what the edition adds to an
     entry's details as it is written.
-  - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0` and
-    `features_of/3` (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
+  - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
+    (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
+  - **What a person is shown**: `hidden/1` (`Apiary.Features.visible?/2`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
 
@@ -146,8 +147,8 @@ defmodule Apiary.Edition do
   @callback roles() :: %{atom => String.t()}
 
   @doc """
-  Asked by `Apiary.Access.check/3` once the action's feature is on and before the place is
-  checked: `:continue` leaves the answer to the core, anything else is the answer. An
+  Asked by `Apiary.Access.check/3` once the action's feature is on and shown to the scope,
+  and before the place is checked: `:continue` leaves the answer to the core, anything else is the answer. An
   answer that must come after the place's, as the core's would, asks
   `Apiary.Access.check_place/3` first. `scope` is nil when no one in particular asks, as
   `Apiary.Access.refused_on?/2` does: `{:error, :forbidden}` then says the subject refuses
@@ -450,15 +451,29 @@ defmodule Apiary.Edition do
   @doc "The edition's features, with the features each needs and whether it is built."
   @callback features() :: [{atom, keyword}]
 
-  @doc """
-  The features an organisation, or a workspace of it, has, given the features the instance
-  has on (`enabled`). A person's pages and actions there follow it (`Apiary.Features.on?/2`);
-  what a node is served follows the instance's features alone.
-  """
-  @callback features_of(%Organisation{}, %Workspace{} | nil, enabled :: [atom]) :: [atom]
-
   @doc "The edition's schemas an audit entry may be about, with the kind it records."
   @callback subject_kinds() :: %{module => String.t()}
+
+  # What a person is shown
+
+  @doc """
+  What the scope's person is not shown in the scope's organisation: features the instance
+  has (`Apiary.Features.enabled/0`). A hidden feature still works in full: what nodes are
+  served, enforcement, rendering, the instance's jobs, retention and the audit trail never
+  ask this. A person meets a hidden feature as one the instance lacks: its pages, menu
+  entries and actions are not found (`Apiary.Features.visible?/2`). A name that is no
+  feature raises `ArgumentError` where the core reads the answer
+  (`Apiary.Features.hidden_of/1`); one the instance lacks is left out.
+
+  Asked for a person's scope only, never an access key's or the instance's, once the
+  scope's organisation and the edition's reach are on it: in
+  `Apiary.Organisations.resolve_scope/4`, once for every workspace in
+  `Apiary.Organisations.workspace_scopes/1`, in `Apiary.Organisations.job_scope/3`, and in
+  `Apiary.Access.reload/2` after `c:reload/2`, where with `lock: :share` the edition's rows
+  are held already (`c:lock_rows/1`, `{:places, scope}`): it reads and locks nothing. The
+  answer must not depend on the scope's workspace. The core's answer is `[]`.
+  """
+  @callback hidden(Scope.t()) :: [Apiary.Features.feature()]
 
   # Runtime
 
@@ -513,8 +528,8 @@ defmodule Apiary.Edition do
     audit_details: 3,
     deletion_tables: 0,
     features: 0,
-    features_of: 3,
     subject_kinds: 0,
+    hidden: 1,
     boot!: 0,
     children: 0,
     crontab: 0,

@@ -2,17 +2,17 @@ defmodule ApiaryWeb.Features do
   @moduledoc """
   The web side of `Apiary.Features`: a page or an endpoint that belongs to a feature says so
   with `use ApiaryWeb.Features, :security`, and answers as a path that does not exist when
-  the feature is off. Not *forbidden*: a feature that is off is absent.
+  the feature is off, or hidden from the person who asks. Not *forbidden*: a feature that is
+  off or hidden is absent.
 
   The `use` defines `__feature__/0`. `ApiaryWeb.Features.Routes`, in the endpoint, reads it
   for the route a request matches and answers for the instance before any pipeline runs;
   the router's test reads it so that no route is left without a feature or an explicit
-  place among the routes every instance has. The `use` also adds a gate that asks
-  `Apiary.Features.on?/2` with the caller's scope: an `on_mount` hook in a LiveView, which
-  is what a live navigation meets, and a plug in a controller. A person's scope answers
-  for its organisation and workspace; the access key of a signed request of the server
-  contract answers as the instance, so a node is served whatever a level below the
-  instance shows.
+  place among the routes every instance has. The `use` also adds a gate: an `on_mount` hook
+  in a LiveView, which is what a live navigation meets, and a plug in a controller. A
+  person's scope is asked `Apiary.Features.visible?/2`, what the person is shown; the
+  access key of a signed request of the server contract is asked `Apiary.Features.on?/1`,
+  the instance's switch, so a node is served whatever a level below the instance shows.
 
   The features are the core's and the edition's (`Apiary.Features.all/0`), and the
   edition's are known only once it runs: whether a page names a feature there is is
@@ -103,7 +103,7 @@ defmodule ApiaryWeb.Features do
 
   @doc false
   def on_mount(feature, _params, _session, socket) do
-    if Features.on?(socket.assigns[:current_scope], feature) do
+    if Features.visible?(socket.assigns[:current_scope], feature) do
       {:cont, socket}
     else
       raise NotFound
@@ -115,14 +115,17 @@ defmodule ApiaryWeb.Features do
 
   @impl Plug
   def call(conn, feature) do
-    if Features.on?(conn.assigns[:current_scope] || conn.assigns[:access_key], feature) do
-      conn
-    else
-      absent(conn)
-    end
+    if shown?(conn, feature), do: conn, else: absent(conn)
   end
 
-  # For a feature the instance has and a person's scope does not, and for a signed request
+  # A person's scope asks what the person is shown; a signed request of the server contract,
+  # which carries an access key and no person's scope, asks the instance.
+  defp shown?(%{assigns: %{current_scope: %Apiary.Accounts.Scope{} = scope}}, feature),
+    do: Features.visible?(scope, feature)
+
+  defp shown?(_conn, feature), do: Features.on?(feature)
+
+  # For a feature the instance has and a person is not shown, and for a signed request
   # of the server contract to a feature the instance does not have:
   # `ApiaryWeb.Features.Routes` has already answered for the instance, before any pipeline,
   # but for that signed request, which it lets through to be verified; the answer to that

@@ -27,38 +27,32 @@ defmodule Apiary.Features do
 
   An **opt-in** feature, marked `default: false` (`opt_in/0`), is on only where a list
   names it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one
-  does. Only an opt-in feature may need one, and it is never one a page switches for an
-  organisation (`built/0`).
+  does. Only an opt-in feature may need one, and it is never one a page shows or hides for
+  an organisation (`built/0`).
 
   A feature that is off is absent, not disabled: its pages answer not found, the navigation
-  leaves it out, its processes are not started. Every surface asks `on?/2`, with the scope
-  it serves; the discovery document of the server contract reads no feature.
+  leaves it out, its processes are not started. Every surface asks `on?/1`, or
+  `visible?/2` with the scope of the person it serves; the discovery document of the
+  server contract reads no feature.
 
-  ## An organisation's features
+  ## What a person is shown
 
-  What an organisation or a workspace of it has is `of/2`, the one answer: the edition's
-  (`c:Apiary.Edition.features_of/3`), given the instance's features. In the core that is
-  the instance's features, in every organisation and workspace alike; an edition may
-  narrow them below the instance for a person's pages and actions, and never adds to
-  them: `of/2` keeps only what the instance has, and a feature only with the features it
-  needs (`needs/1`, `closed/1`).
-
-  The scope a person's page or a context function holds carries the answer for its
-  organisation and workspace, `features`, loaded with it
+  Below the instance a feature is shown or hidden, never switched off. What a person is not
+  shown in an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), as
+  `hidden_of/1` keeps it; the core's answer is nothing. The scope a person's page or a
+  context function holds carries it, `hidden`, loaded with it
   (`Apiary.Organisations.resolve_scope/4`) and read again with its membership
-  (`Apiary.Access.reload/2`), so `on?/2` reads nothing. A feature that is off for an
-  organisation is absent there for a person as one the instance lacks is: not reachable,
-  shown or advertised. Some surfaces belong to the instance and follow only its switch: the
-  guides at `/docs`, the sign-in and landing pages, the routes' first answer
-  (`ApiaryWeb.Features.Routes`), and what a node is served: an access key, and its scope,
-  answer as the instance (`on?/2`), so a run's registration, events, attach, outcome and
-  reload, and its run configuration, follow the instance's features alone.
+  (`Apiary.Access.reload/2`), so `visible?/2` reads nothing. A hidden feature is absent for
+  that person as one the instance lacks is: its pages, menu entries and actions are not
+  found. It still works in full for everything that does not ask what a person is shown,
+  which follows the instance's features alone (`on?/1`): what a node is served (a run's
+  registration, events, attach, outcome and reload, and its run configuration), rendering,
+  the instance's jobs, retention and the audit trail, and the guides at `/docs`, the
+  sign-in and landing pages and the routes' first answer (`ApiaryWeb.Features.Routes`).
   """
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Repo
 
   # The core's features, in the order the instance lists them, each with the features it
   # needs, whether it is built, and `default: false` for one that is opt-in.
@@ -89,16 +83,16 @@ defmodule Apiary.Features do
 
   @doc """
   built/0 is the features listed with `built: true` and not opt-in (`opt_in/0`), in the
-  order of `all/0`: the ones a page of an edition may switch on or off for an
-  organisation. Any other keeps whatever an edition says of it.
+  order of `all/0`: the ones a page of an edition may show or hide for an organisation.
+  Any other keeps whatever an edition says of it.
   """
   @spec built() :: [feature]
   def built, do: registry().built
 
   @doc """
   opt_in/0 is the features listed with `default: false`, in the order of `all/0`: on only
-  where the value of `QORY_FEATURES` lists them by name (`parse/1`), and never offered for
-  an organisation's switch (`built/0`).
+  where the value of `QORY_FEATURES` lists them by name (`parse/1`), and never offered to
+  show or hide for an organisation (`built/0`).
   """
   @spec opt_in() :: [feature]
   def opt_in, do: registry().opt_in
@@ -320,53 +314,29 @@ defmodule Apiary.Features do
   def on?(feature), do: known!(feature) in enabled()
 
   @doc """
-  Whether `feature` is on where `scope` is: a person's `Apiary.Accounts.Scope`, which
-  carries the features of its organisation and workspace (`of/2`), or `nil` for the
-  instance. An access key and an access key's scope answer as the instance (`on?/1`),
-  whatever their organisation and workspace have: what a node is served follows the
-  instance's features alone. A scope that carries no features, as the scope of a job no
-  person enqueued, answers as the instance. Raises `ArgumentError` for a name that is no
-  feature.
+  Whether `feature` is shown where `scope` is: on for the instance (`on?/1`) and, for a
+  person's `Apiary.Accounts.Scope`, not among what it hides (`hidden`, the edition's answer,
+  `c:Apiary.Edition.hidden/1`). An access key, an access key's scope, the instance's scope,
+  a scope that carries no `hidden`, as the scope of a job no person enqueued, and `nil`
+  answer as the instance. Raises `ArgumentError` for a name that is no feature.
   """
-  @spec on?(term, feature) :: boolean
-  def on?(%Scope{access_key: %AccessKey{}}, feature), do: on?(feature)
+  @spec visible?(Scope.t() | AccessKey.t() | nil, feature) :: boolean
+  def visible?(%Scope{access_key: nil, instance: false, hidden: hidden}, feature)
+      when is_list(hidden),
+      do: on?(feature) and feature not in hidden
 
-  def on?(%AccessKey{}, feature), do: on?(feature)
-
-  def on?(%Scope{features: features}, feature) when is_list(features),
-    do: known!(feature) in features and on?(feature)
-
-  def on?(_scope, feature), do: on?(feature)
+  def visible?(_scope, feature), do: on?(feature)
 
   @doc """
-  of/2 is the features `organisation` has, and `workspace` of it when given, as the
-  edition answers now (`c:Apiary.Edition.features_of/3`), in the order of `all/0`: of the
-  instance's, and each only with the features it needs. Nil for no organisation.
+  hidden_of/1 is the edition's answer to `c:Apiary.Edition.hidden/1` as a scope keeps it,
+  `hidden`: in the order of `all/0`, without the features the instance lacks. Raises
+  `ArgumentError` on a name that is no feature: an edition's mistake, as `registry/1`
+  treats one.
   """
-  @spec of(%Organisation{} | nil, %Workspace{} | nil) :: [feature] | nil
-  def of(organisation, workspace \\ nil)
-
-  def of(nil, _workspace), do: nil
-
-  def of(%Organisation{} = organisation, workspace) do
-    enabled = enabled()
-
-    organisation
-    |> Apiary.Edition.features_of(workspace, enabled)
-    |> Enum.filter(&(&1 in enabled))
-    |> closed()
-  end
-
-  @doc """
-  of_organisation/1 is the features of the organisation `organisation_id` itself, with no
-  workspace, as the database has them now (`of/2`); [] for one that is not there.
-  """
-  @spec of_organisation(Ecto.UUID.t()) :: [feature]
-  def of_organisation(organisation_id) do
-    case Repo.get(Organisation, organisation_id) do
-      %Organisation{} = organisation -> of(organisation)
-      nil -> []
-    end
+  @spec hidden_of([feature]) :: [feature]
+  def hidden_of(names) when is_list(names) do
+    Enum.each(names, &known!/1)
+    Enum.filter(enabled(), &(&1 in names))
   end
 
   @doc """

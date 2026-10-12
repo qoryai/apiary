@@ -76,7 +76,7 @@ defmodule ApiaryWeb.UserAuthTest do
       conn: conn
     } do
       %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
-      # The edition leaves the record out of the organisation, the overview with it.
+      # The edition hides the record from the person, the overview with it.
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
 
       conn = UserAuth.log_in_user(conn, user)
