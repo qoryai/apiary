@@ -272,8 +272,8 @@ the settings, one `NAME=value` line each.
 - `qory access-key enrol --print <server> <code>` prints `QORY_ACCESS_KEY_ID`,
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
 
-Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the id and the pin are
-not secret, and the CI's `forager.yaml` then needs `gateway.server.url` alone.
+Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the CI's `forager.yaml`
+then needs `gateway.server.url` alone.
 `QORY_APIARY_PUBLIC_KEY` is JSON: in a shell, put its value in single quotes
 ([The Forager file's `server` section](forager-file.md#the-id-and-the-pin-in-the-environment)).
 A fleet of short-lived CI runners is a node pool with one key.

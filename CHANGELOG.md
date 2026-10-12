@@ -335,8 +335,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - `gateways` is a reserved workspace slug, refused as the names of the organisation's
   pages are; a new workspace named Gateways gets the slug `gateways-2`.
 - The organisation slugs `admin`, `api`, `new` and `settings`, and the workspace slugs
-  `api` and `new`, are reserved as well: a slug made from a name skips them, to the first free one
-  of `-2`, `-3`, …, and a workspace given one is refused.
+  `api` and `new`, are reserved as well: a slug made from a name skips them, to the first
+  free one of `-2`, `-3`, …, and a workspace given one is refused.
 - A gateway may live at an organisation as well as at a workspace: its row has no
   workspace, and nor have its access keys, enrolment codes and instances. It may serve
   every workspace of its organisation, and those an edition names
