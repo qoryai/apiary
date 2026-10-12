@@ -630,9 +630,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  # Edit is a page now; a browser that still sends the old event is led to it.
-  defp event("edit_paths", %{"id" => id}, socket) when is_binary(id) and byte_size(id) <= 64,
-    do: push_patch(socket, to: Common.edit_rule_path(socket, id))
+  # Edit is a page now; a browser that still sends the old event is led to it. Only an id
+  # in a rule id's form (a UUID) is led there, and Edit rule sends one that names no rule
+  # back to the list; anything else is dropped.
+  defp event("edit_paths", %{"id" => id}, socket) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> push_patch(socket, to: Common.edit_rule_path(socket, id))
+      :error -> socket
+    end
+  end
 
   defp event("edit_paths", _params, socket), do: socket
 
