@@ -259,7 +259,7 @@ replaces the navigation it is in.
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
   kind under its title; each page says once that a run receives only
   its security policy) and Secrets and variables (`/settings/secrets`,
-  below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
+  below), each with `secrets` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
   keys are its nodes' (Nodes, below): `/settings/keys` and `/:org/:workspace/keys`,

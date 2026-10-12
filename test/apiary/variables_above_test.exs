@@ -3,7 +3,7 @@ defmodule Apiary.VariablesAboveTest do
   # configuration `Apiary.Policy.Above.for_workspace/1` reads, and put back after it.
   use Apiary.DataCase, async: false
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   import Apiary.OrganisationsFixtures
 

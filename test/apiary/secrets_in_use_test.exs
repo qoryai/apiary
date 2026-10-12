@@ -3,7 +3,7 @@ defmodule Apiary.SecretsInUseTest do
   # set for a test and put back after it.
   use Apiary.DataCase, async: false
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog

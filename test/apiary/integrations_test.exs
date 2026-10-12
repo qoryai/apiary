@@ -142,7 +142,9 @@ defmodule Apiary.IntegrationsTest do
       assert {:ok, %{name: "github"}} = Integrations.description(release)
     end
 
-    test "follows the instance's secrets feature, where the edition hides it from the person",
+    # The cancelled job says so in the log.
+    @tag :capture_log
+    test "stops once the integrations are no longer shown to the person who asked",
          %{scope: scope} do
       serve_release(github_description())
       {:ok, release} = Integrations.request_release(scope, @github)
@@ -150,7 +152,11 @@ defmodule Apiary.IntegrationsTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
       refute Apiary.Features.visible?(Apiary.Access.reload(scope), :secrets)
 
-      assert fetch!(scope, release).state == "ready"
+      args = FetchJob.for_scope(scope, %{"release_id" => release.id}).changes.args
+      assert {:cancel, :not_found} = perform_job(FetchJob, args)
+      refute_received {:request, _host, _credentials, _path}
+
+      assert %Release{state: "pending"} = Repo.get!(Release, release.id)
     end
 
     # The cancelled job says so in the log.

@@ -15,19 +15,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   import ApiaryWeb.RichText, only: [rich_gettext: 2, rich_ngettext: 4]
   import ApiaryWeb.Activity.Describer, only: [text: 1, from_to: 2]
 
-  alias Apiary.Features
-
-  # The actions of the `secrets` feature's surfaces, which `Apiary.Access` keeps under
-  # `security`.
-  @secrets_actions [
-    :"secret.read",
-    :"secret.write",
-    :"secret.use",
-    :"variable.read",
-    :"variable.edit",
-    :"connection.read",
-    :"connection.write"
-  ]
+  alias Apiary.{Access, Features}
   alias ApiaryWeb.Format
 
   @impl true
@@ -72,13 +60,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(_action), do: nil
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
-  # and integrations' only where the reader is shown them: they ask
-  # `visible?(scope, :secrets)`. Their entries still show, by their labels.
+  # and integrations' only where the reader is shown them: their actions belong to the
+  # `secrets` feature (`Apiary.Access.feature/1`), and they ask `visible?(scope, :secrets)`.
+  # Their entries still show, by their labels.
   @impl true
-  def offered?(scope, action) when action in @secrets_actions,
-    do: Features.visible?(scope, :secrets)
-
-  def offered?(_scope, _action), do: true
+  def offered?(scope, action),
+    do: Access.feature(action) != :secrets or Features.visible?(scope, :secrets)
 
   @impl true
   def sentence(action, entry, _names) do

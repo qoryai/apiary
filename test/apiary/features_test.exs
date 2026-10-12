@@ -228,6 +228,25 @@ defmodule Apiary.FeaturesTest do
         assert Features.visible?(ctx.key, feature) == Features.on?(feature), inspect(feature)
       end
     end
+
+    test "a feature that needs a hidden one is not shown, as the scope keeps it", ctx do
+      for {named, hidden} <- [
+            {[:secrets], [:secrets]},
+            {[:security], [:security, :secrets]},
+            {[:observability], [:observability, :security, :secrets]}
+          ] do
+        scope = %{ctx.person | hidden: Features.hidden_of(named)}
+
+        for feature <- Features.all() do
+          assert Features.visible?(scope, feature) ==
+                   (Features.on?(feature) and feature not in hidden),
+                 inspect({named, feature})
+
+          # An access key and the instance answer as the instance still.
+          assert Features.visible?(ctx.key, feature) == Features.on?(feature)
+        end
+      end
+    end
   end
 
   describe "hidden_of/1" do
@@ -235,8 +254,24 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([]) == []
       assert Features.hidden_of(Enum.reverse(Features.all())) == Features.enabled()
 
-      assert Features.hidden_of([:security, :observability, :security]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:observability, :security]))
+      assert Features.hidden_of([:secrets, :security, :secrets]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets]))
+    end
+
+    test "adds every feature that needs a hidden one, directly or through another" do
+      for feature <- Features.all() do
+        assert Features.hidden_of([feature]) ==
+                 Enum.filter(Features.enabled(), &(&1 == feature or feature in needs_all(&1))),
+               inspect(feature)
+      end
+
+      assert Features.hidden_of([:secrets]) == Enum.filter(Features.enabled(), &(&1 == :secrets))
+
+      assert Features.hidden_of([:security]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets]))
+
+      assert Features.hidden_of([:observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets]))
     end
 
     test "keeps parts after the features, in the order of parts/0" do
@@ -244,10 +279,17 @@ defmodule Apiary.FeaturesTest do
 
       assert Features.hidden_of([part]) == [part]
 
-      assert Features.hidden_of([part, :security, part]) ==
-               Enum.filter(Features.enabled(), &(&1 == :security)) ++ [part]
+      assert Features.hidden_of([part, :secrets, part]) ==
+               Enum.filter(Features.enabled(), &(&1 == :secrets)) ++ [part]
 
-      assert Features.hidden_of([part, :observability]) == [:observability, part]
+      # A part is hidden with its feature without being named (`visible?/2`), so hiding
+      # the feature adds no part.
+      assert Features.hidden_of([part, :observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets])) ++
+                 [part]
+
+      assert Features.hidden_of([:observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets]))
     end
 
     test "raises on a name that is no feature or part: an edition's mistake" do
