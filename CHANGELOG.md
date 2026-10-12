@@ -634,7 +634,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `VersionOverride` empty looks up the newest release again, except one that changes only
   the download key, which is not among the lookup's values; when nothing else changes,
   something new under "Look for a newer release" (`LookForNewerRelease`) makes it look. A
-  typed version older than the one the stack runs is refused, and so is a release of a
+  version older than the one the stack runs is refused, typed or found: within the edition
+  by its `X.Y.Z`, and on a change of edition by its `X.Y` alone. So is a release of a
   newer minor than the template: a new minor needs that minor's `apiary.yaml`. The test
   copy, the repository's template or one written with `--copy test`, keeps the Test image
   field, which skips the lookup, and is never published. The form asks for the edition,
