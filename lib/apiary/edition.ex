@@ -471,9 +471,10 @@ defmodule Apiary.Edition do
   `Apiary.Organisations.load_home_scope/2`, with the reach of the person's membership and
   without `c:reach/1`; in `Apiary.Organisations.workspace_scopes/1`, once for all of them;
   in `Apiary.Organisations.job_scope/3`; and in `Apiary.Access.reload/2` after
-  `c:reload/2`, where with `lock: :share` the edition's rows
-  are held already (`c:lock_rows/1`, `{:places, scope}`): it reads and locks nothing. The
-  answer must not depend on the scope's workspace. The core's answer is `[]`.
+  `c:reload/2`, where with `lock: :share` the edition's rows are held already
+  (`c:lock_rows/1`, `{:places, scope}`): it may read them, and locks nothing; what it reads
+  and did not lock there may change before the commit. The answer must not depend on the
+  scope's workspace. The core's answer is `[]`.
   """
   @callback hidden(Scope.t()) :: [Apiary.Features.feature()]
 
