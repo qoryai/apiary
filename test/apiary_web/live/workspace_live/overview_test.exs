@@ -729,6 +729,29 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute render(view) =~ "Only owners and admins connect a node."
     end
 
+    test "hidden while the page is open, an idle key's row leaves, not struck", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      # A lost run keeps the list, and its count, once the idle key leaves.
+      lost_run(scope)
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#att-key-#{idle.id}")
+      shown = String.to_integer(text(view, "#attention-n"))
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      send(view.pid, {:membership_changed, :level})
+
+      refute has_element?(view, "#att-key-#{idle.id}")
+      assert String.to_integer(text(view, "#attention-n")) == shown - 1
+      refute render(view) =~ "Revoked."
+      refute render(view) =~ "/nodes"
+    end
+
     test "shown again, the box is back", %{conn: conn, scope: scope} do
       :ok = Apiary.EditionStubs.HidesNamed.put([])
       view = open(conn, scope)

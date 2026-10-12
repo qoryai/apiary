@@ -306,8 +306,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         landed_reads: MapSet.new(),
         settled: false
       )
+      |> UserAuth.on_membership_change(&membership_changed/1)
 
     {:ok, if(connected?(socket) and posted?, do: load(socket), else: socket)}
+  end
+
+  # Once the reader's membership, or what the edition shows them, changes, the idle keys
+  # leave the list, rows and all, where the reader may no longer revoke them
+  # (`idle_candidates/1`): the nodes hidden meanwhile, say. The rows are not struck, as the
+  # key was neither revoked nor used again.
+  defp membership_changed(socket) do
+    if Common.may?(socket.assigns.current_scope, :"access_key.revoke") do
+      socket
+    else
+      socket
+      |> update(:attention_items, &(&1 && Enum.reject(&1, fn item -> item.kind == :idle_key end)))
+      |> recompute()
+    end
   end
 
   # The four reads that fill the page, none blocking the first paint; three where

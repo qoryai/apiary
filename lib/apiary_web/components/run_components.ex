@@ -2118,9 +2118,9 @@ defmodule ApiaryWeb.RunComponents do
               )}
             </span>
           </dd>
-          <dt :if={key_label(@preview.run)}>{gettext("Access key")}</dt>
-          <dd :if={key_label(@preview.run)} class="font-mono text-[12px]">
-            {key_label(@preview.run)}
+          <dt :if={key_label(@scope, @preview.run)}>{gettext("Access key")}</dt>
+          <dd :if={key_label(@scope, @preview.run)} class="font-mono text-[12px]">
+            {key_label(@scope, @preview.run)}
           </dd>
           <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
           <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
@@ -2166,8 +2166,12 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp key_label(%{access_key: %{label: label}}), do: label
-  defp key_label(_run), do: nil
+  # The run's access key's label, where the reader is shown the nodes: their keys are the
+  # part `nodes` an edition may hide (`Apiary.Features.visible?/2`).
+  defp key_label(scope, %{access_key: %{label: label}}),
+    do: if(Apiary.Features.visible?(scope, :nodes), do: label)
+
+  defp key_label(_scope, _run), do: nil
 
   @doc """
   The node a run ran on, by name: a link to its page while it is in use and the reader may

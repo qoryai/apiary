@@ -474,7 +474,7 @@ defmodule ApiaryWeb.RunLive.Index do
         <% end %>
 
         <div :if={!@load_error && first_run?(@listing, @filters)} class="grid gap-4">
-          <.empty_state :if={!@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
+          <.empty_state :if={!@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext(
               "A run appears here when a machine connected to a node of this workspace starts one."
             )}
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.RunLive.Index do
               </.button>
             </:actions>
           </.empty_state>
-          <.empty_state :if={@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
+          <.empty_state :if={@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
             {gettext("A machine posts once it is connected to a node.")}
             <:actions :if={@may_read_nodes}>
@@ -510,7 +510,7 @@ defmodule ApiaryWeb.RunLive.Index do
               </.button>
             </:actions>
           </.empty_state>
-          <.listening :if={@has_nodes}>{gettext("Listening for the first run.")}</.listening>
+          <.listening :if={@listens}>{gettext("Listening for the first run.")}</.listening>
         </div>
       </div>
     </Layouts.app>
@@ -715,14 +715,47 @@ defmodule ApiaryWeb.RunLive.Index do
        jump_error: nil,
        preview: nil,
        narrowing: nil,
-       narrowed_node: nil,
-       security: Access.can?(scope, :"security_policy.read", scope.workspace),
-       has_nodes:
-         Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
-       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
-       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
-       may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
-     )}
+       narrowed_node: nil
+     )
+     |> offers()
+     |> ApiaryWeb.UserAuth.on_membership_change(&membership_changed/1)}
+  end
+
+  # What the page offers by what the reader may do, read again once their membership, or
+  # what the edition shows them, changes (`ApiaryWeb.UserAuth.on_membership_change/2`).
+  defp offers(socket) do
+    scope = socket.assigns.current_scope
+
+    assign(socket,
+      security: Access.can?(scope, :"security_policy.read", scope.workspace),
+      # The empty list's words: a workspace with no node has the reader add one; one with
+      # a node listens for the first run. A reader the nodes are hidden from adds none and
+      # is told nothing of the workspace's nodes: theirs listens, whatever nodes it has.
+      listens: not Apiary.Features.visible?(scope, :nodes) or has_nodes?(scope),
+      may_add_node: Access.can?(scope, :"node.create", scope.workspace),
+      # The nodes' list, where the reader is shown it: an edition may hide the nodes.
+      may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
+    )
+  end
+
+  # Whether the workspace has a node or a pool, as the reader may know it: a reader the
+  # nodes are hidden from knows only the nodes the runs name (`Apiary.Runs.ran_on_a_node?/1`).
+  defp has_nodes?(scope) do
+    if Apiary.Features.visible?(scope, :nodes),
+      do: Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
+      else: Runs.ran_on_a_node?(scope)
+  end
+
+  # The offers, and the node the address names, read for the reader as they are now: a
+  # reader the nodes were hidden from meanwhile has no way to them left, and the node read
+  # as such a reader reads it (`node_of/2`).
+  defp membership_changed(socket) do
+    socket = offers(socket)
+
+    case socket.assigns.narrowed_node do
+      %{for: node} -> assign(socket, :narrowed_node, node_of(socket.assigns.current_scope, node))
+      nil -> socket
+    end
   end
 
   @impl true
@@ -1090,11 +1123,12 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # The nodes the page's runs ran on, for the Node column: none, and no column, for a
-  # workspace that has no node and a page none of whose runs names one.
+  # workspace that has no node and a page none of whose runs names one. A reader the nodes
+  # are hidden from has the column where a run of the workspace names a node
+  # (`has_nodes?/1`).
   defp nodes_of(scope, runs) do
     ids = for %{node_id: id} <- runs, id, uniq: true, do: id
-    %{node: n, pool: p} = Nodes.count_nodes(scope)
-    if ids != [] or n + p > 0, do: Nodes.names(scope, ids)
+    if ids != [] or has_nodes?(scope), do: Nodes.names(scope, ids)
   end
 
   # What the address narrows to, read with it, before the page renders: the target its
@@ -1125,10 +1159,16 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
+  # A reader the nodes are hidden from has the node read only among the nodes the runs
+  # name (`Apiary.Runs.run_node/2`), the names the list already shows them: any other is
+  # read as a node that matches nothing.
   defp node_of(scope, value) when is_binary(value) do
     node =
-      Nodes.get_node(scope, value) ||
-        Enum.find(Nodes.list_nodes(scope, %{q: value}), &(&1.name == value))
+      if Apiary.Features.visible?(scope, :nodes),
+        do:
+          Nodes.get_node(scope, value) ||
+            Enum.find(Nodes.list_nodes(scope, %{q: value}), &(&1.name == value)),
+        else: Runs.run_node(scope, value)
 
     %{for: value, node: node}
   end
