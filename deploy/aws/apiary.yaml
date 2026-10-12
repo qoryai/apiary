@@ -190,6 +190,8 @@ Conditions:
   LookUpVersion: !Equals [!Ref TestImage, ""]  # [test copy]
   # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
+  # The Version resource reads the key for Qory Apiary Pro alone.
+  LooksUpWithDownloadKey: !And [!Condition HasDownloadKey, !Not [!Condition IsCommunity]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
   HasErlangOptions: !Not [!Equals [!Ref ErlangOptions, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
@@ -624,9 +626,9 @@ Resources:
   #
   # The function never logs the request, the key or the registry's token, and never follows
   # a redirect, which would carry the key or the token to another host. It answers
-  # CloudFormation even when it fails. Its role may read the download key's secret, read
-  # this stack, and write VersionLogGroup, which is kept as the task's is. The runtime is
-  # pinned, and kept current with each release.
+  # CloudFormation even when it fails. Its role may read the download key's secret, for
+  # Qory Apiary Pro alone, read this stack, and write VersionLogGroup, which is kept as the
+  # task's is. The runtime is pinned, and kept current with each release.
   VersionLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
@@ -652,7 +654,7 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - !If
-                - HasDownloadKey
+                - LooksUpWithDownloadKey
                 - Effect: Allow
                   Action: secretsmanager:GetSecretValue
                   Resource: !Ref RegistryCredentials
@@ -881,7 +883,7 @@ Resources:
         - IsCommunity
         - !FindInMap [Images, Community, Repository]
         - !FindInMap [Images, Pro, Repository]
-      DownloadKeySecret: !If [IsCommunity, "", !Ref RegistryCredentials]
+      DownloadKeySecret: !If [LooksUpWithDownloadKey, !Ref RegistryCredentials, ""]
       Version: !Ref VersionOverride
       LookForNewerRelease: !Ref LookForNewerRelease
       TemplateVersion: !FindInMap [Template, Release, Version]

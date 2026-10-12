@@ -79,8 +79,8 @@ by its value without a test image, is the release copy's.
 version: in the template, or in each FILE given (such as a release's copy of the template):
 one Custom::Version resource finds the version to install. Its function's role is trusted
 by Lambda alone and allows exactly three things: secretsmanager:GetSecretValue on
-RegistryCredentials, under HasDownloadKey; cloudformation:DescribeStacks on this stack; and
-writing to the function's log group. Neither the resource nor the function is given the
+RegistryCredentials, under LooksUpWithDownloadKey (a download key, and Qory Apiary Pro);
+cloudformation:DescribeStacks on this stack; and writing to the function's log group. Neither the resource nor the function is given the
 download key itself, ProDownloadKey. And the task's image, without a test image, is the
 resource's Image: the image the lookup pinned by its digest.
 
@@ -754,7 +754,7 @@ def check_version(paths):
             wanted = [
                 {
                     "Fn::If": [
-                        "HasDownloadKey",
+                        "LooksUpWithDownloadKey",
                         {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": {"Ref": DOWNLOAD_KEY}},
                         {"Ref": "AWS::NoValue"},
                     ]
@@ -770,7 +770,7 @@ def check_version(paths):
             key = lambda statement: json.dumps(statement, sort_keys=True)
             if sorted(found, key=key) != sorted(wanted, key=key):
                 failures.append(
-                    f"{path}: {role_name} allows other than reading {DOWNLOAD_KEY} with a download key, "
+                    f"{path}: {role_name} allows other than reading {DOWNLOAD_KEY} for Qory Apiary Pro, "
                     f"describing this stack and writing to {log_group}: {json.dumps(found)}"
                 )
 
