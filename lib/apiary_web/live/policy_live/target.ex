@@ -117,6 +117,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       reload_pending: false,
       now: DateTime.utc_now()
     )
+    |> Common.assign_authors()
     |> then(fn socket ->
       assign(socket,
         rows: Common.target_rules(effective, socket)
