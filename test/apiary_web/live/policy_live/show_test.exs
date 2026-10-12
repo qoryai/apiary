@@ -1566,6 +1566,41 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-list") =~ "Former member allowed registry.example"
       refute render(view) =~ user.email
     end
+
+    test "is a former member in the rule form's words of their rule",
+         %{conn: conn, scope: scope} do
+      %{scope: member} = member_fixture(scope, :member)
+      {:ok, _} = Policy.allow(member, nil, %{host: "registry.example"})
+      {:ok, _} = Apiary.Accounts.delete_user(member)
+
+      view = open(conn, scope)
+      type(view, %{host: "registry.example", paths: ""})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "registry.example is already allowed for the workspace, by Former member on"
+    end
+  end
+
+  describe "a person who is not a member of the organisation" do
+    test "is named beside their rule and in the rule form's words, as the history names them",
+         %{conn: conn, scope: scope} do
+      %{scope: member, user: user, membership: membership} = member_fixture(scope, :member)
+      {:ok, rule} = Policy.allow(member, nil, %{host: "registry.example"})
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+      local = user.email |> String.split("@") |> hd()
+
+      view = open(conn, scope)
+      assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
+      refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+
+      type(view, %{host: "registry.example", paths: ""})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "registry.example is already allowed for the workspace, by #{local} on"
+
+      view = open(conn, scope, "/policy/history")
+      assert text(view, "#history-list") =~ "#{user.email} allowed registry.example"
+    end
   end
 
   describe "history" do
