@@ -1231,6 +1231,43 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert downloaded(view) =~ "/acme/*"
   end
 
+  describe "who made a rule" do
+    test "a person who is not a member of the organisation is named, the target's rule and the workspace's",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      %{scope: member, user: user, membership: membership} = member_fixture(scope, :member)
+      {:ok, own} = Policy.deny(member, target, %{host: "tracker.example"})
+      {:ok, workspace} = Policy.allow(member, nil, %{host: "cdn.example"})
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+      local = user.email |> String.split("@") |> hd()
+
+      view = open(conn, path)
+
+      for rule <- [own, workspace] do
+        assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
+        refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+      end
+
+      type(view, %{host: "tracker.example", paths: "", action: "deny"})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "tracker.example is already denied for this repository, by #{local} on"
+    end
+
+    test "a person whose account is deleted is a former member, the target's rule and the workspace's",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      %{scope: member} = member_fixture(scope, :member)
+      {:ok, own} = Policy.deny(member, target, %{host: "tracker.example"})
+      {:ok, workspace} = Policy.allow(member, nil, %{host: "cdn.example"})
+      {:ok, _} = Apiary.Accounts.delete_user(member)
+
+      view = open(conn, path)
+
+      for rule <- [own, workspace] do
+        assert text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+      end
+    end
+  end
+
   # What the Document view's Download saves: the bytes its data URI carries.
   defp downloaded(view) do
     "data:application/json;base64," <> data = attribute(view, "#version-download", "href")

@@ -786,7 +786,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   panel and the workspace overview; the Lock confirm keeps the core's words. It follows
   the sentence that says what is locked (`ApiaryWeb.Access.who_may_after/4`); the core's
   edition gives none, so the texts are as before.
-- The URL of a new gateway says it's the address your nodes reach the machine running
+- The URL hint of a new gateway says it's the address your nodes reach the machine running
   qory gateway at, and that its Settings change it later; the guide's Gateways section
   walks through adding one.
 <!-- feature: secrets -->
@@ -824,6 +824,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The workspace Overview's "more" link under To review goes to the page for the first item
   it leaves out: the Policy page for a policy item, the nodes page for an idle key. Before,
   a policy item led to the nodes page.
+- The rules on the Policy pages name who made each rule by their account, as History
+  does, whether or not that person is a member of the organisation, and the rule form's
+  words of a rule do the same. Before, a rule made by someone who is not a member said
+  "Former member", which is now kept for a deleted account.
 
 ### Migrations
 

@@ -70,6 +70,19 @@ defmodule Apiary.Accounts do
   """
   def get_user!(id), do: Repo.get!(User, id)
 
+  @doc """
+  The accounts of `ids`, a deleted one's tombstone too, in one read and in no order: what
+  a page that names people by account id looks up. An id no account has is left out, and
+  so is nil.
+  """
+  @spec list_users_by_id([Ecto.UUID.t() | nil]) :: [%User{}]
+  def list_users_by_id(ids) do
+    case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() do
+      [] -> []
+      ids -> Repo.all(from u in User, where: u.id in ^ids)
+    end
+  end
+
   ## User registration
 
   @doc """

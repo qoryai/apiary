@@ -26,6 +26,17 @@ defmodule ApiaryWeb.People do
   def email(nil), do: nil
 
   @doc """
+  accounts/1 is the email address of each account of `ids`, by user id
+  (`%{user_id => email}`), read in one query whether or not the person is a member of
+  the organisation, as `email/1` gives it: the address of an account in use, "Former
+  member" for a deleted one. An id no account has is not in it.
+  """
+  @spec accounts([Ecto.UUID.t() | nil]) :: %{optional(Ecto.UUID.t()) => String.t()}
+  def accounts(ids) do
+    for user <- Apiary.Accounts.list_users_by_id(ids), into: %{}, do: {user.id, email(user)}
+  end
+
+  @doc """
   member/2 is the email address of the person `id` among `people`, the members a page
   read by user id (`%{user_id => email}`): "Former member" for an id that is not among
   them, nil for no id.
