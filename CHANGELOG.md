@@ -756,6 +756,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `-2`, `-3`, ….
 - The documentation, the service definition schema and `.env.example` name the thing
   where they said "its own".
+- The URL of a new gateway says it's the address your nodes reach the machine running
+  qory gateway at, and that its Settings change it later; the guide's Gateways section
+  walks through adding one.
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person

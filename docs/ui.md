@@ -957,7 +957,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   resolves for the workspace, and then the one the form starts on; Direct, which it
   starts on otherwise; and each gateway by name; under it, which gateway the default is.
   **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
-  hint saying what a URL may be, and Add gateway. A refused save stays on the page, the
+  hint saying where the URL points (the machine that runs qory gateway), what a URL may
+  be, and that the gateway's Settings change it later (`NodeComponents.url_hint(:new)`;
+  the Settings field's hint, `url_hint(:settings)`, leaves that last sentence out), and
+  Add gateway. A refused save stays on the page, the
   error under its field, in core's words (a URL's, or a gateway's, such as "has no
   default gateway"); adding one opens its page on Access key with a
   flash, where its machine gets its key.
