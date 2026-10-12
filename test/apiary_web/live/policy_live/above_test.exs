@@ -501,6 +501,38 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     end
   end
 
+  describe "who made a rule of the level" do
+    # A person who is not a member of the organisation, and one whose account is deleted.
+    setup do
+      outsider = Apiary.AccountsFixtures.user_fixture()
+      %{user: gone} = scope = Apiary.AccountsFixtures.user_scope_fixture()
+      {:ok, _} = Apiary.Accounts.delete_user(scope)
+
+      above!([
+        %{rule("deny", "paste.example") | created_by_id: outsider.id},
+        %{rule("allow", "api.example") | created_by_id: gone.id}
+      ])
+
+      %{outsider: outsider}
+    end
+
+    test "is named on the workspace's page and a target's tab, as the history names them",
+         %{conn: conn, scope: scope, outsider: outsider} do
+      started_run(scope, shop())
+      [%{target: target}] = Policy.list_targets(scope)
+      local = outsider.email |> String.split("@") |> hd()
+
+      for path <- [
+            workspace_path(scope, "/policy"),
+            target_path(scope, target.system, target.path, ["policy"])
+          ] do
+        view = open(conn, path)
+        assert text(view, "##{row(view, "paste.example")} .q-pr-by") =~ local
+        assert text(view, "##{row(view, "api.example")} .q-pr-by") =~ "Former member"
+      end
+    end
+  end
+
   describe "a level that carries variables only" do
     setup %{scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "cdn.example"})

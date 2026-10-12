@@ -78,6 +78,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       may_change: Keyword.get(opts, :may_change, &may_edit?/1),
       base: Keyword.get(opts, :base) || base(scope, holder, shared),
       people: people(scope),
+      authors: %{},
       fresh: %{},
       announce: nil,
       write_error: nil,
@@ -191,6 +192,43 @@ defmodule ApiaryWeb.PolicyLive.Common do
   """
   def person(people, id), do: people |> People.member(id) |> People.short()
 
+  @doc """
+  Reads who made each rule the page lists, in one read, into its `authors`: the authors
+  of its rules (`own`) and of the rules of its effective policy (`effective`), the level
+  above's included, named as the history names them (`ApiaryWeb.People.accounts/1`). A
+  page calls it after it reads its rules and before it builds its rows (`author/2`).
+  """
+  def assign_authors(socket) do
+    own = socket.assigns[:own] || []
+
+    entries =
+      case socket.assigns[:effective] do
+        %{entries: entries} when is_list(entries) -> entries
+        _ -> []
+      end
+
+    ids =
+      for(%{created_by_id: id} <- own, do: id) ++
+        for %{rule: %{created_by_id: id}} <- entries, do: id
+
+    assign(socket, :authors, People.accounts(ids))
+  end
+
+  @doc """
+  Who made a rule, by user id, as the history names them: the local part of the address
+  of their account, whether or not they are a member of the organisation, "Former member"
+  for a deleted account, nil for nobody. Read by `assign_authors/1`; a person it has not
+  read is named among the page's `people` (`person/2`).
+  """
+  def author(_socket, nil), do: nil
+
+  def author(%{assigns: assigns}, id) do
+    case assigns do
+      %{authors: %{^id => name}} -> People.short(name)
+      _ -> person(assigns.people, id)
+    end
+  end
+
   ## Coalesced reloads: one read per 250 ms however many changes land
 
   @doc "Asks for a reload of the page's policy, at most once per window. The page handles `:policy_reload`."
@@ -279,7 +317,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         own: false,
         in_force: entry.in_force,
         off: off_words(entry, scope.workspace.name, above.name),
-        by: person(socket.assigns.people, entry.rule.created_by_id),
+        by: author(socket, entry.rule.created_by_id),
         at: entry.rule.inserted_at,
         locked_tip: above_tip(above),
         can_change: false,
@@ -326,7 +364,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         own: true,
         in_force: entry == nil or entry.in_force,
         off: entry && off_words(entry, scope.workspace.name, above),
-        by: person(socket.assigns.people, rule.created_by_id),
+        by: author(socket, rule.created_by_id),
         at: rule.inserted_at,
         locked_tip: rule.locked && locked_tip(scope, locks[rule.host]),
         can_change: edit? and (not rule.locked or lock?),
@@ -376,7 +414,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         own: own?,
         in_force: entry.in_force,
         off: off_words(entry, workspace, above),
-        by: person(socket.assigns.people, entry.rule.created_by_id),
+        by: author(socket, entry.rule.created_by_id),
         at: entry.rule.inserted_at,
         locked_tip: entry.locked && locked_tip(scope, locks[entry.host]),
         can_change: own? and edit?,
@@ -578,8 +616,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   defp own_for_reading(socket) do
-    people = socket.assigns.people
-
     for rule <- socket.assigns.own do
       %{
         kind: rule.kind,
@@ -587,7 +623,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         host: rule.host,
         paths: rule.paths,
         locked: rule.locked,
-        by: person(people, rule.created_by_id),
+        by: author(socket, rule.created_by_id),
         at: Format.day(rule.inserted_at)
       }
     end
