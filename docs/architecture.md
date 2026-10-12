@@ -359,8 +359,8 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   walk, purged before the core's (`deletion_tables/0`).
 - **Registries**: add features (`features/0`); add schemas an audit entry may be about
   (`subject_kinds/0`).
-- **What a person is shown**: hide features the instance has from a person in an
-  organisation (`hidden/1`).
+- **What a person is shown**: hide features the instance has, or parts of them, from a
+  person in an organisation (`hidden/1`).
 - **Audit trail**: add keys of its own to each entry's details as it is written, such as
   how the actor reached the organisation, cheaply and inside the change's transaction
   (`audit_details/3`); it changes none of the core's.
@@ -400,18 +400,23 @@ answers it: in the core, nothing is hidden. The answer does not depend on the wo
 An edition's features are listed after the core's (`c:Apiary.Edition.features/0`), and
 `Apiary.Features.built/0` names the ones a page of an edition may show or hide for an
 organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
-where `QORY_FEATURES` lists it by name, and is never one of those.
+where `QORY_FEATURES` lists it by name, and is never one of those. A feature may have
+**parts** (`Apiary.Features.parts/0`), which an edition may hide apart from the rest of the
+feature, and which are never on or off apart from it: the core's one part is the run's
+Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs to (an
+action's `part`).
 
-- **Absent, as off on the instance.** A feature that is off, or hidden from a person, is
-  absent for them: the feature gates of the pages and the controllers, the navigation and
-  `Apiary.Access` ask `Apiary.Features.visible?/2` with the person's scope, which carries
-  what is hidden (`Apiary.Accounts.Scope`, `hidden`). What belongs to the instance follows
-  its switch only (`Apiary.Features.on?/1`): the guides at `/docs`, the sign-in and
-  landing pages, the routes' first answer (`ApiaryWeb.Features.Routes`), and the server
-  contract, whose access key, and its scope, answer as the instance. A hidden feature
-  still works in full for nodes: a run's registration, events, attach, outcome and
-  reload, and its run configuration, follow the instance's features alone, and so do
-  rendering and the instance's jobs; the discovery document reads no feature.
+- **Absent, as off on the instance.** A feature that is off, or a feature or a part
+  hidden from a person, is absent for them: the feature gates of the pages and the
+  controllers, the navigation and `Apiary.Access` ask `Apiary.Features.visible?/2` with
+  the person's scope, which carries what is hidden (`Apiary.Accounts.Scope`, `hidden`).
+  What belongs to the instance follows its switch only (`Apiary.Features.on?/1`): the
+  guides at `/docs`, the sign-in and landing pages, the routes' first answer
+  (`ApiaryWeb.Features.Routes`), and the server contract, whose access key, and its
+  scope, answer as the instance. A hidden feature still works in full for nodes: a run's
+  registration, events, attach, outcome and reload, and its run configuration, follow the
+  instance's features alone, and so do rendering and the instance's jobs; the discovery
+  document reads no feature.
 - **Read again under the locks.** `Apiary.Access.reload/2` asks what is hidden after the
   edition's reload, under the edition's locks, so what an edition changes of it under the
   organisation's lock is waited for by a change that asked, or seen by it.

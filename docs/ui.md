@@ -1519,8 +1519,11 @@ page has no breadcrumb of its own.
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
-  live action of the one LiveView, so a tab is a patch. An old link to a run's Details
-  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  live action of the one LiveView, so a tab is a patch. Terminal is the log's
+  (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
+  Terminal, there is no tab, no Raw log or Download log, no Terminal on Details, and the
+  sentences on session events name no terminal. An old link to a run's Details tab
+  (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
   becomes the Timeline's.
 - **Details is one element** (`#run-details`), after the header and before the tabs at
   every width, so the two places never disagree and no id is drawn twice; its reading and

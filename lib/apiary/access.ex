@@ -197,6 +197,7 @@ defmodule Apiary.Access do
     ),
     Action.new(:"run.read_log", "read a run's log: its terminal, stdout and stderr",
       feature: :observability,
+      part: :"observability.terminal",
       roles: @members,
       audited: {:not, @read}
     ),
@@ -347,10 +348,12 @@ defmodule Apiary.Access do
     (`Apiary.Accounts.Scope.for_instance/2`). Any other scope without a person may
     nothing.
   - **`action`** is a verb of the engine, one of `actions/0`, each an
-    `Apiary.Access.Action` named once, with the feature it belongs to, in the table below;
-    an edition adds its own (`c:Apiary.Edition.actions/0`). The registry of both is built
-    once, checked, and kept for the node: an action named twice, a role or a feature
-    nobody knows, stops it. An action that is in neither raises `ArgumentError`.
+    `Apiary.Access.Action` named once, with the feature it belongs to, and the part of it
+    where it belongs to one, in the table below; an edition adds further actions
+    (`c:Apiary.Edition.actions/0`). The registry of both is built once, checked, and kept
+    for the node: an action named twice, a role or a feature nobody knows, or a part that
+    is not one of its feature's, stops it. An action that is in neither raises
+    `ArgumentError`.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
     as a run, a rule, an access key, a node, an invitation or a membership, which carries
     `organisation_id`, and `workspace_id` when it belongs to a workspace. Deleting a
@@ -359,9 +362,10 @@ defmodule Apiary.Access do
 
   The answer is read in this order:
 
-  1. **The feature** the action belongs to (`Apiary.Features.visible?/2`). An action of a
-     feature that is off, or hidden from the scope's person, is `{:error, :not_found}`: a
-     feature that is off or hidden is absent, not forbidden.
+  1. **The feature** the action belongs to, or the part of it (`Apiary.Features.visible?/2`).
+     An action of a feature that is off, or of a feature or a part hidden from the scope's
+     person, is `{:error, :not_found}`: a feature that is off or hidden is absent, not
+     forbidden, and so is a hidden part.
   2. **The edition** (`c:Apiary.Edition.check/3`), asked once: it may answer, for what it
      adds or narrows, or leave the answer to the steps below. The core's own edition
      leaves every answer to them.
@@ -414,7 +418,11 @@ defmodule Apiary.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
+  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
+      action.part -> "`#{action.feature}`, its part `#{action.part}`"
+      action.feature -> "`#{action.feature}`"
+      true -> "every instance"
+    end} |" end)}
 
   ## Roles
 
@@ -474,10 +482,16 @@ defmodule Apiary.Access do
 
   ## Features
 
-  The feature an action belongs to is asked of `Apiary.Features.visible?/2` with the scope,
-  which carries what its person is not shown in the organisation (`hidden`,
-  `c:Apiary.Edition.hidden/1`); `reload/2` reads it again after the edition's reload, under
-  its locks. An access key's scope and the instance's answer as the instance.
+  The feature an action belongs to, or the part of it where it belongs to one, is asked of
+  `Apiary.Features.visible?/2` with the scope, which carries what its person is not shown
+  in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`); `reload/2` reads it again
+  after the edition's reload, under its locks. A part is hidden where it or its feature
+  is. An access key's scope and the instance's answer as the instance.
+
+  `run.read_log` belongs to the part `observability.terminal`, the run's Terminal: an
+  edition that hides it from a person hides the run's whole log from them, its terminal,
+  stdout and stderr, on the run page, at its address and as a download, and the last lines
+  the runs list previews.
   """
 
   @typedoc "An action, one of `actions/0`."
@@ -538,7 +552,7 @@ defmodule Apiary.Access do
   defp registry do
     case :persistent_term.get(__MODULE__, nil) do
       nil ->
-        registry = build_registry()
+        registry = build_registry(Edition.actions(), Edition.roles())
         :persistent_term.put(__MODULE__, registry)
         registry
 
@@ -547,10 +561,9 @@ defmodule Apiary.Access do
     end
   end
 
-  defp build_registry do
-    edition_roles = Edition.roles()
-    edition_actions = Edition.actions()
-
+  # Public for the access test, which hands it an edition's actions with a mistake.
+  @doc false
+  def build_registry(edition_actions, edition_roles) do
     for {role, _who} <- edition_roles, Keyword.has_key?(@roles, role) do
       raise ArgumentError, "the edition's role #{inspect(role)} is one of the core's"
     end
@@ -576,6 +589,15 @@ defmodule Apiary.Access do
     for %Action{feature: feature} = action <- actions,
         not is_nil(feature) and feature not in features do
       raise ArgumentError, "#{action.name} belongs to #{inspect(feature)}, no feature"
+    end
+
+    parts = Features.parts()
+
+    for %Action{feature: feature, part: part} = action <- actions,
+        not is_nil(part),
+        part not in parts or Features.feature_of(part) != feature do
+      raise ArgumentError,
+            "#{action.name} belongs to the part #{inspect(part)}, no part of #{inspect(feature)}"
     end
 
     %{
@@ -825,9 +847,10 @@ defmodule Apiary.Access do
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
   def check(scope, action, subject) do
-    %Action{feature: feature} = action(action)
+    %Action{feature: feature, part: part} = action(action)
 
-    if not is_nil(feature) and not Features.visible?(scope, feature) do
+    # A part is shown only where its feature is too (`Apiary.Features.visible?/2`).
+    if not is_nil(feature) and not Features.visible?(scope, part || feature) do
       {:error, :not_found}
     else
       case Edition.check(scope, action, subject) do

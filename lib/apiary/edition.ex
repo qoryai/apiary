@@ -44,7 +44,8 @@ defmodule Apiary.Edition do
     entry's details as it is written.
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
     (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
-  - **What a person is shown**: `hidden/1` (`Apiary.Features.visible?/2`).
+  - **What a person is shown**: `hidden/1`, features and parts of them
+    (`Apiary.Features.visible?/2`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
 
@@ -448,7 +449,10 @@ defmodule Apiary.Edition do
   """
   @callback deletion_tables() :: [{String.t(), :organisation | :workspace}]
 
-  @doc "The edition's features, with the features each needs and whether it is built."
+  @doc """
+  The edition's features, with the features each needs, whether it is built and its parts
+  (`Apiary.Features.registry/1`).
+  """
   @callback features() :: [{atom, keyword}]
 
   @doc "The edition's schemas an audit entry may be about, with the kind it records."
@@ -458,12 +462,15 @@ defmodule Apiary.Edition do
 
   @doc """
   What the scope's person is not shown in the scope's organisation: features the instance
-  has (`Apiary.Features.enabled/0`). A hidden feature still works in full: what nodes are
-  served, enforcement, rendering, the instance's jobs, retention and the audit trail never
-  ask this. A person meets a hidden feature as one the instance lacks: its pages, menu
-  entries and actions are not found (`Apiary.Features.visible?/2`). A name that is no
-  feature raises `ArgumentError` where the core reads the answer
-  (`Apiary.Features.hidden_of/1`); one the instance lacks is left out.
+  has (`Apiary.Features.enabled/0`), and parts of them (`Apiary.Features.parts/0`), such
+  as the run's Terminal, `:"observability.terminal"`. What is hidden still works in full:
+  what nodes are served, enforcement, rendering, the instance's jobs, retention and the
+  audit trail never ask this. A person meets a hidden feature as one the instance lacks:
+  its pages, menu entries and actions are not found (`Apiary.Features.visible?/2`); a
+  hidden part the same way, its actions (`Apiary.Access.Action`, `part`) and what they
+  serve. A name that is no feature or part raises `ArgumentError` where the core reads the
+  answer (`Apiary.Features.hidden_of/1`); a feature the instance lacks, and a part of one,
+  is left out.
 
   Asked for a person's scope only, never an access key's or the instance's, once the
   scope's organisation and the edition's reach are on it: in
@@ -476,7 +483,7 @@ defmodule Apiary.Edition do
   and did not lock there may change before the commit. The answer must not depend on the
   scope's workspace. The core's answer is `[]`.
   """
-  @callback hidden(Scope.t()) :: [Apiary.Features.feature()]
+  @callback hidden(Scope.t()) :: [Apiary.Features.name()]
 
   # Runtime
 

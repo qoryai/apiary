@@ -14,8 +14,10 @@ actions:
 
 1. is added once to the action list in `Apiary.Access`, or to an edition's
    (`c:Apiary.Edition.actions/0`), as an `Apiary.Access.Action`: the feature it belongs
-   to (none: every instance has it), a line saying what it is, which the module's
-   documentation tabulates, whether it leaves an audit entry, and what it is asked of;
+   to (none: every instance has it), and the part of that feature where it belongs to
+   one (`part:`, one of `Apiary.Features.parts/0`), a line saying what it is, which the
+   module's documentation tabulates, whether it leaves an audit entry, and what it is
+   asked of;
 2. is given to the roles that may take it, in the action's `roles`, from which the
    module's role table is built;
 3. gets its rows in the access test's rows modules (`Apiary.AccessRows` for the core,
@@ -308,8 +310,14 @@ who may act cannot leave.
 
 The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
 scope, and a feature that is off, or hidden from the scope's person, is
-`{:error, :not_found}`: absent, as a feature the instance lacks. What a person is not shown
-in an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), the one answer
+`{:error, :not_found}`: absent, as a feature the instance lacks. An action that belongs to
+a part of its feature is asked of the part, which is hidden where it or its feature is:
+`run.read_log` belongs to `observability.terminal`, the run's Terminal, so an edition that
+hides it hides the run's whole log from that person, the Terminal tab, the log's address
+with every stream and the download, the ⋯ menu's Raw log and Download log, the runs list's
+preview of the last lines and the terminal's size on Details, and the sentences on session
+events name no terminal; the rest of the run is as it is. What a person is not shown in an
+organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), the one answer
 ([architecture.md](architecture.md), Features): in the core, nothing. A person's scope
 carries it (`hidden`): `Apiary.Organisations.resolve_scope/4` loads it with the
 organisation and the workspace, and `reload/2` asks it again after the edition's reload,

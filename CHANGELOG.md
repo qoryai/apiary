@@ -672,6 +672,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   documentation: only the console's scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
   browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
+- A feature can have parts, which an edition may hide from a person apart from the rest
+  of the feature (`Apiary.Features.parts/0`, `c:Apiary.Edition.hidden/1`), and an action
+  may belong to one (`part:`). The first is the run's Terminal (`:"observability.terminal"`),
+  which `run.read_log` belongs to: hidden from a person, it hides the run's whole log from
+  them, the Terminal tab, `/runs/:run_id/terminal`, the log's address with every stream and
+  the download, the ⋯ menu's Raw log and Download log and the runs list's preview of the
+  last lines, and the sentences on session events name no terminal. The terminal's size on
+  the run's Details now asks whether the person may read the log (`run.read_log`), as the
+  Terminal tab does.
 
 ### Changed
 

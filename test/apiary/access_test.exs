@@ -430,6 +430,69 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "a part of a feature" do
+    test "run.read_log belongs to the run's Terminal, a part of observability" do
+      assert %Apiary.Access.Action{feature: :observability, part: :"observability.terminal"} =
+               Access.action(:"run.read_log")
+
+      for action <- Access.actions(), %{part: part} = Access.action(action), part do
+        assert Apiary.Features.feature_of(part) == Access.feature(action), inspect(action)
+      end
+    end
+
+    test "hidden, it hides its actions and no other of the feature; its hidden feature too" do
+      %{scope: owner} = sign_up_fixture()
+      run = run_fixture(owner)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      for {hidden, read_log, read} <- [
+            {[], :ok, :ok},
+            {[:"observability.terminal"], {:error, :not_found}, :ok},
+            {[:observability], {:error, :not_found}, {:error, :not_found}}
+          ] do
+        :ok = Apiary.EditionStubs.HidesNamed.put(hidden)
+        scope = Access.reload(owner)
+
+        assert Access.check(scope, :"run.read_log", run) == read_log, inspect(hidden)
+        assert Access.authorize(owner, :"run.read_log", run) == read_log, inspect(hidden)
+        assert Access.can?(scope, :"run.read_log", run) == (read_log == :ok)
+        assert Access.check(scope, :"run.read", run) == read, inspect(hidden)
+      end
+
+      # An access key, and the instance, are never asked what is hidden.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      instance = Scope.for_instance(owner.organisation, owner.workspace)
+      assert Access.check(instance, :"run.read_log", run) == {:error, :forbidden}
+    end
+
+    test "the registry refuses an action whose part is not one of its feature's" do
+      action = &Apiary.Access.Action.new(:"report.read", "read a report", &1)
+
+      assert %{names: names} =
+               Access.build_registry(
+                 [action.(feature: :observability, part: :"observability.terminal")],
+                 %{}
+               )
+
+      assert :"report.read" in names
+
+      for opts <- [
+            [feature: :security, part: :"observability.terminal"],
+            [part: :"observability.terminal"],
+            [feature: :observability, part: :terminal],
+            [feature: :observability, part: :observability]
+          ] do
+        assert_raise ArgumentError, ~r/report.read belongs to the part/, fn ->
+          Access.build_registry([action.(opts)], %{})
+        end
+      end
+
+      assert_raise ArgumentError, ~r/report.read's part is "terminal"/, fn ->
+        action.(feature: :observability, part: "terminal")
+      end
+    end
+  end
+
   # What an action is asked of in `place`, as the rows say: the organisation, the
   # workspace, or a new organisation.
   defp subject(place, action) do

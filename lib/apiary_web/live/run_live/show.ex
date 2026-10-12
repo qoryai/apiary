@@ -356,7 +356,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
             <% @tab == :timeline -> %>
               <.timeline_tab {assigns} />
-            <% @tab == :terminal -> %>
+            <% @tab == :terminal and Access.can?(@current_scope, :"run.read_log", @run) -> %>
               <.terminal_tab scope={@current_scope} run={@run} log={@log} />
             <% @tab == :connections -> %>
               <.connections_tab
@@ -372,6 +372,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 in_force={@in_force}
                 security={@security}
               />
+            <% true -> %>
           <% end %>
         </div>
       </div>
@@ -519,6 +520,7 @@ defmodule ApiaryWeb.RunLive.Show do
         runtime={@run.runtime}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
+        terminal={Access.can?(@current_scope, :"run.read_log", @run)}
       />
 
       <.background_tasks background={@index.background} ended={!alive?(@run)} />
@@ -793,7 +795,10 @@ defmodule ApiaryWeb.RunLive.Show do
   defp details_rail(assigns) do
     assigns =
       assign(assigns,
-        labels: ordered_labels(assigns.run.labels, assigns.scope.workspace)
+        labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
+        # The terminal's size is the log's, as the Terminal tab is.
+        terminal_size:
+          assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
       )
 
     ~H"""
@@ -921,8 +926,8 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">{@run.dir || na()}</dd>
           <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
-          <dt :if={@run.terminal_cols}>{gettext("Terminal")}</dt>
-          <dd :if={@run.terminal_cols} class="font-mono">
+          <dt :if={@terminal_size}>{gettext("Terminal")}</dt>
+          <dd :if={@terminal_size} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
           <dt>{gettext("Forager")}</dt>
@@ -1261,7 +1266,8 @@ defmodule ApiaryWeb.RunLive.Show do
        win_last: nil
      )
      |> stream_configure(:items, dom_id: & &1.id)
-     |> stream(:items, [])}
+     |> stream(:items, [])
+     |> ApiaryWeb.UserAuth.on_membership_change(&leave_terminal/1)}
   end
 
   @impl true
@@ -1297,6 +1303,19 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp refuse_terminal(_socket), do: :ok
+
+  # An open Terminal tab whose reader may no longer read the log, once the scope is loaded
+  # again after a change of their memberships, or of what the edition hides from them,
+  # leaves for the run's Timeline.
+  defp leave_terminal(%{assigns: %{tab: :terminal, run: %Run{} = run}} = socket) do
+    scope = socket.assigns.current_scope
+
+    if Access.can?(scope, :"run.read_log", run),
+      do: socket,
+      else: push_patch(socket, to: tab_path(scope, run, :timeline), replace: true)
+  end
+
+  defp leave_terminal(socket), do: socket
 
   # The run row is read for the first, static render too: it says found or not found, and
   # gives the header. Everything else waits for the socket, so that opening the page reads
@@ -2617,10 +2636,12 @@ defmodule ApiaryWeb.RunLive.Show do
     do: socket |> follow_timeline(old) |> assign_window_counts()
 
   # The log is read by difference: what followed the last chunk the page knows of. The
-  # hook is told how far it has come, and fetches the bytes itself.
+  # hook is told how far it has come, and fetches the bytes itself. Only for a reader who
+  # may read the log, as the tab is: `refuse_terminal/1` keeps anyone else off it already.
   defp flush_tab(socket, :terminal, _old, _types, range) when range != nil do
     %{current_scope: scope, run: run, log: log} = socket.assigns
-    more = Record.log_summary(scope, run, log.through)
+    log? = Access.can?(scope, :"run.read_log", run)
+    more = if log?, do: Record.log_summary(scope, run, log.through), else: %{chunks: 0}
 
     if more.chunks > 0 do
       log = Record.add_log_summary(log, more)

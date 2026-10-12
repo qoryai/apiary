@@ -13,8 +13,9 @@ defmodule Apiary.AccessRows do
       feature_off   whoever the action is for, an owner, an access key or the instance, on
                     an instance without the action's feature
       hidden        whoever the action is for, as feature_off, where the edition hides the
-                    action's feature from people: a person meets it as not found, and an
-                    access key and the instance are never asked what is hidden
+                    action's feature from people, or the part of it the action belongs
+                    to: a person meets it as not found, and an access key and the
+                    instance are never asked what is hidden
 
   Accepting an invitation is taken on the strength of the token, which no role is, and
   granting and revoking an instance admin on the strength of a release command run on the

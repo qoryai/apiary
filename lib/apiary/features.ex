@@ -9,9 +9,15 @@ defmodule Apiary.Features do
   | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
 
   An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
-  with the features it needs, whether it is built, and whether it is opt-in. The list is
-  read once, checked (`registry/1`), and kept for the life of the node: a name listed
-  twice, or a feature that needs one the list does not have, stops the boot.
+  with the features it needs, whether it is built, whether it is opt-in, and its parts.
+  The list is read once, checked (`registry/1`), and kept for the life of the node: a
+  name listed twice, or a feature that needs one the list does not have, stops the boot.
+
+  A **part** of a feature is a named piece of it that an edition may hide from a person
+  apart from the rest of the feature (`parts/0`), named `:"<feature>.<part>"`. The core's
+  one part is the run's Terminal, `:"observability.terminal"`: the run's log, which
+  `run.read_log` reads (`Apiary.Access`). A part is never on or off: it is on with its
+  feature (`feature_of/1`).
 
   `QORY_FEATURES` names the features the instance has, of the whole list: `all`; `all-`
   and the features left out, separated by commas (`all-security`); or the features on,
@@ -38,17 +44,20 @@ defmodule Apiary.Features do
   ## What a person is shown
 
   Below the instance a feature is shown or hidden, never switched off. What a person is not
-  shown in an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), as
-  `hidden_of/1` keeps it; the core's answer is nothing. The scope a person's page or a
-  context function holds carries it, `hidden`, loaded with it
+  shown in an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), features
+  and parts of them, as `hidden_of/1` keeps it; the core's answer is nothing. The scope a
+  person's page or a context function holds carries it, `hidden`, loaded with it
   (`Apiary.Organisations.resolve_scope/4`) and read again with its membership
   (`Apiary.Access.reload/2`), so `visible?/2` reads nothing. A hidden feature is absent for
   that person as one the instance lacks is: its pages, menu entries and actions are not
-  found. It still works in full for everything that does not ask what a person is shown,
-  which follows the instance's features alone (`on?/1`): what a node is served (a run's
-  registration, events, attach, outcome and reload, and its run configuration), rendering,
-  the instance's jobs, retention and the audit trail, and the guides at `/docs`, the
-  sign-in and landing pages and the routes' first answer (`ApiaryWeb.Features.Routes`).
+  found. A hidden part is absent for that person the same way, and so is every part of a
+  hidden feature: an action of the part (`Apiary.Access.Action`, `part`) is not found.
+  What is hidden still works in full for everything that does not ask what a person is
+  shown, which follows the instance's features alone (`on?/1`): what a node is served (a
+  run's registration, events, attach, outcome and reload, and its run configuration),
+  rendering, the instance's jobs, retention and the audit trail, and the guides at
+  `/docs`, the sign-in and landing pages and the routes' first answer
+  (`ApiaryWeb.Features.Routes`).
   """
 
   alias Apiary.AccessKeys.AccessKey
@@ -57,7 +66,7 @@ defmodule Apiary.Features do
   # The core's features, in the order the instance lists them, each with the features it
   # needs, whether it is built, and `default: false` for one that is opt-in.
   @core [
-    observability: [needs: [], built: true],
+    observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
     secrets: [needs: [:security], built: true, default: false]
   ]
@@ -68,17 +77,25 @@ defmodule Apiary.Features do
 
   # What `registry/1` says an entry is, when it refuses one.
   @entry_shape "a feature is {name, needs: [feature], built: boolean}, " <>
-                 "with default: boolean where it is given, got: "
+                 "with default: boolean where it is given and parts: [atom] where they are, got: "
 
   @typedoc "A feature: one of `all/0`."
   @type feature :: atom
+
+  @typedoc "A part of a feature: one of `parts/0`, `:\"<feature>.<part>\"`."
+  @type part :: atom
+
+  @typedoc "A feature or a part of one."
+  @type name :: feature | part
 
   @typedoc "The features of the core and the edition, as `registry/1` checks them."
   @type registry :: %{
           all: [feature],
           needs: %{feature => [feature]},
           built: [feature],
-          opt_in: [feature]
+          opt_in: [feature],
+          parts: [part],
+          part_of: %{part => feature}
         }
 
   @doc """
@@ -101,17 +118,47 @@ defmodule Apiary.Features do
   @spec all() :: [feature]
   def all, do: registry().all
 
+  @doc """
+  parts/0 is every part of a feature, `:"<feature>.<part>"`, in the order of `all/0` and,
+  for one feature, in the order its entry lists them.
+  """
+  @spec parts() :: [part]
+  def parts, do: registry().parts
+
+  @doc """
+  feature_of/1 is the feature `name` belongs to: the feature of a part (`parts/0`), and a
+  feature itself. Raises `ArgumentError` for a name that is neither.
+  """
+  @spec feature_of(name) :: feature
+  def feature_of(name) do
+    %{all: all, part_of: part_of} = registry()
+
+    cond do
+      name in all ->
+        name
+
+      is_map_key(part_of, name) ->
+        Map.fetch!(part_of, name)
+
+      true ->
+        raise ArgumentError,
+              "#{inspect(name)} is not a feature of Apiary.Features, nor a part of one"
+    end
+  end
+
   @doc "The features `feature` needs on. Raises `ArgumentError` for a name that is no feature."
   @spec needs(feature) :: [feature]
   def needs(feature), do: Map.fetch!(registry().needs, known!(feature))
 
   @doc """
   registry/1 checks a list of features, the core's followed by the edition's, and returns
-  what `all/0`, `needs/1`, `built/0` and `opt_in/0` answer from; raises `ArgumentError` on
-  a mistake: an entry that is not `{name, needs: [feature], built: boolean}`, with
-  `default: boolean` where it is given (`true` where it is not, `false` for an opt-in
-  feature), a name listed twice, a feature that needs itself or one the list does not
-  have, or a feature that is not opt-in and needs one that is.
+  what `all/0`, `needs/1`, `built/0`, `opt_in/0`, `parts/0` and `feature_of/1` answer
+  from; raises `ArgumentError` on a mistake: an entry that is not
+  `{name, needs: [feature], built: boolean}`, with `default: boolean` where it is given
+  (`true` where it is not, `false` for an opt-in feature) and `parts: [atom]` where they
+  are (none where they are not), a name listed twice, a part that is not an atom or is
+  listed twice, a feature that needs itself or one the list does not have, or a feature
+  that is not opt-in and needs one that is.
   """
   @spec registry([{feature, keyword}]) :: registry
   def registry(features) do
@@ -129,6 +176,20 @@ defmodule Apiary.Features do
 
     opt_in = for {name, opts} <- features, opts[:default] == false, do: name
 
+    part_of =
+      for {name, opts} <- features,
+          part <- Keyword.get(opts, :parts, []),
+          do: {part_name(name, part), name}
+
+    parts = Enum.map(part_of, &elem(&1, 0))
+
+    # A part's name is its feature's and its own: listed twice, or the name of a feature,
+    # it would answer for two things.
+    case (parts -- Enum.uniq(parts)) ++ Enum.filter(parts, &(&1 in names)) do
+      [] -> :ok
+      twice -> raise ArgumentError, "a part is listed once, got twice: #{names(Enum.uniq(twice))}"
+    end
+
     # `all` leaves the opt-in features off, so only another opt-in feature may need one.
     for {name, opts} <- features, name not in opt_in, need <- opts[:needs], need in opt_in do
       raise ArgumentError,
@@ -139,16 +200,26 @@ defmodule Apiary.Features do
       all: names,
       needs: Map.new(features, fn {name, opts} -> {name, opts[:needs]} end),
       built: for({name, opts} <- features, opts[:built], name not in opt_in, do: name),
-      opt_in: opt_in
+      opt_in: opt_in,
+      parts: parts,
+      part_of: Map.new(part_of)
     }
   end
+
+  defp part_name(feature, part), do: :"#{feature}.#{part}"
 
   defp check_entry!({name, opts} = entry) when is_atom(name) and is_list(opts) do
     needs = opts[:needs]
 
+    parts = Keyword.get(opts, :parts, [])
+
     unless is_list(needs) and Enum.all?(needs, &is_atom/1) and is_boolean(opts[:built]) and
-             is_boolean(Keyword.get(opts, :default, true)) do
+             is_boolean(Keyword.get(opts, :default, true)) and is_list(parts) do
       raise ArgumentError, @entry_shape <> inspect(entry)
+    end
+
+    for part <- parts, not is_atom(part) or is_nil(part) or is_boolean(part) do
+      raise ArgumentError, "a part of #{name} is an atom, got: #{inspect(part)}"
     end
   end
 
@@ -314,29 +385,33 @@ defmodule Apiary.Features do
   def on?(feature), do: known!(feature) in enabled()
 
   @doc """
-  Whether `feature` is shown where `scope` is: on for the instance (`on?/1`) and, for a
-  person's `Apiary.Accounts.Scope`, not among what it hides (`hidden`, the edition's answer,
+  Whether `name`, a feature or a part of one, is shown where `scope` is: its feature on for
+  the instance (`on?/1`) and, for a person's `Apiary.Accounts.Scope`, neither the name nor
+  its feature among what the scope hides (`hidden`, the edition's answer,
   `c:Apiary.Edition.hidden/1`). An access key, an access key's scope, the instance's scope,
   a scope that carries no `hidden`, as the scope of a job no person enqueued, and `nil`
-  answer as the instance. Raises `ArgumentError` for a name that is no feature.
+  answer as the instance. Raises `ArgumentError` for a name that is no feature or part.
   """
-  @spec visible?(Scope.t() | AccessKey.t() | nil, feature) :: boolean
-  def visible?(%Scope{access_key: nil, instance: false, hidden: hidden}, feature)
-      when is_list(hidden),
-      do: on?(feature) and feature not in hidden
+  @spec visible?(Scope.t() | AccessKey.t() | nil, name) :: boolean
+  def visible?(%Scope{access_key: nil, instance: false, hidden: hidden}, name)
+      when is_list(hidden) do
+    feature = feature_of(name)
+    on?(feature) and feature not in hidden and name not in hidden
+  end
 
-  def visible?(_scope, feature), do: on?(feature)
+  def visible?(_scope, name), do: on?(feature_of(name))
 
   @doc """
   hidden_of/1 is the edition's answer to `c:Apiary.Edition.hidden/1` as a scope keeps it,
-  `hidden`: in the order of `all/0`, without the features the instance lacks. Raises
-  `ArgumentError` on a name that is no feature: an edition's mistake, as `registry/1`
-  treats one.
+  `hidden`: the features in the order of `all/0`, then the parts in the order of
+  `parts/0`, without a feature the instance lacks or a part of one. Raises `ArgumentError`
+  on a name that is no feature or part: an edition's mistake, as `registry/1` treats one.
   """
-  @spec hidden_of([feature]) :: [feature]
+  @spec hidden_of([name]) :: [name]
   def hidden_of(names) when is_list(names) do
-    Enum.each(names, &known!/1)
-    Enum.filter(enabled(), &(&1 in names))
+    Enum.each(names, &feature_of/1)
+    enabled = enabled()
+    Enum.filter(enabled ++ parts(), &(&1 in names and feature_of(&1) in enabled))
   end
 
   @doc """

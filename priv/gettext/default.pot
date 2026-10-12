@@ -8223,6 +8223,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
 msgstr ""
 
@@ -10614,6 +10619,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "Session started"
 msgstr ""
 
@@ -12504,6 +12514,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has connections and no session timeline."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

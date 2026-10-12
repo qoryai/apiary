@@ -1774,6 +1774,38 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert preview_lines(view) == []
     end
 
+    test "where the run's Terminal is hidden from the reader, the preview shows none of the log",
+         %{conn: conn, older: older, scope: scope} do
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("first build output\n")}
+      event_fixture(older, 60, "run.log", log)
+      {:ok, _} = Projector.project(older)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      # Shown, the box and its lines are there; hidden, the part or its feature, none.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert text(view, "#runs-preview-log") == "first build output"
+      assert has_element?(view, "#runs-preview a[href$='/terminal']", "Full log")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview h2", "older")
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
+      refute has_element?(view, "#runs-preview-log")
+      refute has_element?(view, "#runs-preview .q-pv-term")
+      refute has_element?(view, "#runs-preview a", "Full log")
+      refute has_element?(view, "#runs-preview a[href$='/terminal']")
+      refute render(view) =~ "Terminal, last lines"
+      refute render(view) =~ "Terminal, live"
+      refute render(view) =~ "first build output"
+      assert preview_lines(view) == []
+    end
+
     test "a link with a run shows it; a run of another workspace or no run at all is not shown",
          %{conn: conn, older: older, scope: scope} do
       view = open(conn, runs(scope, "?run=#{older.run_id}"))
