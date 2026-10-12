@@ -150,8 +150,9 @@ jobs:
         run: python scripts/aws-template-check.py ascii
 
       # The release script's tests: the release copy and the test copy of the repository's
-      # template, and what the script refuses.
-      - name: Test the AWS template's release script
+      # template, and what the script refuses. And the version lookup's tests: its function's
+      # code, taken from the template, with the registry and AWS stubbed.
+      - name: Test the AWS template's release script and version lookup
         run: python3 -m unittest discover -s scripts -p "test_*.py"
 
       # A release writes its version into a copy of the template, the template's version in
