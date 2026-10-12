@@ -33,6 +33,8 @@ PRO_REPOSITORY = "ghcr.io/qoryai/apiary-pro"
 STACK_ID = "arn:aws:cloudformation:us-east-1:123456789012:stack/qory/0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b"
 SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123456789012:secret:qory/download-key-AbCdEf"
 USERNAME = "example-account"
+# An account name that is a part of the base64 of "aHBf:" and PASSWORD.
+NAME_IN_BASE64 = "aHBf"
 PASSWORD = "ghp_examplepassword0123456789"
 TOKEN = "registry-token-0123456789abcdef"
 RESPONSE_URL = "https://cloudformation-custom-resource-response.example.com/response"
@@ -129,6 +131,7 @@ class Aws:
 
     def __init__(self, status="UPDATE_IN_PROGRESS"):
         self.status = status
+        self.username = USERNAME
         self.calls = []
 
     def client(self, name, config=None):
@@ -141,7 +144,7 @@ class Aws:
 
             def get_secret_value(self, SecretId):
                 aws.calls.append(("get_secret_value", SecretId))
-                return {"SecretString": json.dumps({"username": USERNAME, "password": PASSWORD})}
+                return {"SecretString": json.dumps({"username": aws.username, "password": PASSWORD})}
 
         return Client()
 
@@ -434,6 +437,27 @@ class Lookup(unittest.TestCase):
         self.assertIn("The version was not found: RuntimeError: refused", self.log)
         self.assertIn("***", self.log)
         self.assert_no_secret(answer)
+
+    def test_a_secret_inside_another_is_scrubbed_longest_first(self):
+        self.aws.username = NAME_IN_BASE64
+        basic = base64.b64encode(f"{NAME_IN_BASE64}:{PASSWORD}".encode()).decode()
+        self.assertIn(NAME_IN_BASE64, basic)
+        answer_registry = self.registry.urlopen
+
+        def leaky(request, timeout=None):
+            if "/token?" in request.full_url:
+                raise RuntimeError(f"refused {dict(request.header_items())}")
+            return answer_registry(request, timeout)
+
+        self.registry.urlopen = leaky
+        answer = self.run_function(event(edition=PRO))
+        self.assertEqual(answer["Status"], "FAILED")
+        self.assertIn("'Authorization': 'Basic ***'", self.log)
+        self.assertNotIn(basic, self.log)
+        self.assertNotIn(basic.replace(NAME_IN_BASE64, "***"), self.log)
+        for part in basic.split(NAME_IN_BASE64):
+            if len(part) > 4:
+                self.assertNotIn(part, self.log)
 
     # Create, update, rollback and delete.
 

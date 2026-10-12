@@ -845,7 +845,8 @@ Resources:
               except Exception as error:
                   status, reason = "FAILED", f"See the details in CloudWatch Log Stream: {context.log_stream_name}"
                   text = f"{type(error).__name__}: {error}"
-                  for secret in filter(None, secrets):
+                  # The longest first, so that no part of one is left where a shorter one was in it.
+                  for secret in sorted(set(filter(None, secrets)), key=len, reverse=True):
                       text = text.replace(secret, "***")
                   print(f"The version was not found: {text}"[:1000])
 
