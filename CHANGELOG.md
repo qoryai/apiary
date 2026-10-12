@@ -766,9 +766,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`) now shows at
   each place that says it: a locked rule's lock, the rule form, a target's path refusal and
   Destinations, the refusal to change or remove a locked rule, a connection's Allow or Deny
-  panel and the workspace overview. It follows the sentence that says what is locked
-  (`ApiaryWeb.Access.who_may_after/4`); the core's edition gives none, so the texts are as
-  before.
+  panel and the workspace overview; the Lock confirm keeps the core's words. It follows
+  the sentence that says what is locked (`ApiaryWeb.Access.who_may_after/4`); the core's
+  edition gives none, so the texts are as before.
 - The URL of a new gateway says it's the address your nodes reach the machine running
   qory gateway at, and that its Settings change it later; the guide's Gateways section
   walks through adding one.

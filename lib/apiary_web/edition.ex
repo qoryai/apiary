@@ -198,8 +198,9 @@ defmodule ApiaryWeb.Edition do
   with `:"security_policy.lock"`, for each sentence that says who may change a locked rule:
   a locked rule's lock on the policy pages, the rule form's refusal, a target's
   Destinations, the lock hint of a connection's Allow or Deny panel and the workspace
-  overview's hint on a locked rule. The policy pages' mode row and the workspace
-  overview's hint on the mode keep the core's words.
+  overview's hint on a locked rule. The policy pages' mode row, the workspace overview's
+  hint on the mode and the Lock confirm's "Only an owner can unlock." keep the core's
+  words.
 
   A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
   where a page refuses them a change.
