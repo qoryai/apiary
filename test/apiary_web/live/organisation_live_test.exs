@@ -69,6 +69,28 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{owner.workspace}"
     end
 
+    test "where a workspace shows no overview, the root and its links lead to its first page",
+         %{conn: conn} do
+      %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()
+      platform = workspace_fixture(organisation, "Platform")
+      # The edition leaves the record out of the organisation, the overview with it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+      conn = log_in_user(conn, user)
+
+      assert_error_sent 404, fn -> get(conn, ~p"/#{organisation}/#{scope.workspace}") end
+      assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{scope.workspace}/nodes"
+
+      {:ok, view, _html} = live(conn, ~p"/#{organisation}")
+
+      for workspace <- [scope.workspace, platform] do
+        assert has_element?(
+                 view,
+                 ~s(#workspace-#{workspace.id} a[href="/#{organisation.slug}/#{workspace.slug}/nodes"]),
+                 workspace.name
+               )
+      end
+    end
+
     test "an admin opens every workspace", %{conn: conn} do
       %{scope: owner, organisation: organisation} = sign_up_fixture()
       platform = workspace_fixture(organisation, "Platform")

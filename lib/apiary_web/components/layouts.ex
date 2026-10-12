@@ -2407,6 +2407,27 @@ defmodule ApiaryWeb.Layouts do
   defp subject(%Entry{}, scope), do: scope.workspace || scope.organisation
 
   @doc """
+  workspace_landing/1 is where a link to the scope's workspace leads, asked with the
+  scope of that workspace: the first page its sidebar shows the reader there, in the
+  sidebar's order (`nav_entries/1`, which an edition adds to), Settings at its foot last.
+  That is the overview wherever the reader may open it; where they may not, as where the
+  workspace's record is off, the next page they may. The overview still where the
+  sidebar shows them none.
+  """
+  @spec workspace_landing(Apiary.Accounts.Scope.t()) :: String.t()
+  def workspace_landing(%{organisation: organisation, workspace: %{} = workspace} = scope) do
+    entries = nav_entries(scope)
+
+    first =
+      case nav_groups(scope, :workspace, nil, entries, nil) do
+        [{_section, _heading, [{_entry, path, _label} | _]} | _] -> path
+        [] -> with {_entry, path} <- foot(scope, :workspace, entries), do: path
+      end
+
+    first || ~p"/#{organisation}/#{workspace}"
+  end
+
+  @doc """
   switch_target/3 is where a menu's link to a workspace leads once followed, asked
   with the scope of that workspace: where the reader may open the workspace's navigation
   entry named `key` there, its feature on there too, `page` when given, the path of the

@@ -717,7 +717,8 @@ defmodule ApiaryWeb.UserAuth do
   signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
-  (`Apiary.Organisations.load_home_scope/2`); the organisation's own path, `/:org`, for a
+  (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
+  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's own path, `/:org`, for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -730,8 +731,8 @@ defmodule ApiaryWeb.UserAuth do
 
   defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
     case home_scope(conn, Scope.for_user(user)) do
-      %Scope{organisation: %{} = organisation, workspace: %{} = workspace} ->
-        ~p"/#{organisation}/#{workspace}"
+      %Scope{organisation: %{}, workspace: %{}} = scope ->
+        ApiaryWeb.Layouts.workspace_landing(scope)
 
       %Scope{organisation: %{} = organisation} ->
         ~p"/#{organisation}"
