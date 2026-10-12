@@ -96,6 +96,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       reload_pending: false,
       now: DateTime.utc_now()
     )
+    |> Common.assign_authors()
     |> then(fn socket ->
       assign(socket,
         rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks)

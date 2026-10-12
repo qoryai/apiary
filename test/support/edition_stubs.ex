@@ -594,6 +594,49 @@ defmodule Apiary.EditionStubs do
     def who_may_sentence(_about, _scope), do: nil
   end
 
+  defmodule LockWorded do
+    @moduledoc """
+    The pages and the policy say who may lock, unlock or change a locked rule in the
+    edition's words (`c:ApiaryWeb.Edition.who_may_sentence/2`, `security_policy.lock`),
+    and the core's words for anything else.
+    """
+    def who_may_sentence(:"security_policy.lock", _scope), do: sentence()
+    def who_may_sentence(_about, _scope), do: nil
+
+    @doc "The sentence it says."
+    def sentence, do: "Only the stub's owners lock, unlock or change a locked rule."
+  end
+
+  defmodule GatewaysEmptyWorded do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), whose empty Gateways page says its
+    body in the edition's words (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`);
+    the other sentences of whose nodes can use the gateways are the core's.
+    """
+    defdelegate limits, to: ManyWorkspaces
+
+    def gateway_reach_sentence(:empty, _organisation), do: "Stub empty gateways body."
+
+    def gateway_reach_sentence(kind, organisation),
+      do: ApiaryWeb.Edition.Core.gateway_reach_sentence(kind, organisation)
+  end
+
+  defmodule PeopleWorded do
+    @moduledoc """
+    The People pages say the invitation's description, by mail and by link, and the
+    Admin level's hint in the edition's words (`c:ApiaryWeb.Edition.people_sentence/3`),
+    the invitation's with the names it is given; the Owner and Member hints are the core's.
+    """
+    def people_sentence(:invite_by_mail, _scope, %{workspace: w, organisation: o}),
+      do: "Stub words for the invite by mail, into #{w} of #{o}."
+
+    def people_sentence(:invite_by_link, _scope, %{workspace: w, organisation: o}),
+      do: "Stub words for the invite by link, into #{w} of #{o}."
+
+    def people_sentence({:level_hint, :admin}, _scope, %{}), do: "Stub admin hint."
+    def people_sentence(_about, _scope, _bindings), do: nil
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end

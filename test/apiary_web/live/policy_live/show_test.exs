@@ -946,6 +946,39 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert rule(scope, "api.example")
     end
 
+    test "is told who may change a locked rule: the core's words, or an edition's sentence after what is locked",
+         %{scope: scope} = context do
+      {:ok, _} = Policy.lock(scope, rule(scope, "github.example"))
+      conn = as_member(context)
+      unknown = "#rule-#{rule(scope, "*.paste.example").id}-lock"
+      known = "#rule-#{rule(scope, "github.example").id}-lock"
+      by = Regex.escape("Locked by #{scope.user.email} on ")
+
+      view = open(conn, scope)
+
+      assert attribute(view, unknown, "data-tip") ==
+               "Locked. Only an owner can change or unlock it."
+
+      assert attribute(view, known, "data-tip") =~
+               ~r/\A#{by}[^.]+\. Only an owner can change or unlock it\.\z/
+
+      type(view, %{host: "*.paste.example", paths: ""})
+
+      assert text(view, "#policy-rule-refusal") ==
+               "Only an owner can lock, unlock or change a locked rule."
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+      view = open(conn, scope)
+      assert attribute(view, unknown, "data-tip") == "Locked. #{sentence}"
+
+      assert attribute(view, known, "data-tip") =~
+               ~r/\A#{by}[^.]+\. #{Regex.escape(sentence)}\z/
+
+      type(view, %{host: "*.paste.example", paths: ""})
+      assert text(view, "#policy-rule-refusal") == sentence
+    end
+
     test "is refused on the New rule page on a locked rule", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
@@ -1532,6 +1565,41 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope, "/policy/history")
       assert text(view, "#history-list") =~ "Former member allowed registry.example"
       refute render(view) =~ user.email
+    end
+
+    test "is a former member in the rule form's words of their rule",
+         %{conn: conn, scope: scope} do
+      %{scope: member} = member_fixture(scope, :member)
+      {:ok, _} = Policy.allow(member, nil, %{host: "registry.example"})
+      {:ok, _} = Apiary.Accounts.delete_user(member)
+
+      view = open(conn, scope)
+      type(view, %{host: "registry.example", paths: ""})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "registry.example is already allowed for the workspace, by Former member on"
+    end
+  end
+
+  describe "a person who is not a member of the organisation" do
+    test "is named beside their rule and in the rule form's words, as the history names them",
+         %{conn: conn, scope: scope} do
+      %{scope: member, user: user, membership: membership} = member_fixture(scope, :member)
+      {:ok, rule} = Policy.allow(member, nil, %{host: "registry.example"})
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+      local = user.email |> String.split("@") |> hd()
+
+      view = open(conn, scope)
+      assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
+      refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+
+      type(view, %{host: "registry.example", paths: ""})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "registry.example is already allowed for the workspace, by #{local} on"
+
+      view = open(conn, scope, "/policy/history")
+      assert text(view, "#history-list") =~ "#{user.email} allowed registry.example"
     end
   end
 

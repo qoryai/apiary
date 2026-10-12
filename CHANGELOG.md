@@ -120,9 +120,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   pages that say "Only owners and admins change this."; for People's line of what each
   level does; for the refusal to cancel an organisation's deletion on Your organisations;
   for the security policy's refusals (`Apiary.Policy`); and for the policy pages'
-  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
-  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
-  mode and on a locked rule have no scope at hand, and keep the core's words.
+  refusals of a click on the mode or a lock. The policy pages' mode row and the workspace
+  overview's hint on the mode keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration, attach, reload and outcome, events and
   enrolment): the
@@ -302,9 +301,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   overview's first-run box, carries `--via` and the gateway's URL, with a line under it
   that a gateway whose certificate a private certificate authority signed needs
   `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
-  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
-  gateway. A gateway relays the enrolment unchanged, from its address, which the
-  enrolment's per-address limit counts for every machine behind it.
+  (`Apiary.AccessKeys.via_lines/1`), each step that points the node or node pool at Qory
+  Apiary naming the gateway. A gateway relays the enrolment unchanged, from its address,
+  which the enrolment's per-address limit counts for every machine behind it.
   A gateway's key enrols the gateway and registers no
   run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
@@ -408,7 +407,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
-  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the Forager file's
+  set `QORY_APIARY_PUBLIC_KEY`; point the node at Qory Apiary, the Forager file's
   `gateway.server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
@@ -613,8 +612,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Actions tab or by pushing a commit to the branch `prerelease`, never on a push to any
   other branch or a schedule, builds a branch, tag or commit as a release's image is
   built and publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
-  `sha-<7>` and, for `next`, as `next`; the AWS template's Test image field, under For
-  testing only, runs such an image in place of the Edition's.
+  `sha-<7>` and, for `next`, as `next`; the Test image field, under For testing only in
+  the AWS template's test copy, runs such an image in place of the image the Edition and
+  Version pick.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
@@ -624,18 +624,32 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
   Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
   installed from the AWS console's form and upgraded with its Update, with no command. A
-  release attaches it as `apiary.yaml` with the release's version written in
-  (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
-  template, `VersionOverride` left empty. The form asks for the edition, Qory Apiary
-  Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
+  release attaches its release copy as `apiary.yaml`, with the test parts left out and the
+  template's version written in (`scripts/aws-template-release.py --copy release --version
+  X.Y.Z`). The stack finds the version to install when it is created or updated: with
+  `VersionOverride` empty, the newest release of the edition, the highest `X.Y.Z` tag of
+  `ghcr.io/qoryai/apiary`, or of `ghcr.io/qoryai/apiary-pro` read with the download key,
+  never `latest`; with a version typed, exactly that one. The task runs that image pinned
+  by its digest, so only a stack create or update changes what runs. An update with
+  `VersionOverride` empty looks up the newest release again, except one that changes only
+  the download key, which is not among the lookup's values; when nothing else changes,
+  something new under "Look for a newer release" (`LookForNewerRelease`) makes it look. A
+  version older than the one the stack runs is refused, typed or found: within the edition
+  by its `X.Y.Z`, and on a change of edition by its `X.Y` alone. So is a release of a
+  newer minor than the template: a new minor needs that minor's `apiary.yaml`. The test
+  copy, the repository's template or one written with `--copy test`, keeps the Test image
+  field, which skips the lookup, and is never published. The form asks for the edition,
+  Qory Apiary Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
   separate secret, deleted with the stack, for the image's pull alone; and the domain,
   with a Route 53 hosted zone, or without one, the stack then making the certificate and
-  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key,
-  on ARM64, or with no version to install, and a test image without the download key.
+  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key
+  or on ARM64, and, in the test copy, a test image without the download key.
   Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack turns it on once the service is first healthy, so a create that fails
-  before then rolls back whole, and an Update with No turns it off before a delete. The
+  before then rolls back whole, and an Update with No turns it off before a delete. Under
+  Advanced, `ErlangOptions`, empty by default, is passed as `ELIXIR_ERL_OPTIONS` only when
+  set: extra options for the Erlang runtime when Qory Apiary starts. The
   stack sets its stack policy itself, refusing any update that would replace or delete the
   database or a key's secret: an EventBridge rule sends this stack's status changes to a
   function of the stack's, which sets the policy once the create completes, and again
@@ -643,21 +657,25 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the stack is in progress. The four secrets are kept when the stack is
   deleted, each named after the stack and the whole UUID of its stack ID, so they do not
   block a new stack of the same name, which has a different stack ID, and the database leaves
-  a final snapshot. The log groups, the task's and those of the stack's two functions,
+  a final snapshot. The log groups, the task's and those of the stack's three functions,
   are kept too, when the stack is deleted and when a create rolls back, their events for
   30 days, under names made from the stack ID in the same way. The outputs are the
-  address, the load balancer's DNS name, the edition and the version the stack runs, the
-  key secrets' ARNs (their names, on a stack given the keys of a deleted one), and links
-  into the console: the logs, the set-up link's line in
+  address, the load balancer's DNS name, the edition, the version the stack runs and its
+  image, by its digest, the key secrets' ARNs (their names, on a stack given the keys of a
+  deleted one), and links into the console: the logs, the set-up link's line in
   them, the service, the key secrets and the database snapshots. CI lints the template
-  with cfn-lint, and two copies a release would write, one with Qory Apiary Community
-  first and one with Qory Apiary Pro first, and checks the stack policy and the rule,
-  function, permission and role that set it, and that nothing sets it from inside the
-  stack's create or update, that no output is
-  a command, which secrets and log groups the stack keeps and that their names use the
-  stack ID's UUID, the mappings' keys, that every value compared with the edition is one
-  the form allows, and that the template and both copies are ASCII alone, as the AWS
-  console shows any other character as "?".
+  with cfn-lint, and the two copies the release script writes, the release copy and the
+  test copy; runs the script's tests, and the version lookup's against a stubbed registry;
+  checks that the release copy holds no test part and no test wording, comments included,
+  and is the test copy without the test parts; checks that the version lookup's role may
+  read the download key's secret, describe the stack and write its log group, nothing else,
+  and that the task runs the image the lookup found; and checks the stack
+  policy and the rule, function, permission and role that set it, and that nothing sets
+  it from inside the stack's create or update, that no output is a command, which
+  secrets and log groups the stack keeps and that their names use the stack ID's UUID,
+  the mappings' keys, that every value compared with the edition is one the form allows,
+  and that the template and every copy are ASCII alone, as the AWS console shows any
+  other character as "?".
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
@@ -685,6 +703,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the run's Terminal is hidden from.
 - A feature part can belong to no feature; the nodes, node pools, access keys and gateways
   are the part `nodes`, which an edition may hide from a person while nodes keep working.
+- An edition may give other words for the invitation's description, a level's hint on
+  People (`c:ApiaryWeb.Edition.people_sentence/3`) and the empty Gateways page
+  (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`); the core edition keeps
+  today's.
 
 ### Changed
 
@@ -705,12 +727,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
 - Pages say secret where they said credential.
-- A connection the gateway refused for the form of its host says so in words: "The
-  gateway refuses a host that is neither a name nor an address in canonical form, in
-  either mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+- A connection Forager refused for the form of its host says so in words: "Forager
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
   names link-local addresses: "The wall refuses link-local addresses and the machine's
   addresses, in either mode.", and so does the Policy page's hint for a rule written as an
   address.
+- The Policy page says the wall lets the machine's addresses through for a host the policy
+  allows by name; the host-form row names Forager; and a refused connection's tooltip says
+  what refused it.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
@@ -756,6 +781,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `-2`, `-3`, ….
 - The documentation, the service definition schema and `.env.example` name the thing
   where they said "its own".
+- An edition's sentence of who may lock, unlock or change a locked rule
+  (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`) now shows at
+  each place that says it: a locked rule's lock, the rule form, a target's path refusal and
+  Destinations, the refusal to change or remove a locked rule, a connection's Allow or Deny
+  panel and the workspace overview; the Lock confirm keeps the core's words. It follows
+  the sentence that says what is locked (`ApiaryWeb.Access.who_may_after/4`); the core's
+  edition gives none, so the texts are as before.
+- The URL hint of a new gateway says it's the address your nodes reach the machine running
+  qory gateway at, and that its Settings change it later; the guide's Gateways section
+  walks through adding one.
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person
@@ -791,6 +826,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The workspace Overview's "more" link under To review goes to the page for the first item
   it leaves out: the Policy page for a policy item, the nodes page for an idle key. Before,
   a policy item led to the nodes page.
+- The rules on the Policy pages name who made each rule by their account, as History
+  does, whether or not that person is a member of the organisation, and the rule form's
+  words of a rule do the same. Before, a rule made by someone who is not a member said
+  "Former member", which is now kept for a deleted account.
 
 ### Migrations
 

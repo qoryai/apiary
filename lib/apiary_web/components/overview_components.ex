@@ -612,14 +612,32 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  @doc """
+  locked_title/2 is the hover of a destination that `rule`, a locked rule of the
+  workspace, denies, for the reader of `scope`: that the rule denies it, then who may
+  change it, in the edition's words where it has them
+  (`ApiaryWeb.Access.who_may_after/4`). The page reads it with the item, as `locked_who`;
+  an item without it says the core's sentence.
+  """
+  @spec locked_title(Apiary.Accounts.Scope.t(), String.t()) :: String.t()
+  def locked_title(scope, rule),
+    do:
+      ApiaryWeb.Access.who_may_after(
+        scope,
+        :"security_policy.lock",
+        locked_default(rule),
+        gettext("A locked workspace rule denies %{rule}.", rule: rule)
+      )
+
+  defp locked_default(rule),
+    do:
+      gettext("A locked workspace rule denies %{rule}. Only an owner can change it.", rule: rule)
+
   # The longer sentence behind a reason, on hover: what a reader needs to decide.
   defp reason_title(%{resolved: resolved}, _can) when not is_nil(resolved), do: nil
 
-  defp reason_title(%{kind: :denied, locked: locked}, _can) when is_binary(locked),
-    do:
-      gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
-        rule: locked
-      )
+  defp reason_title(%{kind: :denied, locked: locked} = item, _can) when is_binary(locked),
+    do: item[:locked_who] || locked_default(locked)
 
   defp reason_title(%{kind: :denied, above: above, level: %{name: name}}, _can)
        when is_binary(above),

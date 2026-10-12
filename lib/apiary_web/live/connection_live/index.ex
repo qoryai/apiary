@@ -1265,6 +1265,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           locked_by: locked && ApiaryWeb.People.email(locked.changed_by),
           locked_at: locked && locked.inserted_at,
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
+          who: ApiaryWeb.Edition.who_may_sentence(:"security_policy.lock", scope),
           rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
       }

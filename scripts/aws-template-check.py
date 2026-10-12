@@ -1,12 +1,15 @@
 """Check deploy/aws/apiary.yaml against its stack policy, and against a release's template.
 
     python scripts/aws-template-check.py policy
-    python scripts/aws-template-check.py outputs
+    python scripts/aws-template-check.py outputs [FILE ...]
     python scripts/aws-template-check.py kept
     python scripts/aws-template-check.py mappings
     python scripts/aws-template-check.py editions [FILE ...]
     python scripts/aws-template-check.py ascii [FILE ...]
     python scripts/aws-template-check.py secrets previous-apiary.yaml
+    python scripts/aws-template-check.py release FILE ...
+    python scripts/aws-template-check.py copies RELEASE TEST
+    python scripts/aws-template-check.py version [FILE ...]
 
 policy: every resource stack-policy.json names exists in the template; the database and the
 four key secrets are each denied Update:Replace and Update:Delete; and the policy the stack
@@ -25,7 +28,8 @@ or update, where CloudFormation refuses it: no custom resource's function, and n
 but the rule's target, calls set_stack_policy, and no other role allows
 cloudformation:SetStackPolicy.
 
-outputs: no output's value is a command (none starts with "aws "), in any branch of its
+outputs: in the template, or in each FILE given (such as a release's copy of the
+template), no output's value is a command (none starts with "aws "), in any branch of its
 Fn::If: the person installs from the console alone.
 
 kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
@@ -39,10 +43,9 @@ retention, so its events still go, and uses the stack ID's UUID in its name too.
 uses it when it is a Fn::Sub whose text names a variable that is exactly
 !Select [2, !Split ["/", !Ref AWS::StackId]]: a variable given but not used does not count.
 
-mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
-scripts/aws-template-release.py writes and Qory Apiary Pro's release relies on, and the Images
-mapping exactly Community and Pro; and every Fn::FindInMap names a value the mappings hold.
-cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
+mappings: the Images mapping holds exactly Community and Pro; and every Fn::FindInMap names a
+value the mappings hold. cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the
+template's are.
 
 editions: in the template, or in each FILE given (such as a release's copy of the
 template): every Fn::Equals that has !Ref Edition as one of its two arguments, anywhere in
@@ -62,18 +65,42 @@ secrets: the four secrets are the same in the template as in the one given (the 
 release's): their type, condition, deletion and replacement policies and properties. A
 changed property can replace a secret, and a replaced secret is generated anew.
 
+release: each FILE, a release's copy written by scripts/aws-template-release.py --copy
+release, holds no test copy marker, no TestImage or HasTestImage and no test wording,
+comments included: the script's check (release_copy_failures), run again on the file the
+release attaches.
+
+copies: RELEASE and TEST, the release copy and the test copy the script writes with the same
+version. The release copy holds none of the test parts (TEST_PARTS, and no TestImage
+anywhere), and the test copy holds them all. And the test copy's template, its test parts
+taken out, the Fn::And items on TestImage dropped and each Fn::If on HasTestImage replaced
+by its value without a test image, is the release copy's.
+
+version: in the template, or in each FILE given (such as a release's copy of the template):
+one Custom::Version resource finds the version to install. Its function's role is trusted
+by Lambda alone and allows exactly three things: secretsmanager:GetSecretValue on
+RegistryCredentials, under LooksUpWithDownloadKey (a download key, and Qory Apiary Pro);
+cloudformation:DescribeStacks on this stack; and writing to the function's log group. No
+AWS::IAM::Policy, ManagedPolicy or RolePolicy attaches more to it, by a reference to the
+role or by its RoleName. Neither the
+resource, the function nor the role is given the download key itself, ProDownloadKey, or a
+dynamic reference ({{resolve:...}}) that could resolve to it. RegistryCredentials, the key's
+secret, is named only where it is needed: the resource's DownloadKeySecret, the role's
+grant, the task's RepositoryCredentials and the task's execution role, which pulls the
+image with it. And the task's image, without a test image, is the resource's Image: the
+image the lookup pinned by its digest.
+
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
-!Ref, as their long forms).
+!Ref, as their long forms), except for release.
 """
 
+import importlib.util
 import itertools
 import json
 import re
 import sys
 import unicodedata
 from pathlib import Path
-
-from cfnlint.decode import decode
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "deploy" / "aws" / "apiary.yaml"
@@ -84,13 +111,14 @@ SECRETS = ["SecretKeyBase", "EncryptionSecret", "SigningSecret", "DatabasePasswo
 DOWNLOAD_KEY = "RegistryCredentials"
 RETAINED = {"Retain", "RetainExceptOnCreate"}
 MAPPINGS = {
-    "Release": {"Versions": {"CommunityVersion", "ProVersion"}},
     "Images": {"Community": {"Repository"}, "Pro": {"Repository"}},
 }
 COMMAND = re.compile(r"\s*aws\s")
 
 
 def load(path):
+    from cfnlint.decode import decode
+
     template, matches = decode(str(path))
     if matches or template is None:
         for match in matches:
@@ -158,12 +186,10 @@ def allows_set_stack_policy(role):
     )
 
 
-def check_role(name, role, log_group):
-    """The function's role: trusted by Lambda alone, allowing cloudformation:SetStackPolicy
-    on this stack and writing to its own log group, and nothing else."""
+def lambda_trust_failures(name, role):
+    """A function's role: trusted by Lambda alone, its inline policy alone saying what it may
+    do."""
     failures = []
-    if role.get("Type") != "AWS::IAM::Role":
-        return [f"the stack policy's function has no role of the template's ({name})"]
     properties = role.get("Properties", {})
     trust = as_list(properties.get("AssumeRolePolicyDocument", {}).get("Statement", []))
     if trust != [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]:
@@ -171,6 +197,15 @@ def check_role(name, role, log_group):
     for extra in ("ManagedPolicyArns", "PermissionsBoundary"):
         if extra in properties:
             failures.append(f"{name} has {extra}: its inline policy alone says what it may do")
+    return failures
+
+
+def check_role(name, role, log_group):
+    """The function's role: trusted by Lambda alone, allowing cloudformation:SetStackPolicy
+    on this stack and writing to the function's log group, and nothing else."""
+    if role.get("Type") != "AWS::IAM::Role":
+        return [f"the stack policy's function has no role of the template's ({name})"]
+    failures = lambda_trust_failures(name, role)
     found = sorted(
         (statement.get("Effect"), sorted(as_list(statement.get("Action"))), json.dumps(statement.get("Resource"), sort_keys=True))
         for statement in statements(role)
@@ -364,12 +399,13 @@ def texts(value):
     return [""]
 
 
-def check_outputs():
+def check_outputs(paths):
     failures = []
-    for name, output in load(TEMPLATE).get("Outputs", {}).items():
-        commands = [text for text in texts(output.get("Value")) if COMMAND.match(text)]
-        if commands:
-            failures.append(f"the {name} output is a command: {commands[0]}")
+    for path in paths:
+        for name, output in load(path).get("Outputs", {}).items():
+            commands = [text for text in texts(output.get("Value")) if COMMAND.match(text)]
+            if commands:
+                failures.append(f"{path}: the {name} output is a command: {commands[0]}")
     return failures
 
 
@@ -577,11 +613,270 @@ def check_secrets(previous_path):
     return failures
 
 
+def release_script():
+    """scripts/aws-template-release.py, whose name is not a module's."""
+    spec = importlib.util.spec_from_file_location("aws_template_release", ROOT / "scripts" / "aws-template-release.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def check_release(paths):
+    script = release_script()
+    return [
+        f"{path}: {failure}"
+        for path in paths
+        for failure in script.release_copy_failures(Path(path).read_text(encoding="utf-8"))
+    ]
+
+
+TEST_IMAGE = {"Ref": "TestImage"}
+HAS_TEST_IMAGE = "HasTestImage"
+# The test parts, by their keys from the top. The form's group, For testing only, is the
+# ParameterGroups item whose Parameters are [TestImage].
+TEST_PARTS = [
+    ("Metadata", "AWS::CloudFormation::Interface", "ParameterLabels", "TestImage"),
+    ("Parameters", "TestImage"),
+    ("Rules", "TestImageNeedsDownloadKey"),
+    ("Conditions", HAS_TEST_IMAGE),
+    # With a test image, the version is not looked up.
+    ("Conditions", "LookUpVersion"),
+    ("Resources", "Version", "Condition"),
+]
+
+
+def test_group(template):
+    groups = template.get("Metadata", {}).get("AWS::CloudFormation::Interface", {}).get("ParameterGroups", [])
+    return [group for group in groups if group.get("Parameters") == ["TestImage"]]
+
+
+def has_path(template, path):
+    value = template
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return False
+        value = value[key]
+    return True
+
+
+def compares_test_image(value):
+    return isinstance(value, dict) and TEST_IMAGE in (value.get("Fn::Equals") or [])
+
+
+def without_test_parts(value):
+    """A value with each Fn::If on HasTestImage replaced by its third item, and each Fn::And
+    item that compares TestImage dropped."""
+    if isinstance(value, dict):
+        if list(value) == ["Fn::If"] and isinstance(value["Fn::If"], list) and value["Fn::If"][:1] == [HAS_TEST_IMAGE]:
+            return without_test_parts(value["Fn::If"][2])
+        result = {}
+        for key, item in value.items():
+            if key == "Fn::And" and isinstance(item, list):
+                item = [part for part in item if not compares_test_image(part)]
+            result[key] = without_test_parts(item)
+        return result
+    if isinstance(value, list):
+        return [without_test_parts(item) for item in value]
+    return value
+
+
+def check_copies(release_path, test_path):
+    release, test = load(release_path), load(test_path)
+    failures = []
+    for path in TEST_PARTS:
+        if has_path(release, path):
+            failures.append(f"{release_path} holds {'.'.join(path)}, a test part")
+        if not has_path(test, path):
+            failures.append(f"{test_path} does not hold {'.'.join(path)}, a test part")
+    if test_group(release):
+        failures.append(f"{release_path} holds the form's group of TestImage, a test part")
+    if len(test_group(test)) != 1:
+        failures.append(f"{test_path} does not hold the form's group of TestImage once")
+    if "TestImage" in json.dumps(release):
+        failures.append(f"{release_path} names TestImage")
+    if any(HAS_TEST_IMAGE not in json.dumps(test.get(section, {})) for section in ("Resources", "Outputs")):
+        failures.append(f"{test_path} has no Fn::If on {HAS_TEST_IMAGE} in its resources and outputs")
+
+    stripped = json.loads(json.dumps(test))
+    for path in TEST_PARTS:
+        parent = stripped
+        for key in path[:-1]:
+            parent = parent.get(key, {})
+        parent.pop(path[-1], None)
+    interface = stripped.get("Metadata", {}).get("AWS::CloudFormation::Interface", {})
+    if "ParameterGroups" in interface:
+        interface["ParameterGroups"] = [
+            group for group in interface["ParameterGroups"] if group.get("Parameters") != ["TestImage"]
+        ]
+    stripped = without_test_parts(stripped)
+    if stripped != release:
+        for section in sorted(set(stripped) | set(release)):
+            if stripped.get(section) != release.get(section):
+                failures.append(
+                    f"{test_path} without its test parts is not {release_path}: they differ in {section}"
+                )
+    return failures
+
+
+VERSION_TYPE = "Custom::Version"
+DOWNLOAD_KEY_PARAMETER = {"Ref": "ProDownloadKey"}
+
+
+def normal(statement):
+    """A policy statement, its actions as a sorted list, in each branch of a Fn::If."""
+    if isinstance(statement, dict) and list(statement) == ["Fn::If"] and isinstance(statement["Fn::If"], list):
+        return {"Fn::If": [normal(item) for item in statement["Fn::If"]]}
+    if isinstance(statement, dict) and "Action" in statement:
+        return {**statement, "Action": sorted(as_list(statement["Action"]))}
+    return statement
+
+
+def check_version(paths):
+    failures = []
+    for path in paths:
+        template = load(path)
+        resources = template.get("Resources", {})
+        lookups = of_type(resources, VERSION_TYPE)
+        if len(lookups) != 1:
+            failures.append(f"{path}: {len(lookups)} {VERSION_TYPE} resources, not one, find the version to install")
+            continue
+        ((name, lookup),) = lookups.items()
+        function_name = get_att(lookup.get("Properties", {}).get("ServiceToken"))
+        function = resources.get(function_name, {}) if function_name else {}
+        if function.get("Type") != "AWS::Lambda::Function":
+            failures.append(f"{path}: {name}'s ServiceToken is not a function of the template's")
+            continue
+        properties = function.get("Properties", {})
+
+        log_group = properties.get("LoggingConfig", {}).get("LogGroup", {})
+        log_group = log_group.get("Ref") if isinstance(log_group, dict) else None
+        if not log_group or resources.get(log_group, {}).get("Type") != "AWS::Logs::LogGroup":
+            failures.append(f"{path}: {function_name} does not log to a log group of the template's")
+        role_name = get_att(properties.get("Role"))
+        role = resources.get(role_name, {}) if role_name else {}
+        if role.get("Type") != "AWS::IAM::Role":
+            failures.append(f"{path}: {function_name} has no role of the template's")
+        else:
+            failures.extend(f"{path}: {failure}" for failure in lambda_trust_failures(role_name, role))
+            wanted = [
+                {
+                    "Fn::If": [
+                        "LooksUpWithDownloadKey",
+                        {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": {"Ref": DOWNLOAD_KEY}},
+                        {"Ref": "AWS::NoValue"},
+                    ]
+                },
+                {"Effect": "Allow", "Action": ["cloudformation:DescribeStacks"], "Resource": STACK_ID},
+                {
+                    "Effect": "Allow",
+                    "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+                    "Resource": {"Fn::GetAtt": [log_group, "Arn"]},
+                },
+            ]
+            found = [normal(statement) for statement in statements(role)]
+            key = lambda statement: json.dumps(statement, sort_keys=True)
+            if sorted(found, key=key) != sorted(wanted, key=key):
+                failures.append(
+                    f"{path}: {role_name} allows other than reading {DOWNLOAD_KEY} for Qory Apiary Pro, "
+                    f"describing this stack and writing to {log_group}: {json.dumps(found)}"
+                )
+
+        for where, value in ((name, lookup), (function_name, function), (role_name, role)):
+            if DOWNLOAD_KEY_PARAMETER in list(refs(value)):
+                failures.append(f"{path}: {where} is given ProDownloadKey: the function reads the key from {DOWNLOAD_KEY}")
+            if DYNAMIC_REFERENCE in json.dumps(value):
+                failures.append(f"{path}: {where} holds a dynamic reference ({DYNAMIC_REFERENCE}...), which could carry the key")
+
+        task_definitions = of_type(resources, "AWS::ECS::TaskDefinition")
+        execution_roles = {get_att(task.get("Properties", {}).get("ExecutionRoleArn")) for task in task_definitions.values()}
+        allowed = {("Resources", name, "Properties", "DownloadKeySecret"), ("Resources", role_name, "Properties", "Policies")}
+        allowed |= {("Resources", execution_role, "Properties", "Policies") for execution_role in execution_roles}
+        for where in names_of(template, DOWNLOAD_KEY, ()):
+            in_repository_credentials = (
+                where[:1] == ("Resources",)
+                and where[1] in task_definitions
+                and where[2:4] == ("Properties", "ContainerDefinitions") and where[5:6] == ("RepositoryCredentials",)
+            )
+            if not in_repository_credentials and not any(where[: len(place)] == place for place in allowed):
+                failures.append(
+                    f"{path}: {'.'.join(map(str, where))} names {DOWNLOAD_KEY}, the download key's secret, "
+                    f"outside {name}'s DownloadKeySecret, {role_name}'s grant and the task's pull"
+                )
+
+        role_name_text = role.get("Properties", {}).get("RoleName")
+        for other, policy in resources.items():
+            if policy.get("Type") not in ATTACHED_POLICIES:
+                continue
+            if list(names_of(policy, role_name, ())) or (role_name_text and json.dumps(role_name_text) in json.dumps(policy)):
+                failures.append(f"{path}: {other}, an {policy['Type']}, attaches more to {role_name}")
+
+        images = [
+            without_test_parts(container.get("Image"))
+            for resource in of_type(resources, "AWS::ECS::TaskDefinition").values()
+            for container in resource.get("Properties", {}).get("ContainerDefinitions", [])
+        ]
+        if not images or any(get_att(image, "Image") != name for image in images):
+            failures.append(f"{path}: the task's image is not {name}'s Image, pinned by its digest: {json.dumps(images)}")
+    return failures
+
+
+DYNAMIC_REFERENCE = "{{resolve:"
+ATTACHED_POLICIES = {"AWS::IAM::Policy", "AWS::IAM::ManagedPolicy", "AWS::IAM::RolePolicy"}
+
+
+def names_of(value, logical_id, where):
+    """Where a value names a logical ID: a !Ref, a !GetAtt, a ${...} in a Fn::Sub, or a
+    DependsOn; each by its path of keys and indexes."""
+    if isinstance(value, dict):
+        if value == {"Ref": logical_id} or get_att_names(value) == logical_id:
+            yield where
+            return
+        for key, item in value.items():
+            if key == "Fn::Sub":
+                text = item[0] if isinstance(item, list) else item
+                if isinstance(text, str) and re.search(r"\$\{" + re.escape(logical_id) + r"(\.[^}]*)?\}", text):
+                    yield where + (key,)
+            if key == "DependsOn" and logical_id in as_list(item):
+                yield where + (key,)
+            yield from names_of(item, logical_id, where + (key,))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from names_of(item, logical_id, where + (index,))
+
+
+def get_att_names(value):
+    """The logical ID a !GetAtt names, whatever its attribute, or None."""
+    if isinstance(value, dict) and list(value) == ["Fn::GetAtt"]:
+        argument = value["Fn::GetAtt"]
+        if isinstance(argument, str):
+            argument = argument.split(".", 1)
+        if isinstance(argument, list) and argument:
+            return argument[0]
+    return None
+
+
+def refs(value):
+    """Every !Ref in a value, and each ${...} of a Fn::Sub as a !Ref."""
+    if isinstance(value, dict):
+        if list(value) == ["Ref"]:
+            yield value
+        for function, argument in value.items():
+            if function == "Fn::Sub":
+                text = argument[0] if isinstance(argument, list) else argument
+                if isinstance(text, str):
+                    for variable in re.findall(r"\$\{([^}!.]+)\}", text):
+                        yield {"Ref": variable}
+            yield from refs(argument)
+    elif isinstance(value, list):
+        for item in value:
+            yield from refs(item)
+
+
 def main(argv):
     if argv[1:] == ["policy"]:
         failures = check_policy()
-    elif argv[1:] == ["outputs"]:
-        failures = check_outputs()
+    elif argv[1:2] == ["outputs"]:
+        failures = check_outputs(argv[2:] or [TEMPLATE])
     elif argv[1:] == ["kept"]:
         failures = check_kept()
     elif argv[1:] == ["mappings"]:
@@ -592,6 +887,12 @@ def main(argv):
         failures = check_ascii(argv[2:] or [TEMPLATE, POLICY])
     elif len(argv) == 3 and argv[1] == "secrets":
         failures = check_secrets(argv[2])
+    elif len(argv) >= 3 and argv[1] == "release":
+        failures = check_release(argv[2:])
+    elif len(argv) == 4 and argv[1] == "copies":
+        failures = check_copies(argv[2], argv[3])
+    elif argv[1:2] == ["version"]:
+        failures = check_version(argv[2:] or [TEMPLATE])
     else:
         sys.exit(__doc__)
 

@@ -87,6 +87,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
     * `owner`: whether the reader may change a locked rule;
     * `locked_by`: `%{host => %{by:, at:}}`, who locked what, when the page knows;
+    * `who_locks`: the edition's sentence of who may change a locked rule
+      (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`), said in
+      place of the core's to a reader who may not, or nil for the core's;
     * `editing`: true on the Edit rule page, where the same rule again has nothing to save.
   """
   def host_rule(form, context) do
@@ -148,7 +151,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
       address?(host) ->
         {rich_gettext(
-           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says.",
+           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses whatever the policy says, and the machine's addresses unless the policy allows that host by name.",
            address: {:m, "10.0.0.12"}
          ), nil}
 
@@ -229,7 +232,13 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
     cond do
       existing && existing.locked && !context.owner ->
-        refusal([gettext("Only an owner can lock, unlock or change a locked rule.")], [])
+        refusal(
+          [
+            context[:who_locks] ||
+              gettext("Only an owner can lock, unlock or change a locked rule.")
+          ],
+          []
+        )
 
       locked = locked_above(action, host, context) ->
         locked_refusal(locked, action, context)
@@ -703,7 +712,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     last =
       if context.owner,
         do: gettext("You can change or unlock it on the workspace's policy page."),
-        else: gettext("Only an owner can change or unlock it.")
+        else: context[:who_locks] || gettext("Only an owner can change or unlock it.")
 
     refusal(
       lead ++ [" ", holds] ++ who ++ [" ", last],

@@ -555,7 +555,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert words(lv, "#key-forager-file-belongs") ==
                "The same for every machine connected to this Qory Apiary."
 
-      assert words(lv, "#key-forager-file-steps-4") =~ "4 Point qory at Qory Apiary."
+      assert words(lv, "#key-forager-file-steps-4") =~ "4 Point the node pool at Qory Apiary."
 
       assert lv |> element("#key-forager-file-url") |> render() |> text() |> String.trim() ==
                "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
@@ -1252,8 +1252,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert words(lv, "#node-configure-lead") ==
                  "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice. With a generated key, set these where the machine runs qory."
 
+        pointed = if target.kind == :pool, do: "the node pool", else: "the node"
+
         assert words(lv, "#node-configure-steps-1") =~
-                 "1 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables below."
+                 "1 Point #{pointed} at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables below."
 
         assert lv |> element("#node-configure-yaml") |> render() |> text() |> String.trim() ==
                  "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
@@ -1576,7 +1578,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                  String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "")
 
       assert words(lv, "#key-generated-steps-4") =~
-               "4 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
+               "4 Point the node pool at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
 
       assert lv |> element("#key-generated-yaml") |> render() |> text() =~
                "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"

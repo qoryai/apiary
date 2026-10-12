@@ -117,6 +117,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       reload_pending: false,
       now: DateTime.utc_now()
     )
+    |> Common.assign_authors()
     |> then(fn socket ->
       assign(socket,
         rows: Common.target_rules(effective, socket)
@@ -830,6 +831,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           now={@mode.mode}
           would={@would}
           locked_denies={@locked_denies}
+          scope={@current_scope}
         />
       </.mode_card>
 
@@ -1006,6 +1008,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :managed, :boolean, required: true, doc: "whether the workspace's policy is served"
   attr :would, :any, required: true
   attr :locked_denies, :list, required: true
+  attr :scope, :map, required: true, doc: "the reader's scope, for who may change a lock"
 
   # What follows the question's sentence: for enforce, what this target's runs were let
   # through in the last 14 days with no rule, each with its Allow here but for one no rule
@@ -1061,7 +1064,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
               <span
                 class="q-locked tooltip tooltip-left q-tip-wide"
                 tabindex="0"
-                data-tip={locked_tip(lock)}
+                data-tip={locked_tip(@scope, lock)}
               >
                 <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />{gettext(
                   "Locked deny"
@@ -1280,11 +1283,18 @@ defmodule ApiaryWeb.PolicyLive.Target do
            "font-medium text-base-content"}
       )
 
-  defp locked_tip(host),
+  # What a locked deny's lock says: the rule, then who may change it, in the edition's words
+  # where it has them (`ApiaryWeb.Access.who_may_after/4`).
+  defp locked_tip(scope, host),
     do:
-      gettext(
-        "A locked workspace rule denies %{host}. Only an owner can change it, on the workspace's policy page.",
-        host: host
+      ApiaryWeb.Access.who_may_after(
+        scope,
+        :"security_policy.lock",
+        gettext(
+          "A locked workspace rule denies %{host}. Only an owner can change it, on the workspace's policy page.",
+          host: host
+        ),
+        gettext("A locked workspace rule denies %{host}.", host: host)
       )
 
   defp baseline_tip,

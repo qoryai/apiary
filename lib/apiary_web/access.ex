@@ -31,7 +31,8 @@ defmodule ApiaryWeb.Access do
 
   A page that refuses anyone else a change, or offers them no way to make it, says who may
   with `who_may/3`: the core's sentence names the levels that may, and the edition may
-  say it instead.
+  say it instead. Where the core's sentence first says something else, such as that a
+  rule is locked, `who_may_after/4` keeps that lead before an edition's sentence.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -66,6 +67,29 @@ defmodule ApiaryWeb.Access do
     do: edition.who_may_sentence(about, scope) || default
 
   @doc """
+  who_may_after/4 is `who_may/3` for a sentence of the core's that says something before
+  who may: `lead`, then the edition's sentence (`c:ApiaryWeb.Edition.who_may_sentence/2`),
+  or `default`, the core's whole sentence, where the edition has none. `default` stays one
+  sentence to translate, so a translation of it keeps its order; `lead` is said only
+  before an edition's sentence.
+  """
+  @spec who_may_after(Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) :: String.t()
+  def who_may_after(scope, about, default, lead),
+    do: who_may_after(ApiaryWeb.Edition, scope, about, default, lead)
+
+  @doc false
+  # The same, asked of `edition`: the configured edition, or a test's.
+  @spec who_may_after(module, Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) ::
+          String.t()
+  def who_may_after(edition, scope, about, default, lead)
+      when is_atom(about) and is_binary(default) and is_binary(lead) do
+    case edition.who_may_sentence(about, scope) do
+      nil -> default
+      sentence -> lead <> " " <> sentence
+    end
+  end
+
+  @doc """
   view_action/1 is the action a LiveView mounts on (`on_mount({ApiaryWeb.Access, action})`),
   or nil for one that asks none, read from its mount hooks: for an answer about a page that
   is not open, as where a switch of workspace lands (`ApiaryWeb.SwitchController`).
@@ -93,4 +117,13 @@ defmodule ApiaryWeb.Access do
       do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
   end
+
+  @doc """
+  people_sentence/4 is a sentence of the People pages, `about` as
+  `c:ApiaryWeb.Edition.people_sentence/3` names it: the edition's words, given `bindings`,
+  or `default`, the core's.
+  """
+  @spec people_sentence(Apiary.Accounts.Scope.t(), term, map, String.t()) :: String.t()
+  def people_sentence(scope, about, bindings, default) when is_binary(default),
+    do: ApiaryWeb.Edition.people_sentence(about, scope, bindings) || default
 end

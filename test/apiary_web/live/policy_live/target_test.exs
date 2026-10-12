@@ -543,6 +543,53 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute own(scope, target, "tax.internal.example")
   end
 
+  test "who may change a lock is the core's words, or an edition's sentence after what is locked",
+       %{conn: conn, scope: scope, path: path} do
+    started_run(scope, shop(),
+      egress: [%{"host" => "bin.lock.example", "decision" => "allowed", "rule" => ""}]
+    )
+
+    member = log_in_user(build_conn(), member_fixture(scope, :member).user)
+    lock = "#rule-#{workspace_rule(scope, "*.paste.example").id}-lock"
+    key = ApiaryWeb.PolicyLive.Common.would_key(%{host: "bin.lock.example", path: nil})
+
+    words = fn ->
+      view = open(member, path)
+      tip = attribute(view, lock, "data-tip")
+      type(view, %{host: "bin.paste.example", paths: ""})
+
+      # A destination enforce would deny, listed before a locked deny came to cover it.
+      owner = pick_mode(open(conn, path), "enforce")
+      {:ok, deny} = Policy.deny(scope, nil, %{host: "*.lock.example", locked: true})
+      _ = render(owner)
+      destination = attribute(owner, "#would-#{key} .q-locked", "data-tip")
+      {:ok, _} = Policy.remove_rule(scope, deny)
+
+      %{lock: tip, refusal: text(view, "#policy-rule-refusal"), destination: destination}
+    end
+
+    core = words.()
+    assert core.lock == "Locked. Only an owner can change or unlock it."
+
+    refusal =
+      "A locked workspace rule denies *.paste.example . It holds against every repository, so no rule added here would change what happens."
+
+    assert core.refusal ==
+             "#{refusal} Only an owner can change or unlock it. Show the locked rule"
+
+    assert core.destination ==
+             "A locked workspace rule denies *.lock.example. Only an owner can change it, on the workspace's policy page."
+
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+    sentence = Apiary.EditionStubs.LockWorded.sentence()
+    worded = words.()
+    assert worded.lock == "Locked. #{sentence}"
+
+    assert worded.refusal == "#{refusal} #{sentence} Show the locked rule"
+
+    assert worded.destination == "A locked workspace rule denies *.lock.example. #{sentence}"
+  end
+
   test "a member is told only an owner changes the lock", %{scope: scope, path: path} do
     %{user: member} = member_fixture(scope, :member)
     view = compose(open(log_in_user(build_conn(), member), path))
@@ -1182,6 +1229,43 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, workspace} = Policy.get_configuration(scope, nil, 5)
     assert downloaded(view) == workspace.document
     assert downloaded(view) =~ "/acme/*"
+  end
+
+  describe "who made a rule" do
+    test "a person who is not a member of the organisation is named, the target's rule and the workspace's",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      %{scope: member, user: user, membership: membership} = member_fixture(scope, :member)
+      {:ok, own} = Policy.deny(member, target, %{host: "tracker.example"})
+      {:ok, workspace} = Policy.allow(member, nil, %{host: "cdn.example"})
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+      local = user.email |> String.split("@") |> hd()
+
+      view = open(conn, path)
+
+      for rule <- [own, workspace] do
+        assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
+        refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+      end
+
+      type(view, %{host: "tracker.example", paths: "", action: "deny"})
+
+      assert text(view, "#policy-rule-host-error") =~
+               "tracker.example is already denied for this repository, by #{local} on"
+    end
+
+    test "a person whose account is deleted is a former member, the target's rule and the workspace's",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      %{scope: member} = member_fixture(scope, :member)
+      {:ok, own} = Policy.deny(member, target, %{host: "tracker.example"})
+      {:ok, workspace} = Policy.allow(member, nil, %{host: "cdn.example"})
+      {:ok, _} = Apiary.Accounts.delete_user(member)
+
+      view = open(conn, path)
+
+      for rule <- [own, workspace] do
+        assert text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+      end
+    end
   end
 
   # What the Document view's Download saves: the bytes its data URI carries.

@@ -35,18 +35,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     store the secret, its slot `phx-update="ignore"`, empty from the server, carrying the
     public key the server stored (`data-public-key`), its ids the key's, so that a patch to
     another key's page replaces it; set the key's ID; set Qory Apiary's public key; point
-    qory at Qory Apiary, the Forager file's address. The hook writes the secret into the
-    slot only beside the secret's public key, empties a slot that shows a secret for another
-    public key, and empties it as the page goes. The server never has the secret: not in
-    assigns, a render, a log line or the record. What the page says of the secret follows
-    what the browser holds, not the server, whose render is the same whether the page made
-    the key, was opened again or was joined again after a dropped connection: the notice
-    that the secret is shown once, the secret's Copy and the note beside Done come hidden
-    (`data-secret-shown`), and the hook shows them while the slot shows the secret; while
-    it holds nothing for the key, it shows the slot's "Not shown" line instead. A
-    reconnect never empties the slot. It is the page of an active key the reader made in a
-    browser, while they may add keys; any other key's address goes to its Forager file, or
-    back to the tab.
+    the node, node pool or gateway at Qory Apiary, the Forager file's address. The hook
+    writes the secret into the slot only beside the secret's public key, empties a slot that
+    shows a secret for another public key, and empties it as the page goes. The server never
+    has the secret: not in assigns, a render, a log line or the record. What the page says
+    of the secret follows what the browser holds, not the server, whose render is the same
+    whether the page made the key, was opened again or was joined again after a dropped
+    connection: the notice that the secret is shown once, the secret's Copy and the note
+    beside Done come hidden (`data-secret-shown`), and the hook shows them while the slot
+    shows the secret; while it holds nothing for the key, it shows the slot's "Not shown"
+    line instead. A reconnect never empties the slot. It is the page of an active key the
+    reader made in a browser, while they may add keys; any other key's address goes to its
+    Forager file, or back to the tab.
 
   **The tab.** While the node holds no active key, owners and admins read "How do you want
   to connect …?" and the two ways as two equal options, side by side and of one height:
@@ -70,16 +70,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     same order, for moving to a new key; at the limit, only the line that says to revoke
     one first, and a command still waiting, which can still be cancelled.
   - **Configure a machine**, once the node holds an active key, for everyone, at the limit
-    too: four numbered steps, point qory at Qory Apiary (the Forager file's address), set
-    Qory Apiary's public key, set the key's ID (its value while one key is active, else a
-    pointer to the key's card), keep the key's secret in a secret store (never shown).
+    too: four numbered steps, point the node, node pool or gateway at Qory Apiary (the
+    Forager file's address), set Qory Apiary's public key, set the key's ID (its value while
+    one key is active, else a pointer to the key's card), keep the key's secret in a secret
+    store (never shown).
   - **Forager file for a key** (`…/access-key/keys/:key_id/forager-file`), a separate page
     for an active key, linked from its card for everyone who reads the node, since nothing
     on it is secret. What it says follows how the key came: a key connected with a command
     has the Forager file's `server` lines the command wrote, each marked as Qory Apiary's or
     this key's; a generated key has four numbered steps: keep the secret in a secret
-    store, set its id, set Qory Apiary's public key, point qory at Qory Apiary. Either way
-    it says truly where the key's secret is.
+    store, set its id, set Qory Apiary's public key, point the node, node pool or gateway at
+    Qory Apiary. Either way it says truly where the key's secret is.
 
   **A node's gateway.** A node or a pool whose choice of gateway leads to one
   (`Apiary.Gateways.chosen/1`) is told so wherever it is told how to connect, on the tab,
@@ -90,13 +91,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   point at Qory Apiary, through that gateway: the command carries `--via` and the
   gateway's URL (`ApiaryWeb.NodeComponents.enrol_command/3`), with the line under it on a
   private certificate authority (`ApiaryWeb.NodeComponents.via_ca_line/1`), and the
-  Forager file's lines, the command key's and every "Point qory at Qory Apiary" step's,
-  carry `via` and its `url` (`Apiary.AccessKeys.via_lines/1`), the step's title naming
-  the gateway; a pool's step adds that a starter that reaches Qory Apiary directly can
-  leave `via` out.
+  Forager file's lines, the command key's and those of every step that points the node or
+  node pool at Qory Apiary, carry `via` and its `url` (`Apiary.AccessKeys.via_lines/1`),
+  the step's title naming the gateway; a pool's step adds that a starter that reaches Qory
+  Apiary directly can leave `via` out.
 
   **A gateway's tab.** A gateway's Access key tab has the same layout, in words for a gateway: its key
-  enrols the gateway and registers no run.
+  enrols the gateway and registers no run, and its address step points the gateway at Qory
+  Apiary.
 
   **The server's part.** The address and `QORY_APIARY_PUBLIC_KEY`, the instance's
   signing key, are Qory Apiary's, the same for every machine connected to it, so the pages
@@ -1069,12 +1071,22 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # `gateway:`.
   defp under_gateway(line), do: "  " <> line
 
-  # The title of the step that gives the Forager file's address lines, naming the gateway
-  # the node's choice leads to, if any.
-  defp point_title(nil), do: gettext("Point qory at Qory Apiary.")
+  # The title of the step that gives the Forager file's address lines: it names the kind
+  # of what is pointed at Qory Apiary, the gateway, the node pool or the node, and the
+  # gateway the node's choice leads to, if any. A gateway's choice leads to none
+  # (`Apiary.Gateways.chosen/1`).
+  defp point_title(%Node{kind: :gateway}, _through),
+    do: gettext("Point the gateway at Qory Apiary.")
 
-  defp point_title(gateway),
-    do: gettext("Point qory at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+  defp point_title(%Node{kind: :pool}, nil), do: gettext("Point the node pool at Qory Apiary.")
+
+  defp point_title(%Node{kind: :pool}, gateway),
+    do: gettext("Point the node pool at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+
+  defp point_title(_node, nil), do: gettext("Point the node at Qory Apiary.")
+
+  defp point_title(_node, gateway),
+    do: gettext("Point the node at Qory Apiary, through %{gateway}.", gateway: gateway.name)
 
   attr :id, :string, required: true
   attr :node, Node, required: true
@@ -1664,7 +1676,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
               </dl>
             </:step>
-            <:step title={point_title(@through)}>
+            <:step title={point_title(@node, @through)}>
               <p class="text-muted">
                 {gettext(
                   "In the Forager file. It is required: without it, qory ignores the three variables."
@@ -1802,7 +1814,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
                 <p id="key-forager-file-belongs" class="text-muted">{same_note()}</p>
               </:step>
-              <:step title={point_title(@through)}>
+              <:step title={point_title(@node, @through)}>
                 <p :if={@through} class="text-muted">
                   <.via_note id="key-forager-file-via" node={@node} through={@through} />
                 </p>
@@ -2297,7 +2309,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <p>{gettext("With a generated key, set these where the machine runs qory.")}</p>
         </div>
         <.how_to id={"#{@id}-steps"}>
-          <:step title={point_title(@through)}>
+          <:step title={point_title(@node, @through)}>
             <p class="text-muted">
               {gettext(
                 "In the Forager file. It is required: without it, qory ignores the three variables below."

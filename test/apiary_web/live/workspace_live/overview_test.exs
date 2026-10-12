@@ -1219,6 +1219,36 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   describe "to review" do
     @tag needs: :security
+    test "a locked rule's hover says who may change it: the core's words, or an edition's sentence after the rule",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => "*.paste.example"}
+        ]
+      )
+
+      {:ok, deny} = Policy.deny(scope, nil, %{host: "*.paste.example"})
+      {:ok, _} = Policy.lock(scope, deny)
+
+      title = fn ->
+        conn
+        |> open(scope)
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied] .q-ar-why")
+        |> LazyHTML.attribute("title")
+      end
+
+      assert title.() == [
+               "A locked workspace rule denies *.paste.example. Only an owner can change it."
+             ]
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+      assert title.() == ["A locked workspace rule denies *.paste.example. #{sentence}"]
+    end
+
+    @tag needs: :security
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       {:ok, _} = Policy.set_mode(scope, "enforce")

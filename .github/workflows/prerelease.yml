@@ -26,8 +26,9 @@ concurrency:
 # Builds the image of a commit, as release.yml builds a release's, for linux/amd64 and
 # linux/arm64, and publishes it to ghcr.io/qoryai/apiary-prerelease alone, never to
 # ghcr.io/qoryai/apiary: as sha-<the commit's first 7 characters>, and as next too when
-# the ref built is the branch next. The AWS template's Test image field names such an image
-# for a test before a release.
+# the ref built is the branch next. The test copy of the AWS template, which is the
+# repository's deploy/aws/apiary.yaml, names such an image under Test image for a test
+# before a release; a release's copy has no Test image.
 #
 # ghcr.io/qoryai/apiary-prerelease stays private for good: it is never made public. It is a
 # package of its own because GHCR sets visibility per package, not per tag: a pre-release

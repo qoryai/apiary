@@ -525,7 +525,7 @@ the schema cannot say: a secret has its `<name>_file` beside it and is never nes
 the credential role's `argument` compiles. A role other than `credential` is kept as it is
 and shown among the roles. The vendored schema and
 the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
-the integrations' `next` branch, by its id. The contracts' patterns are
+the integrations' `main` branch, by its id. The contracts' patterns are
 compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
 `\z` (`Apiary.Kinds.Pattern`), so a value with a trailing newline never passes.
 
