@@ -631,7 +631,7 @@ defmodule ApiaryWeb.UserAuth do
         socket
         |> Phoenix.LiveView.put_flash(
           :error,
-          gettext("What that page showed is no longer part of %{organisation}.",
+          gettext("That page is no longer shown in %{organisation}.",
             organisation: reloaded.organisation.name
           )
         )

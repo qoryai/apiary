@@ -116,7 +116,7 @@ page, the one the person came from (Two levels, below).
   the person's Account, Preferences and Organisations under Your settings, the sidebar of
   their own pages only where there is no workspace to show (Two levels, below). It is
   never replaced: a page of a scope's settings keeps the scope's sidebar. A group whose
-  feature is off is absent, not greyed.
+  feature is off, or hidden from the reader, is absent, not greyed.
 - **The current entry.** `aria-current="page"` marks only the entry of the exact page; a
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
@@ -1358,8 +1358,8 @@ or of the Instance, or an entry of the navigation, of New or of the account menu
 (`ApiaryWeb.Edition`). What it renders there links to its own pages, which handle its
 events; a page whose behaviour differs is the edition's own at the same path.
 
-A component does not ask `Apiary.Features` what the instance serves: the page asks with
-its scope and passes the answer, as the connection row's `security` attribute does. What
+A component does not ask `Apiary.Features` what the instance serves or the reader is
+shown: the page asks with its scope and passes the answer, as the connection row's `security` attribute does. What
 Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
 ### Storybook

@@ -43,9 +43,8 @@ Qory Apiary Pro adds, for a company that runs Qory Apiary for more than one team
 
 - more organisations and more workspaces;
 - per-member workspace access: a member reaches the workspaces they are added to;
-- narrowing features per workspace;
-- the Admin area, where the instance's admins manage the organisations, accounts and
-  features of the instance.
+- the Admin area, where the instance's admins manage the organisations and accounts of
+  the instance, and which features each organisation is shown.
 
 ### Operator
 
@@ -55,5 +54,5 @@ Operator adds, for a company that provides a harness its clients run on Qory Api
   them, to support its harness, and changes nothing there;
 - policy requests: an operator asks its clients for the changes to their security policy
   its harness needs, and each client answers;
-- features granted down the chain, from the instance to the operator and from the operator
-  to its clients.
+- features shown down the chain, from the level above to each organisation below it; a
+  hidden feature still works for that organisation's nodes and runs.

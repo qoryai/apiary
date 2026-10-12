@@ -725,6 +725,13 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   registration, events, attach, outcome and reload, and its run configuration, whatever a
   level above the workspace shows. An edition can no longer switch a feature off below the
   instance.
+- Below the instance a feature is shown or hidden, never switched off. An edition says what
+  a person is not shown in an organisation (`c:Apiary.Edition.hidden/1`, the core's answer:
+  nothing); a hidden feature's pages, menu entries and actions are not found for that
+  person, and still work in full for nodes, rendering and jobs.
+  `c:Apiary.Edition.features_of/3`, `Apiary.Features.of/2` and `Apiary.Features.on?/2` are
+  gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
+  is shown.
 
 ### Removed
 
