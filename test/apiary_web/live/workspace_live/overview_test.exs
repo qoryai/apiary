@@ -738,7 +738,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "To review leads nowhere on the nodes page", %{conn: conn, scope: scope} do
+    test "To review leads nowhere on the nodes page, and to the Policy page for a policy item",
+         %{conn: conn, scope: scope} do
       idle = node_key(scope, "old-runner")
       long_ago(idle, 34)
 
@@ -755,16 +756,93 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
 
-      # Shown the nodes, the list overflows.
+      # Shown the nodes, the list overflows from the enforce nudge, then the idle key.
       :ok = Apiary.EditionStubs.HidesNamed.put([])
-      assert has_element?(open(conn, scope), "#attention-more")
+
+      assert has_element?(
+               open(conn, scope),
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='2 more items, on the Policy page']",
+               "and 2 more"
+             )
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      assert text(view, "#attention-n") == "5"
+
+      assert has_element?(
+               view,
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='1 more item, on the Policy page']",
+               "and 1 more"
+             )
+
+      refute has_element?(view, "#att-key-#{idle.id}")
+      refute render(view) =~ "/nodes"
+    end
+
+    @tag needs: :security
+    test "a policy item first in the overflow has no link once the policy is hidden", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/policy")}']")
+
+      # The policy is hidden from the reader while the page is open: once the scope is read
+      # again and the list weighed again, the link goes.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      send(view.pid, {:membership_changed, :level})
+      send(view.pid, :quiet_tick)
+
+      assert text(view, "#attention-n") == "5"
+      refute has_element?(view, "#attention-more")
+    end
+
+    @tag needs: :security
+    test "an idle key first in the overflow leads to the nodes page, and nowhere once they are hidden",
+         %{conn: conn, scope: scope} do
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # Enforce, the default: no policy item, so the idle key is the sixth.
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      assert has_element?(
+               open(conn, scope),
+               "#attention-more[href='#{workspace_path(scope, "/nodes?sort=seen")}'][title='1 more item, on the nodes page']",
+               "and 1 more"
+             )
 
       :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
       view = open(conn, scope)
 
       assert text(view, "#attention-n") == "5"
       refute has_element?(view, "#attention-more")
-      refute has_element?(view, "#att-key-#{idle.id}")
       refute render(view) =~ "/nodes"
     end
   end
@@ -1226,6 +1304,32 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       # The idle key is the sixth: on the nodes page, not on this list.
       refute has_element?(view, "#att-key-#{idle.id}")
+    end
+
+    @tag needs: :security
+    test "a policy item first in the overflow links to the Policy page", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # No rule yet, with runs: the policy is unmanaged, the sixth item.
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      view = open(conn, scope)
+
+      assert has_element?(
+               view,
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='1 more item, on the Policy page']",
+               "and 1 more"
+             )
     end
 
     @tag needs: :security

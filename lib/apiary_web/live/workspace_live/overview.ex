@@ -1472,10 +1472,28 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             )
         }
 
+      # The policy page, where the reader may read it: the policy items are dealt with there.
+      kind when kind in [:enforce, :unmanaged] ->
+        if Common.may?(scope, :"security_policy.read"), do: policy_more(scope, count)
+
       # The nodes page, where the reader is shown it: an edition may hide the nodes.
-      _ ->
+      :idle_key ->
         if Common.may?(scope, :"node.read"), do: nodes_more(scope, count)
     end
+  end
+
+  defp policy_more(scope, count) do
+    %{
+      count: count,
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/policy",
+      title:
+        ngettext(
+          "%{number} more item, on the Policy page",
+          "%{number} more items, on the Policy page",
+          count,
+          number: Format.number(count)
+        )
+    }
   end
 
   defp nodes_more(scope, count) do
