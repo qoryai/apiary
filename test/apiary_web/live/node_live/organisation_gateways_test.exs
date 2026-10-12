@@ -32,6 +32,8 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
   defp node_path(scope, node, rest \\ ""),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}" <> rest
 
+  defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim()
+
   defp member_conn(scope, level \\ :member) do
     %{user: user} = member_fixture(scope, level)
     log_in_user(build_conn(), user)
@@ -368,6 +370,33 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
                lv,
                "#new-node-form",
                "On Default gateway, runs go through edge-org, the default for #{scope.organisation.name}. On Direct, they go through no gateway."
+             )
+    end
+  end
+
+  describe "the empty Gateways page" do
+    test "says the core's body with the core edition, and the edition's where it gives one", %{
+      conn: conn,
+      scope: scope
+    } do
+      many_workspaces(%{})
+      {:ok, lv, _html} = live(conn, gateways_path(scope))
+      assert has_element?(lv, "#gateways-empty", "No gateways yet")
+
+      assert lv |> element("#gateways-empty p") |> render() |> text() ==
+               "Add one so the nodes in #{scope.organisation.name}'s workspaces can send runs through it."
+
+      Edition.put_test_stub(EditionStubs.GatewaysEmptyWorded)
+      {:ok, lv, _html} = live(conn, gateways_path(scope))
+      assert has_element?(lv, "#gateways-empty", "No gateways yet")
+
+      assert lv |> element("#gateways-empty p") |> render() |> text() ==
+               "Stub empty gateways body."
+
+      assert has_element?(
+               lv,
+               "#gateways-intro",
+               "Nodes in any workspace of #{scope.organisation.name} can use the gateways added here."
              )
     end
   end

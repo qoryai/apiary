@@ -2884,7 +2884,7 @@ msgstr ""
 msgid "Add node pool"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/gateways.ex
+#: lib/apiary_web/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "Add one so the nodes in %{organisation}'s workspaces can send runs through it."
 msgstr ""

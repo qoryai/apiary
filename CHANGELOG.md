@@ -685,6 +685,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the run's Terminal is hidden from.
 - A feature part can belong to no feature; the nodes, node pools, access keys and gateways
   are the part `nodes`, which an edition may hide from a person while nodes keep working.
+- An edition may give other words for the invitation's description, a level's hint on
+  People (`c:ApiaryWeb.Edition.people_sentence/3`) and the empty Gateways page
+  (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`); the core edition keeps
+  today's.
 
 ### Changed
 
