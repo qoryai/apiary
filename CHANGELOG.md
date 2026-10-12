@@ -249,7 +249,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   endpoint. Discovery names the key's node (`node_id`), its workspace (`workspaces`) and
   the server's keys (`apiary_public_key`), so its digest differs by node and workspace.
   The tests replay the contract's fixtures at the commit `.forager-contract-ref` pins,
-  85ea92e on Forager's next.
+  457a8a7 on Forager's main.
 - A workspace's id in the server contract: every workspace has one, `ws_` and 16
   characters, made when it is created, and for a workspace that was already there by the
   migration that adds it (Migrations, below). Discovery lists it as `workspaces`, the one
