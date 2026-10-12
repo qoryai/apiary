@@ -39,11 +39,12 @@ defmodule Apiary.Policy.Resolution do
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
      are denied by having no allow, as before; under `observe` they are reached and
      recorded with no rule.
-  4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
-     allowed entry (the gateway holds a host to the path list of whichever entry of `paths`
-     it finds first). A `*.` allow of the level above held to paths overrides every lower
-     allow it covers instead, whatever its rank: the level above is never refused for a
-     rule below it.
+  4. **A `*.` suffix held to paths above another allowed entry is refused**: Qory Apiary
+     doesn't let a `*.` suffix with paths cover another allowed host. The gateway holds a
+     host to the path list of its most specific entry of `paths`: its name itself, else the
+     `*.` entry with the longest suffix. A `*.` allow of the level above held to paths
+     overrides every lower allow it covers instead, whatever its rank: the level above is
+     never refused for a rule below it.
   5. **A rule whose host the grammar refuses** (`Apiary.Policy.Grammar.host?/1`), stored
      before the grammar refused it, such as the address `127.1`, is not in force
      (`Apiary.Policy.Entry`'s `reason: :out_of_grammar`) and is left out of the document:
@@ -287,8 +288,8 @@ defmodule Apiary.Policy.Resolution do
   end
 
   # A `*.` allow of the level above held to paths overrides every lower allow it covers,
-  # whatever its rank: the document cannot hold both, and the level above is never
-  # refused for a rule below it. The lower allow is narrowed to the level's paths.
+  # whatever its rank: the level above's allow is never widened, and the level above is
+  # never refused for a rule below it. The lower allow is narrowed to the level's paths.
   defp under_above_allow(entries) do
     held =
       for {index, %{action: :allow, source: :organisation, paths: paths} = entry}
@@ -342,7 +343,7 @@ defmodule Apiary.Policy.Resolution do
                ),
                pgettext(
                  "plain",
-                 "The gateway holds a host to one list of paths and cannot tell which of the two applies."
+                 "Qory Apiary doesn't let a *. suffix with paths cover another allowed host."
                ),
                gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
                  host: below.host

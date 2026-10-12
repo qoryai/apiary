@@ -3,4 +3,4 @@
 # its go.mod (e2e/run.sh, FORAGER_SRC). The
 # contract the tests replay is pinned in .forager-contract-ref, a pin of its own, kept
 # apart so that the two can move separately.
-0acc90a7bef0c45e624fc380d51759eeea940d23
+9ba6a7616ae757a1ae4b1d80f97639a78a05255b

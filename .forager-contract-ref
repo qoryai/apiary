@@ -8,4 +8,4 @@
 # gateway's key in discovery and enrolment, a gateway's enrolment request and its signed
 # answer, a gateway's discovery document without workspaces, and the refusals of a
 # gateway that may no longer serve a run's workspace.
-0acc90a7bef0c45e624fc380d51759eeea940d23
+9ba6a7616ae757a1ae4b1d80f97639a78a05255b
