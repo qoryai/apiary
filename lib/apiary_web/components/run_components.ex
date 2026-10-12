@@ -3673,10 +3673,12 @@ defmodule ApiaryWeb.RunComponents do
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,
         target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
         what: %{target:, workspace:}, own_rule:, workspace:, alive:, fetched:, interval:, consequence:, error:,
-        refusal: nil | %{rule_option:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
+        refusal: nil | %{rule_option:, rule:, locked_by:, locked_at:, owner:, who:, rule_path:}}
 
   or, where only the level above the workspace allows the host, `%{anchor:, host:,
-  elsewhere: %{name:, path:}}`.
+  elsewhere: %{name:, path:}}`. A refusal's `who` is the edition's sentence of who may
+  change a locked rule (`c:ApiaryWeb.Edition.who_may_sentence/2`), said to a reader who
+  may not (`owner` false), or nil for the core's.
 
   The form changes with `rule_change` and is sent with `rule_submit`: Enter sends it once
   its button says what it does. Cancel and Escape send `rule_cancel`. A refusal, and the
@@ -3763,7 +3765,7 @@ defmodule ApiaryWeb.RunComponents do
           </span>
           {if @panel.refusal.owner,
             do: gettext("You can change or unlock it on the workspace's policy page."),
-            else: gettext("Only an owner can change or unlock it.")}
+            else: @panel.refusal[:who] || gettext("Only an owner can change or unlock it.")}
         </span>
       </.notice>
       <div class="q-rp-act">

@@ -73,6 +73,35 @@ defmodule ApiaryWeb.AccessTest do
       assert NodesEdition.product_name() == ApiaryWeb.Edition.Core.product_name()
     end
 
+    test "after a lead is the core's whole sentence where the edition has none", %{scope: scope} do
+      default =
+        "The rule for api.example is locked. Only an owner changes or removes a locked rule."
+
+      lead = "The rule for api.example is locked."
+
+      assert ApiaryWeb.Access.who_may_after(
+               ApiaryWeb.Edition.Core,
+               scope,
+               :"security_policy.lock",
+               default,
+               lead
+             ) == default
+
+      assert ApiaryWeb.Access.who_may_after(NodesEdition, scope, :"node.delete", default, lead) ==
+               default
+    end
+
+    test "after a lead is the lead, then the edition's sentence, where it has one",
+         %{scope: scope} do
+      assert ApiaryWeb.Access.who_may_after(
+               NodesEdition,
+               scope,
+               :"node.create",
+               "Nodes are full. Only owners and admins add nodes.",
+               "Nodes are full."
+             ) == "Nodes are full. In Acme, someone else adds the nodes."
+    end
+
     # Each page asks with an action of `Apiary.Access`, or a subject the callback names:
     # one it names nowhere would never be answered.
     test "is asked of an action, or of a subject the edition's callback names" do

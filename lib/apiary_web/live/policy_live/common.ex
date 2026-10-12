@@ -328,7 +328,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         off: entry && off_words(entry, scope.workspace.name, above),
         by: person(socket.assigns.people, rule.created_by_id),
         at: rule.inserted_at,
-        locked_tip: locked_tip(locks[rule.host]),
+        locked_tip: rule.locked && locked_tip(scope, locks[rule.host]),
         can_change: edit? and (not rule.locked or lock?),
         act: :remove,
         view: nil
@@ -378,7 +378,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         off: off_words(entry, workspace, above),
         by: person(socket.assigns.people, entry.rule.created_by_id),
         at: entry.rule.inserted_at,
-        locked_tip: entry.locked && locked_tip(locks[entry.host]),
+        locked_tip: entry.locked && locked_tip(scope, locks[entry.host]),
         can_change: own? and edit?,
         act: if(own?, do: act(entry), else: nil),
         view:
@@ -495,11 +495,29 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def async_value(%Phoenix.LiveView.AsyncResult{loading: nil}), do: :unavailable
   def async_value(_async), do: :loading
 
-  defp locked_tip(%{by: by, at: at}) when is_binary(by),
+  # What a locked rule's lock says: who locked it and when, where the page knows, then who
+  # may change or unlock it, in the edition's words where it has them
+  # (`ApiaryWeb.Access.who_may_after/4`).
+  defp locked_tip(scope, %{by: by, at: at}) when is_binary(by),
     do:
-      gettext("Locked by %{by} on %{at}. Only an owner can change or unlock it.", by: by, at: at)
+      ApiaryWeb.Access.who_may_after(
+        scope,
+        :"security_policy.lock",
+        gettext("Locked by %{by} on %{at}. Only an owner can change or unlock it.",
+          by: by,
+          at: at
+        ),
+        gettext("Locked by %{by} on %{at}.", by: by, at: at)
+      )
 
-  defp locked_tip(_unknown), do: gettext("Locked. Only an owner can change or unlock it.")
+  defp locked_tip(scope, _unknown),
+    do:
+      ApiaryWeb.Access.who_may_after(
+        scope,
+        :"security_policy.lock",
+        gettext("Locked. Only an owner can change or unlock it."),
+        gettext("Locked.")
+      )
 
   @doc """
   Who locked which host, from the newest page of the workspace's changes (a page the
@@ -544,6 +562,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
         entries: socket.assigns.effective.entries,
         owner: may?(socket, :"security_policy.lock"),
         locked_by: socket.assigns[:locks] || %{},
+        who_locks:
+          ApiaryWeb.Edition.who_may_sentence(
+            :"security_policy.lock",
+            socket.assigns.current_scope
+          ),
         editing: socket.assigns[:rule_edit] != nil
       })
 

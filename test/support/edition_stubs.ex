@@ -594,6 +594,19 @@ defmodule Apiary.EditionStubs do
     def who_may_sentence(_about, _scope), do: nil
   end
 
+  defmodule LockWorded do
+    @moduledoc """
+    The pages and the policy say who may lock, unlock or change a locked rule in the
+    edition's words (`c:ApiaryWeb.Edition.who_may_sentence/2`, `security_policy.lock`),
+    and the core's words for anything else.
+    """
+    def who_may_sentence(:"security_policy.lock", _scope), do: sentence()
+    def who_may_sentence(_about, _scope), do: nil
+
+    @doc "The sentence it says."
+    def sentence, do: "Only the stub's owners lock, unlock or change a locked rule."
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end

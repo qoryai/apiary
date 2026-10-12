@@ -177,8 +177,10 @@ defmodule ApiaryWeb.Edition do
   `about` says what the sentence is of:
 
   - an action of `Apiary.Access` (`Apiary.Access.actions/0`), the one the page refused or
-    offers no way to take, such as `:"node.create"`; a sentence of the core's may say more
-    than who may, such as the rule a refusal of `:"security_policy.lock"` is of;
+    offers no way to take, such as `:"node.create"`; where a sentence of the core's says
+    more than who may, such as which rule a refusal of `:"security_policy.lock"` is of,
+    that part stays and the edition's sentence follows it
+    (`ApiaryWeb.Access.who_may_after/4`);
   - `:workspaces`, the organisation's list of its workspaces, which whoever may rename or
     delete a workspace opens (`Apiary.Organisations.lists_workspaces?/1`);
   - `:people`, the People page's line of what each level does, which in the core names
@@ -191,10 +193,12 @@ defmodule ApiaryWeb.Edition do
   organisation's and the workspace's settings, People, stored secrets and variables, and
   integrations; for People's line of what each level does; for the refusal to cancel an
   organisation's deletion on Your organisations; for the security policy's refusals
-  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
-  The policy pages' mode row and their lock and unlock hints, the lock hint of a
-  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
-  a locked rule have no scope at hand, and keep the core's words.
+  (`Apiary.Policy`); for the policy pages' refusals of a click on the mode or a lock; and,
+  with `:"security_policy.lock"`, for each sentence that says who may change a locked rule:
+  a locked rule's lock on the policy pages, the rule form's refusal, a target's
+  Destinations, the lock hint of a connection's Allow or Deny panel and the workspace
+  overview's hint on a locked rule. The policy pages' mode row and the workspace
+  overview's hint on the mode keep the core's words.
 
   A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
   where a page refuses them a change.

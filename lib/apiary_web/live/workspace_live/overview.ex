@@ -412,7 +412,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     connections =
       if security?,
-        do: Policy.overview_activity(scope, since, window),
+        do: scope |> Policy.overview_activity(since, window) |> with_locked_who(scope),
         else: record_denials(scope, window)
 
     %{
@@ -423,6 +423,21 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       read_at: now
     }
   end
+
+  # A denied destination a locked rule holds gets the hover that says who may change it
+  # (`locked_who`), read here, where the scope is at hand, rather than on each render.
+  defp with_locked_who({:ok, %{denied: rows} = read}, scope) do
+    rows =
+      for row <- rows do
+        if is_binary(row.locked),
+          do: Map.put(row, :locked_who, locked_title(scope, row.locked)),
+          else: row
+      end
+
+    {:ok, %{read | denied: rows}}
+  end
+
+  defp with_locked_who(read, _scope), do: read
 
   # The level above the workspace's policy (`Apiary.Policy.Above`), where the edition keeps
   # one: its name, whether a workspace or a target may allow hosts of its own, and the

@@ -234,6 +234,30 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert reading.preview == nil
   end
 
+  test "a refusal of a locked rule says the edition's sentence of who may in place of the core's" do
+    who = "Only the stub's owners lock, unlock or change a locked rule."
+
+    context =
+      context(own: [own(host: "github.example", locked: true)], owner: false, who_locks: who)
+
+    assert flat(read(%{"host" => "github.example", "action" => "deny"}, context).text) == who
+
+    target =
+      context(
+        scope: :target,
+        entries: [entry(host: "*.paste.example", action: :deny, locked: true)],
+        owner: false,
+        who_locks: who
+      )
+
+    assert flat(read(%{"host" => "bin.paste.example"}, target).text) ==
+             "A locked workspace rule denies *.paste.example. It holds against every repository, so no rule added here would change what happens. #{who}"
+
+    # One who may change it is told where, whatever the edition says of who may.
+    assert flat(read(%{"host" => "bin.paste.example"}, %{target | owner: true}).text) =~
+             "You can change or unlock it on the workspace's policy page."
+  end
+
   test "an address in another form than a.b.c.d is refused under Host, saying the form" do
     for host <- ~w(127.1 0x7f.0.0.1 010.0.0.1 10.0.0.256 2130706433 example.123 0X7F.0.0.1) do
       assert %{kind: :error, invalid: [:host], fix: nil, errors: [{:host, text, nil}]} =

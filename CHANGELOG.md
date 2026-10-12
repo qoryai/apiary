@@ -120,9 +120,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   pages that say "Only owners and admins change this."; for People's line of what each
   level does; for the refusal to cancel an organisation's deletion on Your organisations;
   for the security policy's refusals (`Apiary.Policy`); and for the policy pages'
-  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
-  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
-  mode and on a locked rule have no scope at hand, and keep the core's words.
+  refusals of a click on the mode or a lock. The policy pages' mode row and the workspace
+  overview's hint on the mode keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration, attach, reload and outcome, events and
   enrolment): the
@@ -756,6 +755,13 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `-2`, `-3`, ….
 - The documentation, the service definition schema and `.env.example` name the thing
   where they said "its own".
+- An edition's sentence of who may lock, unlock or change a locked rule
+  (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`) now shows at
+  each place that says it: a locked rule's lock, the rule form, a target's path refusal and
+  Destinations, the refusal to change or remove a locked rule, a connection's Allow or Deny
+  panel and the workspace overview. It follows the sentence that says what is locked
+  (`ApiaryWeb.Access.who_may_after/4`); the core's edition gives none, so the texts are as
+  before.
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person

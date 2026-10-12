@@ -116,6 +116,36 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   end
 
   describe "the workspace's Network access page" do
+    test "a member's refusal of a locked rule says who may change it: the core's words, or an edition's sentence",
+         %{scope: scope} do
+      {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.lock(scope, rule)
+      member = log_in_user(build_conn(), member_fixture(scope, :member).user)
+      cdn = dst("files.cdn.example")
+
+      refusal = fn ->
+        view = open(member, scope)
+        view |> element("##{cdn}-lock") |> render_click()
+
+        view
+        |> element("#rule-panel-refusal")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+      end
+
+      core = refusal.()
+      assert String.ends_with?(core, ". Only an owner can change or unlock it.")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+
+      assert refusal.() ==
+               String.replace_suffix(core, "Only an owner can change or unlock it.", sentence)
+    end
+
     test "a row's acts are icons; a locked rule says who locked it, the wall why",
          %{conn: conn, scope: scope} do
       {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
