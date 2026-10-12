@@ -9,6 +9,7 @@
     python scripts/aws-template-check.py secrets previous-apiary.yaml
     python scripts/aws-template-check.py release FILE ...
     python scripts/aws-template-check.py copies RELEASE TEST
+    python scripts/aws-template-check.py version [FILE ...]
 
 policy: every resource stack-policy.json names exists in the template; the database and the
 four key secrets are each denied Update:Replace and Update:Delete; and the policy the stack
@@ -74,6 +75,14 @@ version. The release copy holds none of the test parts (TEST_PARTS, and no TestI
 anywhere), and the test copy holds them all. And the test copy's template, its test parts
 taken out, the Fn::And items on TestImage dropped and each Fn::If on HasTestImage replaced
 by its value without a test image, is the release copy's.
+
+version: in the template, or in each FILE given (such as a release's copy of the template):
+one Custom::Version resource finds the version to install. Its function's role is trusted
+by Lambda alone and allows exactly three things: secretsmanager:GetSecretValue on
+RegistryCredentials, under HasDownloadKey; cloudformation:DescribeStacks on this stack; and
+writing to the function's log group. Neither the resource nor the function is given the
+download key itself, ProDownloadKey. And the task's image, without a test image, is the
+resource's Image: the image the lookup pinned by its digest.
 
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
 !Ref, as their long forms), except for release.
@@ -171,12 +180,10 @@ def allows_set_stack_policy(role):
     )
 
 
-def check_role(name, role, log_group):
-    """The function's role: trusted by Lambda alone, allowing cloudformation:SetStackPolicy
-    on this stack and writing to its own log group, and nothing else."""
+def lambda_trust_failures(name, role):
+    """A function's role: trusted by Lambda alone, its inline policy alone saying what it may
+    do."""
     failures = []
-    if role.get("Type") != "AWS::IAM::Role":
-        return [f"the stack policy's function has no role of the template's ({name})"]
     properties = role.get("Properties", {})
     trust = as_list(properties.get("AssumeRolePolicyDocument", {}).get("Statement", []))
     if trust != [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]:
@@ -184,6 +191,15 @@ def check_role(name, role, log_group):
     for extra in ("ManagedPolicyArns", "PermissionsBoundary"):
         if extra in properties:
             failures.append(f"{name} has {extra}: its inline policy alone says what it may do")
+    return failures
+
+
+def check_role(name, role, log_group):
+    """The function's role: trusted by Lambda alone, allowing cloudformation:SetStackPolicy
+    on this stack and writing to the function's log group, and nothing else."""
+    if role.get("Type") != "AWS::IAM::Role":
+        return [f"the stack policy's function has no role of the template's ({name})"]
+    failures = lambda_trust_failures(name, role)
     found = sorted(
         (statement.get("Effect"), sorted(as_list(statement.get("Action"))), json.dumps(statement.get("Resource"), sort_keys=True))
         for statement in statements(role)
@@ -696,6 +712,99 @@ def check_copies(release_path, test_path):
     return failures
 
 
+VERSION_TYPE = "Custom::Version"
+DOWNLOAD_KEY_PARAMETER = {"Ref": "ProDownloadKey"}
+
+
+def normal(statement):
+    """A policy statement, its actions as a sorted list, in each branch of a Fn::If."""
+    if isinstance(statement, dict) and list(statement) == ["Fn::If"] and isinstance(statement["Fn::If"], list):
+        return {"Fn::If": [normal(item) for item in statement["Fn::If"]]}
+    if isinstance(statement, dict) and "Action" in statement:
+        return {**statement, "Action": sorted(as_list(statement["Action"]))}
+    return statement
+
+
+def check_version(paths):
+    failures = []
+    for path in paths:
+        resources = load(path).get("Resources", {})
+        lookups = of_type(resources, VERSION_TYPE)
+        if len(lookups) != 1:
+            failures.append(f"{path}: {len(lookups)} {VERSION_TYPE} resources, not one, find the version to install")
+            continue
+        ((name, lookup),) = lookups.items()
+        function_name = get_att(lookup.get("Properties", {}).get("ServiceToken"))
+        function = resources.get(function_name, {}) if function_name else {}
+        if function.get("Type") != "AWS::Lambda::Function":
+            failures.append(f"{path}: {name}'s ServiceToken is not a function of the template's")
+            continue
+        properties = function.get("Properties", {})
+
+        log_group = properties.get("LoggingConfig", {}).get("LogGroup", {})
+        log_group = log_group.get("Ref") if isinstance(log_group, dict) else None
+        if not log_group or resources.get(log_group, {}).get("Type") != "AWS::Logs::LogGroup":
+            failures.append(f"{path}: {function_name} does not log to a log group of the template's")
+        role_name = get_att(properties.get("Role"))
+        role = resources.get(role_name, {}) if role_name else {}
+        if role.get("Type") != "AWS::IAM::Role":
+            failures.append(f"{path}: {function_name} has no role of the template's")
+        else:
+            failures.extend(f"{path}: {failure}" for failure in lambda_trust_failures(role_name, role))
+            wanted = [
+                {
+                    "Fn::If": [
+                        "HasDownloadKey",
+                        {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue"], "Resource": {"Ref": DOWNLOAD_KEY}},
+                        {"Ref": "AWS::NoValue"},
+                    ]
+                },
+                {"Effect": "Allow", "Action": ["cloudformation:DescribeStacks"], "Resource": STACK_ID},
+                {
+                    "Effect": "Allow",
+                    "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+                    "Resource": {"Fn::GetAtt": [log_group, "Arn"]},
+                },
+            ]
+            found = [normal(statement) for statement in statements(role)]
+            key = lambda statement: json.dumps(statement, sort_keys=True)
+            if sorted(found, key=key) != sorted(wanted, key=key):
+                failures.append(
+                    f"{path}: {role_name} allows other than reading {DOWNLOAD_KEY} with a download key, "
+                    f"describing this stack and writing to {log_group}: {json.dumps(found)}"
+                )
+
+        for where, value in ((name, lookup), (function_name, function)):
+            if DOWNLOAD_KEY_PARAMETER in list(refs(value)):
+                failures.append(f"{path}: {where} is given ProDownloadKey: the function reads the key from {DOWNLOAD_KEY}")
+
+        images = [
+            without_test_parts(container.get("Image"))
+            for resource in of_type(resources, "AWS::ECS::TaskDefinition").values()
+            for container in resource.get("Properties", {}).get("ContainerDefinitions", [])
+        ]
+        if not images or any(get_att(image, "Image") != name for image in images):
+            failures.append(f"{path}: the task's image is not {name}'s Image, pinned by its digest: {json.dumps(images)}")
+    return failures
+
+
+def refs(value):
+    """Every !Ref in a value, and each ${...} of a Fn::Sub as a !Ref."""
+    if isinstance(value, dict):
+        if list(value) == ["Ref"]:
+            yield value
+        for function, argument in value.items():
+            if function == "Fn::Sub":
+                text = argument[0] if isinstance(argument, list) else argument
+                if isinstance(text, str):
+                    for variable in re.findall(r"\$\{([^}!.]+)\}", text):
+                        yield {"Ref": variable}
+            yield from refs(argument)
+    elif isinstance(value, list):
+        for item in value:
+            yield from refs(item)
+
+
 def main(argv):
     if argv[1:] == ["policy"]:
         failures = check_policy()
@@ -715,6 +824,8 @@ def main(argv):
         failures = check_release(argv[2:])
     elif len(argv) == 4 and argv[1] == "copies":
         failures = check_copies(argv[2], argv[3])
+    elif argv[1:2] == ["version"]:
+        failures = check_version(argv[2:] or [TEMPLATE])
     else:
         sys.exit(__doc__)
 

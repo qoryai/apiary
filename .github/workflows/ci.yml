@@ -144,6 +144,13 @@ jobs:
       - name: Check the template's comparisons with Edition
         run: python scripts/aws-template-check.py editions
 
+      # The version is found by one Custom::Version resource, whose function's role may read
+      # the download key's secret, describe this stack and write its log group, nothing
+      # else; neither the resource nor the function is given the download key itself; and
+      # the task runs the image the resource found, by its digest.
+      - name: Check the template's version lookup
+        run: python scripts/aws-template-check.py version
+
       # The AWS console shows a character that is not ASCII as "?": the template and its
       # stack policy hold none, in any text, comment or code.
       - name: Check the AWS template is ASCII alone
@@ -159,9 +166,9 @@ jobs:
       # the Template mapping; the script fails unless it writes it exactly once. Two copies
       # are written: the release copy, which a release attaches, without the test parts, and
       # the test copy, never published, with them. cfn-lint then reads both, and each is
-      # checked for its comparisons with Edition, for ASCII alone and for an output that is
-      # a command. The release copy holds no test part or test wording, comments included,
-      # and is the test copy without the test parts.
+      # checked for its comparisons with Edition, for ASCII alone, for an output that is a
+      # command and for its version lookup. The release copy holds no test part or test
+      # wording, comments included, and is the test copy without the test parts.
       - name: Write a release's copies of the template, and lint them
         run: |
           copies=()
@@ -174,6 +181,7 @@ jobs:
           python scripts/aws-template-check.py editions "${copies[@]}"
           python scripts/aws-template-check.py ascii "${copies[@]}"
           python scripts/aws-template-check.py outputs "${copies[@]}"
+          python scripts/aws-template-check.py version "${copies[@]}"
           python scripts/aws-template-check.py release "$RUNNER_TEMP/apiary-release.yaml"
           python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-release.yaml" "$RUNNER_TEMP/apiary-test.yaml"
 
