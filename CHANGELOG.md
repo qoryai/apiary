@@ -10,7 +10,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ## [Unreleased]
 
-## [0.1.0] - <date of the tag day>
+## [0.1.0] - 2026-10-13
 
 The first release of the open core of Qory Apiary: Qory Apiary Community, complete for
 one team, as `EDITIONS.md` at the root of the repository describes it.
