@@ -3360,10 +3360,10 @@ defmodule ApiaryWeb.RunComponents do
 
   Where no rule here can change the row, the Allow slot holds a faint lock whose hint says
   why, reachable by the keyboard: a deny of the level above (`:above_deny`), the wall
-  (`:wall`). A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a lock
-  button whose hint says who locked it and when, where known (`locked`), and which opens
-  the refusal in place. A host no rule can name (`:unnameable`) says so to a screen
-  reader alone; a row a rule answers (`{:rule_added, _}`) has its way to the rule in its
+  (`:wall`, `wall_tip/1`), a host no rule can name (`:unnameable`, `unnameable_tip/0`). A
+  locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a lock button whose
+  hint says who locked it and when, where known (`locked`), and which opens the refusal
+  in place. A row a rule answers (`{:rule_added, _}`) has its way to the rule in its
   after line (`after_line/1`). The controls are `<id>-allow`, `<id>-deny` and `<id>-lock`,
   `id` being the row's.
 
@@ -3490,10 +3490,17 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def rule_actions(%{rule_option: :wall} = assigns) do
+    c = assigns.connection
+
+    reason = %{
+      rule: Map.get(c, :rule) || Map.get(c, :last_rule),
+      path_rule: Map.get(c, :path_rule) || Map.get(c, :last_path_rule)
+    }
+
+    assigns = assign(assigns, :tip, wall_tip(reason) || gettext("No rule changes this"))
+
     ~H"""
-    <span class="q-acts-pair">
-      <.act_lock id={"#{@id}-lock"} tip={gettext("No rule changes this")} /><.act_gap />
-    </span>
+    <span class="q-acts-pair"><.act_lock id={"#{@id}-lock"} tip={@tip} /><.act_gap /></span>
     """
   end
 
@@ -3505,11 +3512,39 @@ defmodule ApiaryWeb.RunComponents do
 
   def rule_actions(assigns) do
     ~H"""
-    <span class="q-acts-pair"><.act_gap /><.act_gap /></span><span class="sr-only">{gettext(
-      "No rule can name this host"
-    )}</span>
+    <span class="q-acts-pair">
+      <.act_lock id={"#{@id}-lock"} tip={unnameable_tip()} /><.act_gap />
+    </span>
     """
   end
+
+  @doc """
+  wall_tip/1 is the hint of the lock on a row the wall refused, from the row's `rule` and
+  `path_rule`: the wall refused the host as the machine's address (`wall:own-address`)
+  or for its form (`wall:host-form`), or the request for its path
+  (`wall:ambiguous-path`). nil for any other.
+  """
+  @spec wall_tip(map) :: String.t() | nil
+  def wall_tip(%{rule: "wall:own-address"}),
+    do:
+      gettext(
+        "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."
+      )
+
+  def wall_tip(%{rule: "wall:host-form"}),
+    do: gettext("The wall refused this, not a rule: no rule can name a host written this way.")
+
+  def wall_tip(%{path_rule: "wall:ambiguous-path"}),
+    do:
+      gettext(
+        "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."
+      )
+
+  def wall_tip(_reason), do: nil
+
+  @doc "unnameable_tip/0 is the hint of the lock on a row whose host no rule can name."
+  @spec unnameable_tip() :: String.t()
+  def unnameable_tip, do: gettext("No rule can name this host.")
 
   attr :id, :string, required: true
   attr :action, :string, required: true, values: ~w(allow deny)

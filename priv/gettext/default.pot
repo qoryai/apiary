@@ -8074,7 +8074,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "No rule can name this host"
+msgid "No rule can name this host."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12209,6 +12209,21 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The wall denies it in either mode."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The wall refused this, not a rule: no rule can name a host written this way."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

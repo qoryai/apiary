@@ -593,15 +593,16 @@ version in force is exported; another version's path sends on to it.
   hover, on the icon's focus and while it says Copied, always on a touch screen. Where the
   rule in force is the one the reason names, its name links to it; where the level above
   decides the row, its "Main · denied" (or allowed) links to that rule; a row a rule was
-  just added for ends its after line with Show the rule. A locked rule, the wall, a deny
-  of the level above, and an allow only the level above can grant for a reader who may
-  not change it there are a faint lock whose hint says why (who locked it and when,
-  where known); a locked rule's lock opens its refusal in place, with the way to the
-  rule. Where only the level above the workspace allows
-  a host, the row's reason says so in words, and Allow opens a panel that says an allow
-  here would not be in force and leads to that level's New rule page with the host, where
-  the edition gives one, for a reader who may change it there, and with the way back to this page (`back`,
-  `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
+  just added for ends its after line with Show the rule. A locked rule, the wall, a host
+  no rule can name, a deny of the level above, and an allow only the level above can grant
+  for a reader who may not change it there are a faint lock whose hint says why (who
+  locked it and when, where known; the wall's reason); a locked rule's lock opens its
+  refusal in place, with the way to the rule. Where only the level above the workspace
+  allows a host, the row's reason says so in words, and Allow opens a panel that says an
+  allow here would not be in force and leads to that level's New rule page with the
+  host, where the edition gives one, for a reader who may change it there, and with the
+  way back to this page (`back`, `c:ApiaryWeb.Edition.above_policy_link/1`); never a
+  navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
   first, the most denied attempts first and then the most recently seen, as To
@@ -678,7 +679,9 @@ what needs the reader, then what their agents did, and never grows with the data
   hosts on its list, no allow here would be in force: the item offers the way to that
   level's rule, or, for a host only that level can allow, its New rule page with the host,
   where the edition gives one, to one who may change it there; and a lock with the reason
-  to the rest. A resolved
+  to the rest. A denial no rule can change, the wall's refusal or a host no rule can name,
+  has a lock where Allow would be, its hover the hint of its row's lock on Network access.
+  A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run says how it was lost: "Lost, never posted its exit" when the

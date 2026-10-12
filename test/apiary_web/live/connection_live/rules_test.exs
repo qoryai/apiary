@@ -26,6 +26,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     "outcome" => "refused"
   }
   @registry %{"host" => "registry.example", "rule" => "registry.example"}
+  @wall_own_address "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."
+
   @wall %{
     "host" => "169.254.169.254",
     "port" => 80,
@@ -173,12 +175,12 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       refute has_element?(view, "##{cdn}-allow")
       refute has_element?(view, "##{cdn}-deny")
 
-      # The wall: a lock the keyboard reaches, whose hint says no rule changes it.
+      # The wall: a lock the keyboard reaches, whose hint says why no rule changes it.
       wall = dst("169.254.169.254", 80)
 
       assert has_element?(
                view,
-               ~s(span##{wall}-lock.q-act-lock[tabindex="0"][data-tip="No rule changes this"])
+               ~s(span##{wall}-lock.q-act-lock[tabindex="0"][data-tip="#{@wall_own_address}"])
              )
 
       refute has_element?(view, "##{wall}-allow")
@@ -257,7 +259,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert has_element?(
                view,
-               ~s(span##{dst("169.254.169.254", 80)}-lock[data-tip="No rule changes this"])
+               ~s(span##{dst("169.254.169.254", 80)}-lock[data-tip="#{@wall_own_address}"])
              )
 
       view |> element("##{cdn}-allow") |> render_click()

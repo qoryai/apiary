@@ -711,8 +711,23 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, required: true
 
   # A denied destination no rule can change, the wall's refusal or a host no rule can name,
-  # offers no act, as its row on Network access offers none.
-  defp attention_act(%{item: %{kind: :denied, unchangeable: true}} = assigns), do: ~H""
+  # offers no act: a lock where Allow would be, with the hint of its row's lock on Network
+  # access (`RunComponents.wall_tip/1`, `RunComponents.unnameable_tip/0`).
+  defp attention_act(%{item: %{kind: :denied, unchangeable: true} = item} = assigns) do
+    tip =
+      case Map.get(item, :wall) do
+        nil -> ApiaryWeb.RunComponents.unnameable_tip()
+        wall -> ApiaryWeb.RunComponents.wall_tip(wall)
+      end
+
+    assigns = assign(assigns, :tip, tip)
+
+    ~H"""
+    <span :if={@tip} id={"#{@item.id}-act"} class="q-act-lock" title={@tip}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    </span>
+    """
+  end
 
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
