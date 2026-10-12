@@ -631,7 +631,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `ghcr.io/qoryai/apiary`, or of `ghcr.io/qoryai/apiary-pro` read with the download key,
   never `latest`; with a version typed, exactly that one. The task runs that image pinned
   by its digest, so only a stack create or update changes what runs. An update with
-  `VersionOverride` empty looks up the newest release again; when nothing else changes,
+  `VersionOverride` empty looks up the newest release again, except one that changes only
+  the download key, which is not among the lookup's values; when nothing else changes,
   something new under "Look for a newer release" (`LookForNewerRelease`) makes it look. A
   typed version older than the one the stack runs is refused, and so is a release of a
   newer minor than the template: a new minor needs that minor's `apiary.yaml`. The test
