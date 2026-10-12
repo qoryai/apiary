@@ -1213,6 +1213,13 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
+msgid "%{number} more item, on the Policy page"
+msgid_plural "%{number} more items, on the Policy page"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
 msgid "%{number} more item, on the nodes page"
 msgid_plural "%{number} more items, on the nodes page"
 msgstr[0] ""

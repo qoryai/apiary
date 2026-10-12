@@ -776,6 +776,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - Signing in, and a workspace's link on the organisation's Overview, lead to the first page
   of the workspace the person is shown. Before, they led to the workspace's Overview even
   where it was not shown, which answered not found.
+- The workspace Overview's "more" link under To review goes to the page for the first item
+  it leaves out: the Policy page for a policy item, the nodes page for an idle key. Before,
+  a policy item led to the nodes page.
 
 ### Migrations
 
