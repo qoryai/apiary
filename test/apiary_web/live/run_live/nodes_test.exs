@@ -28,6 +28,9 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     |> String.trim()
   end
 
+  # The words of the line a list narrowed to a node has.
+  defp narrowed(view), do: view |> element("#runs-narrowed-what") |> render() |> plain()
+
   describe "the runs list" do
     test "keeps a node's runs by its id or its name, said as a token", %{
       conn: conn,
@@ -237,6 +240,93 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.run_id}"))
       assert has_element?(view, ~s(#run-node a[href="#{node_page}"]), "build-01")
+    end
+  end
+
+  describe "a filter's node, with the nodes hidden from the reader" do
+    # A reader the nodes are hidden from reads a node's name only as a run names it: the
+    # address's node is read among the nodes the runs ran on, and any other is a node that
+    # matches nothing, said as the address gave it.
+    setup %{scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      run = node_run_fixture(node, "i_1")
+      idle = node_fixture(scope, name: "never-ran")
+      gateway = gateway_fixture(scope, name: "edge-gateway")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      %{node: node, run: run, idle: idle, gateway: gateway}
+    end
+
+    test "a node no run names, by its id, is not named", %{
+      conn: conn,
+      scope: scope,
+      run: run,
+      idle: idle,
+      gateway: gateway
+    } do
+      for value <- [idle.public_id, gateway.public_id] do
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+
+        assert narrowed(view) == "Showing the runs of #{value} only."
+        refute has_element?(view, row(run))
+        html = render(view)
+        refute html =~ "never-ran"
+        refute html =~ "edge-gateway"
+        refute html =~ "/nodes"
+      end
+    end
+
+    test "a node no run names, by its name, reads as a name nothing has", %{
+      conn: conn,
+      scope: scope
+    } do
+      page = fn value ->
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+        assert narrowed(view) == "Showing the runs of #{value} only."
+        view |> element("#runs-page") |> render() |> String.replace(value, "NAME")
+      end
+
+      assert page.("never-ran") == page.("made-up-node")
+      assert page.("edge-gateway") == page.("made-up-node")
+    end
+
+    test "a node a run names is named, with no link", %{
+      conn: conn,
+      scope: scope,
+      node: node,
+      run: run
+    } do
+      for value <- [node.public_id, "build-01"] do
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+        assert has_element?(view, row(run))
+        assert narrowed(view) == "Showing the runs of build-01 only."
+        refute has_element?(view, "a#runs-narrowed-name")
+      end
+    end
+
+    test "shown the nodes, any node of the workspace is named and linked", %{
+      conn: conn,
+      scope: scope,
+      idle: idle,
+      gateway: gateway
+    } do
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      for {node, value} <- [
+            {idle, idle.public_id},
+            {idle, "never-ran"},
+            {gateway, gateway.public_id}
+          ] do
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+        assert narrowed(view) == "Showing the runs of #{node.name} only."
+
+        assert has_element?(
+                 view,
+                 ~s(a#runs-narrowed-name[href="#{workspace_path(scope, "/nodes/#{node.public_id}")}"]),
+                 node.name
+               )
+      end
     end
   end
 end

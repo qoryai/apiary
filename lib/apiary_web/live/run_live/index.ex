@@ -1125,10 +1125,16 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
+  # A reader the nodes are hidden from has the node read only among the nodes the runs
+  # name (`Apiary.Runs.run_node/2`), the names the list already shows them: any other is
+  # read as a node that matches nothing.
   defp node_of(scope, value) when is_binary(value) do
     node =
-      Nodes.get_node(scope, value) ||
-        Enum.find(Nodes.list_nodes(scope, %{q: value}), &(&1.name == value))
+      if Apiary.Features.visible?(scope, :nodes),
+        do:
+          Nodes.get_node(scope, value) ||
+            Enum.find(Nodes.list_nodes(scope, %{q: value}), &(&1.name == value)),
+        else: Runs.run_node(scope, value)
 
     %{for: value, node: node}
   end
