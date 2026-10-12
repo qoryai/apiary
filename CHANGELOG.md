@@ -746,7 +746,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
   is shown.
 - The organisation slugs `admin`, `api` and `new`, and the workspace slugs `api` and `new`,
-  are reserved; an organisation or workspace holding one moves to the slug with `-2`.
+  are reserved; an organisation or workspace holding one moves to the first free slug of
+  `-2`, `-3`, ….
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person

@@ -11,14 +11,15 @@ defmodule ApiaryWeb.ReservedSlugs do
   pages (`/:org/settings`, `/:org/audit-log`). `organisation/0` and `workspace/0` name
   them.
 
-  The core reserves the paths it serves, `gateways` among the organisation's pages,
-  which no workspace slug may take, and a few names kept back: `admin`, `api` and `new`
-  as organisation slugs, `api` and `new` as workspace slugs. An edition reserves the paths it adds, and
-  settles for itself a slug an instance of the core gave out before the edition took the
-  instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of the router the endpoint
-  dispatches to, a static path or a socket of the endpoint takes a segment these lists do
-  not name: a new top-level path or organisation page is added here, or to the edition's
-  list, in the same change, never after an organisation took the name.
+  The core reserves the paths it serves, `gateways` among the organisation's pages, which
+  no workspace slug may take, and a few names kept back: `admin`, `api` and `new` as
+  organisation slugs, `api` and `new` as workspace slugs. An edition reserves the paths it
+  adds, and settles for itself a slug an instance of the core gave out before the edition
+  took the instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of
+  the router the endpoint dispatches to, a static path or a socket of the endpoint takes a
+  segment these lists do not name: a new top-level path or organisation page is added
+  here, or to the edition's list, in the same change, never after an organisation took the
+  name.
 
   As a plug, first in the pipeline of the organisation's and the workspace's pages, it
   answers as the router answers a path it does not know when a segment in the place of a
