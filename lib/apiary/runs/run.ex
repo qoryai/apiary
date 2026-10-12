@@ -8,7 +8,7 @@ defmodule Apiary.Runs.Run do
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
   `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
-  are the registration's own: written once, when the run registers,
+  are the registration's: written once, when the run registers,
   and kept by a rebuild. A run that registered is projected from sequence 1, which its
   registration stands for (`projected_from/1`). A run that registered through a gateway
   keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild

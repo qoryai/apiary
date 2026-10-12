@@ -1160,7 +1160,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp locked(act, _locks, _scope), do: act
 
   # A row the level above decides links to its rule there, and a row that could be
-  # allowed only there links to its page with the host, where the reader may change it.
+  # allowed only there links to its New rule page with the host, where the reader may
+  # change it and the edition gives one.
   defp above(%{above: %{}, entry: %{host: host}} = act, %{path: path} = link) do
     Map.merge(act, %{
       rule_path: path <> "?" <> URI.encode_query(%{"rule" => host}),
@@ -1169,13 +1170,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     })
   end
 
-  defp above(%{allow_elsewhere: %{}, host: host} = act, %{path: path, can_change: true} = link),
-    do:
-      Map.put(
-        act,
-        :allow_path,
-        path <> "?" <> URI.encode_query(%{"allow" => host, "back" => link.back})
-      )
+  defp above(
+         %{allow_elsewhere: %{}, host: host} = act,
+         %{can_change: true, new_rule_path: new_rule_path} = link
+       )
+       when is_binary(new_rule_path),
+       do:
+         Map.put(
+           act,
+           :allow_path,
+           new_rule_path <> "?" <> URI.encode_query(%{"host" => host, "back" => link.back})
+         )
 
   defp above(act, _link), do: act
 
@@ -1260,6 +1265,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           locked_by: locked && ApiaryWeb.People.email(locked.changed_by),
           locked_at: locked && locked.inserted_at,
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
+          who: ApiaryWeb.Edition.who_may_sentence(:"security_policy.lock", scope),
           rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
       }

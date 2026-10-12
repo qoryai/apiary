@@ -32,7 +32,7 @@ defmodule Apiary.Contract.Enrolment do
   seconds of the server's clock, in either direction.
 
   **The answers** (`answer_body/1`, `refusal_body/2`) are signed under the enrolment
-  answers' own domain line (`Apiary.Contract.SignedMessage.enrolment_answer/3`), and only
+  answers' domain line (`Apiary.Contract.SignedMessage.enrolment_answer/3`), and only
   once the key has passed the checks and the proof verified under it.
 
   A request holds the code and the proof, so its `inspect` shows neither.

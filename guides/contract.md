@@ -186,13 +186,15 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 `node_id` is the key's node, node pool or gateway (`ng_`), and `apiary_public_key` lists
 the server's signing key, for information: the gateway verifies under the key it pinned.
 For a node or a node pool, `workspaces` lists the one workspace the key may name, the one
-it belongs to; for a gateway, the workspaces it may serve, sorted: the workspace it
-belongs to. Each is named by its
+it belongs to, named by its
 id: `ws_` and 16 lowercase Crockford base32 characters, which Qory Apiary gives every
-workspace and names it by in the contract alone. `run.url` is
+workspace and names it by in the contract alone. A gateway's document, of a workspace's
+gateway or an organisation's, lists no workspaces: which workspaces a gateway serves
+follows from the nodes that use it, and Qory Apiary decides at each registration and
+attach whether it may serve the run's workspace. `run.url` is
 the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
-the run's id. The document, and its digest, differ by node and workspace, never by the
-workspace's policy.
+the run's id. The document, and its digest, differ by node and, for a node or a node
+pool, by workspace, never by the workspace's policy.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the
@@ -318,9 +320,9 @@ workspace's baseline. The labels are compared to the stored ones byte for byte. 
 is the bytes that were stored when the policy was last changed. Nothing is rendered for a
 request, so the digest is of exactly what is sent.
 
-A workspace nobody has given a policy, or one without the `security` feature, is answered
-`{"version":1}`, and its machines run under their local policy, from their Forager file
-([The security policy](security-policy.md)).
+A workspace nobody has given a policy, or any workspace on an instance without the
+`security` feature, is answered `{"version":1}`, and its machines run under their local
+policy, from their Forager file ([The security policy](security-policy.md)).
 
 The gateway applies the `security_policy` narrowed by the machine's local policy, its `egress` section; the
 machine only takes away.
@@ -353,7 +355,7 @@ the server signed, with these members in this order:
 | `workspace` | the run's workspace, `ws_…` |
 | `node_id` | the node or node pool that registered the run, `nd_…` or `np_…` |
 | `gateway` | the gateway the node's choice resolved to, `ng_…` |
-| `gateway_url` | the gateway's address, `https://`, a host and an optional port |
+| `gateway_url` | the gateway's address, `https://`, a host (a DNS name, an IPv4 address or an IPv6 address in brackets) and an optional port |
 | `gateway_public_key` | the gateway's active keys, one or two, oldest first, each `{"alg":"ed25519","public_key":"…"}` |
 | `instance_id` | the instance id the registration was signed from |
 | `issued`, `attach_by` | when the run key was made, and the end of its attach window: UTC, whole seconds |
@@ -376,15 +378,17 @@ configuration in force now for the labels the run registered with.
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | the run is not one this key's node registered, or, through a gateway, attached from this instance: an unknown run id, a run another node registered, a run through a gateway not yet attached, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway that may no longer serve the run's workspace: never its policy | `{"error":"workspace_not_served"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
 The reload is answered only to the active keys of the node that registered the run, or,
 for a run through a gateway, of the gateway and the instance that attached it, and only by
 the labels it registered with; a run whose events retention has pruned is reloaded all the
-same. To the gateway any answer but `200` is a reload that failed: the policy in force
-stays, and it tries again on
-the next answer. The endpoint never answers `304`.
+same. For a run behind a gateway that may no longer serve the run's workspace, the `410`
+`workspace_not_served` comes before the `404` of a workspace that serves no run
+configuration. To the gateway any answer but `200` is a reload that failed: the policy in
+force stays, and it tries again on the next answer. The endpoint never answers `304`.
 
 <!-- feature: security -->
 A reload on a workspace with no policy, or a policy removed mid-run, answers `404`. A
@@ -418,6 +422,7 @@ contract version, the body, the `time`); the first that applies is the answer:
 | `400` | the run key does not verify, its run id is not the path's, or it is not the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use, as a key of it would be | `{"error":"unauthorized"}` |
 | `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
+| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance that attached the run, under any of the node's active keys, attaching it again while the run is live | the answer it was given |
 | `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
 | `409` | the run was never attached and its attach window has closed: past `attach_by`, or the run already found lost | `{"error":"run_key_expired"}` |
@@ -519,6 +524,7 @@ this order, and the first refusal that applies is the answer:
 | `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace, decided as at the attach: before deduplication, a delivery already recorded included; no digest header, and nothing of the batch is stored | `{"error":"workspace_not_served"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's end (below) |
@@ -538,7 +544,10 @@ else is retried with backoff until the run ends.
   registered it, or whose key's batch opened it. Its batches, its heartbeats among them,
   its reloads, a repeat of its registration and its outcome are taken from that node's
   active keys alone, so a second key of the node, while one is replaced, keeps the run
-  going. A batch of another node's run is `409 wrong_node`, and a reload of one `404`.
+  going: the run is bound to the node, not to the key that registered it, and once that
+  key is revoked its requests are `401`. A batch of another node's run is
+  `409 wrong_node`, from any key of another node or node pool of the workspace, a
+  gateway's included, and a reload or an outcome of one `404`.
   For a run through a gateway, the batches, heartbeats and reloads are the gateway's that
   attached it, under any of its active keys, from the instance that attached it
   (`X-Qory-Instance-Id`), and nobody's before the attach: anyone else's batch, the
@@ -553,7 +562,7 @@ else is retried with backoff until the run ends.
   attaching instance is not known yet. Its registration's repeat and
   its outcome stay the registering node's. A gateway's batch never opens a run: one for a run
   it did not attach is `409 wrong_gateway`, and nothing is stored. What is read for the
-  run, its run configuration and its features, is read under the run's workspace, and
+  run, its run configuration, is read under the run's workspace, and
   a batch is refused `401` when the run's workspace or organisation is out of use.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
   batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
@@ -562,7 +571,9 @@ else is retried with backoff until the run ends.
   signature covers the body, as it covers every body.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again, or `410` for a run retention has
-  pruned, and nothing is stored.
+  pruned, and nothing is stored. For a run behind a gateway that may no longer serve its
+  workspace, the `410` `workspace_not_served` comes first, a delivery recorded before
+  included.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
   The events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.
@@ -627,6 +638,15 @@ A signed answer is signed under `qory-enrol-answer-ed25519-v1`, and its line 3 i
 the request's `proof`. A refusal changes nothing, and the code stays outstanding. The same
 code, posted again with the same public key while its 15 minutes last and the key is not
 revoked, is the same `201` for the same key; any other key on a used code is `401`.
+
+**Through a gateway.** A machine behind a gateway enrols through it, `qory access-key
+enrol --via <gateway> <server> <code>` ([Behind a gateway](nodes.md#behind-a-gateway)).
+The gateway relays the request unchanged and strips `X-Forwarded-For`, `Forwarded` and
+`X-Real-Ip`, so it arrives from the gateway's address. Qory Apiary accepts it as any
+other, with no further check: the code decides the node. The address's limit counts the
+gateway's address, one limit for every machine behind it, and the audit entry of the key's
+arrival records that address. The answer is Qory Apiary's, signed with the request's
+`proof` as line 3, and the gateway passes it back unchanged.
 
 ## Building a receiver
 

@@ -8,7 +8,7 @@ defmodule ApiaryWeb.DocsController do
   per directory, in the release image too (a feature that is off is absent, from the
   documentation as well). `dir/0` is the tree for the instance's features, and the
   endpoint's `Plug.Static` for `/docs` reads its files from there. `docs` is therefore not
-  in `ApiaryWeb.static_paths/0`: a tree is never reachable by its own directory.
+  in `ApiaryWeb.static_paths/0`: a tree is never reachable by its directory.
 
   This controller answers what is not a file: `/docs` itself, which goes to the first page,
   and any path below it that was not found. When the documentation has not been built,

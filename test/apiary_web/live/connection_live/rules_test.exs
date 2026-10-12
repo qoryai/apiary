@@ -116,6 +116,36 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   end
 
   describe "the workspace's Network access page" do
+    test "a member's refusal of a locked rule says who may change it: the core's words, or an edition's sentence",
+         %{scope: scope} do
+      {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.lock(scope, rule)
+      member = log_in_user(build_conn(), member_fixture(scope, :member).user)
+      cdn = dst("files.cdn.example")
+
+      refusal = fn ->
+        view = open(member, scope)
+        view |> element("##{cdn}-lock") |> render_click()
+
+        view
+        |> element("#rule-panel-refusal")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+      end
+
+      core = refusal.()
+      assert String.ends_with?(core, ". Only an owner can change or unlock it.")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+
+      assert refusal.() ==
+               String.replace_suffix(core, "Only an owner can change or unlock it.", sentence)
+    end
+
     test "a row's acts are icons; a locked rule says who locked it, the wall why",
          %{conn: conn, scope: scope} do
       {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
@@ -708,6 +738,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert rule_option.(row("bin.paste.example", "denied", nil)) == :locked_deny
       assert rule_option.(row("github.example", "allowed", "github.example")) == :locked_allow
       assert rule_option.(row("169.254.169.254", "denied", "wall:own-address")) == :wall
+      assert rule_option.(row("Files.CDN.example.", "denied", "wall:host-form")) == :wall
 
       assert rule_option.(
                row("api.example", "denied", "api.example", %{path_rule: "wall:ambiguous-path"})
@@ -737,6 +768,30 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
           ] do
         assert %{rule_option: :unnameable} =
                  Rules.rule_option(row(host, "denied", nil), effective)
+      end
+    end
+
+    test "a host the wall refused for its form offers no rule, whatever the host", %{
+      effective: effective
+    } do
+      # A name a rule could allow, one a rule allows, and hosts no rule can name: the
+      # wall's refusal holds whatever the policy says, so none asks for an allow or a deny.
+      for host <- [
+            "files.cdn.example",
+            "registry.example",
+            "Files.CDN.example.",
+            "<script>alert(1)</script>",
+            "example.\u202Ecom",
+            String.duplicate("A", 300),
+            "",
+            nil
+          ],
+          page <- [:run, :workspace] do
+        option = Rules.rule_option(row(host, "denied", "wall:host-form"), effective, page)
+
+        assert %{rule_option: :wall, entry: nil} = option
+        refute option[:deny]
+        refute option[:allow_elsewhere]
       end
     end
 

@@ -21,8 +21,28 @@ defmodule Apiary.AccessRacesTest do
 
   alias Apiary.{Organisations, Policy, Repo}
   alias Apiary.Audit.Entry
-  alias Apiary.Organisations.{Membership, Workspace}
+  alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Policy.{Error, Rule}
+
+  # An edition that hides the security policy from an organisation's people where the
+  # organisation's name says so: it reads the name again with the scope (`reload/2`, under
+  # the edition's locks with `lock: :share`), and answers what it hides from what it read,
+  # reading nothing itself (`hidden/1`).
+  defmodule HidesByName do
+    import Ecto.Query
+
+    def reload(scope, opts) do
+      scope = Apiary.Edition.module().reload(scope, opts)
+
+      name =
+        Repo.one!(from o in Organisation, where: o.id == ^scope.organisation.id, select: o.name)
+
+      %{scope | edition: Map.put(scope.edition, :hides_policy, name =~ "hidden")}
+    end
+
+    def hidden(%{edition: %{hides_policy: true}}), do: [:security]
+    def hidden(_scope), do: []
+  end
 
   setup_all :clean_up_leftovers
   setup :setup_races
@@ -116,6 +136,46 @@ defmodule Apiary.AccessRacesTest do
     end
   end
 
+  describe "a policy write racing the edition hiding the policy from the writer" do
+    # The security policy: left out of a run without the security feature.
+    @describetag needs: :security
+
+    setup do
+      :ok = Apiary.Edition.put_test_stub(HidesByName)
+    end
+
+    test "the hiding first: the write waits for it, and finds the policy not found" do
+      %{writer: member} = organisation_with(:member)
+
+      {hiding, hiding_pid} = hold(fn -> hide_policy(member.scope) end)
+      assert {1, _} = hiding.result
+
+      # The write asks with the scope as it was loaded, the policy shown.
+      write = start(fn -> allow(member.scope) end)
+      await_blocked(write.backend, hiding_pid)
+      commit(hiding)
+
+      assert {:error, %Error{reason: :not_found}} = Task.await(write.task)
+      refute rule?(member)
+      assert policy_entries(member) == []
+    end
+
+    test "the write first: it commits, and the hiding waits for it" do
+      %{writer: member} = organisation_with(:member)
+
+      {write, write_pid} = hold(fn -> allow(member.scope) end)
+      assert {:ok, %Rule{}} = write.result
+
+      hiding = start(fn -> hide_policy(member.scope) end)
+      await_blocked(hiding.backend, write_pid)
+      commit(write)
+
+      assert {1, _} = Task.await(hiding.task)
+      assert rule?(member)
+      assert [_entry] = policy_entries(member)
+    end
+  end
+
   describe "two owners demoting each other at once" do
     # Each demotion locks the organisation's owners before it asks whether its own owner
     # may change a level: the second waits for the first, then finds its owner an admin,
@@ -190,6 +250,14 @@ defmodule Apiary.AccessRacesTest do
   defp written?(:lock, _writer, %Rule{id: id}), do: Repo.get!(Rule, id).locked
 
   defp allow(scope), do: Policy.allow(scope, nil, %{host: "race.example"})
+
+  # What the edition reads to hide the policy (`HidesByName`), changed on the
+  # organisation's row, which a write holds `FOR SHARE`.
+  defp hide_policy(scope) do
+    Repo.update_all(from(o in Organisation, where: o.id == ^scope.organisation.id),
+      set: [name: "hidden " <> scope.organisation.name]
+    )
+  end
 
   defp rule?(writer),
     do:

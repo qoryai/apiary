@@ -7,7 +7,7 @@ defmodule Apiary.Kinds.Services do
   connection that names it from that release on.
 
   A service connection names a built-in definition by its key (`Apiary.Connections`), and
-  holds no host and no auth of its own. Each definition's `digest`, the SHA-256 of its
+  holds no host and no auth itself. Each definition's `digest`, the SHA-256 of its
   canonical JSON, says which revision a rendering was made from.
   """
 

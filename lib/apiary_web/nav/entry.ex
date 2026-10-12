@@ -34,7 +34,7 @@ defmodule ApiaryWeb.Nav.Entry do
   - `place`: the scope the page belongs to, which decides the sidebar it shows:
     `:workspace` for a page of a workspace, which has no entry while the reader reaches
     none; `:organisation` for a page of the organisation, which opens without one;
-    `:person` for a person's own page (`/users/…`); `:instance` for a section of the
+    `:person` for a person's page (`/users/…`); `:instance` for a section of the
     Instance level (`/instance/…`, `ApiaryWeb.Layouts.instance_sections/1`). A person's
     and an instance's page keep the sidebar the person came from, and their sections open
     beside it as the second column (`ApiaryWeb.Layouts`).

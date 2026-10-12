@@ -36,6 +36,11 @@ msgstr ""
 msgid "A secret holds at most %{count} values."
 msgstr ""
 
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
@@ -128,7 +133,7 @@ msgstr ""
 
 #: lib/apiary/nodes.ex
 #, elixir-autogen, elixir-format
-msgid "has no default gateway in this workspace"
+msgid "has no default gateway"
 msgstr ""
 
 #: lib/apiary/variables.ex
@@ -166,6 +171,11 @@ msgstr ""
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "is already the label of a key of this node"
+msgstr ""
+
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of a gateway in this organisation"
 msgstr ""
 
 #: lib/apiary/nodes/node.ex

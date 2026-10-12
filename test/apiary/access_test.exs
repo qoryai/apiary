@@ -430,6 +430,194 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "a part of a feature" do
+    test "run.read_log belongs to the run's Terminal, a part of observability" do
+      assert %Apiary.Access.Action{feature: :observability, part: :"observability.terminal"} =
+               Access.action(:"run.read_log")
+
+      for action <- Access.actions(), %{part: part} = Access.action(action), part do
+        assert Apiary.Features.feature_of(part) == Access.feature(action), inspect(action)
+      end
+    end
+
+    test "hidden, it hides its actions and no other of the feature; its hidden feature too" do
+      %{scope: owner} = sign_up_fixture()
+      run = run_fixture(owner)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      for {hidden, read_log, read} <- [
+            {[], :ok, :ok},
+            {[:"observability.terminal"], {:error, :not_found}, :ok},
+            {[:observability], {:error, :not_found}, {:error, :not_found}}
+          ] do
+        :ok = Apiary.EditionStubs.HidesNamed.put(hidden)
+        scope = Access.reload(owner)
+
+        assert Access.check(scope, :"run.read_log", run) == read_log, inspect(hidden)
+        assert Access.authorize(owner, :"run.read_log", run) == read_log, inspect(hidden)
+        assert Access.can?(scope, :"run.read_log", run) == (read_log == :ok)
+        assert Access.check(scope, :"run.read", run) == read, inspect(hidden)
+      end
+
+      # An access key, and the instance, are never asked what is hidden.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      instance = Scope.for_instance(owner.organisation, owner.workspace)
+      assert Access.check(instance, :"run.read_log", run) == {:error, :forbidden}
+    end
+
+    test "the registry refuses an action whose part is not one of its feature's" do
+      action = &Apiary.Access.Action.new(:"report.read", "read a report", &1)
+
+      assert %{names: names} =
+               Access.build_registry(
+                 [action.(feature: :observability, part: :"observability.terminal")],
+                 %{}
+               )
+
+      assert :"report.read" in names
+
+      for opts <- [
+            [feature: :security, part: :"observability.terminal"],
+            [part: :"observability.terminal"],
+            [feature: :observability, part: :terminal],
+            [feature: :observability, part: :observability]
+          ] do
+        assert_raise ArgumentError, ~r/report.read belongs to the part/, fn ->
+          Access.build_registry([action.(opts)], %{})
+        end
+      end
+
+      assert_raise ArgumentError, ~r/report.read's part is "terminal"/, fn ->
+        action.(feature: :observability, part: "terminal")
+      end
+    end
+  end
+
+  describe "the part of no feature, nodes" do
+    @nodes_actions [
+      :"access_key.create_code",
+      :"access_key.cancel_code",
+      :"access_key.add",
+      :"access_key.revoke",
+      :"node.read",
+      :"node.create",
+      :"node.edit",
+      :"node.set_limit",
+      :"node.delete",
+      :"node.clear_instance"
+    ]
+
+    test "every action of the nodes and their access keys belongs to it, and no other" do
+      for action <- Access.actions() do
+        if action in @nodes_actions do
+          assert %Apiary.Access.Action{feature: nil, part: :nodes} = Access.action(action)
+          assert Access.shown_as(action) == :nodes
+        else
+          refute Access.action(action).part == :nodes, inspect(action)
+        end
+      end
+
+      assert Access.shown_as(:"run.read_log") == :"observability.terminal"
+      assert Access.shown_as(:"run.read") == :observability
+      assert Access.shown_as(:"workspace.rename") == nil
+    end
+
+    test "hidden from a person, its actions are not found and nothing else is" do
+      %{scope: owner} = sign_up_fixture()
+      %{access_key: key, node: node} = access_key_fixture(owner)
+      run = run_fixture(owner)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      subjects = [owner.workspace, owner.organisation, node, key]
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      shown = Access.reload(owner)
+
+      answers =
+        for a <- @nodes_actions, s <- subjects, into: %{}, do: {{a, s}, Access.check(shown, a, s)}
+
+      assert answers[{:"node.read", owner.workspace}] == :ok
+      assert answers[{:"access_key.revoke", key}] == :ok
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      scope = Access.reload(owner)
+      assert scope.hidden == [:nodes]
+
+      for action <- @nodes_actions, subject <- subjects do
+        assert Access.check(scope, action, subject) == {:error, :not_found}, inspect(action)
+        assert Access.authorize(owner, action, subject) == {:error, :not_found}
+        refute Access.can?(scope, action, subject)
+      end
+
+      assert Access.check(scope, :"run.read", run) == :ok
+      assert Access.check(scope, :"run.read_log", run) == :ok
+      assert Access.check(scope, :"workspace.rename", owner.workspace) == :ok
+
+      # Shown again, every answer is as it was.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      shown = Access.reload(owner)
+
+      for {{action, subject}, answer} <- answers,
+          do: assert(Access.check(shown, action, subject) == answer)
+
+      # An access key, and the instance, are never asked what is hidden.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      instance = Scope.for_instance(owner.organisation, owner.workspace)
+      key_scope = Scope.for_access_key(key)
+
+      for action <- @nodes_actions do
+        assert Access.check(%{instance | hidden: [:nodes]}, action, owner.workspace) ==
+                 Access.check(instance, action, owner.workspace)
+
+        assert Access.check(%{key_scope | hidden: [:nodes]}, action, owner.workspace) ==
+                 Access.check(key_scope, action, owner.workspace)
+      end
+
+      assert Access.check(key_scope, :"run.post_events", owner.workspace) == :ok
+      assert Access.check(key_scope, :"run_configuration.fetch", owner.workspace) == :ok
+    end
+
+    test "check_code_maker/2 answers as check/3 but never asks what is shown" do
+      %{scope: owner} = sign_up_fixture()
+      member = member_fixture(owner, :member).scope
+      node = node_fixture(owner)
+      {:ok, code, _secret} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      owner = Access.reload(owner)
+      member = Access.reload(member)
+      other = Access.reload(sign_up_fixture().scope)
+
+      assert Access.check(owner, :"access_key.create_code", code) == {:error, :not_found}
+      assert Access.check_code_maker(owner, code) == :ok
+      assert Access.check_code_maker(member, code) == {:error, :forbidden}
+      assert Access.check_code_maker(other, code) == {:error, :not_found}
+    end
+
+    test "the registry takes the part of no feature only on an action of no feature" do
+      action = &Apiary.Access.Action.new(:"report.read", "read a report", &1)
+
+      assert %{names: names} = Access.build_registry([action.(part: :nodes)], %{})
+      assert :"report.read" in names
+
+      for opts <- [
+            [feature: :observability, part: :nodes],
+            [feature: :security, part: :nodes]
+          ] do
+        assert_raise ArgumentError, ~r/report.read belongs to the part :nodes/, fn ->
+          Access.build_registry([action.(opts)], %{})
+        end
+      end
+
+      assert_raise ArgumentError,
+                   ~r/report.read belongs to the part :"observability.terminal", no part an action of no feature may have/,
+                   fn ->
+                     Access.build_registry([action.(part: :"observability.terminal")], %{})
+                   end
+    end
+  end
+
   # What an action is asked of in `place`, as the rows say: the organisation, the
   # workspace, or a new organisation.
   defp subject(place, action) do

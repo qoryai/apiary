@@ -10,7 +10,7 @@ defmodule Apiary.ConnectionsTest do
   alias Apiary.Connections
   alias Apiary.Connections.{Connection, ServiceDefinition, Target}
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   setup do
     owner = sign_up_fixture()

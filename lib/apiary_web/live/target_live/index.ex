@@ -4,7 +4,7 @@ defmodule ApiaryWeb.TargetLive.Index do
   row per target, its path the only strong text: the reader's pin, its last run as a dot
   and a time (a word only when it is running or went badly), its runs a day over fourteen
   days, how many of them ended well, its denied attempts in those days, and its policy
-  mode only where it sets its own. Pages of 50.
+  mode only where it overrides the workspace's. Pages of 50.
 
   Narrowed the way every list is (`docs/ui.md`): views as tabs (All, Active this week,
   Never ran), a search that takes qualifiers (`ApiaryWeb.TargetLive.Query`), one Filter
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.TargetLive.Index do
 
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Runs, Targets}
+  alias Apiary.{Access, Runs, Targets}
   alias ApiaryWeb.TargetLive.Query
 
   @refresh_window 1_000
@@ -43,9 +43,7 @@ defmodule ApiaryWeb.TargetLive.Index do
        pinned: MapSet.new(),
        load_error: false,
        refresh: :closed,
-       security:
-         Features.on?(scope, :security) and
-           Access.can?(scope, :"security_policy.read", scope.workspace)
+       security: Access.can?(scope, :"security_policy.read", scope.workspace)
      )}
   end
 

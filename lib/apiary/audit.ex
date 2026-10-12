@@ -29,7 +29,7 @@ defmodule Apiary.Audit do
   **The action** is one of `Apiary.Access.actions/0`. **The subject** is the row acted
   on, of a kind the trail knows (`subject_kinds/0`): an organisation, a workspace, a
   membership, an invitation, an access key, a node, a run, a target, a rule, a stored
-  secret or a variable, and the rows of the edition's own kinds
+  secret or a variable, and the rows of the edition's kinds
   (`c:Apiary.Edition.subject_kinds/0`). It gives
   the entry its organisation and workspace: none for what the organisation itself owns, a
   membership among it. **From
@@ -45,7 +45,7 @@ defmodule Apiary.Audit do
 
   Every action of `Apiary.Access` that changes something (`audited?/1`); the others are
   listed with the reason by `not_audited/0`: reads, and the server contract's calls. What
-  the application removes of its own accord is audited too, by the action that removes
+  the application removes by itself is audited too, by the action that removes
   it: an expired invitation deleted when a new one goes to its address, and one whose
   email could not be delivered, are each an `invitation.revoke` by the person who sent
   the new invitation, `details.reason` `expired` or `undelivered` (the latter naming the
@@ -64,12 +64,12 @@ defmodule Apiary.Audit do
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
   the same way, and what the edition changes in the core's transactions is an entry of
-  its own actions. A person who deletes their account leaves the organisations they were
+  the edition's actions. A person who deletes their account leaves the organisations they were
   in: each membership's end is a `member.remove` there, by the person, `details.reason`
   `account_deleted`; the account itself belongs to no organisation and has no entry. A workspace's deletion, its cancelling and its purge are
   entries of the organisation, with no workspace, so they outlive it; an organisation's
-  purge deletes its trail with it. The record's own retention is not a change to Qory
-  Apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
+  purge deletes its trail with it. The record's retention is not a change to Qory
+  Apiary and writes a separate record (`Apiary.Retention.RetentionRun`); a run marked lost is
   the record's too.
 
   ## Append-only
@@ -192,11 +192,11 @@ defmodule Apiary.Audit do
   renders; a version 7 UUID, `Ecto.UUID.generate(version: 7, precision: :monotonic)`.
   `place: :organisation` makes the entry the organisation's, with no workspace, though
   its subject is a workspace: the deletion, the restoring and the purge of a workspace,
-  whose entries must outlive the workspace's own, which its purge deletes. `edition:`, the
+  whose entries must outlive the workspace's entries, which its purge deletes. `edition:`, the
   module whose `audit_details/3` is asked, `Apiary.Edition` unless said, for tests.
 
   Every entry's `details` pass once through the edition's
-  `c:Apiary.Edition.audit_details/3`, which may add keys of its own, such as how the actor
+  `c:Apiary.Edition.audit_details/3`, which may add keys, such as how the actor
   reached the organisation; the core's answer adds none.
 
   Raises `ArgumentError` for an action that is not one of `Apiary.Access.actions/0`, a
@@ -613,10 +613,10 @@ defmodule Apiary.Audit do
   prune/2 deletes the entries of the scope's organisation older than `retention_days/0`
   days, and clears the address and the client (`remote_ip`, `user_agent`) of those older
   than `address_retention_days/0`, which keep the rest of what they say. It records what
-  it did as an entry of its own when it deleted any (`audit.prune`, `details` with how
+  it did as a separate entry when it deleted any (`audit.prune`, `details` with how
   many it deleted and cleared and the cut-offs), in one transaction: `{:ok, count}`, the
   entries deleted. Clearing alone writes no entry: it comes every day to an organisation
-  that is used every day, and the trail would fill with its own upkeep; how long an
+  that is used every day, and the trail would fill with its upkeep; how long an
   address is kept is the instance's setting, the same for every entry. The scope is the
   instance's (`Apiary.Accounts.Scope.for_instance/2`): nobody else may prune,
   `{:error, :forbidden}`.

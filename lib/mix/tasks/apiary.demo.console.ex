@@ -15,13 +15,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   `mix apiary.demo.console --runs 3000 --days 28`; `--seed` (1) makes it repeatable, and
   `--concurrency` (6) is how many processes write it.
 
-  It fills only a database of its own. Outside the test environment it refuses to start
+  It fills only a demo database. Outside the test environment it refuses to start
   unless `DATABASE_URL`, which would replace the configured database, is unset or empty,
   and `APIARY_DEV_DATABASE` names the database the app is configured with
   (`config/dev.exs` reads it), a name with `demo` in it; so it never fills `apiary_dev`
   or `apiary_core_dev`, the databases people work in. In the test environment it runs
-  only under the tests, which fill their own database. It refuses an instance that has
-  any organisation other than its own, Acme, so the database you work in is never
+  only under the tests, which fill the test database. It refuses an instance that has
+  any organisation other than the one it makes, Acme, so the database you work in is never
   filled by mistake, and an Acme whose fill did not finish (below).
 
   ## What it makes
@@ -35,7 +35,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       codeberg.org, of every outcome, with subagents, terminals and network; its nodes,
       one per machine group, each run placed on one as the instance of its host, and
       their access keys; a dozen people at every level, one suspended, and two invitations pending;
-      and the security policy, with versions, a lock and repositories of their own.
+      and the security policy, with versions, a lock, and rules and mode overrides for a
+      few repositories.
       `acme/shop` is on all three forges and `acme/billing` on two, so a path names more
       than one repository.
     * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
@@ -43,13 +44,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
       keys added by their public keys; build-01's first key was replaced and revoked. No
       run is placed on them. build-02 has an outstanding enrolment code (below).
-    * With the `secrets` feature (`Apiary.Features.on?/2`, of each workspace): secrets,
+    * With the instance's `secrets` feature (`Apiary.Features.on?/1`): secrets,
       one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
       fetched, and one release whose fetch failed. A run receives only its security policy.
     * Where the edition allows an organisation a second workspace, **Shop ops**
-      (`shop-ops`) is made too, with a smaller history of its own; the core's allows
+      (`shop-ops`) is made too, with a smaller, separate history; the core's allows
       one.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
@@ -258,7 +259,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     replays(main)
     nodes(main)
 
-    if Apiary.Features.on?(main, :secrets) do
+    if Apiary.Features.on?(:secrets) do
       secrets(main)
       variables(main)
       connections(main)
@@ -272,7 +273,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
             ["--seed", "#{seed + 1}"] ++ concurrency
         )
 
-        if Apiary.Features.on?(scope, :secrets), do: variables_of_second(scope)
+        if Apiary.Features.on?(:secrets), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
 

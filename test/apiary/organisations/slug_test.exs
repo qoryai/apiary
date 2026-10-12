@@ -56,6 +56,13 @@ defmodule Apiary.Organisations.SlugTest do
       %{organisation: organisation} = sign_up_fixture(%{organisation_name: "Users"})
       assert organisation.slug == "users-2"
     end
+
+    test "never get a name kept back" do
+      for {name, slug} <- [{"Admin", "admin-2"}, {"API", "api-2"}, {"New", "new-2"}] do
+        %{organisation: organisation} = sign_up_fixture(%{organisation_name: name})
+        assert organisation.slug == slug
+      end
+    end
   end
 
   describe "a slug taken between the pick and the insert" do

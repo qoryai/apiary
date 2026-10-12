@@ -63,6 +63,9 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     |> json_response(200)
   end
 
+  # The New menu's network access rule, which the `security` feature brings, not `secrets`.
+  defp rule, do: if(Apiary.Features.on?(:security), do: ["Network access rule"], else: [])
+
   defp labels(answer, group) do
     case Enum.find(answer["groups"], &(&1["label"] == group)) do
       nil -> []
@@ -89,6 +92,30 @@ defmodule ApiaryWeb.SecretsFeatureTest do
   end
 
   @secrets_actions ~w(secret.write variable.edit connection.write)
+
+  # Every action of the feature, of `Apiary.Access`.
+  @all_secrets_actions [
+    :"secret.read",
+    :"secret.write",
+    :"secret.use",
+    :"variable.read",
+    :"variable.edit",
+    :"connection.read",
+    :"connection.write"
+  ]
+
+  # Runs `fun` on the instance with the feature, as a test of it off makes what an instance
+  # that had it left behind.
+  defp with_secrets(fun) do
+    previous = Application.get_env(:apiary, :features)
+    Application.put_env(:apiary, :features, @on)
+
+    try do
+      fun.()
+    after
+      Application.put_env(:apiary, :features, previous)
+    end
+  end
 
   # The text of `guide` as the tree with `features` has it.
   defp guide(guide, features), do: resolved(Path.join("guides", guide), features)
@@ -123,8 +150,8 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
     test "is off", %{scope: scope} do
       refute Apiary.Features.on?(:secrets)
-      refute Apiary.Features.on?(scope, :secrets)
-      assert Apiary.Features.on?(scope, :security)
+      refute Apiary.Features.visible?(scope, :secrets)
+      assert Apiary.Features.visible?(scope, :security)
     end
 
     test "every route of it answers as a path that does not exist, to anyone",
@@ -167,7 +194,9 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     test "the palette finds none of it", %{conn: conn, scope: scope} do
       answer = jump(conn, scope)
 
-      assert labels(answer, "Actions") == ["New node", "New node pool", "Invite people"]
+      assert labels(answer, "Actions") ==
+               ["New node", "New node pool"] ++ rule() ++ ["Invite people"]
+
       refute "Workspace settings › Integrations" in labels(answer, "Go to")
       refute "Workspace settings › Secrets and variables" in labels(answer, "Go to")
 
@@ -179,7 +208,10 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
     test "the Audit log's Action filter offers none of its actions, and its entries still show",
          %{conn: conn, scope: scope} do
-      {:ok, _secret} = Apiary.Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x"})
+      {:ok, _secret} =
+        with_secrets(fn ->
+          Apiary.Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x"})
+        end)
 
       {actions, view} = audit_actions(conn, scope)
 
@@ -214,15 +246,28 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     @tag :capture_log
     test "a release's fetch does nothing and is not retried", %{scope: scope} do
       {:ok, release} =
-        Integrations.request_release(scope, %{
-          source: "github.com/acme/tracker-integration",
-          version: "0.3.0"
-        })
+        with_secrets(fn ->
+          Integrations.request_release(scope, %{
+            source: "github.com/acme/tracker-integration",
+            version: "0.3.0"
+          })
+        end)
 
       args = FetchJob.for_scope(scope, %{"release_id" => release.id}).changes.args
       assert {:cancel, :not_found} = perform_job(FetchJob, args)
 
-      assert {:ok, %Release{state: "pending"}} = Integrations.get_release(scope, release.id)
+      assert %Release{state: "pending"} = Apiary.Repo.get!(Release, release.id)
+    end
+
+    test "its actions are not found, to a person, an access key and the instance",
+         %{scope: scope} do
+      key = Apiary.Accounts.Scope.for_access_key(access_key_fixture(scope).access_key)
+      instance = Apiary.Accounts.Scope.for_instance(scope.organisation, scope.workspace)
+
+      for asker <- [scope, key, instance], action <- @all_secrets_actions do
+        assert Apiary.Access.feature(action) == :secrets
+        assert Apiary.Access.check(asker, action, scope.workspace) == {:error, :not_found}
+      end
     end
   end
 
@@ -362,14 +407,14 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       answer = jump(conn, scope)
 
       assert labels(answer, "Actions") ==
-               [
-                 "New node",
-                 "New node pool",
-                 "Add integration",
-                 "New secret",
-                 "New variable",
-                 "Invite people"
-               ]
+               ["New node", "New node pool"] ++
+                 rule() ++
+                 [
+                   "Add integration",
+                   "New secret",
+                   "New variable",
+                   "Invite people"
+                 ]
 
       assert "Workspace settings › Integrations" in labels(answer, "Go to")
       assert "Workspace settings › Secrets and variables" in labels(answer, "Go to")
@@ -392,6 +437,68 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
       assert has_element?(view, "#key-#{key.key_id}-stored-secrets", "Not allowed")
       assert render(view) =~ "Stored secrets"
+    end
+  end
+
+  describe "on, hidden from a person" do
+    @describetag with_features: @on
+    @describetag needs: :secrets
+
+    setup :register_and_log_in_user
+
+    # What an edition hides, `{stub, names}`, and the features the person is then not
+    # shown: each core feature needs the one before it.
+    @hiding [
+      {{Apiary.EditionStubs.WithoutSecrets, nil}, [:secrets]},
+      {{Apiary.EditionStubs.HidesNamed, [:secrets]}, [:secrets]},
+      {{Apiary.EditionStubs.HidesNamed, [:security]}, [:security, :secrets]},
+      {{Apiary.EditionStubs.HidesNamed, [:observability]}, [:observability, :security, :secrets]}
+    ]
+
+    defp hide({stub, names}) do
+      :ok = Apiary.Edition.put_test_stub(stub)
+      if names, do: :ok = Apiary.EditionStubs.HidesNamed.put(names)
+    end
+
+    test "its actions are not found, as is every feature that needs a hidden one",
+         %{scope: scope} do
+      for action <- @all_secrets_actions do
+        assert Apiary.Access.feature(action) == :secrets
+        assert Apiary.Access.check(Apiary.Access.reload(scope), action, scope.workspace) == :ok
+      end
+
+      for {hiding, hidden} <- @hiding do
+        hide(hiding)
+        reloaded = Apiary.Access.reload(scope)
+
+        assert reloaded.hidden == hidden
+
+        for feature <- @on do
+          assert Apiary.Features.visible?(reloaded, feature) == feature not in hidden,
+                 inspect({hiding, feature})
+        end
+
+        for action <- @all_secrets_actions do
+          assert Apiary.Access.check(reloaded, action, scope.workspace) == {:error, :not_found},
+                 inspect({hiding, action})
+
+          refute Apiary.Access.can?(reloaded, action, scope.workspace)
+        end
+      end
+    end
+
+    test "its pages answer the person as a path that does not exist",
+         %{conn: conn, scope: scope} do
+      paths =
+        for rest <- ["/settings/secrets", "/settings/variables", "/settings/integrations"],
+            do: workspace_path(scope, rest)
+
+      for path <- paths, do: assert({200, _body} = answer(fn -> get(conn, path) end))
+
+      for {hiding, _hidden} <- @hiding, path <- paths do
+        hide(hiding)
+        assert {404, _body} = answer(fn -> get(conn, path) end), inspect({hiding, path})
+      end
     end
   end
 

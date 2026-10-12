@@ -429,13 +429,314 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule ServesAcross do
+    @moduledoc """
+    Lets the organisation-level gateways of one organisation serve the workspaces of
+    others, as an edition may (`c:Apiary.Edition.serving_organisations/1`,
+    `c:Apiary.Edition.served_organisations/1`): the pairs `{serving, served}` the test
+    names (`put/1` in the test's process, which the processes it starts read too), the
+    serving organisations of one served organisation in the order the test gives them.
+    Both answers come from the one list, so each is the reverse of the other. It reads
+    nothing and locks nothing. With `out_of_use/1`, it also holds organisations out of use
+    as `OutOfUse` does.
+    """
+
+    @doc "put/1 names the pairs `{serving, served}`, in order, for the test's processes."
+    def put(pairs) when is_list(pairs), do: Process.put(:serves_across, pairs)
+
+    @doc "out_of_use/1 holds the organisations `ids` out of use, as `OutOfUse` reads it."
+    def out_of_use(ids) when is_list(ids), do: Process.put(:out_of_use, ids)
+
+    @doc """
+    switch/1 turns the serving off (`:off`), as an edition whose flag for it is off: both
+    answers are none, whatever `put/1` named, until it is turned `:on` again.
+    """
+    def switch(state) when state in [:on, :off], do: Process.put(:serves_across_switch, state)
+
+    def serving_organisations(id), do: for({serving, ^id} <- pairs(), do: serving)
+
+    def served_organisations(id), do: for({^id, served} <- pairs(), do: served)
+
+    def active_organisations(query, binding), do: OutOfUse.active_organisations(query, binding)
+
+    defp pairs do
+      if read(:serves_across_switch) == :off, do: [], else: read(:serves_across) || []
+    end
+
+    defp read(key) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
+        pid when pid == self() ->
+          Process.get(key)
+
+        pid ->
+          case Process.info(pid, {:dictionary, key}) do
+            {{:dictionary, ^key}, value} -> value
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
+  defmodule ManyWorkspaces do
+    @moduledoc """
+    Lets an organisation have any number of workspaces (`c:Apiary.Edition.limits/0`), as an
+    edition may: the console then offers gateways at the organisation
+    (`ApiaryWeb.NodeComponents.organisation_gateways?/0`).
+    """
+    def limits, do: %{organisations: :unlimited, workspaces: :unlimited}
+  end
+
+  defmodule ManyWorkspacesHidesNamed do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), whose gateways the console offers
+    at the organisation, where every person is shown what `HidesNamed` shows them.
+    """
+    defdelegate limits, to: Apiary.EditionStubs.ManyWorkspaces
+    defdelegate hidden(scope), to: Apiary.EditionStubs.HidesNamed
+  end
+
+  defmodule MembersReachNamed do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), where a member reaches only the
+    workspaces the test names (`put/1` in the test's process, which the processes it starts
+    read too), as an edition may narrow them (`c:Apiary.Edition.every_workspace_levels/0`,
+    `c:Apiary.Edition.reached_workspaces/2`, `c:Apiary.Edition.reaches_workspace?/3`).
+    Owners and admins reach every workspace.
+    """
+    import Ecto.Query
+
+    @doc "put/1 names the workspaces a member reaches."
+    def put(ids) when is_list(ids), do: Process.put(:members_reach, ids)
+
+    defdelegate limits, to: ManyWorkspaces
+
+    def every_workspace_levels, do: [:owner, :admin]
+
+    def reached_workspaces(query, _scope),
+      do: where(query, [workspace: w], w.id in ^reached())
+
+    def reaches_workspace?(_scope, workspace_id, _opts), do: workspace_id in reached()
+
+    defp reached do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:members_reach)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :members_reach}) do
+            {{:dictionary, :members_reach}, ids} when is_list(ids) -> ids
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
+  defmodule MembersReachMarked do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), where a member reaches every
+    workspace, each as the edition marks it: the workspace's id, which it merges beside
+    the workspace (`c:Apiary.Edition.reached_workspaces/2`) and so the core puts on the
+    scope's `edition` where the member opens it, and the scope reaches only the workspace
+    its mark names (`c:Apiary.Edition.reaches_workspace?/3`), from what it carries and
+    without a read. Owners and admins reach every workspace.
+    """
+    import Ecto.Query
+
+    defdelegate limits, to: ManyWorkspaces
+
+    def every_workspace_levels, do: [:owner, :admin]
+
+    def reached_workspaces(query, _scope),
+      do: select_merge(query, [workspace: w], %{reach_mark: w.id})
+
+    def reaches_workspace?(%{edition: %{reach_mark: mark}}, workspace_id, _opts),
+      do: mark == workspace_id
+
+    def reaches_workspace?(_scope, _workspace_id, _opts), do: false
+  end
+
+  defmodule MembersReachNamedWithoutRecord do
+    @moduledoc """
+    A member reaches the workspaces the test names (`MembersReachNamed`, whose `put/1` names
+    them), and every person is shown the instance's features but `observability`,
+    `security` and `secrets` (`WithoutRecordOrPolicy`).
+    """
+    defdelegate limits, to: MembersReachNamed
+    defdelegate every_workspace_levels, to: MembersReachNamed
+    defdelegate reached_workspaces(query, scope), to: MembersReachNamed
+    defdelegate reaches_workspace?(scope, workspace_id, opts), to: MembersReachNamed
+
+    defdelegate hidden(scope), to: Apiary.EditionStubs.WithoutRecordOrPolicy
+  end
+
+  defmodule GatewaysWorded do
+    @moduledoc """
+    An edition whose organisations have many workspaces and whose organisation-level
+    gateways serve the workspaces of others (`ServesAcross`, whose `put/1` names them), in
+    its own words: whose nodes can use them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`),
+    who manages the nodes (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`) and who sets
+    a pool's instance limit (`c:ApiaryWeb.Edition.who_may_sentence/2`, `node.set_limit`).
+    """
+    defdelegate limits, to: ManyWorkspaces
+    defdelegate serving_organisations(id), to: ServesAcross
+    defdelegate served_organisations(id), to: ServesAcross
+    defdelegate active_organisations(query, binding), to: ServesAcross
+
+    def gateway_reach_sentence(kind, organisation),
+      do: "Edition reach #{kind} of #{organisation.name}."
+
+    def nodes_managed_by_sentence(organisation),
+      do: "Edition managers of #{organisation.name} manage the nodes here."
+
+    def who_may_sentence(:"node.set_limit", _scope),
+      do: "Edition owners alone set a node pool's instance limit."
+
+    def who_may_sentence(_about, _scope), do: nil
+  end
+
+  defmodule LockWorded do
+    @moduledoc """
+    The pages and the policy say who may lock, unlock or change a locked rule in the
+    edition's words (`c:ApiaryWeb.Edition.who_may_sentence/2`, `security_policy.lock`),
+    and the core's words for anything else.
+    """
+    def who_may_sentence(:"security_policy.lock", _scope), do: sentence()
+    def who_may_sentence(_about, _scope), do: nil
+
+    @doc "The sentence it says."
+    def sentence, do: "Only the stub's owners lock, unlock or change a locked rule."
+  end
+
+  defmodule GatewaysEmptyWorded do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), whose empty Gateways page says its
+    body in the edition's words (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`);
+    the other sentences of whose nodes can use the gateways are the core's.
+    """
+    defdelegate limits, to: ManyWorkspaces
+
+    def gateway_reach_sentence(:empty, _organisation), do: "Stub empty gateways body."
+
+    def gateway_reach_sentence(kind, organisation),
+      do: ApiaryWeb.Edition.Core.gateway_reach_sentence(kind, organisation)
+  end
+
+  defmodule PeopleWorded do
+    @moduledoc """
+    The People pages say the invitation's description, by mail and by link, and the
+    Admin level's hint in the edition's words (`c:ApiaryWeb.Edition.people_sentence/3`),
+    the invitation's with the names it is given; the Owner and Member hints are the core's.
+    """
+    def people_sentence(:invite_by_mail, _scope, %{workspace: w, organisation: o}),
+      do: "Stub words for the invite by mail, into #{w} of #{o}."
+
+    def people_sentence(:invite_by_link, _scope, %{workspace: w, organisation: o}),
+      do: "Stub words for the invite by link, into #{w} of #{o}."
+
+    def people_sentence({:level_hint, :admin}, _scope, %{}), do: "Stub admin hint."
+    def people_sentence(_about, _scope, _bindings), do: nil
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
+  end
+
+  defmodule LinksTheLevel do
+    @moduledoc """
+    The level above the workspace's policy has a page, `/8wonders/policy`, and a New rule
+    page, which the reader may use (`above_policy_link/1`), as an edition that keeps a
+    level may answer.
+    """
+    def above_policy_link(_scope),
+      do: %{
+        path: "/8wonders/policy",
+        can_change: true,
+        new_rule_path: "/8wonders/policy/rules/new"
+      }
+  end
+
+  defmodule LinksTheLevelWithoutNewRule do
+    @moduledoc """
+    The level above the workspace's policy has a page, `/8wonders/policy`, and no New rule
+    page (`above_policy_link/1`).
+    """
+    def above_policy_link(_scope),
+      do: %{path: "/8wonders/policy", can_change: true, new_rule_path: nil}
+  end
+
+  defmodule ReadsThePolicy do
+    @moduledoc """
+    A person reads the security policy and changes none of its rules
+    (`security_policy.edit`), as an edition's reader may.
+    """
+    def check(_scope, :"security_policy.edit", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoLimitWorded do
+    @moduledoc """
+    Nobody sets a pool's instance limit, as `NoLimit` has it, and the pages say who may in
+    the edition's words (`c:ApiaryWeb.Edition.who_may_sentence/2`).
+    """
+    defdelegate check(scope, action, subject), to: NoLimit
+    defdelegate who_may_sentence(about, scope), to: GatewaysWorded
+  end
+
+  defmodule NoLog do
+    @moduledoc "Nobody reads a run's log (`run.read_log`), whoever asks."
+    def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule WithoutRecordOrPolicy do
+    @moduledoc """
+    Every person is shown the instance's features but `observability` and `security`, and
+    `secrets`, which needs `security` (`c:Apiary.Edition.hidden/1`), as an edition that
+    hides them below the instance would. It reads nothing.
+    """
+    def hidden(_scope), do: [:observability, :security, :secrets]
+  end
+
+  defmodule HidesNamed do
+    @moduledoc """
+    Every person is shown the instance's features but the features and the parts the test
+    names (`put/1` in the test's process, which the processes it starts read too), as an
+    edition that hides them below the instance would (`c:Apiary.Edition.hidden/1`). It
+    reads nothing.
+    """
+
+    @doc "put/1 names the features and the parts a person is not shown."
+    def put(features) when is_list(features) do
+      Process.put(:hides_named, features)
+      :ok
+    end
+
+    def hidden(_scope) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:hides_named)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :hides_named}) do
+            {{:dictionary, :hides_named}, features} when is_list(features) -> features
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
+  defmodule WithoutSecrets do
+    @moduledoc """
+    Every person is shown the instance's features but `secrets`
+    (`c:Apiary.Edition.hidden/1`), as an edition that hides it below the instance would.
+    It reads nothing.
+    """
+    def hidden(_scope), do: [:secrets]
   end
 end

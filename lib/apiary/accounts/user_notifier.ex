@@ -106,7 +106,7 @@ defmodule Apiary.Accounts.UserNotifier do
   heading, not as the text of a link, and carrying no web address, which the name's rules
   refuse; a mail client may still link a bare domain in it. The inviter's address is not
   in it either, since its local part is theirs to choose. The link is the bare URL, on a
-  line of its own.
+  line by itself.
   """
   def deliver_invitation(email, organisation, url) do
     deliver(

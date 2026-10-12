@@ -20,7 +20,7 @@ defmodule Apiary.Runs.Record.Timeline do
   inside a tool call only when exactly one call is open at its sequence; that says
   *while*, never *because*. A call whose end the record lacks stops being open when its
   agent's turn ends, its subagent finishes, the session ends or starts again, or the run
-  exits: from there on a connection is an item of its own. Heartbeats, log chunks, the
+  exits: from there on a connection is a separate item. Heartbeats, log chunks, the
   ping and types this module has not heard of are not items.
 
   Everything that comes out of an event is Forager's input and is treated as such:
@@ -1101,7 +1101,18 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(slim_text(:stdout, stdout || nil, limit, true))
     |> Map.merge(slim_text(:stderr, stderr || nil, limit, true))
     |> Map.merge(slim_text(:response_json, json, limit, false))
+    |> egress_host()
   end
+
+  @doc false
+  # An egress event's host as its connection keeps it (`Apiary.Runs.Fold.host/1`): at most
+  # 255 bytes, and a longer one its first 252 bytes, cut on a character boundary, then
+  # "…", so a long host reads the same in the timeline as on its connection's row. Any
+  # other event's is as it is.
+  def egress_host(%{type: @prefix <> "run.egress", host: host} = event) when is_binary(host),
+    do: %{event | host: Fold.host(host)}
+
+  def egress_host(event), do: event
 
   defp slim_text(key, text, limit, lines?) when is_binary(text) and text != "" do
     base = %{key => String.slice(text, 0, limit), :"#{key}_bytes" => byte_size(text)}

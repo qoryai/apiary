@@ -33,7 +33,7 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     8. `409` `{"error":"key_invalid"}`, **unsigned**, for a public key the key checks
        refuse (`Apiary.Contract.Ed25519.decode_public_key/1`), checked first, or a proof
        that does not verify under it: nothing is signed for a proof no checked key made;
-    9. `429` `rate_limited`, signed, with `Retry-After`, past the code's own limit:
+    9. `429` `rate_limited`, signed, with `Retry-After`, past the code's limit:
        `code_rate` requests a second and `code_burst` at once, 1 and 5 unless the same
        configuration says otherwise;
     10. `409` `key_invalid`, signed, for a public key the ledger holds: another access
@@ -42,10 +42,14 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     12. `201`, signed, with the access key id, its node and its kind, `stored_secrets`
         and the instance's keys: the key is active.
 
+  An enrolment a gateway relays arrives unchanged, from the gateway's address, and is
+  answered as any other: step 4 counts the gateway's address, one limit for every machine
+  behind it, not raised for a gateway (`docs/contract-assumptions.md`).
+
   The order of 8 to 12 is `Apiary.AccessKeys.enrol/2`'s. A signed answer is signed by
   `ApiaryWeb.Contract.SignedAnswer.put_enrolment/3`: `X-Qory-Signature-Ed25519`, the
   instance's signature of the enrolment answer string
-  (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under the enrolment answers' own
+  (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under the enrolment answers'
   domain line `qory-enrol-answer-ed25519-v1`, whose line 3 is the request's `proof`
   exactly as sent, and `Cache-Control: no-store, no-transform`. Each signed body lists
   `apiary_public_key`, the instance's keys (`Apiary.SigningKey.apiary_public_key/0`); an

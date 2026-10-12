@@ -16,16 +16,16 @@ defmodule ApiaryWeb do
   below. Instead, define additional modules and import
   those modules here.
 
-  An edition's web module builds its own from the same pieces: `live_view/2`,
+  An edition's web module is built from the same pieces: `live_view/2`,
   `live_component/2`, `html/2` and `controller/2` take the router whose routes its `~p`
   are verified against and the Gettext backend its sentences are translated with, and
   `verified_routes/1` the router. The core's are verified against `ApiaryWeb.Router`,
   which holds the core's routes alone and is part of every edition's router, so a core
-  module never links to a path only an edition serves: the edition links to its own pages
+  module never links to a path only an edition serves: the edition links to its pages
   from the places the core gives it (`ApiaryWeb.Extension`, `ApiaryWeb.Nav.Entry`). The
-  core's sentences are in `ApiaryWeb.Gettext`'s catalogues, and an edition's in its own
+  core's sentences are in `ApiaryWeb.Gettext`'s catalogues, and an edition's in its
   backend's (`c:ApiaryWeb.Edition.gettext_backend/0`), so each set of catalogues holds
-  only the sentences of its own modules.
+  only the sentences of the modules that use its backend.
   """
 
   # Not `docs`: `priv/static/docs` holds a tree of the documentation per set of features,

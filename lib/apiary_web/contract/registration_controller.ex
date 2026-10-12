@@ -4,10 +4,10 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   whose body is the registration (`Apiary.Runs.Registration`), and its reload, a signed
   `GET /v1/runs/<run_id>`. Both are reached only through
   `ApiaryWeb.Contract.SignedRequest`, as discovery is, which verifies the request, refuses
-  what the contract refuses before the run endpoint's own (a content type other than
+  what the contract refuses before the run endpoint does (a content type other than
   `application/json` for a registration, the key's rate limit, an instance id, a contract
   revision not served, a GET's stale timestamp) and signs the answer. The key's rate limit
-  here is a bucket of its own, apart from the events endpoint's: 50 requests a second and
+  here is a separate bucket from the events endpoint's: 50 requests a second and
   100 at once (`config :apiary, ApiaryWeb.Contract.RegistrationController`), so a gateway
   flushing a backlog of events still starts a new run. A registration's body is read raw,
   up to 64 KiB (`ApiaryWeb.Contract.RawBody`).
@@ -22,14 +22,16 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   run id the workspace already holds otherwise is `409` `run_id_used`; else the run is
   stored and answered `200`.
 
-  **A reload** is answered only for a run the key's own node registered, under any of its
+  **A reload** is answered only for a run the key's node registered, under any of its
   active keys, or, for a run through a gateway, to the instance of the gateway that
   attached it, under any of the gateway's active keys (`Apiary.Runs.Registration.fetch/3`,
   `Apiary.Runs.Sender`); anything else is `404`, a run another node registered, a run
   another instance of the gateway attached and a run its batches created among them, and
   so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
-  started.
+  started. A run behind a gateway that may no longer serve its workspace
+  (`Apiary.Runs.Sender.serves?/2`) is `410` `workspace_not_served`, with no run
+  configuration.
 
   The answer is `200`, `application/json`, the run configuration's bytes, with
   `X-Qory-Run-Configuration: sha256=<hex>`, the same string quoted as the `ETag`, and
@@ -98,6 +100,7 @@ defmodule ApiaryWeb.Contract.RegistrationController do
     case Registration.fetch(conn.assigns.access_key, run_id, conn.assigns.instance_id) do
       {:ok, answer} -> answer(conn, answer)
       {:error, :not_found} -> conn |> put_status(404) |> json(%{error: "not_found"})
+      {:error, :workspace_not_served} -> gone(conn, "workspace_not_served")
       {:error, _reason} -> unavailable(conn)
     end
   rescue
@@ -126,6 +129,8 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   end
 
   defp unavailable(conn), do: conn |> put_status(503) |> json(%{error: "unavailable"})
+
+  defp gone(conn, code), do: conn |> put_status(410) |> json(%{error: code})
 
   defp parse(raw_body) do
     case Jason.decode(raw_body) do

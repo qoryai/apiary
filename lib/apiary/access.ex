@@ -154,39 +154,49 @@ defmodule Apiary.Access do
     Action.new(
       :"access_key.create_code",
       "make an enrolment code for a node, with the settings of the key it brings",
+      part: :nodes,
       roles: @admins
     ),
     Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+      part: :nodes,
       roles: @admins
     ),
     Action.new(:"access_key.add", "add an access key to a node by its public key",
+      part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),
+    Action.new(:"access_key.revoke", "revoke a node's access key",
+      part: :nodes,
+      roles: @admins
+    ),
     # The workspace's nodes and node pools, the places its runs run.
     Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+      part: :nodes,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"node.create",
       "make a node or a node pool, whose kind is fixed from then on",
+      part: :nodes,
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node or a node pool", roles: @admins),
+    Action.new(:"node.edit", "rename a node or a node pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.set_limit",
       "set a node pool's instance limit, as it is made or after",
+      part: :nodes,
       roles: @admins,
       audited:
         {:not,
          "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
            "node.edit, records it with what else the change made"}
     ),
-    Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
+    Action.new(:"node.delete", "delete a node or a node pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.clear_instance",
       "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      part: :nodes,
       roles: @admins
     ),
     # The record.
@@ -197,6 +207,7 @@ defmodule Apiary.Access do
     ),
     Action.new(:"run.read_log", "read a run's log: its terminal, stdout and stderr",
       feature: :observability,
+      part: :"observability.terminal",
       roles: @members,
       audited: {:not, @read}
     ),
@@ -230,47 +241,47 @@ defmodule Apiary.Access do
     Action.new(
       :"secret.read",
       "read the stored secrets: their names, notes and value IDs, never a value",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"secret.write",
       "create a stored secret, change its name, note and values, and delete it",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     Action.new(
       :"secret.use",
       "link a stored secret to what uses it",
-      feature: :security,
+      feature: :secrets,
       roles: @admins,
       audited:
         {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
     ),
     Action.new(:"variable.read", "read the variables of the workspace and its repositories",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"variable.edit",
       "set, change, lock and remove the variables of the workspace and its repositories",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     # What a run is connected to: runtimes, integrations and services.
     Action.new(
       :"connection.read",
       "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
-      feature: :security,
+      feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"connection.write",
       "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
-      feature: :security,
+      feature: :secrets,
       roles: @admins
     ),
     # The server contract.
@@ -347,10 +358,13 @@ defmodule Apiary.Access do
     (`Apiary.Accounts.Scope.for_instance/2`). Any other scope without a person may
     nothing.
   - **`action`** is a verb of the engine, one of `actions/0`, each an
-    `Apiary.Access.Action` named once, with the feature it belongs to, in the table below;
-    an edition adds its own (`c:Apiary.Edition.actions/0`). The registry of both is built
-    once, checked, and kept for the node: an action named twice, a role or a feature
-    nobody knows, stops it. An action that is in neither raises `ArgumentError`.
+    `Apiary.Access.Action` named once, with the feature it belongs to, and the part where
+    it belongs to one, a part of its feature or, for an action of no feature, a part of
+    none, in the table below; an edition adds further actions
+    (`c:Apiary.Edition.actions/0`). The registry of both is built once, checked, and kept
+    for the node: an action named twice, a role or a feature nobody knows, or a part that
+    is not one of its feature's, or of no feature for an action of none, stops it. An
+    action that is in neither raises `ArgumentError`.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
     as a run, a rule, an access key, a node, an invitation or a membership, which carries
     `organisation_id`, and `workspace_id` when it belongs to a workspace. Deleting a
@@ -359,11 +373,12 @@ defmodule Apiary.Access do
 
   The answer is read in this order:
 
-  1. **The feature** the action belongs to (`Apiary.Features.on?/2`). An action of a
-     feature that is off is `{:error, :not_found}`: a feature that is off is absent, not
-     forbidden.
+  1. **The feature** the action belongs to, or the part (`shown_as/1`,
+     `Apiary.Features.visible?/2`). An action of a feature that is off, or of a feature or
+     a part hidden from the scope's person, is `{:error, :not_found}`: a feature that is
+     off or hidden is absent, not forbidden, and so is a hidden part.
   2. **The edition** (`c:Apiary.Edition.check/3`), asked once: it may answer, for what it
-     adds or narrows, or leave the answer to the steps below. The core's own edition
+     adds or narrows, or leave the answer to the steps below. The core's edition
      leaves every answer to them.
   3. **Where the subject is** (`check_place/3`). A subject of another organisation, or of
      another workspace than the scope's, is `{:error, :not_found}`, so the answer does not
@@ -382,9 +397,9 @@ defmodule Apiary.Access do
      the membership (`reload/2`), so a page opened before the marking acts on nothing
      after it.
   6. **Whose membership it is.** Anyone with a membership may leave the organisation,
-     `member.remove` of their own membership, whatever their level (`own/0`); the rule
+     `member.remove` of their membership, whatever their level (`own/0`); the rule
      that an organisation keeps an owner still holds (`Apiary.Organisations`). Nobody
-     suspends or activates their own membership.
+     suspends or activates their membership.
   7. **The role** of the one asking (`role/1`), in the role table below. An action the
      role does not hold is `{:error, :forbidden}`, and so is every action for a person
      without a membership where the scope is, unless the edition gives them a role there;
@@ -414,7 +429,12 @@ defmodule Apiary.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
+  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
+      action.part && action.feature -> "`#{action.feature}`, its part `#{action.part}`"
+      action.part -> "every instance, the part `#{action.part}`"
+      action.feature -> "`#{action.feature}`"
+      true -> "every instance"
+    end} |" end)}
 
   ## Roles
 
@@ -422,8 +442,8 @@ defmodule Apiary.Access do
   |---|---|---|
   #{Enum.map_join(@roles, "\n", fn {role, who} -> "| `#{role}` | #{who} | #{@actions |> Enum.filter(&(role in &1.roles)) |> Enum.map_join(", ", &"`#{&1.name}`")} |" end)}
 
-  Anyone with a membership, at any level, may also remove their own: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
-  Nobody suspends or activates their own membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
+  Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
+  Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
 
   An admin may what an owner may inside the organisation but change a person's level,
   lock, unlock, change or remove a locked rule of the security policy, and delete the
@@ -474,9 +494,24 @@ defmodule Apiary.Access do
 
   ## Features
 
-  The feature an action belongs to is asked of `Apiary.Features.on?/2` with the scope,
-  which carries what its organisation and workspace have (`Apiary.Features.of/2`);
-  `reload/2` reads them again after its locks.
+  The feature an action belongs to, or the part where it belongs to one (`shown_as/1`), is
+  asked of `Apiary.Features.visible?/2` with the scope, which carries what its person is
+  not shown in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`); `reload/2` reads
+  it again after the edition's reload, under its locks. A part of a feature is hidden where
+  it or its feature is; a part of no feature where it is. An access key's scope and the
+  instance's answer as the instance.
+
+  `run.read_log` belongs to the part `observability.terminal`, the run's Terminal: an
+  edition that hides it from a person hides the run's whole log from them, its terminal,
+  stdout and stderr, on the run page, at its address and as a download, and the last lines
+  the runs list previews.
+
+  The `node.*` and `access_key.*` actions belong to no feature and to the part `nodes`: an
+  edition that hides it from a person hides from them the nodes, the node pools, their
+  access keys and the gateways, their pages and every action on them, while the nodes keep
+  working. What a node is served asks an access key's scope or the instance's, which is
+  never asked what is hidden; an enrolment code's maker approves the key it brings by
+  their role and place, whatever is hidden from them (`check_code_maker/2`).
   """
 
   @typedoc "An action, one of `actions/0`."
@@ -494,7 +529,10 @@ defmodule Apiary.Access do
   """
   @type subject :: struct()
 
-  @typedoc "Why the answer is no: a feature that is off or a subject out of reach, or the role."
+  @typedoc """
+  Why the answer is no: a feature that is off or hidden, or a subject out of reach, or the
+  role.
+  """
   @type reason :: :not_found | :forbidden
 
   ## The registry
@@ -522,6 +560,17 @@ defmodule Apiary.Access do
   def feature(action), do: action(action).feature
 
   @doc """
+  shown_as/1 is what `Apiary.Features.visible?/2` is asked of `action`: the part it belongs
+  to, else its feature; nil for an action of no feature and no part, which every person is
+  shown.
+  """
+  @spec shown_as(action) :: Features.name() | nil
+  def shown_as(action) do
+    %Action{feature: feature, part: part} = action(action)
+    part || feature
+  end
+
+  @doc """
   roles/0 is the roles, the core's and the edition's, with the actions each holds: the
   actions whose `roles` name it, in the order of `actions/0`.
   """
@@ -534,7 +583,7 @@ defmodule Apiary.Access do
   defp registry do
     case :persistent_term.get(__MODULE__, nil) do
       nil ->
-        registry = build_registry()
+        registry = build_registry(Edition.actions(), Edition.roles())
         :persistent_term.put(__MODULE__, registry)
         registry
 
@@ -543,10 +592,9 @@ defmodule Apiary.Access do
     end
   end
 
-  defp build_registry do
-    edition_roles = Edition.roles()
-    edition_actions = Edition.actions()
-
+  # Public for the access test, which hands it an edition's actions with a mistake.
+  @doc false
+  def build_registry(edition_actions, edition_roles) do
     for {role, _who} <- edition_roles, Keyword.has_key?(@roles, role) do
       raise ArgumentError, "the edition's role #{inspect(role)} is one of the core's"
     end
@@ -574,6 +622,14 @@ defmodule Apiary.Access do
       raise ArgumentError, "#{action.name} belongs to #{inspect(feature)}, no feature"
     end
 
+    parts = Features.parts()
+
+    for %Action{feature: feature, part: part} = action <- actions,
+        not is_nil(part),
+        part not in parts or Features.feature_of(part) != feature do
+      raise ArgumentError, part_refused(action.name, part, feature)
+    end
+
     %{
       names: names,
       by_name: Map.new(actions, &{&1.name, &1}),
@@ -583,6 +639,12 @@ defmodule Apiary.Access do
         end)
     }
   end
+
+  defp part_refused(name, part, nil),
+    do: "#{name} belongs to the part #{inspect(part)}, no part an action of no feature may have"
+
+  defp part_refused(name, part, feature),
+    do: "#{name} belongs to the part #{inspect(part)}, no part of #{inspect(feature)}"
 
   ## Levels and reach
 
@@ -737,7 +799,7 @@ defmodule Apiary.Access do
 
   def instance_admin_membership?(_membership), do: false
 
-  @doc "own/0 is the actions anyone with a membership may take on their own membership."
+  @doc "own/0 is the actions anyone with a membership may take on their membership."
   @spec own() :: [action]
   def own, do: @own
 
@@ -751,7 +813,7 @@ defmodule Apiary.Access do
   @doc """
   acts_on?/2 says whether `role` takes the actions over people on a person at `level`: an
   owner on anyone, an admin on members only, any other role on nobody. For an edition's
-  action over people, which asks it as the core asks it of its own.
+  action over people, which asks it as the core asks it of the core's.
   """
   @spec acts_on?(role | nil, Membership.level()) :: boolean
   def acts_on?(role, level), do: level in Map.get(@acts_on, role, [])
@@ -801,8 +863,9 @@ defmodule Apiary.Access do
   @doc """
   Whether `scope` may take `action` on `subject`, with the person's membership, and what
   the edition put on the scope, read again from the database: `:ok`;
-  `{:error, :not_found}` where the action's feature is off, the subject is not in the
-  scope's organisation and workspace, or the person does not reach its workspace;
+  `{:error, :not_found}` where the action's feature is off or hidden from the person, the
+  subject is not in the scope's organisation and workspace, or the person does not reach
+  its workspace;
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
   included, or allows it over other people than the subject's.
   `check(reload(scope), action, subject)`.
@@ -820,15 +883,38 @@ defmodule Apiary.Access do
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
   def check(scope, action, subject) do
-    %Action{feature: feature} = action(action)
+    shown_as = shown_as(action)
 
-    if not is_nil(feature) and not Features.on?(scope, feature) do
-      {:error, :not_found}
-    else
-      case Edition.check(scope, action, subject) do
-        :continue -> check_in_place(scope, action, subject)
-        answer -> answer
-      end
+    # A part of a feature is shown only where its feature is too
+    # (`Apiary.Features.visible?/2`).
+    if not is_nil(shown_as) and not Features.visible?(scope, shown_as),
+      do: {:error, :not_found},
+      else: role_and_place(scope, action, subject)
+  end
+
+  @doc """
+  check_code_maker/2 is whether the maker of an enrolment code, `scope`, the person who
+  made `code`, may still make it, so that the code still approves the key it brings
+  (`Apiary.AccessKeys.enrol/2`): the answer of `check/3` for `access_key.create_code` on
+  the code, but that step 1 asks only whether its part, `nodes`, is on for the instance
+  (`Apiary.Features.visible?/2` with no scope), which a part of no feature always is,
+  never what the edition hides from the person; then the edition's answer, the place's
+  and the role's, steps 2 to 8. For that one question alone: every other asks `check/3`.
+  """
+  @spec check_code_maker(Scope.t(), struct()) :: :ok | {:error, reason}
+  def check_code_maker(scope, code) do
+    action = :"access_key.create_code"
+    shown_as = shown_as(action)
+
+    if not is_nil(shown_as) and not Features.visible?(nil, shown_as),
+      do: {:error, :not_found},
+      else: role_and_place(scope, action, code)
+  end
+
+  defp role_and_place(scope, action, subject) do
+    case Edition.check(scope, action, subject) do
+      :continue -> check_in_place(scope, action, subject)
+      answer -> answer
     end
   end
 
@@ -900,7 +986,8 @@ defmodule Apiary.Access do
   @doc """
   The scope with the person's membership as the database has it now, its level as it is or
   no membership when it is gone or suspended, or when their account is no longer in use,
-  and what the edition put on it read again (`c:Apiary.Edition.reload/2`). An access key's
+  what the edition put on it read again (`c:Apiary.Edition.reload/2`), and what the person
+  is not shown in the organisation (`hidden`, `c:Apiary.Edition.hidden/1`). An access key's
   scope is returned as it is: the key was verified on the request that carries it; the
   instance's has only its marks to read again. Any other scope, one without a user or an
   organisation, comes back without a membership, so it may nothing a role would allow.
@@ -913,7 +1000,8 @@ defmodule Apiary.Access do
   `lock: :share`, for a caller inside a transaction, takes its locks in the lock order of
   docs/access.md: the organisation `FOR SHARE`, with whatever the edition holds beside it
   (`lock_places/1`); the workspace `FOR KEY SHARE`; the membership `FOR SHARE`; what the
-  edition reads again, under its own locks; then the account `FOR SHARE`, reading again
+  edition reads again and what the person is not shown, under the edition's locks; then
+  the account `FOR SHARE`, reading again
   whether it is still in use. A change of the level, a member's suspension, an account
   going out of use or a marking waits until the transaction ends, so what was asked stays
   true while the change is written, and one that came first is seen.
@@ -932,15 +1020,16 @@ defmodule Apiary.Access do
 
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
 
+    # What the person is not shown, asked once the edition's reach is read again: with
+    # `lock: :share` under the edition's locks, which `lock_places/1` took.
+    scope = %{scope | hidden: Features.hidden_of(Edition.hidden(scope))}
+
     # The account is read again under its lock: a deletion, or the edition holding it out
     # of use, that came first, and was waited for, leaves the person no reach, as a
     # membership read after it would.
-    scope =
-      if lock? and not active_account?(user_id),
-        do: %{scope | membership: nil, reach: nil},
-        else: scope
-
-    %{scope | features: Features.of(scope.organisation, scope.workspace)}
+    if lock? and not active_account?(user_id),
+      do: %{scope | membership: nil, reach: nil},
+      else: scope
   end
 
   def reload(%Scope{instance: true, user: nil, access_key: nil} = scope, _opts) do
@@ -962,9 +1051,9 @@ defmodule Apiary.Access do
   allowed while it is written: the first rows of the lock order (docs/access.md). A
   change that must not happen under such a write locks these rows for update, and waits
   for the write, or comes first and is seen; a row that only names the organisation
-  takes `FOR KEY SHARE`, which does not wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  takes `FOR KEY SHARE`, which does not wait. Then the edition's rows for such a write (`c:Apiary.Edition.lock_rows/1`,
   `{:places, scope}`), before any workspace, membership or account. `reload/2` with
-  `lock: :share` takes them first; a write that locks a row of its own before it asks, as
+  `lock: :share` takes them first; a write that locks a row itself before it asks, as
   the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
@@ -979,11 +1068,11 @@ defmodule Apiary.Access do
 
   @doc """
   lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
-  edition for no rows of its own: for a change whose one point asks the edition itself
+  edition for none of its rows: for a change whose one point asks the edition itself
   (`Apiary.Organisations.lock_people/1`). The scope's organisation, read as it is now
   without a lock, and those `c:Apiary.Edition.places_to_lock/1` names for it, are taken
   `FOR SHARE` in one statement (`Apiary.Organisations.lock_organisations/2`), under a
-  savepoint of its own. Then `places_to_lock/1` is asked again of the organisation held:
+  separate savepoint. Then `places_to_lock/1` is asked again of the organisation held:
   should it name one not taken, it lets go of what it took, rolling back to the
   savepoint, and takes the fresh set in one statement again, at most
   #{@place_attempts} times in all; so what it holds at the end was taken in one statement.

@@ -946,6 +946,28 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute has_element?(view, "#rule-panel")
     end
 
+    test "a member's refusal says who may change the lock: the core's words, or an edition's sentence",
+         %{scope: scope, run: run} do
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+      paste = connection_id(run, "bin.paste.example")
+
+      refusal = fn ->
+        view = connections(conn, scope, run)
+        view |> element("#cx-#{paste}-lock") |> render_click()
+        text(view, "#rule-panel-refusal")
+      end
+
+      core = refusal.()
+      assert String.ends_with?(core, ". Only an owner can change or unlock it.")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+
+      assert refusal.() ==
+               String.replace_suffix(core, "Only an owner can change or unlock it.", sentence)
+    end
+
     test "a member sees the padlock and the refusal, and can allow what is not locked", %{
       scope: scope,
       run: run

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Activity.Actor do
   @moduledoc """
   Who made an entry of the audit trail, as the Activity page's Who column says it
   (`ApiaryWeb.ActivityLive`): a person by the email address their account has now, "you"
-  beside the reader's own, "Former member" once the account is deleted; an access key by
+  beside the reader's address, "Former member" once the account is deleted; an access key by
   its label and key id, "An access key" once it is gone; the instance as Qory Apiary.
 
   The edition may say it instead (`c:ApiaryWeb.Edition.activity_actor/2`), from what it
@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Activity.Actor do
   @typedoc """
   The core's words for an actor: its `kind` (`:person`, `:access_key`, `:instance`, or
   `:gone` for an account or a key that is no more), its `text`, `you?` for the reader's
-  own entries, and `detail`, an access key's key id.
+  entries, and `detail`, an access key's key id.
   """
   @type words :: %{
           required(:kind) => :person | :access_key | :instance | :gone,

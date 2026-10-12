@@ -28,7 +28,7 @@ defmodule Apiary.Runs.RunKey do
 
   `issue/2` makes one; `verify/2` reads one back, in the order the contract gives: the
   prefix and the length, both parts decoded strictly, the signing key whose fingerprint
-  `signer` names among the keys given (the instance's own unless told), the signature
+  `signer` names among the keys given (the instance's unless told), the signature
   over the message, and last the payload against the rules above. Any failure is
   `:error`, whatever the cause. Nothing here touches the database, logs, or puts a run key
   in an error.
@@ -75,8 +75,8 @@ defmodule Apiary.Runs.RunKey do
   def max_length, do: @max_length
 
   @doc """
-  issue/2 makes the run key of `grant`, signed under `key`, the instance's own unless
-  given: `{:ok, run_key, payload}`, with the payload's exact bytes, which the run keeps.
+  issue/2 makes the run key of `grant`, signed under `key`, the instance's signing key
+  unless given: `{:ok, run_key, payload}`, with the payload's exact bytes, which the run keeps.
   `{:error, :invalid}` when the grant breaks a rule of the payload, an address that is not
   `https`, say, and `{:error, :too_long}` when the run key would be longer than
   `max_length/0`: no run key is made then.
@@ -118,7 +118,7 @@ defmodule Apiary.Runs.RunKey do
 
   @doc """
   encode/2 is the run key of `payload`, bytes a run key was made of before, signed under
-  `key`, the instance's own unless given: the same run key again, since Ed25519 signs a
+  `key`, the instance's signing key unless given: the same run key again, since Ed25519 signs a
   message the same way every time, as long as the key is the same.
   """
   @spec encode(binary, SigningKey.t() | nil) :: String.t()
@@ -155,7 +155,7 @@ defmodule Apiary.Runs.RunKey do
 
   @doc """
   verify/2 reads `run_key` under `keys`, the signing keys a run key may be signed under,
-  the instance's own unless given: `{:ok, grant, payload}` (`t:grant/0`, and the payload's
+  the instance's unless given: `{:ok, grant, payload}` (`t:grant/0`, and the payload's
   exact bytes), or `:error` for anything that is not a run key those keys signed.
   """
   @spec verify(term, [SigningKey.t()] | nil) :: {:ok, grant, binary} | :error

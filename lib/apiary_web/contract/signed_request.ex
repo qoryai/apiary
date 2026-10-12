@@ -31,8 +31,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        of strict base64url or does not verify (cofactorless, `Apiary.Contract.Ed25519`);
     4. `429` `rate_limited` with `Retry-After`, when the plug is given a bucket of the
        key's rate limit (`Apiary.Runs.RateLimit`): `rate_limit: :events` for the events
-       endpoint, `rate_limit: :registration` for the run endpoint, which has a bucket of
-       its own, so a backlog of events never refuses a run its start;
+       endpoint, `rate_limit: :registration` for the run endpoint, which has a separate
+       bucket, so a backlog of events never refuses a run its start;
        discovery is not limited;
     5. `400` `bad_request` for an instance id absent or outside
        `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
@@ -43,7 +43,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        contract refuses comes before its `401` for a `time` outside the window, as the
        contract orders them (`ApiaryWeb.Contract.RegistrationController`).
 
-  Each endpoint's own refusals follow, in its controller: on the events endpoint the
+  Each endpoint's refusals follow, in its controller: on the events endpoint the
   `400` `invalid_request` of a body the contract refuses, then deduplication and `410`
   (`ApiaryWeb.Contract.EventsController`); on the run endpoint the registration's
   (`ApiaryWeb.Contract.RegistrationController`).

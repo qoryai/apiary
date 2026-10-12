@@ -2,7 +2,7 @@ defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
   The core's sections of the organisation's and the workspace's settings, one section a
   page, its title the page's h1, beside the list of its kind's sections
-  (`ApiaryWeb.SettingsComponents`), under the scope's own sidebar, whose Organisation
+  (`ApiaryWeb.SettingsComponents`), under the scope's sidebar, whose Organisation
   settings or Workspace settings is the current entry.
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
@@ -19,19 +19,19 @@ defmodule ApiaryWeb.SettingsLive do
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited. Deleting asks to type the
-  slug, in place, never in a dialog, each at a path of its own: the organisation's and this
+  slug, in place, never in a dialog, each at a separate path: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
   (`:danger`, and `/:org/settings/delete`, `:delete_organisation`), this workspace's at
   `/:org/:workspace/settings/danger` (`:workspace_danger`, and
   `/:org/:workspace/settings/delete`, `:delete_this_workspace`); any workspace's in its
   row of Workspaces (`SettingsComponents.workspace_list/1`), at
-  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are no section of their own: nothing that
+  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are not separate sections: nothing that
   cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
   notice at the top of Workspaces, where an owner or an admin cancels it until it is
   purged (`Apiary.Deletion`).
 
-  An edition adds sections to the organisation's settings, each a page of its own
+  An edition adds sections to the organisation's settings, each a separate page
   (`ApiaryWeb.SettingsComponents`), and to each workspace's ⋯ menu in Workspaces the items
   its `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
 
@@ -40,7 +40,7 @@ defmodule ApiaryWeb.SettingsLive do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Deletion, Organisations, Retention}
+  alias Apiary.{Access, Deletion, Features, Organisations, Retention}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   # Each page of this LiveView: the settings it is part of and its section's key.
@@ -451,7 +451,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.state_word :if={!run.complete} hot class="text-[12.5px]">
             {gettext("Not finished")}
           </.state_word>
-          <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
+          <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run, @current_scope)}</span>
         </li>
       </ul>
       <p :if={@retention_runs != []} id="retention-runs-note" class="q-foot-note">
@@ -1035,27 +1035,39 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
-  defp pruned_sentence(%{runs_pruned: 0}), do: gettext("Nothing was old enough to prune.")
+  defp pruned_sentence(%{runs_pruned: 0}, _scope),
+    do: gettext("Nothing was old enough to prune.")
 
-  defp pruned_sentence(run) do
-    pruned =
+  defp pruned_sentence(run, scope) do
+    runs =
+      ngettext("%{number} run", "%{number} runs", run.runs_pruned,
+        number: Format.number(run.runs_pruned)
+      )
+
+    events =
+      ngettext("%{number} event", "%{number} events", run.events_deleted,
+        number: Format.number(run.events_deleted)
+      )
+
+    Enum.join([pruned_counts(run, runs, events, scope) | cutoffs(run)], " ")
+  end
+
+  # The log's size is the Terminal's figure: a reader the run's Terminal is hidden from
+  # (`:"observability.terminal"`) is told the runs and the events only.
+  defp pruned_counts(run, runs, events, scope) do
+    if Features.visible?(scope, :"observability.terminal") do
       gettext("%{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-        runs:
-          ngettext("%{number} run", "%{number} runs", run.runs_pruned,
-            number: Format.number(run.runs_pruned)
-          ),
-        events:
-          ngettext("%{number} event", "%{number} events", run.events_deleted,
-            number: Format.number(run.events_deleted)
-          ),
+        runs: runs,
+        events: events,
         bytes: Format.bytes(run.log_bytes_deleted),
         chunks:
           ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
             number: Format.number(run.log_chunks_deleted)
           )
       )
-
-    Enum.join([pruned | cutoffs(run)], " ")
+    else
+      gettext("%{runs}: %{events}.", runs: runs, events: events)
+    end
   end
 
   defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: []

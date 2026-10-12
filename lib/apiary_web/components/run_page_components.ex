@@ -199,10 +199,21 @@ defmodule ApiaryWeb.RunPageComponents do
     default: false,
     doc: "for `:not_started`: whether the run registered, else it only pinged"
 
+  attr :terminal, :boolean,
+    default: true,
+    doc:
+      "whether the reader is shown the run's terminal (`run.read_log`): a sentence " <>
+        "that says the run has one says so only then"
+
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
     <.notice class="q-limits">
-      <.limit_sentence reason={@reason} runtime={@runtime} registered={@registered} />
+      <.limit_sentence
+        reason={@reason}
+        runtime={@runtime}
+        registered={@registered}
+        terminal={@terminal}
+      />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
       </span>
@@ -224,6 +235,7 @@ defmodule ApiaryWeb.RunPageComponents do
         runtime={@runtime}
         at={@at}
         registered={@registered}
+        terminal={@terminal}
       />
       <.listening
         :if={@reason == :not_started or (@reason == :no_log and @live)}
@@ -241,6 +253,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :runtime, :string, default: nil
   attr :at, :any, default: nil
   attr :registered, :boolean, default: false
+  attr :terminal, :boolean, default: true
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -276,10 +289,17 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :other_runtime} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
-        runtime: {:part, :runtime}
-      )
+      if @terminal,
+        do:
+          rich_gettext(
+            "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
+            runtime: {:part, :runtime}
+          ),
+        else:
+          rich_gettext(
+            "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline.",
+            runtime: {:part, :runtime}
+          )
     }>
       <:part name={:runtime}><code class="q-rule">{@runtime}</code></:part>
     </.rich>
@@ -289,10 +309,17 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :vm_wall} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
-        wall: {:part, :wall}
-      )
+      if @terminal,
+        do:
+          rich_gettext(
+            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
+            wall: {:part, :wall}
+          ),
+        else:
+          rich_gettext(
+            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
+            wall: {:part, :wall}
+          )
     }>
       <:part name={:wall}>
         <.term
@@ -309,9 +336,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :no_hooks} = assigns) do
     ~H"""
-    {gettext(
-      "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
-    )}
+    {if @terminal,
+      do:
+        gettext(
+          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
+        ),
+      else:
+        gettext(
+          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections."
+        )}
     """
   end
 
@@ -939,10 +972,10 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@item.tool} class="q-dest q-dest-tool">
           <.tool_mark name={@item.tool} />
-          <span class="q-on">{@item.host}:{@item.port}</span>
+          <span class="q-on"><bdi>{@item.host}</bdi>:{@item.port}</span>
         </span>
         <span :if={!@item.tool} class="q-dest">
-          {@item.host}<span class="q-port">:{@item.port}</span>
+          <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
           · {if @item.tool,
@@ -1374,7 +1407,7 @@ defmodule ApiaryWeb.RunPageComponents do
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
   a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
   at the size its bytes were written to: the recorded columns are kept, drawn inside the
-  box's own dark ground, which fills the page's width. Without one it fits the screen to
+  box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
   The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
@@ -1677,7 +1710,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The details as `{key, value, form}` rows, by key. A top-level member is a row; one that
-  is a non-empty object is instead a row per member of its own, keyed `outer.inner`, so a
+  is a non-empty object is instead a row per member of that object, keyed `outer.inner`, so a
   key has at most two segments. A value is shown as given when it is a string (`:text`),
   and as compact JSON otherwise (`:json`): a number, true, false, null, an array, and an
   object one level below that, or an empty one. An object nested deeper stays one JSON

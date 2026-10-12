@@ -49,7 +49,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    @tag needs: :security
+    @tag needs: :secrets
     test "names a stored secret and a variable by name, never by value",
          %{conn: conn, scope: scope} do
       {:ok, secret} =
@@ -409,6 +409,56 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert text(view, "#entry-#{added.id}-action") =~ "Added a policy rule"
       assert text(view, "#entry-#{added.id}-change") =~ "api.example"
       assert text(view, "#entry-#{added.id}-change") =~ "Now v1"
+    end
+
+    @tag needs: :security
+    test "a feature hidden from the reader leaves the filter, and its entries still show", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+      [added] = entries(scope, %{action: "security_policy.edit"})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security, :secrets])
+      view = open(conn, scope)
+
+      values = Enum.map(action_options(view), &elem(&1, 0))
+      assert "workspace.rename" in values
+
+      for action <-
+            ~w(security_policy.edit security_policy.set_mode secret.write variable.edit connection.write),
+          do: refute(action in values, action)
+
+      assert text(view, "#entry-#{added.id}-action") =~ "Added a policy rule"
+    end
+
+    test "the nodes hidden from the reader leave the filter, and their entries still show", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = Apiary.NodesFixtures.node_fixture(scope, name: "build-01")
+      [created] = entries(scope, %{action: "node.create"})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      values = Enum.map(action_options(view), &elem(&1, 0))
+      assert "workspace.rename" in values
+
+      for action <-
+            ~w(node.create node.edit node.delete node.clear_instance access_key.create_code access_key.cancel_code access_key.add access_key.revoke),
+          do: refute(action in values, action)
+
+      assert text(view, "#entry-#{created.id}-action") =~ "Created a node"
+      refute render(view) =~ "/nodes/#{node.public_id}"
+
+      # Shown again, the filter offers them.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      values = Enum.map(action_options(open(conn, scope)), &elem(&1, 0))
+      assert "node.create" in values
+      assert "access_key.revoke" in values
     end
 
     test "a load that fails says so, and where the reason is", %{conn: conn, scope: scope} do

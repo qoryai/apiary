@@ -31,8 +31,11 @@ defmodule ApiaryWeb.MemberLive.Index do
   (`Apiary.Access.grantable_levels/1`, all three in the core's edition) and the one the
   member holds, each with what it may do, suspending, activating and
   removing, each of the last three but activating confirmed in place, the member's row
-  turned into its confirmation (`CoreComponents.inline_confirm/1`) at a path of its own,
+  turned into its confirmation (`CoreComponents.inline_confirm/1`) at a separate path,
   `/:org/settings/people/:id/remove` or `…/suspend`, whose Cancel goes back to People.
+
+  The edition may give other words for the invitation's description and for each level's
+  hint (`c:ApiaryWeb.Edition.people_sentence/3`).
 
   An edition adds to the page through its slots (`ApiaryWeb.Extension`): under its title
   (`:members_heading`), beside each member's name (`:member_access`) and among the items
@@ -51,7 +54,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   works once, for 24 hours, or until mail is set (`Apiary.Mail.end_password_links/0`), and
   a new one ends the one before. The page shows it once, above the list, to copy and send
   to the person, until Done or until the reader leaves (`CoreComponents.one_time_link/1`,
-  `kind: :password`); it keeps the link in its own process alone, never in a path, a flash
+  `kind: :password`); it keeps the link in its process alone, never in a path, a flash
   or a title.
   """
   use ApiaryWeb, :live_view
@@ -84,15 +87,25 @@ defmodule ApiaryWeb.MemberLive.Index do
         cancel_by="patch"
       >
         <:description :if={!@link and @mail?}>
-          {gettext(
-            "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
-            workspace: @current_scope.workspace.name
+          {ApiaryWeb.Access.people_sentence(
+            @current_scope,
+            :invite_by_mail,
+            invite_bindings(@current_scope),
+            gettext(
+              "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
+              workspace: @current_scope.workspace.name
+            )
           )}
         </:description>
         <:description :if={!@link and !@mail?}>
-          {gettext(
-            "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
-            workspace: @current_scope.workspace.name
+          {ApiaryWeb.Access.people_sentence(
+            @current_scope,
+            :invite_by_link,
+            invite_bindings(@current_scope),
+            gettext(
+              "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
+              workspace: @current_scope.workspace.name
+            )
           )}
         </:description>
         <%!-- The link made, once, in place of the form. --%>
@@ -533,8 +546,20 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp level_hints(scope, grantable, member) do
     for level <- Membership.levels(),
         level in grantable or level == member.level,
-        do: {level, level_hint(level, scope)}
+        do:
+          {level,
+           ApiaryWeb.Access.people_sentence(
+             scope,
+             {:level_hint, level},
+             %{},
+             level_hint(level, scope)
+           )}
   end
+
+  # What the edition's words for the invitation's description may name
+  # (`c:ApiaryWeb.Edition.people_sentence/3`).
+  defp invite_bindings(scope),
+    do: %{workspace: scope.workspace.name, organisation: scope.organisation.name}
 
   defp level_hint(:owner, _scope),
     do: gettext("Changes everything, including who owns the organisation")
@@ -548,11 +573,11 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   # Whether a member changes the policy's rules that are not locked: asked of the roles
-  # (`Apiary.Access`) and of the features where the page is, never of a level written here.
+  # (`Apiary.Access`) and of the features the reader is shown, never of a level written here.
   defp members_edit_rules?(scope),
     do:
       :"security_policy.edit" in Map.get(Access.roles(), :member, []) and
-        Apiary.Features.on?(scope, :security)
+        Apiary.Features.visible?(scope, :security)
 
   # Whether the organisation has one owner, whom the last-owner rule holds in place, and
   # the reader is one who would otherwise change that owner's level: only to them does the

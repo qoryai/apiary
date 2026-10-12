@@ -176,8 +176,8 @@ defmodule ApiaryWeb.RefusalsRows do
        "mode_open", %{"mode" => "enforce"}},
       {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
        "mode_set", %{"mode" => "enforce"}},
-      {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
-       prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
+      {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
+       %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "remove",
        %{"id" => :rule_open}, answer: :not_found},
@@ -200,26 +200,27 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :rule_locked}},
       {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
-      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "composer_save", %{},
+      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy/rules/new", "rule_save",
+       %{},
        prelude: [
-         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+         {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ]},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "remove_confirm", %{},
        prelude: [{"remove", %{"id" => :rule_locked}}]},
-      # A member's deny of a rule that the owner locked after the composer read it.
-      {:"security_policy.lock", :member, "/:org/:workspace/policy", "composer_save", %{},
+      # A member's deny of a rule that the owner locked after the New rule page read it.
+      {:"security_policy.lock", :member, "/:org/:workspace/policy/rules/new", "rule_save", %{},
        prelude: [
-         {"composer_action", %{"action" => "deny"}},
-         {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
+         {"rule_validate",
+          %{"rule" => %{"host" => "open.example", "paths" => "", "action" => "deny"}}}
        ],
        meanwhile: {:locked, :rule_open}},
-      # A member's allow for a target under the workspace's locked deny: the composer
+      # A member's allow for a target under the workspace's locked deny: the New rule page
       # reads the lock and saves nothing. The workspace's rules have no act on a target's
       # page: an event naming one there is dropped.
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "composer_save", %{},
+      {:"security_policy.lock", :member,
+       "/:org/:workspace/targets/:target_page/-/policy/rules/new", "rule_save", %{},
        prelude: [
-         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+         {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ],
        answer: :ignored},
       {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
@@ -338,9 +339,9 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :not_found_at_mount},
 
       # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
-      # pages need the `secrets` feature beside their actions' `security`. A member's page
-      # has no dialog to open, so the event reaches the context function, or the page
-      # refuses it for their role; a demoted admin's dialog was open.
+      # pages and actions are the `secrets` feature's. A member's page has no dialog to open,
+      # so the event reaches the context function, or the page refuses it for their role; a
+      # demoted admin's dialog was open.
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
        %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{},
@@ -433,18 +434,26 @@ defmodule ApiaryWeb.RefusalsRows do
     {:ok, _} = Deletion.delete_workspace(owner, workspace_c.id, workspace_c.slug)
 
     # The rules are the security policy's, which an instance without it does not have.
-    {rule_open, rule_locked, secret, variable} =
+    {rule_open, rule_locked} =
       if :security in Apiary.Features.enabled() do
         {:ok, open} = Policy.allow(owner, nil, %{host: "open.example"})
         {:ok, locked} = Policy.deny(owner, nil, %{host: "locked.example", locked: true})
+        {open, locked}
+      else
+        {nil, nil}
+      end
+
+    # The stored secret and the variable are the `secrets` feature's.
+    {secret, variable} =
+      if :secrets in Apiary.Features.enabled() do
         {:ok, secret} = Secrets.create_secret(owner, %{name: "FORGE_TOKEN", value: "x"})
 
         {:ok, variable} =
           Variables.create_variable(owner, :workspace, %{name: "NODE_ENV", value: "production"})
 
-        {open, locked, secret, variable}
+        {secret, variable}
       else
-        {nil, nil, nil, nil}
+        {nil, nil}
       end
 
     target =

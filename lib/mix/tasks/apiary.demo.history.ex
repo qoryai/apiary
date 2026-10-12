@@ -46,7 +46,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   owners, admins and members, one suspended, and two invitations pending
   (`--skip-members` leaves the people alone). Last, when the instance serves the security
   feature, the workspace is given `mix apiary.demo`'s policy if nobody has made one, the
-  hosts its history reaches, and modes and rules of their own for a few repositories.
+  hosts its history reaches, and rules and mode overrides for a few repositories.
 
   Running it again adds another history beside the first.
   """
@@ -310,7 +310,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     settle(ctx)
 
-    if Apiary.Features.on?(scope, :security), do: policy(scope, keys)
+    if Apiary.Features.on?(:security), do: policy(scope, keys)
 
     Mix.shell().info("""
 

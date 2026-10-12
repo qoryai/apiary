@@ -26,7 +26,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   end
 
   # The section without the line that names Qory Apiary: the subtitle's "Not Qory
-  # Apiary's own settings."
+  # Apiary's settings."
   defp without_qory_lines(section) do
     section
     |> String.replace("Not Qory Apiary&#39;s settings.", "")
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
+               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
              )
 
       assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")

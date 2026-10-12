@@ -12,7 +12,7 @@ defmodule Apiary.LogMetadata do
   ids itself (`metadata/3`).
 
   `user_id` is the person acting: the one signed in, on every page they open, or the one
-  whose action enqueued a job. A person's own pages, their account settings and their
+  whose action enqueued a job. A person's pages, their account settings and their
   organisations, carry `user_id` and no organisation or workspace: they are no
   organisation's. A contract call is an access key's, and carries no `user_id`.
 
@@ -89,7 +89,7 @@ defmodule Apiary.LogMetadata do
 
   @doc """
   Wraps `fun` so that it runs with the ids this process has now, in whichever process
-  calls it: for a task started here, which starts with no Logger metadata of its own.
+  calls it: for a task started here, which starts with no Logger metadata.
   """
   @spec carry((-> result)) :: (-> result) when result: term()
   def carry(fun) when is_function(fun, 0) do

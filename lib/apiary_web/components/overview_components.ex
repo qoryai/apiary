@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the workspace overview, each a level of its own look (`docs/ui.md`,
+  The components of the workspace overview, each a level with a distinct look (`docs/ui.md`,
   Lists): the summary (the largest numbers on the page), then blocks, each one box with a
   band and rows or lines and nothing boxed inside it: To review, the fourteen-day
   chart, the active targets and Guard; and the empty workspace's one box.
@@ -413,7 +413,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <.tool_mark name={@item.tool} /><span
         :if={@item.path != ""}
         class="q-path"
-      >{@item.path}</span><span class="q-port">{@item.host}:{@item.port}</span>
+      >{@item.path}</span><span class="q-port"><bdi>{@item.host}</bdi>:{@item.port}</span>
     </span>
     """
   end
@@ -421,7 +421,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
-      {@item.host}<span class="q-port">:{@item.port}</span><span
+      <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span><span
         :if={@item.held && @item.path != ""}
         class="q-path"
       >{@item.path}</span>
@@ -612,14 +612,32 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  @doc """
+  locked_title/2 is the hover of a destination that `rule`, a locked rule of the
+  workspace, denies, for the reader of `scope`: that the rule denies it, then who may
+  change it, in the edition's words where it has them
+  (`ApiaryWeb.Access.who_may_after/4`). The page reads it with the item, as `locked_who`;
+  an item without it says the core's sentence.
+  """
+  @spec locked_title(Apiary.Accounts.Scope.t(), String.t()) :: String.t()
+  def locked_title(scope, rule),
+    do:
+      ApiaryWeb.Access.who_may_after(
+        scope,
+        :"security_policy.lock",
+        locked_default(rule),
+        gettext("A locked workspace rule denies %{rule}.", rule: rule)
+      )
+
+  defp locked_default(rule),
+    do:
+      gettext("A locked workspace rule denies %{rule}. Only an owner can change it.", rule: rule)
+
   # The longer sentence behind a reason, on hover: what a reader needs to decide.
   defp reason_title(%{resolved: resolved}, _can) when not is_nil(resolved), do: nil
 
-  defp reason_title(%{kind: :denied, locked: locked}, _can) when is_binary(locked),
-    do:
-      gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
-        rule: locked
-      )
+  defp reason_title(%{kind: :denied, locked: locked} = item, _can) when is_binary(locked),
+    do: item[:locked_who] || locked_default(locked)
 
   defp reason_title(%{kind: :denied, above: above, level: %{name: name}}, _can)
        when is_binary(above),
@@ -692,6 +710,10 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, default: MapSet.new()
   attr :can_set_mode?, :boolean, required: true
 
+  # A denied destination no rule can change, the wall's refusal or a host no rule can name,
+  # offers no act, as its row on Network access offers none.
+  defp attention_act(%{item: %{kind: :denied, unchangeable: true}} = assigns), do: ~H""
+
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""
@@ -732,21 +754,30 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_act(%{item: %{kind: :denied, elsewhere: %{} = level}} = assigns) do
+    # The level's New rule page with the host, for one who may change it there and where
+    # the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`).
+    new_rule_path =
+      case level.link do
+        %{can_change: true, new_rule_path: path} when is_binary(path) -> path
+        _ -> nil
+      end
+
     assigns =
       assign(assigns,
         level: level,
+        new_rule_path: new_rule_path,
         tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
       )
 
     ~H"""
     <.link
-      :if={@level.link && @level.link.can_change}
+      :if={@new_rule_path}
       id={"#{@item.id}-act"}
       navigate={
-        @level.link.path <>
+        @new_rule_path <>
           "?" <>
           URI.encode_query(%{
-            "allow" => @item.host,
+            "host" => @item.host,
             "back" => ~p"/#{@scope.organisation}/#{@scope.workspace}"
           })
       }
@@ -757,7 +788,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
     <span
-      :if={!(@level.link && @level.link.can_change)}
+      :if={!@new_rule_path}
       id={"#{@item.id}-act"}
       class="q-act-lock"
       title={@tip}
@@ -1437,9 +1468,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   Guard, a few lines of key and value, each with a muted detail under it and the one link
-  that opens more: the policy's mode and the version in force, the targets with rules of
-  their own, and retention. `policy` is nil while its read is in flight and absent where
-  `security` is off, which leaves the retention line alone, under its own name.
+  that opens more: the policy's mode and the version in force, the targets that have
+  rules, and retention. `policy` is nil while its read is in flight and absent where
+  `security` is off, which leaves the retention line alone, under the heading Retention.
   """
   attr :id, :string, default: "overview-guard"
 
@@ -1698,12 +1729,16 @@ defmodule ApiaryWeb.OverviewComponents do
   "Connect it", is the two ways a node or pool gets its key: a command run on the machine,
   or a key generated in the browser. While it is current, it names `target`, the newest
   node or pool with no active key, and the panel asks a reader who may connect it
-  (`may_key`) how, with the two ways as rows, its kind's own first and primary (a node:
+  (`may_key`) how, with the two ways as rows, the one for its kind first and primary (a node:
   Get the command; a pool: Generate a key). Get the command makes the command in place
   (the caller's `get_command` event): `command`, once got, is shown in the panel, with
-  Copy, until when it works, and that the box waits for the machine. Anyone else reads who
+  Copy, until when it works, and that the box waits for the machine; for a target whose
+  choice leads to a gateway (`through`), the notice that its runs go through it above the
+  command, which carries `--via` and the gateway's URL, and the line on a private
+  certificate authority under it, as on the command's page. Anyone else reads who
   connects it. `landed` is the first run while the page is open; the box leaves at the
-  next navigation.
+  next navigation. `box={false}`, for a reader not shown the nodes (`node.read`; an
+  edition may hide them), leaves the box out, and only the line under it stays.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1733,7 +1768,20 @@ defmodule ApiaryWeb.OverviewComponents do
       "the command got for `target`, shown once: `%{code: fun, expires_at: at}`, the code in a function, or nil"
 
   attr :server, :string, required: true, doc: "this server's address, for the command"
+
+  attr :through, :any,
+    default: nil,
+    doc: "the gateway `target`'s choice leads to (`Apiary.Gateways.chosen/1`), or nil"
+
+  attr :through_connected, :boolean,
+    default: false,
+    doc: "whether `through` holds an active access key"
+
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
+
+  attr :box, :boolean,
+    default: true,
+    doc: "whether the box is shown: false for a reader not shown the nodes"
 
   def onboarding(assigns) do
     used =
@@ -1759,7 +1807,7 @@ defmodule ApiaryWeb.OverviewComponents do
       )
 
     ~H"""
-    <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
+    <section :if={@box} id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
       <div class="q-onb-steps">
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
@@ -1913,12 +1961,26 @@ defmodule ApiaryWeb.OverviewComponents do
               {gettext("What you run on %{node}", node: @target.name)}
             </span>
             <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <%!-- The gateway the command goes through, if any: a node on Default gateway
+                 while none is the default reads nothing here. --%>
+            <ApiaryWeb.NodeComponents.through_gateway
+              :if={@through}
+              id={"#{@id}-gateway"}
+              node={@target}
+              gateway={@through}
+              connected={@through_connected}
+            />
             <.code_block
               id={"#{@id}-command"}
-              code={ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.())}
+              code={
+                ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.(),
+                  via: @through && @through.url
+                )
+              }
               copy_label={gettext("Copy command")}
               wrap
             />
+            <ApiaryWeb.NodeComponents.via_ca_line id={"#{@id}-via-ca"} gateway={@through} />
             <p id={"#{@id}-works"} class="text-[13px]/5 text-muted">
               {gettext("It works once, until %{time}. This is the only time it is shown.",
                 time: Format.time(@command.expires_at)

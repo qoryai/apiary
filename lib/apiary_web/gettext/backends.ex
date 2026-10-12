@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Gettext.Backends do
   @moduledoc """
   The Gettext backends of the build: the core's, `ApiaryWeb.Gettext`, and the edition's
-  (`c:ApiaryWeb.Edition.gettext_backend/0`), each with the catalogues of its own modules'
+  (`c:ApiaryWeb.Edition.gettext_backend/0`), each with the catalogues of its modules'
   sentences (`docs/lingo.md`).
 
-  A module translates its own sentences with its own backend
+  A module translates its sentences with its backend
   (`use Gettext, backend: ...`), and never needs this one. This is for a sentence the core
   translates without knowing whose it is: a changeset's error, which a core component
   shows on a form of the core's or of the edition's

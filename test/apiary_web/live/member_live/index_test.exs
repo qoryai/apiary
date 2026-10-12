@@ -41,6 +41,21 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ "The only owner cannot be removed"
     end
 
+    @tag needs: :security
+    test "says nothing of the policy where it is hidden from the reader", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      assert html =~
+               "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
+
+      refute html =~ "policy"
+    end
+
     test "finds a person by their email, the search in the URL", %{conn: conn, scope: scope} do
       %{user: other} = member_fixture(scope, :member)
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
@@ -585,6 +600,79 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
                live(conn, ~p"/#{scope.organisation}/settings/people/invite")
 
       assert refused =~ "Only owners and admins manage members"
+    end
+  end
+
+  describe "the invitation's description and the levels' hints (Apiary.EditionStubs)" do
+    setup :register_and_log_in_user
+
+    setup %{scope: scope} do
+      %{membership: member} = member_fixture(scope, :member)
+      %{member: member}
+    end
+
+    defp text_of(lv, selector),
+      do:
+        lv
+        |> element(selector)
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.trim()
+
+    defp description(conn, scope) do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
+      text_of(lv, "#invite .q-page-desc")
+    end
+
+    defp hints(conn, scope, member) do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      for level <- [:owner, :admin, :member],
+          do: {level, text_of(lv, "#member-#{member.id}-level-#{level} .q-mi-t > span")}
+    end
+
+    test "are the core's with the core edition", %{conn: conn, scope: scope, member: member} do
+      Apiary.Mail.put_test_source(:env)
+
+      assert description(conn, scope) ==
+               "We email them a link that works for seven days and brings them into #{scope.workspace.name} as a member; an owner can change their level afterwards."
+
+      Apiary.Mail.put_test_source(:none)
+
+      assert description(conn, scope) ==
+               "You get a link to send them yourself. It works for seven days and brings them into #{scope.workspace.name} as a member; an owner can change their level afterwards."
+
+      assert [
+               owner: "Changes everything, including who owns the organisation",
+               admin: "Manages members, workspaces, nodes and settings",
+               member: member_hint
+             ] = hints(conn, scope, member)
+
+      # A member's hint names the policy's rules where the features shown hold them.
+      assert member_hint in [
+               "Sees the runs",
+               "Sees the runs and changes the policy's unlocked rules"
+             ]
+    end
+
+    test "are the edition's where it gives other words, and the core's where it gives none",
+         %{conn: conn, scope: scope, member: member} do
+      core_hints = hints(conn, scope, member)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.PeopleWorded)
+      names = "#{scope.workspace.name} of #{scope.organisation.name}"
+
+      Apiary.Mail.put_test_source(:env)
+      assert description(conn, scope) == "Stub words for the invite by mail, into #{names}."
+
+      Apiary.Mail.put_test_source(:none)
+      assert description(conn, scope) == "Stub words for the invite by link, into #{names}."
+
+      assert hints(conn, scope, member) == [
+               owner: core_hints[:owner],
+               admin: "Stub admin hint.",
+               member: core_hints[:member]
+             ]
     end
   end
 end

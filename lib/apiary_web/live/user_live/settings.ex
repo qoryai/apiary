@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.UserLive.Settings do
   @moduledoc """
-  A person's own settings, one section a page, whose list is the sidebar of a person's
+  A person's settings, one section a page, whose list is the sidebar of a person's
   pages under Your settings (`ApiaryWeb.Layouts`): Account, `/users/settings` (`:edit`),
   their email address, which a link sent to the new one confirms, so that it cannot be
   changed while the instance sends no email (`Apiary.Mail.configured?/0`), their password

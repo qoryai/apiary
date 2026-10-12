@@ -5,7 +5,7 @@ defmodule ApiaryWeb.Gettext.Plural do
   A domain is a locale variant in GNU's `language@modifier` form (see `ApiaryWeb.Lingo`).
   `Gettext.Plural` knows languages and `language_TERRITORY` pairs but not a modifier, so
   it would raise for `en@software`. The plural rules are the language's, whatever the
-  domain, so this module drops the modifier and asks `Gettext.Plural`. A catalogue's own
+  domain, so this module drops the modifier and asks `Gettext.Plural`. A catalogue's
   `Plural-Forms` header still wins, as it does there.
   """
 

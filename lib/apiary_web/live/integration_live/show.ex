@@ -293,7 +293,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             {Enum.join(@runtime.denies, ", ")}
           </dd>
           <dt :if={@runtime && @runtime.credential_files != []} class="text-faint">
-            {gettext("Credential files")}
+            {gettext("Secret files")}
           </dt>
           <dd :if={@runtime && @runtime.credential_files != []} class="q-mono">
             {Enum.join(@runtime.credential_files, ", ")}

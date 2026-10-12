@@ -8,11 +8,11 @@ one. The words on them are in [lingo.md](lingo.md); where the code lives is in
 
 Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes the
 page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
-of its column (`width`), on a page of a level's settings the level's sections and its own
-(`sections`, `section`), on a list narrowed to one target that target (`narrowed`) and, in
-`crumb` slots, the page's own segments of the breadcrumb. The shell shows one scope's
-sidebar at a time, the one the page belongs to, or, on a person's own page and an Instance
-page, the one the person came from (Two levels, below).
+of its column (`width`), on a page of a level's settings the level's sections and the
+page's section (`sections`, `section`), on a list narrowed to one target that target
+(`narrowed`) and, in `crumb` slots, the page's segments of the breadcrumb. The shell shows
+one scope's sidebar at a time, the one the page belongs to, or, on a person's
+page and an Instance page, the one the person came from (Two levels, below).
 
 - **A page belongs to one scope**: a workspace, an organisation, the person or the
   Instance. The navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page
@@ -24,20 +24,20 @@ page, the one the person came from (Two levels, below).
 - **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
-  then the workspace, each a link to its home, and the page's own segments, a target or a
+  then the workspace, each a link to its home, and the page's segments, a target or a
   record, the last one the page with `aria-current="page"`. A page of a workspace or an
   organisation starts them with its section's name as the sidebar words it: a link to the
   section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
   run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
-  itself on the section's own page (`Acme / Main / Runs`, `Acme / Main / Overview`,
+  itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
   target, a node, a run, an integration) is the page itself on its first tab and a link
   to it on the others; on a page of a level's settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
   the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
-  a person's own page Your
-  settings, its section and the page's own segments, such as an edition's `Your settings /
+  a person's page Your
+  settings, its section and the page's segments, such as an edition's `Your settings /
   Organisations / New organisation`, and on an Instance page Instance settings and its
   section the same way, the section a link where segments follow it), then **Search or jump to**,
   **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
@@ -45,7 +45,7 @@ page, the one the person came from (Two levels, below).
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
 - **The organisation menu and the workspace menu.** The chevron beside the organisation
   opens the organisation menu, and the one beside the workspace the workspace menu, each a
-  dropdown of its own under its segment (a disclosure: the chevron's `aria-expanded` and
+  separate dropdown under its segment (a disclosure: the chevron's `aria-expanded` and
   `aria-controls`, the panel a named `role="group"`; the `Switcher` hook). A menu shows only
   when there is another place to go or an entry: the organisation menu with more than one
   place, or an edition's entry after the places (`ApiaryWeb.Edition.switcher_entries/1`);
@@ -53,24 +53,24 @@ page, the one the person came from (Two levels, below).
   it (`ApiaryWeb.Edition.workspace_switcher_entries/1`). So an instance with one
   organisation and one workspace shows neither, and the segments are links and nothing
   more.
-  The organisation menu has a search, then two panels that each scroll on their own: on
-  the left the organisations the person reaches, by name, their own first and the
-  edition's groups of places under their own headings (`ApiaryWeb.Edition.place_group/1`),
-  each folded behind its heading, a button with the group's count, unless the page's
-  organisation is in it; on the right, under a heading that names it, the workspaces of
-  the organisation pointed at, by name. On opening, the page's organisation is pointed at
-  and scrolled to; then the one with focus, or the one under the mouse once it has rested
-  there for 100 ms, so a pointer crossing others on its way to the right panel changes
-  nothing. Each organisation's `›` shows its workspaces. An organisation's link lands in
-  the workspace the person last used there; a workspace's lands in that workspace. At its
-  foot are Your organisations and the edition's entries.
+  The organisation menu has a search, then two panels that each scroll separately: on the
+  left the organisations the person reaches, by name, the ones they are a member of first
+  and the edition's groups of places under their headings
+  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
+  group's count, unless the page's organisation is in it; on the right, under a heading that
+  names it, the workspaces of the organisation pointed at, by name. On opening, the page's
+  organisation is pointed at and scrolled to; then the one with focus, or the one under the
+  mouse once it has rested there for 100 ms, so a pointer crossing others on its way to the
+  right panel changes nothing. Each organisation's `›` shows its workspaces. An
+  organisation's link lands in the workspace the person last used there; a workspace's lands
+  in that workspace. At its foot are Your organisations and the edition's entries.
   The workspace menu has a search, then this organisation's workspaces by name, and no
   other organisation's; at its foot, the edition's entries for it.
   Every link goes through `/:org/:workspace/switch/:section` or `/:org/-/switch/:section`
-  (`ApiaryWeb.SwitchController`), which asks the destination's own scope when it is
+  (`ApiaryWeb.SwitchController`), which asks the destination's scope when it is
   followed and lands on the reader's page there, its list page where the page names one
-  thing by its id, else the section, else the overview; from an organisation's own page,
-  on the overview. The search filters as the reader types: the organisation menu by an
+  thing by its id, else the section, else the overview; from an organisation's
+  page, on the overview. The search filters as the reader types: the organisation menu by an
   organisation's name and slug, keeping one with a matching workspace with only those
   workspaces, and opening every group it finds one in; the workspace menu by a
   workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓ move within
@@ -85,7 +85,7 @@ page, the one the person came from (Two levels, below).
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` what matches, 150 ms after the
   reader stops typing, at the sidebar's level: `/:org/:workspace/jump` where the sidebar is
-  a workspace's, as on a person's own page or an Instance page shown with one, else
+  a workspace's, as on a person's page or an Instance page shown with one, else
   `/:org/jump`. It finds the pages of the navigation, the sections of each
   Settings and of the Instance, and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
@@ -100,28 +100,28 @@ page, the one the person came from (Two levels, below).
   offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
   the organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
-  Settings (`#user-menu-settings`, the person's own, `/users/settings`) and Your
+  Settings (`#user-menu-settings`, the person's settings, `/users/settings`) and Your
   organisations, the theme (Auto, Light, Dark), then Log out; an edition's entries follow
   the core's of their group (`ApiaryWeb.Edition.account_menu_entries/1`), its group
   `:instance` after the theme. Nothing in it is about Qory Apiary itself, and so not the
   Instance level: Instance settings is the Qory Apiary menu's (below).
-- **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Targets, Nodes) and Guard
+- **The sidebar** holds the scope's pages and nothing else, in groups, each a named
+  `<nav>`: a workspace's Overview, then Record (Runs, Targets, Nodes) and Guard
   (Network access, then Policy, which carries the policy's mode word alone, how many
-  targets set their own in its title; without `security` Network access alone, the record
+  targets override the mode in its title; without `security` Network access alone, the record
   of it), then the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
   Overview and Audit log, then the edition's groups (`ApiaryWeb.Edition.nav_sections/0`);
   the person's Account, Preferences and Organisations under Your settings, the sidebar of
-  their own pages only where there is no workspace to show (Two levels, below). It is
+  those pages only where there is no workspace to show (Two levels, below). It is
   never replaced: a page of a scope's settings keeps the scope's sidebar. A group whose
-  feature is off is absent, not greyed.
+  feature is off, or hidden from the reader, is absent, not greyed.
 - **The current entry.** `aria-current="page"` marks only the entry of the exact page; a
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
   page, and a second column's section on a page under it, one that passes `crumb` segments
-  (Invite people, New secret). A section's tabs are the section's own page: the column
+  (Invite people, New secret). A section's tabs are one page, the section's: the column
   marks it as the page on each.
 - **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
   settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
@@ -153,10 +153,10 @@ page, the one the person came from (Two levels, below).
   list had: `#settings-tabs` and `settings-tab-<key>` for a level's Settings,
   `#nav-group-account` and `nav-<key>` for a person's, `#instance-tabs` and
   `instance-tab-<key>` for the Instance's. A level with fewer than two sections gets no
-  second column, and Runs, Network access and Targets never get one. A person's own page
-  and an Instance page keep the sidebar the person came from, the workspace the session
+  second column, and Runs, Network access and Targets never get one. A person's
+  page and an Instance page keep the sidebar the person came from, the workspace the session
   remembers; with no workspace, the person's sidebar is their sections alone. A thing's
-  own page, a target, a node or a run, keeps its tabs (`PageComponents.page_tabs/1`), and a
+  page, a target, a node or a run, keeps its tabs (`PageComponents.page_tabs/1`), and a
   node's Settings tab lists its few sections in the page.
 - **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
   and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
@@ -186,7 +186,7 @@ page, the one the person came from (Two levels, below).
   (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
   Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
-  parent keeps up to 8rem of its own. A section's own page shows its name alone. On a core
+  parent keeps up to 8rem. A section's page shows its name alone. On a core
   Instance page, which has one section and so no disclosure, it keeps both,
   `Instance settings / Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
@@ -201,8 +201,9 @@ page, the one the person came from (Two levels, below).
 Nothing opens over a page but **Search or jump to**, the palette (above), the one overlay
 the console keeps. Every other act happens on a page, in place:
 
-- **A form is a page** of its section at a path of its own, never a dialog over a list:
-  New secret, New variable, Invite people, New node, an export. Its
+- **A form is a page** of its section at a separate path, never a dialog over a list:
+  New secret, New variable, Invite people, New node, a policy's New rule and Edit rule,
+  an export. Its
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
@@ -216,7 +217,7 @@ the console keeps. Every other act happens on a page, in place:
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Remove, Suspend or Clear turns that row into the question, "Delete
   FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
-  under its sentence, with the field to type where one is asked; a page's own setting,
+  under its sentence, with the field to type where one is asked; a setting on the page,
   such as the policy's mode, opens its choices in place and asks under them. Each keeps
   the path it had, which opens the page with that confirmation showing and never acts by
   itself; Cancel and Escape go back.
@@ -234,8 +235,8 @@ the console keeps. Every other act happens on a page, in place:
 Configuration is not navigation: what is set up once and changed rarely lives in the
 settings. There are five kinds, on the model of GitHub's repository, organisation and
 personal settings: a workspace's, an organisation's, a node's, a person's and the
-instance's. Each is a place of its own, reached from its own scope, that lists its own
-sections and no other kind's: no "Elsewhere", no link across. A navigation item never
+instance's. Each is a separate place, reached from its scope, that lists its sections
+and no other kind's: no "Elsewhere", no link across. A navigation item never
 replaces the navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
@@ -244,13 +245,13 @@ replaces the navigation it is in.
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
   (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the workspace sets
-  up, never Qory Apiary's own settings, as its subtitle says; one list, Set up in this
+  up, never Qory Apiary's settings, as its subtitle says; one list, Set up in this
   workspace, in the groups' order, each row its name, its kind, Agent, API or Program (one
   added from a release), a program's version and Applies to, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
   kind a small muted word and one line about it, in three groups, each an `<h3>`, a
   sentence where it has one and a list its heading names: Agent (the runtimes of
-  Forager's catalogue), Outside APIs (the built-in APIs, the workspace's own
+  Forager's catalogue), Outside APIs (the built-in APIs, the workspace's
   custom APIs, then Custom API…) and Programs (the named releases,
   `ApiaryWeb.IntegrationLive.Named`, then From a release…); a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
@@ -258,7 +259,7 @@ replaces the navigation it is in.
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
   kind under its title; each page says once that a run receives only
   its security policy) and Secrets and variables (`/settings/secrets`,
-  below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
+  below), each with `secrets` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
   keys are its nodes' (Nodes, below): `/settings/keys` and `/:org/:workspace/keys`,
@@ -300,7 +301,7 @@ replaces the navigation it is in.
 - **A node's** (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's
   page (Nodes, below): General (name, kind, a pool's instance limit, and its danger zone).
   The page's header is the node's, so the section list and the section sit under the
-  tabs without a heading of their own (`SettingsComponents.layout/1`, `kind={:node}`,
+  tabs without a separate heading (`SettingsComponents.layout/1`, `kind={:node}`,
   given its `sections`): the list is in the page, never a second column.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`), from the account menu's Settings: Account (email,
@@ -335,7 +336,7 @@ forms and 960 px for a list (People, a workspace's and an organisation's, Secret
 variables).
 The list of the kind's sections is not in the page but the frame's second column (Two
 levels, under The shell; `#settings-tabs`, `settings-tab-<key>`): the page reads them when
-it mounts (`sections/2`) and passes them to `Layouts.app/1` as `sections`, its own key as
+it mounts (`sections/2`) and passes them to `Layouts.app/1` as `sections`, the page's key as
 `section`. It is labels without icons, muted, the current one in the text colour on a
 light fill, with a count where it helps (an organisation's People, from the navigation's
 `counts`); below 1024 px it is the disclosure under the top bar (Two levels,
@@ -345,18 +346,18 @@ groups of a card per thing to add, aside): its fields straight under its heading
 the danger zone's lines are `<h3>`s), the fields as wide as the column, and at the foot of
 a form its one button, primary where it is the section's main action, beside one muted
 line (`SettingsComponents.save/1`). A section the reader may not open is not in the list,
-and its path sends them to General with its own sentence of why.
+and its path sends them to General with the section's sentence of why.
 The breadcrumb names the level and ends with the section, both written by the frame
 (`Acme / Main / Workspace settings / Runs`, `Acme / Organisation settings / People`);
-a person's own page starts with Your settings and an Instance page with Instance settings,
-then the section (The top bar, under The shell). The browser title is the most specific first, the
-page's words, the level, then the workspace's name and the organisation's
+a person's page starts with Your settings and an Instance page with Instance
+settings, then the section (The top bar, under The shell). The browser title is the most
+specific first, the page's words, the level, then the workspace's name and the organisation's
 (`SettingsComponents.page_title/3`): `Runs · Workspace settings · Main · Acme · Qory
 Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
 settings · Qory Apiary`, `Configuration · Instance settings · Qory Apiary`.
 
-**A form is a page.** Creating or changing one thing is a page of its section at a path of
-its own, never a dialog over the list, on the pattern of Add integration (storybook,
+**A form is a page.** Creating or changing one thing is a page of its section at a separate
+path, never a dialog over the list, on the pattern of Add integration (storybook,
 Screens): the second column stays beside it, its section the current one, marked as the
 parent (`aria-current="true"`); the breadcrumb ends with the section and the page
 (`Acme / Main / Workspace settings / Secrets and variables / New secret`), each segment
@@ -375,7 +376,7 @@ only red words, then a line for each act that cannot be undone (`danger_action/1
 title, one muted sentence of what it does and what cannot be undone, and at the right a
 default button in the error colour, Delete organisation…, Delete workspace… or Delete
 account…. No box, and never an entry of a list. **Its confirmation is inline, never a
-dialog**: the button is a patch to a path of the act's own, `/:org/settings/danger`,
+dialog**: the button is a patch to the act's path, `/:org/settings/danger`,
 `/:org/:workspace/settings/danger`, `/users/settings/delete` and a node's
 `/nodes/:node_id/settings/delete` (the older `/…/settings/delete` paths open the same),
 and there the line expands in place under its sentence
@@ -383,10 +384,10 @@ and there the line expands in place under its sentence
 left: what is lost, the field asked to confirm where there is one (the slug, or for the
 account its email), then the question, Delete Acme?, with its red button, Yes, delete,
 disabled until the field matches, and Cancel beside it (`<.inline_confirm>`). The field
-takes the focus, or Cancel where there is none to type (a node's); the line's own button
+takes the focus, or Cancel where there is none to type (a node's); the line's button
 then folds it (`aria-expanded`), and Cancel and Escape, a patch back to the page, give
 that button the focus back. Where the act is not there, the line says why in place of the
-button: the instance's own organisation, the organisation's only workspace; where
+button: the instance's organisation, the organisation's only workspace; where
 something stops it for now, the button is disabled and the page says what under the line
 (the organisations a person is the only owner of). A reader who may not delete the scope
 sees no danger zone, and the act's path sends them to General and says why.
@@ -395,12 +396,12 @@ Deleting any workspace from Workspaces is confirmed the same way in its row
 (`/:org/settings/workspaces/:workspace_id/delete`): the row shows the confirmation in
 place of its cells, its slug typed to enable Yes, delete, and Cancel gives the row back.
 Every other act on a row of a list (revoke, remove, suspend, a deletion) is
-confirmed on its row too, each at a path of its own (No modals, above).
+confirmed on its row too, each at a separate path (No modals, above).
 The old paths, `/:org/members/…` and `/:org/:workspace/settings/retention`, send on to
 the new ones
 (`ApiaryWeb.MovedController`).
 
-An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
+An organisation's path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people; its
 header's actions are the edition's (the `:organisation_heading` slot), such as a way to add
 a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
@@ -438,7 +439,7 @@ name or the latest change.
 - **A secret** is one row: its name in mono, its note beside it, how many values it
   holds, and who changed it and when (`ApiaryWeb.People`). A secret of several values,
   or of one named value, has a line under it for each, its value ID in mono, with who
-  changed that value and when, and the value's own acts. **No value is ever rendered**:
+  changed that value and when, and the value's acts. **No value is ever rendered**:
   the value is a textarea whose content is always empty, written and sent once; the form
   the context hands back after a refused save holds none, so a refusal shows the error
   under an empty field, and a save goes back to the list, so the field is gone. No secret
@@ -447,12 +448,12 @@ name or the latest change.
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
-  the workspace says so), and the repositories that have a value of their own, or whose
+  the workspace says so), and the repositories that override it, or whose
   value the lock sets aside, from their resolution
   (`Apiary.Variables.repository_overrides/1`), a link to the page that lists them. No
-  page sets a repository's own value: the context keeps one
+  page sets a repository's override: the context keeps one
   (`Apiary.Variables.create_variable/3` with a target), and the demo makes a few. Locked
-  means a repository's own value of the name is set aside, and nothing more. A name on
+  means a repository's override of the name is set aside, and nothing more. A name on
   Forager's deny list other than `QORY_…`, which the context refuses, is saved with a
   warning on New variable's page ("NAME is on Forager's deny list.", which describes
   the name's field while it shows) and "On Forager's deny list" on its row.
@@ -469,12 +470,12 @@ name or the latest change.
   for anything but a save (a count in the sidebar) keeps the choice, the rows and what
   is written in them, which the hook holds in the browser for that moment alone; the
   name and the note are not kept, as on every form. A refused save shows the rows that
-  were sent, each with its value ID and its errors under its own fields (a value ID
+  were sent, each with its value ID and its errors under its fields (a value ID
   twice, one not lowercase or not text, a row left empty), and every value empty, to
   write again, as one value's is. More than 32 values are refused before any is read,
   once, under the rows, the Values choice described by it, and the rows start again.
-- **The forms are pages** of the section (A form is a page, above), each at a path of its
-  own: for secrets New secret (`/settings/secrets/new`), Edit name and note (`/:id/edit`,
+- **The forms are pages** of the section (A form is a page, above), each at a separate
+  path: for secrets New secret (`/settings/secrets/new`), Edit name and note (`/:id/edit`,
   "Edit the name and note of FORGE_TOKEN", its values left as they are), Add value
   (`/:id/add-value`), Change value (`/:id/change-value` for a secret's one value without
   a value ID, `/:id/values/:value_id/change` for a named one) and Rename value
@@ -483,14 +484,14 @@ name or the latest change.
   variables / New secret` (and `Secrets and variables / New variable`), the section
   leading back to the tab the page was opened from, with its query.
 - **The targets of a variable** are a page of the section too, to read
-  (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
-  value or its value set aside by the lock, found by their path past ten, and Back to the
+  (`/settings/variables/:id/targets`, "Targets that set NODE_ENV"): each with its
+  value, or that value set aside by the lock, found by their path past ten, and Back to the
   variables at its foot. Its row's count of them in the list leads there.
 - **Deletions confirm in place**, on the row they act on (No modals, above): Delete
   secret (`/:id/delete`), Delete value (`…/values/:value_id/delete`) and Delete variable
   (`/:id/delete`) turn the row into "Delete FORGE_TOKEN?", what is lost, Yes, delete and
   Cancel. **Lock and Unlock act at once** from the row's menu, and the flash says what the
-  lock did to the targets that set their own; their paths, `/:id/lock` and `/:id/unlock`,
+  lock did to the targets that override it; their paths, `/:id/lock` and `/:id/unlock`,
   which must not act as they open, ask on the row first. A confirmation the context
   refuses (a lock, an unlock or a deletion that would raise a target's variables over
   their limits, a secret something uses, a secret's last value) stays open and says why
@@ -505,7 +506,7 @@ name or the latest change.
 
 ## Lists
 
-A page that lists things reads top down, and every level of it has a look of its own: a
+A page that lists things reads top down, and every level of it has a distinct look: a
 summary, the largest numbers on the page, only where the page has one; then blocks or
 tables, each one box; then rows. Two levels that look alike are one level too many, and
 nothing is boxed inside a row.
@@ -526,12 +527,12 @@ nothing is boxed inside a row.
   (`<.row_menu>` with `<.menu_item>`s, a heading and dividers between groups), which
   floats in the top layer so the table's scroll region never clips it. A choice of one,
   such as a person's level, is a set of `menuitemradio` items with what each means. A
-  destructive item asks on its row, at a path of its own (No modals, above); red is for
+  destructive item asks on its row, at a separate path (No modals, above); red is for
   that confirmation's button only. No bordered button on every row. Network access is
   the exception: Allow and Deny are icons and the row has no ⋯ menu (Lists, A
   destination).
 - **Columns grow with the table**, not the screen: `from="sm" | "md" | "lg"` shows a
-  column from 600, 1000 or 1300 px of the table's own width (a container query), so a
+  column from 600, 1000 or 1300 px of the table's width (a container query), so a
   table in a narrow pane reflows as it would on a narrow screen.
 - **A target** is its path in mono, with its system in faint type before it only where the
   same path is on more than one system (`<.target_name>`, `Apiary.Runs.shared_paths/2`).
@@ -563,19 +564,42 @@ count the All view's with nothing narrowed; "Find a host" with the qualifiers `s
 `source:` as tokens, sent as the reader types and read whole on Enter; one Filter menu
 whose sections come from the rows' sources and people (an edition that adds rules of
 another holder gives them a source, and the menu, the qualifier and the order take it);
-Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
+Sort (the default order, Host, Most used, Recently added); pages of 50; and `?rule=`,
 which Network access links with, landing on the page that holds the rule and marking it.
-A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
+The list is the Network access section of its page: its header holds the heading, how
+many rules, "See what the runs reached" and **Add rule**, the section's one primary
+button, with a line under it of what the rules are; the search's bar keeps Find, Filter
+and Sort. A reader who may not change the policy sees no Add rule and no row menus.
+
+**A rule is added and changed on a page** (No modals, above), never in a line
+over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/new`) from
+Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
+Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
+(`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
+Allow and Deny as two radio cards that each say what they do; then Host and Paths, each
+labelled with its help under it (a deny takes no paths and says so); then "What this
+rule does", the rule read back in plain words as it is typed (`PolicyLive.Reading`), a
+polite live region. An error is said under its field, with its repair as a link (Use
+api.example, Every path, Show it); a refusal, a lock's or the domain's, takes the read
+back's place above the foot. Add rule is never off: pressed with an error, it moves the
+focus to the first field at fault. A pasted list of hosts fills Host with the first and
+counts the rest beside its label; each is added in turn, the page staying until the last.
+A save goes back to the list as it was left, on the page that holds the rule, its row
+marked and New in its version, the focus on its ⋯, with the flash that names the version;
+Cancel goes back to the list as it was left. On Edit rule the host is shown, not a field:
+another host is a new rule. A target's suggestion's Allow with paths… opens New rule with
+the host filled and the focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny).
+A target's Policy tab shows each rule's Source; the target rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
 The mode is a card above the tabs, the same on the workspace's Policy page, on each of
 its tabs, the Document tab included, and on a target's Policy tab, above each of its
 views (`PolicyComponents.mode_card/1`); a version opened from the History (the one in
-force too) and the export, which state their own mode, have none. It states the mode in
+force too) and the export, which state their mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
 "Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
-workspace, by its name, or Its own; Required by the level), one sentence of what the mode
+workspace, by its name, or Overridden; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
 The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
@@ -587,12 +611,12 @@ too) and Download (the document as served, the bytes Copy copies, saved as
 run-configuration.json; the export page's policy file stays on the export page), each
 named by its hint, which opens under it, flush with its right edge. The tab has no Export;
 the export page opens from the header's Export on the other tabs and from a version's
-own page. In the list of versions, on the tab and on each
+page. In the list of versions, on the tab and on each
 version's page, the version in force leads to the Document tab and an older one to its
-own page. A change that makes a new version, Enforce or
+page. A change that makes a new version, Enforce or
 Observe among them, shows the new version, its number and its mode there in place. A
 target served the workspace's policy shows the workspace's version: in its list the
-version in force leads to the target's own Document view and the older ones to the
+version in force leads to the target's Document view and the older ones to the
 workspace's version pages, and Download saves the workspace's document.
 
 The policy pages confirm in place, never over the page:
@@ -608,8 +632,8 @@ The policy pages confirm in place, never over the page:
   and Cancel. Escape, with the focus in the choices, cancels (the `PolicyPage` hook);
   saving or cancelling gives the focus back to Change mode, and the save is said in the
   page's status region. The choices stay open on another tab.
-- **A rule's row** asks for its own acts where they cost something: a Lock that would put
-  a target's own rule out of force, and the Remove of a locked rule or of one a target
+- **A rule's row** asks for its acts where they cost something: a Lock that would put
+  a target rule out of force, and the Remove of a locked rule or of one a target
   overrides. The row becomes its `inline_confirm/1` (`rule_list/1`'s `confirming`): the
   question, what follows, Yes, lock or Yes, remove, and Cancel, which gives the focus back
   to the row's ⋯. A plain Remove, a Lock that holds nothing back and Unlock act at once
@@ -619,9 +643,9 @@ The policy pages confirm in place, never over the page:
 
 **The export** (`…/policy/versions/:n/export`, and a target's
 `…/-/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
-with Version n and Export and is the one way back, with no trail of the page's own; the
+with Version n and Export and is the one way back, with no separate trail on the page; the
 title "Export for a node without a server" and what is exported (an h2 under a target's
-own title), the policy file with Download and Copy, the command for the
+title), the policy file with Download and Copy, the command for the
 node and the Forager file's egress section, each with Copy, the notes, and Done back to the
 Document tab (a target's Document view), the version in force under the card. Only the
 version in force is exported; another version's path sends on to it.
@@ -634,7 +658,7 @@ version in force is exported; another version's path sends on to it.
   Ended badly (Failed, Lost). A cancelled run counts neither as ended well nor as ended
   badly. A filter of whole families says their words ("ended badly"), and an empty list
   of one family says so ("No runs cancelled."). A run stored under a state's older name
-  counts and lists as its new state. A view's own filter is not repeated as a token. The
+  counts and lists as its new state. A view's filter is not repeated as a token. The
   number that matches is a line over the list, only when the list is narrowed ("87 runs
   match"), in the list's status region (`role="status"`,
   `.q-status`), which is always rendered, empty and taking no place otherwise, so a
@@ -656,7 +680,7 @@ version in force is exported; another version's path sends on to it.
   every filter but the target, in the list's unit: runs on the runs list ("Most runs"),
   destinations on Network access ("Most destinations"), as its views and its Filter
   menu's Target section count them. A search on the server, every target, the pinned ones
-  first under Pinned (`counts.pins`), then the busiest twenty and "n more", its own
+  first under Pinned (`counts.pins`), then the busiest twenty and "n more", the rail's
   headings under an `<h2>` for a screen reader so the outline never skips a level.
   Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
   never both.
@@ -686,7 +710,7 @@ version in force is exported; another version's path sends on to it.
   shows, both where no rule decides the host. They show on hover, on focus inside the row
   and while the row's panel is open, always on a touch screen, and at every width. There
   is no ⋯ menu. The host has a copy icon beside it (it copies the host), shown on row
-  hover, on its own focus and while it says Copied, always on a touch screen. Where the
+  hover, on the icon's focus and while it says Copied, always on a touch screen. Where the
   rule in force is the one the reason names, its name links to it; where the level above
   decides the row, its "Main · denied" (or allowed) links to that rule; a row a rule was
   just added for ends its after line with Show the rule. A locked rule, the wall, a deny
@@ -695,8 +719,8 @@ version in force is exported; another version's path sends on to it.
   where known); a locked rule's lock opens its refusal in place, with the way to the
   rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
-  here would not be in force and leads to that level's policy with the host, for a reader
-  who may change it there, and with the way back to this page (`back`,
+  here would not be in force and leads to that level's New rule page with the host, where
+  the edition gives one, for a reader who may change it there, and with the way back to this page (`back`,
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
@@ -704,7 +728,7 @@ version in force is exported; another version's path sends on to it.
   review weighs them; the rest by when they were first seen, so they hold still.
 - **A row's rule is asked for in place** (`RunComponents.rule_panel/1`), never in a
   popover, a dialog or a sheet: Allow, Deny and a locked rule's lock open
-  a row of the table's own right under the row (`#<row>-panel`), in the page's flow, the
+  a row of the table right under the row (`#<row>-panel`), in the page's flow, the
   row and its panel in the chosen row's tint. It holds the rule's form, its title ("Deny
   registry.example"), the paths a path rule would change, For (this target, or one target
   of those that reached the host, and the whole workspace, each with what it changes),
@@ -721,9 +745,10 @@ version in force is exported; another version's path sends on to it.
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
   card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
-  last lines of its log as plain text. The `RunList` hook tells the page the width, turns
-  a row's click into a choice there, and moves it with ↑ and ↓; Enter or a second click
-  opens the run. Below 1920 px a row is a link to its page.
+  last lines of its log as plain text for a reader who may read the log (`run.read_log`;
+  without it, no line is read and the preview has no terminal). The `RunList` hook tells
+  the page the width, turns a row's click into a choice there, and moves it with ↑ and ↓;
+  Enter or a second click opens the run. Below 1920 px a row is a link to its page.
 - **Nothing to show** is an empty state with no table and no pages, in words and without
   a tile (`<.empty_state icon={nil}>`): what the filters hide, the last filter to remove
   ("Remove host:gpu-01") and Clear filters.
@@ -769,9 +794,11 @@ what needs the reader, then what their agents did, and never grows with the data
   it; five shown and "and n more". Its Allow is Network access's: the same panel, in
   place inside the item under its subject (`#<item>-panel`), never an overlay, the target
   chosen when only one reached the host, and the focus on the next item's act once the
-  rule is written. Where the level above the workspace denies the host, or allows only its
-  own hosts, no allow here would be in force, so the item offers the way to that level's
-  page to one who may change it there, and a lock with the reason to the rest. A resolved
+  rule is written. Where the level above the workspace denies the host, or allows only the
+  hosts on its list, no allow here would be in force: the item offers the way to that
+  level's rule, or, for a host only that level can allow, its New rule page with the host,
+  where the edition gives one, to one who may change it there; and a lock with the reason
+  to the rest. A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run says how it was lost: "Lost, never posted its exit" when the
@@ -793,7 +820,7 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
-  says what it does: the policy's mode and version, the targets with rules of their own
+  says what it does: the policy's mode and version, the targets with target rules
   (Review), retention (Change, to Workspace settings › Runs).
 - A workspace no run has reached is one box: the steps from a node to the first run, and a
   panel beside them. Step 2 is "Connect it" ("Run one command on the machine, or generate
@@ -807,7 +834,11 @@ what needs the reader, then what their agents did, and never grows with the data
   command there makes the command in place, as on the tab: the panel shows the real
   command with Copy, "It works once, until 14:32. This is the only time it is shown." and
   "Waiting for build-01 to run it.", with the notice when the server's address is a
-  loopback one. Generate a key opens the node's Generate a key page. A member reads who
+  loopback one. For a node whose choice leads to a gateway, the tab's notice "Runs of
+  build-01 go through the gateway edge-01, at https://edge.example.com." (with "edge-01
+  has no active access key, so it isn't connected." while it holds none) shows above the
+  command, which carries `--via` and the gateway's URL, and the line on a private
+  certificate authority under it, as on the command's page. Generate a key opens the node's Generate a key page. A member reads who
   connects it, and Go to nodes. At step 3 the panel reads "Listening for the first run.
   build-01 verified 2 min ago." alone. No placeholder command shows anywhere.
 
@@ -823,7 +854,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 
 - **The notation.** A target is its path in mono (`<.target_name>`); its system goes
   before it, faint, only where the same path is in another system of the workspace
-  (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
+  (`Apiary.Runs.shared_paths/2`), and always on the target's header and crumb. A run's state
   is a dot and its word (`<.state_mark>`), the dot alone for a run that completed, never a
   pill.
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
@@ -838,22 +869,22 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   completed), a 14-day sparkline of runs with their number, the share that ended well of
   those that ended well or badly (lifted to the text colour below 80 %; red is for denials
   only), the denied
-  attempts of the same fourteen days in red when there are any, and the policy mode only where the target sets its own. Pages of 50.
+  attempts of the same fourteen days in red when there are any, and the policy mode only where the target overrides it. Pages of 50.
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
   the rows it holds in place.
 - **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
   segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
   `…/-/network` (once `…/-/connections`, which the page sends on with its query, moved
-  permanently) and, with `security`, `…/-/policy` with the policy's own paths after it
+  permanently) and, with `security`, `…/-/policy` with the policy's paths after it
   (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
   would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
   the workspace does not have, and a tab the page does not know, are not found. The header
   names the target as it is addressed (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
-  seen, its last run, and its mode only where it sets its own) and Open on the system when
-  the system is a host name; the breadcrumb ends with the section, a link to the index,
-  and the target, then on a version of its policy `Version 3` and on its export
+  seen, its last run, and its mode only where it overrides the workspace's) and Open on the
+  system when the system is a host name; the breadcrumb ends with the section, a link to the
+  index, and the target, then on a version of its policy `Version 3` and on its export
   `Export`, as on the workspace's Policy.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
     runs; the destinations it was denied in 14 days, each with a faint barred circle,
@@ -870,9 +901,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     its history and document as views under the page's tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
     (`ApiaryWeb.TargetMovedController`).
 
-  A tab is its own mount; a tab another page's module answers is handed the page's
+  A tab is a separate mount; a tab another page's module answers is handed the page's
   parameters, events and messages while it is open.
-- **Pins** are the person's own (`target_pins`): the ★ of a row and of the header, and the
+- **Pins** are per person (`target_pins`): the ★ of a row and of the header, and the
   sidebar's Pinned group.
 
 ## Nodes
@@ -911,7 +942,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   **New node**, **New node pool** and **New gateway**, side by side and alike, in the
   header; with no node of any kind yet, the empty state offers the first two, and tells a
   member that an owner or admin adds nodes.
-- **New node and New node pool** are pages of the Nodes section at paths of their own,
+- **New node and New node pool** are pages of the Nodes section at separate paths,
   `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
   `Nodes / New node` (Nodes a link back to the list), the page's heading
@@ -926,15 +957,18 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   resolves for the workspace, and then the one the form starts on; Direct, which it
   starts on otherwise; and each gateway by name; under it, which gateway the default is.
   **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
-  hint saying what a URL may be, and Add gateway. A refused save stays on the page, the
+  hint saying where the URL points (the machine that runs qory gateway), what a URL may
+  be, and that the gateway's Settings change it later (`NodeComponents.url_hint(:new)`;
+  the Settings field's hint, `url_hint(:settings)`, leaves that last sentence out), and
+  Add gateway. A refused save stays on the page, the
   error under its field, in core's words (a URL's, or a gateway's, such as "has no
-  default gateway in this workspace"); adding one opens its page on Access key with a
+  default gateway"); adding one opens its page on Access key with a
   flash, where its machine gets its key.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
   side first and Settings last, set apart at the bar's right end
   (`NodeComponents.node_tabs/1`, on `PageComponents.page_tabs/1`). Overview and Settings
-  are patches of the one LiveView; Access key, between them, is a LiveView of its own
+  are patches of the one LiveView; Access key, between them, is a separate LiveView
   (`/nodes/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a Node's
   instance (running since when,
   its run and Forager version, or when it was last seen) or a pool's running instances on the
@@ -963,7 +997,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Make default (`Apiary.Nodes.make_default_gateway/2`, `node.edit`) for one that is not,
   which moves the mark at once with a flash; then its recent runs and About, without
   instances or an instance limit. Its Settings' General changes its name and its URL.
-  Delete gateway… is confirmed in place as a node's is, with a gateway's own sentence;
+  Delete gateway… is confirmed in place as a node's is, with a gateway's sentence;
   a gateway that nodes still point to, or that runs still go through
   (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line an
   error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
@@ -972,15 +1006,50 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   this gateway: … Delete it once they end.", or both in one notice. It names the first
   five of this workspace, then "and 3 more", which counts those of other workspaces too,
   never named.
+- **An organisation's gateways** (`ApiaryWeb.NodeLive.Gateways`, `/:org/gateways`) are
+  offered only where an organisation may have more than one workspace
+  (`NodeComponents.organisation_gateways?/0`, from `c:Apiary.Edition.limits/0`); with one,
+  the Gateways entry of the organisation's sidebar (`#nav-gateways`, after Audit log, for
+  a reader of `node.read`) and New gateway in the New menu are not there, and the paths
+  are not found. The list, on the list pattern, says under its heading whose nodes can use
+  them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:intro`), then a row a gateway:
+  its name and public id, its URL from `sm`, Default beside the organisation's default,
+  and Connected, Yes or No by whether it holds an active key. Owners and admins have **New
+  gateway** (`/gateways/new`), a form page as a workspace's New gateway is, which opens the
+  gateway's Access key tab. A gateway's page is a workspace gateway's page under
+  `/:org/gateways/:node_id`, with its Access key and Settings tabs, the breadcrumb and the
+  sidebar's current entry Gateways (`nav={:gateways}`). Its Overview adds who can use it
+  (`:who_can_use`) and who uses it now, "Nodes in Acme › Main, Acme › Build use it now."
+  or "No node uses it now." (`NodeComponents.using_words/2`), naming only the workspaces
+  the reader reaches, then "and 2 more workspaces"; the organisation's default reads
+  `:default_row`. Its deletion is confirmed in place, naming the organisation, and a refusal names
+  the nodes and runs of the workspaces the reader reaches and counts the rest
+  (`NodeComponents.in_use_words/3`).
+- **A workspace's Nodes and an organisation's gateways.** Nodes lists the organisation's
+  gateways beside the workspace's, each with "Set for Acme" (`#node-<id>-level`), linked
+  to its page, and Default beside the gateway the workspace's default resolves to. A
+  gateway of another organisation that serves the workspace is no row of it. A node's
+  Gateway select groups the gateways by level where there is more than one, "This
+  workspace" first, then the node's organisation, then each organisation that serves it,
+  named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
+  whose default it is. Where a node uses a gateway of another organisation, its About,
+  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
+  to its page under that organisation's Gateways only where the reader reads it there
+  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the nodes is the core's sentence unless
+  the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
+  instance limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
+  `node.set_limit`, "You can't change the instance limit." when it gives none.
 - **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
   (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
   for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
   gateway edge-01, at https://edge.example.com.", and, while the gateway holds no active
   key, "edge-01 has no active access key, so it isn't connected."; one on Default gateway
   while no gateway is the default reads "No gateway is the default now."; a direct one
-  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file are
-  the same either way: they point at Qory Apiary. A gateway's own tab has the same
-  layout in its own words: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
+  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file point
+  at Qory Apiary, through that gateway: the command carries `--via` and the gateway's URL,
+  and the Forager file a `via` line (`Apiary.AccessKeys.via_lines/1`); a direct node, a
+  gateway, and one on Default gateway while no gateway is the default see neither. A gateway's Access key tab has the same
+  layout, worded for a gateway: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
   "How do you want to connect build-01?", "build-01 connects to Qory Apiary with a key.
   Choose one of two ways to give it one." (a pool's: "spot-runners connects to Qory Apiary
   with a key; its instances share one. Choose one of two ways to give it one."), and
@@ -990,7 +1059,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   columns, the labels faint: Key made, Secret, By hand, Needs), a waiting command where
   it is the command's, and one button at the foot (`mt-auto`), so the buttons line up.
   No steps, no code, no variable and no Copy. **Connect with a command**: "Choose it when
-  you can open a terminal on build-01: a laptop, or a server of your own.", "You get one
+  you can open a terminal on build-01: a laptop, or your server.", "You get one
   command to run on build-01. It carries a one-time code, not a key, which works once
   within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public
   half, and saves everything else there itself.", Key made "On build-01, by qory", Secret
@@ -1027,7 +1096,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   key ID or a public key set twice." and "With a generated key, set these where the
   machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the Forager
   file. It is required: without it, qory ignores the three variables below.",
-  `forager.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
+  `forager.yaml` with Copy lines; behind a gateway "Point qory at Qory Apiary, through
+  edge-01.", the text adding "via sends every request to Qory Apiary through edge-01.",
+  and a pool's "A starter that reaches Qory Apiary directly can leave via out.", the
+  lines ending `via:` / `url: https://edge.example.com`), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
   a plain setting. The same for every machine connected to this Qory Apiary.", the value
   with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
   setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
@@ -1040,18 +1112,28 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   enrolment code at once, with defaults: Stored secrets Not allowed and no label hint, so
   qory names the key after the machine's host name; there is no form. The page shows the
   whole command, `qory access-key enrol https://apiary.example.com` and the code, wrapped,
-  with one Copy command. For a node or pool that has or had a key, the command carries
-  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code),
+  with one Copy command. For a node or pool whose choice leads to a gateway, the command
+  carries `--via` and the gateway's URL before the server's address (`qory access-key
+  enrol --via https://edge.example.com https://apiary.example.com` and the code), the
+  description reads "The command connects build-01 by itself, through the gateway
+  edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address
+  and public key and the gateway's address into the Forager file. The secret never leaves
+  the machine.", and a line under the command reads "If edge-01's certificate is signed
+  by a private certificate authority, add --via-ca-file and that authority's PEM file."
+  (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
+  acts on is single-quoted (`NodeComponents.shell_word/1`). For a node or pool that has or had a key, the command carries
+  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code,
+  `--replace` before `--via` when both),
   shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps
   working until you revoke it on the Access key tab." under it while a key is active, or
   "It moves build-01 to a new key." alone once every key is revoked; a code waiting
   unused does not count. Then "It works once, until 14:32, 15 minutes from when you got
   it. This is the only time it is shown." and "Waiting for build-01 to run it. This page
-  shows when it is connected." The code is never shown on its own, and the page never
+  shows when it is connected." The code is never shown by itself, and the page never
   names it. When the machine runs the command, the page turns, live, to "build-01 is
   connected. Its key arrived at 14:20 and is active.", with the Key and its Fingerprint,
   and "qory printed a fingerprint on build-01 when it ran the command. If it isn't this
-  one, revoke the key on the Access key tab." When the server's own address
+  one, revoke the key on the Access key tab." When the server's address
   (`ApiaryWeb.Endpoint.url/0`, from `PUBLIC_URL`) is a loopback one, such as
   `http://localhost:4100`, a notice says "Machines can't reach this address. … Set
   PUBLIC_URL to the address machines use, and the command will carry it."
@@ -1086,7 +1168,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
   the Forager file. It is required: without it, qory ignores the three variables.", the
   three lines `gateway:`, `server:` and `url: https://apiary.example.com` with Copy
-  lines). The server's address and public key are the instance's own, the same for every
+  lines; behind a gateway as Configure a machine's first step says). The server's address and public key are the instance's, the same for every
   organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
   back to the tab ("Once you leave this page, the secret is not shown again."). The secret
   is the browser's alone: the server renders its place empty, and the page that made the
@@ -1118,7 +1200,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
   `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
   plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
-  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines). Done goes back to the
+  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines; behind a gateway "Point qory at Qory Apiary, through edge-01.", "via sends every request to Qory Apiary through edge-01." and a pool's sentence above it, the lines ending `via:` / `url:`). A command key's lines behind a gateway end with `via:` and its `url`, marked `# the gateway edge-01`. Done goes back to the
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
@@ -1160,11 +1242,11 @@ words without one; a pinned target 12.5 px mono; an entry of the second column 1
 its disclosure alike.
 The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
-hides its own parts on phones in that block.
+hides its parts on phones in that block.
 
 ## Components
 
-A page composes components; it does not write its own button, input, table, modal or
+A page composes components; it never writes a custom button, input, table, modal or
 badge. The general ones are in `ApiaryWeb.CoreComponents` (`core_components.ex`); the
 ones a group of pages shares are beside them: `RunComponents` for the runs list (its
 Filter menu's sections, the rail, the pager, the runs table and the preview), the run page
@@ -1180,12 +1262,12 @@ needs becomes a component, or an attribute of one, not a copy.
   set apart at the bar's right end, and a settings section's (Secrets | Variables,
   `place="section"`, in the flow, wrapping); `settings_page/1`, a page of a level's
   settings, whose sections the frame lists (Two levels, under The shell); `page_form/1` with
-  `page_form_foot/1`, a form as a page of its own, its title, one line and the form, with
+  `page_form_foot/1`, a form as a separate page, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads, such as Back to the variables, stays
   where a page has one); and
   `not_on_runs/1`, the one plain line a page over data no run receives says, in the
-  page's own sentence (`inner_block`, required): it has no words of its own.
+  page's sentence (`inner_block`, required): the component adds no words.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
   `patch` or `href`, unless it is `disabled`: a disabled one is a `<button disabled>`
@@ -1196,14 +1278,14 @@ needs becomes a component, or an attribute of one, not a copy.
 - **`<.input>`** is every field but the sign-up page's new password; with `prefix` a text
   input shows, in mono before the value and as one field, what the value completes: the path of the
   organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
-  field's own (its hint, its errors), never replaced by it.
+  field's descriptions (its hint, its errors), never replaced by it.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
   asks for them without mail, and a password link's page. The server never writes a password back: each input is the
   browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
   the input, outside it, and mark it (`aria-invalid`, `aria-describedby`) as they come and
   go.
 - **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
-  neither checks a field nor shows its own bubble, and the server answers a field that is
+  neither checks a field nor shows a validation bubble, and the server answers a field that is
   wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the
   page's words. A field keeps what helps a person, `required`, `type="email"`, `inputmode`,
   `autocomplete`, for assistive technology and a phone's keyboard; so a check the browser
@@ -1229,7 +1311,7 @@ needs becomes a component, or an attribute of one, not a copy.
   Cancel takes the focus without scrolling the question away (`rule_list/1`'s row is the
   same). A danger zone's line wraps it with what is lost and the field to type
   (`SettingsComponents.deletion_confirm/1`), its button Yes, delete, Deleting while it
-  acts, unless the act names its own (`confirm_label` and `busy_label`, which
+  acts, unless the act names other words (`confirm_label` and `busy_label`, which
   `danger_action/1` takes too). There is no modal component.
 - **Menus** are daisyUI dropdowns under the `Menu` hook, whose trigger is the button with
   `aria-haspopup`, or, for a disclosure, the one with `aria-controls` and `aria-expanded`
@@ -1237,16 +1319,16 @@ needs becomes a component, or an attribute of one, not a copy.
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
   the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items
   are not tab stops (`tabindex="-1"`, as `<.menu_item>` renders them): Tab closes the menu
-  and moves on from its trigger. A field inside a Filter section keeps its own keys, and
+  and moves on from its trigger. A field inside a Filter section keeps a field's keys, and
   ArrowDown from a section's search goes to its first option. With
   `data-float` the list is a popover in the top layer, placed under its trigger, so no
   scroll region clips it (a row's menu, a list's Filter and Sort). A menu that holds a
   form, such as the runs list's Jump to date, stays open while the page answers it, and
   the page closes it once the form did what it asked: `push_event("menu:close", %{id: id})`.
-- **`<.table>`** is a scroll region of its own, focusable and named by its `label`, which
+- **`<.table>`** is a scroll region, focusable and named by its `label`, which
   is required, so a wide table scrolls inside the page and never the page sideways; its
   rows follow the row spec (Lists, above). A column of icons has a header for a screen
-  reader (`sr_label`). A settings section is not a named region of its own, so its list
+  reader (`sr_label`). A settings section is not a named region, so its list
   is the one landmark with the section's name.
 - **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
   never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
@@ -1276,11 +1358,11 @@ of pages owns are in `@layer qory` and start with `q-`, clear of daisyUI's names
 An edition adds to a core page only in the places the page gives it: a slot
 (`ApiaryWeb.Extension`), a section of the organisation's settings (`ApiaryWeb.SettingsComponents`)
 or of the Instance, or an entry of the navigation, of New or of the account menu
-(`ApiaryWeb.Edition`). What it renders there links to its own pages, which handle its
-events; a page whose behaviour differs is the edition's own at the same path.
+(`ApiaryWeb.Edition`). What it renders there links to the edition's pages, which handle its
+events; a page whose behaviour differs is the edition's page at the same path.
 
-A component does not ask `Apiary.Features` what the instance serves: the page asks with
-its scope and passes the answer, as the connection row's `security` attribute does. What
+A component does not ask `Apiary.Features` what the instance serves or the reader is
+shown: the page asks with its scope and passes the answer, as the connection row's `security` attribute does. What
 Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
 ### Storybook
@@ -1292,7 +1374,7 @@ dependency in dev and test only, whose backend is `ApiaryWeb.Storybook`
 library is there (`ApiaryWeb.Routes.storybook_routes/0`); a release, and an edition's
 router, have none of it.
 
-A story is drawn with the app's own components and stylesheet:
+A story is drawn with the app's components and stylesheet:
 `assets/css/storybook.css` imports `app.css` and adds `storybook/` as a source, so a class
 only a story uses (an icon the app does not draw, a layout utility) is generated there and
 never in the app's stylesheet. The `storybook` Tailwind profile builds it, and the dev
@@ -1325,7 +1407,7 @@ reloads the page when one changes.
 `app.css` defines two daisyUI themes, `qory` (light, the default) and `qory-dark`. The
 script in `root.html.heex` sets `data-theme` from the theme menu (Auto, Light or Dark,
 kept in `localStorage`); Auto follows the system, and without JavaScript the
-`prefers-color-scheme` block does the same. The dark theme is designed on its own, not
+`prefers-color-scheme` block does the same. The dark theme is designed separately, not
 inverted.
 
 - **Colours are tokens.** Beside daisyUI's theme colours, the `--q-*` custom properties
@@ -1389,7 +1471,7 @@ a chosen row are query parameters.
 
 **The content security policy.** Every page, the storybook's and the development tools'
 included, carries a strict `Content-Security-Policy` (`ApiaryWeb.ContentSecurityPolicy`):
-`script-src 'self'` and the request's nonce, so only the console's own bundles and the
+`script-src 'self'` and the request's nonce, so only the console's bundles and the
 scripts that carry the nonce run, and a script a bug lets into a page does not. A page
 keeps to it:
 
@@ -1398,9 +1480,9 @@ keeps to it:
 - No `on…=` attribute (`onclick`, `onload`, …) and no `javascript:` address. A
   `phx-*` binding and a `Phoenix.LiveView.JS` command are not inline script and need
   nothing.
-- Scripts, stylesheets, images, fonts and form targets are the console's own origin (an
+- Scripts, stylesheets, images, fonts and form targets are the console's origin (an
   image may also be a `data:` address), and no page is framed, except the development
-  tools' own pages under `/dev`. Inline styles are allowed (`style-src 'self'
+  tools' pages under `/dev`. Inline styles are allowed (`style-src 'self'
   'unsafe-inline'`): `<style>` elements and `style` attributes, which the run page's
   terminal writes as it runs.
 
@@ -1415,11 +1497,11 @@ not fill fails until it is filled there.
 
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
-on its own) sits beside it on every tab, Terminal too; below 1280 px Details is a button
+separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
 under the header. The terminal takes the whole window through Focus (The terminal,
 below). The top bar's breadcrumb ends with Runs, a link to the list,
 and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
-page has no breadcrumb of its own.
+page draws no other breadcrumb.
 
 - **The header** is the title (the one the run gave in its `about`, else "Run" and the
   run's short id, `Run 0191f2a4`) alone; then, when the run names a kind or subjects, one
@@ -1440,8 +1522,11 @@ page has no breadcrumb of its own.
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
-  live action of the one LiveView, so a tab is a patch. An old link to a run's Details
-  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  live action of the one LiveView, so a tab is a patch. Terminal is the log's
+  (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
+  Terminal, there is no tab, no Raw log or Download log, no Terminal on Details, and the
+  sentences on session events name no terminal. An old link to a run's Details tab
+  (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
   becomes the Timeline's.
 - **Details is one element** (`#run-details`), after the header and before the tabs at
   every width, so the two places never disagree and no id is drawn twice; its reading and
@@ -1454,12 +1539,12 @@ page has no breadcrumb of its own.
   the tabs; Escape on it closes it and keeps the focus on it. The Record's Session is read
   again when the session starts, whatever the tab.
 - **The Details rail** is key and value lines under small headings (About, Run, Labels,
-  Command, Record, Policy in force), no chip, and no card in the right column; the run's labels are its own
+  Command, Record, Policy in force), no chip, and no card in the right column; the run's labels are its
   identifiers, in mono, and one that names the target leads to its page.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
-  key, a row per member, a member that is a non-empty object a row per member of its own
+  key, a row per member, a member that is a non-empty object a row per member of that object,
   keyed `outer.inner`, a string as given and anything else as compact JSON, each value
   wrapped and never cut. The title is the page's `<h1>` and is not repeated there.
 - **A subject's words** (its type, ref and title) are each isolated in a `<bdi>` wherever
@@ -1479,7 +1564,7 @@ page has no breadcrumb of its own.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
-  own reason, and the others the outcome's
+  reason, and the others the outcome's
   ([contract-assumptions.md](contract-assumptions.md), How a run ends):
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
@@ -1524,11 +1609,11 @@ are written against a dark ground. It fills the window below the tab bar, never 
 xterm.js as `Uint8Array`s, never decoded strings, in slices per frame so a long log does
 not block input. The bytes never cross the LiveView socket: the LiveView sends the foot's
 numbers and a signal that the log advanced. xterm.js is vendored under
-`assets/vendor/xterm`, built as its own bundle and loaded on the hook's first mount, by no
+`assets/vendor/xterm`, built as a separate bundle and loaded on the hook's first mount, by no
 other page. The screen is `role="log"` with `aria-live="off"`.
 
 - **The recorded width is kept.** A run whose record says its pseudo-terminal's size is
-  drawn at those columns and rows, centred only inside the box's own darker ground, which
+  drawn at those columns and rows, centred only inside the box's darker ground, which
   fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
   to the box, with Wrap.
 - **The bar**: the stream, search (`/`), follow (End), wrap, the **text size** (A−, A+,
@@ -1584,7 +1669,7 @@ and names the product Qory Apiary.
 - **Names.** An icon-only button has an `aria-label`. A row action names its object
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
   its error is tied to it with `aria-invalid` and `aria-describedby`. Each `<nav>` of the
-  sidebar has a name of its own: its heading, Main for the first group, else its first
+  sidebar has a name: its heading, Main for the first group, else its first
   entry's; the second column is named by its heading, the level (Workspace settings,
   Organisation settings, Your settings, Instance), not by the place beneath it, at every
   width, its heading a button below 1024 px. The current entry is marked
@@ -1595,7 +1680,7 @@ and names the product Qory Apiary.
   (`#run-announcer`, `#overview-announcer`, `#policy-announce`) for the few things worth
   saying. Ticking text, a filling timeline and the terminal are `aria-live="off"`. Toasts
   are `role="status"` or `role="alert"`; an info toast leaves after 5 s, and hovering or
-  focusing it holds it. A copy is announced politely: a button by its own live span, a
+  focusing it holds it. A copy is announced politely: a button by a live span inside it, a
   row's copy by the shell's one `#copy-announcer`, never a live region a row.
 - **Motion.** Motion shows cause and effect for what floats; layout, rows and streamed
   inserts never animate. The only loops mean "still being written": the spinner, the
@@ -1612,5 +1697,5 @@ controls are 40 px high and inputs take 16 px text so the browser does not zoom.
 second column is a column from 1024 px and, below it, at every width, one disclosure under
 the top bar, `[ Workspace settings · Main ▾ ]`, whose links open in place. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area
 whatever its drawn size. At 320 px wide, and at 200% zoom, the page never scrolls
-sideways: tables, code, the filter bar and the terminal scroll inside their own
+sideways: tables, code, the filter bar and the terminal scroll inside their
 containers.

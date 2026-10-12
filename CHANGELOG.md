@@ -120,9 +120,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   pages that say "Only owners and admins change this."; for People's line of what each
   level does; for the refusal to cancel an organisation's deletion on Your organisations;
   for the security policy's refusals (`Apiary.Policy`); and for the policy pages'
-  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
-  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
-  mode and on a locked rule have no scope at hand, and keep the core's words.
+  refusals of a click on the mode or a lock. The policy pages' mode row and the workspace
+  overview's hint on the mode keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration, attach, reload and outcome, events and
   enrolment): the
@@ -249,7 +248,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   endpoint. Discovery names the key's node (`node_id`), its workspace (`workspaces`) and
   the server's keys (`apiary_public_key`), so its digest differs by node and workspace.
   The tests replay the contract's fixtures at the commit `.forager-contract-ref` pins,
-  85ea92e on Forager's next.
+  457a8a7 on Forager's main.
 - A workspace's id in the server contract: every workspace has one, `ws_` and 16
   characters, made when it is created, and for a workspace that was already there by the
   migration that adds it (Migrations, below). Discovery lists it as `workspaces`, the one
@@ -262,8 +261,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and an optional port, nothing more, at most 2048 characters) and no instance limit. A
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
-  gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
-  may serve, sorted. Each node and node pool records a choice of gateway: direct, its
+  gateway's key names it (`node_id`, `ng_…`) and lists no workspaces: which workspaces a
+  gateway serves follows from the nodes that use it, and Qory Apiary decides at each
+  registration and attach whether it may serve the run's workspace. Each node and node pool records a choice of gateway: direct, its
   workspace's default gateway, or a gateway it names, one that may serve its workspace,
   checked when the choice is saved, and resolved again at each run's registration (a run
   through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
@@ -296,12 +296,55 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where
   its choice leads, and its Access key tab, command page, Key for a node and Forager file
-  name the gateway its runs go through, with its URL; the command and the Forager file
-  point at Qory Apiary either way. A gateway's key enrols the gateway and registers no
+  name the gateway its runs go through, with its URL. The command and the Forager file
+  point at Qory Apiary through that gateway: the command, on its page and in the
+  overview's first-run box, carries `--via` and the gateway's URL, with a line under it
+  that a gateway whose certificate a private certificate authority signed needs
+  `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
+  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
+  gateway. A gateway relays the enrolment unchanged, from its address, which the
+  enrolment's per-address limit counts for every machine behind it.
+  A gateway's key enrols the gateway and registers no
   run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the names of the organisation's
   pages are; a workspace named Gateways gets the slug `gateways-2`.
+- A gateway may live at an organisation as well as at a workspace: its row has no
+  workspace, and nor have its access keys, enrolment codes and instances. It may serve
+  every workspace of its organisation, and those an edition names
+  (`c:Apiary.Edition.serving_organisations/1`, `c:Apiary.Edition.served_organisations/1`;
+  the core's edition names none). An organisation's gateways have names unique among
+  them, and at most one default. A workspace's default gateway is the one it marks;
+  without one, its organisation's; without that, one of an organisation that
+  serves it. `Apiary.Nodes.create_organisation_gateway/2`,
+  `list_organisation_gateways/1` and `list_serving_gateways/1` make and list them, asked
+  of the organisation (`node.create`, `node.read`); a gateway's changes, keys and codes
+  are asked at its place. A change of an organisation's gateways takes turns with every
+  change of a node's choice in a workspace it may serve, on the organisations' rows
+  (`Apiary.Gateways.lock/1`, `docs/access.md`). An organisation's gateway's key is checked while its
+  organisation is out of use, not marked for deletion, and acts for a run only while the
+  run's workspace is in use, the gateway may serve it, and either the gateway's
+  organisation is in use or the run is another organisation's. A gateway acts for a run
+  only while it may serve the run's workspace, asked again at each batch, heartbeat,
+  reload and repeated attach: once it may not, a batch or heartbeat, one accepted before
+  and sent again included, is a signed `410` `workspace_not_served` with no digest and
+  nothing of it stored, before deduplication and before a pruned run's answer, a reload the same `410` with no
+  policy, and a repeated attach a signed `409` `workspace_not_served`; the run goes lost
+  by liveness. A workspace's gateway's key is held to its organisation's use as any
+  node's is. The console offers an
+  organisation's gateways only where an organisation may have more than one workspace
+  (`c:Apiary.Edition.limits/0`): with one workspace, as here, Organisation › Gateways, its
+  sidebar entry and New gateway in New are not offered, and their paths are not found.
+  Where they are offered, Gateways lists them, with their URL, Default and whether each is
+  connected; New gateway is a form page; a gateway's page has the tabs a workspace's
+  gateway has, says whose nodes can use it and which workspaces' nodes use it now,
+  naming only the workspaces the reader reaches and counting the rest, and its deletion
+  is confirmed in place. A workspace's Nodes lists its organisation's gateways beside the
+  workspace's, each "Set for" the organisation; a node's choice groups the gateways by level; a
+  gateway of another organisation is named with its organisation and linked only where
+  the reader may open it. `c:ApiaryWeb.Edition.gateway_reach_sentence/2` and
+  `c:ApiaryWeb.Edition.nodes_managed_by_sentence/1` let an edition word whose nodes can
+  use an organisation's gateways and who manages the nodes.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a separate bucket, 50 requests a second and 100 at once, so a gateway flushing a backlog of
   events still registers a new run. Discovery is not limited.
@@ -497,12 +540,34 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   to it. The page was called Connections; its old paths send on to the new ones.
 - The policy's rules on the same list pattern, however long the list grows: views (All,
   Allowed, Denied, Locked) with their counts, "Find a host" with `seen:`, `paths:` and
-  `by:` as tokens, one Filter menu, Sort, Add rule opening the composer over the list, and
-  pages of 50, every choice in the address. A repository's Policy tab is its effective
+  `by:` as tokens, one Filter menu and Sort, and pages of 50, every choice in the address;
+  Add rule is the one primary button of the Network access section's header. A repository's Policy tab is its effective
   policy on that list, each rule with its source: the repository's rules first, changed there; the
   workspace's read there and changed on the workspace's page, which their menu leads to;
   what is not in force struck through, saying why. Its mode is one line: Follow the
   workspace, Observe or Enforce, and whose the mode is.
+- A host rule is added and changed on a page, New rule
+  (`/:org/:workspace/policy/rules/new`, a repository's `…/-/policy/rules/new`) and Edit
+  rule (`…/policy/rules/:id/edit`), from Add rule, a row's Edit and the top bar's New
+  (Network access rule). The page asks what runs should do first, Allow or Deny, each
+  saying what it does; then Host and Paths, each with its help; and reads the rule back
+  under "What this rule does" as it is typed. An error is said under its field with its
+  repair as a link, and Add rule, never off, moves to the first field at fault. A pasted
+  list of hosts is added one at a time. A save goes back to the list as it was left, the
+  new rule marked. A declared host's Allow with paths… opens the page with the host
+  filled in. `ApiaryWeb.PolicyComponents.rule_form/1` draws the form; `rule_list/1` takes
+  the section's header (`title`, `count`, `add_path`, `edit_path`), and
+  `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
+  moved. On a page with the form, a Remove that `ApiaryWeb.PolicyLive.Common` answers gives
+  the focus to Add rule, never to a composer the page does not draw.
+- The rule form and its reading also serve a level above the workspace, for an edition
+  that keeps one: `rule_form/1` and `ApiaryWeb.PolicyLive.Reading.host_rule/2` take the
+  scope `:organisation`, whose button reads Add rule and whose sentences say "for every
+  workspace", and `ApiaryWeb.PolicyLive.Common.mount/3` takes `scope` and `may_change`,
+  who may change the page's rules. Where only that level allows a host, Network access and
+  To review lead to its New rule page with the host filled in (`new_rule_path` of
+  `c:ApiaryWeb.Edition.above_policy_link/1`), no longer to its policy page with the host
+  as `allow`.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
@@ -614,6 +679,23 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   documentation: only the console's scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
   browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
+- A feature can have parts, which an edition may hide from a person apart from the rest
+  of the feature (`Apiary.Features.parts/0`, `c:Apiary.Edition.hidden/1`), and an action
+  may belong to one (`part:`). The first is the run's Terminal (`:"observability.terminal"`),
+  which `run.read_log` belongs to: hidden from a person, it hides the run's whole log from
+  them, the Terminal tab, `/runs/:run_id/terminal`, the log's address with every stream and
+  the download, the ⋯ menu's Raw log and Download log and the runs list's preview of the
+  last lines, and the sentences on session events name no terminal. The terminal's size on
+  the run's Details now asks whether the person may read the log (`run.read_log`), as the
+  Terminal tab does.
+- Workspace settings leave out the size of the log a retention pass deleted for a reader
+  the run's Terminal is hidden from.
+- A feature part can belong to no feature; the nodes, node pools, access keys and gateways
+  are the part `nodes`, which an edition may hide from a person while nodes keep working.
+- An edition may give other words for the invitation's description, a level's hint on
+  People (`c:ApiaryWeb.Edition.people_sentence/3`) and the empty Gateways page
+  (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:empty`); the core edition keeps
+  today's.
 
 ### Changed
 
@@ -623,13 +705,86 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   could post events to any of its runs. A second key of the same node, as while a key is
   replaced, keeps the run going; a batch from a key of another node is a signed `409`
   `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
-  `404`. A run through a gateway takes them from the gateway that attached it instead,
-  from the instance that attached it, and its repeated registration and its outcome from
-  the node that registered it.
+  `404`. A direct run's outcome is held to the same node, and an outcome from another
+  node's key is `404`. The run is bound to the node, not to the key that registered it:
+  once that key is revoked its requests are `401`, and a second active key of the node
+  carries the run on. A run through a gateway takes its batches, heartbeats and reloads
+  from the gateway that attached it instead, from the instance that attached it, and its
+  repeated registration and its outcome from the node that registered it.
 - `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
+- Pages say secret where they said credential.
+- A connection Forager refused for the form of its host says so in words: "Forager
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+  names link-local addresses: "The wall refuses link-local addresses and the machine's
+  addresses, in either mode.", and so does the Policy page's hint for a rule written as an
+  address.
+- The Policy page says the wall lets the machine's addresses through for a host the policy
+  allows by name; the host-form row names Forager; and a refused connection's tooltip says
+  what refused it.
+- A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
+  address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
+  name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
+  nor ending with `-`, the last not all digits, 253 characters at most, with an optional
+  trailing dot. Before, the host could hold any character a URI's host allows, `;`, `$`,
+  `(`, `)`, `'`, `&`, `*`, `!`, `=`, `+`, `,`, `~` and `_` among them, and the port could
+  be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
+  scheme and a host, with a port if needed, and nothing more", by
+  `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A connection whose host is longer than 255 bytes keeps the host's first 252 bytes, cut
+  on a character boundary, followed by "…", and no rule can be made from it. The host
+  shows so on the connection's row, in the run's timeline, on the Overview and in the list
+  of what enforce would deny, with no Allow. Before, the host was cut to 255 bytes with no
+  mark, and the cut could read as another host name.
+- A host rule takes an address only as four numbers from 0 to 255 with dots between them
+  and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
+  digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1`, `10.0.0.256` and `*.0.0.1` were taken as host names, and the
+  gateway refuses a whole document holding one. They are now refused by the rule form ("An
+  address is four numbers from 0 to 255 with dots between them and no leading zeros, such
+  as 10.0.0.12.", or for `*.` before an address "*. leads a host name, never an address."),
+  by every rule write (the rule's changeset, `Apiary.Policy.Grammar.host?/1`) and by
+  requested changes, and a rendered document is held to the same grammar before it is
+  stored. A rule stored before is kept, not in force, and left out of every rendered
+  document; its row says "Not in force" and offers Remove alone, and a requested removal
+  still removes it. A connection to an address matches a rule only when it names the
+  address in that form and the rule is the same: an address in another form, an IPv6
+  address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
+  a connection reads as not allowed.
+- What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
+  registration, events, attach, outcome and reload, and its run configuration, whatever a
+  level above the workspace shows. An edition can no longer switch a feature off below the
+  instance.
+- Below the instance a feature is shown or hidden, never switched off. An edition says what
+  a person is not shown in an organisation (`c:Apiary.Edition.hidden/1`, the core's answer:
+  nothing); a hidden feature's pages, menu entries and actions are not found for that
+  person, and still work in full for nodes, rendering and the instance's jobs.
+  `c:Apiary.Edition.features_of/3`, `Apiary.Features.of/2` and `Apiary.Features.on?/2` are
+  gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
+  is shown.
+- The organisation slugs `admin`, `api` and `new`, and the workspace slugs `api` and `new`,
+  are reserved; an organisation or workspace holding one moves to the first free slug of
+  `-2`, `-3`, ….
+- The documentation, the service definition schema and `.env.example` name the thing
+  where they said "its own".
+- An edition's sentence of who may lock, unlock or change a locked rule
+  (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`) now shows at
+  each place that says it: a locked rule's lock, the rule form, a target's path refusal and
+  Destinations, the refusal to change or remove a locked rule, a connection's Allow or Deny
+  panel and the workspace overview; the Lock confirm keeps the core's words. It follows
+  the sentence that says what is locked (`ApiaryWeb.Access.who_may_after/4`); the core's
+  edition gives none, so the texts are as before.
+- The URL of a new gateway says it's the address your nodes reach the machine running
+  qory gateway at, and that its Settings change it later; the guide's Gateways section
+  walks through adding one.
+<!-- feature: secrets -->
+- The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
+  `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person
+  when a feature it needs is hidden.
+<!-- /feature -->
 
 ### Removed
 
@@ -639,6 +794,27 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   nothing of it is stored. A run's clock offset is its heartbeats' alone, never its
   registration's, its attach's or a ping's. The demo recording of a run with no session is
   gone.
+
+### Fixed
+
+- The runs list's preview shows a run's last log lines, and its Full log link, only to a
+  reader who may read the log (`run.read_log`), as the run page's Terminal tab does.
+  Before, it read and showed them to anyone who could read the runs.
+- A connection's host is isolated wherever it shows, so a right-to-left character in it
+  reorders nothing around it.
+- The Overview and the Policy pages offer no Allow for a destination no rule can change:
+  the wall's refusals and a host no rule can name. The row still shows, and still counts,
+  with no act. Before, its Allow opened and the rule was refused, or was written and changed
+  nothing. The run's timeline shows a long host as its connection's row does: one longer
+  than 255 bytes is its first 252 bytes, cut on a whole character, followed by "…"; before,
+  it showed up to 400 characters.
+- A policy page stays up when asked to edit the paths of an id that is no rule's.
+- Signing in, and a workspace's link on the organisation's Overview, lead to the first page
+  of the workspace the person is shown. Before, they led to the workspace's Overview even
+  where it was not shown, which answered not found.
+- The workspace Overview's "more" link under To review goes to the page for the first item
+  it leaves out: the Policy page for a policy item, the nodes page for an idle key. Before,
+  a policy item led to the nodes page.
 
 ### Migrations
 
@@ -774,6 +950,35 @@ heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_even
 every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
 and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
 backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160500_let_a_gateway_live_at_an_organisation` lets `nodes.workspace_id`,
+`access_keys.workspace_id`, `access_key_enrolment_codes.workspace_id` and
+`node_instances.workspace_id` be NULL, for a gateway of an organisation and its rows:
+only a gateway may have none (`nodes_place_check`). The keys to the workspace become
+`MATCH SIMPLE` instead of `MATCH FULL`, so they hold a row with a workspace as before and
+leave one without; new composite keys hold each key, code and instance to its node's
+organisation (`(node_id, organisation_id)` to a new unique `(id, organisation_id)` of
+`nodes`), and a key to its enrolment code's; the trigger `node_place_matches` refuses a
+row without a workspace whose node has one. It adds the unique indexes
+`nodes_organisation_live_name_index` and `nodes_organisation_default_gateway_index`. The
+checks and keys are added NOT VALID, and
+`20261011160600_validate_a_gateway_s_organisation_keys` validates them. Nothing is
+backfilled: every row keeps its workspace. Rolled back, it refuses while any row without
+a workspace is there.
+`20261011160650_fix_a_node_s_place` adds the trigger `nodes_place_fixed`, which refuses a
+change of `nodes.workspace_id`, as `nodes_kind_fixed` refuses a change of kind: a node's
+keys, codes and instances stay at its place. Nothing is backfilled.
+`20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
+host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
+and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT
+VALID), and
+`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
+validation fails while any gateway, deleted ones included, has a URL outside the check,
+and its error names those gateways; give each a URL the check holds, then migrate again.
+Rolled back, the host may hold any character a URI's host allows again.
+`20261012100000_move_the_slugs_kept_back` moves an organisation whose slug is `admin`,
+`api` or `new`, and a workspace whose slug is `api` or `new`, to the first free slug of
+`-2`, `-3`, …: an organisation's among all organisations, a workspace's within its
+organisation. Rolled back, nothing moves back.
 
 ### Upgrading
 

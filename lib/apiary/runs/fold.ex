@@ -63,12 +63,12 @@ defmodule Apiary.Runs.Fold do
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
   applies it, so its state and reason are the run's, and the exit's stay beside them.
 
-  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
-  own, the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
-  counts as heard (`Apiary.Runs.Liveness.heard_at/3`): its own time corrected by the run's
+  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
+  the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
+  counts as heard (`Apiary.Runs.Liveness.heard_at/3`): the heartbeat's time corrected by the run's
   clock offset, within a tolerance, and never after this server received it, because the
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
-  The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
+  The offset, `clock_offset_ms`, is the smallest of arrival less the heartbeat's time over every
   heartbeat of the run, whatever its sequence: a minimum, so it is the same in any order.
   A session's heartbeats are on the session's machine's clock, which behind a separate
   gateway is not the gateway's. Whenever a pass folds a later heartbeat or
@@ -106,6 +106,10 @@ defmodule Apiary.Runs.Fold do
   @exited "dev.qory.run.exited"
   @refused "dev.qory.run.refused"
   @result "dev.qory.session.result"
+
+  # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
+  @host_max 255
+  @cut_mark "…"
 
   @forager_version "forager_version"
   @terminal_rank "terminal"
@@ -216,7 +220,7 @@ defmodule Apiary.Runs.Fold do
   `exit_state`, `exit_reason`, `exit_code`, `signal` and `exited_at`, and so does a
   refusal's `refused_at`.
 
-  The last step of every fold, and what the outcome's own write and a rebuild's reset
+  The last step of every fold, and what the outcome's write and a rebuild's reset
   apply, so the outcome decides whenever it arrives, before the exit or after it, and a
   rebuild gives the same run.
   """
@@ -308,7 +312,7 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
-    with host when is_binary(host) <- string(data, "host", 255),
+    with host when is_binary(host) <- host(string(data, "host", :infinity)),
          port when is_integer(port) <- integer(data, "port", 0..65_535) do
       key = {host, port, string(data, "path", @text) || ""}
       decision = string(data, "decision", 64)
@@ -414,6 +418,22 @@ defmodule Apiary.Runs.Fold do
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  # The destination's host, at most 255 bytes. A longer one is kept, so the attempt is
+  # counted and shown: its first 252 bytes, cut on a character boundary, then "…" (3
+  # bytes), which the grammar of a rule's host refuses, so no rule can be made from it.
+  # Two hosts that share the first 252 bytes, the port and the path fold into one row. A
+  # longer host that is not valid UTF-8 has no character boundary to cut on, and is not a
+  # connection. The run's timeline shows an egress event's host with it, so a long host
+  # reads there as on its connection's row (`Apiary.Runs.Record.Timeline.egress_host/1`).
+  @doc false
+  def host(host) when is_binary(host) and byte_size(host) <= @host_max, do: host
+
+  def host(host) when is_binary(host) do
+    if String.valid?(host), do: cut(host, @host_max - byte_size(@cut_mark)) <> @cut_mark
+  end
+
+  def host(_host), do: nil
 
   # The tool whose host a request was for: a name, never empty. Kept whatever the
   # decision; with the decision it says whether the request was a tool invocation.

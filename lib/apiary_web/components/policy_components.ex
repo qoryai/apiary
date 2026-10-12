@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.PolicyComponents do
   @moduledoc """
   The components of the security policy: the version pill and the version link, the mark
-  of a rule, the source chip, the mode card, the rule composer with its reading line,
-  the rules table with provenance, the suggestions of the harness, the history of changes
+  of a rule, the source chip, the mode card, the rule form (and the composer with its
+  reading line, kept for callers that have not moved to the form), the rules table with
+  provenance, the suggestions of the harness, the history of changes
   with its diff, and the document well.
 
   The pages under `/:org/:workspace/policy` use all of them; the run page and the
@@ -39,6 +40,7 @@ defmodule ApiaryWeb.PolicyComponents do
   # here: its functions are called by their full name, which is no compile-time dependency.
   alias Apiary.Policy.Above
   alias ApiaryWeb.Format
+  alias ApiaryWeb.PageComponents
   alias ApiaryWeb.PolicyLive.RuleList
   alias ApiaryWeb.RunComponents
 
@@ -61,7 +63,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :scope, :string,
     default: nil,
     doc:
-      "whose version, when shown away from its own page: \"workspace baseline\" or a system/path; a quiet suffix"
+      "whose version, when shown away from the version's page: \"workspace baseline\" or a system/path; a quiet suffix"
 
   attr :class, :any, default: nil
 
@@ -165,8 +167,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
-  the words where the same chip names a target's policy ("Own rules", "Workspace
-  baseline") or marks a change the workspace made ("workspace").
+  the words where the same chip marks a change the workspace made ("workspace").
   """
   attr :source, :atom, required: true, values: [:workspace, :target, :workspace_locked]
   attr :label, :string, default: nil
@@ -244,7 +245,7 @@ defmodule ApiaryWeb.PolicyComponents do
   The mode in force, a card above a policy page's tabs, the same on the workspace's Policy
   page (`level={:workspace}`) and on a target's Policy tab (`level={:target}`): a tile, the
   mode as the heading's value ("Mode: Enforce"), whose it is as a badge (the workspace's
-  default; the target follows the workspace or has its own; or the level above requires
+  default; the target follows the workspace or overrides it; or the level above requires
   it), what it does and who follows it, and on the workspace's the record of the last 14
   days with the way to it.
 
@@ -292,7 +293,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :own, :list,
     default: [],
-    doc: "the workspace's: the modes of the targets that set their own"
+    doc: "the workspace's: the modes of the targets that override it"
 
   attr :fact, :any,
     default: nil,
@@ -302,7 +303,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :setting, :string,
     default: "follow",
     values: ~w(follow observe enforce),
-    doc: "the target's: follow the workspace, or its own mode"
+    doc: "the target's: follow the workspace, or override the workspace's mode"
 
   attr :workspace_default, :string,
     default: "observe",
@@ -314,7 +315,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :set, :any,
     default: nil,
-    doc: "the target's: who set its own mode and when, `%{by:, at:}`, or nil when unknown"
+    doc: "the target's: who overrode the mode and when, `%{by:, at:}`, or nil when unknown"
 
   slot :effect, doc: "the question's sentence: what the pick does, and in whose runs"
   slot :inner_block, doc: "what follows the question's sentence: what enforce would deny"
@@ -591,13 +592,13 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The line under a policy page's title where a level above the workspace holds
   (`Apiary.Policy.Above`): its tile and name, how many rules it has, whether it requires
-  enforce and whether it allows only its own hosts, and the way to it where the edition
+  enforce and whether it allows only the hosts on its list, and the way to it where the edition
   gives one (`link`, `c:ApiaryWeb.Edition.above_policy_link/1`). Nothing without a level,
   and nothing for one that carries variables only (`policy: false`).
   """
   attr :id, :string, default: "policy-above"
   attr :above, :any, required: true, doc: "the `Apiary.Policy.Above`, or nil"
-  attr :link, :any, default: nil, doc: "`%{path:, can_change:}` or nil"
+  attr :link, :any, default: nil, doc: "`%{path:, can_change:, new_rule_path:}` or nil"
 
   def above_line(%{above: nil} = assigns), do: ~H""
   def above_line(%{above: %Above{policy: false}} = assigns), do: ~H""
@@ -846,6 +847,9 @@ defmodule ApiaryWeb.PolicyComponents do
   The composer of a host rule: a line over the list of rules, opened by Add rule, never a
   modal. The reading line under the fields reads the rule back; the button is off until
   the reading is `:ok` or `:note`. Cancel sends `composer_close`.
+
+  Kept for callers that have not moved to the rule form's pages (`rule_form/1`, and
+  `rule_list/1`'s `add_path`): the core's pages use those. It goes once no caller is left.
   """
   attr :id, :string, required: true
   attr :form, :any, required: true, doc: "action, host, paths, every"
@@ -1023,15 +1027,269 @@ defmodule ApiaryWeb.PolicyComponents do
   defp reading_icon(:error), do: "hero-exclamation-triangle-micro"
   defp reading_icon(_hint_or_note), do: "hero-information-circle-micro"
 
+  ## Rule form
+
+  @doc """
+  The form of a host rule, a separate page (`ApiaryWeb.PageComponents.page_form/1`):
+  the New rule page, `…/policy/rules/new` of the workspace or of a target, and the Edit
+  rule page, `…/policy/rules/:id/edit`; an edition draws it too for a level above the
+  workspace (`scope` `:organisation`). Top to bottom: the title and its sentence (the
+  `description` slot), "What should runs do?" as two radio cards, Allow and Deny, each
+  saying what it does; Host, a labelled field with its help under it (on Edit, the host
+  shown and kept); Paths, optional, for an allow only (a deny says it covers every path);
+  "What this rule does", the rule read back in plain words as it is typed
+  (`ApiaryWeb.PolicyLive.Reading`); then the foot, the button and Cancel back to the list
+  as it was left (`cancel`), and when the rule takes effect.
+
+  An error is said under the field it is about, with its repair as a link, and marks the
+  field (`aria-invalid`, `aria-describedby`); a refusal, the reading's or the domain's
+  (`error`, until the form is edited again), stands in the reading's place, above the
+  foot. The button is never off: the page answers a press with what is wrong and the
+  focus on the first field it names.
+
+  The events are the page's (`ApiaryWeb.PolicyLive.Common`): `rule_validate` on a change,
+  `rule_save` on the button, `rule_paste` when a list of hosts is pasted into Host (the
+  first fills the field, the rest are counted beside its label, `queued`), and the
+  reading's links, `rule_use`, `rule_every`, `show_rule` and `open_workspace_rule`.
+  """
+  attr :id, :string, required: true, doc: "the page's; the fields' ids start with it"
+  attr :title, :string, required: true
+  attr :form, :any, required: true, doc: "action, host, paths, every"
+
+  attr :scope, :atom,
+    required: true,
+    values: [:workspace, :target, :organisation],
+    doc: "where the rule is written: the workspace, a target, or a level above the workspace"
+
+  attr :reading, :map, default: nil
+  attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
+  attr :cancel, :string, required: true, doc: "the list as the reader left it"
+  attr :cancel_by, :string, default: "patch", values: ~w(patch navigate)
+
+  attr :editing, :string,
+    default: nil,
+    doc: "the host of the rule edited: shown, never a field; nil on New rule"
+
+  attr :error, :string, default: nil, doc: "the domain's refusal of the last save"
+
+  attr :host_placeholder, :string,
+    default: nil,
+    doc: "nil says \"api.example.com\""
+
+  slot :description, doc: "one sentence: what the page is for, and where the rule applies"
+
+  def rule_form(assigns) do
+    reading = assigns.reading || ApiaryWeb.PolicyLive.Reading.hint()
+    deny? = assigns.form[:action].value == "deny"
+    errors = Map.new(reading.errors, fn {field, text, fix} -> {field, {text, fix}} end)
+
+    assigns =
+      assign(assigns,
+        reading: reading,
+        deny?: deny?,
+        host_error: errors[:host],
+        paths_error: errors[:paths],
+        refusal?: reading.kind == :refusal,
+        button:
+          reading.button ||
+            if(assigns.scope == :target,
+              do: gettext("Add target rule"),
+              else: gettext("Add rule")
+            )
+      )
+
+    ~H"""
+    <PageComponents.page_form id={@id} title={@title}>
+      <:description :if={@description != []}>{render_slot(@description)}</:description>
+      <.form
+        for={@form}
+        id={"#{@id}-form"}
+        class="q-rule-form"
+        phx-change="rule_validate"
+        phx-submit="rule_save"
+        phx-hook="RuleComposer"
+        data-paste="rule_paste"
+        autocomplete="off"
+        novalidate
+      >
+        <input type="hidden" name={@form[:every].name} value={@form[:every].value} />
+        <fieldset class="q-choices">
+          <legend id={"#{@id}-action-legend"} class="q-choices-legend">
+            {gettext("What should runs do?")}
+          </legend>
+          <div class="q-choice-row">
+            <label :for={action <- ~w(allow deny)} class="q-choice">
+              <input
+                id={"#{@id}-#{action}"}
+                type="radio"
+                class="radio radio-sm radio-primary"
+                name={@form[:action].name}
+                value={action}
+                checked={if action == "deny", do: @deny?, else: !@deny?}
+                aria-describedby={"#{@id}-#{action}-p"}
+              />
+              <span class="q-choice-h">
+                <span
+                  class={["q-mark", if(action == "deny", do: "q-mark-no", else: "q-mark-ok")]}
+                  aria-hidden="true"
+                >
+                  <.icon
+                    name={if action == "deny", do: "hero-no-symbol-micro", else: "hero-check-micro"}
+                    class="size-3"
+                  />
+                </span>
+                {if action == "deny", do: gettext("Deny"), else: gettext("Allow")}
+              </span>
+              <span id={"#{@id}-#{action}-p"} class="q-choice-p">
+                {if action == "deny",
+                  do: gettext("Runs may not connect to the host, in observe and in enforce."),
+                  else:
+                    gettext(
+                      "Runs may connect to the host. Needed under enforce, where a host no rule allows is denied."
+                    )}
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div :if={@editing} class="q-rule-field">
+          <span class="q-rule-label">{gettext("Host")}</span>
+          <span id={"#{@id}-host-shown"} class="q-rule-shown">{@editing}</span>
+        </div>
+        <div :if={!@editing} class="q-rule-field">
+          <label for={"#{@id}-host"} class="q-rule-label">
+            {gettext("Host")}
+            <span :if={@queued > 0} id={"#{@id}-queued"} class="q-reads-queued">
+              {ngettext("%{number} more to add", "%{number} more to add", @queued,
+                number: Format.number(@queued)
+              )}
+            </span>
+          </label>
+          <input
+            type="text"
+            id={"#{@id}-host"}
+            name={@form[:host].name}
+            value={@form[:host].value}
+            class={["input q-rule-input", @host_error && "input-error"]}
+            placeholder={@host_placeholder || gettext("api.example.com")}
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            maxlength="300"
+            phx-debounce="150"
+            aria-invalid={(@host_error || (@refusal? && :host in @reading.invalid)) && "true"}
+            aria-describedby={if @host_error, do: "#{@id}-host-error", else: "#{@id}-host-hint"}
+          />
+          <p :if={!@host_error} id={"#{@id}-host-hint"} class="q-rule-hint">
+            <.rich text={ApiaryWeb.PolicyLive.Reading.host_hint()} />
+          </p>
+          <.rule_field_error :if={@host_error} id={"#{@id}-host-error"} error={@host_error} />
+        </div>
+
+        <div :if={@deny?} class="q-rule-field">
+          <span class="q-rule-label">{gettext("Paths")}</span>
+          <p id={"#{@id}-paths-deny"} class="q-rule-hint">
+            {gettext("A deny covers every path of the host.")}
+          </p>
+        </div>
+        <div :if={!@deny?} class="q-rule-field">
+          <label for={"#{@id}-paths"} class="q-rule-label">
+            {gettext("Paths")}<span class="q-rule-opt">{gettext("Optional")}</span>
+          </label>
+          <input
+            type="text"
+            id={"#{@id}-paths"}
+            name={@form[:paths].name}
+            value={@form[:paths].value}
+            class={["input q-rule-input", @paths_error && "input-error"]}
+            placeholder={gettext("Every path")}
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            maxlength="4000"
+            phx-debounce="150"
+            aria-invalid={@paths_error && "true"}
+            aria-describedby={if @paths_error, do: "#{@id}-paths-error", else: "#{@id}-paths-hint"}
+          />
+          <p :if={!@paths_error} id={"#{@id}-paths-hint"} class="q-rule-hint">
+            <.rich text={ApiaryWeb.PolicyLive.Reading.paths_hint()} />
+          </p>
+          <.rule_field_error :if={@paths_error} id={"#{@id}-paths-error"} error={@paths_error} />
+        </div>
+
+        <%!-- Polite, and keyed by the kind of reading: a new kind is announced, a reading
+             that only follows the typing is not. --%>
+        <div
+          :if={!@refusal? && !@error && @reading.preview}
+          id={"#{@id}-preview"}
+          class={["q-rule-preview", "q-rule-preview-#{elem(@reading.preview, 0)}"]}
+          aria-live="polite"
+          aria-relevant="additions"
+        >
+          <h2 class="q-rule-preview-h">{gettext("What this rule does")}</h2>
+          <p id={"#{@id}-preview-#{elem(@reading.preview, 0)}"} class="q-reads">
+            <.icon name={preview_icon(elem(@reading.preview, 0))} class="size-3.5" />
+            <span id={"#{@id}-reads"}><.rich text={elem(@reading.preview, 1)} /></span>
+          </p>
+        </div>
+        <div :if={@refusal?} id={"#{@id}-refusal"} class="q-refusal" role="alert">
+          <.notice kind={:error}>
+            <.rich text={@reading.text} />
+            <span :if={@reading.acts != []} class="q-notice-acts">
+              <.reading_act :for={act <- @reading.acts} act={act} />
+            </span>
+          </.notice>
+        </div>
+        <.notice :if={@error} kind={:error}>
+          <span id={"#{@id}-write-error"} role="alert">{@error}</span>
+        </.notice>
+
+        <PageComponents.page_form_foot id={"#{@id}-save"} cancel={@cancel} cancel_by={@cancel_by}>
+          <.button type="submit" variant="primary" id={"#{@id}-add"}>{@button}</.button>
+          <:note>{gettext("It takes effect within a heartbeat, about 30 s.")}</:note>
+        </PageComponents.page_form_foot>
+      </.form>
+    </PageComponents.page_form>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :error, :any, required: true, doc: "`{text, fix}`"
+
+  # An error under its field: the reading's sentence, then its repair as a link.
+  defp rule_field_error(assigns) do
+    assigns = assign(assigns, text: elem(assigns.error, 0), fix: elem(assigns.error, 1))
+
+    ~H"""
+    <p id={@id} class="q-rule-error">
+      <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+      <span><.rich text={@text} /><.reading_act :if={@fix} act={@fix} /></span>
+    </p>
+    """
+  end
+
+  defp preview_icon(:ok), do: "hero-check-micro"
+  defp preview_icon(_idle_or_note), do: "hero-information-circle-micro"
+
   ## The list of rules
 
   @doc """
   A list of host rules on the list pattern (docs/ui.md, Lists), the Network access section
-  of the workspace's policy page and of a target's Policy tab: the views with their counts,
-  the search with the Filter menu, Sort and Add rule, the filters in force as tokens and how
-  many rules match, the composer when it is open (the slot), one line a rule
+  of the workspace's policy page and of a target's Policy tab: with `title`, the section's
+  header (the heading, how many rules (`count`), the `link` slot and Add rule) and its line (the
+  `description` slot); the views with their counts, the search with the Filter menu and
+  Sort, the filters in force as tokens and how many rules match, one line a rule
   (`rule_line/1`) and the pages. The query is `ApiaryWeb.PolicyLive.RuleList`'s, and every
   control is a patch of the URL `path` gives a query; the search sends `rules_search`.
+
+  Add rule is the section's one primary button, a link to the New rule page (`add_path`,
+  nil for a reader who may not add one); a row's Edit leads to its Edit rule page
+  (`edit_path`). Without `add_path`, a caller that has not moved to those pages still gets
+  Add rule in the search's bar (`can_add`, `adding`), opening the composer of its
+  `composer` slot under the filters, and the rows' Edit paths (`edit_paths`); both go once
+  no caller is left.
 
   `listing` is what `ApiaryWeb.PolicyLive.RuleList.list/3` answered; `activity` is
   `:loading`, `:unavailable` (the use is not shown, never faked) or the map of
@@ -1043,11 +1301,27 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :query, :any, required: true
   attr :path, :any, required: true, doc: "the URL of a query"
   attr :sections, :list, required: true, doc: "the Filter menu's, `RuleList.sections/2`"
-  attr :default_sort, :string, required: true, doc: "the list's own order, in words"
+  attr :default_sort, :string, required: true, doc: "the list's default order, in words"
   attr :activity, :any, default: :unavailable
   attr :source, :boolean, default: false, doc: "show where each rule is written"
-  attr :can_add, :boolean, default: false, doc: "the reader may add a rule: Add rule shows"
-  attr :adding, :boolean, default: false, doc: "the composer is open"
+  attr :title, :string, default: nil, doc: "the section's heading: with it, its header"
+  attr :heading_id, :string, default: nil, doc: "the heading's id; `<id>-h` by default"
+  attr :count, :integer, default: nil, doc: "with `title`: how many rules, beside it"
+
+  attr :add_path, :string,
+    default: nil,
+    doc: "the New rule page: Add rule shows, the section's primary button; nil for a reader"
+
+  attr :edit_path, :any,
+    default: nil,
+    doc: "a rule's id to its Edit rule page: the rows' Edit; nil keeps Edit paths"
+
+  attr :can_add, :boolean,
+    default: false,
+    doc:
+      "without `add_path`: Add rule in the bar opens the composer (kept until no caller is left)"
+
+  attr :adding, :boolean, default: false, doc: "without `add_path`: the composer is open"
   attr :can_lock, :boolean, default: false
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
   attr :ruled_host, :string, default: nil, doc: "the host `?rule=` points at"
@@ -1063,7 +1337,9 @@ defmodule ApiaryWeb.PolicyComponents do
     default: nil,
     doc: "the id of the rule whose row asks to confirm an act on it (`confirm` slot)"
 
-  slot :composer
+  slot :link, doc: "with `title`: the header's link, such as what the runs reached"
+  slot :description, doc: "with `title`: the section's line under its header"
+  slot :composer, doc: "without `add_path`: the composer, under the filters"
 
   slot :confirm,
     doc: "what the row `confirming` names shows in place of its cells: an `inline_confirm/1`"
@@ -1076,10 +1352,26 @@ defmodule ApiaryWeb.PolicyComponents do
         seen?: is_map(assigns.activity),
         off?: Enum.any?(listing.rows, & &1.off),
         used?: assigns.activity != :unavailable,
-        use_label: assigns.use_label || gettext("Last 14 days")
+        use_label: assigns.use_label || gettext("Last 14 days"),
+        heading_id: assigns.heading_id || "#{assigns.id}-h"
       )
 
     ~H"""
+    <div :if={@title || @add_path} id={"#{@id}-head"} class="q-psec-h q-rules-h">
+      <h2 :if={@title} id={@heading_id}>{@title}</h2>
+      <span :if={@title && @count} id={"#{@id}-count"} class="q-psec-n">
+        {ngettext("%{number} rule", "%{number} rules", @count, number: Format.number(@count))}
+      </span>
+      <span class="grow"></span>
+      {render_slot(@link)}
+      <.button :if={@add_path} id={"#{@id}-add"} variant="primary" patch={@add_path}>
+        <.icon name="hero-plus-micro" class="size-4" />{gettext("Add rule")}
+      </.button>
+    </div>
+    <p :if={@title && @description != []} id={"#{@id}-line"} class="q-psec-p">
+      {render_slot(@description)}
+    </p>
+
     <.views id={"#{@id}-views"} label={gettext("Views")}>
       <:view
         :for={{view, word, label, count} <- rule_views(@listing.counts, @views)}
@@ -1131,7 +1423,7 @@ defmodule ApiaryWeb.PolicyComponents do
         </.menu_item>
       </.sort_menu>
       <.button
-        :if={@can_add}
+        :if={@can_add && !@add_path}
         id={"#{@id}-add"}
         phx-click="composer_open"
         aria-expanded={to_string(@adding)}
@@ -1155,7 +1447,7 @@ defmodule ApiaryWeb.PolicyComponents do
       </:token>
     </.filter_tokens>
 
-    {render_slot(@composer)}
+    {if !@add_path, do: render_slot(@composer)}
 
     <%!-- Always there, so a screen reader hears what a view or the search left. --%>
     <div id={"#{@id}-status"} role="status" class="q-status">
@@ -1259,6 +1551,7 @@ defmodule ApiaryWeb.PolicyComponents do
               can_lock={@can_lock}
               fresh={Map.get(@fresh, row.id)}
               ruled={@ruled_host != nil && @ruled_host == row.host}
+              edit_path={@edit_path && @edit_path.(row.id)}
             />
           <% end %>
         </tbody>
@@ -1318,10 +1611,12 @@ defmodule ApiaryWeb.PolicyComponents do
   Source column says `locked_tip`'s words; the lock is for a locked rule of the workspace
   alone, what the Locked view counts), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
   `locked_tip` (what the lock says), `can_change` (the reader may change it here), `act`
-  (what Remove does: `:remove`, or `:restore` where a target's own rule gives the
+  (what Remove does: `:remove`, or `:restore` where a target rule gives the
   workspace's back) and `view` (`{label, path}`: where a rule written elsewhere is changed,
-  or nil). The menu of the page's own rule: Edit paths, the other action, Lock or Unlock
-  for an owner on the workspace's page, Remove; of a rule written elsewhere, the way to it.
+  or nil). The menu of a rule written here: Edit (its Edit rule page, `edit_path`; Edit
+  paths of an allow for a caller that has not moved to the page), the other action, Lock or
+  Unlock for an owner on the workspace's page, Remove; of a rule written elsewhere, the way
+  to it.
   """
   attr :id, :string, required: true
   attr :rule, :map, required: true
@@ -1331,6 +1626,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :can_lock, :boolean, default: false
   attr :fresh, :any, default: nil
   attr :ruled, :boolean, default: false
+  attr :edit_path, :string, default: nil, doc: "the rule's Edit rule page"
 
   def rule_line(assigns) do
     rule = assigns.rule
@@ -1400,8 +1696,11 @@ defmodule ApiaryWeb.PolicyComponents do
           label={gettext("Actions for %{host}", host: @rule.host)}
         >
           <%= if @rule.own do %>
+            <.menu_item :if={@edit_path && @rule.in_force} id={"#{@id}-edit"} patch={@edit_path}>
+              {gettext("Edit")}
+            </.menu_item>
             <.menu_item
-              :if={@rule.action == "allow" && @rule.in_force}
+              :if={!@edit_path && @rule.action == "allow" && @rule.in_force}
               id={"#{@id}-paths"}
               phx-click={JS.push("edit_paths", value: %{id: @rule.id})}
             >
@@ -1520,8 +1819,10 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The hosts the harness declared and the policy does not cover: shown only when there is
   something to review. One click allows for the target; the caret offers the workspace and
-  the composer with paths. A suggestion: `%{host:, runs:, last_seen_at:}`; `allowed` holds
-  the hosts allowed from this card since the page opened, which stay until navigation.
+  "Allow with paths…", the New rule page filled with the host (`new_rule_path`, a host to
+  its path; without it, the composer). A suggestion: `%{host:, runs:, last_seen_at:}`;
+  `allowed` holds the hosts allowed from this card since the page opened, which stay until
+  navigation.
   """
   attr :id, :string, required: true
   attr :suggestions, :list, required: true
@@ -1533,6 +1834,10 @@ defmodule ApiaryWeb.PolicyComponents do
     doc: "the target observes: a host no rule names is let through"
 
   attr :above, :string, default: nil, doc: "the name of the level above the workspace, or nil"
+
+  attr :new_rule_path, :any,
+    default: nil,
+    doc: "a host to its New rule page, Paths focused: \"Allow with paths…\""
 
   def suggestions(assigns) do
     open = Enum.reject(assigns.suggestions, &Map.has_key?(assigns.allowed, &1.host))
@@ -1625,7 +1930,18 @@ defmodule ApiaryWeb.PolicyComponents do
                 </button>
               </li>
               <li role="none">
+                <.link
+                  :if={@new_rule_path}
+                  id={"#{suggestion_id(suggestion.host)}-paths"}
+                  role="menuitem"
+                  tabindex="-1"
+                  data-menu-close
+                  patch={@new_rule_path.(suggestion.host)}
+                >
+                  {gettext("Allow with paths…")}
+                </.link>
                 <button
+                  :if={!@new_rule_path}
                   type="button"
                   role="menuitem"
                   tabindex="-1"
@@ -1821,7 +2137,7 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   @doc """
-  The diff of a change, or between two versions: the change in the page's own words, and
+  The diff of a change, or between two versions: the change in the page's words, and
   a line diff of the rendered document. `diff`: `%{rules: [{:add | :del | :ctx, rich}],
   document: [{:add | :del | :ctx, text}], from:, to:, summary:, navigate:, bytes:}`.
   """

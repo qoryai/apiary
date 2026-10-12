@@ -583,7 +583,7 @@ Even so, Qory Apiary follows a forge release's download links where they lead, t
 https host: on GitLab a release's links, and on Codeberg its attachments, may be addresses
 the release's author chose.
 
-Qory Apiary fetches every release without credentials, as anyone could: no request carries a
+Qory Apiary fetches every release without a secret, as anyone could: no request carries a
 token, so private releases are not supported.
 
 The value is read at boot, so a change takes a restart. A release asked for from an

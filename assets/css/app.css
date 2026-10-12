@@ -8370,6 +8370,160 @@
     height: 32px;
   }
 
+  /* The section's header, drawn by the list (rule_list): Add rule, its one primary
+     button, apart from the search. A full-width button under the heading on a phone. */
+  .q-rules-h {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 8px;
+  }
+  @media (max-width: 479.98px) {
+    .q-rules-h > .btn {
+      flex: 1 1 100%;
+    }
+  }
+
+  /* ---- The rule form, a page of its own (rule_form) ---- */
+  .q-rule-form {
+    display: grid;
+    min-width: 0;
+    gap: 20px;
+  }
+  .q-choices {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .q-choices-legend {
+    margin-bottom: 8px;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 18px;
+  }
+  .q-choice-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .q-choice {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-content: start;
+    gap: 4px 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    cursor: pointer;
+    transition: border-color 120ms var(--q-ease-out);
+  }
+  .q-choice:hover {
+    border-color: var(--q-border-field);
+  }
+  .q-choice:has(:checked) {
+    border-color: var(--q-border-field);
+    box-shadow: var(--q-shadow-xs);
+  }
+  .q-choice-h {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .q-choice-p {
+    grid-column: 2;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-rule-field {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+  }
+  .q-rule-label {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+  .q-rule-label > .q-reads-queued {
+    margin-left: 0;
+  }
+  .q-rule-opt {
+    color: var(--q-faint);
+    font-weight: 400;
+  }
+  .q-rule-input {
+    font-family: var(--font-mono);
+  }
+  .q-rule-shown {
+    color: var(--color-base-content);
+    font: 13px/20px var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+  .q-rule-hint {
+    color: var(--q-muted);
+    font-size: 12.5px;
+    line-height: 18px;
+  }
+  .q-rule-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--color-error);
+    font-size: 12.5px;
+    line-height: 18px;
+  }
+  .q-rule-error > [class*="hero-"] {
+    margin-top: 1px;
+  }
+  .q-rule-error .q-reads-fix {
+    margin-left: 6px;
+  }
+  .q-rule-preview {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
+  }
+  .q-rule-preview-h {
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .q-rule-preview .q-reads {
+    min-height: 0;
+    padding: 0;
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-rule-preview-ok .q-reads > [class*="hero-"] {
+    color: var(--color-success);
+  }
+  @media (max-width: 767.98px) {
+    .q-choice-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .q-rule-form .q-save {
+      flex-wrap: wrap;
+    }
+    .q-rule-form .q-save > .btn {
+      flex: 1 1 100%;
+    }
+  }
+
   /* ---- One line a rule ---- */
   .q-pr td {
     height: 44px;

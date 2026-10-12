@@ -2,7 +2,7 @@ defmodule Apiary.Variables.Variable do
   @moduledoc """
   A variable: a name and a value for a run's process, at a level: the workspace's (no
   `target_id`) or a repository's (a target's, `target_id`). A workspace's variable may be
-  `locked`, and then no repository sets its own value for the name.
+  `locked`, and then no repository sets a value for the name.
 
   A name keeps a variable's rule, `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and is compared
   without case: one level holds a name once, whatever its case. A value is UTF-8 text of

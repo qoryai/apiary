@@ -99,7 +99,7 @@ defmodule Apiary.Organisations do
   workspaces the edition says (`c:Apiary.Edition.reached_workspaces/2`). What each may do
   there is `Apiary.Access`'s answer.
 
-  Without a workspace slug, for an organisation's own page and the switcher's link to the
+  Without a workspace slug, for an organisation's page and the switcher's link to the
   organisation, the workspace is the one `last_workspace:` names, the workspace the
   session remembers as last opened, while the user reaches it and it is in this
   organisation; otherwise the one they last used in this organisation
@@ -150,17 +150,40 @@ defmodule Apiary.Organisations do
   def put_reach(%Scope{user: %User{id: user_id}} = scope, %Organisation{} = organisation) do
     own = active_membership(organisation.id, user_id)
 
+    # Nothing of another organisation's hidden is carried over: `put_place/2` asks it for
+    # this one once the workspace is put, and a caller that stops here, which asks no
+    # page's gate, keeps nil, nothing hidden, rather than asking the edition twice.
     Edition.reach(%{
       scope
       | organisation: organisation,
         membership: own && %{own | organisation: organisation},
         reach: nil,
         workspace: nil,
-        edition: %{}
+        edition: %{},
+        hidden: nil
     })
   end
 
   def put_reach(_scope, _organisation), do: :error
+
+  @doc """
+  workspace_scopes/1 is the scope as the person would have it in each workspace of the
+  scope's organisation they reach, by the workspace's id: `scope` with that workspace,
+  what the edition says of the person there (`c:Apiary.Edition.reached_workspaces/2`),
+  and what the person is not shown in the organisation (`c:Apiary.Edition.hidden/1`),
+  asked once for them all, as `resolve_scope/4` puts them when the person opens it. One
+  read, whatever the number of workspaces.
+  """
+  @spec workspace_scopes(Scope.t()) :: %{Ecto.UUID.t() => Scope.t()}
+  def workspace_scopes(%Scope{organisation: %Organisation{}} = scope) do
+    # What the person is not shown does not depend on the workspace.
+    hidden = hidden(scope)
+
+    for row <- scope |> reached_query() |> Repo.all(), into: %{} do
+      {workspace, _extras} = place = place(row)
+      {workspace.id, %{on_place(scope, place) | hidden: hidden}}
+    end
+  end
 
   # The person's membership in the organisation, while it is not suspended and their
   # account is in use: a suspended one reaches nothing.
@@ -348,7 +371,7 @@ defmodule Apiary.Organisations do
   @doc """
   load_home_scope/2 loads `home_membership/2` into the scope, with its organisation, and
   the workspace `workspace_id` when the membership reaches it, else the oldest it reaches:
-  for a page of the user's own that shows the workspace beside it, and for where `/` sends
+  for one of the user's pages that shows the workspace beside it, and for where `/` sends
   them. A user without a membership gets the scope unchanged; one who reaches no
   workspace yet gets no workspace.
   """
@@ -380,7 +403,8 @@ defmodule Apiary.Organisations do
   ids its arguments carry: the organisation, the workspace in it when `workspace_id` is not
   nil, and the person whose action enqueued the job when `user_id` is not nil, as they
   reach the organisation now (`put_reach/2`), with what the edition says of the
-  workspace. Without a person the scope is the instance's
+  workspace and what the person is not shown in the organisation
+  (`c:Apiary.Edition.hidden/1`). Without a person the scope is the instance's
   (`Apiary.Accounts.Scope.for_instance/2`): the instance acts, as its role in
   `Apiary.Access` allows. Without an organisation the scope is the instance's alone.
 
@@ -397,8 +421,7 @@ defmodule Apiary.Organisations do
           {:ok, Scope.for_instance(organisation, workspace)}
 
         %User{} ->
-          scope = job_person_scope(user, organisation, workspace)
-          {:ok, %{scope | features: Features.of(organisation, workspace)}}
+          {:ok, put_hidden(job_person_scope(user, organisation, workspace))}
       end
     end
   end
@@ -542,19 +565,25 @@ defmodule Apiary.Organisations do
     )
   end
 
-  # The workspace, what the edition says of the person there, and what the organisation
-  # and the workspace have (`Apiary.Features.of/2`), which `Apiary.Features.on?/2` answers
+  # The workspace, what the edition says of the person there, and what the person is not
+  # shown in the organisation (`put_hidden/1`), which `Apiary.Features.visible?/2` answers
   # from.
-  defp put_place(scope, place) do
-    {workspace, extras} = place || {nil, %{}}
+  defp put_place(scope, place), do: scope |> on_place(place) |> put_hidden()
 
-    %{
-      scope
-      | workspace: workspace,
-        edition: Map.merge(scope.edition, extras),
-        features: Features.of(scope.organisation, workspace)
-    }
+  defp on_place(scope, place) do
+    {workspace, extras} = place || {nil, %{}}
+    %{scope | workspace: workspace, edition: Map.merge(scope.edition, extras)}
   end
+
+  # What the person is not shown in the scope's organisation, asked of the edition once
+  # the organisation and the edition's reach are on the scope; nil, nothing hidden, without
+  # an organisation.
+  defp put_hidden(%Scope{organisation: %Organisation{}} = scope),
+    do: %{scope | hidden: hidden(scope)}
+
+  defp put_hidden(scope), do: %{scope | hidden: nil}
+
+  defp hidden(scope), do: Features.hidden_of(Edition.hidden(scope))
 
   @doc """
   list_memberships/1 is the user's memberships in use, oldest first, each with its
@@ -700,7 +729,7 @@ defmodule Apiary.Organisations do
 
   @doc """
   sign_up_offer/1 is what a sign-up without an invitation may do on this instance now:
-  `:not_set_up` while the instance has no organisation of its own
+  `:not_set_up` while the instance has no organisation
   (`c:Apiary.Edition.instance_organisation_id/0`), which only its set-up link makes
   (`Apiary.Setup`), so nobody signs up before it; `:open`, a sign-up that creates an
   organisation, where the edition opens one (`c:Apiary.Edition.sign_up_open?/0`);
@@ -744,7 +773,7 @@ defmodule Apiary.Organisations do
   are never kept in the changeset's changes. `password: :required` asks for one, as a
   person's sign-up does while the instance sends no email (`Apiary.Mail.configured?/0`);
   `password: :none` leaves them out, as a person's sign-up does once the instance sends
-  email; `password: :optional` checks one only when it is given, as the instance's own
+  email; `password: :optional` checks one only when it is given, as the instance's
   sign-up does. The default is the person's, by the instance's mail.
   """
   @spec change_sign_up(map, keyword) :: Ecto.Changeset.t()
@@ -828,7 +857,7 @@ defmodule Apiary.Organisations do
   owner membership (`build_organisation/2`): nothing is made from the address. Whether it
   may, is `sign_up_offer/1`'s answer, asked again inside the transaction:
 
-  - **The instance's first sign-up** creates the instance's own organisation, whose
+  - **The instance's first sign-up** creates the instance's organisation, whose
     owners run the instance (`Apiary.Access.instance_admin?/1`): its owner is the
     instance's first admin. The edition is told so (`:first_sign_up`). It is the
     set-up's (`Apiary.Setup.set_up/3`) or a release command's, with `first_only: true`
@@ -1176,7 +1205,7 @@ defmodule Apiary.Organisations do
   an organisation is created, by the instance's first sign-up and a later one
   (`sign_up_user/3`), by each of the edition's ways, and by the tests' organisations.
   The caller runs `multi` in its transaction, having asked `Apiary.Access` what it must
-  first; nothing is asked here. The steps, in order, after the caller's own:
+  first; nothing is asked here. The steps, in order, after the caller's steps:
 
   - `:organisation`, the organisation named `name:`, with a slug made from its name
     (`Apiary.Organisations.Slug`); `{:error, changeset}` for a name the organisation's
@@ -1479,7 +1508,7 @@ defmodule Apiary.Organisations do
   lists_workspaces?/1 says whether the scope's person sees the workspaces of the scope's
   organisation in its settings, under Workspaces: whoever may rename one or delete one
   (`workspace.rename`, `workspace.delete`), asked of the organisation. In the core's
-  edition an owner or an admin. Each control there asks its own action.
+  edition an owner or an admin. Each control there asks the action it takes.
   """
   @spec lists_workspaces?(Scope.t() | nil) :: boolean
   def lists_workspaces?(%Scope{organisation: %Organisation{} = organisation} = scope) do
@@ -1494,7 +1523,7 @@ defmodule Apiary.Organisations do
   @doc """
   list_members/1 is the memberships of the scope's organisation, each with its user:
   owners first, then admins, then members, each by when they joined. Each carries
-  `workspaces`, the workspaces it reaches, by name, of those the scope's own membership
+  `workspaces`, the workspaces it reaches, by name, of those the scope's membership
   reaches: a reader is not told of a workspace they do not reach.
   """
   @spec list_members(Scope.t()) :: [%Membership{}]
@@ -1718,7 +1747,7 @@ defmodule Apiary.Organisations do
 
   @doc """
   lock_people/1 holds the scope's organisation, with what the edition holds beside it,
-  `FOR SHARE` (`Apiary.Access.lock_organisations/1`), then the edition's own rows for a
+  `FOR SHARE` (`Apiary.Access.lock_organisations/1`), then the edition's rows for a
   change of the organisation's people (`c:Apiary.Edition.lock_rows/1`, `{:people, scope,
   organisation}`), the change's one point: the first rows of the lock order of
   docs/access.md, before any membership. For a caller inside a transaction that changes a
@@ -1925,7 +1954,7 @@ defmodule Apiary.Organisations do
   an account's deletion holds them in it (`sole_owned_organisations/2` with
   `lock: true`), and an edition must use it whenever it locks the rows of more than one
   organisation. First those after which the edition holds another organisation
-  (`c:Apiary.Edition.places_to_lock/1` names more than the organisation's own id), then
+  (`c:Apiary.Edition.places_to_lock/1` names more than the organisation's id), then
   the rest, each in the order of their ids, so an organisation that holds others comes
   before those that hold none. With the core's edition, it is the order of their ids.
 
@@ -1999,8 +2028,8 @@ defmodule Apiary.Organisations do
   there, in the order of `lock_order/1`, for a caller inside a transaction: every change
   that locks more than one organisation row, in any mode, takes them through it, at its
   change's one point for the organisation rows, so what it holds in the end was taken in
-  one statement; one that finds it took a stale set lets go of it, under a savepoint of
-  its own, and calls this again (`Apiary.Access.lock_organisations/1`). `mode` is the
+  one statement; one that finds it took a stale set lets go of it, under a separate
+  savepoint, and calls this again (`Apiary.Access.lock_organisations/1`). `mode` is the
   mode of every row, or a function of an organisation's id that answers the mode of its
   row: `:key_share`, `:share`, `:no_key_update` or `:update`, for `FOR KEY SHARE`,
   `FOR SHARE`, `FOR NO KEY UPDATE` and `FOR UPDATE`.
@@ -2121,10 +2150,10 @@ defmodule Apiary.Organisations do
   and with each what hangs from it, each with its entry in its organisation's trail:
   `member.remove`, its level before, and in `details` the person's user id and the
   reason, `account_deleted`. `actor` gives the scope that acts in an organisation: the
-  person's own, or the instance's for a release command. For
+  person's scope, or the instance's for a release command. For
   `Apiary.Accounts.delete_user/2`, inside its transaction, which has checked
   `sole_owned_organisations/2` first; nobody is asked of `Apiary.Access`, since the
-  account is the person's own. `{:ok, memberships}`, as they were, for
+  account is the person's. `{:ok, memberships}`, as they were, for
   `broadcast_membership_changes/1` once the transaction commits.
   """
   @spec end_memberships(%User{}, (%Organisation{} -> Scope.t())) ::
@@ -2381,7 +2410,7 @@ defmodule Apiary.Organisations do
   clock, so an invitation accepted, revoked or deleted since still counts; one withdrawn
   because its email could not be delivered does not, as no mail was sent. Every invitation
   tried in those 24 hours, delivered or not, counts against #{@attempts_per_invitation}
-  times as many, refused the same way when they are reached. Each organisation has its own
+  times as many, refused the same way when they are reached. Each organisation has a separate
   allowance; an invitation the edition sends from another organisation counts against
   the one it names (`insert_invitation/3`). The organisation's row is locked while the
   invitation is counted and written, so two at once cannot both be the last one
@@ -2546,7 +2575,7 @@ defmodule Apiary.Organisations do
   transaction waits on the mail relay. Should `send_invitation/4` then fail to deliver
   it, it withdraws the invitation as it withdraws a new one, `{:error, :delivery_failed}`;
   without `action:` an undelivered renewal stays pending instead. Called inside the
-  caller's own `Repo.transact/2`, it joins that transaction, and the caller may hold the
+  caller's `Repo.transact/2`, it joins that transaction, and the caller may hold the
   allowance's organisation row already; a refusal then rolls the caller's back.
   """
   @spec renew_invitation(Scope.t(), term, (String.t() -> String.t()), keyword) ::
@@ -2659,13 +2688,13 @@ defmodule Apiary.Organisations do
   @doc """
   allowance_of/1 is the organisation whose allowance of invitations `invitation` was
   counted against, the one row of an organisation that `renew_invitation/4` locks for it,
-  `FOR NO KEY UPDATE`, before the invitation's own row. It is the one its latest entry
+  `FOR NO KEY UPDATE`, before the invitation's row. It is the one its latest entry
   that names one says (`details.allowance_id`), in the invitation's organisation's
   trail: `invite_member/3`'s, `insert_invitation/3`'s, which may name another
-  organisation (`allowance:`), or a renewal's; the invitation's own organisation should
+  organisation (`allowance:`), or a renewal's; the invitation's organisation should
   the trail hold none. `renew_invitation/4` asks this same function.
 
-  An edition that renews an invitation inside a transaction of its own, and takes more
+  An edition that renews an invitation inside a transaction it opens, and takes more
   than one organisation row there in a mode that conflicts with `FOR SHARE`, takes this
   one with them, in `lock_order/1` and `FOR NO KEY UPDATE`, before `renew_invitation/4`
   takes it again.

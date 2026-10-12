@@ -25,8 +25,10 @@ defmodule ApiaryWeb.AccessTest do
     %{scope: owner} = sign_up_fixture()
     %{scope: member} = member_fixture(owner, :member)
 
+    # The page keeps the action, so that it leaves once what it asks is hidden.
     socket = socket(member)
-    assert {:cont, ^socket} = ApiaryWeb.Access.on_mount(:"run.read", %{}, %{}, socket)
+    assert {:cont, mounted} = ApiaryWeb.Access.on_mount(:"run.read", %{}, %{}, socket)
+    assert mounted == Phoenix.LiveView.put_private(socket, :access_action, :"run.read")
   end
 
   test "a scope without a membership there is a path that does not exist" do
@@ -69,6 +71,35 @@ defmodule ApiaryWeb.AccessTest do
              ) == "Only owners and admins delete nodes."
 
       assert NodesEdition.product_name() == ApiaryWeb.Edition.Core.product_name()
+    end
+
+    test "after a lead is the core's whole sentence where the edition has none", %{scope: scope} do
+      default =
+        "The rule for api.example is locked. Only an owner changes or removes a locked rule."
+
+      lead = "The rule for api.example is locked."
+
+      assert ApiaryWeb.Access.who_may_after(
+               ApiaryWeb.Edition.Core,
+               scope,
+               :"security_policy.lock",
+               default,
+               lead
+             ) == default
+
+      assert ApiaryWeb.Access.who_may_after(NodesEdition, scope, :"node.delete", default, lead) ==
+               default
+    end
+
+    test "after a lead is the lead, then the edition's sentence, where it has one",
+         %{scope: scope} do
+      assert ApiaryWeb.Access.who_may_after(
+               NodesEdition,
+               scope,
+               :"node.create",
+               "Nodes are full. Only owners and admins add nodes.",
+               "Nodes are full."
+             ) == "Nodes are full. In Acme, someone else adds the nodes."
     end
 
     # Each page asks with an action of `Apiary.Access`, or a subject the callback names:

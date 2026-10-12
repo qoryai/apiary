@@ -10,7 +10,7 @@ defmodule Apiary.AccessKeys.PublicKey do
   in use, `tombstone` once retired, with when and why (`retired_reason`: `revoked`,
   `expired`, `node_deleted` or `workspace_deleted`).
 
-  The ledger is the instance's own: it has no organisation and no foreign key, so it
+  The ledger is the instance's: it has no organisation and no foreign key, so it
   outlives the purge of the key's workspace and organisation, and no purge walks it.
   """
   use Ecto.Schema

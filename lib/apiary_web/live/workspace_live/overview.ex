@@ -4,7 +4,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
-  level has its own look (`docs/ui.md`, Lists): the summary is the largest type on the
+  level looks different (`docs/ui.md`, Lists): the summary is the largest type on the
   page, a block is one box with a band and its rows, a row is one line; no block grows
   with the data, each shows the few and links the many.
 
@@ -28,7 +28,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   or log line, until the page goes, the command expires, it is cancelled on the tab, or
   the machine runs it. The page hears the last two on the node's topic
   (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
-  on.
+  on. A reader not shown the nodes (`node.read`; an edition may hide them) reads no box,
+  only the line under it, and no link of To review leads them to the nodes page.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -53,6 +54,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
+  alias Apiary.Gateways
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
@@ -60,6 +62,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.Runs.Run
 
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.{NodeComponents, UserAuth}
   alias ApiaryWeb.PolicyLive.Common
   alias Phoenix.LiveView.JS
 
@@ -123,7 +126,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           may_key={@onboarding.may_key}
           command={@command}
           server={@onboarding.server}
+          through={@onboarding.through}
+          through_connected={@onboarding.through_connected}
           landed={@landed}
+          box={Common.may?(@current_scope, :"node.read")}
         />
 
         <div :if={@live?} class="q-ov">
@@ -300,8 +306,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         landed_reads: MapSet.new(),
         settled: false
       )
+      |> UserAuth.on_membership_change(&membership_changed/1)
 
     {:ok, if(connected?(socket) and posted?, do: load(socket), else: socket)}
+  end
+
+  # Once the reader's membership, or what the edition shows them, changes, the idle keys
+  # leave the list, rows and all, where the reader may no longer revoke them
+  # (`idle_candidates/1`): the nodes hidden meanwhile, say. The rows are not struck, as the
+  # key was neither revoked nor used again.
+  defp membership_changed(socket) do
+    if Common.may?(socket.assigns.current_scope, :"access_key.revoke") do
+      socket
+    else
+      socket
+      |> update(:attention_items, &(&1 && Enum.reject(&1, fn item -> item.kind == :idle_key end)))
+      |> recompute()
+    end
   end
 
   # The four reads that fill the page, none blocking the first paint; three where
@@ -391,7 +412,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     connections =
       if security?,
-        do: Policy.overview_activity(scope, since, window),
+        do: scope |> Policy.overview_activity(since, window) |> with_locked_who(scope),
         else: record_denials(scope, window)
 
     %{
@@ -402,6 +423,21 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       read_at: now
     }
   end
+
+  # A denied destination a locked rule holds gets the hover that says who may change it
+  # (`locked_who`), read here, where the scope is at hand, rather than on each render.
+  defp with_locked_who({:ok, %{denied: rows} = read}, scope) do
+    rows =
+      for row <- rows do
+        if is_binary(row.locked),
+          do: Map.put(row, :locked_who, locked_title(scope, row.locked)),
+          else: row
+      end
+
+    {:ok, %{read | denied: rows}}
+  end
+
+  defp with_locked_who(read, _scope), do: read
 
   # The level above the workspace's policy (`Apiary.Policy.Above`), where the edition keeps
   # one: its name, whether a workspace or a target may allow hosts of its own, and the
@@ -897,21 +933,29 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
          |> put_flash(:error, only_admins_connect(scope))}
 
       {:error, _reason} ->
-        {:noreply,
-         socket
-         |> assign(:onboarding, read_onboarding(scope))
-         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+        if NodeComponents.hidden_now?(scope),
+          do: {:noreply, UserAuth.reload_scope(socket)},
+          else:
+            {:noreply,
+             socket
+             |> assign(:onboarding, read_onboarding(scope))
+             |> put_flash(:error, gettext("Nothing was changed. Try again."))}
     end
   end
 
   # Get the command where the box offers none: a second click once the command shows, or
   # an event the page never sent. One who may connect a node is shown the page as it is;
-  # anyone else is refused, and nothing is made.
+  # one the nodes are hidden from has the page's scope read again, which takes the box
+  # away, as a change they hear of does (`ApiaryWeb.UserAuth.reload_scope/1`); anyone else
+  # is refused, and nothing is made.
   def handle_event("get_command", _params, socket) do
-    if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
-      do: {:noreply, socket},
-      else:
-        {:noreply, put_flash(socket, :error, only_admins_connect(socket.assigns.current_scope))}
+    scope = socket.assigns.current_scope
+
+    cond do
+      Common.may?(scope, :"access_key.create_code") -> {:noreply, socket}
+      NodeComponents.hidden_now?(scope) -> {:noreply, UserAuth.reload_scope(socket)}
+      true -> {:noreply, put_flash(socket, :error, only_admins_connect(scope))}
+    end
   end
 
   ## The one-click allow of a denied destination: the panel of a connection row's Allow,
@@ -924,7 +968,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
-      %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item ->
+      %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item
+      when item.unchangeable != true ->
         {:noreply, open_panel(socket, item, level)}
 
       _ ->
@@ -1168,10 +1213,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   ## The attention list: built from the record in assigns, merged into what is shown.
 
-  # A denied destination that only the level above could allow: no locked rule and no deny
-  # of that level holds it, and the level allows only its own hosts.
+  # A denied destination that only the level above could allow: a rule can change it, no
+  # locked rule and no deny of that level holds it, and the level allows only its own hosts.
   defp elsewhere(%{own_allows: false} = level, %{} = row) do
-    if is_nil(row[:locked]) and is_nil(row[:above]), do: level
+    if is_nil(row[:locked]) and is_nil(row[:above]) and row[:unchangeable] != true, do: level
   end
 
   defp elsewhere(_level, _row), do: nil
@@ -1457,19 +1502,42 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             )
         }
 
-      _ ->
-        %{
-          count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
-          title:
-            ngettext(
-              "%{number} more item, on the nodes page",
-              "%{number} more items, on the nodes page",
-              count,
-              number: Format.number(count)
-            )
-        }
+      # The policy page, where the reader may read it: the policy items are dealt with there.
+      kind when kind in [:enforce, :unmanaged] ->
+        if Common.may?(scope, :"security_policy.read"), do: policy_more(scope, count)
+
+      # The nodes page, where the reader is shown it: an edition may hide the nodes.
+      :idle_key ->
+        if Common.may?(scope, :"node.read"), do: nodes_more(scope, count)
     end
+  end
+
+  defp policy_more(scope, count) do
+    %{
+      count: count,
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/policy",
+      title:
+        ngettext(
+          "%{number} more item, on the Policy page",
+          "%{number} more items, on the Policy page",
+          count,
+          number: Format.number(count)
+        )
+    }
+  end
+
+  defp nodes_more(scope, count) do
+    %{
+      count: count,
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
+      title:
+        ngettext(
+          "%{number} more item, on the nodes page",
+          "%{number} more items, on the nodes page",
+          count,
+          number: Format.number(count)
+        )
+    }
   end
 
   # What became of an item that is no longer on the record's list, in words.
@@ -1667,6 +1735,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     target = keyless_target(scope, counts, keys)
     may_key? = &Apiary.Access.can?(scope, &1, target)
+    # The gateway the target's choice leads to, its organisation loaded for the notice.
+    through = target && target |> Gateways.chosen() |> Apiary.Repo.preload(:organisation)
 
     %{
       nodes: counts.node + counts.pool,
@@ -1676,7 +1746,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       may_key:
         not is_nil(target) and may_key?.(:"access_key.add") and
           may_key?.(:"access_key.create_code"),
-      server: ApiaryWeb.Endpoint.url()
+      server: ApiaryWeb.Endpoint.url(),
+      through: through,
+      through_connected: !!through and AccessKeys.active_key?(through)
     }
   end
 

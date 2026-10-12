@@ -32,6 +32,19 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       |> String.replace(~r/\s+/, " ")
       |> String.trim()
 
+  # The text of an element as it renders, its spaces and its line breaks kept: a
+  # code block's lines.
+  defp lines(lv, selector),
+    do: lv |> element(selector) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+
+  # Get the command on a node's Access key tab: the command's page, and its command.
+  defp command(conn, scope, node) do
+    {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+    lv |> element("#code-new-button") |> render_click()
+    assert_patch(lv, node_path(scope, node, "/access-key/new-code"))
+    {lv, text(lv, "#code-issued-command")}
+  end
+
   # The options of the gateway field, as `{value, words}`, in the order it shows them, and
   # the one selected.
   defp gateway_options(lv, form) do
@@ -129,6 +142,16 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert page_title(lv) =~ "New gateway"
     end
 
+    test "its URL's hint says where nodes reach it, and that its Settings change it later", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
+
+      assert text(lv, "#new-node-form #node_url-hint") ==
+               "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+    end
+
     test "shows the URL's errors as core gives them", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
 
@@ -152,6 +175,23 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         |> render_submit()
 
       assert html =~ Phoenix.HTML.html_escape(scheme_error) |> Phoenix.HTML.safe_to_string()
+      assert Nodes.list_nodes(scope) == []
+    end
+
+    test "shows the URL's error for a host that is no DNS name and no IP address", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
+
+      html =
+        lv
+        |> form("#new-node-form",
+          node: %{name: "edge-01", url: "https://edge.example.com;rm$IFS-rf$IFS~"}
+        )
+        |> render_submit()
+
+      assert html =~ "must be a scheme and a host, with a port if needed, and nothing more"
       assert Nodes.list_nodes(scope) == []
     end
 
@@ -252,6 +292,19 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
 
       assert %Node{name: "edge-east", url: "https://east.example.com"} =
                Repo.get!(Node, gateway.id)
+    end
+
+    test "Settings › General's URL hint says where nodes reach it, and nothing of later", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope, name: "edge-01")
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings"))
+
+      assert text(lv, "#node-form #node_url-hint") ==
+               "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+
+      refute render(lv) =~ "You can change it later"
     end
 
     test "is deleted through its confirmation in place, when nothing points to it", %{
@@ -411,7 +464,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       html =
         render_submit(lv, "create", %{"node" => %{"name" => "build-01", "gateway" => "default"}})
 
-      assert html =~ "has no default gateway in this workspace"
+      assert html =~ "has no default gateway"
       assert Nodes.list_nodes(scope, %{kind: :node}) == []
     end
 
@@ -511,16 +564,211 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert text(lv, "#code-issued-gateway") =~
                "Runs of build-01 go through the gateway edge-01, at https://edge.example.com."
 
-      # The command is the same as for a node that goes direct: it points at Qory Apiary.
+      # On Default gateway, the command enrols through the default, by its URL.
+      server = ApiaryWeb.Endpoint.url()
       command = text(lv, "#code-issued-command")
-      assert command =~ ~r/\Aqory access-key enrol #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
-      refute command =~ "edge.example.com"
+
+      assert ["qory", "access-key", "enrol", "--via", "https://edge.example.com", ^server, code] =
+               String.split(command, " ")
+
+      assert code =~ ~r/\Aqec_/
+
+      assert text(lv, "#code-issued-header-description") ==
+               "The command connects build-01 by itself, through the gateway edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
+
+      assert text(lv, "#code-issued-via-ca") ==
+               "If edge-01's certificate is signed by a private certificate authority, add --via-ca-file and that authority's PEM file."
 
       # Once the gateway holds a key, it is connected.
       node_key_fixture(scope, gateway)
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
       assert has_element?(lv, "#node-gateway", "edge-01")
       refute has_element?(lv, "#node-gateway-unconnected")
+    end
+
+    test "a node on a named gateway: the command and the Forager file's lines go through it",
+         %{conn: conn, scope: scope} do
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      named = gateway_fixture(scope, name: "edge-02", url: "https://edge-02.example.com")
+
+      node =
+        node_fixture(scope, name: "build-01", gateway_choice: "named", gateway_id: named.id)
+
+      server = ApiaryWeb.Endpoint.url()
+      {lv, command} = command(conn, scope, node)
+
+      assert [
+               "qory",
+               "access-key",
+               "enrol",
+               "--via",
+               "https://edge-02.example.com",
+               ^server,
+               _code
+             ] = String.split(command, " ")
+
+      assert text(lv, "#code-issued-via-ca") =~ "If edge-02's certificate is signed"
+
+      # A key the command brought: the lines it wrote, `via` among them, marked.
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{label: "current"})
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, node, "/access-key/keys/#{key.key_id}/forager-file"))
+
+      [%{"public_key" => public_key}] = Apiary.SigningKey.apiary_public_key()
+      url = "    url: #{server}"
+      key_line = "    access_key_id: #{key.key_id}"
+      via_url = "      url: https://edge-02.example.com"
+
+      width =
+        Enum.max(Enum.map([url, key_line, "    apiary_public_key:", via_url], &String.length/1)) +
+          2
+
+      assert String.trim_trailing(lines(lv, "#key-forager-file-yaml")) <> "\n" ==
+               """
+               gateway:
+                 server:
+               #{String.pad_trailing(url, width)}# Qory Apiary
+               #{String.pad_trailing(key_line, width)}# this key
+               #{String.pad_trailing("    apiary_public_key:", width)}# Qory Apiary's public key
+                     - {alg: ed25519, public_key: #{public_key}}
+                   via:
+               #{String.pad_trailing(via_url, width)}# the gateway edge-02
+               """
+
+      # Configure a machine: the address lines through the gateway, and what via does.
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+
+      assert text(lv, "#node-configure-steps-1") =~
+               "Point qory at Qory Apiary, through edge-02. In the Forager file. It is required: without it, qory ignores the three variables below. via sends every request to Qory Apiary through edge-02."
+
+      refute text(lv, "#node-configure-steps-1") =~ "A starter"
+
+      assert String.trim(lines(lv, "#node-configure-yaml")) ==
+               "gateway:\n  server:\n    url: #{server}\n    via:\n      url: https://edge-02.example.com"
+    end
+
+    test "a pool behind a gateway: the command, Key for a node, its Forager file and Configure a machine",
+         %{conn: conn, scope: scope} do
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      pool = pool_fixture(scope, name: "spot-runners")
+      assert pool.gateway_choice == :default
+      server = ApiaryWeb.Endpoint.url()
+
+      address =
+        "gateway:\n  server:\n    url: #{server}\n    via:\n      url: https://edge.example.com"
+
+      {lv, command} = command(conn, scope, pool)
+      assert command =~ ~r/\Aqory access-key enrol --via https:\/\/edge\.example\.com /
+
+      assert text(lv, "#code-issued-header-description") =~
+               "The command connects spot-runners by itself, through the gateway edge-01:"
+
+      assert has_element?(lv, "#code-issued-via-ca")
+
+      %{access_key: key} = browser_key_fixture(scope, pool, %{label: "spot-runners"})
+
+      note =
+        "via sends every request to Qory Apiary through edge-01. A starter that reaches Qory Apiary directly can leave via out."
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/generated"))
+
+      assert text(lv, "#key-generated-steps-4") =~
+               "Point qory at Qory Apiary, through edge-01. In the Forager file. It is required: without it, qory ignores the three variables. " <>
+                 note
+
+      assert String.trim(lines(lv, "#key-generated-yaml")) == address
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/forager-file"))
+
+      assert text(lv, "#key-forager-file-steps-4") =~
+               "Point qory at Qory Apiary, through edge-01."
+
+      assert text(lv, "#key-forager-file-via") == note
+
+      assert String.trim(lines(lv, "#key-forager-file-url")) == address
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool, "/access-key"))
+      assert text(lv, "#node-configure-steps-1") =~ "below. " <> note
+      assert String.trim(lines(lv, "#node-configure-yaml")) == address
+    end
+
+    test "a gateway URL a shell would act on is quoted in the command", %{
+      conn: conn,
+      scope: scope
+    } do
+      # The brackets of an IPv6 host are a pattern to some shells.
+      url = "https://[2001:db8::1]:8443"
+      gateway_fixture(scope, name: "edge-01", url: url)
+      node = node_fixture(scope, name: "build-01")
+      server = ApiaryWeb.Endpoint.url()
+
+      {lv, command} = command(conn, scope, node)
+
+      assert command =~
+               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(server)} qec_/
+
+      assert has_element?(lv, ~s{#code-issued-command-copy[data-copy="#{command}"]})
+    end
+
+    test "--replace and --via together, for a node that has a key", %{conn: conn, scope: scope} do
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+      server = ApiaryWeb.Endpoint.url()
+
+      {_lv, command} = command(conn, scope, node)
+
+      assert [
+               "qory",
+               "access-key",
+               "enrol",
+               "--replace",
+               "--via",
+               "https://edge.example.com",
+               ^server,
+               _code
+             ] = String.split(command, " ")
+    end
+
+    test "carry no --via and no via for a node that goes direct, a node on Default gateway while none is the default, and a gateway",
+         %{conn: conn, scope: scope} do
+      gateway = gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      direct = node_fixture(scope, name: "build-01", gateway_choice: "direct")
+      default = node_fixture(scope, name: "build-02")
+      server = ApiaryWeb.Endpoint.url()
+      address = "gateway:\n  server:\n    url: #{server}"
+
+      check = fn node ->
+        {lv, command} = command(conn, scope, node)
+        assert [_qory, _access_key, _enrol, ^server, _code] = String.split(command, " ")
+        refute has_element?(lv, "#code-issued-via-ca")
+
+        assert text(lv, "#code-issued-header-description") =~
+                 "The command connects #{node.name} by itself: it makes the machine's key there,"
+
+        %{access_key: key} = browser_key_fixture(scope, node)
+        {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+        assert text(lv, "#node-configure-steps-1") =~ "Point qory at Qory Apiary. In the"
+        refute text(lv, "#node-configure-steps-1") =~ "via"
+        assert String.trim(lines(lv, "#node-configure-yaml")) == address
+
+        {:ok, lv, _html} =
+          live(conn, node_path(scope, node, "/access-key/keys/#{key.key_id}/forager-file"))
+
+        assert text(lv, "#key-forager-file-steps-4") =~ "Point qory at Qory Apiary."
+        refute text(lv, "#key-forager-file-steps-4") =~ "through"
+
+        refute has_element?(lv, "#key-forager-file-via")
+        assert String.trim(lines(lv, "#key-forager-file-url")) == address
+      end
+
+      check.(direct)
+      check.(gateway)
+      unmark(gateway)
+      check.(default)
     end
 
     test "name the gateway on a key's Forager file", %{conn: conn, scope: scope} do

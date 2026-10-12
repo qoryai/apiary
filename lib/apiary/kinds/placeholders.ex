@@ -4,8 +4,8 @@ defmodule Apiary.Kinds.Placeholders do
   variable the enclosure gets set to the placeholder value, so that an agent's client has
   something to send, which the gateway, or a tool, replaces.
 
-  The contract refuses such a name, `placeholder_conflict`, when it is Forager's own
-  (`QORY_*`), on the built-in deny list, or a name Forager, a runtime or the harness
+  The contract refuses such a name, `placeholder_conflict`, when it is reserved for
+  Forager (`QORY_*`), on the built-in deny list, or a name Forager, a runtime or the harness
   sets, and the server refuses the same on save, for the names it knows then: a tool
   role's `placeholders` in an integration's description, and a service declaration's
   `name`. The names Qory Apiary knows are `Apiary.Variables.Denied`'s list and pattern, matched

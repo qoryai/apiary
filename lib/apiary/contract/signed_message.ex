@@ -3,7 +3,7 @@ defmodule Apiary.Contract.SignedMessage do
   SignedMessage builds the messages the server contract signs with Ed25519
   (`Apiary.Contract.Ed25519`): a request's, which the gateway signs under its access key; an
   enrolment's proof, which a machine signs under the new key it enrols; and an answer's,
-  to a signed request or to an enrolment, which the server signs under its own key. Each is lines joined by `\n`, with no newline
+  to a signed request or to an enrolment, which the server signs under its signing key. Each is lines joined by `\n`, with no newline
   after the last. Pure functions; nothing here touches the database, a connection or a
   log, and nothing here holds a key.
 
@@ -26,12 +26,12 @@ defmodule Apiary.Contract.SignedMessage do
   **The run key's message** (`run_key/1`): `qory-run-key-ed25519-v1`, then the payload's
   bytes, on the next line and to the end.
 
-  **The answer string of an enrolment** (`enrolment_answer/3`) has its own first line,
+  **The answer string of an enrolment** (`enrolment_answer/3`) has a different first line,
   `qory-enrol-answer-ed25519-v1`, and the request's `proof` as line 3; the rest is as
   `answer/5`'s, lines 5 and 6 empty, since an enrolment answer carries neither digest
   header. Its line 3 is a proof, which anyone holding a live code chooses, so the domain
   line keeps an enrolment answer's signature from ever verifying as the answer to a signed
-  request, and the reverse. It is a function of its own, not an option of `answer/5`, so
+  request, and the reverse. It is a separate function, not an option of `answer/5`, so
   no caller can sign an enrolment answer under the other line by leaving one out.
 
   The contract's known answers for each are in `fixtures/known-answers/signatures.json`
@@ -128,7 +128,7 @@ defmodule Apiary.Contract.SignedMessage do
   @doc ~S"""
   enrolment_answer/3 is the answer string of an answer with `status` and `body` to the
   enrolment whose `proof` is `proof`, exactly as the request carried it: under the
-  enrolment answers' own first line, with lines 5 and 6 empty.
+  enrolment answers' first line, with lines 5 and 6 empty.
 
       iex> Apiary.Contract.SignedMessage.enrolment_answer(409, "cHJm", "")
       "qory-enrol-answer-ed25519-v1\n409\ncHJm\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"

@@ -15,15 +15,19 @@ defmodule ApiaryWeb.Contract.EventsController do
   is `400` `invalid_request`; a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; then
   `Apiary.Runs.Ingest`: a run bound to another node than the key's (`Apiary.Runs.Sender`)
-  is `409` `wrong_node`, the whole batch refused and nothing of it stored; a run whose
-  events retention has pruned is `410`, even for a delivery already recorded; any other
-  delivery already recorded is `202` again; anything else is stored and answered `202`,
-  with nothing projected yet. A run starts by its registration
+  is `409` `wrong_node`, or `wrong_gateway` for a run behind a gateway, the whole batch
+  refused and nothing of it stored; a run behind a gateway that may no longer serve its
+  workspace (`Apiary.Runs.Sender.serves?/2`, decided as at the attach) is `410`
+  `workspace_not_served`, with no digest, nothing of the batch stored, a delivery
+  already recorded included; a run whose events retention has pruned is `410`, even for
+  a delivery already recorded; any other delivery already recorded is `202` again;
+  anything else is stored and answered `202`, with nothing
+  projected yet. A run starts by its registration
   (`ApiaryWeb.Contract.RegistrationController`), which the instance limit admits; a batch
   is held to no limit.
 
-  Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202` and `410`
-  carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
+  Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202`, and the `410`
+  of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
   answer carries, and, for a workspace whose policy somebody has made,
   `X-Qory-Run-Configuration`, the digest of the run configuration for the run's target
   (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which is how a run
@@ -37,7 +41,7 @@ defmodule ApiaryWeb.Contract.EventsController do
 
   A workspace nobody has given a policy is served no policy: its runs' registrations are
   answered `{"version":1}`, the answers to their batches carry no
-  `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
+  `X-Qory-Run-Configuration`, and its machines keep their local policy. The digest the request
   reported is stored on the delivery and on the run. Errors are short JSON and never
   repeat anything sent. The body, the signature and the headers are never logged.
   """
@@ -68,6 +72,9 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       {:error, :unauthorized} ->
         conn |> put_status(401) |> json(%{error: "unauthorized"})
+
+      {:error, :workspace_not_served} ->
+        conn |> put_status(410) |> json(%{error: "workspace_not_served"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})

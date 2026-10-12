@@ -6,7 +6,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   path after its system, `…/targets/gitlab.com/acme/shop`, only where two targets of the
   workspace share the path (question 9, answer A; `ApiaryWeb.TargetComponents.target_path/5`).
   Its tabs follow a `-` segment: Overview is the bare address, and Policy (`…/-/policy`,
-  with its own paths after it) is there where the reader may read the security policy.
+  with more paths after it) is there where the reader may read the security policy.
   The address is read in this order:
 
     * the path and its system, where the path is shared: the target;
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
-  policy mode only where it sets its own) and a link to it in its system when the system
+  policy mode only where it overrides the workspace's) and a link to it in its system when the system
   is a host name. The breadcrumb ends with the section, a link to the targets' list, and
   the target, and the sidebar marks its pin.
 
@@ -41,7 +41,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     and runtimes.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
-  A tab is its own mount: the tabs are navigations, and the Policy tab gets the page's
+  A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
   parameters, events and messages while it is open. Overview follows the workspace's
   topic: a run of the target on the page changes in place; a new one is counted, never
   inserted under the reader, and comes in when asked.
@@ -53,7 +53,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   import Ecto.Query, only: [from: 2]
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Repo, Runs, Targets}
+  alias Apiary.{Access, Repo, Runs, Targets}
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.PolicyLive
 
@@ -65,9 +65,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     scope = socket.assigns.current_scope
     {segments, rest} = split_glob(glob)
 
-    security =
-      Features.on?(scope, :security) and
-        Access.can?(scope, :"security_policy.read", scope.workspace)
+    security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
     case {resolve(scope, segments), tab(rest, security)} do
       # The old tabs: nothing is read; `handle_params/3` sends them on with their query.
@@ -242,6 +240,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   defp policy_action(["document"]), do: {:ok, {:policy, :document, %{}}}
   defp policy_action(["versions", n]), do: {:ok, {:policy, :version, %{"n" => n}}}
   defp policy_action(["versions", n, "export"]), do: {:ok, {:policy, :export, %{"n" => n}}}
+  defp policy_action(["rules", "new"]), do: {:ok, {:policy, :new_rule, %{}}}
+  defp policy_action(["rules", id, "edit"]), do: {:ok, {:policy, :edit_rule, %{"id" => id}}}
   defp policy_action(_rest), do: :error
 
   defp mount_tab(socket, {:overview}) do
@@ -484,8 +484,16 @@ defmodule ApiaryWeb.TargetLive.Show do
         {gettext("Version %{version}", version: @v.configuration.version)}
       </:crumb>
       <:crumb :if={@tab == :policy && @action == :export && @v}>{gettext("Export")}</:crumb>
+      <%!-- The rule form, a page of the Policy tab: back to the tab's list as it was left. --%>
+      <:crumb :if={rule_form?(assigns)} patch={PolicyLive.Common.cancel_path(assigns)}>
+        {gettext("Policy")}
+      </:crumb>
+      <:crumb :if={rule_form?(assigns)}>
+        {if @action == :new_rule, do: gettext("New rule"), else: gettext("Edit rule")}
+      </:crumb>
 
       <.target_header
+        :if={!rule_form?(assigns)}
         target={@target}
         shared={@shared}
         pinned={@pinned}
@@ -493,7 +501,12 @@ defmodule ApiaryWeb.TargetLive.Show do
         security={@security}
       />
 
-      <.page_tabs id="target-tabs" label={gettext("Target")} current={@tab}>
+      <.page_tabs
+        :if={!rule_form?(assigns)}
+        id="target-tabs"
+        label={gettext("Target")}
+        current={@tab}
+      >
         <:tab
           key={:overview}
           navigate={page_path(@current_scope, @target, @shared, [])}
@@ -671,7 +684,7 @@ defmodule ApiaryWeb.TargetLive.Show do
               title={"#{row.host}:#{row.port}#{row.path}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest">{row.host}<span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
               >{row.path}</span></span>
@@ -791,6 +804,14 @@ defmodule ApiaryWeb.TargetLive.Show do
   end
 
   ## Words and paths
+
+  # The Policy tab's New rule or Edit rule page: a form alone, without the target's header
+  # and tabs.
+  defp rule_form?(%{tab: :policy, action: action, loaded: true})
+       when action in [:new_rule, :edit_rule],
+       do: true
+
+  defp rule_form?(_assigns), do: false
 
   defp page_path(scope, target, shared, rest),
     do: target_path(scope, target.system, target.path, rest, shared)

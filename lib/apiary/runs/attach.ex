@@ -26,7 +26,9 @@ defmodule Apiary.Runs.Attach do
        `{:error, :not_found}`;
     4. a repeat: the same gateway node and the same instance id, under any of the node's
        active keys, attaching the same run again while the run is live, is given the
-       answer it was given, nothing stored again. A repeat is the gateway's, its
+       answer it was given, nothing stored again, while the gateway may still serve the
+       run's workspace (`Apiary.Gateways.may_serve?/2`); once it may not, the repeat is
+       `{:error, :workspace_not_served}`, and the run goes lost by liveness. A repeat is the gateway's, its
        instance's and the run's, not the body's bytes, so a gateway that restarted, or
        replaced its key, takes its run on again: a restarted gateway keeps its instance
        id. A run attached before its instance id was kept has none, and the first
@@ -65,7 +67,7 @@ defmodule Apiary.Runs.Attach do
   attach itself is held to the answers above, an outcome's end included.
 
   The answer is the run configuration in force for the run's target, read under the
-  run's own place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
+  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
   `labels` and `about` of the run's registration added after its last member, each left
   out when the registration had none; and its digest, which is the configuration's, for
   `X-Qory-Run-Configuration` and `ETag`.
@@ -316,6 +318,11 @@ defmodule Apiary.Runs.Attach do
       now = DateTime.utc_now()
 
       cond do
+        # A repeat is held to the workspace as the first attach is: a gateway that may no
+        # longer serve it is refused, and the run goes lost by liveness.
+        repeat?(run, gateway, meta[:instance_id]) and not Gateways.may_serve?(gateway, workspace) ->
+          {:error, :workspace_not_served}
+
         repeat?(run, gateway, meta[:instance_id]) ->
           repeat(access_key, run, meta[:instance_id])
 

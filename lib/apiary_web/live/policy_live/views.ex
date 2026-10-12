@@ -423,10 +423,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
   ## Export
 
   @doc """
-  The export of the version in force as a page of its own, at `…/versions/:n/export`: the
+  The export of the version in force as a separate page, at `…/versions/:n/export`: the
   title and what is exported, the texts to copy, and Done back to the Document view. The way
-  back to the policy and the version is the frame's breadcrumb, never a trail of its own. Nothing here is a form. `heading` is h2 under a
-  page's own title, as a target's Policy tab has. The heading takes the focus a page sends
+  back to the policy and the version is the frame's breadcrumb, never a separate trail. Nothing here is a form. `heading` is h2 under a
+  page's title, as a target's Policy tab has. The heading takes the focus a page sends
   it (`policy-export-h`) when the page is reached by a patch, as Export is.
   """
   attr :export, :map, required: true
@@ -506,7 +506,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   @doc """
   A confirmation in place under the control whose act it confirms, in the look of
   `inline_confirm/1`, for a confirm that also shows a list (what enforce would deny): the
-  question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
+  question, what happens (`effect`, a separate paragraph, `<id>-effect`), the
   rest (`inner_block`), then the act's button and Cancel. Never an overlay. Cancel takes
   the focus as it shows; where there is an effect, the section and Cancel are described by
   it, so it is read with them. Cancel and Escape send `dialog_cancel` with `return`, the

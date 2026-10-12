@@ -11,8 +11,8 @@ defmodule Apiary.Accounts.Scope do
   Beyond the user, the scope carries the organisation the caller is acting in, the
   caller's membership there and the workspace inside it, once
   `Apiary.Organisations.resolve_scope/4` has loaded the ones a page's path names, or
-  `Apiary.Organisations.load_scope/2` the user's own. The workspace is the one the path
-  names; on an organisation's own page, the one the person opened last, or the first they
+  `Apiary.Organisations.load_scope/2` the user's. The workspace is the one the path
+  names; on an organisation's page, the one the person opened last, or the first they
   reach, or none for one who reaches no workspace yet.
 
   `reach` says how the person reaches the organisation beyond a membership there, as
@@ -29,10 +29,12 @@ defmodule Apiary.Accounts.Scope do
   the instance's role by; a scope without a person that does not carry it may nothing.
   What a scope may do is `Apiary.Access`'s answer.
 
-  `features` is what the organisation and the workspace have, as `Apiary.Features.of/2`
-  answered when the scope was loaded or read again (`Apiary.Access.reload/2`), which
-  `Apiary.Features.on?/2` answers from; nil where nothing loaded it, as in the instance's
-  own jobs, which then answer as the instance.
+  `hidden` is what the person is not shown in the organisation, the features and the parts
+  the edition hides from them (`c:Apiary.Edition.hidden/1`, as
+  `Apiary.Features.hidden_of/1` keeps it), read when the scope was loaded or read again
+  (`Apiary.Access.reload/2`), which `Apiary.Features.visible?/2` answers from; nil, nothing
+  hidden, where nothing loaded it, as in an access key's scope and the instance's jobs,
+  which then answer as the instance.
 
   `origin` says from where the caller acts, for the audit trail (`Apiary.Audit`): the
   address and the client of the request, `%{remote_ip:, user_agent:}`, which the web side
@@ -68,7 +70,7 @@ defmodule Apiary.Accounts.Scope do
             access_key: nil,
             instance: false,
             origin: nil,
-            features: nil,
+            hidden: nil,
             edition: %{}
 
   @doc """
@@ -85,17 +87,40 @@ defmodule Apiary.Accounts.Scope do
 
   @doc """
   The scope of the gateway at the server contract: the access key it signed with, verified,
-  and the key's workspace. The key must carry its workspace loaded, as a verified key does
-  (`Apiary.AccessKeys.fetch_for_verification/1`); a caller holding one without it preloads
-  it first (`Apiary.Runs.Ingest.ingest/3` and `Apiary.Policy.Serving.managed?/1` do).
+  and the key's workspace, or none for the key of a gateway that lives at an organisation
+  (`Apiary.Gateways`), whose place is its organisation. The key must carry its workspace
+  loaded, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`); a caller
+  holding one without it preloads it first (`Apiary.Runs.Ingest.ingest/3` and
+  `Apiary.Policy.Serving.managed?/1` do).
   """
   @spec for_access_key(AccessKey.t()) :: t
   def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: access_key, workspace: workspace}
   end
 
+  def for_access_key(%AccessKey{workspace_id: nil, workspace: nil} = access_key) do
+    %__MODULE__{access_key: access_key, workspace: nil}
+  end
+
   @doc """
-  The scope of the instance acting on its own, in `organisation` and, when given,
+  key_place/1 is what the place of an access key's scope is asked as, a subject of
+  `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
+  the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
+  its id alone.
+  """
+  @spec key_place(t) :: %Workspace{} | %Organisation{}
+  def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{
+        access_key: %AccessKey{organisation: %Organisation{} = organisation}
+      }),
+      do: organisation
+
+  def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: organisation_id}}),
+    do: %Organisation{id: organisation_id}
+
+  @doc """
+  The scope of the instance acting by itself, in `organisation` and, when given,
   `workspace` of it: the scope of a job that no person enqueued (`Apiary.Job`). No user
   and no membership; `Apiary.Access` answers it by the instance's role.
   """
@@ -117,7 +142,10 @@ defmodule Apiary.Accounts.Scope do
         workspace: nil,
         membership: nil,
         reach: nil,
-        edition: %{}
+        edition: %{},
+        # Nothing of the scope's organisation is carried over: an audit entry's scope asks
+        # no gate, so nil, nothing hidden, rather than an ask of the edition here.
+        hidden: nil
     }
   end
 

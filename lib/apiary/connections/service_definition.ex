@@ -10,7 +10,7 @@ defmodule Apiary.Connections.ServiceDefinition do
   """
   use Ecto.Schema
 
-  @typedoc "A workspace's own service definition."
+  @typedoc "A workspace's service definition."
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: false}

@@ -1,6 +1,7 @@
 defmodule Apiary.Nodes.Node do
   @moduledoc """
-  A node of a workspace: a place that runs, or a gateway. Its `kind` is `:node`, one
+  A node of a workspace: a place that runs, or a gateway, which may live at an
+  organisation instead, with no workspace (`workspace_id` nil, `Apiary.Gateways`). Its `kind` is `:node`, one
   permanent machine that runs one instance at a time, `:pool`, a fleet of short-lived
   instances that run up to its `instance_limit`, or any number when the limit is nil, or
   `:gateway`, which a node or a pool may record as its choice of gateway
@@ -14,7 +15,7 @@ defmodule Apiary.Nodes.Node do
   `~p"/\#{organisation}/\#{workspace}/nodes/\#{node}"` uses it.
 
   A gateway has an address, `url` (`validate_url/1`), no instance limit, and may be its
-  workspace's default gateway (`default_gateway`, which `Apiary.Nodes` sets through
+  level's default gateway, its workspace's or its organisation's (`default_gateway`, which `Apiary.Nodes` sets through
   `default_changeset/2`; `changeset/2` never casts it). A node or a pool has neither, and records a choice of gateway
   (`gateway_choice`, `t:choice/0`): `:direct`, `:default`, its workspace's default
   gateway, or `:named`, the gateway `gateway_id` names. The field's default is `:direct`;
@@ -120,7 +121,7 @@ defmodule Apiary.Nodes.Node do
   @doc """
   changeset/2 is the changeset of a node's name and, for a pool, its instance limit: the
   name 1 to 80 characters without control characters, unique among the workspace's
-  nodes in use; a pool's limit empty, for none, or 1 to `max_limit/0`. A node's limit is
+  nodes in use, or among the gateways in use at the organisation's level; a pool's limit empty, for none, or 1 to `max_limit/0`. A node's limit is
   1 whatever `attrs` says, and a gateway's none. A gateway's address is required and
   checked (`validate_url/1`); a node and a pool have none. A node's or a pool's choice of
   gateway (`gateway_choice`, with `gateway_id` when it is `named`) is cast, and a gateway
@@ -141,6 +142,11 @@ defmodule Apiary.Nodes.Node do
       error_key: :name,
       message: dgettext_noop("errors", "is already the name of a node in this workspace")
     )
+    |> unique_constraint([:organisation_id, :name],
+      name: :nodes_organisation_live_name_index,
+      error_key: :name,
+      message: dgettext_noop("errors", "is already the name of a gateway in this organisation")
+    )
     |> put_limit(attrs)
     |> put_url(attrs)
     |> put_choice(attrs)
@@ -151,15 +157,17 @@ defmodule Apiary.Nodes.Node do
   end
 
   @doc """
-  default_changeset/2 marks `gateway` as its workspace's default gateway, or takes the
-  mark off. The database holds a workspace to one default, a gateway in use: a mark it
-  refuses is an error on `default_gateway`.
+  default_changeset/2 marks `gateway` as its level's default gateway, its workspace's or
+  its organisation's, or takes the mark off. The database holds a workspace, and the
+  gateways at an organisation's level, to one default, a gateway in use: a mark it refuses is an
+  error on `default_gateway`.
   """
   @spec default_changeset(t, boolean) :: Ecto.Changeset.t()
   def default_changeset(%__MODULE__{} = gateway, default?) when is_boolean(default?) do
     gateway
     |> change(default_gateway: default?)
     |> unique_constraint(:default_gateway, name: :nodes_default_gateway_index)
+    |> unique_constraint(:default_gateway, name: :nodes_organisation_default_gateway_index)
     |> check_constraint(:default_gateway, name: :nodes_default_gateway_check)
   end
 
@@ -236,8 +244,12 @@ defmodule Apiary.Nodes.Node do
 
   @doc """
   validate_url/1 checks `changeset`'s `url`, a gateway's address: `https://`, then a host
-  and an optional port, and nothing else: no user, path, query or fragment. A run key
-  names the gateway by it, and only over TLS (`Apiary.Runs.RunKey`).
+  and an optional port, 1 to 65535, and nothing else: no user, path, query or fragment.
+  The host is a DNS name (labels of letters, digits and `-`, 1 to 63 characters each,
+  neither starting nor ending with `-`, the last not all digits, 253 characters at most,
+  with an optional trailing dot), an IPv4 address, or an IPv6 address in brackets. A run
+  key names the gateway by it, and only over TLS (`Apiary.Runs.RunKey`). The database
+  holds it to the same (`nodes_url_check`).
   """
   @spec validate_url(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_url(changeset) do
@@ -249,13 +261,14 @@ defmodule Apiary.Nodes.Node do
     end)
   end
 
-  # A scheme in lower case, `://`, then the host and the port alone.
-  @address ~r{\A[a-z][a-z0-9+.-]*://[^/?#@\s]+\z}
+  # A scheme in lower case, `://`, then the host and the port alone: a name or an IPv4
+  # address, or an IPv6 address in brackets, and a port without a leading zero.
+  @address ~r{\A[a-z][a-z0-9+.-]*://(?<host>[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[1-9][0-9]*)?\z}
 
   defp address(url) do
-    with true <- url =~ @address,
-         {:ok, %URI{scheme: scheme, host: host, port: port}}
-         when is_binary(host) and host != "" and port in 1..65_535 <- URI.new(url) do
+    with %{"host" => host} <- Regex.named_captures(@address, url),
+         true <- host?(host),
+         {:ok, %URI{scheme: scheme, port: port}} when port in 1..65_535 <- URI.new(url) do
       if scheme == "https",
         do: :ok,
         else: {:error, dgettext_noop("errors", "must start with https://")}
@@ -267,6 +280,29 @@ defmodule Apiary.Nodes.Node do
            "must be a scheme and a host, with a port if needed, and nothing more"
          )}
     end
+  end
+
+  # An IPv6 address in brackets, an IPv4 address, or a DNS name.
+  defp host?("[" <> bracketed), do: ip?(String.trim_trailing(bracketed, "]"), 8)
+  defp host?(host), do: ip?(host, 4) or name?(host)
+
+  defp ip?(host, size) do
+    case :inet.parse_strict_address(String.to_charlist(host)) do
+      {:ok, address} -> tuple_size(address) == size
+      {:error, _einval} -> false
+    end
+  end
+
+  @label ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/
+
+  # Labels joined by dots, the last not all digits (a bad IPv4 address is no name), 253
+  # characters at most without the optional trailing dot.
+  defp name?(host) do
+    name = String.replace_suffix(host, ".", "")
+    labels = String.split(name, ".")
+
+    byte_size(name) <= 253 and Enum.all?(labels, &(&1 =~ @label)) and
+      not (List.last(labels) =~ ~r/\A[0-9]+\z/)
   end
 
   defp put_public_id(changeset) do
