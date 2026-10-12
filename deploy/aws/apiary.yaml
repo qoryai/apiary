@@ -761,14 +761,18 @@ Resources:
                   raise Unreachable from None
 
 
-          def newest(base, headers):
-              url, tags = base + "/tags/list?n=1000", []
+          def newest(path, headers):
+              pages = f"/v2/{path}/tags/list"
+              url, tags = f"https://ghcr.io{pages}?n=1000", []
               for _ in range(100):
                   with call(url, headers) as response:
                       tags += json.load(response).get("tags") or []
                       link = NEXT.search(response.headers.get("Link") or "")
                   if not link:
                       return max((tag for tag in tags if RELEASE.fullmatch(tag)), key=number, default=None)
+                  # The next page of this repository's tags, and nothing else.
+                  if link[1].split("?")[0] != pages:
+                      raise Unreachable
                   url = "https://ghcr.io" + link[1]
               raise ValueError("more than 100 pages of tags")
 
@@ -809,7 +813,7 @@ Resources:
                   secrets.append(token)
                   headers = {"Authorization": "Bearer " + token, "Accept": ACCEPT}
                   base = "https://ghcr.io/v2/" + path
-                  version = typed or newest(base, headers)
+                  version = typed or newest(path, headers)
                   if not version:
                       raise Missing
                   fits(version)

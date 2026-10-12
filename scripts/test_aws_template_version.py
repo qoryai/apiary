@@ -87,6 +87,7 @@ class Registry:
         self.token_error = None
         self.tags_error = None
         self.manifest_error = None
+        self.link = None
         self.requests = []
         self.answers = []
 
@@ -105,7 +106,7 @@ class Registry:
             if self.tags_error:
                 raise self.tags_error
             page = 0 if "last=" not in url else int(url.split("last=page")[1].split("&")[0])
-            tags, link = self.pages[page], None
+            tags, link = self.pages[page], self.link
             if page + 1 < len(self.pages):
                 path = url.split("https://ghcr.io")[1].split("?")[0]
                 link = f'<{path}?last=page{page + 1}&n=1000>; rel="next"'
@@ -266,6 +267,20 @@ class Lookup(unittest.TestCase):
                 "https://ghcr.io/v2/qoryai/apiary/tags/list?last=page2&n=1000",
             ],
         )
+
+    def test_a_next_page_outside_the_repository_tags_is_refused(self):
+        for link in (
+            '</v2/qoryai/other/tags/list?last=0.1.0&n=1000>; rel="next"',
+            '</v2/qoryai/apiary-pro/tags/list?last=0.1.0&n=1000>; rel="next"',
+            '</v2/qoryai/apiary/manifests/latest>; rel="next"',
+            '</v2/qoryai/apiary/tags/list/../../other/tags/list?n=1000>; rel="next"',
+            '<https://ghcr.io/v2/qoryai/other/tags/list?n=1000>; rel="next"',
+        ):
+            with self.subTest(link=link):
+                self.registry.link = link
+                answer = self.run_function(event())
+                self.assert_failed(answer, "ghcr.io could not be reached to find the version: update again later.")
+                self.assertEqual(len(self.registry.calls("/tags/list")), 1)
 
     def test_the_digest_is_asked_for_by_a_head_accepting_indexes_and_manifests(self):
         self.run_function(event())
