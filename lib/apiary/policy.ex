@@ -1531,7 +1531,7 @@ defmodule Apiary.Policy do
       write(scope, target_id, [:edit], fn workspace, scope ->
         effective = effective(scope, holder)
 
-        with :ok <- not_locked_above(effective, target_id, host),
+        with :ok <- not_locked_above(scope, effective, target_id, host),
              {:ok, paths} <- paths_after(effective, host, path, action),
              attrs = %{"host" => host, "paths" => paths},
              {:ok, candidate} <- candidate("allow", attrs) do
@@ -1552,7 +1552,12 @@ defmodule Apiary.Policy do
 
   # A host the level above decides is not changed here, in the workspace or in a target;
   # nor is a target's path change on a host a locked rule of the workspace decides.
-  defp not_locked_above(%Effective{entries: entries, above: %Above{name: name}}, target_id, host) do
+  defp not_locked_above(
+         scope,
+         %Effective{entries: entries, above: %Above{name: name}},
+         target_id,
+         host
+       ) do
     if Enum.any?(entries, &(&1.kind == :host and &1.host == host and &1.source == :organisation)) do
       {:error,
        Error.new(
@@ -1565,13 +1570,13 @@ defmodule Apiary.Policy do
          :host
        )}
     else
-      not_locked_above(%Effective{entries: entries}, target_id, host)
+      not_locked_above(scope, %Effective{entries: entries}, target_id, host)
     end
   end
 
-  defp not_locked_above(_effective, nil, _host), do: :ok
+  defp not_locked_above(_scope, _effective, nil, _host), do: :ok
 
-  defp not_locked_above(%Effective{entries: entries}, _target_id, host) do
+  defp not_locked_above(scope, %Effective{entries: entries}, _target_id, host) do
     if Enum.any?(
          entries,
          &(&1.kind == :host and &1.host == host and &1.source == :workspace and &1.locked)
@@ -1579,9 +1584,17 @@ defmodule Apiary.Policy do
       {:error,
        Error.new(
          :locked,
-         gettext(
-           "The workspace's rule for %{host} is locked, so a target cannot change its paths. An owner changes it in the workspace.",
-           host: host
+         ApiaryWeb.Access.who_may_after(
+           scope,
+           :"security_policy.lock",
+           gettext(
+             "The workspace's rule for %{host} is locked, so a target cannot change its paths. An owner changes it in the workspace.",
+             host: host
+           ),
+           gettext(
+             "The workspace's rule for %{host} is locked, so a target cannot change its paths.",
+             host: host
+           )
          ),
          :host
        )}
@@ -2331,10 +2344,32 @@ defmodule Apiary.Policy do
     end
   end
 
+  # `may/3` for a sentence that first says something else (`lead`), which an edition's
+  # sentence of who may, or a reader's, follows (`ApiaryWeb.Access.who_may_after/4`);
+  # `message` is the core's whole sentence.
+  defp may(%Scope{} = scope, action, message, lead) do
+    case Access.check(scope, action, scope.workspace) do
+      :ok ->
+        :ok
+
+      {:error, :forbidden} ->
+        {:error, Error.new(:forbidden, refusal(scope, action, message, lead))}
+
+      {:error, :not_found} ->
+        {:error, not_found(gettext("Not found."))}
+    end
+  end
+
   defp refusal(scope, action, message) do
     if Access.reader(scope),
       do: ApiaryWeb.Access.reads_only(scope),
       else: ApiaryWeb.Access.who_may(scope, action, message)
+  end
+
+  defp refusal(scope, action, message, lead) do
+    if Access.reader(scope),
+      do: lead <> " " <> ApiaryWeb.Access.reads_only(scope),
+      else: ApiaryWeb.Access.who_may_after(scope, action, message, lead)
   end
 
   defp may_edit(scope) do
@@ -2360,7 +2395,8 @@ defmodule Apiary.Policy do
       gettext(
         "The rule for %{subject} is locked. Only an owner changes or removes a locked rule.",
         subject: Rule.subject(rule)
-      )
+      ),
+      gettext("The rule for %{subject} is locked.", subject: Rule.subject(rule))
     )
   end
 

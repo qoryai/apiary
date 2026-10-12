@@ -2353,6 +2353,7 @@ msgid "A locked workspace rule allows %{rule}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
+#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "A locked workspace rule denies %{host}."
 msgstr ""
@@ -2362,6 +2363,7 @@ msgstr ""
 msgid "A locked workspace rule denies %{host}. Only an owner can change it, on the workspace's policy page."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "A locked workspace rule denies %{rule}."
@@ -7178,6 +7180,7 @@ msgstr ""
 msgid "Locked a variable"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Locked by %{by} on %{at}."
@@ -7211,6 +7214,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Locked."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -12001,6 +12009,11 @@ msgstr ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
+msgid "The rule for %{subject} is locked."
+msgstr ""
+
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
 msgid "The rule for %{subject} is locked. Only an owner changes or removes a locked rule."
 msgstr ""
 
@@ -12231,6 +12244,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace's default stays %{mode} and other targets do not change."
+msgstr ""
+
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "The workspace's rule for %{host} is locked, so a target cannot change its paths."
 msgstr ""
 
 #: lib/apiary/policy.ex

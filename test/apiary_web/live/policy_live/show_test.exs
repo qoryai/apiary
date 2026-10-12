@@ -946,6 +946,39 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert rule(scope, "api.example")
     end
 
+    test "is told who may change a locked rule: the core's words, or an edition's sentence after what is locked",
+         %{scope: scope} = context do
+      {:ok, _} = Policy.lock(scope, rule(scope, "github.example"))
+      conn = as_member(context)
+      unknown = "#rule-#{rule(scope, "*.paste.example").id}-lock"
+      known = "#rule-#{rule(scope, "github.example").id}-lock"
+      by = Regex.escape("Locked by #{scope.user.email} on ")
+
+      view = open(conn, scope)
+
+      assert attribute(view, unknown, "data-tip") ==
+               "Locked. Only an owner can change or unlock it."
+
+      assert attribute(view, known, "data-tip") =~
+               ~r/\A#{by}[^.]+\. Only an owner can change or unlock it\.\z/
+
+      type(view, %{host: "*.paste.example", paths: ""})
+
+      assert text(view, "#policy-rule-refusal") ==
+               "Only an owner can lock, unlock or change a locked rule."
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+      view = open(conn, scope)
+      assert attribute(view, unknown, "data-tip") == "Locked. #{sentence}"
+
+      assert attribute(view, known, "data-tip") =~
+               ~r/\A#{by}[^.]+\. #{Regex.escape(sentence)}\z/
+
+      type(view, %{host: "*.paste.example", paths: ""})
+      assert text(view, "#policy-rule-refusal") == sentence
+    end
+
     test "is refused on the New rule page on a locked rule", %{scope: scope} = context do
       view = open(as_member(context), scope)
 

@@ -854,6 +854,50 @@ defmodule Apiary.PolicyTest do
       assert {:ok, %Rule{}} = Policy.remove_rule(member, rule)
     end
 
+    test "a locked rule's refusals say what is locked, then who may: the core's words, or an edition's sentence",
+         %{scope: scope} do
+      %{scope: member} = member_fixture(scope)
+      target = target_fixture(scope)
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example", locked: true})
+
+      refusals = fn ->
+        assert {:error, %Error{reason: :forbidden, message: change}} =
+                 Policy.deny(member, nil, %{host: "api.example"})
+
+        assert {:error, %Error{reason: :forbidden, message: remove}} =
+                 Policy.remove_rule(member, rule)
+
+        assert {:error, %Error{reason: :locked, message: paths}} =
+                 Policy.allow_path(member, target, "api.example", "/v1")
+
+        assert {:error, %Error{reason: :forbidden, message: unlock}} = Policy.unlock(member, rule)
+        %{change: change, remove: remove, paths: paths, unlock: unlock}
+      end
+
+      core = refusals.()
+      locked = "The rule for api.example is locked."
+      assert core.change == "#{locked} Only an owner changes or removes a locked rule."
+      assert core.remove == core.change
+
+      assert core.paths ==
+               "The workspace's rule for api.example is locked, so a repository cannot change its paths. An owner changes it in the workspace."
+
+      assert core.unlock == "Only an owner locks or unlocks a rule."
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
+      sentence = Apiary.EditionStubs.LockWorded.sentence()
+      worded = refusals.()
+      assert worded.change == "#{locked} #{sentence}"
+      assert worded.remove == worded.change
+
+      assert worded.paths ==
+               "The workspace's rule for api.example is locked, so a repository cannot change its paths. #{sentence}"
+
+      # Lock and Unlock say who may and nothing before it: the edition's sentence alone.
+      assert worded.unlock == sentence
+      assert {:ok, %Rule{locked: true}} = Policy.get_rule(scope, rule.id)
+    end
+
     test "the mode is an owner's or an admin's to change, in both directions", %{scope: scope} do
       %{scope: member} = member_fixture(scope)
 

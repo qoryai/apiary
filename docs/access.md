@@ -159,10 +159,15 @@ may:
   organisation's and the workspace's settings, People, stored secrets and variables, and
   integrations; for People's line of what each level does; for the refusal to cancel an
   organisation's deletion on Your organisations; for the security policy's refusals
-  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
-  The policy pages' mode row and their lock and unlock hints, the lock hint of a
-  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
-  a locked rule have no scope at hand, and keep the core's words.
+  (`Apiary.Policy`); for the policy pages' refusals of a click on the mode or a lock; and,
+  with `:"security_policy.lock"`, for each sentence that says who may change a locked rule:
+  a locked rule's lock on the policy pages, the rule form's refusal, a target's
+  Destinations, the lock hint of a connection's Allow or Deny panel and the workspace
+  overview's hint on a locked rule. Where the core's sentence first says what is locked,
+  that part stays and the edition's sentence follows it
+  (`ApiaryWeb.Access.who_may_after/4`). The policy pages' mode row, the workspace
+  overview's hint on the mode and the Lock confirm's "Only an owner can unlock." keep the
+  core's words.
 
 ## The instance's admins
 
