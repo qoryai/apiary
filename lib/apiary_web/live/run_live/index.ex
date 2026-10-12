@@ -715,14 +715,37 @@ defmodule ApiaryWeb.RunLive.Index do
        jump_error: nil,
        preview: nil,
        narrowing: nil,
-       narrowed_node: nil,
-       security: Access.can?(scope, :"security_policy.read", scope.workspace),
-       has_nodes:
-         Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
-       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
-       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
-       may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
-     )}
+       narrowed_node: nil
+     )
+     |> offers()
+     |> ApiaryWeb.UserAuth.on_membership_change(&membership_changed/1)}
+  end
+
+  # What the page offers by what the reader may do, read again once their membership, or
+  # what the edition shows them, changes (`ApiaryWeb.UserAuth.on_membership_change/2`).
+  defp offers(socket) do
+    scope = socket.assigns.current_scope
+
+    assign(socket,
+      security: Access.can?(scope, :"security_policy.read", scope.workspace),
+      has_nodes:
+        Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
+      may_add_node: Access.can?(scope, :"node.create", scope.workspace),
+      # The nodes' list, where the reader is shown it: an edition may hide the nodes.
+      may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
+    )
+  end
+
+  # The offers, and the node the address names, read for the reader as they are now: a
+  # reader the nodes were hidden from meanwhile has no way to them left, and the node read
+  # as such a reader reads it (`node_of/2`).
+  defp membership_changed(socket) do
+    socket = offers(socket)
+
+    case socket.assigns.narrowed_node do
+      %{for: node} -> assign(socket, :narrowed_node, node_of(socket.assigns.current_scope, node))
+      nil -> socket
+    end
   end
 
   @impl true

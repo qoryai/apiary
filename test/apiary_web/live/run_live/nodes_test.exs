@@ -329,4 +329,50 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       end
     end
   end
+
+  describe "the nodes hidden while the list is open" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+    end
+
+    test "the empty list's way to the nodes goes", %{conn: conn, scope: scope} do
+      node_fixture(scope, name: "build-01")
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, "#runs-go-to-nodes")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      send(view.pid, {:membership_changed, :hidden})
+
+      refute has_element?(view, "#runs-go-to-nodes")
+      refute render(view) =~ "/nodes"
+    end
+
+    test "the empty list's New node goes", %{conn: conn, scope: scope} do
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, "#runs-new-node")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      send(view.pid, {:membership_changed, :hidden})
+
+      refute has_element?(view, "#runs-new-node")
+      refute has_element?(view, "#runs-go-to-nodes")
+      refute render(view) =~ "/nodes"
+    end
+
+    test "the line's node is read again: one no run names is no longer named", %{
+      conn: conn,
+      scope: scope
+    } do
+      idle = node_fixture(scope, name: "never-ran")
+      view = open(conn, workspace_path(scope, "/runs?node=#{idle.public_id}"))
+      assert narrowed(view) == "Showing the runs of never-ran only."
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      send(view.pid, {:membership_changed, :hidden})
+
+      assert narrowed(view) == "Showing the runs of #{idle.public_id} only."
+      refute render(view) =~ "never-ran"
+    end
+  end
 end
