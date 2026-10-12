@@ -148,7 +148,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
       address?(host) ->
         {rich_gettext(
-           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says.",
+           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses whatever the policy says, and the machine's addresses unless the policy allows that host by name.",
            address: {:m, "10.0.0.12"}
          ), nil}
 

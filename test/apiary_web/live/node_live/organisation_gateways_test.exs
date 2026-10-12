@@ -128,6 +128,17 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
                Nodes.list_organisation_gateways(scope)
     end
 
+    test "New gateway's URL hint says where nodes reach it, and that its Settings change it later",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, gateways_path(scope, "/new"))
+
+      assert has_element?(
+               lv,
+               "#new-gateway-form #node_url-hint",
+               "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+             )
+    end
+
     test "a member reads the list, without New gateway, and the form's path refuses them", %{
       scope: scope
     } do

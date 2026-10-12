@@ -689,7 +689,7 @@ defmodule ApiaryWeb.RunComponentsTest do
              ) =~ "The path can be read two ways. The wall denies it in either mode."
     end
 
-    @host_form "The gateway refuses a host that is neither a name nor an address in canonical form,"
+    @host_form "Forager refuses a host that is neither a name nor an address in canonical form,"
     @own_address "The wall refuses link-local addresses and the machine's addresses,"
 
     defp wall_inline(host, rule \\ "wall:host-form") do
@@ -1114,6 +1114,32 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       html = row(%{last_decision: "allowed", last_rule: "r", last_tool: "<i>files</i>"})
       refute html =~ "<i>files</i>"
+    end
+  end
+
+  describe "the Outcome column's tooltip" do
+    test "says what a refusal is, in a run's table and in a workspace's" do
+      for variant <- ~w(table workspace) do
+        doc =
+          render_component(&RunComponents.connections_table/1,
+            id: "cx",
+            label: "Connections",
+            rows: [],
+            variant: variant
+          )
+          |> LazyHTML.from_fragment()
+
+        [tip] = doc |> LazyHTML.query("th abbr.term") |> LazyHTML.attribute("data-tip")
+
+        assert tip =~ "Dial failed: allowed, but the host or the tool did not answer."
+
+        assert String.ends_with?(
+                 tip,
+                 " Refused: the policy or the wall denied it, or a new policy closed it."
+               )
+
+        refute tip =~ "never dialled"
+      end
     end
   end
 
