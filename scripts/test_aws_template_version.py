@@ -64,8 +64,14 @@ class Response(io.BytesIO):
         self.headers = headers or {}
 
 
+# Each stubbed HTTP error, closed after its test.
+HTTP_ERRORS = []
+
+
 def http_error(url, code):
-    return urllib.error.HTTPError(url, code, "refused", {}, io.BytesIO(b""))
+    error = urllib.error.HTTPError(url, code, "refused", {}, io.BytesIO(b""))
+    HTTP_ERRORS.append(error)
+    return error
 
 
 class Registry:
@@ -195,6 +201,11 @@ class Lookup(unittest.TestCase):
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        self.addCleanup(self.close_http_errors)
+
+    def close_http_errors(self):
+        while HTTP_ERRORS:
+            HTTP_ERRORS.pop().close()
 
     def run_function(self, request):
         """The function's answer to one request, its log in self.log."""
