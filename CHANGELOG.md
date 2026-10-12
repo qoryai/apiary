@@ -624,17 +624,26 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
   Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
   installed from the AWS console's form and upgraded with its Update, with no command. A
-  release attaches its release copy as `apiary.yaml`, with the release's version written in
-  and the test parts left out (`scripts/aws-template-release.py --copy release`), so an
-  upgrade is an Update with the new release's template, `VersionOverride` left empty. The
-  test copy, the repository's template or one written with `--copy test`, keeps the Test
-  image field and is never published. The form asks for the edition, Qory Apiary
-  Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
+  release attaches its release copy as `apiary.yaml`, with the test parts left out and the
+  template's version written in (`scripts/aws-template-release.py --copy release --version
+  X.Y.Z`). The stack finds the version to install when it is created or updated: with
+  `VersionOverride` empty, the newest release of the edition, the highest `X.Y.Z` tag of
+  `ghcr.io/qoryai/apiary`, or of `ghcr.io/qoryai/apiary-pro` read with the download key,
+  never `latest`; with a version typed, exactly that one. The task runs that image pinned
+  by its digest, so only a stack create or update changes what runs. An update with
+  `VersionOverride` empty looks up the newest release again, except one that changes only
+  the download key, which is not among the lookup's values; when nothing else changes,
+  something new under "Look for a newer release" (`LookForNewerRelease`) makes it look. A
+  version older than the one the stack runs is refused, typed or found: within the edition
+  by its `X.Y.Z`, and on a change of edition by its `X.Y` alone. So is a release of a
+  newer minor than the template: a new minor needs that minor's `apiary.yaml`. The test
+  copy, the repository's template or one written with `--copy test`, keeps the Test image
+  field, which skips the lookup, and is never published. The form asks for the edition,
+  Qory Apiary Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
   separate secret, deleted with the stack, for the image's pull alone; and the domain,
   with a Route 53 hosted zone, or without one, the stack then making the certificate and
-  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key,
-  on ARM64, or with no version to install, and, in the test copy, a test image without the
-  download key.
+  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key
+  or on ARM64, and, in the test copy, a test image without the download key.
   Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack turns it on once the service is first healthy, so a create that fails
@@ -648,17 +657,19 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the stack is in progress. The four secrets are kept when the stack is
   deleted, each named after the stack and the whole UUID of its stack ID, so they do not
   block a new stack of the same name, which has a different stack ID, and the database leaves
-  a final snapshot. The log groups, the task's and those of the stack's two functions,
+  a final snapshot. The log groups, the task's and those of the stack's three functions,
   are kept too, when the stack is deleted and when a create rolls back, their events for
   30 days, under names made from the stack ID in the same way. The outputs are the
-  address, the load balancer's DNS name, the edition and the version the stack runs, the
-  key secrets' ARNs (their names, on a stack given the keys of a deleted one), and links
-  into the console: the logs, the set-up link's line in
+  address, the load balancer's DNS name, the edition, the version the stack runs and its
+  image, by its digest, the key secrets' ARNs (their names, on a stack given the keys of a
+  deleted one), and links into the console: the logs, the set-up link's line in
   them, the service, the key secrets and the database snapshots. CI lints the template
-  with cfn-lint, and four copies the release script writes, the release copy and the test
-  copy, each with Qory Apiary Community first and with Qory Apiary Pro first; runs the
-  script's tests; checks that each release copy holds no test part and no test wording,
-  comments included, and is its test copy without the test parts; and checks the stack
+  with cfn-lint, and the two copies the release script writes, the release copy and the
+  test copy; runs the script's tests, and the version lookup's against a stubbed registry;
+  checks that the release copy holds no test part and no test wording, comments included,
+  and is the test copy without the test parts; checks that the version lookup's role may
+  read the download key's secret, describe the stack and write its log group, nothing else,
+  and that the task runs the image the lookup found; and checks the stack
   policy and the rule, function, permission and role that set it, and that nothing sets
   it from inside the stack's create or update, that no output is a command, which
   secrets and log groups the stack keeps and that their names use the stack ID's UUID,

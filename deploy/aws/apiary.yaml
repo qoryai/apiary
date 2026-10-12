@@ -1,9 +1,11 @@
 # Qory Apiary on AWS: one Fargate task behind an Application Load Balancer, RDS for
 # PostgreSQL, and the secrets Qory Apiary makes at first start kept in Secrets Manager.
 #
-# A release names its version: scripts/aws-template-release.py writes it into the Release
-# mapping and into the texts that name it. Here, in the repository, the mapping is empty,
-# so an upload by hand types the version under Version.
+# The version to install is found when the stack is created or updated: the Version
+# resource (below) looks up the newest release of the edition in the edition's image
+# repository, or checks the one typed under Version, and the task runs that image by its
+# digest. A release writes only this template's version into the Template mapping
+# (scripts/aws-template-release.py --version X.Y.Z); here, in the repository, it is empty.
 # [test copy]
 # For a test before a release, an upload by hand names an image under Test image instead.
 # In the repository's template, comment markers set the test parts apart:
@@ -11,8 +13,10 @@
 # --copy test keeps them.
 # [/test copy]
 #
-# Upgrade with the console's Update and the new release's template, or with
-# `aws cloudformation deploy`, which keep the parameters they are not given. KeysFromStack
+# Upgrade with the console's Update, or with `aws cloudformation deploy`, which keep the
+# parameters they are not given, Version left empty: with the newest release's template
+# when that release is of a newer minor than this template, else with this template and
+# something new under Look for a newer release. KeysFromStack
 # and DatabaseSnapshot keep their values for the life of the stack: an update that drops
 # DatabaseSnapshot replaces the restored database with an empty one. The stack sets its
 # stack policy itself once its create completes, and again once each update completes or
@@ -30,7 +34,7 @@ Metadata:
       - Label: { default: Address }
         Parameters: [DomainName, HostedZoneId, CertificateArn]
       - Label: { default: Version }
-        Parameters: [VersionOverride]
+        Parameters: [VersionOverride, LookForNewerRelease]
       - Label: { default: Size }
         Parameters: [DatabaseInstanceClass, CpuArchitecture]
       - Label: { default: Restore }
@@ -49,7 +53,8 @@ Metadata:
       DomainName: { default: Domain name }
       HostedZoneId: { default: Route 53 hosted zone (recommended) }
       CertificateArn: { default: Your ACM certificate (optional) }
-      VersionOverride: { default: Version }
+      VersionOverride: { default: Version (leave empty for the newest) }
+      LookForNewerRelease: { default: Look for a newer release }
       DatabaseInstanceClass: { default: Database instance class }
       CpuArchitecture: { default: CPU architecture }
       KeysFromStack: { default: Keys of a deleted stack (optional) }
@@ -88,7 +93,13 @@ Parameters:
   VersionOverride:
     Type: String
     Default: ""
-    Description: "This copy of the template names no release: type the version to install, such as 0.2.0."
+    Description: "Leave empty to install the newest release of the edition, found when the stack is created or updated. Type a version, such as 0.2.0, to install exactly that one. The version found keeps running until an update finds another."
+  # Only passed to the Version resource: anything new here makes an update look up the
+  # newest release again, when no other value changes.
+  LookForNewerRelease:
+    Type: String
+    Default: ""
+    Description: "With Version empty, an update installs the newest release. When nothing else changes, type something new here, such as today's date, and update."
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -129,13 +140,14 @@ Parameters:
     Description: "Leave empty. Only for Qory Apiary's pre-release tests: a full image reference, which replaces the image the Edition and Version pick. Needs the download key above."
   # [/test copy]
 
-# The versions a release names, which scripts/aws-template-release.py writes in. Empty
-# here, in the repository. The images are each edition's.
+# The template's version, which a release writes in (scripts/aws-template-release.py
+# --version X.Y.Z): the Version resource refuses a release of a newer minor than this
+# template. Empty here, in the repository, which skips that check. The images are each
+# edition's.
 Mappings:
-  Release:
-    Versions:
-      CommunityVersion: ""
-      ProVersion: ""
+  Template:
+    Release:
+      Version: ""
   Images:
     Community:
       Repository: ghcr.io/qoryai/apiary
@@ -169,38 +181,17 @@ Rules:
       - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
         AssertDescription: "A test image needs the download key: set Qory Apiary Pro download key."
   # [/test copy]
-  # With Version empty, the edition's version is the Release mapping's. A Rule cannot read a
-  # mapping, so the release writes the same version in here too
-  # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version
-  # being empty here, the Assert holds exactly when that value is not. Here, in the
-  # repository, both are empty.
-  # [test copy]
-  # With a test image, the image names the version, so neither Rule applies; the download
-  # key and the CPU architecture are still checked above.
-  # [/test copy]
-  CommunityVersionNamed:
-    RuleCondition: !And
-      - !Equals [!Ref Edition, Qory Apiary Community]
-      - !Equals [!Ref VersionOverride, ""]
-      - !Equals [!Ref TestImage, ""]  # [test copy]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: "This copy of the template names no release of Qory Apiary Community: type a version under Version."
-  ProVersionNamed:
-    RuleCondition: !And
-      - !Equals [!Ref Edition, Qory Apiary Pro]
-      - !Equals [!Ref VersionOverride, ""]
-      - !Equals [!Ref TestImage, ""]  # [test copy]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: Qory Apiary Pro is installed from Qory Apiary Pro's release.
 
 Conditions:
-  IsPro: !Equals [!Ref Edition, Qory Apiary Pro]
-  HasVersionOverride: !Not [!Equals [!Ref VersionOverride, ""]]
+  # Qory Apiary Community's releases are looked up anonymously, Qory Apiary Pro's with the
+  # download key (the Version resource).
+  IsCommunity: !Equals [!Ref Edition, Qory Apiary Community]
   HasTestImage: !Not [!Equals [!Ref TestImage, ""]]  # [test copy]
+  LookUpVersion: !Equals [!Ref TestImage, ""]  # [test copy]
   # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
+  # The Version resource reads the key for Qory Apiary Pro alone.
+  LooksUpWithDownloadKey: !And [!Condition HasDownloadKey, !Not [!Condition IsCommunity]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
   HasErlangOptions: !Not [!Equals [!Ref ErlangOptions, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
@@ -612,9 +603,324 @@ Resources:
                   - ssmmessages:OpenDataChannel
                 Resource: "*"
 
+  # The version to install, found by a function in this stack when the stack is created or
+  # updated: with Version empty, the newest release of the edition, the highest tag of
+  # the form X.Y.Z in the edition's repository, never "latest"; with a version typed, exactly
+  # that one. The image's digest pins it: the task runs <repository>@sha256:..., so a
+  # task replacement or a moved tag never changes what runs, only a create or update does.
+  # Qory Apiary Pro's repository is read with the download key, which the function reads
+  # from RegistryCredentials by the secret's ARN: the key itself is never one of the
+  # resource's properties. Qory Apiary Community's is read anonymously.
+  #
+  # CloudFormation sends the resource an update only when one of its properties changes, so
+  # its properties are every value on the form but the download key, Look for a newer
+  # release included, and the template's version: an update that changes anything but the
+  # key looks up the newest release again, and Look for a newer release does it when nothing
+  # else changes. Each create and update answers with a new resource ID, the version, digest
+  # and edition in it, so that a later step failing returns the stack to the old ID and its
+  # image; an update sent while the stack's update rolls back answers with the version and
+  # digest of the ID it is given, looking nothing up. A version older than the one the stack
+  # runs is refused, typed or found: within the edition by X.Y.Z, from another edition by
+  # X.Y alone. So is a release of a newer minor than the template's (the Template mapping,
+  # empty in the repository, which skips that check): migrations only go forward, and a
+  # patch release never needs a template change. A delete changes nothing.
+  #
+  # The function never logs the request, the key or the registry's token, and never follows
+  # a redirect, which would carry the key or the token to another host. It answers
+  # CloudFormation even when it fails. Its role may read the download key's secret, for
+  # Qory Apiary Pro alone, read this stack, and write VersionLogGroup, which is kept as the
+  # task's is. The runtime is pinned, and kept current with each release.
+  VersionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackUuid}/version
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      RetentionInDays: 30
+
+  VersionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: find-version
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - !If
+                - LooksUpWithDownloadKey
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref RegistryCredentials
+                - !Ref AWS::NoValue
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Ref AWS::StackId
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt VersionLogGroup.Arn
+
+  VersionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Finds the version to install and its image's digest when the stack is created or updated.
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt VersionRole.Arn
+      Timeout: 300
+      LoggingConfig:
+        LogGroup: !Ref VersionLogGroup
+      Environment:
+        Variables:
+          STACK_ID: !Ref AWS::StackId
+      # Each call to the registry waits at most 10 seconds, and a page of tags holds 1000.
+      # A registry that refuses (401 or 403), cannot be reached (a network error or 5xx), or
+      # has no such release fails the resource with a message that says so.
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          import boto3
+          from botocore.config import Config
+
+          CONFIG = Config(connect_timeout=5, read_timeout=15, retries={"total_max_attempts": 2, "mode": "standard"})
+          RELEASE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+          # The resource's ID: <version>@<digest>/<edition, quoted>/<request>, or before the
+          # edition was in it, <version>@<digest>/<request>.
+          RUNS = re.compile(r"(\d+\.\d+\.\d+)@(sha256:[0-9a-f]{64})/(?:([^/]*)/)?[^/]*$")
+          NEXT = re.compile(r'<(?:https://ghcr\.io)?(/v2/[^>]+)>;\s*rel="?next"?')
+          ACCEPT = ", ".join(
+              "application/vnd." + kind
+              for kind in (
+                  "oci.image.index.v1+json",
+                  "docker.distribution.manifest.list.v2+json",
+                  "oci.image.manifest.v1+json",
+                  "docker.distribution.manifest.v2+json",
+              )
+          )
+          NONE = "No release of {e} was found at {r}."
+          MISSING = "{e} {v} does not exist: check Version, or leave it empty for the newest release."
+          KEY = "The download key cannot read {r}: check Qory Apiary Pro download key."
+          ANONYMOUS = "{r} cannot be read without a download key that reads it."
+          UNREACHABLE = "ghcr.io could not be reached to find the version: update again later."
+          OLDER = "Version {v} is older than the {o} the stack runs: Qory Apiary does not go back to an older version."
+          BACK = "{e} {v} is older than the {re} {o} the stack runs: Qory Apiary does not go back to an older version."
+          NEWER = "{e} {v} needs a newer template: update the stack with the newest apiary.yaml."
+
+
+          class Refused(Exception):
+              pass
+
+
+          class Denied(Exception):
+              pass
+
+
+          class Missing(Exception):
+              pass
+
+
+          class Unreachable(Exception):
+              pass
+
+
+          # Never follows a redirect: the key or the token would go with it to another host.
+          # A 3xx is then an HTTPError.
+          class Stay(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *arguments):
+                  return None
+
+
+          OPENER = urllib.request.build_opener(Stay)
+
+
+          def number(version):
+              return tuple(map(int, version.split(".")))
+
+
+          def call(url, headers, method="GET"):
+              try:
+                  return OPENER.open(urllib.request.Request(url, headers=headers, method=method), timeout=10)
+              except urllib.error.HTTPError as error:
+                  if error.code in (401, 403):
+                      raise Denied from None
+                  if error.code == 404:
+                      raise Missing from None
+                  if 400 <= error.code < 500:
+                      raise
+                  raise Unreachable from None
+              except OSError:
+                  raise Unreachable from None
+
+
+          def newest(path, headers):
+              pages = f"/v2/{path}/tags/list"
+              url, tags = f"https://ghcr.io{pages}?n=1000", []
+              for _ in range(100):
+                  with call(url, headers) as response:
+                      tags += json.load(response).get("tags") or []
+                      link = NEXT.search(response.headers.get("Link") or "")
+                  if not link:
+                      return max((tag for tag in tags if RELEASE.fullmatch(tag)), key=number, default=None)
+                  # The next page of this repository's tags, and nothing else.
+                  if link[1].split("?")[0] != pages:
+                      raise Unreachable
+                  url = "https://ghcr.io" + link[1]
+              raise ValueError("more than 100 pages of tags")
+
+
+          def lookup(event, secrets):
+              p = event["ResourceProperties"]
+              edition, typed, template = p["Edition"], p["Version"], p["TemplateVersion"]
+              repository, secret = p["Repository"], p["DownloadKeySecret"]
+              path = repository.removeprefix("ghcr.io/")
+              runs = RUNS.match(event.get("PhysicalResourceId", ""))
+              if runs:
+                  was = urllib.parse.unquote(runs[3]) if runs[3] else event.get("OldResourceProperties", {}).get("Edition", edition)
+
+              def fits(version):
+                  if template and number(version)[:2] > number(template)[:2]:
+                      raise Refused(NEWER.format(e=edition, v=version))
+
+              # Never back to an older version than the one the stack runs: within the edition by
+              # X.Y.Z, from another edition by X.Y. A create, a restore included, is never refused.
+              def forward(version):
+                  if not runs:
+                      return
+                  older, running = number(version), number(runs[1])
+                  if was != edition:
+                      older, running = older[:2], running[:2]
+                  if older < running:
+                      if typed and was == edition:
+                          raise Refused(OLDER.format(v=version, o=runs[1]))
+                      raise Refused(BACK.format(e=edition, v=version, re=was, o=runs[1]))
+
+              if event["RequestType"] == "Update":
+                  cloudformation = boto3.client("cloudformation", config=CONFIG)
+                  stack = cloudformation.describe_stacks(StackName=os.environ["STACK_ID"])["Stacks"][0]
+                  if stack["StackStatus"] == "UPDATE_ROLLBACK_IN_PROGRESS":
+                      return runs[1], runs[2], event["PhysicalResourceId"]
+              if typed:
+                  if not RELEASE.fullmatch(typed):
+                      raise Refused(MISSING.format(e=edition, v=typed))
+                  forward(typed)
+                  fits(typed)
+              headers = {}
+              if secret:
+                  value = boto3.client("secretsmanager", config=CONFIG).get_secret_value(SecretId=secret)["SecretString"]
+                  key = json.loads(value)
+                  basic = base64.b64encode(f"{key['username']}:{key['password']}".encode()).decode()
+                  secrets += [key["username"], key["password"], basic]
+                  headers["Authorization"] = "Basic " + basic
+              try:
+                  scope = f"https://ghcr.io/token?service=ghcr.io&scope=repository:{path}:pull"
+                  with call(scope, headers) as response:
+                      token = json.load(response)["token"]
+                  secrets.append(token)
+                  headers = {"Authorization": "Bearer " + token, "Accept": ACCEPT}
+                  base = "https://ghcr.io/v2/" + path
+                  version = typed or newest(path, headers)
+                  if not version:
+                      raise Missing
+                  forward(version)
+                  fits(version)
+                  with call(f"{base}/manifests/{version}", headers, "HEAD") as response:
+                      digest = response.headers.get("Docker-Content-Digest") or ""
+              except Denied:
+                  raise Refused((KEY if secret else ANONYMOUS).format(r=repository)) from None
+              except Unreachable:
+                  raise Refused(UNREACHABLE) from None
+              except Missing:
+                  raise Refused((MISSING if typed else NONE).format(e=edition, v=typed, r=repository)) from None
+              if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                  raise ValueError("the registry gave no digest")
+              return version, digest, f"{version}@{digest}/{urllib.parse.quote(edition, safe='')}/{event['RequestId']}"
+
+
+          def handler(event, context):
+              status, reason, data, secrets = "SUCCESS", "", {}, []
+              physical = event.get("PhysicalResourceId") or event["LogicalResourceId"]
+              try:
+                  if event["RequestType"] != "Delete":
+                      version, digest, physical = lookup(event, secrets)
+                      image = event["ResourceProperties"]["Repository"] + "@" + digest
+                      data = {"Version": version, "Image": image, "Digest": digest}
+                      print(f"The version is {version}, {image}.")
+              except Refused as error:
+                  status, reason = "FAILED", str(error)[:1000]
+                  print(reason)
+              except Exception as error:
+                  status, reason = "FAILED", f"See the details in CloudWatch Log Stream: {context.log_stream_name}"
+                  text = f"{type(error).__name__}: {error}"
+                  # The longest first, so that no part of one is left where a shorter one was in it.
+                  for secret in sorted(set(filter(None, secrets)), key=len, reverse=True):
+                      text = text.replace(secret, "***")
+                  print(f"The version was not found: {text}"[:1000])
+
+              body = json.dumps(
+                  {
+                      "Status": status,
+                      "Reason": reason or "Done.",
+                      "PhysicalResourceId": physical,
+                      "StackId": event["StackId"],
+                      "RequestId": event["RequestId"],
+                      "LogicalResourceId": event["LogicalResourceId"],
+                      "Data": data,
+                  }
+              ).encode()
+              request = urllib.request.Request(event["ResponseURL"], data=body, method="PUT", headers={"Content-Type": ""})
+              urllib.request.urlopen(request, timeout=10)
+
+  # Made after RegistryCredentials, for Qory Apiary Pro, and before the task definition,
+  # which runs the image it found. CloudFormation waits at most ServiceTimeout seconds for
+  # the function's answer.
+  # [test copy]
+  # With Test image, nothing is looked up: the task runs the image Test image names.
+  # [/test copy]
+  Version:
+    Type: Custom::Version
+    Condition: LookUpVersion  # [test copy]
+    Properties:
+      ServiceToken: !GetAtt VersionFunction.Arn
+      ServiceTimeout: "360"
+      Edition: !Ref Edition
+      Repository: !If
+        - IsCommunity
+        - !FindInMap [Images, Community, Repository]
+        - !FindInMap [Images, Pro, Repository]
+      DownloadKeySecret: !If [LooksUpWithDownloadKey, !Ref RegistryCredentials, ""]
+      Version: !Ref VersionOverride
+      LookForNewerRelease: !Ref LookForNewerRelease
+      TemplateVersion: !FindInMap [Template, Release, Version]
+      DomainName: !Ref DomainName
+      HostedZoneId: !Ref HostedZoneId
+      CertificateArn: !Ref CertificateArn
+      DatabaseInstanceClass: !Ref DatabaseInstanceClass
+      CpuArchitecture: !Ref CpuArchitecture
+      KeysFromStack: !Ref KeysFromStack
+      DatabaseSnapshot: !Ref DatabaseSnapshot
+      AcceptSigningKey: !Ref AcceptSigningKey
+      DatabaseDeletionProtection: !Ref DatabaseDeletionProtection
+      ErlangOptions: !Ref ErlangOptions
+
   # Part 1's settings, from the parameters and Secrets Manager. The database's certificate
-  # is checked against the RDS bundle the image carries. The image is the edition's, at
-  # Version when it is given, else at the Release mapping's version for that edition.
+  # is checked against the RDS bundle the image carries. The image is the one the Version
+  # resource found, by its digest, so only a stack create or update changes what runs.
   # [test copy]
   # With Test image, exactly the image it names.
   # [/test copy]
@@ -637,19 +943,7 @@ Resources:
           Image: !If
             - HasTestImage
             - !Ref TestImage
-            - !Sub
-              - ${Repository}:${Tag}
-              - Repository: !If
-                  - IsPro
-                  - !FindInMap [Images, Pro, Repository]
-                  - !FindInMap [Images, Community, Repository]
-                Tag: !If
-                  - HasVersionOverride
-                  - !Ref VersionOverride
-                  - !If
-                    - IsPro
-                    - !FindInMap [Release, Versions, ProVersion]
-                    - !FindInMap [Release, Versions, CommunityVersion]
+            - !GetAtt Version.Image
           Essential: true
           PortMappings:
             - ContainerPort: 4100
@@ -1045,6 +1339,7 @@ Outputs:
   Edition:
     Description: The edition the stack runs.
     Value: !Ref Edition
+  # The version and the image the Version resource found.
   # [test copy]
   # With Test image, the image the stack runs in place of a version.
   # [/test copy]
@@ -1053,13 +1348,13 @@ Outputs:
     Value: !If
       - HasTestImage
       - !Sub "Test image ${TestImage}"
-      - !If
-        - HasVersionOverride
-        - !Ref VersionOverride
-        - !If
-          - IsPro
-          - !FindInMap [Release, Versions, ProVersion]
-          - !FindInMap [Release, Versions, CommunityVersion]
+      - !GetAtt Version.Version
+  Image:
+    Description: The image the stack runs, by its digest.
+    Value: !If
+      - HasTestImage
+      - !Ref TestImage
+      - !GetAtt Version.Image
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
     Value: !Sub
