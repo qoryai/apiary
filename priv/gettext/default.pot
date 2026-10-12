@@ -9593,6 +9593,12 @@ msgstr ""
 msgid "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."
 msgstr ""
 
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Qory Apiary doesn't let a *. suffix with paths cover another allowed host."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary links no stored secret to it."
@@ -11601,10 +11607,9 @@ msgstr ""
 msgid "The gateway fetched its run configuration again; the digest is the one it had."
 msgstr ""
 
-#: lib/apiary/policy/resolution.ex
+#: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "The gateway holds a host to one list of paths and cannot tell which of the two applies."
+msgid "The gateway refuses a host that is neither a name nor an address in canonical form,"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -12163,11 +12168,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The wall denies it in either mode."
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "The wall refuses a host that is neither a name nor an address in canonical form,"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
