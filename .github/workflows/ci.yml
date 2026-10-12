@@ -133,8 +133,8 @@ jobs:
       - name: Check which secrets and log groups the stack keeps
         run: python scripts/aws-template-check.py kept
 
-      # The Release mapping's keys, which Qory Apiary Pro's release writes too, and every
-      # Fn::FindInMap against the mappings: cfn-lint does not check one inside a Fn::If.
+      # The Images mapping's keys, and every Fn::FindInMap against the mappings: cfn-lint
+      # does not check one inside a Fn::If.
       - name: Check the template's mappings
         run: python scripts/aws-template-check.py mappings
 
@@ -154,33 +154,27 @@ jobs:
       - name: Test the AWS template's release script
         run: python3 -m unittest discover -s scripts -p "test_*.py"
 
-      # A release writes its versions into a copy of the template, as release.yml does for
-      # Qory Apiary Community (the Qory Apiary Pro version empty) and as a release naming
-      # both does, with Qory Apiary Pro first; the script fails unless it writes every place
-      # exactly once. Each is written twice: the release copy, which a release attaches,
-      # without the test parts, and the test copy, never published, with them. cfn-lint
-      # then reads each of the four, and each is checked for its comparisons with Edition,
-      # for ASCII alone and for an output that is a command. Each release copy holds no test
-      # part or test wording, comments included, and is its test copy without the test parts.
+      # A release writes its version into a copy of the template, the template's version in
+      # the Template mapping; the script fails unless it writes it exactly once. Two copies
+      # are written: the release copy, which a release attaches, without the test parts, and
+      # the test copy, never published, with them. cfn-lint then reads both, and each is
+      # checked for its comparisons with Edition, for ASCII alone and for an output that is
+      # a command. The release copy holds no test part or test wording, comments included,
+      # and is the test copy without the test parts.
       - name: Write a release's copies of the template, and lint them
         run: |
           copies=()
           for copy in release test; do
-            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community-$copy.yaml"
-            python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community-$copy.yaml" --copy "$copy" \
-              --edition-default "Qory Apiary Community" --community-version 0.0.0 --pro-version ""
-            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro-$copy.yaml"
-            python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro-$copy.yaml" --copy "$copy" \
-              --edition-default "Qory Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
-            copies+=("$RUNNER_TEMP/apiary-community-$copy.yaml" "$RUNNER_TEMP/apiary-pro-$copy.yaml")
+            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-$copy.yaml"
+            python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-$copy.yaml" --copy "$copy" --version 0.0.0
+            copies+=("$RUNNER_TEMP/apiary-$copy.yaml")
           done
           cfn-lint "${copies[@]}"
           python scripts/aws-template-check.py editions "${copies[@]}"
           python scripts/aws-template-check.py ascii "${copies[@]}"
           python scripts/aws-template-check.py outputs "${copies[@]}"
-          python scripts/aws-template-check.py release "$RUNNER_TEMP/apiary-community-release.yaml" "$RUNNER_TEMP/apiary-pro-release.yaml"
-          python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-community-release.yaml" "$RUNNER_TEMP/apiary-community-test.yaml"
-          python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-pro-release.yaml" "$RUNNER_TEMP/apiary-pro-test.yaml"
+          python scripts/aws-template-check.py release "$RUNNER_TEMP/apiary-release.yaml"
+          python scripts/aws-template-check.py copies "$RUNNER_TEMP/apiary-release.yaml" "$RUNNER_TEMP/apiary-test.yaml"
 
       # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
       # included, which replaces a restored database with an empty one. The guides name

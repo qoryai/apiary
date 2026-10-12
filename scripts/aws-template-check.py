@@ -42,10 +42,9 @@ retention, so its events still go, and uses the stack ID's UUID in its name too.
 uses it when it is a Fn::Sub whose text names a variable that is exactly
 !Select [2, !Split ["/", !Ref AWS::StackId]]: a variable given but not used does not count.
 
-mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
-scripts/aws-template-release.py writes and Qory Apiary Pro's release relies on, and the Images
-mapping exactly Community and Pro; and every Fn::FindInMap names a value the mappings hold.
-cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
+mappings: the Images mapping holds exactly Community and Pro; and every Fn::FindInMap names a
+value the mappings hold. cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the
+template's are.
 
 editions: in the template, or in each FILE given (such as a release's copy of the
 template): every Fn::Equals that has !Ref Edition as one of its two arguments, anywhere in
@@ -71,10 +70,10 @@ comments included: the script's check (release_copy_failures), run again on the 
 release attaches.
 
 copies: RELEASE and TEST, the release copy and the test copy the script writes with the same
-edition and versions. The release copy holds none of the test parts (TEST_PARTS, and no
-TestImage anywhere), and the test copy holds them all. And the test copy's template, its
-test parts taken out, the Fn::And items on TestImage dropped and each Fn::If on
-HasTestImage replaced by its value without a test image, is the release copy's.
+version. The release copy holds none of the test parts (TEST_PARTS, and no TestImage
+anywhere), and the test copy holds them all. And the test copy's template, its test parts
+taken out, the Fn::And items on TestImage dropped and each Fn::If on HasTestImage replaced
+by its value without a test image, is the release copy's.
 
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
 !Ref, as their long forms), except for release.
@@ -97,7 +96,6 @@ SECRETS = ["SecretKeyBase", "EncryptionSecret", "SigningSecret", "DatabasePasswo
 DOWNLOAD_KEY = "RegistryCredentials"
 RETAINED = {"Retain", "RetainExceptOnCreate"}
 MAPPINGS = {
-    "Release": {"Versions": {"CommunityVersion", "ProVersion"}},
     "Images": {"Community": {"Repository"}, "Pro": {"Repository"}},
 }
 COMMAND = re.compile(r"\s*aws\s")
@@ -619,6 +617,9 @@ TEST_PARTS = [
     ("Parameters", "TestImage"),
     ("Rules", "TestImageNeedsDownloadKey"),
     ("Conditions", HAS_TEST_IMAGE),
+    # With a test image, the version is not looked up.
+    ("Conditions", "LookUpVersion"),
+    ("Resources", "Version", "Condition"),
 ]
 
 

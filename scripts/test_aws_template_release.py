@@ -21,8 +21,8 @@ spec = importlib.util.spec_from_file_location("aws_template_release", SCRIPT)
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
-COMMUNITY_FIRST = release.texts(release.COMMUNITY, "1.2.3", "")
-PRO_FIRST = release.texts(release.PRO, "1.2.3", "1.2.4")
+VERSIONED = release.texts("1.2.3")
+UNVERSIONED = release.texts("")
 
 # The test parts of the repository's template, as text: each is in the test copy and not in
 # a release's.
@@ -32,10 +32,12 @@ TEST_TEXTS = [
     "  TestImage:\n    Type: String",
     "replaces the image the Edition and Version pick",
     "TestImageNeedsDownloadKey:",
-    '      - !Equals [!Ref TestImage, ""]',
     'HasTestImage: !Not [!Equals [!Ref TestImage, ""]]',
+    'LookUpVersion: !Equals [!Ref TestImage, ""]',
+    "    Condition: LookUpVersion",
     "Image: !If\n            - HasTestImage\n            - !Ref TestImage",
     '      - HasTestImage\n      - !Sub "Test image ${TestImage}"',
+    "      - HasTestImage\n      - !Ref TestImage\n      - !GetAtt Version.Image",
     "# With Test image, exactly the image it names.",
     "# With Test image, the image the stack runs in place of a version.",
 ]
@@ -85,8 +87,13 @@ class RepositoryTemplate(unittest.TestCase):
         self.assertNotIn("Also needed to pull a test image.", self.source)
         self.assertNotIn("Ignored when a test image is set.", self.source)
 
+    def test_the_source_names_no_version(self):
+        self.assertIn('  Template:\n    Release:\n      Version: ""\n', self.source)
+        for gone in ("CommunityVersion", "ProVersion", "VersionNamed", "HasVersionOverride"):
+            self.assertNotIn(gone, self.source)
+
     def test_a_release_copy_has_no_test_part_or_wording(self):
-        for targets in (COMMUNITY_FIRST, PRO_FIRST):
+        for targets, version in ((VERSIONED, '"1.2.3"'), (UNVERSIONED, '""')):
             written = copy(self.source, release.RELEASE, targets)
             self.assertIsInstance(written, str, written)
             self.assertEqual(release.release_copy_failures(written), [])
@@ -94,18 +101,29 @@ class RepositoryTemplate(unittest.TestCase):
                 self.assertNotIn(text, written)
             self.assertNotIn("TestImage", written)
             self.assertNotIn("[test copy]", written)
-            self.assertIn(f'Description: "{release.VERSION_HELP}"', written)
-            self.assertIn("          Image: !Sub\n            - ${Repository}:${Tag}\n", written)
-            self.assertIn("    Value: !If\n      - HasVersionOverride\n      - !Ref VersionOverride\n", written)
+            self.assertIn(f"  Template:\n    Release:\n      Version: {version}\n", written)
+            self.assertIn("  Version:\n    Type: Custom::Version\n    Properties:\n", written)
+            self.assertIn("          Image: !GetAtt Version.Image\n", written)
+            self.assertIn("    Value: !GetAtt Version.Version\n", written)
+            self.assertIn("    Value: !GetAtt Version.Image\n", written)
 
     def test_a_test_copy_has_every_test_part(self):
-        for targets in (COMMUNITY_FIRST, PRO_FIRST):
+        for targets, version in ((VERSIONED, '"1.2.3"'), (UNVERSIONED, '""')):
             written = copy(self.source, release.TEST, targets)
             self.assertIsInstance(written, str, written)
             for text in TEST_TEXTS:
                 self.assertIn(text, written)
             self.assertNotIn("[test copy]", written)
-            self.assertIn(f'Description: "{release.VERSION_HELP}"', written)
+            self.assertIn(f"  Template:\n    Release:\n      Version: {version}\n", written)
+
+    def test_the_version_is_written_once_or_not_at_all(self):
+        written = copy(self.source, release.RELEASE, VERSIONED)
+        self.assertEqual(written.count('"1.2.3"'), 1)
+        # A template whose mapping already names a version is not the repository's.
+        named = self.source.replace('    Release:\n      Version: ""\n', '    Release:\n      Version: "1.0.0"\n')
+        failures = copy(named, release.RELEASE, VERSIONED)
+        self.assertIsInstance(failures, list)
+        self.assertIn('Mappings.Template.Release.Version is "1.0.0", not ""', failures[0])
 
     def test_a_test_copy_leaves_out_the_markers_alone(self):
         written = copy(self.source, release.TEST)
@@ -118,9 +136,9 @@ class RepositoryTemplate(unittest.TestCase):
 
     def test_a_copy_already_written_is_refused(self):
         for kind in (release.RELEASE, release.TEST):
-            written = copy(self.source, kind, COMMUNITY_FIRST)
+            written = copy(self.source, kind, VERSIONED)
             for again in (release.RELEASE, release.TEST):
-                failures = copy(written, again, COMMUNITY_FIRST)
+                failures = copy(written, again, VERSIONED)
                 self.assertIsInstance(failures, list)
                 self.assertIn("no marked parts", failures[0])
 
@@ -234,8 +252,7 @@ class Wording(unittest.TestCase):
 class CommandLine(unittest.TestCase):
     def run_script(self, path, *arguments):
         return subprocess.run(
-            [sys.executable, str(SCRIPT), str(path), *arguments,
-             "--edition-default", release.COMMUNITY, "--community-version", "1.2.3", "--pro-version", ""],
+            [sys.executable, str(SCRIPT), str(path), *arguments],
             capture_output=True,
             text=True,
         )
@@ -244,17 +261,38 @@ class CommandLine(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "apiary.yaml"
             path.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
-            result = self.run_script(path)
+            result = self.run_script(path, "--version", "1.2.3")
             self.assertEqual(result.returncode, 0, result.stderr)
-            expected = copy(TEMPLATE.read_text(encoding="utf-8"), release.RELEASE, COMMUNITY_FIRST)
+            expected = copy(TEMPLATE.read_text(encoding="utf-8"), release.RELEASE, VERSIONED)
             self.assertEqual(path.read_text(encoding="utf-8"), expected)
+
+    def test_without_a_version_the_mapping_stays_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "apiary.yaml"
+            path.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+            result = self.run_script(path, "--copy", "test")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            expected = copy(TEMPLATE.read_text(encoding="utf-8"), release.TEST)
+            self.assertEqual(path.read_text(encoding="utf-8"), expected)
+            self.assertIn('      Version: ""\n', expected)
+
+    def test_a_version_that_is_not_x_y_z_is_refused(self):
+        for version in ("v1.2.3", "1.2", "1.2.3-rc1", "01.2.3", "latest"):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "apiary.yaml"
+                text = TEMPLATE.read_text(encoding="utf-8")
+                path.write_text(text, encoding="utf-8")
+                result = self.run_script(path, "--version", version)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("is not a version such as 0.2.0", result.stderr)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
 
     def test_a_refused_copy_writes_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "apiary.yaml"
             text = TEMPLATE.read_text(encoding="utf-8").replace("# Qory Apiary on AWS", "# Qory Apiary on AWS, tested")
             path.write_text(text, encoding="utf-8")
-            result = self.run_script(path, "--copy", "release")
+            result = self.run_script(path, "--copy", "release", "--version", "1.2.3")
             self.assertEqual(result.returncode, 1)
             self.assertIn("test wording", result.stderr)
             self.assertEqual(path.read_text(encoding="utf-8"), text)

@@ -11,9 +11,10 @@ permissions:
 # linux/amd64 and linux/arm64, and the GitHub release with compose.yaml, env.example and
 # apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
 # apiary.yaml the release copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as
-# Qory Apiary Community's version, which scripts/aws-template-release.py --copy release
-# writes in, without the template's test parts. The test copy is never attached or
-# uploaded. The image's build is ci.yml's: the same labels, build arguments and cache.
+# the template's version, which scripts/aws-template-release.py --copy release --version
+# writes in, without the template's test parts; the stack finds the version to install when
+# it is created or updated. The test copy is never attached or uploaded. The image's build
+# is ci.yml's: the same labels, build arguments and cache.
 # Nothing else publishes this image, or the template; prerelease.yml, run by hand or by a
 # push to the branch prerelease, publishes pre-release images to another package,
 # ghcr.io/qoryai/apiary-prerelease.
@@ -52,9 +53,9 @@ jobs:
             echo ".env.example has no single empty APIARY_VERSION= line to write env.example from" >&2; exit 1; }
 
       - name: Check the template the release publishes
-        # The release writes the version into a copy of the template, whose Release mapping
-        # in the repository names none; the script refuses a template it cannot write
-        # every place of exactly once. It writes both copies, the release copy the release
+        # The release writes its version into a copy of the template, whose Template mapping
+        # in the repository names none; the script refuses a template it cannot write the
+        # version into exactly once. It writes both copies, the release copy the release
         # attaches and the test copy, which stays here: the template must make each.
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -62,8 +63,7 @@ jobs:
           test -f deploy/aws/stack-policy.json || { echo "deploy/aws/stack-policy.json is missing" >&2; exit 1; }
           for copy in release test; do
             cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-$copy.yaml"
-            python3 scripts/aws-template-release.py "$RUNNER_TEMP/apiary-$copy.yaml" --copy "$copy" \
-              --edition-default "Qory Apiary Community" --community-version "$VERSION" --pro-version ""
+            python3 scripts/aws-template-release.py "$RUNNER_TEMP/apiary-$copy.yaml" --copy "$copy" --version "$VERSION"
           done
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
@@ -183,9 +183,7 @@ jobs:
           sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/env.example
           grep -qx "APIARY_VERSION=$VERSION" dist/env.example
           cp deploy/aws/apiary.yaml dist/apiary.yaml
-          python3 scripts/aws-template-release.py dist/apiary.yaml --copy release \
-            --edition-default "Qory Apiary Community" --community-version "$VERSION" --pro-version ""
-          grep -qx "      CommunityVersion: \"$VERSION\"" dist/apiary.yaml
+          python3 scripts/aws-template-release.py dist/apiary.yaml --copy release --version "$VERSION"
           python3 scripts/aws-template-check.py release dist/apiary.yaml
           cp deploy/aws/stack-policy.json dist/stack-policy.json
 
