@@ -301,9 +301,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   overview's first-run box, carries `--via` and the gateway's URL, with a line under it
   that a gateway whose certificate a private certificate authority signed needs
   `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
-  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
-  gateway. A gateway relays the enrolment unchanged, from its address, which the
-  enrolment's per-address limit counts for every machine behind it.
+  (`Apiary.AccessKeys.via_lines/1`), each step that points the node or node pool at Qory
+  Apiary naming the gateway. A gateway relays the enrolment unchanged, from its address,
+  which the enrolment's per-address limit counts for every machine behind it.
   A gateway's key enrols the gateway and registers no
   run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
@@ -407,7 +407,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
-  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the Forager file's
+  set `QORY_APIARY_PUBLIC_KEY`; point the node at Qory Apiary, the Forager file's
   `gateway.server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
