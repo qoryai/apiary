@@ -310,7 +310,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     settle(ctx)
 
-    if Apiary.Features.on?(scope, :security), do: policy(scope, keys)
+    if Apiary.Features.on?(:security), do: policy(scope, keys)
 
     Mix.shell().info("""
 

@@ -120,7 +120,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert Configuration.digest(key) != Configuration.digest(other_key)
   end
 
-  test "a gateway's key lists the workspaces the gateway may serve: its own",
+  test "a gateway's key is given a document without workspaces",
        %{scope: scope, key: key} do
     gateway = gateway_fixture(scope)
 
@@ -129,18 +129,62 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
     conn = signed_get(build_conn(), gateway_key.key_id, gateway_secret)
     document = json_response(conn, 200)
+    base = ApiaryWeb.Endpoint.url()
 
-    assert document["node_id"] == gateway.public_id
-    assert document["workspaces"] == [scope.workspace.public_id]
-    refute Map.has_key?(document, "node_kind")
+    assert document == %{
+             "version" => 1,
+             "node_id" => gateway.public_id,
+             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
+             "run" => %{"url" => base <> "/v1/runs"},
+             "apiary_public_key" => SigningKey.apiary_public_key()
+           }
 
     # The members in the contract's order, and the digest the answer names.
-    assert conn.resp_body =~
-             ~r/\A\{"version":1,"node_id":"ng_[^"]+","workspaces":\["ws_[^"]+"\],"events":/
+    assert conn.resp_body =~ ~r/\A\{"version":1,"node_id":"ng_[^"]+","events":/
 
     assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(gateway_key)]
     assert Configuration.digest(gateway_key) != Configuration.digest(key)
     assert signed_answer?(conn)
+  end
+
+  test "an organisation's gateway is given the same document, which a new workspace leaves as it is",
+       %{scope: scope} do
+    gateway = organisation_gateway_fixture(scope)
+
+    %{access_key: gateway_key, secret: gateway_secret} =
+      contract_key_fixture(scope, node: gateway)
+
+    assert gateway_key.workspace == nil
+
+    conn = signed_get(build_conn(), gateway_key.key_id, gateway_secret)
+    document = json_response(conn, 200)
+    assert document["node_id"] == gateway.public_id
+    refute Map.has_key?(document, "workspaces")
+    assert signed_answer?(conn)
+
+    [digest] = get_resp_header(conn, "x-qory-configuration")
+    assert digest == Configuration.digest(gateway_key)
+    assert digest == ApiaryWeb.Contract.ConfigurationController.digest(conn.resp_body)
+
+    # A workspace it may serve is added: nothing of the document changes.
+    workspace_fixture(scope.organisation)
+    again = signed_get(build_conn(), gateway_key.key_id, gateway_secret)
+    assert again.resp_body == conn.resp_body
+    assert get_resp_header(again, "x-qory-configuration") == [digest]
+  end
+
+  test "encode/1 without workspaces writes no such member" do
+    keys = [%{"alg" => "ed25519", "public_key" => "k"}]
+
+    body =
+      Configuration.encode(%{
+        node_id: "ng_0000000000000000",
+        url: "https://qory.example",
+        apiary_public_key: keys
+      })
+
+    assert body =~ ~r/\A\{"version":1,"node_id":"ng_0000000000000000","events":/
+    refute body =~ "workspaces"
   end
 
   test "encode/1 lists the workspaces in the order it is given" do

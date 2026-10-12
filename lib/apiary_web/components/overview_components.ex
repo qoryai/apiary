@@ -413,7 +413,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <.tool_mark name={@item.tool} /><span
         :if={@item.path != ""}
         class="q-path"
-      >{@item.path}</span><span class="q-port">{@item.host}:{@item.port}</span>
+      >{@item.path}</span><span class="q-port"><bdi>{@item.host}</bdi>:{@item.port}</span>
     </span>
     """
   end
@@ -421,7 +421,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
-      {@item.host}<span class="q-port">:{@item.port}</span><span
+      <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span><span
         :if={@item.held && @item.path != ""}
         class="q-path"
       >{@item.path}</span>
@@ -692,6 +692,10 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, default: MapSet.new()
   attr :can_set_mode?, :boolean, required: true
 
+  # A denied destination no rule can change, the wall's refusal or a host no rule can name,
+  # offers no act, as its row on Network access offers none.
+  defp attention_act(%{item: %{kind: :denied, unchangeable: true}} = assigns), do: ~H""
+
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""
@@ -732,21 +736,30 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_act(%{item: %{kind: :denied, elsewhere: %{} = level}} = assigns) do
+    # The level's New rule page with the host, for one who may change it there and where
+    # the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`).
+    new_rule_path =
+      case level.link do
+        %{can_change: true, new_rule_path: path} when is_binary(path) -> path
+        _ -> nil
+      end
+
     assigns =
       assign(assigns,
         level: level,
+        new_rule_path: new_rule_path,
         tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
       )
 
     ~H"""
     <.link
-      :if={@level.link && @level.link.can_change}
+      :if={@new_rule_path}
       id={"#{@item.id}-act"}
       navigate={
-        @level.link.path <>
+        @new_rule_path <>
           "?" <>
           URI.encode_query(%{
-            "allow" => @item.host,
+            "host" => @item.host,
             "back" => ~p"/#{@scope.organisation}/#{@scope.workspace}"
           })
       }
@@ -757,7 +770,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
     <span
-      :if={!(@level.link && @level.link.can_change)}
+      :if={!@new_rule_path}
       id={"#{@item.id}-act"}
       class="q-act-lock"
       title={@tip}
@@ -1706,7 +1719,8 @@ defmodule ApiaryWeb.OverviewComponents do
   command, which carries `--via` and the gateway's URL, and the line on a private
   certificate authority under it, as on the command's page. Anyone else reads who
   connects it. `landed` is the first run while the page is open; the box leaves at the
-  next navigation.
+  next navigation. `box={false}`, for a reader not shown the nodes (`node.read`; an
+  edition may hide them), leaves the box out, and only the line under it stays.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1747,6 +1761,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
+  attr :box, :boolean,
+    default: true,
+    doc: "whether the box is shown: false for a reader not shown the nodes"
+
   def onboarding(assigns) do
     used =
       assigns.keys
@@ -1771,7 +1789,7 @@ defmodule ApiaryWeb.OverviewComponents do
       )
 
     ~H"""
-    <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
+    <section :if={@box} id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
       <div class="q-onb-steps">
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">

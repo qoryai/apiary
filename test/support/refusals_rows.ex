@@ -339,9 +339,9 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :not_found_at_mount},
 
       # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
-      # pages need the `secrets` feature beside their actions' `security`. A member's page
-      # has no dialog to open, so the event reaches the context function, or the page
-      # refuses it for their role; a demoted admin's dialog was open.
+      # pages and actions are the `secrets` feature's. A member's page has no dialog to open,
+      # so the event reaches the context function, or the page refuses it for their role; a
+      # demoted admin's dialog was open.
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
        %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{},
@@ -434,18 +434,26 @@ defmodule ApiaryWeb.RefusalsRows do
     {:ok, _} = Deletion.delete_workspace(owner, workspace_c.id, workspace_c.slug)
 
     # The rules are the security policy's, which an instance without it does not have.
-    {rule_open, rule_locked, secret, variable} =
+    {rule_open, rule_locked} =
       if :security in Apiary.Features.enabled() do
         {:ok, open} = Policy.allow(owner, nil, %{host: "open.example"})
         {:ok, locked} = Policy.deny(owner, nil, %{host: "locked.example", locked: true})
+        {open, locked}
+      else
+        {nil, nil}
+      end
+
+    # The stored secret and the variable are the `secrets` feature's.
+    {secret, variable} =
+      if :secrets in Apiary.Features.enabled() do
         {:ok, secret} = Secrets.create_secret(owner, %{name: "FORGE_TOKEN", value: "x"})
 
         {:ok, variable} =
           Variables.create_variable(owner, :workspace, %{name: "NODE_ENV", value: "production"})
 
-        {open, locked, secret, variable}
+        {secret, variable}
       else
-        {nil, nil, nil, nil}
+        {nil, nil}
       end
 
     target =

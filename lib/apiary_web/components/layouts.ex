@@ -43,7 +43,8 @@ defmodule ApiaryWeb.Layouts do
   the core's, then the edition's (`c:ApiaryWeb.Edition.nav_entries/1`), each after the
   core's of its section. Each names the action its page is for (`Apiary.Access`), nil for
   the entries every member has: the sidebar keeps the ones the reader may take, which
-  leaves out those of a feature that is off, and a link of the breadcrumb's menus asks
+  leaves out those of a feature that is off or hidden from them, and a link of the
+  breadcrumb's menus asks
   them where it leads (`switch_target/3`).
   A new entry of the core goes here, not in a page.
   """
@@ -132,6 +133,18 @@ defmodule ApiaryWeb.Layouts do
         place: :organisation,
         action: :"audit.read"
       },
+      # The organisation's gateways, which nodes in any of its workspaces can use, where an
+      # organisation may have more than one workspace.
+      %Entry{
+        section: :home,
+        key: :gateways,
+        label: gettext("Gateways"),
+        icon: "hero-arrows-right-left",
+        path: fn organisation, _workspace -> ~p"/#{organisation}/gateways" end,
+        place: :organisation,
+        action: :"node.read",
+        filter: fn _scope, _counts -> ApiaryWeb.NodeComponents.organisation_gateways?() end
+      },
       %Entry{
         section: :settings,
         key: :members,
@@ -184,7 +197,9 @@ defmodule ApiaryWeb.Layouts do
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
   then the core's: on a workspace's page a node, a node pool, with the `security` feature
   a network access rule, and with the `secrets` feature an integration, a secret and a
-  variable, and everywhere an invitation; of them,
+  variable; on an organisation's page a gateway, where the console offers the
+  organisation's (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an
+  invitation; of them,
   only what the reader may do there, each entry's action asked of the workspace or the
   organisation as its `place` says.
   """
@@ -215,6 +230,22 @@ defmodule ApiaryWeb.Layouts do
         []
       end
 
+    organisation_entries =
+      if place == :organisation and ApiaryWeb.NodeComponents.organisation_gateways?() do
+        [
+          %Entry{
+            key: :gateway,
+            label: gettext("New gateway"),
+            icon: "hero-arrows-right-left",
+            path: ~p"/#{organisation}/gateways/new",
+            place: :organisation,
+            action: :"node.create"
+          }
+        ]
+      else
+        []
+      end
+
     invite = %Entry{
       key: :invite,
       label: gettext("Invite people"),
@@ -225,17 +256,18 @@ defmodule ApiaryWeb.Layouts do
     }
 
     for %Entry{} = entry <-
-          ApiaryWeb.Edition.new_entries(scope, place) ++ workspace_entries ++ [invite],
+          ApiaryWeb.Edition.new_entries(scope, place) ++
+            workspace_entries ++ organisation_entries ++ [invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end
 
   def new_entries(_scope, _place), do: []
 
-  # New's entry of the `security` feature, which asks `on?(scope, :security)`: a rule of
+  # New's entry of the `security` feature, which asks `visible?(scope, :security)`: a rule of
   # the workspace's policy, on its New rule page.
   defp security_entries(scope, organisation, workspace) do
-    if Apiary.Features.on?(scope, :security) do
+    if Apiary.Features.visible?(scope, :security) do
       [
         %Entry{
           key: :rule,
@@ -250,10 +282,10 @@ defmodule ApiaryWeb.Layouts do
     end
   end
 
-  # New's entries of the `secrets` feature, which ask `on?(scope, :secrets)`: an
+  # New's entries of the `secrets` feature, which ask `visible?(scope, :secrets)`: an
   # integration, a secret and a variable.
   defp secrets_entries(scope, organisation, workspace) do
-    if Apiary.Features.on?(scope, :secrets) do
+    if Apiary.Features.visible?(scope, :secrets) do
       [
         # Add integration leads to the cards of Integrations that add one.
         %Entry{
@@ -2314,9 +2346,9 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The entries of the page's scope the reader may open, by group, with where each leads.
-  # A feature that is off is absent, not disabled: no entry, greyed or otherwise, and so
-  # nothing beside it either (Policy's mode word goes with Policy). A group left empty goes
-  # too. Without a workspace, for a member added to none yet, a workspace's entries are not
+  # A feature that is off or hidden is absent, not disabled: no entry, greyed or otherwise,
+  # and so nothing beside it either (Policy's mode word goes with Policy). A group left
+  # empty goes too. Without a workspace, for a member added to none yet, a workspace's entries are not
   # there.
   # On a list narrowed to a target (`carry`), Runs and Network access lead to the lists
   # narrowed to it, and say so in their names (`{entry, path, label}`); every other entry
@@ -2376,11 +2408,32 @@ defmodule ApiaryWeb.Layouts do
   defp subject(%Entry{}, scope), do: scope.workspace || scope.organisation
 
   @doc """
+  workspace_landing/1 is where a link to the scope's workspace leads, asked with the
+  scope of that workspace: the first page its sidebar shows the reader there, in the
+  sidebar's order (`nav_entries/1`, which an edition adds to), Settings at its foot last.
+  That is the overview wherever the reader may open it; where they may not, as where the
+  record is off or hidden from them, the next page they may. The overview still where the
+  sidebar shows them none.
+  """
+  @spec workspace_landing(Apiary.Accounts.Scope.t()) :: String.t()
+  def workspace_landing(%{organisation: organisation, workspace: %{} = workspace} = scope) do
+    entries = nav_entries(scope)
+
+    first =
+      case nav_groups(scope, :workspace, nil, entries, nil) do
+        [{_section, _heading, [{_entry, path, _label} | _]} | _] -> path
+        [] -> with {_entry, path} <- foot(scope, :workspace, entries), do: path
+      end
+
+    first || ~p"/#{organisation}/#{workspace}"
+  end
+
+  @doc """
   switch_target/3 is where a menu's link to a workspace leads once followed, asked
   with the scope of that workspace: where the reader may open the workspace's navigation
-  entry named `key` there, its feature on there too, `page` when given, the path of the
-  reader's page as it is there (`ApiaryWeb.SwitchController`), else the entry's page;
-  else the workspace's overview. An entry of an organisation's pages is no workspace's, and
+  entry named `key` there, its feature shown to them there too, `page` when given, the
+  path of the reader's page as it is there (`ApiaryWeb.SwitchController`), else the
+  entry's page; else the workspace's overview. An entry of an organisation's pages is no workspace's, and
   leads to the overview.
   """
   @spec switch_target(Apiary.Accounts.Scope.t(), String.t(), String.t() | nil) :: String.t()

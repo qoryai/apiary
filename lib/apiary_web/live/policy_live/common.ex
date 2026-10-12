@@ -55,8 +55,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   (`Apiary.Targets.shared?/2`) when the page does not say; `form`, the id of the page's
   rule form, `"policy-rule"` (`ApiaryWeb.PolicyComponents.rule_form/1`) or
   `"policy-composer"` (`ApiaryWeb.PolicyComponents.rule_composer/1`, the default, for a
-  page that has not moved to the form). The holder is named and addressed by it
-  (`holder_name/1`, `base/3`), its system said only where it is shared.
+  page that has not moved to the form); `scope`, what the form and its reading are about
+  (`ApiaryWeb.PolicyComponents.rule_form/1`, `ApiaryWeb.PolicyLive.Reading.host_rule/2`),
+  `:target` for a target holder and `:workspace` otherwise by default, `:organisation` for
+  a level above the workspace; `may_change`, whether the reader may change the page's
+  rules, a function of the scope, `security_policy.edit` on the workspace by default
+  (`may?/2`), which the New rule and Edit rule pages and a save of the form ask
+  (`new_rule/2`, `edit_rule/2`). The holder is named and addressed by it (`holder_name/1`,
+  `base/3`), its system said only where it is shared.
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
@@ -68,7 +74,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
       holder: holder,
       holder_shared: shared,
       writer: Keyword.get(opts, :writer, policy_writer()),
-      scope_kind: if(holder, do: :target, else: :workspace),
+      scope_kind: Keyword.get(opts, :scope) || if(holder, do: :target, else: :workspace),
+      may_change: Keyword.get(opts, :may_change, &may_edit?/1),
       base: Keyword.get(opts, :base) || base(scope, holder, shared),
       people: people(scope),
       fresh: %{},
@@ -148,6 +155,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     do: may?(scope, action)
 
   def may?(scope, action), do: Access.can?(scope, action, scope.workspace)
+
+  # Whether the reader may change the workspace's or a target's rules: `mount/3`'s
+  # `may_change` unless the page gives its own.
+  defp may_edit?(scope), do: may?(scope, :"security_policy.edit")
+
+  # The page's `may_change`, asked of the reader's scope.
+  defp may_change?(socket), do: socket.assigns.may_change.(socket.assigns.current_scope)
 
   @doc """
   The start of the window the record is read over for the mode's fact and the enforce
@@ -295,7 +309,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
     above = above_name(socket.assigns[:effective])
 
     for rule <- rules, rule.kind == "host" do
-      entry = entries[rule.id]
+      # A rule the grammar refuses is never in force, with or without a resolution at hand.
+      entry =
+        entries[rule.id] ||
+          if(not Grammar.host?(rule.host),
+            do: %{in_force: false, reason: :out_of_grammar, host: rule.host}
+          )
 
       %{
         id: rule.id,
@@ -377,6 +396,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def off_words(entry, workspace, above \\ nil)
 
   def off_words(%{in_force: true}, _workspace, _above), do: nil
+
+  def off_words(%{reason: :out_of_grammar, host: host}, _workspace, _above) do
+    if Grammar.ends_in_number?(host),
+      do:
+        gettext(
+          "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
+        ),
+      else: gettext("Not in force")
+  end
 
   def off_words(%{reason: :only_above_allows}, _workspace, above),
     do: gettext("Not in force: %{name} allows only the hosts on its list", name: above || "?")
@@ -648,24 +676,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   # The form's button is never off: a form that cannot be saved says why under the field
-  # that is wrong, and the focus goes to that field.
+  # that is wrong, and the focus goes to that field. A reader who may not change the
+  # page's rules (`may_change`) is refused before anything is read.
   def handle_event("rule_save", _params, socket) do
-    socket = read(socket, %{})
-    %{reading: reading, composer_params: params} = socket.assigns
-
-    cond do
-      String.trim(params["host"] || "") == "" ->
-        {:halt,
-         socket
-         |> assign(:reading, Reading.empty_host())
-         |> focus("#{socket.assigns.form_id}-host")}
-
-      reading.kind in [:ok, :note] ->
-        {:halt, save_rule(socket)}
-
-      true ->
-        {:halt, focus(socket, first_wrong(socket))}
-    end
+    if may_change?(socket),
+      do: save_form(read(socket, %{})),
+      else: {:halt, refuse_form(socket)}
   end
 
   def handle_event("composer_save", _params, socket) do
@@ -730,7 +746,23 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   # The rows' menu of a page whose rules are the writer's alone: a page that lists more
-  # than one holder's rules answers these before asking here.
+  # than one holder's rules answers these before asking here. On a page with the rule
+  # form, which draws no composer, Edit is a page: the old event is led to the rule's
+  # Edit rule page. Only an id in a rule id's form (a UUID) is led there, and Edit rule
+  # sends one that names no rule back to the list; anything else is dropped.
+  def handle_event("edit_paths", params, %{assigns: %{form_id: "policy-rule"}} = socket) do
+    case params do
+      %{"id" => id} when is_binary(id) ->
+        case Ecto.UUID.cast(id) do
+          {:ok, id} -> {:halt, push_patch(socket, to: edit_rule_path(socket, id))}
+          :error -> {:halt, socket}
+        end
+
+      _no_id ->
+        {:halt, socket}
+    end
+  end
+
   def handle_event("edit_paths", %{"id" => id}, socket) do
     case socket.assigns.writer.get.(socket.assigns.current_scope, id) do
       {:ok, %{kind: "host", action: "allow"} = rule} ->
@@ -805,6 +837,25 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def handle_event(_event, _params, _socket), do: :cont
 
+  # The form read again at the save: written, or what is wrong said under its field.
+  defp save_form(socket) do
+    %{reading: reading, composer_params: params} = socket.assigns
+
+    cond do
+      String.trim(params["host"] || "") == "" ->
+        {:halt,
+         socket
+         |> assign(:reading, Reading.empty_host())
+         |> focus("#{socket.assigns.form_id}-host")}
+
+      reading.kind in [:ok, :note] ->
+        {:halt, save_rule(socket)}
+
+      true ->
+        {:halt, focus(socket, first_wrong(socket))}
+    end
+  end
+
   # The first field of the form the reading finds wrong; under a refusal, or where nothing
   # names a field (an edit with nothing to save), the action picked, the form's first.
   defp first_wrong(socket) do
@@ -825,10 +876,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   Opens the New rule page (`ApiaryWeb.PolicyComponents.rule_form/1`): the form empty,
   Allow picked, or filled from the address, `?action=deny&host=…&paths=…`, read at once.
   The focus goes to the action picked, or to Paths with `focus=paths`. A reader who may not
-  change the policy is sent back to the list (`refuse_form/1`).
+  change the page's rules (`may_change`, `mount/3`) is sent back to the list
+  (`refuse_form/1`).
   """
   def new_rule(socket, params) do
-    if may?(socket, :"security_policy.edit") do
+    if may_change?(socket) do
       values = params |> fields(~w(action host paths)) |> Map.put("every", "false")
 
       values =
@@ -854,17 +906,20 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Opens the Edit rule page of the rule `id`, a host rule of the page's holder: the form
   filled with it, its host shown and kept. A rule that is gone sends the reader back to the
-  list with the domain's sentence, one of another holder back to the list; a reader who
-  may not change the policy is sent back to it too (`refuse_form/1`).
+  list with the domain's sentence, one of another holder or one whose host the grammar
+  refuses (it is removed, never edited) back to the list; a reader who may not change the
+  page's rules (`may_change`, `mount/3`) is sent back to it too (`refuse_form/1`).
   """
   def edit_rule(socket, id) do
     holder_id = socket.assigns.holder && socket.assigns.holder.id
 
-    with true <- may?(socket, :"security_policy.edit") || :refused,
+    with true <- may_change?(socket) || :refused,
          true <- is_binary(id) and byte_size(id) <= 64,
          {:ok, %{kind: "host"} = rule} <-
            socket.assigns.writer.get.(socket.assigns.current_scope, id),
-         true <- Map.get(rule, :target_id) == holder_id do
+         true <- Map.get(rule, :target_id) == holder_id,
+         # A rule the grammar refuses is not edited, only removed: back to its row.
+         true <- Grammar.host?(rule.host) do
       socket
       |> assign(queue: [], rule_edit: rule, write_error: nil, composer_open: false)
       |> reset_composer(%{
@@ -884,7 +939,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         |> put_flash(:error, message)
         |> push_patch(to: list_path(socket, socket.assigns.list_query))
 
-      _another_holders ->
+      _another_holders_or_refused_host ->
         push_patch(socket, to: list_path(socket, socket.assigns.list_query))
     end
   end
@@ -1174,7 +1229,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
       # The policy no longer names credentials; a change made while it did reads as it was.
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
-        rich_gettext("%{who} added the credential %{credential}",
+        rich_gettext("%{who} added the secret %{credential}",
           who: who,
           credential: credential_chips(rule)
         )
@@ -1183,7 +1238,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         added_sentence(who, rule)
 
       {"rule_removed", %{removed: [%{"kind" => "credential"} = rule | _]}} ->
-        rich_gettext("%{who} removed the credential %{credential}",
+        rich_gettext("%{who} removed the secret %{credential}",
           who: who,
           credential: credential_chips(rule)
         )
@@ -1253,7 +1308,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   defp changed_sentence(who, %{"kind" => "credential"}, new),
     do:
-      rich_gettext("%{who} changed the argument of the credential %{credential}",
+      rich_gettext("%{who} changed the argument of the secret %{credential}",
         who: who,
         credential: credential_chips(new)
       )
@@ -1315,7 +1370,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         gettext("Mode set to %{mode}", mode: to)
 
       {"rule_added", %{added: [%{"kind" => "credential", "name" => name} | _]}} ->
-        gettext("Credential %{name}", name: name)
+        gettext("Secret %{name}", name: name)
 
       {"rule_added", %{added: [%{"action" => "deny"} = rule | _]}} ->
         gettext("Denied %{host}", host: rule["host"])
@@ -1403,8 +1458,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     chips = credential_chips(rule)
 
     if rule["locked"],
-      do: rich_gettext("Credential %{credential}, locked", credential: chips),
-      else: rich_gettext("Credential %{credential}", credential: chips)
+      do: rich_gettext("Secret %{credential}, locked", credential: chips),
+      else: rich_gettext("Secret %{credential}", credential: chips)
   end
 
   def rule_words(%{"action" => "allow"} = rule) do

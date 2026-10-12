@@ -53,7 +53,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   import Ecto.Query, only: [from: 2]
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Repo, Runs, Targets}
+  alias Apiary.{Access, Repo, Runs, Targets}
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.PolicyLive
 
@@ -65,9 +65,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     scope = socket.assigns.current_scope
     {segments, rest} = split_glob(glob)
 
-    security =
-      Features.on?(scope, :security) and
-        Access.can?(scope, :"security_policy.read", scope.workspace)
+    security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
     case {resolve(scope, segments), tab(rest, security)} do
       # The old tabs: nothing is read; `handle_params/3` sends them on with their query.
@@ -686,7 +684,7 @@ defmodule ApiaryWeb.TargetLive.Show do
               title={"#{row.host}:#{row.port}#{row.path}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest">{row.host}<span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
               >{row.path}</span></span>

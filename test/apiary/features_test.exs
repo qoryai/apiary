@@ -1,7 +1,10 @@
 defmodule Apiary.FeaturesTest do
   use ExUnit.Case, async: true
 
+  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Accounts.{Scope, User}
   alias Apiary.Features
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   describe "parse/1, the value of QORY_FEATURES" do
     test "unset, empty or blank is every feature but the opt-in ones" do
@@ -135,7 +138,201 @@ defmodule Apiary.FeaturesTest do
       end
 
       assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
-        Features.on?(nil, :dispatch)
+        Features.visible?(nil, :dispatch)
+      end
+
+      assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
+        Features.visible?(%Scope{user: %User{}, hidden: []}, :dispatch)
+      end
+    end
+  end
+
+  describe "visible?/2" do
+    setup do
+      organisation = %Organisation{id: Ecto.UUID.generate()}
+      workspace = %Workspace{id: Ecto.UUID.generate(), organisation_id: organisation.id}
+
+      key = %AccessKey{
+        organisation_id: organisation.id,
+        workspace_id: workspace.id,
+        workspace: workspace
+      }
+
+      person = %Scope{user: %User{}, organisation: organisation, workspace: workspace}
+      %{organisation: organisation, workspace: workspace, key: key, person: person}
+    end
+
+    test "a person is shown what the instance has and the scope does not hide", ctx do
+      for hidden <- [[], [:observability], [:security, :secrets], Features.all()] do
+        scope = %{ctx.person | hidden: hidden}
+
+        for feature <- Features.all() do
+          assert Features.visible?(scope, feature) ==
+                   (Features.on?(feature) and feature not in hidden),
+                 inspect({hidden, feature})
+        end
+      end
+    end
+
+    test "an access key, its scope, the instance's, nil and a scope with hidden nil answer the instance",
+         ctx do
+      hidden = Features.all()
+
+      scopes = [
+        ctx.key,
+        %{Scope.for_access_key(ctx.key) | hidden: hidden},
+        %{Scope.for_instance(ctx.organisation, ctx.workspace) | hidden: hidden},
+        nil,
+        %{ctx.person | hidden: nil}
+      ]
+
+      for scope <- scopes, feature <- Features.all() do
+        assert Features.visible?(scope, feature) == Features.on?(feature),
+               inspect({scope, feature})
+      end
+    end
+
+    test "a part is shown where its feature is and the scope hides neither", ctx do
+      part = :"observability.terminal"
+
+      for hidden <- [[], [part], [:observability], [:observability, part], [:security]] do
+        scope = %{ctx.person | hidden: hidden}
+
+        assert Features.visible?(scope, part) ==
+                 (Features.on?(:observability) and :observability not in hidden and
+                    part not in hidden),
+               inspect(hidden)
+
+        # Hiding a part hides nothing else of its feature.
+        assert Features.visible?(scope, :observability) ==
+                 (Features.on?(:observability) and :observability not in hidden)
+      end
+
+      for scope <- [ctx.key, nil, %{ctx.person | hidden: nil}] do
+        assert Features.visible?(scope, part) == Features.on?(:observability)
+      end
+
+      assert_raise ArgumentError, ~r/:"observability.dispatch" is not a feature/, fn ->
+        Features.visible?(%{ctx.person | hidden: []}, :"observability.dispatch")
+      end
+    end
+
+    test "a part of no feature is shown on every instance where the scope does not hide it",
+         ctx do
+      for hidden <- [[], [:nodes], [:observability], Features.all(), [:"observability.terminal"]] do
+        scope = %{ctx.person | hidden: hidden}
+        assert Features.visible?(scope, :nodes) == :nodes not in hidden, inspect(hidden)
+      end
+
+      # An access key, the instance, nil and a scope that carries no `hidden` are shown it.
+      scopes = [
+        ctx.key,
+        %{Scope.for_access_key(ctx.key) | hidden: [:nodes]},
+        %{Scope.for_instance(ctx.organisation, ctx.workspace) | hidden: [:nodes]},
+        nil,
+        %{ctx.person | hidden: nil}
+      ]
+
+      for scope <- scopes, do: assert(Features.visible?(scope, :nodes), inspect(scope))
+    end
+
+    test "a person's scope keeps what the edition hides, as the core asks it", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+      scope = %{ctx.person | hidden: Features.hidden_of(Apiary.Edition.hidden(ctx.person))}
+
+      refute Features.visible?(scope, :observability)
+      refute Features.visible?(scope, :security)
+
+      for feature <- Features.all() do
+        assert Features.visible?(ctx.key, feature) == Features.on?(feature), inspect(feature)
+      end
+    end
+
+    test "a feature that needs a hidden one is not shown, as the scope keeps it", ctx do
+      for {named, hidden} <- [
+            {[:secrets], [:secrets]},
+            {[:security], [:security, :secrets]},
+            {[:observability], [:observability, :security, :secrets]}
+          ] do
+        scope = %{ctx.person | hidden: Features.hidden_of(named)}
+
+        for feature <- Features.all() do
+          assert Features.visible?(scope, feature) ==
+                   (Features.on?(feature) and feature not in hidden),
+                 inspect({named, feature})
+
+          # An access key and the instance answer as the instance still.
+          assert Features.visible?(ctx.key, feature) == Features.on?(feature)
+        end
+      end
+    end
+  end
+
+  describe "hidden_of/1" do
+    test "keeps the features the instance has, in the order of all/0" do
+      assert Features.hidden_of([]) == []
+      assert Features.hidden_of(Enum.reverse(Features.all())) == Features.enabled()
+
+      assert Features.hidden_of([:secrets, :security, :secrets]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets]))
+    end
+
+    test "adds every feature that needs a hidden one, directly or through another" do
+      for feature <- Features.all() do
+        assert Features.hidden_of([feature]) ==
+                 Enum.filter(Features.enabled(), &(&1 == feature or feature in needs_all(&1))),
+               inspect(feature)
+      end
+
+      assert Features.hidden_of([:secrets]) == Enum.filter(Features.enabled(), &(&1 == :secrets))
+
+      assert Features.hidden_of([:security]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets]))
+
+      assert Features.hidden_of([:observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets]))
+    end
+
+    test "keeps parts after the features, in the order of parts/0" do
+      part = :"observability.terminal"
+
+      assert Features.hidden_of([part]) == [part]
+
+      assert Features.hidden_of([part, :secrets, part]) ==
+               Enum.filter(Features.enabled(), &(&1 == :secrets)) ++ [part]
+
+      # A part is hidden with its feature without being named (`visible?/2`), so hiding
+      # the feature adds no part.
+      assert Features.hidden_of([part, :observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets])) ++
+                 [part]
+
+      assert Features.hidden_of([:observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets]))
+    end
+
+    test "keeps the part of no feature, after the others, whatever the instance has" do
+      part = :"observability.terminal"
+
+      assert Features.hidden_of([:nodes]) == [:nodes]
+      assert Features.hidden_of([:nodes, part, :nodes]) == [part, :nodes]
+
+      assert Features.hidden_of([:nodes, :observability]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:observability, :security, :secrets])) ++
+                 [:nodes]
+    end
+
+    test "raises on a name that is no feature or part: an edition's mistake" do
+      assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
+        Features.hidden_of([:observability, :dispatch])
+      end
+
+      assert_raise ArgumentError, ~r/:"observability.dispatch" is not a feature/, fn ->
+        Features.hidden_of([:"observability.dispatch"])
+      end
+
+      assert_raise ArgumentError, ~r/:terminal is not a feature/, fn ->
+        Features.hidden_of([:terminal])
       end
     end
   end
@@ -181,6 +378,98 @@ defmodule Apiary.FeaturesTest do
 
       assert_raise ArgumentError, ~r/a feature is \{name, needs/, fn ->
         Features.registry(core ++ [security: [needs: [:observability]]])
+      end
+    end
+
+    test "the core's observability has one part, the run's Terminal" do
+      assert :"observability.terminal" in Features.parts()
+      assert Enum.take(Features.parts(), 1) == [:"observability.terminal"]
+
+      for part <- Features.parts() -- [:nodes] do
+        assert Features.feature_of(part) in Features.all()
+      end
+
+      assert Features.feature_of(:"observability.terminal") == :observability
+      assert Features.feature_of(:security) == :security
+
+      assert_raise ArgumentError, ~r/:terminal is not a feature/, fn ->
+        Features.feature_of(:terminal)
+      end
+    end
+
+    test "the nodes are the part nodes, of no feature, after the features' parts" do
+      assert List.last(Features.parts()) == :nodes
+      assert Features.feature_of(:nodes) == nil
+      refute :nodes in Features.all()
+
+      # A part is never on or off: on?/1 and needs/1 take features alone.
+      assert_raise ArgumentError, ~r/:nodes is not a feature/, fn -> Features.on?(:nodes) end
+      assert_raise ArgumentError, ~r/:nodes is not a feature/, fn -> Features.needs(:nodes) end
+    end
+
+    test "registry/1 refuses a feature named as the part of no feature" do
+      assert_raise ArgumentError, ~r/a part is listed once, got twice: nodes/, fn ->
+        Features.registry(
+          observability: [needs: [], built: true],
+          nodes: [needs: [:observability], built: true]
+        )
+      end
+    end
+
+    test "registry/1 names each part after its feature, in the order of the features" do
+      core = [observability: [needs: [], built: true, parts: [:terminal, :timeline]]]
+
+      assert %{
+               parts: [
+                 :"observability.terminal",
+                 :"observability.timeline",
+                 :"security.rules",
+                 :nodes
+               ],
+               part_of: %{
+                 "observability.terminal": :observability,
+                 "observability.timeline": :observability,
+                 "security.rules": :security,
+                 nodes: nil
+               }
+             } =
+               Features.registry(
+                 core ++ [security: [needs: [:observability], built: true, parts: [:rules]]]
+               )
+
+      # A part of no feature follows the features' parts, whatever they are.
+      assert %{parts: [:nodes], part_of: part_of} =
+               Features.registry(observability: [needs: [], built: true])
+
+      assert part_of == %{nodes: nil}
+    end
+
+    test "registry/1 refuses a part listed twice, one named as a feature, and one not an atom" do
+      assert_raise ArgumentError,
+                   ~r/a part is listed once, got twice: observability.terminal/,
+                   fn ->
+                     Features.registry(
+                       observability: [needs: [], built: true, parts: [:terminal, :terminal]]
+                     )
+                   end
+
+      assert_raise ArgumentError,
+                   ~r/a part is listed once, got twice: observability.terminal/,
+                   fn ->
+                     Features.registry(
+                       observability: [needs: [], built: true, parts: [:terminal]],
+                       "observability.terminal": [needs: [:observability], built: true]
+                     )
+                   end
+
+      for part <- ["terminal", 1, nil, true] do
+        assert_raise ArgumentError, ~r/a part of observability is an atom, got: /, fn ->
+          Features.registry(observability: [needs: [], built: true, parts: [part]])
+        end
+      end
+
+      assert_raise ArgumentError, ~r/parts: \[atom\] where they are/, fn ->
+        Features.registry(observability: [needs: [], built: true, parts: :terminal])
       end
     end
 
@@ -285,14 +574,32 @@ defmodule Apiary.FeaturesBootTest do
     end)
   end
 
-  test "boot!/0 fixes what QORY_FEATURES lists, and on?/1 and on?/2 answer from it" do
+  test "boot!/0 fixes what QORY_FEATURES lists, and on?/1 and visible?/2 answer from it" do
     Application.put_env(:apiary, :features_setting, "observability,security")
     assert Features.boot!() == [:observability, :security]
     assert Features.enabled() == [:observability, :security]
     assert Features.on?(:security)
 
     for feature <- Features.all() -- [:observability, :security],
-        do: refute(Features.on?(nil, feature))
+        do: refute(Features.on?(feature) or Features.visible?(nil, feature))
+  end
+
+  test "the part of no feature is there whatever features the instance has" do
+    person = %Apiary.Accounts.Scope{user: %Apiary.Accounts.User{}}
+    part = :"observability.terminal"
+
+    for features <- [[:observability], []] do
+      Application.put_env(:apiary, :features, features)
+
+      assert Features.visible?(%{person | hidden: []}, :nodes)
+      refute Features.visible?(%{person | hidden: [:nodes]}, :nodes)
+      assert Features.visible?(nil, :nodes)
+      assert Features.visible?(%{person | hidden: []}, part) == (features != [])
+
+      # A part of a feature the instance lacks goes; the part of no feature stays.
+      assert Features.hidden_of([:nodes, :security, part]) ==
+               if(features == [], do: [], else: [part]) ++ [:nodes]
+    end
   end
 
   test "boot!/0 leaves an opt-in feature off unless QORY_FEATURES names it" do

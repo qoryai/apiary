@@ -256,6 +256,40 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert lv |> element("#retention-runs") |> render() =~ "events from before"
       assert lv |> render() |> String.split("retention-run-") |> length() == 2
     end
+
+    test "leaves out the log's size for a reader the run's Terminal is hidden from",
+         %{conn: conn, scope: scope} do
+      import Apiary.RunEventsFixtures
+
+      {:ok, workspace} = Apiary.Retention.update_retention(scope, %{events_retention_days: 10})
+      run = run_fixture(scope)
+      events_fixture(run, record())
+      {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+      now = DateTime.add(DateTime.utc_now(), 40 * 86_400, :second)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs"
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(lv, "#retention-runs li", "1 run: 14 events.")
+      pruned = lv |> element("#retention-runs") |> render()
+      refute pruned =~ "12 B"
+      refute pruned =~ "of log output in"
+      refute pruned =~ "chunk"
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#retention-runs li",
+               "1 run: 14 events and 12 B of log output in 2 chunks."
+             )
+    end
   end
 
   describe "as a member" do
@@ -406,6 +440,18 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
       assert has_element?(lv, "#delete-organisation-form")
       refute has_element?(lv, "#delete-organisation-modal")
+    end
+
+    @tag needs: :secrets
+    test "the workspace's list leaves out the sections of a feature hidden from the reader",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, base <> "/runs")
+
+      assert has_element?(lv, ~s(#settings-tabs #settings-tab-runs[href="#{base}/runs"]))
+      refute has_element?(lv, "#settings-tab-integrations")
+      refute has_element?(lv, "#settings-tab-secrets")
     end
 
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do

@@ -1970,7 +1970,7 @@ defmodule ApiaryWeb.CoreComponents do
           aria-selected="false"
           data-value={suggestion.value}
         >
-          <span class="q-suggest-v">{suggestion.value}</span>
+          <span class="q-suggest-v"><bdi>{suggestion.value}</bdi></span>
           <span :if={suggestion[:detail]} class="q-suggest-d">{suggestion.detail}</span>
         </li>
       </ul>

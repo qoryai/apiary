@@ -12,8 +12,10 @@ defmodule ApiaryWeb.Features.Routes do
 
   The route is found with `Phoenix.Router.route_info/4` and its feature read from the
   LiveView or controller that declares one (`use ApiaryWeb.Features`). Below the instance,
-  where an organisation may have less than the instance, the gates of `ApiaryWeb.Features`
-  still decide per scope, and they alone see a live navigation, which never reaches here.
+  where a person may be shown less than the instance has, the gates of
+  `ApiaryWeb.Features` still decide per scope, and they alone see a live navigation, which
+  never reaches here. To a signed request of the server contract the gates answer as the
+  instance: its access key follows the instance's features alone.
 
   One request passes on to its route with the feature off: a request of the server
   contract that carries a request signature (`X-Qory-Signature-Ed25519`), on a route that

@@ -688,6 +688,188 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
+  describe "the nodes hidden from the reader" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+    end
+
+    test "the empty workspace has no box, only the line under it", %{conn: conn, scope: scope} do
+      node_fixture(scope, name: "build-01")
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      refute has_element?(view, "#onboarding")
+      refute has_element?(view, "#onboarding-new-node")
+      refute has_element?(view, "#onboarding-nodes")
+      refute render(view) =~ "/nodes"
+      refute render(view) =~ "Send your first run"
+
+      assert text(view, ".q-onb-after") =~ "fill in once the first run lands"
+    end
+
+    test "Get the command asked anyway reads the scope again, and says nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      node_fixture(scope, name: "build-01")
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#onboarding-enrol")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      render_click(view, "get_command", %{})
+
+      refute has_element?(view, "#onboarding")
+      refute render(view) =~ "Only owners and admins connect a node."
+      refute render(view) =~ "Nothing was changed."
+      assert Apiary.Repo.aggregate(Apiary.AccessKeys.EnrolmentCode, :count) == 0
+
+      # Asked again, with the box gone, nothing is said either.
+      render_click(view, "get_command", %{})
+      refute render(view) =~ "Only owners and admins connect a node."
+    end
+
+    test "hidden while the page is open, an idle key's row leaves, not struck", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      # A lost run keeps the list, and its count, once the idle key leaves.
+      lost_run(scope)
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#att-key-#{idle.id}")
+      shown = String.to_integer(text(view, "#attention-n"))
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      send(view.pid, {:membership_changed, :level})
+
+      refute has_element?(view, "#att-key-#{idle.id}")
+      assert String.to_integer(text(view, "#attention-n")) == shown - 1
+      refute render(view) =~ "Revoked."
+      refute render(view) =~ "/nodes"
+    end
+
+    test "shown again, the box is back", %{conn: conn, scope: scope} do
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding-new-node")
+    end
+
+    @tag needs: :security
+    test "To review leads nowhere on the nodes page, and to the Policy page for a policy item",
+         %{conn: conn, scope: scope} do
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # An allow rule under observe, with a run this week: the enforce nudge, the sixth.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      # Shown the nodes, the list overflows from the enforce nudge, then the idle key.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      assert has_element?(
+               open(conn, scope),
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='2 more items, on the Policy page']",
+               "and 2 more"
+             )
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      assert text(view, "#attention-n") == "5"
+
+      assert has_element?(
+               view,
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='1 more item, on the Policy page']",
+               "and 1 more"
+             )
+
+      refute has_element?(view, "#att-key-#{idle.id}")
+      refute render(view) =~ "/nodes"
+    end
+
+    @tag needs: :security
+    test "a policy item first in the overflow has no link once the policy is hidden", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/policy")}']")
+
+      # The policy is hidden from the reader while the page is open: once the scope is read
+      # again and the list weighed again, the link goes.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      send(view.pid, {:membership_changed, :level})
+      send(view.pid, :quiet_tick)
+
+      assert text(view, "#attention-n") == "5"
+      refute has_element?(view, "#attention-more")
+    end
+
+    @tag needs: :security
+    test "an idle key first in the overflow leads to the nodes page, and nowhere once they are hidden",
+         %{conn: conn, scope: scope} do
+      idle = node_key(scope, "old-runner")
+      long_ago(idle, 34)
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # Enforce, the default: no policy item, so the idle key is the sixth.
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      assert has_element?(
+               open(conn, scope),
+               "#attention-more[href='#{workspace_path(scope, "/nodes?sort=seen")}'][title='1 more item, on the nodes page']",
+               "and 1 more"
+             )
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      view = open(conn, scope)
+
+      assert text(view, "#attention-n") == "5"
+      refute has_element?(view, "#attention-more")
+      refute render(view) =~ "/nodes"
+    end
+  end
+
   describe "the activity" do
     test "the summary counts the runs, the ended badly and the denials; the cost is a caption",
          %{conn: conn, scope: scope} do
@@ -1148,6 +1330,32 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a policy item first in the overflow links to the Policy page", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      # No rule yet, with runs: the policy is unmanaged, the sixth item.
+      lost_run(scope)
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+      started_run(scope, shop(), heartbeat: {45, 100, 30})
+
+      view = open(conn, scope)
+
+      assert has_element?(
+               view,
+               "#attention-more[href='#{workspace_path(scope, "/policy")}'][title='1 more item, on the Policy page']",
+               "and 1 more"
+             )
+    end
+
+    @tag needs: :security
     test "a run behind a shared target's policy compares at the target's own address", %{
       conn: conn,
       scope: scope
@@ -1405,6 +1613,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a denied host is isolated, a tool's too, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "evil\u202Elpmaxe.<script>"
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => host, "decision" => "denied", "rule" => ""},
+          tool_invocation_data(%{
+            "host" => host,
+            "path_rule" => "",
+            "decision" => "denied",
+            "outcome" => "refused"
+          })
+        ]
+      )
+
+      view = open(conn, scope)
+      selector = "#attention-list li[data-kind=denied]"
+
+      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", host)
+      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", host)
+      html = render(view)
+
+      assert html =~
+               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
+
+      assert html =~
+               "<span class=\"q-port\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443</span>"
+
+      refute html =~ "elpmaxe.<script>"
+    end
+
+    @tag needs: :security
     test "allow a denied destination here: the panel in place, the rule, the struck row", %{
       conn: conn,
       scope: scope
@@ -1504,6 +1747,53 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                view,
                ~s(#{selector} .q-host[title="files.tools.internal:443/media/acme/other/checkout.png, a host the tool files serves"])
              )
+    end
+
+    @tag needs: :security
+    test "a denial no rule can change offers no act: the wall's refusals and a host no rule can name",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "Files.CDN.example.", "decision" => "denied", "rule" => "wall:host-form"},
+          %{"host" => "metadata.internal", "decision" => "denied", "rule" => "wall:own-address"},
+          %{
+            "host" => "files.cdn.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "denied",
+            "rule" => "",
+            "path_rule" => "wall:ambiguous-path"
+          },
+          %{"host" => "10.0.0.012", "decision" => "denied", "rule" => ""},
+          %{"host" => "flags.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+
+      items =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> Enum.map(&{&1 |> LazyHTML.attribute("id") |> hd(), LazyHTML.text(&1)})
+
+      item = fn needle ->
+        {id, _text} = Enum.find(items, fn {_id, text} -> text =~ needle end)
+        id
+      end
+
+      # Each still shows, with no act: no Allow, and no rule to open.
+      for needle <- ["Files.CDN.example.", "metadata.internal", "files.cdn.example", "10.0.0.012"] do
+        id = item.(needle)
+        assert text(view, "##{id}") =~ "Denied once in 1 run", needle
+        refute has_element?(view, "##{id} .q-ar-act *"), needle
+
+        # Asked anyway, the panel does not open.
+        render_hook(view, "rule_open", %{"id" => id, "level" => "target"})
+        refute has_element?(view, "#rule-panel"), needle
+      end
+
+      # A denial a rule can change keeps its Allow.
+      assert has_element?(view, "##{item.("flags.example")}-act", "Allow here")
     end
 
     @tag needs: :security

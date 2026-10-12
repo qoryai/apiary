@@ -25,14 +25,24 @@ A rule allows or denies one thing:
   for every host below it. A suffix rule does not cover the suffix itself:
   `*.internal.example` does not allow `internal.example`. A rule names a host and nothing
   else: no scheme, no port.
+- **An address**: a host whose last part is a number (all digits, or `0x` and hex
+  digits) is an address, and a rule takes one only as four numbers from 0 to 255 with dots
+  between them and no leading zeros, such as `10.0.0.12`. `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1` and `10.0.0.256` are refused, and so is `*.` before an address,
+  `*.0.0.1`. An IPv6 address is never a rule. A connection matches an address rule only
+  when it names that address in the same form: a connection to `127.1`, to an IPv6 address,
+  or to an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) matches no rule. A rule stored
+  before this held is not in force and is left out of the document the gateway reads, which
+  would refuse the whole document for it; its row says so and offers only Remove.
 - **Paths**, on an allowed host: every path, or the paths listed. A path starts with `/` and
   may end in one `*`, such as `/v1/*`; there is no other wildcard and no query. A host held
   to paths is one the proxy reads requests to, which it can do only behind a wall.
 
 Paths need a wall. Without one Forager refuses to start a run whose policy has them.
 
-Credentials are not part of the policy: the run configuration this server renders selects
-none, and a run uses no credential of its machine's.
+Secrets are not part of the policy: the run configuration this server renders selects none
+of the machine's `credentials` (the Forager file's `gateway.credentials`), so Forager's
+proxy sets none of them on a run's requests.
 
 The policy document the gateway reads has a deny list and an allow list. The gateway decides
 the deny list first, in either mode: a host a deny rule names is denied under observe as
@@ -77,7 +87,9 @@ it too, as **Network access rule**. The page asks:
    enforce, where a host no rule allows is denied. **Deny** stops runs connecting to it, in
    observe and in enforce.
 2. **Host**: the name runs connect to, in lower case, without `https://` or a port; start
-   it with `*.` to cover every host below a domain, such as `*.example.com`.
+   it with `*.` to cover every host below a domain, such as `*.example.com`. An address is
+   written as four numbers with dots between them and no leading zeros, such as
+   `10.0.0.12`, never with `*.`.
 3. **Paths**, optional, for an allow: left empty, every path is allowed; separate paths
    with spaces, and end one with `*` for everything below it, such as `/v1/*`. A deny covers
    every path of the host.
@@ -137,12 +149,13 @@ by `paths` after. A denied host is never reached, so its paths never apply.
 
 ### What is refused
 
-What the document cannot say is refused when it is written, with a sentence that says what
-to do instead. Nothing is ever rendered that allows more than the page shows.
+Qory Apiary refuses these when they are written, with a sentence that says what to do
+instead. Nothing is ever rendered that allows more than the page shows.
 
-- **A `*.` suffix held to paths above another allowed entry.** The gateway holds a host to
-  the path list of whichever entry it finds first, and the order is not fixed. A name held
-  to paths under a suffix that is free of paths is fine.
+- **A `*.` suffix held to paths above another allowed entry.** Qory Apiary doesn't let a
+  `*.` suffix with paths cover another allowed host. The gateway holds a host to the path
+  list of its most specific entry: its name itself, else the `*.` entry with the longest
+  suffix. A name held to paths under a suffix that is free of paths is fine.
 - **A rule outside the grammar**: a URL, a port, capitals, a `*` anywhere but the lead. The
   New rule page checks a rule as it is typed and reads it back in words before it can be
   saved.

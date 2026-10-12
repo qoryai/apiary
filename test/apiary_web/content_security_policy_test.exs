@@ -60,6 +60,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     Application.put_env(:apiary, :docs_root, tmp_dir)
     on_exit(fn -> Application.delete_env(:apiary, :docs_root) end)
     Apiary.EditionKit.hide_instance_organisation()
+    # Organisations of many workspaces, so the organisation's gateways have pages.
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
     :ok
   end
 
@@ -393,6 +395,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("org", _path, p), do: p.org
   defp value_of("workspace", _path, p), do: p.workspace
   defp value_of("workspace_id", _path, p), do: p.second_workspace_id
+  # An organisation's gateway's pages, and its key's and code's.
+  defp value_of("node_id", "/:org/gateways/" <> _, p), do: p.gateway_id
+  defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
+  defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
   defp value_of("node_id", _path, p), do: p.node_id
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("code_id", _path, p), do: p.code_id
@@ -472,6 +478,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     %{access_key: key} = browser_key_fixture(scope, node)
     {:ok, code, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
 
+    gateway = organisation_gateway_fixture(scope)
+    %{access_key: gateway_key} = browser_key_fixture(scope, gateway)
+    {:ok, gateway_code, _code} = AccessKeys.create_enrolment_code(scope, gateway, %{})
+
     run = run_fixture(scope)
     events_fixture(run, record())
     {:ok, run} = Projector.project(run)
@@ -496,6 +506,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       second_workspace_id: second.id,
       membership_id: membership.id,
       node_id: node.public_id,
+      gateway_id: gateway.public_id,
+      gateway_key_id: gateway_key.key_id,
+      gateway_code_id: gateway_code.id,
       instance: "i_1",
       key_id: key.key_id,
       code_id: code.id,
@@ -509,7 +522,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       component_stories: component_stories
     }
 
-    Map.merge(base, security_params(scope, target))
+    base
+    |> Map.merge(security_params(scope))
+    |> Map.merge(secrets_params(scope, target))
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is
@@ -534,10 +549,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   # The records of the `security` feature; placeholders where the instance has not got
   # it, whose pages answer as paths that do not exist.
-  defp security_params(scope, target) do
+  defp security_params(scope) do
     if Features.on?(:security) do
       {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      %{rule_id: rule.id}
+    else
+      %{rule_id: Ecto.UUID.generate()}
+    end
+  end
 
+  # The records of the `secrets` feature, as `security_params/1` has the policy's.
+  defp secrets_params(scope, target) do
+    if Features.on?(:secrets) do
       {:ok, secret} =
         Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x", value_id: "main-app"})
 
@@ -577,7 +600,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         })
 
       %{
-        rule_id: rule.id,
         secret_id: secret.public_id,
         single_secret_id: single.public_id,
         value_id: "bot-app",
@@ -590,7 +612,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       }
     else
       %{
-        rule_id: Ecto.UUID.generate(),
         secret_id: "sec_none",
         single_secret_id: "sec_none",
         value_id: "none",

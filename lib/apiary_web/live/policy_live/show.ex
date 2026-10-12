@@ -559,7 +559,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     scope = socket.assigns.current_scope
 
     case Enum.find(would.destinations, &(would_key(&1) == key)) do
-      nil ->
+      # None, or one no rule can allow: it has no Allow.
+      destination when is_nil(destination) or destination.unchangeable ->
         socket
 
       destination ->
@@ -579,7 +580,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               :announce,
               gettext("%{host} is allowed for the workspace.", host: destination.host)
             )
-            |> Common.focus_next_allow(would, key, "policy-mode-set")
+            |> Common.focus_next_allow(would, key, "policy-mode-set", &(!&1.unchangeable))
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -629,9 +630,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  # Edit is a page now; a browser that still sends the old event is led to it.
-  defp event("edit_paths", %{"id" => id}, socket) when is_binary(id) and byte_size(id) <= 64,
-    do: push_patch(socket, to: Common.edit_rule_path(socket, id))
+  # Edit is a page now; a browser that still sends the old event is led to it. Only an id
+  # in a rule id's form (a UUID) is led there, and Edit rule sends one that names no rule
+  # back to the list; anything else is dropped.
+  defp event("edit_paths", %{"id" => id}, socket) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> push_patch(socket, to: Common.edit_rule_path(socket, id))
+      :error -> socket
+    end
+  end
 
   defp event("edit_paths", _params, socket), do: socket
 
@@ -1741,7 +1748,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   # What enforce would deny, under the question of enforce: what the last 14 days let
-  # through with no rule, each with its Allow.
+  # through with no rule, each with its Allow, but for one no rule can allow.
   defp mode_would(assigns) do
     shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
@@ -1771,10 +1778,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.tool_mark name={destination.tool} /><span
               :if={destination.path}
               class="text-muted"
-            >{destination.path}</span><span class="text-faint">{destination.host}</span>
+            >{destination.path}</span><span class="text-faint"><bdi>{destination.host}</bdi></span>
           </span>
           <span :if={!destination[:tool]} class="q-dest">
-            {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
@@ -1787,7 +1794,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             )}
           </small>
           <button
-            :if={MapSet.member?(@would.open, would_key(destination))}
+            :if={MapSet.member?(@would.open, would_key(destination)) && !destination.unchangeable}
             id={"would-#{would_key(destination)}-allow"}
             type="button"
             class="btn btn-xs"

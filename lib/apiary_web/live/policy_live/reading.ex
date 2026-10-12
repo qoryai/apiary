@@ -80,7 +80,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   `form` has string keys `"action"`, `"host"`, `"paths"` and `"every"` (`"true"` when every
   path was asked for in so many words). `context`:
 
-    * `scope`: `:workspace` or `:target`;
+    * `scope`: `:workspace`, `:target`, or `:organisation` for a level above the
+      workspace, whose rules hold in every workspace;
     * `own`: the rules of the scope being edited, maps or structs with `kind`, `action`,
       `host`, `paths`, `locked`, and `by`, `at` when the page knows them;
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
@@ -147,7 +148,19 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
       address?(host) ->
         {rich_gettext(
-           "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says.",
+           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says.",
+           address: {:m, "10.0.0.12"}
+         ), nil}
+
+      # An address takes no `*.`: there is nothing below it.
+      String.starts_with?(host, "*.") and Grammar.ends_in_number?(String.downcase(rest)) ->
+        {rich_gettext("%{suffix} leads a host name, never an address.", suffix: {:code, "*."}),
+         nil}
+
+      # An address in a form other than `a.b.c.d`, which the gateway refuses.
+      Grammar.ends_in_number?(String.downcase(host)) ->
+        {rich_gettext(
+           "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as %{address}.",
            address: {:m, "10.0.0.12"}
          ), nil}
 
@@ -366,6 +379,38 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
       {"deny", :target, nil} ->
         rich_gettext("%{host} is already denied for this target.", host: host)
+
+      {"allow", :organisation, {:by, by, at}} ->
+        rich_gettext("%{host} is already allowed for every workspace, by %{by} on %{at}.",
+          host: host,
+          by: by,
+          at: at
+        )
+
+      {"allow", :organisation, {:since, at}} ->
+        rich_gettext("%{host} is already allowed for every workspace, since %{at}.",
+          host: host,
+          at: at
+        )
+
+      {"allow", :organisation, nil} ->
+        rich_gettext("%{host} is already allowed for every workspace.", host: host)
+
+      {"deny", :organisation, {:by, by, at}} ->
+        rich_gettext("%{host} is already denied for every workspace, by %{by} on %{at}.",
+          host: host,
+          by: by,
+          at: at
+        )
+
+      {"deny", :organisation, {:since, at}} ->
+        rich_gettext("%{host} is already denied for every workspace, since %{at}.",
+          host: host,
+          at: at
+        )
+
+      {"deny", :organisation, nil} ->
+        rich_gettext("%{host} is already denied for every workspace.", host: host)
     end
   end
 
@@ -394,6 +439,20 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         host: host
       )
 
+  defp replaces("allow", :organisation, host),
+    do:
+      rich_gettext(
+        "%{host} is allowed for every workspace. Adding this deny replaces that rule.",
+        host: host
+      )
+
+  defp replaces("deny", :organisation, host),
+    do:
+      rich_gettext(
+        "%{host} is denied for every workspace. Adding this allow replaces that rule.",
+        host: host
+      )
+
   defp held(:workspace, host, paths),
     do:
       rich_gettext(
@@ -406,6 +465,14 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     do:
       rich_gettext(
         "%{host} is held to %{paths} for this target. Name the paths it should have, or choose Every path to open them all.",
+        host: host,
+        paths: paths
+      )
+
+  defp held(:organisation, host, paths),
+    do:
+      rich_gettext(
+        "%{host} is held to %{paths} for every workspace. Name the paths it should have, or choose Every path to open them all.",
         host: host,
         paths: paths
       )
@@ -423,6 +490,15 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     do:
       rich_gettext(
         "%{host} is allowed for this target on %{paths}. Saving changes its paths to %{new_paths}.",
+        host: host,
+        paths: from,
+        new_paths: to
+      )
+
+  defp change_paths(:organisation, host, from, to),
+    do:
+      rich_gettext(
+        "%{host} is allowed for every workspace on %{paths}. Saving changes its paths to %{new_paths}.",
         host: host,
         paths: from,
         new_paths: to
@@ -460,6 +536,12 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         {false, :target} ->
           rich_gettext(
             "%{rule}. It takes the host out of what this target is allowed; other targets are not touched.",
+            rule: rule
+          )
+
+        {false, :organisation} ->
+          rich_gettext(
+            "%{rule}. It holds in every workspace and target, and no rule of theirs can allow it.",
             rule: rule
           )
       end
@@ -577,7 +659,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         host: host
       )
 
-  defp locked_above(_action, _host, %{scope: :workspace}), do: nil
+  defp locked_above(_action, _host, %{scope: scope}) when scope in [:workspace, :organisation],
+    do: nil
 
   defp locked_above(action, host, context) do
     Enum.find(context.entries, fn entry ->

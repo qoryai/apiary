@@ -2111,16 +2111,16 @@ defmodule ApiaryWeb.RunComponents do
                 @preview.run.denied_count
               )}
             </span>
-            <span :for={d <- @preview.denials} class="q-pv-dest">{d.host}:{d.port}</span>
+            <span :for={d <- @preview.denials} class="q-pv-dest"><bdi>{d.host}</bdi>:{d.port}</span>
             <span :if={@preview.more_denials > 0} class="q-pv-more">
               {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
                 number: Format.number(@preview.more_denials)
               )}
             </span>
           </dd>
-          <dt :if={key_label(@preview.run)}>{gettext("Access key")}</dt>
-          <dd :if={key_label(@preview.run)} class="font-mono text-[12px]">
-            {key_label(@preview.run)}
+          <dt :if={key_label(@scope, @preview.run)}>{gettext("Access key")}</dt>
+          <dd :if={key_label(@scope, @preview.run)} class="font-mono text-[12px]">
+            {key_label(@scope, @preview.run)}
           </dd>
           <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
           <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
@@ -2166,12 +2166,17 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp key_label(%{access_key: %{label: label}}), do: label
-  defp key_label(_run), do: nil
+  # The run's access key's label, where the reader is shown the nodes: their keys are the
+  # part `nodes` an edition may hide (`Apiary.Features.visible?/2`).
+  defp key_label(scope, %{access_key: %{label: label}}),
+    do: if(Apiary.Features.visible?(scope, :nodes), do: label)
+
+  defp key_label(_scope, _run), do: nil
 
   @doc """
-  The node a run ran on, by name: a link to its page while it is in use, its name and
-  "(deleted)" once it is deleted, n/a when the run's node was not read.
+  The node a run ran on, by name: a link to its page while it is in use and the reader may
+  open it (`node.read`; an edition may hide the nodes from them), else its name alone; its
+  name and "(deleted)" once it is deleted, n/a when the run's node was not read.
   """
   attr :scope, :map, required: true
   attr :node, :any, required: true, doc: "the run's node, or nil or false when not read"
@@ -2179,10 +2184,12 @@ defmodule ApiaryWeb.RunComponents do
   def node_name(assigns) do
     ~H"""
     <%= cond do %>
-      <% @node && is_nil(@node.deleted_at) -> %>
+      <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
         <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
           {@node.name}
         </.link>
+      <% @node && is_nil(@node.deleted_at) -> %>
+        {@node.name}
       <% @node -> %>
         {gettext("%{name} (deleted)", name: @node.name)}
       <% true -> %>
@@ -2747,7 +2754,7 @@ defmodule ApiaryWeb.RunComponents do
       title={destination_title_words(@c)}
       data-request-id={@c.request_id}
     >
-      <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span><.host_copy
+      <span class="q-cx-h"><bdi>{@c.host}</bdi><span class="q-cx-p">:{@c.port}</span><.host_copy
         :if={@copy_id}
         id={@copy_id}
         host={@c.host}
@@ -2794,7 +2801,18 @@ defmodule ApiaryWeb.RunComponents do
     main =
       case reason_kind(c) do
         :own_address ->
-          [gettext("The wall refuses the machine's address,"), gettext("in either mode.")]
+          [
+            gettext("The wall refuses link-local addresses and the machine's addresses,"),
+            gettext("in either mode.")
+          ]
+
+        :host_form ->
+          [
+            gettext(
+              "The gateway refuses a host that is neither a name nor an address in canonical form,"
+            ),
+            gettext("in either mode.")
+          ]
 
         :ambiguous_path ->
           [
@@ -2840,12 +2858,12 @@ defmodule ApiaryWeb.RunComponents do
     Enum.join(words, " ") <> if(mixed, do: " · " <> gettext("last attempt"), else: "")
   end
 
-  # "Rule api.example, path /v1/*, credential model-key", as the row shows it.
+  # "Rule api.example, path /v1/*, secret model-key", as the row shows it.
   defp rule_words(c) do
     [
       gettext("Rule") <> " " <> (c.rule || ""),
       c.path_rule && gettext("path") <> " " <> c.path_rule,
-      c.decision == "allowed" && c.credential && gettext("credential") <> " " <> c.credential
+      c.decision == "allowed" && c.credential && gettext("secret") <> " " <> c.credential
     ]
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join(", ")
@@ -2880,7 +2898,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
-      <span class="q-on">{@c.host}:{@c.port}</span>
+      <span class="q-on"><bdi>{@c.host}</bdi>:{@c.port}</span>
     </span>
     """
   end
@@ -2890,7 +2908,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <span class="q-dest" title={destination_title(@c, @line)} data-request-id={@c.request_id}>
-      {@c.host}<span class="text-faint">:{@c.port}</span>
+      <bdi>{@c.host}</bdi><span class="text-faint">:{@c.port}</span>
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
     </span>
     """
@@ -2938,7 +2956,13 @@ defmodule ApiaryWeb.RunComponents do
     <b :if={@variant == "inline" && @c.decision == "denied"}>{gettext("Denied.")}</b>
     <%= case @kind do %>
       <% :own_address -> %>
-        <b>{gettext("The wall refuses the machine's address,")}</b> {gettext("in either mode.")}
+        <b>{gettext("The wall refuses link-local addresses and the machine's addresses,")}</b> {gettext(
+          "in either mode."
+        )}
+      <% :host_form -> %>
+        <b>{gettext(
+          "The gateway refuses a host that is neither a name nor an address in canonical form,"
+        )}</b> {gettext("in either mode.")}
       <% :ambiguous_path -> %>
         <b>{gettext("The path can be read two ways.")}</b> {gettext(
           "The wall denies it in either mode."
@@ -2972,7 +2996,7 @@ defmodule ApiaryWeb.RunComponents do
         <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
           "path"
         )}
-        <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("credential")}
+        <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("secret")}
         <.rule value={@c.credential} /></span>
       <% :unknown -> %>
         <span class="text-faint">{gettext("n/a")}</span>
@@ -2987,6 +3011,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp reason_kind(%{decision: "denied", rule: "wall:own-address"}), do: :own_address
+  defp reason_kind(%{decision: "denied", rule: "wall:host-form"}), do: :host_form
   defp reason_kind(%{decision: "denied", path_rule: "wall:ambiguous-path"}), do: :ambiguous_path
   defp reason_kind(%{decision: "denied", rule: nil}), do: :denied_no_rule
 
@@ -3367,7 +3392,7 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :allow_path, :string,
     default: nil,
-    doc: "the level above's page with the host, to allow it there"
+    doc: "the level above's New rule page with the host, to allow it there"
 
   def rule_actions(%{rule_option: option} = assigns) when option in [:can_allow, :can_deny] do
     host = assigns.connection.host
@@ -3672,7 +3697,7 @@ defmodule ApiaryWeb.RunComponents do
       <header class="q-rp-head">
         <h3 id={"#{@id}-title"}>
           <.spliced text={gettext("Allow %{host}", host: hole())}>
-            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
+            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3708,7 +3733,7 @@ defmodule ApiaryWeb.RunComponents do
               do: gettext("%{host} stays denied", host: hole()),
               else: gettext("%{host} stays allowed", host: hole())
           }>
-            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
+            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3785,7 +3810,7 @@ defmodule ApiaryWeb.RunComponents do
               <span
                 class="q-rp-host"
                 title={@panel.host}
-              >{middle(@panel.host, 40)}</span>
+              ><bdi>{middle(@panel.host, 40)}</bdi></span>
             </.spliced>
           </h3>
         </header>

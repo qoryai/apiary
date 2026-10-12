@@ -149,26 +149,28 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   @hosts_days 14
 
   @impl true
-  def mount(%{"node_id" => public_id}, _session, socket) do
+  def mount(%{"node_id" => public_id} = params, _session, socket) do
     scope = socket.assigns.current_scope
+    place = NodeComponents.node_place(params)
 
-    case Nodes.get_node(scope, public_id) do
+    case NodeComponents.find_node(scope, place, public_id) do
       %Node{} = node ->
         if connected?(socket) do
-          Nodes.subscribe(scope)
+          Nodes.subscribe(scope, place)
           AccessKeys.subscribe(scope, node)
         end
 
         {:ok,
          socket
-         |> assign(node: node, paths: paths(scope, node.public_id))
+         |> assign(place: place, node: node, paths: paths(scope, place, node.public_id))
          |> assign(issued: nil, carry: false, form: nil, key: nil, code: nil)
          |> assign(shown: nil, expiry_timer: nil)
          |> assign_may()
          |> assign_activity()
          |> assign_through()
          |> load()
-         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
+         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))
+         |> NodeComponents.leave_when_hidden(~w(create_code generate_key revoke revoke_code))}
 
       nil ->
         raise Ecto.NoResultsError, queryable: Node
@@ -182,7 +184,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     assign(socket,
       may: may,
       manages: Enum.any?(Map.values(may)),
-      may_runs: Access.can?(scope, :"run.read", scope.workspace)
+      may_runs:
+        socket.assigns.place == :workspace and Access.can?(scope, :"run.read", scope.workspace)
     )
   end
 
@@ -194,11 +197,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # The gateway the node's runs go through, as its choice leads now, and whether that
   # gateway holds an active key.
   defp assign_through(socket) do
-    through = Gateways.chosen(socket.assigns.node)
+    %{current_scope: scope, node: node} = socket.assigns
+    through = node |> Gateways.chosen() |> Repo.preload(:organisation)
 
     assign(socket,
       through: through,
-      through_connected: through && AccessKeys.active_key?(through)
+      through_connected: through && AccessKeys.active_key?(through),
+      through_path:
+        through && through.organisation_id != node.organisation_id &&
+          NodeComponents.gateway_path(scope, through)
     )
   end
 
@@ -271,7 +278,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   def handle_params(%{"node_id" => public_id}, _uri, %{assigns: %{node: node}} = socket)
       when public_id != node.public_id do
     {:noreply,
-     push_navigate(socket, to: paths(socket.assigns.current_scope, public_id).access_key)}
+     push_navigate(socket,
+       to: paths(socket.assigns.current_scope, socket.assigns.place, public_id).access_key
+     )}
   end
 
   def handle_params(params, _uri, socket) do
@@ -652,7 +661,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   def handle_info({:nodes_touched, _workspace_id}, socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    case Nodes.get_node(scope, node.public_id) do
+    case NodeComponents.find_node(scope, socket.assigns.place, node.public_id) do
       %Node{} = current ->
         {:noreply, socket |> assign(:node, current) |> assign_activity() |> assign_through()}
 
@@ -788,27 +797,35 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # What the act named is not there for it: the key or the command, or the node itself,
   # or the workspace's, now. A node the reader still reads says so on the tab; one gone
-  # sends them to the list.
+  # sends them to the list. Where the nodes were hidden from the reader meanwhile, the page
+  # leaves as it does once it hears of it, and says that instead.
   defp not_found(socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    if Nodes.get_node(scope, node.public_id),
-      do:
-        to_tab(
-          socket,
-          :error,
-          gettext("That key or code is gone: this node's keys changed meanwhile.")
-        ),
-      else: gone(socket)
+    if NodeComponents.find_node(scope, socket.assigns.place, node.public_id) &&
+         not NodeComponents.hidden_now?(scope),
+       do:
+         to_tab(
+           socket,
+           :error,
+           gettext("That key or code is gone: this node's keys changed meanwhile.")
+         ),
+       else: gone(socket)
   end
 
-  # The node was deleted, or left the reader's reach, since the page opened.
+  # The node was deleted, or left the reader's reach, since the page opened. Where the
+  # nodes were hidden from the reader meanwhile, the page leaves as it does once it hears
+  # of it, and says that instead.
   defp gone(socket) do
-    %{organisation: organisation, workspace: workspace} = socket.assigns.current_scope
-
-    socket
-    |> put_flash(:error, gettext("This node is gone: it was deleted."))
-    |> push_navigate(to: ~p"/#{organisation}/#{workspace}/nodes")
+    if NodeComponents.hidden_now?(socket.assigns.current_scope) do
+      UserAuth.reload_scope(socket)
+    else
+      socket
+      |> put_flash(:error, gettext("This node is gone: it was deleted."))
+      |> push_navigate(
+        to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
+      )
+    end
   end
 
   # An act the reader may not take, `action`, as the database has their membership now:
@@ -819,13 +836,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     scope = Access.reload(socket.assigns.current_scope)
 
     cond do
+      # The nodes hidden from them meanwhile: the page leaves as it does once it hears of
+      # it (`ApiaryWeb.UserAuth.reload_scope/1`).
+      not Apiary.Features.visible?(scope, :nodes) ->
+        ApiaryWeb.UserAuth.reload_scope(socket)
+
       Access.reader(scope) ->
         socket
         |> assign(may: Map.new(@acts, fn {act, _} -> {act, false} end), manages: false)
         |> put_flash(:error, ApiaryWeb.Access.reads_only(scope))
         |> push_patch(to: socket.assigns.paths.access_key)
 
-      Access.can?(scope, :"node.read", scope.workspace) ->
+      NodeComponents.reads_nodes?(scope, socket.assigns.place) ->
         socket
         |> assign(may: Map.new(@acts, fn {act, _} -> {act, false} end), manages: false)
         |> put_flash(:error, ApiaryWeb.Access.who_may(scope, action, why))
@@ -833,7 +855,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
       true ->
         socket
-        |> put_flash(:error, gettext("You are no longer a member of this workspace."))
+        |> put_flash(:error, NodeComponents.no_longer_member(socket.assigns.place))
         |> redirect(to: ~p"/")
     end
   end
@@ -860,8 +882,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   ## Words and paths
 
-  defp paths(%{organisation: organisation, workspace: workspace}, public_id) do
-    base = ~p"/#{organisation}/#{workspace}/nodes/#{public_id}"
+  defp paths(scope, place, public_id) do
+    base = NodeComponents.node_base(scope, place, public_id)
 
     %{
       overview: base,
@@ -1251,8 +1273,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp way_button(:new_code, _waiting), do: gettext("Get a new command")
   defp way_button(:generate, _waiting), do: gettext("Generate a key")
 
-  defp nodes_path(paths), do: String.replace(paths.overview, ~r{/[^/]+$}, "")
-
   ## Render
 
   @impl true
@@ -1270,11 +1290,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      nav={NodeComponents.nodes_nav(@place)}
       place={:workspace}
       width="read"
     >
-      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
+        {NodeComponents.nodes_label(@place)}
+      </:crumb>
       <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
@@ -1308,6 +1330,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   node={@node}
                   gateway={@through}
                   connected={!!@through_connected}
+                  path={@through_path || nil}
                 />
                 <div class="grid gap-1.5">
                   <p id="code-issued-run" class="text-[13px]/5">
@@ -1406,11 +1429,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      nav={NodeComponents.nodes_nav(@place)}
       place={:workspace}
       width="read"
     >
-      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
+        {NodeComponents.nodes_label(@place)}
+      </:crumb>
       <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb :if={@live_action == :generate}>{gettext("Generate a key")}</:crumb>
@@ -1546,6 +1571,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             node={@node}
             gateway={@through}
             connected={!!@through_connected}
+            path={@through_path || nil}
           />
 
           <.how_to :if={@live_action == :generated} id="key-generated-steps">
@@ -1680,11 +1706,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      nav={NodeComponents.nodes_nav(@place)}
       place={:workspace}
       width="read"
     >
-      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
+        {NodeComponents.nodes_label(@place)}
+      </:crumb>
       <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb>{@key.label}</:crumb>
@@ -1712,6 +1740,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             node={@node}
             gateway={@through}
             connected={!!@through_connected}
+            path={@through_path || nil}
           />
           <%= if @key.arrived_by == :code do %>
             <div class="grid gap-1.5">
@@ -1815,10 +1844,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      nav={NodeComponents.nodes_nav(@place)}
       place={:workspace}
     >
-      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
+        {NodeComponents.nodes_label(@place)}
+      </:crumb>
       <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
 
       <NodeComponents.node_header node={@node} activity={@activity} />
@@ -1830,6 +1861,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           node={@node}
           gateway={@through}
           connected={!!@through_connected}
+          path={@through_path || nil}
         />
 
         <%!-- No key in use: the question, and the ways as cards, the kind's own first and
@@ -1889,7 +1921,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             id="node-keys-members"
             class="text-[13px]/5 text-muted"
           >
-            {ApiaryWeb.Access.who_may(
+            {NodeComponents.managed_by(
               @current_scope,
               :"access_key.revoke",
               gettext("Only owners and admins manage a node's keys.")
@@ -2353,7 +2385,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     assigns =
       assign(assigns,
-        secrets: Apiary.Features.on?(assigns.scope, :secrets),
+        secrets: Apiary.Features.visible?(assigns.scope, :secrets),
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2448,7 +2480,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt class="text-faint">{gettext("Fingerprint")}</dt>
         <dd id={"#{@dom}-fingerprint"} class="q-mono break-all">{AccessKey.fingerprint(@key)}</dd>
-        <%!-- Stored secrets asks `on?(scope, :secrets)`. --%>
+        <%!-- Stored secrets asks `visible?(scope, :secrets)`. --%>
         <dt :if={@secrets} class="text-faint">{gettext("Stored secrets")}</dt>
         <dd :if={@secrets} id={"#{@dom}-stored-secrets"}>
           {secrets_words(@key.allow_secrets)}

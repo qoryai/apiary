@@ -41,6 +41,21 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ "The only owner cannot be removed"
     end
 
+    @tag needs: :security
+    test "says nothing of the policy where it is hidden from the reader", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      assert html =~
+               "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
+
+      refute html =~ "policy"
+    end
+
     test "finds a person by their email, the search in the URL", %{conn: conn, scope: scope} do
       %{user: other} = member_fixture(scope, :member)
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")

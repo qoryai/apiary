@@ -44,9 +44,8 @@ defmodule Apiary.Runs.Sender do
   outcome.
 
   **The run's place** (`place_key/2`): what is read for a run, its workspace's run
-  configuration and its features, is read under the run's own workspace and
-  organisation, never the gateway key's: a gateway may serve a workspace other than its
-  own.
+  configuration, is read under the run's workspace and organisation, never the gateway
+  key's: a gateway may serve a workspace other than its own.
 
   The keys that reach here are active: a request is verified only under a key that is not
   revoked, of a node that is not deleted (`Apiary.AccessKeys.fetch_for_verification/1`).
@@ -227,6 +226,22 @@ defmodule Apiary.Runs.Sender do
 
   defp lock(query, opts),
     do: if(opts[:lock], do: Ecto.Query.lock(query, "FOR UPDATE"), else: query)
+
+  @doc """
+  Whether the gateway of `access_key` may still serve `run`'s workspace
+  (`Apiary.Gateways.may_serve?/2`), for a run through a gateway: asked at each batch,
+  heartbeat, reload and repeated attach, as at the registration and the first attach, so
+  a gateway acts for no run of a workspace it may no longer serve. Always true for a
+  direct run. The key's node must be loaded.
+  """
+  @spec serves?(Run.t(), AccessKey.t()) :: boolean
+  def serves?(%Run{} = run, %AccessKey{node: %Node{} = gateway}) do
+    not Run.through_gateway?(run) or
+      Apiary.Gateways.may_serve?(gateway, %Workspace{
+        id: run.workspace_id,
+        organisation_id: run.organisation_id
+      })
+  end
 
   @doc """
   The key `run`'s place is read under, for what `access_key` asks of it: `access_key`

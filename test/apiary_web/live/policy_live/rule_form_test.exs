@@ -318,7 +318,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       type(view, %{host: "10.0.0.12:443", paths: ""})
 
       assert read(view, "#policy-rule-host-error") ==
-               "An address is written like a host, digits and dots only: 10.0.0.12. The wall refuses the machine's address whatever the policy says."
+               "An address is written like a host, digits and dots only: 10.0.0.12. The wall refuses link-local addresses and the machine's addresses whatever the policy says."
 
       # The host is right and a path is not: the error under Paths, Paths focused on Add.
       type(view, %{host: "api.example", paths: "/v1?x=1"})
@@ -708,6 +708,75 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
         assert has_element?(view, "#policy-rules")
         refute has_element?(view, "#policy-rules-add")
       end
+    end
+  end
+
+  describe "a rule stored with an address in another form" do
+    @off "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
+
+    # Stored before the grammar refused its host: inserted as it is, past the changeset.
+    defp stored_rule(scope, target, host) do
+      Apiary.Repo.insert!(%Apiary.Policy.Rule{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        target_id: target && target.id,
+        kind: "host",
+        action: "allow",
+        host: host
+      })
+    end
+
+    defp offers_remove_only(view, rule) do
+      assert has_element?(view, "#rule-#{rule.id}.q-pr-off")
+      assert has_element?(view, "#rule-#{rule.id} .q-pr-host[title='#{@off}']")
+      assert has_element?(view, "#rule-#{rule.id} .q-pr-host .sr-only", @off)
+      assert has_element?(view, "#rule-#{rule.id}-remove", "Remove")
+      refute has_element?(view, "#rule-#{rule.id}-edit")
+      refute has_element?(view, "#rule-#{rule.id}-paths")
+      refute has_element?(view, "#rule-#{rule.id}-change")
+      refute has_element?(view, "#rule-#{rule.id}-lock-toggle")
+    end
+
+    test "is not in force on the workspace's page, says why, and offers Remove alone",
+         %{conn: conn, scope: scope} do
+      stored = stored_rule(scope, nil, "127.1")
+      {:ok, fine} = Policy.allow(scope, nil, %{host: "10.0.0.12"})
+      view = open(conn, scope)
+
+      offers_remove_only(view, stored)
+      assert has_element?(view, "#rule-#{fine.id}-edit")
+      refute has_element?(view, "#rule-#{fine.id}.q-pr-off")
+
+      # The short marker, and the sentence on wider screens.
+      assert has_element?(view, "#rule-#{stored.id} .q-pr-offw-short", "Not in force")
+      assert has_element?(view, "#rule-#{stored.id} .q-pr-offw-full", @off)
+
+      # Its Edit address leads back to the list.
+      {:ok, edit, _html} = live(conn, workspace_path(scope, "/policy/rules/#{stored.id}/edit"))
+      render_async(edit, 5_000)
+      refute has_element?(edit, "#policy-rule-form")
+      assert has_element?(edit, "#policy-rules")
+
+      view |> element("#rule-#{stored.id}-remove") |> render_click()
+      refute rule(scope, "127.1")
+      assert rule(scope, "10.0.0.12")
+    end
+
+    test "is not in force on a target's Policy tab, its own or the workspace's",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      [%{target: target}] = Policy.list_targets(scope)
+      own = stored_rule(scope, target, "0x7f.0.0.1")
+      workspace = stored_rule(scope, nil, "010.0.0.1")
+      {:ok, _} = Policy.allow(scope, target, %{host: "api.example"})
+      path = target_path(scope, target.system, target.path, ["policy"])
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+
+      offers_remove_only(view, own)
+      assert has_element?(view, "#rule-#{workspace.id}.q-pr-off")
+      assert has_element?(view, "#rule-#{workspace.id} .q-pr-host[title='#{@off}']")
+      refute has_element?(view, "#rule-#{workspace.id}-edit")
     end
   end
 

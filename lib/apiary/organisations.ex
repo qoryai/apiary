@@ -150,17 +150,40 @@ defmodule Apiary.Organisations do
   def put_reach(%Scope{user: %User{id: user_id}} = scope, %Organisation{} = organisation) do
     own = active_membership(organisation.id, user_id)
 
+    # Nothing of another organisation's hidden is carried over: `put_place/2` asks it for
+    # this one once the workspace is put, and a caller that stops here, which asks no
+    # page's gate, keeps nil, nothing hidden, rather than asking the edition twice.
     Edition.reach(%{
       scope
       | organisation: organisation,
         membership: own && %{own | organisation: organisation},
         reach: nil,
         workspace: nil,
-        edition: %{}
+        edition: %{},
+        hidden: nil
     })
   end
 
   def put_reach(_scope, _organisation), do: :error
+
+  @doc """
+  workspace_scopes/1 is the scope as the person would have it in each workspace of the
+  scope's organisation they reach, by the workspace's id: `scope` with that workspace,
+  what the edition says of the person there (`c:Apiary.Edition.reached_workspaces/2`),
+  and what the person is not shown in the organisation (`c:Apiary.Edition.hidden/1`),
+  asked once for them all, as `resolve_scope/4` puts them when the person opens it. One
+  read, whatever the number of workspaces.
+  """
+  @spec workspace_scopes(Scope.t()) :: %{Ecto.UUID.t() => Scope.t()}
+  def workspace_scopes(%Scope{organisation: %Organisation{}} = scope) do
+    # What the person is not shown does not depend on the workspace.
+    hidden = hidden(scope)
+
+    for row <- scope |> reached_query() |> Repo.all(), into: %{} do
+      {workspace, _extras} = place = place(row)
+      {workspace.id, %{on_place(scope, place) | hidden: hidden}}
+    end
+  end
 
   # The person's membership in the organisation, while it is not suspended and their
   # account is in use: a suspended one reaches nothing.
@@ -380,7 +403,8 @@ defmodule Apiary.Organisations do
   ids its arguments carry: the organisation, the workspace in it when `workspace_id` is not
   nil, and the person whose action enqueued the job when `user_id` is not nil, as they
   reach the organisation now (`put_reach/2`), with what the edition says of the
-  workspace. Without a person the scope is the instance's
+  workspace and what the person is not shown in the organisation
+  (`c:Apiary.Edition.hidden/1`). Without a person the scope is the instance's
   (`Apiary.Accounts.Scope.for_instance/2`): the instance acts, as its role in
   `Apiary.Access` allows. Without an organisation the scope is the instance's alone.
 
@@ -397,8 +421,7 @@ defmodule Apiary.Organisations do
           {:ok, Scope.for_instance(organisation, workspace)}
 
         %User{} ->
-          scope = job_person_scope(user, organisation, workspace)
-          {:ok, %{scope | features: Features.of(organisation, workspace)}}
+          {:ok, put_hidden(job_person_scope(user, organisation, workspace))}
       end
     end
   end
@@ -542,19 +565,25 @@ defmodule Apiary.Organisations do
     )
   end
 
-  # The workspace, what the edition says of the person there, and what the organisation
-  # and the workspace have (`Apiary.Features.of/2`), which `Apiary.Features.on?/2` answers
+  # The workspace, what the edition says of the person there, and what the person is not
+  # shown in the organisation (`put_hidden/1`), which `Apiary.Features.visible?/2` answers
   # from.
-  defp put_place(scope, place) do
-    {workspace, extras} = place || {nil, %{}}
+  defp put_place(scope, place), do: scope |> on_place(place) |> put_hidden()
 
-    %{
-      scope
-      | workspace: workspace,
-        edition: Map.merge(scope.edition, extras),
-        features: Features.of(scope.organisation, workspace)
-    }
+  defp on_place(scope, place) do
+    {workspace, extras} = place || {nil, %{}}
+    %{scope | workspace: workspace, edition: Map.merge(scope.edition, extras)}
   end
+
+  # What the person is not shown in the scope's organisation, asked of the edition once
+  # the organisation and the edition's reach are on the scope; nil, nothing hidden, without
+  # an organisation.
+  defp put_hidden(%Scope{organisation: %Organisation{}} = scope),
+    do: %{scope | hidden: hidden(scope)}
+
+  defp put_hidden(scope), do: %{scope | hidden: nil}
+
+  defp hidden(scope), do: Features.hidden_of(Edition.hidden(scope))
 
   @doc """
   list_memberships/1 is the user's memberships in use, oldest first, each with its

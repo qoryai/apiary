@@ -14,8 +14,11 @@ actions:
 
 1. is added once to the action list in `Apiary.Access`, or to an edition's
    (`c:Apiary.Edition.actions/0`), as an `Apiary.Access.Action`: the feature it belongs
-   to (none: every instance has it), a line saying what it is, which the module's
-   documentation tabulates, whether it leaves an audit entry, and what it is asked of;
+   to (none: every instance has it), and the part where it belongs to one (`part:`, one
+   of `Apiary.Features.parts/0`: a part of that feature, or for an action of no feature a
+   part of none), a line saying what it is, which the
+   module's documentation tabulates, whether it leaves an audit entry, and what it is
+   asked of;
 2. is given to the roles that may take it, in the action's `roles`, from which the
    module's role table is built;
 3. gets its rows in the access test's rows modules (`Apiary.AccessRows` for the core,
@@ -119,7 +122,8 @@ may:
   join the core's in one registry: an action named twice, a role that is one of the
   core's, or an action of a role or a feature nobody defines stops the boot;
 - answer first for what it adds or narrows (`c:Apiary.Edition.check/3`), once the
-  action's feature is on and before the place is checked, or leave the answer to the core;
+  action's feature is on and shown to the scope and before the place is checked, or leave
+  the answer to the core;
   an answer that must come after the place's asks `Apiary.Access.check_place/3` first.
   Asked with no scope, as `Apiary.Access.refused_on?/2` asks, `forbidden` says the subject
   refuses the action whoever asks, which a page asks to say why a control is not there;
@@ -261,6 +265,41 @@ an edition may keep it from some who change the rest, whose pools are made with 
 of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 
+A gateway of an organisation, which has no workspace, is asked at the organisation: its
+making and listing (`node.create`, `node.read` of the organisation), its changes and
+deletion, and its keys and codes, by owners and admins of the organisation. An
+enrolment code's maker is read again at the organisation, without a workspace, and a key
+of such a gateway is asked at its organisation (`Apiary.Accounts.Scope.key_place/1`).
+Everyone in the organisation reads its gateways. While its organisation is out of use,
+such a gateway keeps its keys, which are verified for the runs of other organisations it
+serves (`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
+enrolment code of an organisation out of use is found by none. A workspace's gateway is
+held to its organisation's use as any node is.
+
+A gateway acts for a run only while it may serve the run's workspace
+(`Apiary.Gateways.may_serve?/2`, asked at the registration, at each attach, batch,
+heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is refused
+with nothing of the run told: no policy, no event, no outcome, no digest. Two things
+stay known to such a gateway, and are accepted:
+
+- **Whether the run is still sending, has ended, or was lost.** At the events endpoint the
+  sender's check comes first: a batch from another instance of the gateway than the one
+  that attached the run is `409` `wrong_gateway` while the run is still sending, and the
+  `410` `workspace_not_served` once its sending has ended (its exit arrived, it was lost
+  after its attach, or its events were pruned). At the attach, the run key's holder is
+  answered before the serving check: an ended run is `410`; a run never attached whose
+  attach window has closed, or that was already lost, is `409` `run_key_expired`; any
+  other is `409` `workspace_not_served`. A starter's outcome ends the run there too, and
+  which outcome is never told. The gateway a run key names knows the run's id from its
+  run key, before any attach; only the gateway that attached the run is answered at the
+  events endpoint and the reload, any other `409` `wrong_gateway` and `404`.
+- **Whether the run's place is in use.** The place's check comes before the serving
+  check, as it does for every key. At the events endpoint and the attach, it is `401`
+  while the run's workspace or organisation is out of use, and `404` while `Apiary.Access`
+  does not let the run's workspace post (`run.post_events`); at the reload, `404` while
+  the run's workspace or organisation is out of use. Only then comes the serving check's
+  answer.
+
 ## Leaving
 
 Anyone with a membership may remove their own, whatever their level: leaving the
@@ -270,16 +309,40 @@ who may act cannot leave.
 
 ## Features
 
-The feature an action belongs to is asked first, of `Apiary.Features.on?/2` with the
-scope, and a feature that is off is `{:error, :not_found}`: absent, as a feature the
-instance lacks. What an organisation, or a workspace of it, has is `Apiary.Features.of/2`,
-the one answer ([architecture.md](architecture.md), Features): in the core the instance's
-features, in every organisation and workspace alike; an edition may narrow them below the
-instance, and never adds to them. The scope carries them:
-`Apiary.Organisations.resolve_scope/4` loads them with the organisation and the
-workspace, and `reload/2` reads them again after its locks, so what an edition changes of
-them under the organisation's lock is waited for, or seen. An access key's are read from
-its organisation and workspace when asked.
+The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
+scope, and a feature that is off, or hidden from the scope's person, is
+`{:error, :not_found}`: absent, as a feature the instance lacks. A feature is hidden from a person
+where a feature it needs is, directly or through another: hiding `security` hides
+`secrets`, and hiding `observability` hides both (`Apiary.Features.hidden_of/1` adds
+them). The stored secrets', the variables' and the integrations' actions (`secret.*`,
+`variable.*`, `connection.*`) belong to `secrets`, the feature of their pages. An action
+that belongs to a part of its feature is asked of the part, which is hidden where it or
+its feature is: `run.read_log` belongs to `observability.terminal`, the run's Terminal, so
+an edition that hides it hides the run's whole log from that person, the Terminal tab, the
+log's address with every stream and the download, the ⋯ menu's Raw log and Download log,
+the runs list's preview of the last lines and the terminal's size on Details, and the
+sentences on session events name no terminal; the rest of the run is as it is. A part may
+belong to no feature, and is then hidden where it is named alone: the `node.*` and
+`access_key.*` actions belong to `nodes`, so an edition that hides it hides from that
+person the nodes, the node pools, their access keys and the gateways: their pages, which
+answer not found and leave once open, their entries in the navigation, New and the
+palette, the Overview's box for a workspace with no run yet and its link to the nodes
+page, Go to nodes on the empty Runs list, and the links to a node's page from the runs
+list, the run preview and the run page, which name the node without a link. The Activity
+filter leaves out their actions, and their entries keep their labels. The nodes keep
+working: what a node is served never asks what is hidden, and an enrolment code's maker
+approves the key it brings by their role and place, whatever is hidden from them
+(`Apiary.Access.check_code_maker/2`), so their codes keep working where the nodes are
+hidden from them. A page of the nodes open when they are hidden leaves, and so does one
+whose act is asked after they are hidden; a switch of workspace never lands on one. What a
+person is not shown in an organisation is the edition's answer
+(`c:Apiary.Edition.hidden/1`), the one answer ([architecture.md](architecture.md),
+Features): in the core, nothing. A person's scope carries it (`hidden`):
+`Apiary.Organisations.resolve_scope/4` loads it with the organisation and the workspace,
+and `reload/2` asks it again after the edition's reload, under the edition's locks, so
+what an edition changes of it under the organisation's lock is waited for, or seen. An
+access key, and its scope, and the instance answer as the instance: `run.post_events` and
+`run_configuration.fetch` follow the instance's features alone.
 
 ## Who asks
 
@@ -327,9 +390,9 @@ marking, cancelling and purge inside the transaction that makes it
 Every context function that changes something calls `Apiary.Access.authorize/3` with its
 action and the subject first, and returns what it answers:
 
-- `{:error, :not_found}` for a feature that is off, a subject of another organisation or
-  workspace, a subject of a workspace the person does not reach, and what the edition
-  answers so (`c:Apiary.Edition.check/3`);
+- `{:error, :not_found}` for a feature that is off or hidden, a subject of another
+  organisation or workspace, a subject of a workspace the person does not reach, and what
+  the edition answers so (`c:Apiary.Edition.check/3`);
 - `{:error, :forbidden}` for a role that does not allow the action, or allows it over
   other people than the subject's, and what the edition refuses so.
 
@@ -441,6 +504,20 @@ The modes keep a row that only names another out of it:
   before the node's, so a change of the maker's level, a suspension or a removal waits for
   it, or came first and refuses the code. Deleting a node (`Apiary.Nodes.delete_node/2`)
   holds the same row, and revokes its keys under it.
+- A change of the gateways, of their default marks or of a node's or a pool's choice of
+  gateway (`Apiary.Gateways.lock/1`) takes its organisation rows first, at one point,
+  through `Apiary.Organisations.lock_organisations/2`. A change at a workspace holds its
+  organisation and the organisations whose organisation-level gateways may serve it
+  (`c:Apiary.Edition.serving_organisations/1`) `FOR SHARE`, then the workspace's row
+  `FOR NO KEY UPDATE`. A change of an organisation-level gateway holds its organisation
+  `FOR NO KEY UPDATE` and the organisations whose workspaces it may serve
+  (`c:Apiary.Edition.served_organisations/1`) `FOR SHARE`. So a change at an organisation
+  takes turns with every change at a workspace it may serve. Then the node's row
+  `FOR UPDATE`. A deletion holds the gateway's row `FOR UPDATE` while it reads the runs
+  that hold it, and a registration through the gateway and an attach by it read that row
+  `FOR SHARE`. The seams read and lock nothing, and are read once, not again under the
+  lock: an edition's change of the relation they answer takes a row these writes take
+  too, in a mode that conflicts with theirs.
 - A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
   (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation
   `FOR SHARE` (`Apiary.Access.lock_places/1`),

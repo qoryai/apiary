@@ -660,10 +660,13 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # Cut by bytes, on a character boundary.
-  defp cut(value, max) when byte_size(value) <= max, do: value
+  # Cut by bytes, on a character boundary. The run's timeline cuts an egress event's host
+  # with it, so it shows the host as a connection keeps it
+  # (`Apiary.Runs.Record.Timeline.egress_host/1`).
+  @doc false
+  def cut(value, max) when byte_size(value) <= max, do: value
 
-  defp cut(value, max) do
+  def cut(value, max) do
     value |> binary_part(0, max) |> String.chunk(:valid) |> List.first("")
   end
 

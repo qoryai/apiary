@@ -39,12 +39,17 @@ defmodule Apiary.Policy.Resolution do
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
      are denied by having no allow, as before; under `observe` they are reached and
      recorded with no rule.
-  4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
-     allowed entry (the gateway holds a host to the path list of whichever entry of `paths`
-     it finds first). A `*.` allow of the level above held to paths overrides every lower
-     allow it covers instead, whatever its rank: the level above is never refused for a
-     rule below it.
-  5. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
+  4. **A `*.` suffix held to paths above another allowed entry is refused**: Qory Apiary
+     doesn't let a `*.` suffix with paths cover another allowed host. The gateway holds a
+     host to the path list of its most specific entry of `paths`: its name itself, else the
+     `*.` entry with the longest suffix. A `*.` allow of the level above held to paths
+     overrides every lower allow it covers instead, whatever its rank: the level above is
+     never refused for a rule below it.
+  5. **A rule whose host the grammar refuses** (`Apiary.Policy.Grammar.host?/1`), stored
+     before the grammar refused it, such as the address `127.1`, is not in force
+     (`Apiary.Policy.Entry`'s `reason: :out_of_grammar`) and is left out of the document:
+     the gateway would refuse the whole document for it.
+  6. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
      the connection by `deny`, then by `allow`, and only then the request by `paths`
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
@@ -127,6 +132,7 @@ defmodule Apiary.Policy.Resolution do
     entries =
       entries
       |> only_above_allows(above)
+      |> out_of_grammar()
       |> same_subject()
       |> covered_by_deny()
       |> under_allow()
@@ -181,6 +187,17 @@ defmodule Apiary.Policy.Resolution do
   end
 
   defp only_above_allows(entries, _above), do: entries
+
+  # A rule stored before the grammar refused its host (an address such as `127.1`, which
+  # the gateway refuses the whole document for) is struck before anything meets: it is in
+  # no list, covers nothing, and the page says why.
+  defp out_of_grammar(entries) do
+    Map.new(entries, fn {index, entry} ->
+      if Grammar.host?(entry.host),
+        do: {index, entry},
+        else: {index, %{entry | in_force: false, reason: :out_of_grammar}}
+    end)
+  end
 
   # Rules that meet on the same host: the highest precedence decides it whole.
   defp same_subject(entries) do
@@ -271,8 +288,8 @@ defmodule Apiary.Policy.Resolution do
   end
 
   # A `*.` allow of the level above held to paths overrides every lower allow it covers,
-  # whatever its rank: the document cannot hold both, and the level above is never
-  # refused for a rule below it. The lower allow is narrowed to the level's paths.
+  # whatever its rank: the level above's allow is never widened, and the level above is
+  # never refused for a rule below it. The lower allow is narrowed to the level's paths.
   defp under_above_allow(entries) do
     held =
       for {index, %{action: :allow, source: :organisation, paths: paths} = entry}
@@ -326,7 +343,7 @@ defmodule Apiary.Policy.Resolution do
                ),
                pgettext(
                  "plain",
-                 "The gateway holds a host to one list of paths and cannot tell which of the two applies."
+                 "Qory Apiary doesn't let a *. suffix with paths cover another allowed host."
                ),
                gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
                  host: below.host

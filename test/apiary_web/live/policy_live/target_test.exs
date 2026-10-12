@@ -423,6 +423,30 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#flash-info") =~ "telemetry.example is denied for acme/shop."
   end
 
+  test "the old Edit paths event leads only an id in a rule id's form to Edit rule",
+       %{conn: conn, scope: scope, target: target, path: path} do
+    {:ok, rule} = Policy.allow(scope, target, %{host: "own.example"})
+    view = open(conn, path)
+
+    # A crafted id leads nowhere, and the page stays up.
+    for bad <- [
+          %{},
+          %{"id" => %{}},
+          %{"id" => 7},
+          %{"id" => String.duplicate("a", 65)},
+          %{"id" => "a/b"},
+          %{"id" => "../x"},
+          %{"id" => "x?y=1"}
+        ] do
+      render_click(view, "edit_paths", bad)
+      refute_patched(view)
+      assert has_element?(view, "#policy-rules")
+    end
+
+    render_click(view, "edit_paths", %{"id" => rule.id})
+    assert_patch(view, "#{path}/rules/#{rule.id}/edit")
+  end
+
   test "a rule a lock holds is struck under the locked rule, and can be removed",
        %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} =
@@ -572,6 +596,75 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
                "#{scope.workspace.name}'s mode, now observe. It changes when #{scope.workspace.name}'s does."
 
       assert text(view, "#policy-mode-now") == "Follow #{scope.workspace.name} is the mode now."
+    end
+
+    test "a destination no rule can allow is listed with no Allow here, and still counted",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "Files.CDN.example.", "decision" => "allowed", "rule" => ""},
+          %{"host" => "Files.CDN.example.", "decision" => "denied", "rule" => "wall:host-form"},
+          %{"host" => "metadata.internal", "decision" => "allowed", "rule" => ""},
+          %{"host" => "metadata.internal", "decision" => "denied", "rule" => "wall:own-address"},
+          %{
+            "host" => "docs.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "allowed",
+            "rule" => ""
+          },
+          %{
+            "host" => "docs.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "denied",
+            "rule" => "",
+            "path_rule" => "wall:ambiguous-path"
+          },
+          %{"host" => "10.0.0.012", "decision" => "allowed", "rule" => ""},
+          %{"host" => "flags.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      # Enforce denies each of them: all five are counted.
+      assert text(view, "#mode-would-n") == "5 destinations"
+
+      for host <- ["Files.CDN.example.", "metadata.internal", "docs.example", "10.0.0.012"] do
+        key = ApiaryWeb.PolicyLive.Common.would_key(%{host: host, path: nil})
+        assert has_element?(view, "#would-#{key}", host)
+        refute has_element?(view, "#would-#{key}-allow")
+        refute has_element?(view, "#would-#{key} button")
+
+        # Asked anyway, nothing is written and nothing is refused.
+        render_hook(view, "would_allow", %{"key" => key})
+        refute has_element?(view, "p.text-error-soft-content[role=alert]")
+      end
+
+      assert Policy.list_rules(scope, target) == []
+
+      # The one a rule can allow keeps its Allow here; after it, no Allow is open, so the
+      # focus goes to the button that saves the pick.
+      view |> element("#mode-would button", "Allow here: flags.example") |> render_click()
+      assert own(scope, target, "flags.example")
+      assert text(view, "#mode-would-n") == "4 destinations"
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
+    end
+
+    test "what enforce would deny here isolates each host, so a bidi override reorders nothing",
+         %{conn: conn, path: path, scope: scope} do
+      host = "evil\u202Elpmaxe.<script>"
+
+      started_run(scope, shop(),
+        egress: [%{"host" => host, "decision" => "allowed", "rule" => ""}]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      assert has_element?(view, "#mode-would .q-dest > bdi", host)
+      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
+      refute render(view) =~ "elpmaxe.<script>"
     end
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",

@@ -408,6 +408,34 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     @tag needs: :security
+    test "a rule stored with an address in another form leaves a document the run is given",
+         %{scope: scope, key: key} do
+      # Stored before the grammar refused it: inserted as it is, past the changeset.
+      stored =
+        Repo.insert!(%Policy.Rule{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          kind: "host",
+          action: "allow",
+          host: "127.1"
+        })
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, baseline} = Policy.current_configuration(scope, nil)
+
+      assert {:ok, %{settings: settings, digest: digest, managed: true, run: %Run{}}} =
+               register(key, body())
+
+      assert {settings, digest} == {baseline.document, baseline.digest}
+      assert :ok = Policy.Schema.validate(settings)
+
+      assert %{"allow" => ["api.example"]} =
+               Jason.decode!(settings)["security_policy"]["egress"]
+
+      assert Repo.get!(Policy.Rule, stored.id).host == "127.1"
+    end
+
+    @tag needs: :security
     test "a repeat is given the answer it was given, though the policy changed since",
          %{scope: scope, key: key} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})

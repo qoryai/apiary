@@ -515,6 +515,14 @@ defmodule Apiary.OrganisationsTest do
                Organisations.create_workspace(scope, %{name: "Data", slug: " lake "})
     end
 
+    test "a name kept back is never a workspace's slug: it gets the slug with -2" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert Organisations.suggest_workspace_slug(scope, "New") == "new-2"
+      assert {:ok, %{slug: "api-2"}} = Organisations.create_workspace(scope, %{"name" => "API"})
+    end
+
     test "a name or a slug another workspace of the organisation holds is refused" do
       %{scope: scope, workspace: main} = sign_up_fixture()
       scope = mark_only_workspace(scope)

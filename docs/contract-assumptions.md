@@ -100,17 +100,21 @@ other than `1`:
 `<public host>` is the application's public base URL (`PUBLIC_URL`). `node_id` is the
 public id of the key's node, node pool or gateway (`ng_`). For a node or a node pool,
 `workspaces` holds exactly one id, the public id of the workspace it belongs to
-(`workspaces.public_id`, `ws_` and 16 characters, `Apiary.Organisations.Workspace`); for a
-gateway, the ids of the workspaces it may serve, sorted, at least one
-(`Apiary.Gateways.serves/1`): the workspace it belongs to. Discovery has no
+(`workspaces.public_id`, `ws_` and 16 characters, `Apiary.Organisations.Workspace`). A
+gateway's document, whether the gateway is a workspace's or an organisation's, lists no
+workspaces: which workspaces a gateway serves follows from the nodes that use it, and
+Qory Apiary decides at each registration and attach whether it may serve the run's
+workspace (`Apiary.Gateways.may_serve?/2`). Discovery has no
 member naming the kind: the prefix of `node_id` says it. The `events` URL is the events endpoint below,
 and the `run` URL the run endpoint after it, with no trailing slash, no query and no
 fragment: a reload appends `/` and the run's id. `apiary_public_key` lists the
 server's signing key, for information: the gateway verifies answers under the key it pinned.
 The members are in the contract's order (`ApiaryWeb.Contract.Configuration`).
 
-The `run` section is always there, so the document differs by node and workspace, never
-by the workspace's policy, and so does its digest, here and in every answer to a batch.
+The `run` section is always there, so the document differs by node and, for a node or a
+node pool, by workspace, never by the workspace's policy, and so does its digest, here and
+in every answer to a batch. A gateway's digest changes only when the members it has
+change.
 Whether a workspace has a policy shows in the answer to a run's registration instead (The
 run endpoint, below). A
 workspace nobody has given a policy answers every registration `{"version":1}`, no policy,
@@ -158,13 +162,14 @@ first refusal that applies is the answer:
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Gateways.may_serve?/2`), decided as at the attach; before deduplication, so a delivery already recorded is refused too; no digest header, nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
 
 Every answer after the `401` is signed.
 
-Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the digest the
+Every `202`, and the `410` of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the
 workspace's discovery answer carries, and, for a workspace whose policy somebody has made,
 `X-Qory-Run-Configuration`, the digest of the run configuration for the repository the
 run registered with (see "Assumed" for a run that did not register). A workspace without a
@@ -255,7 +260,9 @@ What is stored, in one transaction, before the answer:
 - the delivery: the key, the instance id, `X-Qory-Delivery`, the subject, how many events it held, how many were
   new, the status answered, and the batch's `X-Qory-Run-Configuration` when it had the shape
   of a digest. A delivery id the key has delivered before is answered `202` again, or `410`
-  for a run retention has pruned, and nothing is stored;
+  for a run retention has pruned, and nothing is stored; a run behind a gateway that may no
+  longer serve its workspace is refused `410` `workspace_not_served` before this, a
+  delivery recorded before included;
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 
@@ -394,9 +401,9 @@ holds in a repository's document whatever its mode, and a deny holds in either m
 nothing else, and `allow` says what `enforce` would reach. `about` never selects a policy:
 the policy is chosen by the registration's labels alone.
 
-A workspace whose policy nobody has made, one without the `security` feature, and a key
-`Apiary.Access` refuses `run_configuration.fetch` serve no run configuration: a
-registration is answered `{"version":1}`, the document of no policy
+A workspace whose policy nobody has made, or any workspace on an instance without the
+`security` feature, and a key `Apiary.Access` refuses `run_configuration.fetch` serve no
+run configuration: a registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
@@ -439,6 +446,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `400` | the run key does not verify under the instance's signing key, its `run_id` is not the path's, or it is not, byte for byte, the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
+| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
 | `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
@@ -474,7 +482,9 @@ key's workspace does not hold, a run another node registered, a run its batches 
 without a registration, even for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the
 run registered with, and no others, with the headers above. A run whose events retention
-has pruned is reloaded all the same: `200`, never `410`. A reload on a workspace with no policy, or a
+has pruned is reloaded all the same: `200`, never `410`. A run through a gateway that may no
+longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
+`{"error":"workspace_not_served"}`, never its policy, before any `404` below. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`. A policy removed mid-run never loosens a run that's
 already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
@@ -1001,13 +1011,12 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     host that is only in `paths` is denied under `enforce`. So a host held to paths is
     rendered in **both** `allow` and `paths`, always, and a denied host is never in
     `paths`: it is never reached.
-  - The path rules of a host are those of the first key of `paths` that matches it
-    (`terminator.rules`), and `paths` is a Go map, whose order is not fixed: with `*.example`
-    and `git.example` both in `paths`, which list holds `git.example` changes from run to
-    run. A `*.` key of `paths` also holds every allowed host below it, whatever that host's
-    own rule says. Qory Apiary therefore refuses, at write time and with a sentence, a `*.`
-    suffix held to paths above any other allowed entry; a name held to paths under a `*.`
-    suffix that is free of paths is fine and rendered.
+  - A host several keys of `paths` cover is held to the most specific one: its name
+    itself, else the `*.` key with the longest suffix (`policy.HostPaths`). A `*.` key of
+    `paths` also holds every allowed host below it that no more specific key names. Qory
+    Apiary still refuses, at write time and with a sentence, a `*.` suffix held to paths
+    above any other allowed entry; a name held to paths under a `*.` suffix that is free of
+    paths is fine and rendered.
   - `deny` beats `allow` whatever the shapes, so a deny of a host below an allowed `*.`
     suffix is said as it is: `allow: ["*.example"]`, `deny: ["tracker.example"]`. A `*.`
     deny still takes the allow entries it covers out of `allow` (the gateway would deny

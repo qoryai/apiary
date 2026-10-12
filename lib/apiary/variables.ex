@@ -81,7 +81,7 @@ defmodule Apiary.Variables do
   @doc """
   list_variables/2 is the variables `holder` sets itself, by name without case: the
   workspace's, or the repository's own. `{:ok, variables}`, for a reader who may
-  `variable.read`; else `{:error, reason}`, `:not_found` where the `security` feature is
+  `variable.read`; else `{:error, reason}`, `:not_found` where the `secrets` feature is
   off or for a repository the workspace does not have.
   """
   @spec list_variables(Scope.t(), holder) :: {:ok, [Variable.t()]} | {:error, Access.reason()}

@@ -37,8 +37,9 @@ defmodule Apiary.Policy do
   Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
   and the render of the baseline and of every target that has rules (or has had a
   configuration) of its own.
-  A render is validated against the contract's schema before it is stored; a change whose
-  render the schema or the resolution refuses is rolled back and answered with a sentence.
+  A render is validated against the contract's schema and the host grammar
+  (`Apiary.Policy.Grammar.host?/1`) before it is stored; a change whose render the schema,
+  the grammar or the resolution refuses is rolled back and answered with a sentence.
   A render that gives the same bytes as the version in force writes no new version. After
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
@@ -556,6 +557,7 @@ defmodule Apiary.Policy do
           path: String.t() | nil,
           attempts: non_neg_integer,
           tool: String.t() | nil,
+          unchangeable: boolean,
           runs: non_neg_integer,
           last_seen_at: DateTime.t(),
           targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
@@ -570,6 +572,8 @@ defmodule Apiary.Policy do
   it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
   a request to it in the range named one, handed to the tool or refused by a path rule
   before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
+  `unchangeable` is true when no rule can allow it: the wall refused the last attempt of
+  its most recently seen connection, or its host is none a rule can name.
 
   Read from `connections` by the workspace and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -612,6 +616,7 @@ defmodule Apiary.Policy do
           held: boolean,
           locked: String.t() | nil,
           above: String.t() | nil,
+          unchangeable: boolean,
           denied: pos_integer,
           tool: String.t() | nil,
           runs: pos_integer,
@@ -629,9 +634,11 @@ defmodule Apiary.Policy do
   that only an owner changes it, and `above` the deny of the level above that covers it,
   when one does, which no rule of the workspace changes; `tool` names the tool whose host it is, whenever a
   request to it in the range named one: a request to a tool that a path rule refused is a
-  denied request to that tool. The 50 with the most denials, most first, with the
-  targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
-  the cap.
+  denied request to that tool. `unchangeable` is true when no rule can change it: the
+  wall refused the last attempt of its most recently seen connection, or its host is
+  none a rule can name; `locked` and `above` are then nil. The 50 with the most denials,
+  most first, with the targets whose runs were denied. Bounded as `uncovered/2` is,
+  `:unavailable` beyond the cap.
   """
   @spec denied_destinations(Scope.t(), DateTime.t()) :: {:ok, [denied_destination]} | :unavailable
   def denied_destinations(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),
@@ -1363,8 +1370,9 @@ defmodule Apiary.Policy do
   defp requested_rule("rule_removed", entry) do
     with {:ok, attrs} <- attrs(entry) do
       case {attrs["kind"] || "host", attrs} do
+        # A removal names a rule stored before the grammar refused its host too.
         {"host", %{"host" => host}} when is_binary(host) ->
-          if Grammar.host?(host),
+          if Grammar.in_pattern?(host),
             do:
               {:ok, %{"change" => "rule_removed", "rule" => %{"kind" => "host", "host" => host}}},
             else: candidate("deny", attrs)
@@ -2099,15 +2107,19 @@ defmodule Apiary.Policy do
      )}
   end
 
+  @doc false
+  # The check of a rendered document before it is stored, for a test to feed it one.
+  def valid_document(document), do: valid(document)
+
   defp valid(document) do
-    case Schema.validate(document) do
+    case with(:ok <- Schema.validate(document), do: in_grammar(document)) do
       :ok ->
         :ok
 
       {:error, reason} ->
         # The document holds hosts and paths, never a secret.
         Logger.error(
-          "a rendered run configuration was refused by the contract's schema: #{inspect(reason, limit: 20)}"
+          "a rendered run configuration was refused by the contract's schema or the host grammar: #{inspect(reason, limit: 20)}"
         )
 
         {:error,
@@ -2117,6 +2129,22 @@ defmodule Apiary.Policy do
              "The change was not made: the run configuration it renders is not one Forager's contract accepts."
            )
          )}
+    end
+  end
+
+  # The schema's host pattern takes an address in any form; the gateway takes one only as
+  # `a.b.c.d`, and refuses the whole document for another. Every host of the document is
+  # held to the grammar again, so no render ever carries one.
+  defp in_grammar(document) do
+    egress = get_in(Jason.decode!(document), ["security_policy", "egress"]) || %{}
+
+    hosts =
+      Map.get(egress, "allow", []) ++
+        Map.get(egress, "deny", []) ++ Map.keys(Map.get(egress, "paths", %{}))
+
+    case Enum.reject(hosts, &Grammar.host?/1) do
+      [] -> :ok
+      refused -> {:error, {:out_of_grammar, refused}}
     end
   end
 

@@ -116,7 +116,7 @@ page, the one the person came from (Two levels, below).
   the person's Account, Preferences and Organisations under Your settings, the sidebar of
   their own pages only where there is no workspace to show (Two levels, below). It is
   never replaced: a page of a scope's settings keeps the scope's sidebar. A group whose
-  feature is off is absent, not greyed.
+  feature is off, or hidden from the reader, is absent, not greyed.
 - **The current entry.** `aria-current="page"` marks only the entry of the exact page; a
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
@@ -259,7 +259,7 @@ replaces the navigation it is in.
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
   kind under its title; each page says once that a run receives only
   its security policy) and Secrets and variables (`/settings/secrets`,
-  below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
+  below), each with `secrets` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
   keys are its nodes' (Nodes, below): `/settings/keys` and `/:org/:workspace/keys`,
@@ -719,8 +719,8 @@ version in force is exported; another version's path sends on to it.
   where known); a locked rule's lock opens its refusal in place, with the way to the
   rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
-  here would not be in force and leads to that level's policy with the host, for a reader
-  who may change it there, and with the way back to this page (`back`,
+  here would not be in force and leads to that level's New rule page with the host, where
+  the edition gives one, for a reader who may change it there, and with the way back to this page (`back`,
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
@@ -794,9 +794,11 @@ what needs the reader, then what their agents did, and never grows with the data
   it; five shown and "and n more". Its Allow is Network access's: the same panel, in
   place inside the item under its subject (`#<item>-panel`), never an overlay, the target
   chosen when only one reached the host, and the focus on the next item's act once the
-  rule is written. Where the level above the workspace denies the host, or allows only its
-  own hosts, no allow here would be in force, so the item offers the way to that level's
-  page to one who may change it there, and a lock with the reason to the rest. A resolved
+  rule is written. Where the level above the workspace denies the host, or allows only the
+  hosts on its list, no allow here would be in force: the item offers the way to that
+  level's rule, or, for a host only that level can allow, its New rule page with the host,
+  where the edition gives one, to one who may change it there; and a lock with the reason
+  to the rest. A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run says how it was lost: "Lost, never posted its exit" when the
@@ -957,7 +959,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
   hint saying what a URL may be, and Add gateway. A refused save stays on the page, the
   error under its field, in core's words (a URL's, or a gateway's, such as "has no
-  default gateway in this workspace"); adding one opens its page on Access key with a
+  default gateway"); adding one opens its page on Access key with a
   flash, where its machine gets its key.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
@@ -1001,6 +1003,39 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   this gateway: … Delete it once they end.", or both in one notice. It names the first
   five of this workspace, then "and 3 more", which counts those of other workspaces too,
   never named.
+- **An organisation's gateways** (`ApiaryWeb.NodeLive.Gateways`, `/:org/gateways`) are
+  offered only where an organisation may have more than one workspace
+  (`NodeComponents.organisation_gateways?/0`, from `c:Apiary.Edition.limits/0`); with one,
+  the Gateways entry of the organisation's sidebar (`#nav-gateways`, after Audit log, for
+  a reader of `node.read`) and New gateway in the New menu are not there, and the paths
+  are not found. The list, on the list pattern, says under its heading whose nodes can use
+  them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:intro`), then a row a gateway:
+  its name and public id, its URL from `sm`, Default beside the organisation's default,
+  and Connected, Yes or No by whether it holds an active key. Owners and admins have **New
+  gateway** (`/gateways/new`), a form page as a workspace's New gateway is, which opens the
+  gateway's Access key tab. A gateway's page is a workspace gateway's page under
+  `/:org/gateways/:node_id`, with its Access key and Settings tabs, the breadcrumb and the
+  sidebar's current entry Gateways (`nav={:gateways}`). Its Overview adds who can use it
+  (`:who_can_use`) and who uses it now, "Nodes in Acme › Main, Acme › Build use it now."
+  or "No node uses it now." (`NodeComponents.using_words/2`), naming only the workspaces
+  the reader reaches, then "and 2 more workspaces"; the organisation's default reads
+  `:default_row`. Its deletion is confirmed in place, naming the organisation, and a refusal names
+  the nodes and runs of the workspaces the reader reaches and counts the rest
+  (`NodeComponents.in_use_words/3`).
+- **A workspace's Nodes and an organisation's gateways.** Nodes lists the organisation's
+  gateways beside the workspace's, each with "Set for Acme" (`#node-<id>-level`), linked
+  to its page, and Default beside the gateway the workspace's default resolves to. A
+  gateway of another organisation that serves the workspace is no row of it. A node's
+  Gateway select groups the gateways by level where there is more than one, "This
+  workspace" first, then the node's organisation, then each organisation that serves it,
+  named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
+  whose default it is. Where a node uses a gateway of another organisation, its About,
+  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
+  to its page under that organisation's Gateways only where the reader reads it there
+  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the nodes is the core's sentence unless
+  the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
+  instance limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
+  `node.set_limit`, "You can't change the instance limit." when it gives none.
 - **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
   (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
   for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
@@ -1323,8 +1358,8 @@ or of the Instance, or an entry of the navigation, of New or of the account menu
 (`ApiaryWeb.Edition`). What it renders there links to its own pages, which handle its
 events; a page whose behaviour differs is the edition's own at the same path.
 
-A component does not ask `Apiary.Features` what the instance serves: the page asks with
-its scope and passes the answer, as the connection row's `security` attribute does. What
+A component does not ask `Apiary.Features` what the instance serves or the reader is
+shown: the page asks with its scope and passes the answer, as the connection row's `security` attribute does. What
 Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
 ### Storybook
@@ -1484,8 +1519,11 @@ page has no breadcrumb of its own.
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
-  live action of the one LiveView, so a tab is a patch. An old link to a run's Details
-  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  live action of the one LiveView, so a tab is a patch. Terminal is the log's
+  (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
+  Terminal, there is no tab, no Raw log or Download log, no Terminal on Details, and the
+  sentences on session events name no terminal. An old link to a run's Details tab
+  (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
   becomes the Timeline's.
 - **Details is one element** (`#run-details`), after the header and before the tabs at
   every width, so the two places never disagree and no id is drawn twice; its reading and

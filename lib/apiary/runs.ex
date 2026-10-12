@@ -252,6 +252,52 @@ defmodule Apiary.Runs do
   def count_runs(%Scope{} = scope, %Filters{} = filters, now),
     do: Repo.aggregate(filtered(scope, filters, now), :count)
 
+  @doc """
+  ran_on_a_node?/1 is whether a run of the scope's workspace names a node of it, as the
+  runs list's node filter offers them, deleted ones included: what a reader the nodes are
+  hidden from (`Apiary.Features.visible?/2`) may know of the workspace's nodes.
+  """
+  @spec ran_on_a_node?(Scope.t()) :: boolean
+  def ran_on_a_node?(%Scope{} = scope) do
+    Repo.exists?(
+      from [run: r] in in_scope(scope),
+        join: n in Node,
+        on:
+          n.id == r.node_id and n.organisation_id == r.organisation_id and
+            n.workspace_id == r.workspace_id
+    )
+  end
+
+  @doc """
+  run_node/2 is the node in use of the scope's workspace that `value` names, by its public
+  id or else by its name, among only the nodes a run of the workspace ran on: the nodes the
+  runs list already names. `nil` for any other value. It is what a filter's node reads for
+  a reader the nodes are hidden from (`Apiary.Features.visible?/2`), who may read a node's
+  name only as a run names it.
+  """
+  @spec run_node(Scope.t(), String.t()) :: Node.t() | nil
+  def run_node(
+        %Scope{
+          organisation: %Organisation{id: organisation_id},
+          workspace: %Workspace{id: workspace_id}
+        } = scope,
+        value
+      )
+      when is_binary(value) do
+    ran = from r in in_scope(scope), where: r.node_id == parent_as(:node).id, select: 1
+
+    from(n in Node,
+      as: :node,
+      where: n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id,
+      where: is_nil(n.deleted_at),
+      where: n.public_id == ^value or n.name == ^value,
+      where: exists(ran)
+    )
+    |> Repo.all()
+    |> Enum.sort_by(&(&1.public_id != value))
+    |> List.first()
+  end
+
   @rail_size 20
 
   @doc "How many targets the rail lists before \"n more\", and how many each asks for."

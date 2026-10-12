@@ -485,7 +485,7 @@ defmodule Apiary.KeyCheckTest do
   end
 
   describe "a database with data in every table that holds a key id" do
-    @describetag needs: :security
+    @describetag needs: :secrets
 
     setup do
       %{scope: scope} = sign_up_fixture()

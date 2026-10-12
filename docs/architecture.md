@@ -11,8 +11,8 @@ beside it:
 
 - `Apiary.Accounts`: users, their tokens, the notifier, and `Apiary.Accounts.Scope`, the
   caller: the user, the organisation, the membership, how they reach it (`reach`), the
-  workspace, what the edition says of their place there (`edition`), the features and
-  the origin.
+  workspace, what the edition says of their place there (`edition`), what the person is
+  not shown (`hidden`) and the origin.
 - `Apiary.Access`: who may do what, the one question every context function and page
   asks ([access.md](access.md)).
 - `Apiary.Audit`: the audit trail, one entry for every change, written by the context
@@ -26,7 +26,7 @@ beside it:
   sends a day (`INVITATIONS_PER_DAY`), read and checked at boot. Who may sign up after
   the first sign-up is the edition's to say (`c:Apiary.Edition.sign_up_open?/0`).
 - `Apiary.Features`: the instance's features, switched at launch (`QORY_FEATURES`), and
-  what an organisation and a workspace have of them (Features, below).
+  what a person is shown of them (Features, below).
 - `Apiary.Deletion`: deleting a workspace or an organisation, which marks it, and the
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
@@ -345,7 +345,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
   edition's transaction, each holder whose bytes change getting an `above_changed`
   change. The web side names where
-  the level is read and changed (`above_policy_link/1`). A level with variables and no
+  the level is read and changed, and its New rule page (`above_policy_link/1`). A level with variables and no
   policy says `policy: false`: the policy, its record and its pages take it as nil, and
   only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
@@ -357,9 +357,10 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Deletion**: refuse a deletion or a purge (`deletion_refusal/2`), hear of each
   marking, cancelling and purge (`deletion_changed/4`), and add tables to the purge's
   walk, purged before the core's (`deletion_tables/0`).
-- **Registries**: add features, and say what an organisation or a workspace has of the
-  instance's (`features/0`, `features_of/3`); add schemas an audit entry may be about
+- **Registries**: add features (`features/0`); add schemas an audit entry may be about
   (`subject_kinds/0`).
+- **What a person is shown**: hide features the instance has, or parts, from a
+  person in an organisation (`hidden/1`).
 - **Audit trail**: add keys of its own to each entry's details as it is written, such as
   how the actor reached the organisation, cheaply and inside the change's transaction
   (`audit_details/3`); it changes none of the core's.
@@ -392,26 +393,35 @@ and never name one of its modules ([conventions.md](conventions.md), Tests).
 ## Features
 
 The instance has its features (`QORY_FEATURES`, `Apiary.Features`), switched when it is
-launched and fixed while it runs. What an organisation, or a workspace of it, has is
-`Apiary.Features.of/2`, and nothing else answers it: in the core, the instance's
-features, in every organisation and workspace alike. An edition may narrow them below
-the instance (`c:Apiary.Edition.features_of/3`), and never adds to them: `of/2` keeps only
-what the instance has, and a feature only with the features it needs. An edition's own
-features are listed after the core's (`c:Apiary.Edition.features/0`), and
-`Apiary.Features.built/0` names the ones a page of an edition may switch on or off for an
+launched and fixed while it runs: the only on and off (`Apiary.Features.on?/1`). Below the
+instance a feature is shown or hidden, never switched off. What a person is not shown in
+an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), and nothing else
+answers it: in the core, nothing is hidden. The answer does not depend on the workspace.
+An edition's features are listed after the core's (`c:Apiary.Edition.features/0`), and
+`Apiary.Features.built/0` names the ones a page of an edition may show or hide for an
 organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
-where `QORY_FEATURES` lists it by name, and is never one of those.
+where `QORY_FEATURES` lists it by name, and is never one of those. A feature may have
+**parts** (`Apiary.Features.parts/0`), which an edition may hide apart from the rest of the
+feature, and which are never on or off apart from it: the core's one part of a feature is
+the run's Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs
+to (an action's `part`). A part may belong to no feature, and is then on in every
+instance: the core's one is `nodes`, the nodes, the node pools, their access keys and the
+gateways, which the `node.*` and `access_key.*` actions belong to.
 
-- **Absent, as off on the instance.** Every surface asks `Apiary.Features.on?/2` with its
-  scope, which carries the answer (`Apiary.Accounts.Scope`, `features`): the feature
-  gates of the pages and the controllers, the navigation, `Apiary.Access` and the server
-  contract, whose access key is asked through its organisation and workspace, so the
-  discovery document and the run configuration leave out what the workspace lacks. What
-  belongs to the instance follows its switch only: the guides at `/docs`, the sign-in and
-  landing pages, and the routes' first answer (`ApiaryWeb.Features.Routes`).
-- **Read again under the locks.** `Apiary.Access.reload/2` reads the features after its
-  locks, so what an edition changes of them under the organisation's or the workspace's
-  lock is waited for by a change that asked, or seen by it.
+- **Absent, as off on the instance.** A feature that is off, or a feature or a part
+  hidden from a person, is absent for them: the feature gates of the pages and the
+  controllers, the navigation and `Apiary.Access` ask `Apiary.Features.visible?/2` with
+  the person's scope, which carries what is hidden (`Apiary.Accounts.Scope`, `hidden`).
+  What belongs to the instance follows its switch only (`Apiary.Features.on?/1`): the
+  guides at `/docs`, the sign-in and landing pages, the routes' first answer
+  (`ApiaryWeb.Features.Routes`), and the server contract, whose access key, and its
+  scope, answer as the instance. A hidden feature still works in full for nodes: a run's
+  registration, events, attach, outcome and reload, and its run configuration, follow the
+  instance's features alone, and so do rendering and the instance's jobs; the discovery
+  document reads no feature.
+- **Read again under the locks.** `Apiary.Access.reload/2` asks what is hidden after the
+  edition's reload, under the edition's locks, so what an edition changes of it under the
+  organisation's lock is waited for by a change that asked, or seen by it.
 
 ## Secrets at rest and integrity codes
 

@@ -1243,6 +1243,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       end)
     end
 
+    @tag needs: :security
+    test "the line leads to no policy where the policy is hidden from the reader",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert has_element?(view, "#runs-narrowed-network")
+      refute has_element?(view, "#runs-narrowed-policy")
+    end
+
     test "the line says so, leads to the target, its Network access and its policy, and back to every run",
          %{conn: conn, scope: scope} do
       shop_run = started_run(scope, shop())
@@ -1646,7 +1658,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "Full log"
              )
 
-      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example:443"
+      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
 
       assert has_element?(
                view,
@@ -1707,6 +1720,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-preview-log") == "first line second line"
     end
 
+    test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "evil\u202Elpmaxe.<script>"
+
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "bidi"},
+          egress: [%{"decision" => "denied", "rule" => "", "host" => host}]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
+      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443"
+      refute render(view) =~ "elpmaxe.<script>"
+    end
+
     test "a reader who may not read the log (run.read_log) is shown none of it, nor Full log, and none is read",
          %{conn: conn, older: older, scope: scope} do
       # `run.read_log` refused whoever asks (`Apiary.EditionStubs.NoLog`).
@@ -1720,7 +1754,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
 
       assert has_element?(view, "#runs-preview h2", "older")
-      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example:443"
+      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
       refute has_element?(view, "#runs-preview-log")
       refute has_element?(view, "#runs-preview .q-pv-term")
       refute has_element?(view, "#runs-preview a", "Full log")
@@ -1736,6 +1771,38 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       refute has_element?(view, "#runs-preview-log")
       refute render(view) =~ "build output"
+      assert preview_lines(view) == []
+    end
+
+    test "where the run's Terminal is hidden from the reader, the preview shows none of the log",
+         %{conn: conn, older: older, scope: scope} do
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("first build output\n")}
+      event_fixture(older, 60, "run.log", log)
+      {:ok, _} = Projector.project(older)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      # Shown, the box and its lines are there; hidden, the part or its feature, none.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert text(view, "#runs-preview-log") == "first build output"
+      assert has_element?(view, "#runs-preview a[href$='/terminal']", "Full log")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview h2", "older")
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
+      refute has_element?(view, "#runs-preview-log")
+      refute has_element?(view, "#runs-preview .q-pv-term")
+      refute has_element?(view, "#runs-preview a", "Full log")
+      refute has_element?(view, "#runs-preview a[href$='/terminal']")
+      refute render(view) =~ "Terminal, last lines"
+      refute render(view) =~ "Terminal, live"
+      refute render(view) =~ "first build output"
       assert preview_lines(view) == []
     end
 

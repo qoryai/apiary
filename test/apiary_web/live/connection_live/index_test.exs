@@ -163,8 +163,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view = open(conn, scope)
       id = dst("files.tools.internal", 443, "/media/acme/shop/checkout.png")
 
-      assert text(view, "##{id} .q-dest") ==
-               "Tool files PUT /media/acme/shop/checkout.png files.tools.internal:443"
+      assert text(view, "##{id} .q-dest") =~
+               "Tool files PUT /media/acme/shop/checkout.png files.tools.internal"
+
+      assert has_element?(view, "##{id} .q-dest .q-on", "files.tools.internal:443")
 
       assert has_element?(view, "##{id} .q-dest-tool .q-tool-name", "files")
 
@@ -558,6 +560,28 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         view,
         ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
+    end
+
+    test "a host is isolated in its row and among the suggestions, so a bidi override reorders nothing",
+         %{conn: conn, scope: scope} do
+      host = "evil\u202Elpmaxe.<script>"
+      started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
+
+      view = open(conn, scope)
+      assert has_element?(view, ".q-cx-h > bdi", host)
+
+      assert render(view) =~
+               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
+
+      view |> form("#connections-query", %{"q" => "evil"}) |> render_change()
+      render_async(view, 2_000)
+
+      assert has_element?(view, "#connections-query-host-0 .q-suggest-v > bdi", host)
+
+      assert render(view) =~
+               "<span class=\"q-suggest-v\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi></span>"
+
+      refute render(view) =~ "elpmaxe.<script>"
     end
 
     test "the query field suggests the hosts in range as one types; a choice is the host: filter",
