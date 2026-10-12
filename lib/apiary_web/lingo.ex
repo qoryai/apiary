@@ -17,7 +17,7 @@ defmodule ApiaryWeb.Lingo do
   `language@domain`:
 
   - a scope with a workspace: the user's language and the workspace's domain. Every page
-    of a signed-in person who reaches a workspace has one, the user's own settings
+    of a signed-in person who reaches a workspace has one, the user's settings
     included: the scope carries the current workspace (`ApiaryWeb.UserAuth`'s
     `:load_organisation`);
   - a scope without a workspace (a user with no membership, on `/users/organisations`, or
@@ -25,7 +25,7 @@ defmodule ApiaryWeb.Lingo do
     language and the default domain;
   - no user (log-in, registration): the default locale, `en@software`;
   - a language without a catalogue any more (`Apiary.Accounts.Preferences.languages/0`)
-    reads English. A locale without a catalogue of its own is looked up down the chain
+    reads English. A locale without a separate catalogue is looked up down the chain
     (`ApiaryWeb.Gettext.Fallback`), and at the end in the source text.
 
   This module sets the locale for a request (as a plug, after the scope is fetched) and

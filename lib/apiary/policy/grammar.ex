@@ -1,7 +1,7 @@
 defmodule Apiary.Policy.Grammar do
   @moduledoc """
   The grammar of the contract's policy document (`policy.schema.json`), where a rule is
-  checked before it is stored: a host and a path. The patterns are the schema's own; the
+  checked before it is stored: a host and a path. The patterns are the schema's; the
   rendered document is validated against the schema again, whole, before it is stored
   (`Apiary.Policy.Schema`).
 

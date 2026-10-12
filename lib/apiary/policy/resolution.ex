@@ -20,7 +20,7 @@ defmodule Apiary.Policy.Resolution do
      lower allows on the same host it holds, paths included, so its allow is never
      widened. An allow of the workspace or of the target is struck without a winner
      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level above allows
-     only its own hosts (`own_allows` off); denies still count. Where it requires
+     only the hosts on its list (`own_allows` off); denies still count. Where it requires
      `enforce` (`floor`), the mode in force is `enforce` whatever the workspace or the
      target set, `mode_source: :organisation`.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
@@ -33,7 +33,7 @@ defmodule Apiary.Policy.Resolution do
      and reaches `api.example`, in either mode. When the allow outranks it (a locked
      `*.example` of the workspace over a target's deny) the deny is overridden. The one
      shape the document cannot say is the mirror: a `*.` deny with an allow below it that
-     outranks the deny (the workspace's unlocked `*.example` deny, a target's own
+     outranks the deny (the workspace's unlocked `*.example` deny, a target's
      `api.example` allow). The allow wins by precedence and is rendered; the deny still
      takes out the allow entries it does outrank, but is **not written to `deny`**, since
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
@@ -71,8 +71,8 @@ defmodule Apiary.Policy.Resolution do
   @above_among_allows 4
 
   @doc """
-  Resolves a target's policy from the workspace's mode and the target's own, nil
-  when it follows the workspace: the target's own mode wins, and the effective policy says
+  Resolves a target's policy from the workspace's mode and the target's override, nil
+  when it follows the workspace: the override wins, and the effective policy says
   which it was in `mode_source`; where the level above requires `enforce` (`above`'s
   `floor`), that is the mode, from `:organisation`. The rules resolve as in `resolve/5`,
   whatever the mode: a locked rule of the workspace holds in a target's document under
@@ -112,7 +112,7 @@ defmodule Apiary.Policy.Resolution do
 
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
-  with no rules of its own; `above` is the level above the workspace, with its rules,
+  with no rules; `above` is the level above the workspace, with its rules,
   or nil where the edition keeps none. A level that carries variables only
   (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/6`.
   """

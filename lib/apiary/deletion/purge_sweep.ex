@@ -5,7 +5,7 @@ defmodule Apiary.Deletion.PurgeSweep do
   due (`Apiary.Deletion.page_organisations_due/2`), and an
   `Apiary.Deletion.PurgeWorkspaceJob` for every workspace marked and due of an
   organisation that is not (`Apiary.Deletion.page_workspaces_due/2`), so one purge's
-  failure does not stop the others and each has its own retries. Oban's cron plugin
+  failure does not stop the others and each is retried separately. Oban's cron plugin
   enqueues it once a day, from the crontab the application starts Oban with; it is the
   instance's work, and names no organisation.
   """

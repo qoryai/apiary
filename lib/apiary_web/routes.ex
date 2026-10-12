@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Routes do
   @moduledoc """
   The core's routes, as macros a router calls: `ApiaryWeb.Router` calls them and nothing
   else, and an edition's router (`ApiaryWeb.Edition.router/0`) calls them too, with its
-  own routes in their blocks and beside them.
+  routes in their blocks and beside them.
 
       use ApiaryWeb, :router
       import ApiaryWeb.Routes
@@ -25,13 +25,13 @@ defmodule ApiaryWeb.Routes do
     Storybook), where `:dev_routes` is set and the storybook's dependency, a development
     one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
     stories are this checkout's.
-  - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
+  - `account_routes/1`: a signed-in person's pages under `/users` and an invitation's
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
   - `visitor_routes/1`: registration, log-in, an invitation, a password link and the
     set-up link, for anyone, in the `live_session :current_user`, with the session's
     controller routes.
   - `instance_routes/1`: the Instance level's pages under `/instance`, behind sign-in, in
-    the `live_session :instance`; each page checks its own access. Before
+    the `live_session :instance`; each page checks access itself. Before
     `organisation_routes/1`, whose `/:org` would take `/instance`.
   - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
     under `/:org/:workspace/…`, in the `live_session :workspace`, with the palette's
@@ -44,7 +44,7 @@ defmodule ApiaryWeb.Routes do
   The four route macros that hold a `live_session` take a `do` block, the caller's routes
   in that `live_session`, with its `on_mount` hooks and pipelines: after the core's in
   `:require_authenticated_user`, `:current_user` and `:instance`, and in `:workspace` after the
-  organisation's own pages and before `/:org/:workspace`, so that an organisation page of
+  organisation's pages and before `/:org/:workspace`, so that an organisation page of
   the caller's is not taken for a workspace. The block is wrapped in
   `scope "/", alias: false`, so it names its modules in full:
 
@@ -53,7 +53,7 @@ defmodule ApiaryWeb.Routes do
       end
 
   They also take `except:`, a literal list of the core's paths, written in full, that the
-  caller serves with its own routes instead (every route at such a path is left out): a
+  caller serves with its routes instead (every route at such a path is left out): a
   page whose behaviour differs is the caller's page at the core's path. A path that is not
   one of the macro's raises `ArgumentError`.
 
@@ -263,7 +263,7 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
-  account_routes/1 defines a signed-in person's own pages and an invitation's
+  account_routes/1 defines a signed-in person's pages and an invitation's
   continuation, behind sign-in; the block's routes go into the
   `live_session :require_authenticated_user`, after the core's.
   """
@@ -341,9 +341,9 @@ defmodule ApiaryWeb.Routes do
   instance_routes/1 defines the Instance level's pages, under `/instance`: what the
   installation as a whole holds, for the instance's admins (`Apiary.Access.instance_admin?/1`)
   and whoever else the edition lets in. There is no organisation in the path; the scope
-  carries the workspace the person opened last, as on their own pages, so the sidebar
+  carries the workspace the person opened last, as on their account pages, so the sidebar
   stays the one they came from and the Instance's sections open beside it
-  (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
+  (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks access itself. The
   block's routes go into the `live_session :instance`, after the core's. The core's pages
   here are Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
   (`ApiaryWeb.InstanceMailController`), and Instance settings › Configuration
@@ -382,7 +382,7 @@ defmodule ApiaryWeb.Routes do
   @doc """
   organisation_routes/1 defines the organisation's pages and its workspaces', and the
   raw log of a run; the block's routes go into the `live_session :workspace`, after the
-  organisation's own pages and before the workspace's.
+  organisation's pages and before the workspace's.
   """
   defmacro organisation_routes(opts \\ [], block \\ []) do
     routes =

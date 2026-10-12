@@ -9,16 +9,16 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       version and where it applies (Applies to), every target or the chosen ones,
       leading to its page (`ApiaryWeb.IntegrationLive.Show`);
     * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
-      in three groups, each a heading, a sentence where it has one, and its own list: Agent, the runtimes of Forager's catalogue (`Apiary.Kinds.Runtimes`);
+      in three groups, each a heading, a sentence where it has one, and a separate list: Agent, the runtimes of Forager's catalogue (`Apiary.Kinds.Runtimes`);
       Outside APIs, the built-in APIs (`Apiary.Kinds.Services`), the
-      workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
+      workspace's custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
       API…; Programs, the named releases (`ApiaryWeb.IntegrationLive.Named`) and From a
       release….
 
-  None of it is Qory Apiary's own settings, and the page says so in its subtitle. It says
+  None of it is Qory Apiary's settings, and the page says so in its subtitle. It says
   once, at its top, that a run receives only its security policy.
 
-  The forms are pages of the section, at paths of their own, never a dialog: Add from a
+  The forms are pages of the section, at separate paths, never a dialog: Add from a
   release (`…/add`), which asks for a release and leads to it
   (`ApiaryWeb.IntegrationLive.Release`), Set up an agent (`…/new-runtime`) and Set up an
   API (`…/new-service`), each opened by a card with its item chosen (`?runtime=`,
@@ -146,13 +146,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   @doc """
   add_cards/1 is the part "Add an integration": a card for each thing the workspace can
   add, by name, each its kind as a small word, one line about it and the act that adds it.
-  The cards are in three groups, each an `<h3>`, a sentence where it has one, and a list of
-  its own, labelled by its heading:
+  The cards are in three groups, each an `<h3>`, a sentence where it has one, and a separate
+  list, labelled by its heading:
 
     * **Agent** (`#add-group-agent`): the runtimes of Forager's catalogue
       (`Apiary.Kinds.Runtimes`);
     * **Outside APIs** (`#add-group-apis`): the built-in APIs
-      (`Apiary.Kinds.Services`), the workspace's own custom APIs, each its name leading to
+      (`Apiary.Kinds.Services`), the workspace's custom APIs, each its name leading to
       its page, then Custom API…;
     * **Programs** (`#add-group-programs`): the named releases
       (`ApiaryWeb.IntegrationLive.Named`), then From a release….
@@ -161,7 +161,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   than once, so a card stays as it is once it is set up.
   """
   attr :scope, :any, required: true
-  attr :definitions, :list, required: true, doc: "the workspace's own service definitions"
+  attr :definitions, :list, required: true, doc: "the workspace's service definitions"
   attr :url_sources, :boolean, required: true
 
   attr :named, :list,

@@ -225,7 +225,7 @@ defmodule Apiary.Accounts do
   end
 
   @doc """
-  Updates the user's preferences. They are the person's own, in every organisation, so
+  Updates the user's preferences. They are the person's, in every organisation, so
   the user is the only argument beside them; the session tokens are kept.
 
   Returns `{:ok, user}`, or `{:error, changeset}` for a language the application has no
@@ -250,7 +250,7 @@ defmodule Apiary.Accounts do
   the workspace and names the tombstone. All of it in one
   transaction.
 
-  Given the person's scope, the person deletes their own account: the page asks for a
+  Given the person's scope, the person deletes their account: the page asks for a
   recent sign-in first (`sudo_mode?/2`), and the entries are the person's. Given a user
   and an `origin:`, the instance deletes it, as a release command
   does (`Apiary.Release.delete_account/1`), and the entries are the instance's. Nobody is
@@ -471,8 +471,8 @@ defmodule Apiary.Accounts do
     (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`,
     or until mail is set, which ends it (`Apiary.Mail.end_password_links/0`).
     `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
-    when the person asks for a log-in link instead. Never for their own account,
-    `{:error, :own_account}`: they change their own password in Account settings, behind
+    when the person asks for a log-in link instead. Never for the admin's account,
+    `{:error, :own_account}`: they change their password in Account settings, behind
     a recent sign-in, which a link would get around. And only after a recent sign-in
     (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session
     left open is not enough, `{:error, :sudo}`, and the person signs in again first;

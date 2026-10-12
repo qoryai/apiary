@@ -9,7 +9,7 @@ defmodule Apiary.Deletion.PurgedOrganisation do
   a purge at once on an erasure request (`Apiary.Deletion.purge_now/3`). No name and no
   slug: nothing that says who the organisation was.
 
-  The instance's own table, of no organisation: it is not one of `Apiary.Deletion.Tables`'s.
+  The instance's table, of no organisation: it is not one of `Apiary.Deletion.Tables`'s.
   Written once per organisation and never changed.
   """
   use Ecto.Schema

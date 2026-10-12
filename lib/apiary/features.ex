@@ -8,7 +8,7 @@ defmodule Apiary.Features do
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
 
-  An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
+  An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.
   The list is read once, checked (`registry/1`), and kept for the life of the node: a
   name listed twice, or a feature that needs one the list does not have, stops the boot.

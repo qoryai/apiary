@@ -10,7 +10,7 @@ defmodule Apiary.Edition do
         router: MyEditionWeb.Router,  # mounts the core's routes (ApiaryWeb.Routes)
         static_app: :my_edition       # served before :apiary
 
-  The core is an edition of its own, `Apiary.Edition.Core`, and the default: one
+  The core is an edition too, `Apiary.Edition.Core`, and the default: one
   organisation with one workspace, the instance's features switched at launch, no action,
   table, feature, job or migration beyond the core's. A module that `use`s this one gets
   the core's answer to every callback and overrides the ones it changes; the core's answer
@@ -49,7 +49,7 @@ defmodule Apiary.Edition do
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
 
-  **The test seam.** A test may have a stub answer some callbacks in its own processes
+  **The test seam.** A test may have a stub answer some callbacks in the test's processes
   (`put_test_stub/1`), as an edition that narrows the core would, while the configured
   edition answers every other call.
   """
@@ -95,9 +95,9 @@ defmodule Apiary.Edition do
   (`:organisation`), its workspace Main (`:workspace`) and its first owner's membership
   (`:membership`, nil for one whose first owner joins later), and before the entry that
   begins its trail. `how` says how it is created: `:first_sign_up`, the instance's first
-  sign-up, which creates the instance's own organisation; `{:sign_up, extra}`, a later
+  sign-up, which creates the instance's organisation; `{:sign_up, extra}`, a later
   sign-up, with what its form sent beyond the core's fields, string-keyed; or the
-  edition's own term, from its own ways of creating one. A step may refuse with
+  edition's term, from the edition's ways of creating one. A step may refuse with
   `{field, message}`, which a sign-up says on that field of its form, and may leave
   `:organisation_entry`, a map of `before`, `after` and `details` the entry carries.
   """
@@ -123,10 +123,10 @@ defmodule Apiary.Edition do
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
   its workspaces (`Apiary.Policy.Above`: host rules, a required mode, whether the
-  workspace may allow hosts of its own, and variables), or nil: the core has none. Asked
+  workspace may allow more hosts, and variables), or nil: the core has none. Asked
   by the reads and writes of `Apiary.Policy` and `Apiary.Variables` that need it, never
   once per holder or row, and resolved, rendered and shown by the core, which says the
-  level's `name` and nothing of its own about it. A level with variables and no
+  level's `name` and nothing else about it. A level with variables and no
   policy is answered with `policy: false`, which the security policy takes as nil and
   `Apiary.Variables` still reads. Answered from the instance's features only
   (`Apiary.Features.on?/1`), never from what a level below is shown.
@@ -180,14 +180,14 @@ defmodule Apiary.Edition do
   @doc """
   Reads again what the edition put on the scope, after `Apiary.Access.reload/2` has read
   the membership and the marks and taken their locks, and before it holds the account;
-  with `lock: :share` its own rows are held already (`c:lock_rows/1`, `{:places, scope}`),
+  with `lock: :share` the edition's rows are held already (`c:lock_rows/1`, `{:places, scope}`),
   and it locks nothing.
   """
   @callback reload(Scope.t(), keyword) :: Scope.t()
 
   @doc """
   The organisations a write that must stay allowed holds `FOR SHARE`, in the lock order:
-  the organisation's own id first. Given the organisation as the database has it now:
+  the organisation's id first. Given the organisation as the database has it now:
   `Apiary.Access.lock_places/1` asks it without a lock and takes what it names in one
   statement, then asks it again of the organisation held `FOR SHARE`. Should the two
   answers differ by an organisation not taken, the change lets go of what it took and
@@ -198,7 +198,7 @@ defmodule Apiary.Edition do
   this callback, without a lock: those it names another organisation for first, then
   the rest, each in the order of their ids.
 
-  The organisations it names besides the organisation's own hold none of their own: for
+  The organisations it names besides the given one name no others in turn: for
   each of them, this callback names that organisation alone. This is what makes
   `Apiary.Organisations.lock_order/1` one order that every change agrees on. It may read,
   but it locks nothing: the edition's locks belong to `c:lock_rows/1`.
@@ -206,11 +206,11 @@ defmodule Apiary.Edition do
   @callback places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
 
   @doc """
-  Locks the edition's own rows for a change, inside its transaction: an edition takes all
-  its own rows for a change here, at one point before the change's first write, in its
-  own fixed order and in the strongest mode the change needs, and none later in that
+  Locks the edition's rows for a change, inside its transaction: an edition takes all
+  its rows for a change here, at one point before the change's first write, in one
+  fixed order and in the strongest mode the change needs, and none later in that
   change; otherwise two changes can wait on each other. The rule is the change's, not a
-  callback's: what the edition reads or writes of its own later in the change
+  callback's: what the edition reads or writes of its rows later in the change
   (`c:reload/2`, `c:level_refusal/4`, `c:membership_changed/5`, `c:accepted/4`) it holds
   from here. The core's answer is `:ok`, and it locks nothing.
 
@@ -298,7 +298,7 @@ defmodule Apiary.Edition do
   @doc """
   The other organisations whose organisation-level gateways may serve the workspaces of
   the organisation `organisation_id`, in the order its workspaces resolve their defaults
-  through them (`Apiary.Gateways.levels/1`): after the workspace's own default and its
+  through them (`Apiary.Gateways.levels/1`): after the workspace's default and its
   organisation's, the default of each of these in turn. The core's answer is `[]`: an
   organisation's gateways serve its workspaces alone.
 
@@ -318,9 +318,9 @@ defmodule Apiary.Edition do
     suspension never moves a node on Default to another gateway. Use is checked where
     it matters, at the server contract: the key of an organisation's gateway is verified
     while its organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
-    run's own place is checked at its attach, its batches and its reload
+    run's place is checked at its attach, its batches and its reload
     (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the
-    other organisations it serves and none of its own organisation's;
+    other organisations it serves and none of its organisation's;
   - it is the reverse of `served_organisations/1`: X is among
     `serving_organisations(Y)` exactly when Y is among `served_organisations(X)`.
   """
@@ -397,7 +397,7 @@ defmodule Apiary.Edition do
 
   @doc """
   Why a workspace or an organisation may not be deleted (`:delete`) or purged, or nil;
-  asked on the row locked for the change, after the core's own refusals.
+  asked on the row locked for the change, after the core's refusals.
   """
   @callback deletion_refusal(:delete | :purge, deletion_subject) :: nil | atom
 
@@ -405,7 +405,7 @@ defmodule Apiary.Edition do
   Told, inside the transaction, that a workspace or an organisation was marked for
   deletion (`:marked`), restored (`:restored`) or purged (`:purged`, in the transaction
   that deletes its row, before it goes). `{:ok, memberships}` names people beyond the
-  organisation's own members to tell once the transaction commits
+  organisation's members to tell once the transaction commits
   (`Apiary.Organisations.broadcast_membership_changes/1`); an error rolls the change back.
   An erasure request's marking is told with the purge that follows it.
   """
@@ -427,7 +427,7 @@ defmodule Apiary.Edition do
   JSON has them (string keys), an empty map for an entry without any. The core's answer is
   `details`, unchanged.
 
-  The edition adds keys of its own and changes or removes none of the core's: a key the
+  The edition adds more keys and changes or removes none of the core's: a key the
   entry has, and `allowance_id`, which the core counts entries by whatever their action,
   raise `ArgumentError`. A key that ends in `_id` and holds an organisation's id is named by
   `Apiary.Audit.names/2`, as the other side of a change is. What it adds is a JSON map

@@ -6,7 +6,7 @@ defmodule ApiaryWeb.JumpController do
       GET /:org/:workspace/jump?q=<text>    where the sidebar is a workspace's
       GET /:org/jump?q=<text>               where it is an organisation's or the person's
 
-  The palette asks the sidebar's level (`ApiaryWeb.Layouts.app/1`): a person's own page or
+  The palette asks the sidebar's level (`ApiaryWeb.Layouts.app/1`): a person's page or
   an Instance page shown beside the workspace the person came from asks that workspace.
 
   The answer is `{"groups": [{"label", "items": [{"label", "detail", "href", "icon"}]}],

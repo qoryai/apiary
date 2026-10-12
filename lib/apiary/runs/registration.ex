@@ -46,7 +46,7 @@ defmodule Apiary.Runs.Registration do
        repeat is given the configuration in force now for its labels;
     2. a run of this id whose events retention has pruned is `{:error, :gone}`;
     3. where the run goes, by the key's node's choice of gateway as it resolves now
-       (`Apiary.Gateways.resolve/1`), never by the body: a gateway's own key is
+       (`Apiary.Gateways.resolve/1`), never by the body: a gateway's key is
        `{:error, :gateway_key}`; the shape through a gateway from a node that goes
        directly is `{:error, :node_is_direct}`, and the direct shape from a node whose
        choice is not direct `{:error, :node_uses_gateway}`; a choice that leads nowhere is
@@ -176,8 +176,8 @@ defmodule Apiary.Runs.Registration do
   @typedoc """
   The run configuration a run is given: `settings`, the document's bytes; `digest`, theirs
   (`Apiary.Policy.Render.digest/1`), for `X-Qory-Run-Configuration`; `etag`, the same
-  string quoted, for `ETag`; `managed`, whether the workspace serves a run configuration of
-  its own.
+  string quoted, for `ETag`; `managed`, whether the workspace serves a run configuration,
+  not the document of no policy.
   """
   @type settings :: %{settings: binary, digest: String.t(), etag: String.t(), managed: boolean}
 

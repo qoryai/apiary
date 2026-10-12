@@ -11,8 +11,8 @@ defmodule Apiary.Accounts.Scope do
   Beyond the user, the scope carries the organisation the caller is acting in, the
   caller's membership there and the workspace inside it, once
   `Apiary.Organisations.resolve_scope/4` has loaded the ones a page's path names, or
-  `Apiary.Organisations.load_scope/2` the user's own. The workspace is the one the path
-  names; on an organisation's own page, the one the person opened last, or the first they
+  `Apiary.Organisations.load_scope/2` the user's. The workspace is the one the path
+  names; on an organisation's page, the one the person opened last, or the first they
   reach, or none for one who reaches no workspace yet.
 
   `reach` says how the person reaches the organisation beyond a membership there, as
@@ -120,7 +120,7 @@ defmodule Apiary.Accounts.Scope do
     do: %Organisation{id: organisation_id}
 
   @doc """
-  The scope of the instance acting on its own, in `organisation` and, when given,
+  The scope of the instance acting by itself, in `organisation` and, when given,
   `workspace` of it: the scope of a job that no person enqueued (`Apiary.Job`). No user
   and no membership; `Apiary.Access` answers it by the instance's role.
   """

@@ -50,7 +50,7 @@ defmodule Apiary.SecretLogFilter do
   development, or a `Plug.Conn`'s `request_path`, which the production formatter writes
   for a request that crashed) and one inside a whole URL (a LiveView's join payload,
   printed when it crashes), a doubled slash too; and a list of a path's segments (a
-  `Plug.Conn`'s `path_info`). The set-up link's own line (`Apiary.Setup`) is the one that
+  `Plug.Conn`'s `path_info`). The line that prints the set-up link (`Apiary.Setup`) is the one that
   writes it whole: the event that carries the metadata `setup_link: true` keeps its
   message as it came, its metadata scrubbed.
 
@@ -60,7 +60,7 @@ defmodule Apiary.SecretLogFilter do
   token is) is replaced by `:token`: after `?`, `&` or `;`, or at the start of the string
   (a `Plug.Conn`'s `query_string`), and in its URL-encoded form (`%3Finvitation%3D…`, a
   return path inside another parameter). A value of another shape, an invitation's id
-  among them (`invitation=<uuid>` in a line of the app's own), is left as it is.
+  among them (`invitation=<uuid>` in a line the app writes), is left as it is.
 
   An event without a secret is passed on exactly as it came. The filter never stops an
   event and never raises: should a term defeat it, the event is passed on as it came.
@@ -73,7 +73,7 @@ defmodule Apiary.SecretLogFilter do
   or `qec_` is filtered from a log line as a secret would be. A link's token anywhere else
   is not recognised: in another parameter of a query, or alone as a parameter's value,
   which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
-  a segment of its own (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
+  another segment (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
   route's, and is left whole.
   """
 

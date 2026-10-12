@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Async do
   `assign_async/3,4`, `start_async/3,4` and `stream_async/3,4` as a page of the console
   calls them: those of `Phoenix.LiveView`, with the function run under the organisation and
   workspace ids the LiveView's process carries in its Logger metadata
-  (`Apiary.LogMetadata.carry/1`). The task LiveView starts has no metadata
-  of its own, so without this a line logged by a page's async read would say no
+  (`Apiary.LogMetadata.carry/1`). The task LiveView starts has no metadata,
+  so without this a line logged by a page's async read would say no
   organisation.
 
   `use ApiaryWeb.Async` imports these in place of `Phoenix.LiveView`'s: `use ApiaryWeb,

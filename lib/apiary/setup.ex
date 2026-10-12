@@ -7,7 +7,7 @@ defmodule Apiary.Setup do
   (`Apiary.Organisations.sign_up_offer/1` answers `:not_set_up`).
 
   **The code.** 32 random bytes (`:crypto.strong_rand_bytes/1`) in base64url without
-  padding, 43 characters. It is stored as it is in the instance's own row of
+  padding, 43 characters. It is stored as it is in the instance's row of
   `instance_settings`, `setup_code`, until it is used; using it sets `set_up_at` and
   makes `setup_code` NULL in the same transaction that makes the account. It is not
   encrypted: whoever can read that table can already write an admin into it. A code is

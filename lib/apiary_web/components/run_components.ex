@@ -178,7 +178,7 @@ defmodule ApiaryWeb.RunComponents do
   its `reason`, `quiet_seconds` for `quiet`, and `state` when it has one, as a string or an
   atom.
 
-  Forager's own reasons have words of their own, none naming who or what ended the run:
+  Forager's reasons have these words, none naming who or what ended the run:
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer". A reason stored
@@ -420,7 +420,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's own
+  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's
   `elapsed_seconds` of its last heartbeat and the server time that heartbeat counts as heard;
   before the first heartbeat, zero at the moment the workspace first heard of the run.
   Never Forager's `started_at`: its clock may be anywhere.
@@ -876,7 +876,7 @@ defmodule ApiaryWeb.RunComponents do
   said (`Apiary.Runs.Run.outcome_differs?/1`): the outcome's state, then what the runtime
   did. "Succeeded, as its starter said; the runtime exited 1"; with a signal, "Failed, as
   its starter said; the runtime ended with SIGKILL"; before any exit, "Cancelled, as its
-  starter said; the runtime has not exited yet"; an exit with no code of its own, "...; the
+  starter said; the runtime has not exited yet"; an exit with no code, "...; the
   runtime's exit was not recorded". A run refused at its start (`refused_at`) never
   started a runtime: it says the outcome's state alone, "Succeeded, as its starter said". Nil for an outcome sent with no state, stored as cancelled with the
   reason `stopped`: the starter said no state, and the run reads as any cancelled run, its
@@ -1430,7 +1430,7 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   A target as every page writes it: its path in mono, and its system faint before it only
   where its address carries the system too (`ApiaryWeb.TargetComponents.with_system?/3`).
-  Given `shared` (`Apiary.Runs.shared_paths/2`, or a target's page's own boolean) the
+  Given `shared` (`Apiary.Runs.shared_paths/2`, or the boolean of a target's page) the
   component decides; without it the caller has, and a `system` given is shown. The whole
   `system/path` is its title.
   """
@@ -1772,10 +1772,10 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   The runs of a list, one row each: the state as a mark, the run's title (`given_title/1`,
   else its short id) the only strong text, its target after it until the table is 1000 px
-  wide and then in a column of its own, what the run is about in a muted line under them
+  wide and then in a separate column, what the run is about in a muted line under them
   (`about_line/1`) when it said, the runtime and the host faint from 1150 px, when it
   started, how long it ran from 720 px, and its denials, red when there are any. The
-  columns join by the table's own width (a container query), so a table beside a rail or a
+  columns join by the table's width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
   Every row's id is the run's (`run-<run_id>`); its title is a link to the run's page that
@@ -2302,7 +2302,7 @@ defmodule ApiaryWeb.RunComponents do
   one muted line, whole on hover, and folds under the destination below 600 px of table.
   Columns join as the table widens (`connections_table/1`). The host has a copy icon
   beside it (`<id>-copy`, it copies the host); a row's acts are `rule_actions/1`, Allow and
-  Deny as icons; what they open (`panel`, `rule_panel/1`) is a row of its own right under
+  Deny as icons; what they open (`panel`, `rule_panel/1`) is a separate row right under
   the row, in the table's flow. Where the rule in force is the rule the reason names, its
   name links to it (`<id>-rule`).
 
@@ -3171,7 +3171,7 @@ defmodule ApiaryWeb.RunComponents do
   (`"cx-<id>"` for a projection row, `"dst-<hash>"` for a destination).
 
   Both are one row spec, with no tint and no mark, and fit their width: columns join as the
-  table's own width grows (a container query, as `CoreComponents.table/1`'s `from`), so
+  table's width grows (a container query, as `CoreComponents.table/1`'s `from`), so
   nothing is cut at the right. The reason from 600 px (below it, a line under the
   destination), the last seen from 780, the runs from 840, the attempts and the outcome
   from 1300; the destination and its split never go, and the host is never cut, its path

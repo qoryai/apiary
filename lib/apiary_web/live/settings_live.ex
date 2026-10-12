@@ -2,7 +2,7 @@ defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
   The core's sections of the organisation's and the workspace's settings, one section a
   page, its title the page's h1, beside the list of its kind's sections
-  (`ApiaryWeb.SettingsComponents`), under the scope's own sidebar, whose Organisation
+  (`ApiaryWeb.SettingsComponents`), under the scope's sidebar, whose Organisation
   settings or Workspace settings is the current entry.
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
@@ -19,19 +19,19 @@ defmodule ApiaryWeb.SettingsLive do
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited. Deleting asks to type the
-  slug, in place, never in a dialog, each at a path of its own: the organisation's and this
+  slug, in place, never in a dialog, each at a separate path: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
   (`:danger`, and `/:org/settings/delete`, `:delete_organisation`), this workspace's at
   `/:org/:workspace/settings/danger` (`:workspace_danger`, and
   `/:org/:workspace/settings/delete`, `:delete_this_workspace`); any workspace's in its
   row of Workspaces (`SettingsComponents.workspace_list/1`), at
-  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are no section of their own: nothing that
+  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are not separate sections: nothing that
   cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
   notice at the top of Workspaces, where an owner or an admin cancels it until it is
   purged (`Apiary.Deletion`).
 
-  An edition adds sections to the organisation's settings, each a page of its own
+  An edition adds sections to the organisation's settings, each a separate page
   (`ApiaryWeb.SettingsComponents`), and to each workspace's ⋯ menu in Workspaces the items
   its `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
 

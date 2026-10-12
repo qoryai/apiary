@@ -5,7 +5,7 @@ defmodule Apiary.Kinds.Headers do
   64 characters that the list here does not refuse, compared in lower case;
   `authorization` is reached through the `bearer` and `basic` schemes alone.
 
-  The list refuses the connection's own fields, the names hosts commonly send back or log
+  The list refuses the connection's fields, the names hosts commonly send back or log
   beside a request, and every name that starts with one of the refused prefixes.
   """
 

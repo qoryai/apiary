@@ -13,7 +13,7 @@ defmodule Apiary.Deletion do
   is (`Apiary.AccessKeys.fetch_for_verification/1`), its invitations accept no one, and
   `Apiary.Access` answers not found to anything asked of it, a page opened before the
   marking included, but cancelling the deletion and the purge. Nothing is removed yet.
-  The organisation's last workspace in use is not deleted on its own,
+  The organisation's last workspace in use is not deleted by itself,
   `{:error, :last_workspace}`: the organisation is. A workspace's members stay in the
   organisation; their access to the workspace goes with it, when it is purged.
 
@@ -41,8 +41,8 @@ defmodule Apiary.Deletion do
   cancelling finds it unclaimed and in its grace period under the same row's lock, so of
   the two exactly one happens, and never half of each. It then deletes every row with the
   organisation key, table by table in the order of `Apiary.Deletion.Tables`, a batch at a
-  time, each batch in its own short transaction, and then, in one transaction, the
-  workspace's or the organisation's own row:
+  time, each batch in a separate short transaction, and then, in one transaction, the
+  workspace's or the organisation's row:
 
   - **A workspace** leaves an entry in its organisation's trail, `workspace.purge`, as
     its marking and its cancelling do (`workspace.delete`, `workspace.restore`); all
@@ -57,13 +57,13 @@ defmodule Apiary.Deletion do
   nothing left to do. `purge_now/3` purges an organisation at once, for an erasure
   request the instance received, and records who asked and why on the organisation's
   row, which the instance's line keeps, whichever run finishes the purge; an edition's
-  own path to it takes the same steps
+  path to it takes the same steps
   (`lock_for_erasure/1`, `mark_for_erasure/2`, `purge_marked/2`).
 
   ## The edition's part
 
   The edition may refuse a deletion or a purge (`c:Apiary.Edition.deletion_refusal/2`),
-  asked on the row locked for it, after the core's own refusals: the core's own edition
+  asked on the row locked for it, after the core's refusals: the core's edition
   refuses the instance's organisation, whose owners run the instance,
   `{:error, :instance_organisation}`. It is told of each marking, cancelling and purge in
   the transaction that makes it (`c:Apiary.Edition.deletion_changed/4`), and may name
@@ -88,7 +88,7 @@ defmodule Apiary.Deletion do
   @batch 2_000
 
   @typedoc """
-  Why a deletion or a cancelling is refused: `Apiary.Access`'s answer, the core's own
+  Why a deletion or a cancelling is refused: `Apiary.Access`'s answer, the core's
   reasons, or the edition's (`c:Apiary.Edition.deletion_refusal/2`), such as
   `:instance_organisation`.
   """
@@ -223,7 +223,7 @@ defmodule Apiary.Deletion do
   restore_organisation/2 cancels the deletion of an organisation, by its id, for a person
   who is one of its owners (`organisation.restore`), while its grace period lasts and no
   purge has claimed it, and records it in its trail: the organisation is back as it was,
-  its workspaces, members and access keys with it. A workspace marked on its own stays
+  its workspaces, members and access keys with it. A workspace marked separately stays
   marked. `{:ok, organisation}`; `{:error, :not_found}` for an organisation the person is
   not a member of or that is not marked, `{:error, :purge_started}` once its grace period
   is over or a purge claimed it, and `Apiary.Access`'s answer.
@@ -472,7 +472,7 @@ defmodule Apiary.Deletion do
   says it was an erasure request. `origin` is where the request came from, for the trail
   it is recorded in until the purge. As the instance; an edition's release command is its
   caller. Refused, touching nothing, with the edition's refusal
-  (`c:Apiary.Edition.deletion_refusal/2`), read under the row's lock: the instance's own
+  (`c:Apiary.Edition.deletion_refusal/2`), read under the row's lock: the instance's
   organisation is never marked nor purged.
   """
   @spec purge_now(%Organisation{}, %User{} | nil, Scope.origin()) ::
@@ -775,7 +775,7 @@ defmodule Apiary.Deletion do
   @doc """
   mark_changeset/2 is the change that marks `row`, a workspace or an organisation, for
   deletion by `scope`'s person (nil for the instance), its grace period of `grace_days/0`
-  from now: for an edition's own path to a marking, which asks `Apiary.Access` and records
+  from now: for an edition's path to a marking, which asks `Apiary.Access` and records
   it as the core's do.
   """
   @spec mark_changeset(%Workspace{} | %Organisation{}, Scope.t()) :: Ecto.Changeset.t()

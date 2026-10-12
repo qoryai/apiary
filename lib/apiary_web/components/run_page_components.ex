@@ -1407,7 +1407,7 @@ defmodule ApiaryWeb.RunPageComponents do
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
   a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
   at the size its bytes were written to: the recorded columns are kept, drawn inside the
-  box's own dark ground, which fills the page's width. Without one it fits the screen to
+  box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
   The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
@@ -1710,7 +1710,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The details as `{key, value, form}` rows, by key. A top-level member is a row; one that
-  is a non-empty object is instead a row per member of its own, keyed `outer.inner`, so a
+  is a non-empty object is instead a row per member of that object, keyed `outer.inner`, so a
   key has at most two segments. A value is shown as given when it is a string (`:text`),
   and as compact JSON otherwise (`:json`): a number, true, false, null, an array, and an
   object one level below that, or an empty one. An object nested deeper stays one JSON

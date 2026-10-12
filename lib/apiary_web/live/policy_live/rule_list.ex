@@ -11,8 +11,8 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
       `paths:held` and `paths:every`, `by:` and a person's short name, `source:` and a
       source's key. The Filter menu (`sections/2`) writes the same qualifiers; the page
       shows each as a token the reader removes.
-    * `sort`: `host`, `used` or `recent`; none is the list's own order: by source (a
-      target's own first on its tab), then locked, then deny, then allow, each by host
+    * `sort`: `host`, `used` or `recent`; none is the list's default order: by source
+      (target rules first on their tab), then locked, then deny, then allow, each by host
       read from the right, so a suffix sits beside the hosts below it.
     * `page`, from 1, of 50 rules.
 
@@ -21,9 +21,9 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
   A row is a map the page builds (`ApiaryWeb.PolicyLive.Common`): `id`, `action`
   (`"allow"`, `"deny"`), `host`, `paths`, `locked`, `by` (a person's short name, or nil),
   `at` and `source`, `%{key:, label:, rank:}`: where the rule is written, its key the
-  `source:` qualifier's value, its rank its place in the list's own order, lowest first.
+  `source:` qualifier's value, its rank its place in the list's default order, lowest first.
   The sources are the rows', never a list of this module's: an edition that adds rules of
-  another holder to a list gives them a source of their own, and the Source section of
+  another holder to a list gives them a separate source, and the Source section of
   the Filter menu, the `source:` qualifier and the order take it as they take the core's.
   """
   use Gettext, backend: ApiaryWeb.Gettext
@@ -78,7 +78,7 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
   @spec page_size() :: pos_integer
   def page_size, do: @page_size
 
-  @doc "The orders the list is read in beyond its own, as the URL writes them."
+  @doc "The orders the list is read in beyond the default, as the URL writes them."
   @spec sorts() :: [:default | :host | :used | :recent]
   def sorts, do: [:default, :host, :used, :recent]
 
@@ -380,7 +380,7 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
   end
 
   @doc """
-  A host's labels read from the right, as the list's own order compares them: a name before
+  A host's labels read from the right, as the list's default order compares them: a name before
   the suffix above it, the suffix before the hosts below it.
   """
   @spec from_the_right(String.t()) :: [String.t()]

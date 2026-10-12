@@ -4,7 +4,7 @@ defmodule ApiaryWeb.TargetLive.Index do
   row per target, its path the only strong text: the reader's pin, its last run as a dot
   and a time (a word only when it is running or went badly), its runs a day over fourteen
   days, how many of them ended well, its denied attempts in those days, and its policy
-  mode only where it sets its own. Pages of 50.
+  mode only where it overrides the workspace's. Pages of 50.
 
   Narrowed the way every list is (`docs/ui.md`): views as tabs (All, Active this week,
   Never ran), a search that takes qualifiers (`ApiaryWeb.TargetLive.Query`), one Filter

@@ -2,7 +2,7 @@ defmodule Apiary.Connections do
   @moduledoc """
   Connections holds what a workspace sets up: the runtimes, integrations and
   services the contract calls connections, and the pages call integrations
-  (`Apiary.Connections.Connection`), where each applies, and the workspace's own service
+  (`Apiary.Connections.Connection`), where each applies, and the workspace's service
   definitions (`Apiary.Connections.ServiceDefinition`).
 
   ## The kinds
@@ -19,7 +19,7 @@ defmodule Apiary.Connections do
       pattern. Moving it to another release keeps its source and its name, else
       `integration_source_mismatch`.
     * A **service** connection names its definition, a built-in one by key
-      (`Apiary.Kinds.Services`) or the workspace's own, and nothing else: the definition is
+      (`Apiary.Kinds.Services`) or one of the workspace's, and nothing else: the definition is
       the one source of its hosts, paths, auth and declared secrets.
 
   Nothing here links a stored secret to a connection or holds a secret, and the audit
@@ -109,7 +109,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  list_service_definitions/1 is the scope's workspace's own service definitions, by key:
+  list_service_definitions/1 is the service definitions of the scope's workspace, by key:
   `{:ok, definitions}` for a reader who may `connection.read`.
   """
   @spec list_service_definitions(Scope.t()) ::
@@ -121,7 +121,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  get_service_definition/2 is the scope's workspace's own service definition with the
+  get_service_definition/2 is the service definition of the scope's workspace with the
   public id `public_id`: `{:ok, definition}`, or `{:error, reason}`.
   """
   @spec get_service_definition(Scope.t(), term) ::
@@ -220,7 +220,7 @@ defmodule Apiary.Connections do
   them, every one checked:
   `{:ok, connections}`, or `{:error, {:integrity, public_ids}}` when a connection, its
   release or its definition is not as it was written, with an error in the log. It asks
-  nothing of `Apiary.Access`: it is the server's own path, with no person's scope to ask
+  nothing of `Apiary.Access`: it is the server's path, with no person's scope to ask
   about.
   """
   @spec list_for_rendering(%Workspace{}) ::
@@ -304,7 +304,7 @@ defmodule Apiary.Connections do
   @doc """
   create_service/2 sets up a service (`connection.write`): `attrs` has `service`, the key
   of a built-in definition, or `definition_id`, the public id of one of the workspace's
-  own, and `name` (the definition's title by default), `applies_to` and `target_ids`.
+  definitions, and `name` (the definition's title by default), `applies_to` and `target_ids`.
   `{:ok, connection}`, or `{:error, refusal}`: `:service_unknown`.
   """
   @spec create_service(Scope.t(), map) :: {:ok, Connection.t()} | {:error, refusal}
@@ -786,7 +786,7 @@ defmodule Apiary.Connections do
   ## Service definitions
 
   @doc """
-  create_service_definition/2 writes a service definition of the scope's workspace's own
+  create_service_definition/2 writes a service definition of the scope's workspace
   (`connection.write`): `definition`, a map or its JSON, checked by
   `Apiary.Kinds.ServiceDefinition`, its `key` unique in the workspace.
   `{:ok, definition}`, or `{:error, refusal}`: `{:definition_invalid, problems}`, a
@@ -815,7 +815,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  update_service_definition/3 replaces a definition of the workspace's own
+  update_service_definition/3 replaces a definition of the workspace
   (`connection.write`); every connection that names it takes it from now on.
   `{:ok, definition}`, or `{:error, refusal}`.
   """
@@ -841,7 +841,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  delete_service_definition/2 deletes a definition of the workspace's own
+  delete_service_definition/2 deletes a definition of the workspace
   (`connection.write`): `{:ok, definition}`, or `{:error, refusal}`,
   `{:in_use, public_ids}` while a connection names it.
   """

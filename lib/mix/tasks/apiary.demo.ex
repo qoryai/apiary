@@ -33,10 +33,10 @@ defmodule Mix.Tasks.Apiary.Demo do
   `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
   a baseline of hosts, one held to paths, a locked deny, and in the target
   `codeberg.org/acme/shop` an added host, a disabled one, an allow the lock
-  overrides and a mode of its own (observe, under a workspace that enforces); written rule
-  by rule, so there are versions and a history to look at, and the workspace is a managed
-  one, serving its run configuration. A workspace whose policy anybody has changed, even
-  back to nothing, is left as it is.
+  overrides, and a mode that overrides the workspace's (observe, under a workspace that
+  enforces); written rule by rule, so there are versions and a history to look at, and the
+  workspace is a managed one, serving its run configuration. A workspace whose policy
+  anybody has changed, even back to nothing, is left as it is.
   """
 
   use Mix.Task

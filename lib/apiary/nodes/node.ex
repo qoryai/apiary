@@ -121,7 +121,7 @@ defmodule Apiary.Nodes.Node do
   @doc """
   changeset/2 is the changeset of a node's name and, for a pool, its instance limit: the
   name 1 to 80 characters without control characters, unique among the workspace's
-  nodes in use, or among the organisation's own gateways in use; a pool's limit empty, for none, or 1 to `max_limit/0`. A node's limit is
+  nodes in use, or among the gateways in use at the organisation's level; a pool's limit empty, for none, or 1 to `max_limit/0`. A node's limit is
   1 whatever `attrs` says, and a gateway's none. A gateway's address is required and
   checked (`validate_url/1`); a node and a pool have none. A node's or a pool's choice of
   gateway (`gateway_choice`, with `gateway_id` when it is `named`) is cast, and a gateway
@@ -158,8 +158,8 @@ defmodule Apiary.Nodes.Node do
 
   @doc """
   default_changeset/2 marks `gateway` as its level's default gateway, its workspace's or
-  its organisation's, or takes the mark off. The database holds a workspace, and an
-  organisation's own gateways, to one default, a gateway in use: a mark it refuses is an
+  its organisation's, or takes the mark off. The database holds a workspace, and the
+  gateways at an organisation's level, to one default, a gateway in use: a mark it refuses is an
   error on `default_gateway`.
   """
   @spec default_changeset(t, boolean) :: Ecto.Changeset.t()

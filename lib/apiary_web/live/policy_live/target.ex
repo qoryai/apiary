@@ -3,15 +3,15 @@ defmodule ApiaryWeb.PolicyLive.Target do
   A target's view of the workspace's policy, the Policy tab of the target's page
   (`ApiaryWeb.TargetLive.Show`, `…/-/policy`): the effective list, one row per host in
   force with where it came from, the rules that lost hung under the rule that beat them;
-  the hosts the harness declared; the target's own history (`…/-/policy/history`),
+  the hosts the harness declared; the target's history (`…/-/policy/history`),
   versions (`…/-/policy/versions/:n`, with `/export`) and the document in force
-  (`…/-/policy/document`: its own version, or the workspace's while it is served the
+  (`…/-/policy/document`: the target's version, or the workspace's while it is served the
   workspace's, shown in place under the mode card and read again after a change); and
   the New rule and Edit rule pages of its rules (`…/-/policy/rules/new`,
   `…/-/policy/rules/:id/edit`, `ApiaryWeb.PolicyComponents.rule_form/1`), which go back
   to the list as it was left.
 
-  Not a page of its own: the target's page mounts it with the target it found in its own
+  Not a separate page: the target's page mounts it with the target it found in the current
   workspace (`mount/2`), puts the tab's action in `:action` (`:rules`, `:history`,
   `:document`, `:version`, `:export`, `:new_rule`, `:edit_rule`) and hands it the page's
   parameters, events and
@@ -719,7 +719,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   @doc """
   content/1 is the tab's content, under the target's page's header and tabs: what the
-  policy of the target is, with the version in force and its export; the tab's own
+  policy of the target is, with the version in force and its export; the tab's
   views (the effective policy, its history, its document); the view of the action; and
   the export page. Its skeleton until the connected mount has read it.
   """

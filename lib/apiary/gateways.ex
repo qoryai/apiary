@@ -3,8 +3,8 @@ defmodule Apiary.Gateways do
   Gateways answers where a gateway stands, and which gateway a node's or a node pool's
   recorded choice resolves to.
 
-  A **gateway** is a node of kind `:gateway` (`Apiary.Nodes.Node`, `ng_…`): it holds an
-  access key of its own and enrols as a node does. It lives at a **level** (`level/1`):
+  A **gateway** is a node of kind `:gateway` (`Apiary.Nodes.Node`, `ng_…`): it holds a
+  separate access key and enrols as a node does. It lives at a **level** (`level/1`):
 
   - at a workspace, `{:workspace, id}`: it may serve that workspace alone;
   - at an organisation, `{:organisation, id}`, with no workspace: it may serve every
@@ -14,7 +14,7 @@ defmodule Apiary.Gateways do
   A workspace's levels, most specific first (`levels/1`), are the workspace's, its
   organisation's, then those of the organisations whose gateways an edition lets serve it
   (`c:Apiary.Edition.serving_organisations/1`), in the edition's order. Nothing here
-  assumes that an organisation-level gateway serves its own organisation's workspaces
+  assumes that an organisation-level gateway serves its organisation's workspaces
   alone: each question asks the two seams.
 
   A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
@@ -38,7 +38,7 @@ defmodule Apiary.Gateways do
   - `gateway_choices/1` is the gateways a node of a workspace may name, by level.
   - `delete_blockers/1` is what stops a gateway from being deleted.
 
-  **The default mark.** Each level marks at most one of its own gateways as its default
+  **The default mark.** Each level marks at most one of its gateways as its default
   (`default_gateway`, a partial unique index per workspace and one per organisation). A
   gateway becomes its level's default by itself, as it is made, only when no default
   resolves for it at its level or after it (`default_resolves?/1`): for a
@@ -301,7 +301,7 @@ defmodule Apiary.Gateways do
 
   @doc """
   default_gateway_for/1 is the default gateway of `workspace`, most specific level first
-  (`levels/1`): the workspace's own default, else its organisation's, else that of each
+  (`levels/1`): the workspace's default, else its organisation's, else that of each
   organisation that serves it, in turn. Nil when no level has one.
   """
   @spec default_gateway_for(%Workspace{}) :: Node.t() | nil
@@ -372,8 +372,8 @@ defmodule Apiary.Gateways do
   default_resolves?/1 says whether a default resolves for a new gateway at `level`, at
   that level or after it, so that marking it would move a node: for a workspace's level,
   whether any default resolves for the workspace (`default_gateway_for/1`); for an
-  organisation's, whether the organisation has a default, or a workspace it serves (its
-  own organisation's, or one of `served_organisations/1`) resolves one at a level after
+  organisation's, whether the organisation has a default, or a workspace it serves (the
+  organisation's, or one of `served_organisations/1`) resolves one at a level after
   it, with no default before it. A gateway made at `level` is made its default only when
   none does (`Apiary.Nodes`).
   """

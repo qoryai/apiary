@@ -6,7 +6,7 @@ defmodule Apiary.KeyCheck do
   no stored secret could be read, and with another signing secret every machine would
   refuse its answers.
 
-  **What is recorded.** Two values, in the instance's own row of `instance_settings`:
+  **What is recorded.** Two values, in the instance's row of `instance_settings`:
 
     * `encryption_secret_check`, the check value of `APIARY_ENCRYPTION_SECRET`
       (`check_value/0`): HMAC-SHA256 of the label `#{inspect("apiary key check v1")}` under
@@ -36,7 +36,7 @@ defmodule Apiary.KeyCheck do
 
   The recording is one statement that keeps a value the row holds already, and answers
   the values the row holds after it: two instances booting at once on an empty row record
-  one pair, the first to write, and the other compares its own against it. On a schema
+  one pair, the first to write, and the other compares its pair against it. On a schema
   without the two columns, the migration of this release not yet run, the check records
   and compares nothing.
 

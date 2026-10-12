@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.TargetMovedController do
   @moduledoc """
-  A target's policy had a page of its own, `/:org/:workspace/policy/targets/:target_id/…`,
+  A target's policy had a separate page, `/:org/:workspace/policy/targets/:target_id/…`,
   by the target row's id; it is the Policy tab of the target's page now
   (`ApiaryWeb.TargetLive.Show`, `…/targets/acme/shop/-/policy/…`, the system before the
   path only where the path is shared). This sends such a

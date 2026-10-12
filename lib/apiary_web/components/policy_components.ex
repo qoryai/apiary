@@ -63,7 +63,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :scope, :string,
     default: nil,
     doc:
-      "whose version, when shown away from its own page: \"workspace baseline\" or a system/path; a quiet suffix"
+      "whose version, when shown away from the version's page: \"workspace baseline\" or a system/path; a quiet suffix"
 
   attr :class, :any, default: nil
 
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.PolicyComponents do
   The mode in force, a card above a policy page's tabs, the same on the workspace's Policy
   page (`level={:workspace}`) and on a target's Policy tab (`level={:target}`): a tile, the
   mode as the heading's value ("Mode: Enforce"), whose it is as a badge (the workspace's
-  default; the target follows the workspace or has its own; or the level above requires
+  default; the target follows the workspace or overrides it; or the level above requires
   it), what it does and who follows it, and on the workspace's the record of the last 14
   days with the way to it.
 
@@ -293,7 +293,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :own, :list,
     default: [],
-    doc: "the workspace's: the modes of the targets that set their own"
+    doc: "the workspace's: the modes of the targets that override it"
 
   attr :fact, :any,
     default: nil,
@@ -303,7 +303,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :setting, :string,
     default: "follow",
     values: ~w(follow observe enforce),
-    doc: "the target's: follow the workspace, or its own mode"
+    doc: "the target's: follow the workspace, or override its mode"
 
   attr :workspace_default, :string,
     default: "observe",
@@ -315,7 +315,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :set, :any,
     default: nil,
-    doc: "the target's: who set its own mode and when, `%{by:, at:}`, or nil when unknown"
+    doc: "the target's: who overrode the mode and when, `%{by:, at:}`, or nil when unknown"
 
   slot :effect, doc: "the question's sentence: what the pick does, and in whose runs"
   slot :inner_block, doc: "what follows the question's sentence: what enforce would deny"
@@ -592,7 +592,7 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The line under a policy page's title where a level above the workspace holds
   (`Apiary.Policy.Above`): its tile and name, how many rules it has, whether it requires
-  enforce and whether it allows only its own hosts, and the way to it where the edition
+  enforce and whether it allows only the hosts on its list, and the way to it where the edition
   gives one (`link`, `c:ApiaryWeb.Edition.above_policy_link/1`). Nothing without a level,
   and nothing for one that carries variables only (`policy: false`).
   """
@@ -1030,7 +1030,7 @@ defmodule ApiaryWeb.PolicyComponents do
   ## Rule form
 
   @doc """
-  The form of a host rule, a page of its own (`ApiaryWeb.PageComponents.page_form/1`):
+  The form of a host rule, a separate page (`ApiaryWeb.PageComponents.page_form/1`):
   the New rule page, `…/policy/rules/new` of the workspace or of a target, and the Edit
   rule page, `…/policy/rules/:id/edit`; an edition draws it too for a level above the
   workspace (`scope` `:organisation`). Top to bottom: the title and its sentence (the
@@ -1301,7 +1301,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :query, :any, required: true
   attr :path, :any, required: true, doc: "the URL of a query"
   attr :sections, :list, required: true, doc: "the Filter menu's, `RuleList.sections/2`"
-  attr :default_sort, :string, required: true, doc: "the list's own order, in words"
+  attr :default_sort, :string, required: true, doc: "the list's default order, in words"
   attr :activity, :any, default: :unavailable
   attr :source, :boolean, default: false, doc: "show where each rule is written"
   attr :title, :string, default: nil, doc: "the section's heading: with it, its header"
@@ -1611,9 +1611,9 @@ defmodule ApiaryWeb.PolicyComponents do
   Source column says `locked_tip`'s words; the lock is for a locked rule of the workspace
   alone, what the Locked view counts), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
   `locked_tip` (what the lock says), `can_change` (the reader may change it here), `act`
-  (what Remove does: `:remove`, or `:restore` where a target's own rule gives the
+  (what Remove does: `:remove`, or `:restore` where a target rule gives the
   workspace's back) and `view` (`{label, path}`: where a rule written elsewhere is changed,
-  or nil). The menu of the page's own rule: Edit (its Edit rule page, `edit_path`; Edit
+  or nil). The menu of a rule written here: Edit (its Edit rule page, `edit_path`; Edit
   paths of an allow for a caller that has not moved to the page), the other action, Lock or
   Unlock for an owner on the workspace's page, Remove; of a rule written elsewhere, the way
   to it.
@@ -2137,7 +2137,7 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   @doc """
-  The diff of a change, or between two versions: the change in the page's own words, and
+  The diff of a change, or between two versions: the change in the page's words, and
   a line diff of the rendered document. `diff`: `%{rules: [{:add | :del | :ctx, rich}],
   document: [{:add | :del | :ctx, text}], from:, to:, summary:, navigate:, bytes:}`.
   """

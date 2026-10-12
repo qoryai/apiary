@@ -7,7 +7,7 @@ defmodule ApiaryWeb.Extension do
 
   The rule: a small addition goes through a slot or a settings tab
   (`c:ApiaryWeb.Edition.settings_tabs/1`), and a page whose behaviour differs is the
-  edition's own page at the same path (`ApiaryWeb.Routes`). What a slot renders links to
+  edition's page at the same path (`ApiaryWeb.Routes`). What a slot renders links to
   the edition's pages and never handles an event in the core's LiveView.
 
   | Slot | Where | Assigns beside `scope` |
@@ -16,9 +16,9 @@ defmodule ApiaryWeb.Extension do
   | `:organisation_heading` | the organisation's overview, in its header's actions: a button to the edition's page | |
   | `:members_heading` | the members page, in its header, under its description | |
   | `:member_access` | each row of the members page, and of a workspace's People (`ApiaryWeb.MemberLive.Workspace`), beside the member's name: one line of muted text | `member`; on a workspace's People, `workspace` too |
-  | `:member_actions` | each row of the members page, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `member` |
+  | `:member_actions` | each row of the members page, in its ⋯ menu before the core's items: `CoreComponents.menu_item/1`s | `member` |
   | `:workspaces_heading` | the Workspaces section of the organisation's settings, in its header's actions: a button to the edition's page | |
-  | `:workspace_actions` | each workspace of the organisation's settings, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `workspace` |
+  | `:workspace_actions` | each workspace of the organisation's settings, in its ⋯ menu before the core's items: `CoreComponents.menu_item/1`s | `workspace` |
   | `:policy_notices` | the workspace's policy page, above its tabs' content | `changes`, the number of the policy's changes: it renders the slot again as the policy changes |
   | `:activity_toolbar` | the Activity page, right under its header (reserved) | |
   | `:activity_filters` | the Activity page's filter bar, after its filters (reserved) | |

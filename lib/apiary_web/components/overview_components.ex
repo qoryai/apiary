@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the workspace overview, each a level of its own look (`docs/ui.md`,
+  The components of the workspace overview, each a level with a distinct look (`docs/ui.md`,
   Lists): the summary (the largest numbers on the page), then blocks, each one box with a
   band and rows or lines and nothing boxed inside it: To review, the fourteen-day
   chart, the active targets and Guard; and the empty workspace's one box.
@@ -1450,9 +1450,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   Guard, a few lines of key and value, each with a muted detail under it and the one link
-  that opens more: the policy's mode and the version in force, the targets with rules of
-  their own, and retention. `policy` is nil while its read is in flight and absent where
-  `security` is off, which leaves the retention line alone, under its own name.
+  that opens more: the policy's mode and the version in force, the targets that have
+  rules, and retention. `policy` is nil while its read is in flight and absent where
+  `security` is off, which leaves the retention line alone, under the heading Retention.
   """
   attr :id, :string, default: "overview-guard"
 
@@ -1711,7 +1711,7 @@ defmodule ApiaryWeb.OverviewComponents do
   "Connect it", is the two ways a node or pool gets its key: a command run on the machine,
   or a key generated in the browser. While it is current, it names `target`, the newest
   node or pool with no active key, and the panel asks a reader who may connect it
-  (`may_key`) how, with the two ways as rows, its kind's own first and primary (a node:
+  (`may_key`) how, with the two ways as rows, the one for its kind first and primary (a node:
   Get the command; a pool: Generate a key). Get the command makes the command in place
   (the caller's `get_command` event): `command`, once got, is shown in the panel, with
   Copy, until when it works, and that the box waits for the machine; for a target whose

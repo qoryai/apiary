@@ -10,11 +10,11 @@ defmodule Apiary.Policy.Activity do
   its run, so a connection counts whole when it was last seen in the range.
 
   `uncovered` for the workspace counts only the runs of targets that follow the
-  workspace's mode, and the runs that name no target: a target with a mode of its own is
+  workspace's mode, and the runs that name no target: a target that overrides the mode is
   not changed by the workspace's. For a target it counts that target's runs, whatever its
   mode is now: what enforcing it would start denying.
 
-  A connection is held to the effective policy of its own run's target, its mode
+  A connection is held to the effective policy of its run's target, its mode
   included (the baseline
   for a run that names none), resolved once per target, and matched as the gateway
   matches: the host against `deny` first and then against `allow`, each in the

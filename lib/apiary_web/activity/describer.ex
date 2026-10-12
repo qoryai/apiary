@@ -7,8 +7,8 @@ defmodule ApiaryWeb.Activity.Describer do
   A describer answers for the actions it knows and says nil for the others. The page asks
   the edition's describer first (`c:ApiaryWeb.Edition.activity_describer/0`), then the
   core's, `ApiaryWeb.Activity.Describer.Core`, and takes the first answer that is not nil
-  (`describers/0`): an edition says its own actions, and may say one of the core's where
-  the entry holds what only the edition writes, such as a reason of its own. Where none
+  (`describers/0`): an edition says its actions, and may say one of the core's where
+  the entry holds what only the edition writes, such as a reason. Where none
   answers, the page says the action's code name, "Made a change" and "n/a".
 
   The names an entry needs are looked up when the page reads (`Apiary.Audit.names/2`),

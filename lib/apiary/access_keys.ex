@@ -100,8 +100,8 @@ defmodule Apiary.AccessKeys do
   is in use again: a key is a workspace's, not a person's, so a suspended membership or an
   account out of use leaves the keys working. The key of an organisation's gateway is
   verified while its organisation is out of use, and acts for a run only while the run's
-  own place is in use (`place_in_use?/2`): it keeps carrying the runs of the other
-  organisations it serves, and none of its own organisation's. It keeps the keys it holds
+  place is in use (`place_in_use?/2`): it keeps carrying the runs of the other
+  organisations it serves, and none of its organisation's. It keeps the keys it holds
   and enrols no new one: an enrolment is refused while its organisation is out of use, as
   every enrolment code of an organisation out of use is. A workspace's gateway is held to its organisation's use as any node is.
 
@@ -159,7 +159,7 @@ defmodule Apiary.AccessKeys do
   verified as far as its place goes: the workspace and the organisation neither marked
   for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check the
   verification of a node's or a node pool's key makes. A run through a gateway is held to
-  it for its own place, which may not be the gateway key's: at its attach, its batches
+  it for the run's place, which may not be the gateway key's: at its attach, its batches
   and its reload.
   """
   @spec place_in_use?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
@@ -235,7 +235,7 @@ defmodule Apiary.AccessKeys do
   server_variable/1 is the server's part of Forager's variables, the same for every key,
   node, workspace and organisation of the instance: `QORY_APIARY_PUBLIC_KEY`, the pin as
   JSON. `pin` is the server's `apiary_public_key` list
-  (`Apiary.SigningKey.apiary_public_key/0`), the instance's own signing key: no key is
+  (`Apiary.SigningKey.apiary_public_key/0`), the instance's signing key: no key is
   asked for.
   """
   @spec server_variable([%{required(String.t()) => String.t()}, ...]) :: {String.t(), String.t()}
@@ -632,7 +632,7 @@ defmodule Apiary.AccessKeys do
   the enrolment's transaction committed, and `{:code_cancelled, %{code_id:, node_id:}}`
   once a code of the node was cancelled (`cancel_code/2`), after that transaction
   committed. Each message carries ids alone, nothing secret: a subscriber reads the key
-  or the codes again under its own scope.
+  or the codes again under its scope.
   """
   @spec topic(Ecto.UUID.t(), Ecto.UUID.t()) :: String.t()
   def topic(workspace_id, node_id), do: "access_keys:#{workspace_id}:#{node_id}"

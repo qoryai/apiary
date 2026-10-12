@@ -8,7 +8,7 @@ defmodule Apiary.DatabaseUrl do
 
   | `sslmode` | The connection |
   |---|---|
-  | none | Not encrypted, unless Ecto's own `ssl=true` asks for TLS, checked against the system's CAs. |
+  | none | Not encrypted, unless Ecto's `ssl=true` asks for TLS, checked against the system's CAs. |
   | `disable` | Not encrypted. |
   | `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
   | `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`, where libpq checks it against an `sslrootcert` file. Said once at boot, as a warning (`boot/0`). |

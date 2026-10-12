@@ -9,7 +9,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   `ApiaryWeb.SecretLive.Query`); one status line says a switch and what a search left.
   The second column marks the section as the page on Secrets, and as its parent
   (`aria-current="true"`) on Variables and on every page of a form, which shows no tabs.
-  Nothing opens over the page: each act is at a path of its own, a form a page of its own
+  Nothing opens over the page: each act is at a separate path, a form a separate page
   (`ApiaryWeb.PageComponents.page_form/1`: its title, one sentence, the form, its button
   and Cancel back to the tab, the breadcrumb ending with the section and the page), and
   so is the list of a variable's targets; a deletion asks to confirm in place, on its row
@@ -29,8 +29,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     once: the page never renders it, nor keeps it in an assign, so the field is empty
     after a save and after a refused one, and the form the context hands back holds none
     (`Apiary.Secrets.change_secret/2`).
-  - **Variables** (`Apiary.Variables`): the workspace's own, each with its value, which
-    is plain configuration, its lock, and the targets that set their own value or whose
+  - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
+    is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
     Unlock, Delete variable, and the targets of a variable. A name beginning

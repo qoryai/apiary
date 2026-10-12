@@ -5,7 +5,7 @@ defmodule Apiary.Runs.RateLimit do
   A key may deliver `rate` batches per second and `burst` at once; the defaults
   are 50 and 100, under `config :apiary, Apiary.Runs.RateLimit`. A bucket lives on
   this node only: on several nodes a key gets the limit on each. Other limits
-  spend buckets of their own, under keys of their own and with their own `rate`
+  spend separate buckets, under separate keys and each with its `rate`
   and `burst`: the run configuration's per access key
   (`ApiaryWeb.Contract.SignedRequest`), enrolment's per address and per code, and
   signing in's (`ApiaryWeb.AttemptLimits`), whose `rate` may be a fraction, 1 / 60 for

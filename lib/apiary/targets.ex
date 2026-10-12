@@ -10,12 +10,12 @@ defmodule Apiary.Targets do
 
   **Pins.** A person pins the targets they work in, in a workspace whose runs they read
   (`run.read`), and the sidebar lists the first of them in the order they were pinned. A
-  pin is the person's own reading preference, not a change to what the organisation
+  pin is the person's reading preference, not a change to what the organisation
   holds, so it leaves no audit entry; it goes with its target and with its workspace.
 
   **The notation.** A target is written as its path, with its system before it only where
   the same path is in more than one system of the workspace
-  (`Apiary.Runs.shared_paths/2`), and on the target's own page.
+  (`Apiary.Runs.shared_paths/2`), and on the target's page.
 
   **The index** (`page/3`) is read in one query, bounded by a window of fourteen days:
   the runs of the window grouped by target and day, which a range of the runs list's
@@ -47,7 +47,7 @@ defmodule Apiary.Targets do
   @typedoc """
   What the index asks for (`page/3`): the view (`:all`, `:active`, ran in the last seven
   days, `:never`, no run at all), `text` found anywhere in `system/path`, the `systems`
-  and the policy `modes` (`:follows`, `:observes`, `:enforces`, the target's own) to keep,
+  and the policy `modes` (`:follows`, `:observes`, `:enforces`, by the target's override) to keep,
   `activity` (`:quiet_30`, `:quiet_90`: ran, but not in that many days), `pinned` (the
   person's pins only), the `sort` (`:last_run`, `:name`, `:runs`, most runs in fourteen
   days, `:denials`, most denied attempts in fourteen) and the `page`.

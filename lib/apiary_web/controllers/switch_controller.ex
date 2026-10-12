@@ -9,7 +9,7 @@ defmodule ApiaryWeb.SwitchController do
       GET /:org/-/switch/:section?page=<path>
 
   `section` is the navigation entry of the reader's page, and `page` its path after its
-  own `/:org/:workspace` (`/runs/<run>/terminal`), which the menu adds to the link when it
+  `/:org/:workspace` (`/runs/<run>/terminal`), which the menu adds to the link when it
   opens. The page is matched to its route in the router (`landing/4`), by one rule for
   every page:
 
@@ -22,19 +22,19 @@ defmodule ApiaryWeb.SwitchController do
       which names none, to its settings: a confirmation never travels to another
       workspace.
 
-  A page is kept only if it is one of the workspace's own pages, and only where the reader
+  A page is kept only if it is one of the workspace's pages, and only where the reader
   may open its section there with its feature shown to them, and the page's feature is
   shown to them there too; otherwise the section, else the workspace's overview
   (`ApiaryWeb.Layouts.switch_target/3`). The query string is dropped: a filter can name
-  what the other workspace does not have. The answer is always a path of the router's own
+  what the other workspace does not have. The answer is always a path of the router's
   routes under that organisation and workspace, never a part of `page`, so a link leads
   nowhere else.
 
   The pipeline resolves the destination's scope for a person who reaches it and answers
   `404` for anybody else. The link to an organisation resolves the workspace as the
-  organisation's own page does (`Apiary.Organisations.resolve_scope/4`): the session's
+  organisation's page does (`Apiary.Organisations.resolve_scope/4`): the session's
   while it is in that organisation, else the one the person last used there, else the
-  oldest they reach; with none reached it leads to the organisation's own path, which says
+  oldest they reach; with none reached it leads to the organisation's path, which says
   so. Like the palette, it belongs to the console's record, `observability`, which every
   instance has.
   """
@@ -89,8 +89,8 @@ defmodule ApiaryWeb.SwitchController do
   lands in the workspace `workspace_slug` of the organisation `organisation_slug`, by the
   routes of `router`: `{path, live_view}`, the path after `/:org/:workspace` of the page
   kept or of its list page, and the LiveView of that page; nil for a page that is none of
-  a workspace's, or has no list page, which leads to its section. The path is the route's
-  own, never a part of `page`.
+  a workspace's, or has no list page, which leads to its section. The path is the route's,
+  never a part of `page`.
   """
   @spec landing(module, String.t(), String.t(), term) :: {String.t(), module} | nil
   def landing(router, organisation_slug, workspace_slug, page)

@@ -6,7 +6,7 @@ defmodule Apiary.Variables.Denied do
   included.
 
   Saving a name on the list is warned about, not refused, since Forager leaves it out
-  anyway, with one exception: a name matching `QORY_*` is Forager's own, and is
+  anyway, with one exception: a name matching `QORY_*` is reserved for Forager, and is
   refused at every level (`refused?/1`).
 
   The list holds only `QORY_*` until the contract's file is vendored and read here.
@@ -35,7 +35,7 @@ defmodule Apiary.Variables.Denied do
 
   @doc """
   refused?/1 says whether `name` is refused on save at every level: a name beginning
-  `QORY_`, whatever its case, which is Forager's own.
+  `QORY_`, whatever its case, which is reserved for Forager.
   """
   @spec refused?(String.t()) :: boolean
   def refused?(name) when is_binary(name), do: Enum.any?(@refused, &matches?(&1, name))

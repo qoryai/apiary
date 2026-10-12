@@ -21,7 +21,7 @@ defmodule Apiary.Access.Action do
     person's account, which is no organisation's; or `:new_organisation`, an organisation
     before it exists.
 
-  The core's actions are `Apiary.Access`'s; an edition adds its own through
+  The core's actions are `Apiary.Access`'s; an edition adds more through
   `c:Apiary.Edition.actions/0`, each an `Action` too. `Apiary.Access.action/1` finds one by
   name.
   """

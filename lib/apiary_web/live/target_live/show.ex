@@ -6,7 +6,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   path after its system, `…/targets/gitlab.com/acme/shop`, only where two targets of the
   workspace share the path (question 9, answer A; `ApiaryWeb.TargetComponents.target_path/5`).
   Its tabs follow a `-` segment: Overview is the bare address, and Policy (`…/-/policy`,
-  with its own paths after it) is there where the reader may read the security policy.
+  with more paths after it) is there where the reader may read the security policy.
   The address is read in this order:
 
     * the path and its system, where the path is shared: the target;
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
-  policy mode only where it sets its own) and a link to it in its system when the system
+  policy mode only where it overrides the workspace's) and a link to it in its system when the system
   is a host name. The breadcrumb ends with the section, a link to the targets' list, and
   the target, and the sidebar marks its pin.
 
@@ -41,7 +41,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     and runtimes.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
-  A tab is its own mount: the tabs are navigations, and the Policy tab gets the page's
+  A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
   parameters, events and messages while it is open. Overview follows the workspace's
   topic: a run of the target on the page changes in place; a new one is counted, never
   inserted under the reader, and comes in when asked.

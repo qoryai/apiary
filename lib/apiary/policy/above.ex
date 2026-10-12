@@ -13,7 +13,7 @@ defmodule Apiary.Policy.Above do
       a row of `policy_rules`), in any order: `Apiary.Policy.Resolution` sorts;
     * `floor`: whether it requires `enforce` in every workspace, so no workspace or target
       may observe;
-    * `own_allows`: whether a workspace or a target may allow hosts of its own; off, only
+    * `own_allows`: whether a workspace or a target may allow more hosts; off, only
       the level's allows grant, and every lower host allow is listed struck
       (`Apiary.Policy.Entry`'s `reason: :only_above_allows`);
     * `variables`: its variables, each an `Apiary.Variables.Variable` the edition

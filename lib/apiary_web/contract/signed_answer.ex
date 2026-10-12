@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
       `X-Qory-Signature-Ed25519` exactly as sent, the SHA-256 of the body as sent, and
       the answer's `X-Qory-Configuration` and `X-Qory-Run-Configuration`, each empty when
       the answer has none; or, for an answer to an enrolment, of the enrolment answer
-      string (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under its own domain
+      string (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under a separate domain
       line, with the request's `proof` in place of a signature;
     * `Cache-Control: no-store, no-transform`, so no cache keeps the answer and no proxy
       re-codes the body the signature covers.
@@ -21,7 +21,7 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
   signs the answer as it is sent, from the status, body and digest headers the answer
   has by then, so a controller writes its answer as any other and the signature covers
   exactly what goes out. `put_enrolment/3` signs an answer to an enrolment, written but
-  not yet sent, bound to its proof: a function of its own, so an enrolment answer is never
+  not yet sent, bound to its proof: a separate function, so an enrolment answer is never
   signed under the request answers' domain line.
 
   Nothing here logs, and no error message carries a signature or a key.

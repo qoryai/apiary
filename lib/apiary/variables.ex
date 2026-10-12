@@ -9,11 +9,11 @@ defmodule Apiary.Variables do
 
   A variable is at a level (`Apiary.Variables.Variable`): the workspace's, which every
   repository of it takes, or a repository's, which overrides the workspace's for that
-  repository. Above the workspace an edition may keep a level of its own
+  repository. Above the workspace an edition may keep a further level
   (`Apiary.Policy.Above`, its `variables`, read whether or not the level has a security
   policy), which the core resolves first and never stores. A level **locks** a name
   against the levels below it: a locked name is set by no level below. Only the
-  workspace's variables are locked here; the level above locks its own.
+  workspace's variables are locked here; the level above locks its variables.
 
   ## Refused on save
 
@@ -37,7 +37,7 @@ defmodule Apiary.Variables do
       workspace's or the level above's, or the values a deleted lock set aside.
 
   A lock set on a name that repositories already set is saved: the lock wins, and their
-  own values are set aside (`ignored` in the resolution), as they are for a lock the
+  values are set aside (`ignored` in the resolution), as they are for a lock the
   level above sets after them. An unlock gives them back, and so does deleting the locked
   variable, whose lock goes with it.
 
@@ -80,7 +80,7 @@ defmodule Apiary.Variables do
 
   @doc """
   list_variables/2 is the variables `holder` sets itself, by name without case: the
-  workspace's, or the repository's own. `{:ok, variables}`, for a reader who may
+  workspace's, or the repository's. `{:ok, variables}`, for a reader who may
   `variable.read`; else `{:error, reason}`, `:not_found` where the `secrets` feature is
   off or for a repository the workspace does not have.
   """
@@ -132,7 +132,7 @@ defmodule Apiary.Variables do
   system and path, for a reader who may `variable.read`; else `{:error, reason}`.
 
   Two queries however many repositories the workspace has: the workspace's chain, and
-  every repository's own variables with their targets.
+  every variable a repository sets, with its target.
   """
   @spec repository_overrides(Scope.t()) ::
           {:ok, %{String.t() => [%{target: Target.t(), state: :own | :ignored}]}}
@@ -426,7 +426,7 @@ defmodule Apiary.Variables do
 
   `:ok` otherwise, and for no workspace. A lock of `above` on a name a workspace or a
   repository sets is no error: their values are set aside, as under a workspace's lock.
-  What a variable must be on its own is not checked here: a name's rule
+  What a variable must be by itself is not checked here: a name's rule
   (`Apiary.Variables.Variable.name_format/0`), a value's size
   (`Apiary.Variables.Variable.value_max/0`) and Forager's names
   (`Apiary.Variables.Denied`) are the edition's to check of each.
@@ -435,7 +435,7 @@ defmodule Apiary.Variables do
   the lock order (docs/access.md), as a write of a workspace's variables does. In order:
   the transaction; `Apiary.Policy.lock_workspaces/2` on every workspace the level
   reaches, which are `workspaces`; `Apiary.Access.reload/2` with `lock: :share`; the
-  level's own row `FOR UPDATE`; this check; then the write and its audit entry. A write
+  level's row `FOR UPDATE`; this check; then the write and its audit entry. A write
   of a workspace's variables locks the same workspace's row, so the two take turns, and
   each checks what the other wrote.
   """

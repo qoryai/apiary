@@ -8,10 +8,10 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   the row can ask for an allow or a deny, whether a locked rule of the workspace decides
   its host, whether the wall refused it (no rule changes that), or whether a rule now in
   force already answers what the row recorded. The record is never rewritten: a row that
-  was denied stays denied, and a rule that answers it is said on a line of its own
+  was denied stays denied, and a rule that answers it is said on a separate line
   (`after_line/3`).
 
-  Everything a row carries is Forager's input. A host is put through the policy's own
+  Everything a row carries is Forager's input. A host is put through the policy's
   grammar before it is compared with a rule, and nothing here becomes an atom.
 
   All of it is `security`'s: a page of an instance without it asks nothing here, and its
@@ -184,14 +184,14 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   `above` (`%{name:, action:}`) says so. A `:can_allow` row carries `deny: true` when no
   rule decides its host: a host let through under observe, or denied by default under
   enforce, can be denied outright as well, so the policy is written while the record is
-  read; and `allow_elsewhere` (`%{name:}`) where the level above allows only its own
-  hosts, so an allow of the workspace or of a target would not be in force. `page` is
+  read; and `allow_elsewhere` (`%{name:}`) where the level above allows only the hosts
+  on its list, so an allow of the workspace or of a target would not be in force. `page` is
   `:run` or `:workspace`: on the workspace's page a row allowed by a rule the baseline
-  does not hold (a target's own) can still be denied.
+  does not hold (a target rule) can still be denied.
 
   `own` matters on the workspace's page, where the rows are weighed against the baseline
-  alone: the hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`.
-  There a baseline rule is said to answer a row only when no target's own rule could be
+  alone: the hosts that target rules name (`own_hosts/1`), or `:unknown`.
+  There a baseline rule is said to answer a row only when no target rule could be
   what decides it; otherwise the row keeps its button, since the baseline is not the whole
   answer.
   """
@@ -281,7 +281,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  @doc "Whether a target's own rule could be what decides `host`, from `own_hosts/1`."
+  @doc "Whether a target rule could be what decides `host`, from `own_hosts/1`."
   def own_touches?(own, host, page \\ :workspace)
   def own_touches?(_own, _host, :run), do: false
   def own_touches?(_own, nil, _page), do: false
@@ -293,7 +293,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   def own_touches?(_own, _host, _page), do: false
 
   @doc """
-  The hosts the workspace's targets have rules of their own for, from the rules of every
+  The hosts that the target rules of the workspace name, from the rules of every
   target that has any: one read for the list and one a target with rules, fifty
   of them at most. `:unknown` past that, and past the five hundred targets the list
   holds: then nothing is claimed of a row from the baseline alone.
@@ -326,7 +326,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def what(_effective, _host, _path), do: nil
 
-  @doc "Whether the target of this effective policy has a rule of its own that touches the host."
+  @doc "Whether the target of this effective policy has a target rule that touches the host."
   def own_rule?(%Effective{entries: entries}, host) when is_binary(host) do
     Enum.any?(
       entries,
@@ -534,7 +534,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The change that made the rule of `entry`, from the newest page of the history of the
-  entry's own scope: `%{version:, by:, by_id:, at:}` or nil when it is further back. Handed
+  entry's scope: `%{version:, by:, by_id:, at:}` or nil when it is further back. Handed
   the pages already read, so a page of rows costs one read a scope.
   """
   def change_for(%Entry{} = entry, changes) when is_map(changes) do

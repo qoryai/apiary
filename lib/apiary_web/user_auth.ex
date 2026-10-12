@@ -583,7 +583,7 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  on_membership_change/2 makes an open page read its own data again, with `reload`, a
+  on_membership_change/2 makes an open page read its data again, with `reload`, a
   function of the socket, once the scope has been loaded again after a change of its
   person's memberships (`reload_scope/1`), and the page is still theirs: for a page whose
   content such a change alters, as the organisation's settings list its owners.
@@ -730,7 +730,7 @@ defmodule ApiaryWeb.UserAuth do
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
   (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
-  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's own path, `/:org`, for a
+  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path, `/:org`, for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -757,7 +757,7 @@ defmodule ApiaryWeb.UserAuth do
   defp signed_in_path(_conn, nil), do: ~p"/"
 
   @doc """
-  home_scope/1 is the request's scope as a person's own pages and the Instance's have it:
+  home_scope/1 is the request's scope as a person's pages and the Instance's have it:
   its user with the workspace the session remembers as last opened, while they still reach
   it, else the first workspace they reach (`Apiary.Organisations.load_home_scope/2`), as
   `on_mount(:load_organisation, ...)` loads it for a LiveView and `signed_in_path/1` reads
