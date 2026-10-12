@@ -13,7 +13,7 @@ defmodule Apiary.Deletion do
   is (`Apiary.AccessKeys.fetch_for_verification/1`), its invitations accept no one, and
   `Apiary.Access` answers not found to anything asked of it, a page opened before the
   marking included, but cancelling the deletion and the purge. Nothing is removed yet.
-  The organisation's last workspace in use is not deleted by itself,
+  The organisation's last workspace in use is not deleted alone,
   `{:error, :last_workspace}`: the organisation is. A workspace's members stay in the
   organisation; their access to the workspace goes with it, when it is purged.
 

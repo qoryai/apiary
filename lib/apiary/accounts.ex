@@ -471,7 +471,7 @@ defmodule Apiary.Accounts do
     (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`,
     or until mail is set, which ends it (`Apiary.Mail.end_password_links/0`).
     `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
-    when the person asks for a log-in link instead. Never for the admin's account,
+    when the person asks for a log-in link instead. Never for the asking admin's account,
     `{:error, :own_account}`: they change their password in Account settings, behind
     a recent sign-in, which a link would get around. And only after a recent sign-in
     (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session

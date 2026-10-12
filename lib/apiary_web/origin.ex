@@ -18,7 +18,7 @@ defmodule ApiaryWeb.Origin do
   which is left out; an empty one is skipped; one that is not an address ends the walk at
   the last trusted one. An IPv4 address a dual-stack socket reports as IPv4-mapped IPv6
   is recorded as the IPv4 address. A range of every address (`0.0.0.0/0`, `::/0`) is
-  refused: it would believe any client about the client's address. A LiveView reads the same
+  refused: it would believe any client about the address it claims. A LiveView reads the same
   header from its connection's information (`x_headers`).
   """
 

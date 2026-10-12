@@ -444,7 +444,7 @@ defmodule ApiaryWeb.SettingsComponents do
   there the workspace's row (`confirming`) is the deletion's confirmation in place of its
   cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then,
   for that reader, the note under the list, what a deletion does, or why the only
-  workspace can't be deleted by itself. A ⋯ menu with no item is not shown.
+  workspace can't be deleted alone. A ⋯ menu with no item is not shown.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"

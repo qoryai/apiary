@@ -303,7 +303,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :setting, :string,
     default: "follow",
     values: ~w(follow observe enforce),
-    doc: "the target's: follow the workspace, or override its mode"
+    doc: "the target's: follow the workspace, or override the workspace's mode"
 
   attr :workspace_default, :string,
     default: "observe",
