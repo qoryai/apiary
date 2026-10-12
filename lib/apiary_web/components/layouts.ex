@@ -43,7 +43,8 @@ defmodule ApiaryWeb.Layouts do
   the core's, then the edition's (`c:ApiaryWeb.Edition.nav_entries/1`), each after the
   core's of its section. Each names the action its page is for (`Apiary.Access`), nil for
   the entries every member has: the sidebar keeps the ones the reader may take, which
-  leaves out those of a feature that is off, and a link of the breadcrumb's menus asks
+  leaves out those of a feature that is off or hidden from them, and a link of the
+  breadcrumb's menus asks
   them where it leads (`switch_target/3`).
   A new entry of the core goes here, not in a page.
   """
@@ -263,10 +264,10 @@ defmodule ApiaryWeb.Layouts do
 
   def new_entries(_scope, _place), do: []
 
-  # New's entry of the `security` feature, which asks `on?(scope, :security)`: a rule of
+  # New's entry of the `security` feature, which asks `visible?(scope, :security)`: a rule of
   # the workspace's policy, on its New rule page.
   defp security_entries(scope, organisation, workspace) do
-    if Apiary.Features.on?(scope, :security) do
+    if Apiary.Features.visible?(scope, :security) do
       [
         %Entry{
           key: :rule,
@@ -281,10 +282,10 @@ defmodule ApiaryWeb.Layouts do
     end
   end
 
-  # New's entries of the `secrets` feature, which ask `on?(scope, :secrets)`: an
+  # New's entries of the `secrets` feature, which ask `visible?(scope, :secrets)`: an
   # integration, a secret and a variable.
   defp secrets_entries(scope, organisation, workspace) do
-    if Apiary.Features.on?(scope, :secrets) do
+    if Apiary.Features.visible?(scope, :secrets) do
       [
         # Add integration leads to the cards of Integrations that add one.
         %Entry{
@@ -2345,9 +2346,9 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The entries of the page's scope the reader may open, by group, with where each leads.
-  # A feature that is off is absent, not disabled: no entry, greyed or otherwise, and so
-  # nothing beside it either (Policy's mode word goes with Policy). A group left empty goes
-  # too. Without a workspace, for a member added to none yet, a workspace's entries are not
+  # A feature that is off or hidden is absent, not disabled: no entry, greyed or otherwise,
+  # and so nothing beside it either (Policy's mode word goes with Policy). A group left
+  # empty goes too. Without a workspace, for a member added to none yet, a workspace's entries are not
   # there.
   # On a list narrowed to a target (`carry`), Runs and Network access lead to the lists
   # narrowed to it, and say so in their names (`{entry, path, label}`); every other entry
@@ -2411,7 +2412,7 @@ defmodule ApiaryWeb.Layouts do
   scope of that workspace: the first page its sidebar shows the reader there, in the
   sidebar's order (`nav_entries/1`, which an edition adds to), Settings at its foot last.
   That is the overview wherever the reader may open it; where they may not, as where the
-  workspace's record is off, the next page they may. The overview still where the
+  record is off or hidden from them, the next page they may. The overview still where the
   sidebar shows them none.
   """
   @spec workspace_landing(Apiary.Accounts.Scope.t()) :: String.t()
@@ -2430,9 +2431,9 @@ defmodule ApiaryWeb.Layouts do
   @doc """
   switch_target/3 is where a menu's link to a workspace leads once followed, asked
   with the scope of that workspace: where the reader may open the workspace's navigation
-  entry named `key` there, its feature on there too, `page` when given, the path of the
-  reader's page as it is there (`ApiaryWeb.SwitchController`), else the entry's page;
-  else the workspace's overview. An entry of an organisation's pages is no workspace's, and
+  entry named `key` there, its feature shown to them there too, `page` when given, the
+  path of the reader's page as it is there (`ApiaryWeb.SwitchController`), else the
+  entry's page; else the workspace's overview. An entry of an organisation's pages is no workspace's, and
   leads to the overview.
   """
   @spec switch_target(Apiary.Accounts.Scope.t(), String.t(), String.t() | nil) :: String.t()

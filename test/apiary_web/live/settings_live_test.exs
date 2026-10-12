@@ -408,6 +408,18 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#delete-organisation-modal")
     end
 
+    @tag needs: :secrets
+    test "the workspace's list leaves out the sections of a feature hidden from the reader",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, base <> "/runs")
+
+      assert has_element?(lv, ~s(#settings-tabs #settings-tab-runs[href="#{base}/runs"]))
+      refute has_element?(lv, "#settings-tab-integrations")
+      refute has_element?(lv, "#settings-tab-secrets")
+    end
+
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
       {:ok, lv, _html} = live(conn, base <> "/runs")

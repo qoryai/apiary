@@ -11364,6 +11364,11 @@ msgstr ""
 msgid "That member is no longer in the organisation."
 msgstr ""
 
+#: lib/apiary_web/user_auth.ex
+#, elixir-autogen, elixir-format
+msgid "That page is no longer shown in %{organisation}."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "That password link has expired"
@@ -13129,11 +13134,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "What should runs do?"
-msgstr ""
-
-#: lib/apiary_web/user_auth.ex
-#, elixir-autogen, elixir-format
-msgid "What that page showed is no longer part of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

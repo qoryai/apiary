@@ -548,11 +548,11 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   # Whether a member changes the policy's rules that are not locked: asked of the roles
-  # (`Apiary.Access`) and of the features where the page is, never of a level written here.
+  # (`Apiary.Access`) and of the features the reader is shown, never of a level written here.
   defp members_edit_rules?(scope),
     do:
       :"security_policy.edit" in Map.get(Access.roles(), :member, []) and
-        Apiary.Features.on?(scope, :security)
+        Apiary.Features.visible?(scope, :security)
 
   # Whether the organisation has one owner, whom the last-owner rule holds in place, and
   # the reader is one who would otherwise change that owner's level: only to them does the

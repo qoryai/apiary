@@ -2371,7 +2371,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     assigns =
       assign(assigns,
-        secrets: Apiary.Features.on?(assigns.scope, :secrets),
+        secrets: Apiary.Features.visible?(assigns.scope, :secrets),
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2466,7 +2466,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt class="text-faint">{gettext("Fingerprint")}</dt>
         <dd id={"#{@dom}-fingerprint"} class="q-mono break-all">{AccessKey.fingerprint(@key)}</dd>
-        <%!-- Stored secrets asks `on?(scope, :secrets)`. --%>
+        <%!-- Stored secrets asks `visible?(scope, :secrets)`. --%>
         <dt :if={@secrets} class="text-faint">{gettext("Stored secrets")}</dt>
         <dd :if={@secrets} id={"#{@dom}-stored-secrets"}>
           {secrets_words(@key.allow_secrets)}

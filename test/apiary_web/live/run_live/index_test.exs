@@ -1243,6 +1243,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       end)
     end
 
+    @tag needs: :security
+    test "the line leads to no policy where the policy is hidden from the reader",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert has_element?(view, "#runs-narrowed-network")
+      refute has_element?(view, "#runs-narrowed-policy")
+    end
+
     test "the line says so, leads to the target, its Network access and its policy, and back to every run",
          %{conn: conn, scope: scope} do
       shop_run = started_run(scope, shop())

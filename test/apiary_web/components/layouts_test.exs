@@ -208,6 +208,23 @@ defmodule ApiaryWeb.LayoutsTest do
              )
     end
 
+    @tag needs: :security
+    test "what the edition hides from the reader leaves the sidebar and New", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security, :secrets])
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+
+      assert has_element?(view, "#sidebar a#nav-runs")
+      assert has_element?(view, "#new-menu-node")
+      refute has_element?(view, "#nav-policy")
+
+      for key <- ~w(rule integration secret variable),
+          do: refute(has_element?(view, "#new-menu-#{key}"), key)
+    end
+
     test "a member's account menu names the account, not the level", %{
       conn: _conn,
       scope: scope

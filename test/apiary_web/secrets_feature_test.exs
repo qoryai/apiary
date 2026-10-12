@@ -126,8 +126,8 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
     test "is off", %{scope: scope} do
       refute Apiary.Features.on?(:secrets)
-      refute Apiary.Features.on?(scope, :secrets)
-      assert Apiary.Features.on?(scope, :security)
+      refute Apiary.Features.visible?(scope, :secrets)
+      assert Apiary.Features.visible?(scope, :security)
     end
 
     test "every route of it answers as a path that does not exist, to anyone",

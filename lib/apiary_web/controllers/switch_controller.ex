@@ -23,8 +23,8 @@ defmodule ApiaryWeb.SwitchController do
       workspace.
 
   A page is kept only if it is one of the workspace's own pages, and only where the reader
-  may open its section there with its feature on, and the page's own feature is on there
-  too; otherwise the section, else the workspace's overview
+  may open its section there with its feature shown to them, and the page's feature is
+  shown to them there too; otherwise the section, else the workspace's overview
   (`ApiaryWeb.Layouts.switch_target/3`). The query string is dropped: a filter can name
   what the other workspace does not have. The answer is always a path of the router's own
   routes under that organisation and workspace, never a part of `page`, so a link leads
@@ -64,7 +64,7 @@ defmodule ApiaryWeb.SwitchController do
   defp target(conn, %{organisation: organisation, workspace: workspace} = scope, section, page) do
     page =
       case landing(conn.private.phoenix_router, organisation.slug, workspace.slug, page) do
-        {path, view} -> if feature_on?(scope, view), do: ~p"/#{organisation}/#{workspace}" <> path
+        {path, view} -> if shown?(scope, view), do: ~p"/#{organisation}/#{workspace}" <> path
         nil -> nil
       end
 
@@ -72,10 +72,10 @@ defmodule ApiaryWeb.SwitchController do
   end
 
   # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, is
-  # on in the destination.
-  defp feature_on?(scope, view) do
+  # shown to the person in the destination.
+  defp shown?(scope, view) do
     not (Code.ensure_loaded?(view) and function_exported?(view, :__feature__, 0)) or
-      Apiary.Features.on?(scope, view.__feature__())
+      Apiary.Features.visible?(scope, view.__feature__())
   end
 
   @doc """

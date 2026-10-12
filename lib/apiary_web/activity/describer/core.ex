@@ -72,11 +72,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(_action), do: nil
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
-  # and integrations' only where they are: they ask `on?(scope, :secrets)`. Their entries
-  # still show, by their labels.
+  # and integrations' only where the reader is shown them: they ask
+  # `visible?(scope, :secrets)`. Their entries still show, by their labels.
   @impl true
   def offered?(scope, action) when action in @secrets_actions,
-    do: Features.on?(scope, :secrets)
+    do: Features.visible?(scope, :secrets)
 
   def offered?(_scope, _action), do: true
 
@@ -304,7 +304,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
           run_id ->
             href =
-              workspace && Features.on?(scope, :observability) &&
+              workspace && Features.visible?(scope, :observability) &&
                 ~p"/#{scope.organisation}/#{workspace}/runs/#{run_id}"
 
             %{text: String.slice(run_id, 0, 8), mono: true, href: href || nil}

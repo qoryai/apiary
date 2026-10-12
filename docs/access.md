@@ -119,7 +119,8 @@ may:
   join the core's in one registry: an action named twice, a role that is one of the
   core's, or an action of a role or a feature nobody defines stops the boot;
 - answer first for what it adds or narrows (`c:Apiary.Edition.check/3`), once the
-  action's feature is on and before the place is checked, or leave the answer to the core;
+  action's feature is on and shown to the scope and before the place is checked, or leave
+  the answer to the core;
   an answer that must come after the place's asks `Apiary.Access.check_place/3` first.
   Asked with no scope, as `Apiary.Access.refused_on?/2` asks, `forbidden` says the subject
   refuses the action whoever asks, which a page asks to say why a control is not there;
@@ -305,17 +306,17 @@ who may act cannot leave.
 
 ## Features
 
-The feature an action belongs to is asked first, of `Apiary.Features.on?/2` with the
-scope, and a feature that is off is `{:error, :not_found}`: absent, as a feature the
-instance lacks. What an organisation, or a workspace of it, has is `Apiary.Features.of/2`,
-the one answer ([architecture.md](architecture.md), Features): in the core the instance's
-features, in every organisation and workspace alike; an edition may narrow them below the
-instance for a person, and never adds to them. A person's scope carries them:
-`Apiary.Organisations.resolve_scope/4` loads them with the organisation and the
-workspace, and `reload/2` reads them again after its locks, so what an edition changes of
-them under the organisation's lock is waited for, or seen. An access key, and its scope,
-answer as the instance: `run.post_events` and `run_configuration.fetch` follow the
-instance's features alone.
+The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
+scope, and a feature that is off, or hidden from the scope's person, is
+`{:error, :not_found}`: absent, as a feature the instance lacks. What a person is not shown
+in an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), the one answer
+([architecture.md](architecture.md), Features): in the core, nothing. A person's scope
+carries it (`hidden`): `Apiary.Organisations.resolve_scope/4` loads it with the
+organisation and the workspace, and `reload/2` asks it again after the edition's reload,
+under the edition's locks, so what an edition changes of it under the organisation's lock
+is waited for, or seen. An access key, and its scope, and the instance answer as the
+instance: `run.post_events` and `run_configuration.fetch` follow the instance's features
+alone.
 
 ## Who asks
 
@@ -363,9 +364,9 @@ marking, cancelling and purge inside the transaction that makes it
 Every context function that changes something calls `Apiary.Access.authorize/3` with its
 action and the subject first, and returns what it answers:
 
-- `{:error, :not_found}` for a feature that is off, a subject of another organisation or
-  workspace, a subject of a workspace the person does not reach, and what the edition
-  answers so (`c:Apiary.Edition.check/3`);
+- `{:error, :not_found}` for a feature that is off or hidden, a subject of another
+  organisation or workspace, a subject of a workspace the person does not reach, and what
+  the edition answers so (`c:Apiary.Edition.check/3`);
 - `{:error, :forbidden}` for a role that does not allow the action, or allows it over
   other people than the subject's, and what the edition refuses so.
 

@@ -142,13 +142,13 @@ defmodule Apiary.IntegrationsTest do
       assert {:ok, %{name: "github"}} = Integrations.description(release)
     end
 
-    test "follows the instance's secrets feature, where the edition leaves it out of the organisation",
+    test "follows the instance's secrets feature, where the edition hides it from the person",
          %{scope: scope} do
       serve_release(github_description())
       {:ok, release} = Integrations.request_release(scope, @github)
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
-      refute :secrets in Apiary.Features.of(scope.organisation, scope.workspace)
+      refute Apiary.Features.visible?(Apiary.Access.reload(scope), :secrets)
 
       assert fetch!(scope, release).state == "ready"
     end

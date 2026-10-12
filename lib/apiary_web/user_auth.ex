@@ -386,8 +386,8 @@ defmodule ApiaryWeb.UserAuth do
 
   # The word beside Policy: the workspace's default mode, once the workspace has a policy
   # of Qory's, and the modes of the targets that set their own. One read. Where the
-  # `security` feature is off there is no Policy entry to put it beside: nothing is read,
-  # and the counts carry no mode at all.
+  # `security` feature is off, or hidden from the reader, there is no Policy entry to put it
+  # beside: nothing is read, and the counts carry no mode at all.
   defp policy_mode(%Scope{workspace: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
@@ -602,9 +602,8 @@ defmodule ApiaryWeb.UserAuth do
   as it is now. A page that asks `Apiary.Access.can?/3` as it renders follows. A
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
-  so; a page of a feature taken away from the organisation or the workspace meanwhile
-  (`Apiary.Features.of/2`) sends it to the organisation's overview, which every
-  organisation has, and says so; an organisation's page keeps its workspace while the user
+  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`)
+  sends it to the organisation's overview, which every organisation has, and says so; an organisation's page keeps its workspace while the user
   reaches it.
   """
   @spec reload_scope(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
@@ -622,17 +621,17 @@ defmodule ApiaryWeb.UserAuth do
         )
 
     with {:ok, reloaded} <- reloaded || :error,
-         :ok <- page_feature_on(socket, reloaded) do
+         :ok <- page_shown(socket, reloaded) do
       socket
       |> Phoenix.Component.assign(:current_scope, reloaded)
       |> Phoenix.Component.assign(:memberships, Organisations.list_places(scope.user))
       |> Phoenix.Component.assign(:nav_counts, nav_counts(reloaded))
     else
-      {:feature_off, reloaded} ->
+      {:hidden, reloaded} ->
         socket
         |> Phoenix.LiveView.put_flash(
           :error,
-          gettext("What that page showed is no longer part of %{organisation}.",
+          gettext("That page is no longer shown in %{organisation}.",
             organisation: reloaded.organisation.name
           )
         )
@@ -652,13 +651,14 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, is
-  # still on where the scope is now: a feature taken away while the page was open.
-  defp page_feature_on(socket, reloaded) do
+  # still shown to the person where the scope is now: a feature hidden while the page was
+  # open.
+  defp page_shown(socket, reloaded) do
     view = socket.view
 
     if function_exported?(view, :__feature__, 0) and
-         not Apiary.Features.on?(reloaded, view.__feature__()),
-       do: {:feature_off, reloaded},
+         not Apiary.Features.visible?(reloaded, view.__feature__()),
+       do: {:hidden, reloaded},
        else: :ok
   end
 

@@ -76,7 +76,7 @@ defmodule ApiaryWeb.UserAuthTest do
       conn: conn
     } do
       %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
-      # The edition leaves the record out of the organisation, the overview with it.
+      # The edition hides the record from the person, the overview with it.
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
 
       conn = UserAuth.log_in_user(conn, user)
@@ -569,6 +569,33 @@ defmodule ApiaryWeb.UserAuthTest do
       get(conn, ~p"/#{organisation}/#{ctx.staging}/jump")
       get(conn, ~p"/#{organisation}/#{ctx.staging}/switch/runs")
       assert last_used(user) == []
+    end
+  end
+
+  describe "reload_scope/1" do
+    test "sends an open page of a feature hidden meanwhile to the organisation's overview, and says so",
+         %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      {:ok, view, _html} = live(log_in_user(conn, user), ~p"/#{organisation}/#{workspace}/runs")
+
+      # The edition hides the record from the person while the page is open.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+      send(view.pid, {:membership_changed, %{organisation_id: organisation.id}})
+
+      {path, flash} = assert_redirect(view)
+      assert path == ~p"/#{organisation}"
+      assert flash["error"] == "That page is no longer shown in #{organisation.name}."
+    end
+
+    test "keeps an open page of a feature still shown", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      {:ok, view, _html} = live(log_in_user(conn, user), ~p"/#{organisation}/#{workspace}/runs")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
+      send(view.pid, {:membership_changed, %{organisation_id: organisation.id}})
+
+      assert render(view) =~ "Runs"
+      refute_redirected(view)
     end
   end
 

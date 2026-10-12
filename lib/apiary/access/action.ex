@@ -5,7 +5,8 @@ defmodule Apiary.Access.Action do
 
   - `name`: the action's atom, `:"noun.verb"`, the name the audit trail records.
   - `feature`: the feature it belongs to (`Apiary.Features`), nil for one every instance
-    has. An action of a feature that is off is not found.
+    has. An action of a feature that is off, or hidden from the person who asks, is not
+    found.
   - `what`: one line saying what it is, which the documentation tabulates.
   - `roles`: the roles that hold it, the rows of the role table it is in. An action no
     role holds is taken on the strength of something else, a sign-up, an invitation's

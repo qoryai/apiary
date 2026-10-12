@@ -88,7 +88,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
-    secrets? = Features.on?(scope, :secrets)
+    secrets? = Features.visible?(scope, :secrets)
 
     [
       %Entry{
@@ -105,7 +105,7 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-users",
         path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
-      # Integrations and Secrets and variables ask `on?(scope, :secrets)`.
+      # Integrations and Secrets and variables ask `visible?(scope, :secrets)`.
       secrets? && Access.can?(scope, :"connection.read", workspace) &&
         %Entry{
           section: :main,

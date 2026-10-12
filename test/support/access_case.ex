@@ -52,7 +52,8 @@ defmodule Apiary.AccessCase do
   - the actors are made under the module's features, every one
     (`@moduletag with_features:`); a test tagged with other features raises, and belongs
     in a module of its own on `:test`. The `feature_off` actor takes its feature away
-    inside the test, from the actors as made, and asks the same on either;
+    inside the test, from the actors as made, and asks the same on either; so does the
+    `hidden` actor, which has the edition hide the feature from people;
   - what lives in a process is the test's own: `setup_all` runs in a process no test has
     among its `$callers`, so an edition's stub (`Apiary.Edition.put_test_stub/1`) or
     another entry of the process dictionary is set in each test's `setup`, never for the
@@ -202,9 +203,11 @@ defmodule Apiary.AccessCase do
     {scope, subject} = asked(ctx, modules, action, actor)
 
     {can?, authorized} =
-      if actor == :feature_off,
-        do: without_feature(action, fn -> answers(scope, action, subject) end),
-        else: answers(scope, action, subject)
+      case actor do
+        :feature_off -> without_feature(action, fn -> answers(scope, action, subject) end)
+        :hidden -> hiding_feature(action, scope, fn scope -> answers(scope, action, subject) end)
+        _actor -> answers(scope, action, subject)
+      end
 
     assert can? == answer, "can?/3 says #{can?}"
     assert authorized == :ok == answer, "authorize/3 says #{inspect(authorized)}"
@@ -216,11 +219,12 @@ defmodule Apiary.AccessCase do
     :ok
   end
 
-  # The scope that asks and what it asks about. `feature_off` asks as whoever the action is
-  # for, an owner, an access key or the instance; everyone else as themselves, in the place
-  # their module says, of what the action is asked of there: the organisation, the
-  # workspace, a new organisation, or the member's account, another than the asker's.
-  defp asked(ctx, modules, action, :feature_off) do
+  # The scope that asks and what it asks about. `feature_off` and `hidden` ask as whoever
+  # the action is for, an owner, an access key or the instance; everyone else as
+  # themselves, in the place their module says, of what the action is asked of there: the
+  # organisation, the workspace, a new organisation, or the member's account, another than
+  # the asker's.
+  defp asked(ctx, modules, action, actor) when actor in [:feature_off, :hidden] do
     actor =
       cond do
         :access_key in Access.action(action).roles -> :access_key
@@ -292,5 +296,14 @@ defmodule Apiary.AccessCase do
     after
       Application.put_env(:apiary, :features, previous)
     end
+  end
+
+  # Runs `fun` with the scope read again where the edition hides the action's feature from
+  # people (`Apiary.EditionStubs.HidesNamed`), as a page's scope carries it; an action every
+  # instance has hides nothing.
+  defp hiding_feature(action, scope, fun) do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+    :ok = Apiary.EditionStubs.HidesNamed.put(List.wrap(Access.feature(action)))
+    fun.(Access.reload(scope))
   end
 end

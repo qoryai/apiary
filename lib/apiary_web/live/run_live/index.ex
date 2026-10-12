@@ -51,7 +51,6 @@ defmodule ApiaryWeb.RunLive.Index do
   on_mount {ApiaryWeb.Access, :"run.read"}
 
   alias Apiary.Access
-  alias Apiary.Features
   alias Apiary.Nodes
   alias Apiary.Runs
   alias Apiary.Runs.Filters
@@ -715,9 +714,7 @@ defmodule ApiaryWeb.RunLive.Index do
        preview: nil,
        narrowing: nil,
        narrowed_node: nil,
-       security:
-         Features.on?(scope, :security) and
-           Access.can?(scope, :"security_policy.read", scope.workspace),
+       security: Access.can?(scope, :"security_policy.read", scope.workspace),
        has_nodes:
          Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
        may_add_node: Access.can?(scope, :"node.create", scope.workspace)

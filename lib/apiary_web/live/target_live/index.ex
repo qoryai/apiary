@@ -23,7 +23,7 @@ defmodule ApiaryWeb.TargetLive.Index do
 
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Runs, Targets}
+  alias Apiary.{Access, Runs, Targets}
   alias ApiaryWeb.TargetLive.Query
 
   @refresh_window 1_000
@@ -43,9 +43,7 @@ defmodule ApiaryWeb.TargetLive.Index do
        pinned: MapSet.new(),
        load_error: false,
        refresh: :closed,
-       security:
-         Features.on?(scope, :security) and
-           Access.can?(scope, :"security_policy.read", scope.workspace)
+       security: Access.can?(scope, :"security_policy.read", scope.workspace)
      )}
   end
 

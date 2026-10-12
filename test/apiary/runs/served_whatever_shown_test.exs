@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.ServedWhateverShownTest do
-  # What a node is served follows the instance's features alone: where the edition leaves
-  # `observability` and `security` out of the organisation, its nodes are still served in
-  # full, and a person there still meets what the edition leaves them.
+  # What a node is served follows the instance's features alone: where the edition hides
+  # `observability` and `security` from the organisation's people, its nodes are still
+  # served in full, and a person there still meets what the edition hides from them.
   use ApiaryWeb.ConnCase, async: true
 
   # The policy is served only on an instance with the security feature.
@@ -27,7 +27,7 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
 
     %{access_key: key, secret: secret, node: node} = contract_key_fixture(scope)
 
-    # The policy is made before the edition leaves the features out: its baseline is stored.
+    # The policy is made before the edition hides the features: its baseline is stored.
     {:ok, _rule} = Policy.deny(scope, nil, %{host: "ads.example"})
     {:ok, %{digest: baseline}} = Policy.current_configuration(scope, nil)
 
@@ -80,10 +80,10 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
 
   defp in_force(conn), do: get_resp_header(conn, "x-qory-run-configuration")
 
-  test "the edition leaves the features out of the organisation", ctx do
-    below = Apiary.Features.of(ctx.scope.organisation, ctx.scope.workspace)
-    refute :observability in below
-    refute :security in below
+  test "the edition hides the features from a person of the organisation", ctx do
+    scope = Apiary.Access.reload(ctx.scope)
+    refute Apiary.Features.visible?(scope, :observability)
+    refute Apiary.Features.visible?(scope, :security)
   end
 
   test "a registration is answered the stored policy, not the document of no policy, and so is its reload",

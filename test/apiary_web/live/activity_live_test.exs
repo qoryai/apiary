@@ -411,6 +411,28 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert text(view, "#entry-#{added.id}-change") =~ "Now v1"
     end
 
+    @tag needs: :security
+    test "a feature hidden from the reader leaves the filter, and its entries still show", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+      [added] = entries(scope, %{action: "security_policy.edit"})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security, :secrets])
+      view = open(conn, scope)
+
+      values = Enum.map(action_options(view), &elem(&1, 0))
+      assert "workspace.rename" in values
+
+      for action <-
+            ~w(security_policy.edit security_policy.set_mode secret.write variable.edit connection.write),
+          do: refute(action in values, action)
+
+      assert text(view, "#entry-#{added.id}-action") =~ "Added a policy rule"
+    end
+
     test "a load that fails says so, and where the reason is", %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
