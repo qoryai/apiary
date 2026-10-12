@@ -49,15 +49,6 @@ beside it:
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
   run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
   the node's row lock when a run registers (`check_instance_limit/3`, `admit/4`).
-- `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
-  with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
-  answers what uses one before a deletion: nothing links a secret, so the answer is
-  empty, but in a test that sets one (Secrets at rest and integrity codes, below).
-- `Apiary.Variables`: a workspace's variables and those of its repositories, with the
-  workspace's locks, resolved per holder down the chain from the level above the
-  workspace (`Apiary.Variables.Resolution`), and Forager's names it refuses or warns
-  about (`Apiary.Variables.Denied`). An edition that writes the level above's variables
-  checks the change against its workspaces with `check_above/2`, under the edition's locks.
 - `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
   `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
@@ -335,8 +326,8 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Places**: the organisations a person reaches, for the switcher and their
   organisations page (`places/1`).
 - **Policy**: keep a level above a workspace's security policy
-  (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, whether
-  the workspace may allow more hosts, and variables). The core asks for it in the
+  (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, and whether
+  the workspace may allow more hosts). The core asks for it in the
   reads and writes of `Apiary.Policy` that need it, resolves it with the workspace's and
   a target's rules (`Apiary.Policy.Resolution`: its deny above everything, its allow
   narrowed by a lower deny and never widened), renders it into every document, counts it
@@ -345,9 +336,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
   edition's transaction, each holder whose bytes change getting an `above_changed`
   change. The web side names where
-  the level is read and changed, and its New rule page (`above_policy_link/1`). A level with variables and no
-  policy says `policy: false`: the policy, its record and its pages take it as nil, and
-  only `Apiary.Variables` reads it, resolving its variables first in every chain.
+  the level is read and changed, and its New rule page (`above_policy_link/1`).
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
   hear of a change of a level or the end of a suspension (`membership_changed/5`); refuse
@@ -428,7 +417,7 @@ gateways, which the `node.*` and `access_key.*` actions belong to.
 `APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the key the instance encrypts and codes
 with, and nothing is encrypted or keyed under the secret's bytes: every key is derived from it
 with HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per
-purpose: `apiary values v1` for stored values, `apiary integrity v1` for integrity
+purpose: `apiary integrity v1` for integrity
 codes, `apiary check v1` for the check value the boot compares (`Apiary.KeyCheck`) and
 `apiary mail v1` for the SMTP password saved in Instance settings › Mail
 (`Apiary.Mail.Password`, AES-256-GCM with associated data binding it to its row, its
@@ -444,111 +433,15 @@ boot the fixture seeds Forager's contract publishes and, in production, a seed e
 encryption secret and the development and test seeds `config/` publishes, and holds the key
 in a struct whose `inspect` shows its fingerprint alone.
 
-**Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
-made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
-the values key, with associated data that names its organisation and workspace, and with
-the values key's id. Each value is AES-256-GCM under the data key (`:crypto`, not Cloak,
-whose associated data is fixed), with a fresh 96-bit nonce and the associated data
-
-    lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
-
-where `lp` is a big-endian 16-bit length, then the bytes (`Apiary.Secrets.Cipher`). A
-row copied to another workspace, secret or value id does not decrypt there, and a
-renamed value id is encrypted again. A value is write-only: a listing never loads the
-ciphertext, the schemas redact it from `inspect` and leave it out of JSON, the audit
-trail names secrets and value ids, and `Apiary.Secrets.reveal_for_sealing/3` is the one
-function that returns a plaintext, for sealing to a gateway. A value that does not decrypt
-is `unavailable`, with a log line that names the secret, never wrong.
-
 **Integrity codes** (`Apiary.Integrity`) find a row changed outside the application by
 someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
 the integrity key over a canonical encoding of a kind, a version and the fields the caller
 chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
-constant time. A caller codes what routes a secret or grants access, a node's access key
-rows (their node, public key, stored-secrets flag, arrival and revocation), what
-links a stored secret to the runs, and the enrolment codes, and checks the code where it
+constant time. A caller codes what grants access, a node's access key rows (their node,
+public key, arrival and revocation) and the enrolment codes, and checks the code where it
 trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
 does not match, before any signature is checked;
-the per-request columns stay outside it. Variables and policy rules carry no code: they
-route no stored value, and Forager bounds what a variable can do.
-
-## Integrations, services and runtimes
-
-What a workspace sets up is a **connection** in the contract's words and an
-integration on its pages (`Apiary.Connections`): a runtime, an integration or a service,
-which the pages call a Runtime, a Program and an API (a service definition a workspace
-adds is a Custom API there), in `workspace_connections` (the record's `connections` are the
-hosts a run reached), with a public id, `con_` and 16 characters. Each applies to every repository of the workspace or to the ones
-`connection_targets` names. Two connections
-that would give a repository the same runtime, the same integration, or a value on the
-same host (one host pattern covering another) are refused on save. A connection holds no
-secret: the links to stored secrets are the linking piece's.
-
-**The kinds.** Runtimes come from Forager's contract, `contracts/forager/v1/runtimes.json`,
-vendored byte for byte as `priv/contract/runtimes.json` at the commit in
-`.forager-contract-ref` (`Apiary.Kinds.Runtimes`). Forager generates it from its built-in
-descriptors; it is read at compile time, and a list missing from a runtime fails the
-compile. Services come from a service definition, the one source of a service's hosts,
-paths, auth and declared secrets, whose `auth` is Qory Apiary's: its `scheme`, `header`
-and `username` are the members of the contract's `auth.schema.json`, vendored beside the
-catalogue, with a username of at most 128 characters, and `secret` and `username_secret`
-are ids of secrets Qory Apiary stores for the definition, `secret` required: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
-each checked in the test suite) or the workspace's (`service_definitions`); a service
-connection names its definition and copies nothing of it, so a change to a definition
-reaches every connection that names it.
-Integrations come from a release (`Apiary.Integrations`): a `source`, a forge path or an
-https URL of a `description.json`, and an exact version. A forge path is on `github.com`,
-`gitlab.com` or `codeberg.org` (`Apiary.Integrations.Source`), whose host alone gives the
-`forge_kind` (`github`, `gitlab`, `forgejo`) the release and its connection record, never a
-request; a forge path on any other host is refused, since self-hosted forges are not
-supported. A URL source is accepted while `INTEGRATION_URL_SOURCES` is on, the default
-(read and checked at boot); off, it is refused, and a release already asked for from one
-fails with `integration_source_refused` when its fetch comes, and is not added as a
-connection. A request records
-a pending `integration_releases` row and enqueues `Apiary.Integrations.FetchJob`, which
-reads the release's `description.json` and `checksums.txt` where the integrations contract
-puts them
-(`releases/download/vX.Y.Z/<file>` on GitHub and Codeberg; on GitLab the API's route,
-`/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, the project its path with each
-`/` written `%2F`, kept so through every hop, since the web route answers a link to another
-host with a page instead of a redirect; the URL's directory for a URL source), and records
-it ready, byte for byte with
-its digest, or failed with a code. An integration connection is added from a ready
-release, takes its name, source, version and description digest, and stores its plain
-settings as canonical JSON, checked against the description: its plain settings are every
-top-level setting that is neither a secret nor a secret's `<name>_file`, each checked
-against its property's schema, and its argument must match its credential role's
-pattern. A description is validated with JSV against the
-integrations contract's `description.schema.json` (vendored under
-`priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
-the schema cannot say: a secret has its `<name>_file` beside it and is never nested, and
-the credential role's `argument` compiles. A role other than `credential` is kept as it is
-and shown among the roles. The vendored schema and
-the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
-the integrations' `main` branch, by its id. The contracts' patterns are
-compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
-`\z` (`Apiary.Kinds.Pattern`), so a value with a trailing newline never passes.
-
-**The fetch guards** (`Apiary.Integrations.Fetch`): the host is resolved, and the fetch is
-refused unless every address is public (`Apiary.Integrations.Fetch.Address`), for every
-host and with no setting to allow a private one; the request connects to the address it
-checked, the host name kept for `Host`, SNI and the certificate's check; every redirect is
-followed by hand and checked the same way, https on port 443 to a host name, at most five;
-the body is capped at 1 MiB (256 KiB for a description), counted as it arrives, and the
-whole fetch at 15 seconds. A release is always fetched without credentials, in every
-edition: no request carries an `Authorization` header or a token of any kind, so private
-releases are not supported. Every failure is one `fetch_failed`, the reason only in the
-log. What came is checked against `checksums.txt`, the version asked for, and any earlier
-release of the same source and version the workspace found: `integration_source_mismatch`
-when they differ.
-
-**Integrity.** A connection, a release and a custom definition each carry an integrity
-code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applies, its
-settings and argument, and what it names; a release's over its source, state and
-description digest (version 2; version 1 also covered a publisher, and a release of version
-1 that recorded none still verifies), and the description's bytes are checked against the digest. A page
-reads each connection marked `intact`, and `Apiary.Connections.list_for_rendering/1`
-refuses all the workspace's connections when one fails. The targets carry no code.
+the per-request columns stay outside it. Policy rules carry no code.
 
 ## The audit trail
 
