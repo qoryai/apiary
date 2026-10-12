@@ -101,8 +101,8 @@ at the commit in `.forager-contract-ref`. They take it from `FORAGER_CONTRACT_DI
 `contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
 excluded and a line says so; CI checks Forager out at that commit
 and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is
-one on Forager's `main` branch, pinned by its id. The end to end job builds qory against
-Forager at `.forager-e2e-ref`, pinned apart.
+that of Forager's release `v0.7.0`, on its `main` branch, pinned by its id. The end to end
+job builds qory against Forager at `.forager-e2e-ref`, pinned apart.
 
 The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
 suite leaves them out (`Apiary.TestSetup.start!/1`). The one of a gateway's backlog flushed
