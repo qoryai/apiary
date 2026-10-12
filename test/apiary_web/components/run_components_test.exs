@@ -780,7 +780,8 @@ defmodule ApiaryWeb.RunComponentsTest do
           })
         )
 
-      assert text(html) =~ "Rule api.example, path /v1/*, credential model-key"
+      assert text(html) =~ "Rule api.example, path /v1/*, secret model-key"
+      assert html =~ ~s(title="Rule api.example, path /v1/*, secret model-key")
       assert text(html) =~ "api.example:443 POST /v1/messages"
       refute html =~ "q-mark-ok"
       refute html =~ "q-denied"
