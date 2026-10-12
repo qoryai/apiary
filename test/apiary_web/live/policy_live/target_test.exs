@@ -423,6 +423,30 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#flash-info") =~ "telemetry.example is denied for acme/shop."
   end
 
+  test "the old Edit paths event leads only an id in a rule id's form to Edit rule",
+       %{conn: conn, scope: scope, target: target, path: path} do
+    {:ok, rule} = Policy.allow(scope, target, %{host: "own.example"})
+    view = open(conn, path)
+
+    # A crafted id leads nowhere, and the page stays up.
+    for bad <- [
+          %{},
+          %{"id" => %{}},
+          %{"id" => 7},
+          %{"id" => String.duplicate("a", 65)},
+          %{"id" => "a/b"},
+          %{"id" => "../x"},
+          %{"id" => "x?y=1"}
+        ] do
+      render_click(view, "edit_paths", bad)
+      refute_patched(view)
+      assert has_element?(view, "#policy-rules")
+    end
+
+    render_click(view, "edit_paths", %{"id" => rule.id})
+    assert_patch(view, "#{path}/rules/#{rule.id}/edit")
+  end
+
   test "a rule a lock holds is struck under the locked rule, and can be removed",
        %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} =

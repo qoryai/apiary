@@ -747,6 +747,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   with no act. Before, its Allow opened and the rule was refused, or was written and changed
   nothing. The run's timeline shows a long host as its connection's row does, cut at 255
   bytes on a whole character; before, it showed up to 400 characters.
+- A policy page stays up when asked to edit the paths of an id that is no rule's.
 
 ### Migrations
 
