@@ -502,7 +502,9 @@ defmodule ApiaryWeb.RunLive.Index do
           </.empty_state>
           <.empty_state :if={@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
-            {gettext("A machine posts once it is connected to a node.")}
+            <%= if @nodes_shown do %>
+              {gettext("A machine posts once it is connected to a node.")}
+            <% end %>
             <:actions :if={@may_read_nodes}>
               <.button
                 id="runs-go-to-nodes"
@@ -735,7 +737,7 @@ defmodule ApiaryWeb.RunLive.Index do
       # a node listens for the first run. A reader the nodes are hidden from adds none and
       # is told nothing of the workspace's nodes: theirs listens, whatever nodes it has.
       listens: not nodes_shown or has_nodes?(scope),
-      # The hints to add a node, where the nodes are shown to the reader.
+      # The node hints, where the nodes are shown to the reader.
       nodes_shown: nodes_shown,
       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
