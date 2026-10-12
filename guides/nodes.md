@@ -1,14 +1,14 @@
 # Nodes and their keys
 
-A machine posts its runs to a workspace with an access key of its own, and every access key
-belongs to a node of the workspace. This page says what a node is, the two ways a node
+A machine posts its runs to a workspace with an access key, and every access key belongs to a
+node of the workspace. This page says what a node is, the two ways a node
 gets its key, and what to do when a key has to go. The owners and admins of the
 organisation do all of it; everyone in the workspace reads the nodes and their keys.
 
 ## Nodes and node pools
 
-**Nodes**, in the workspace's sidebar, lists them, with **New node** and **New node
-pool**.
+**Nodes**, in the workspace's sidebar, lists them, with **New node**, **New node
+pool** and **New gateway**.
 
 - A **node** is one permanent machine, `build-01` say. It runs one instance at a time.
 - A **node pool** is a fleet of short-lived instances that share one key, such as the
@@ -19,15 +19,53 @@ The kind is fixed when one is made. A new node opens on its **Access key** tab, 
 machine gets its key. Its **Overview** shows its instance, or a pool's running instances,
 and its recent runs; its **Settings** change its name and a pool's limit, and delete it.
 
+## Gateways
+
+A **gateway** is a separate kind on **Nodes**, beside the node and the node pool,
+`edge-01` say. Its key enrols the gateway and registers no run. **New gateway** asks its
+name and its **URL**: `https://`, a host, and a port if needed, nothing more. The host is
+a DNS name, such as `edge.example.com`, an IPv4 address, such as `10.0.0.5`, or an IPv6
+address in brackets, such as `[2001:db8::1]`; a port is 1 to 65535. Like a node,
+it opens on its **Access key** tab and gets its key either way. On the list it reads
+**Gateway**, and **Kind** in the Filter menu keeps the gateways alone.
+
+The workspace's first gateway is its **default**, marked **Default** on the list and on
+its page. A second one moves nothing: its **Overview** shows its URL, says "Not the
+default.", and offers **Make default**, which moves the mark to it. Its **Settings**
+change its name and its URL.
+
+Each node and node pool chooses its **Gateway**, as it is made and in its **Settings**,
+once the workspace has a gateway: **Default gateway**, whichever gateway is the
+workspace's default; **Direct**, through no gateway; or a gateway by name. A new one
+starts on **Default gateway**. The choice decides where its runs go. Its **Overview**'s
+About says where its choice leads, and its **Access key** tab, the command's page and its
+Forager file say that its runs go through that gateway, at its URL, and, while the
+gateway has no active key, that the gateway isn't connected. The command and the Forager
+file point at Qory Apiary, through that gateway: the command carries `--via` and the
+gateway's URL, and the Forager file a `via` line ([Behind a gateway](#behind-a-gateway)).
+
+Behind a gateway, a node holds its key, as any node does, and a node pool's runners
+hold none: the pool's key is with the run's starter, the system that starts its runs.
+
+**Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
+node or a node pool still points to, by name or as the default, isn't deleted: the page
+says "Nodes use this gateway: build-01, spot-runners. Point them to another gateway or to
+direct, then delete it.", naming the first five of the workspace and then how many more.
+Nor is one that runs still go through, live or waiting for the gateway to attach them:
+the page says "Runs are going through this gateway:", the first five to register, named
+by run id, then how many more, and "Delete it once they end."; both in one notice when
+both hold.
+When the default goes and other gateways remain, the oldest of them becomes the default.
+
 ## The access key
 
-A machine signs every request with its own key, an Ed25519 key. Made by `qory` on the
+A machine signs every request with its key, an Ed25519 key. Made by `qory` on the
 machine, its secret stays there, in `~/.config/qory/access-key-secret`; made in a browser,
 it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing Qory
 Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too, with
-Qory Apiary's own key, which the machine pins as `apiary_public_key` and checks every
-answer under. Qory Apiary's key and its address are the instance's own, the same for every
-organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
+Qory Apiary's key, which the machine pins as `apiary_public_key` and checks every
+answer under. Qory Apiary's key and its address are set once for the instance, the same
+for every organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
 from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the node's key.
 
 A key is active from the moment it arrives until it is revoked. A node holds two keys at a
@@ -40,12 +78,12 @@ A key is never rotated: a new one is made, and the old one revoked.
 
 There are two ways to connect a node's machine, both on the node's **Access key** tab, for
 owners and admins. While the node holds no active key, the tab asks "How do you want to
-connect build-01?": "build-01 connects to Qory with a key. Choose one of two ways to give
-it one." The two ways are two options side by side, each saying when to choose it, what
-happens, and the same four facts, with one button:
+connect build-01?": "build-01 connects to Qory Apiary with a key. Choose one of two ways
+to give it one." The two ways are two options side by side, each saying when to choose
+it, what happens, and the same four facts, with one button:
 
 - **Connect with a command**: "Choose it when you can open a terminal on build-01: a
-  laptop, or a server of your own." You get one command to run on build-01. It carries a
+  laptop, or your server." You get one command to run on build-01. It carries a
   one-time code, not a key, which works once within 15 minutes. `qory` makes the key on
   build-01, sends Qory Apiary only its public half, and saves everything else there
   itself. Key made: on build-01, by `qory`. Secret: stays on build-01; it is never shown.
@@ -81,7 +119,10 @@ there; qory refuses a key ID or a public key set twice. With a generated key, se
 where the machine runs qory." Then four numbered steps:
 
 1. **Point qory at Qory Apiary.** In the Forager file, with **Copy lines**. It is required:
-   without it, `qory` ignores the three variables below.
+   without it, `qory` ignores the three variables below. Behind a gateway it reads **Point
+   qory at Qory Apiary, through edge-01.**, the lines carry `via` and its `url`, and it
+   adds "via sends every request to Qory Apiary through edge-01."; a pool's adds "A
+   starter that reaches Qory Apiary directly can leave via out."
 2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, a plain setting, with
    **Copy**. The same for every machine connected to this Qory Apiary.
 3. **Set the key's ID.** `QORY_ACCESS_KEY_ID`, a plain setting: with one active key, its
@@ -128,9 +169,51 @@ workspace: once they are not, a machine that runs it is refused, and an owner or
 gets a new command.
 
 The command carries Qory Apiary's address, its `PUBLIC_URL`. When that is an address only
-Qory Apiary's own computer reaches, such as `http://localhost:4100`, the page says
+Qory Apiary's computer can reach, such as `http://localhost:4100`, the page says
 "Machines can't reach this address." and asks you to set `PUBLIC_URL` to the address
 machines use.
+
+#### Behind a gateway
+
+A node or a node pool whose choice leads to a gateway, `edge-01` at
+`https://edge.example.com` say, enrols through that gateway, on the command's page and in
+the overview's first-run box alike. The page says "The command connects build-01 by
+itself, through the gateway edge-01: …", and the command carries `--via` and the
+gateway's URL, before Qory Apiary's address:
+
+```sh
+qory access-key enrol --via https://edge.example.com https://apiary.example.com qec_…
+```
+
+A gateway's address holds no character a shell acts on except the brackets of an IPv6
+address, which some shells read as a pattern, so such an address is in single quotes in
+the command, `--via 'https://[2001:db8::1]:8443'`, and pasting it runs `qory` as shown.
+
+`qory` sends the enrolment to the gateway, which passes it to Qory Apiary unchanged and
+passes Qory Apiary's signed answer back unchanged: the answer is signed for the machine's
+proof, so the gateway can't alter it. So a machine that reaches Qory Apiary only through
+the gateway is connected all the same. `qory` writes the gateway's address into the
+Forager file as `gateway.server.via.url`, beside the other lines, and sends every request
+to Qory Apiary through it.
+
+`qory` checks the gateway's certificate against the machine's system certificate
+authorities. Under the command, the page says "If edge-01's certificate is signed by a
+private certificate authority, add --via-ca-file and that authority's PEM file."
+`--via-certificate-sha256`, the SHA-256 of the gateway certificate's public key in
+standard base64, accepts only a certificate with that key, its chain still checked. Both
+go on the machine: Qory Apiary keeps neither.
+
+A pool's starter that reaches Qory Apiary only through the gateway enrols with `--print`
+and `--via` together, and its `forager.yaml` then needs `gateway.server.via.url` beside
+`gateway.server.url`. A starter that reaches Qory Apiary directly can leave `via` out.
+
+Qory Apiary counts enrolments per address, 1 a second and 10 at once, and an enrolment
+through a gateway comes from the gateway's address. So every machine behind one gateway
+shares that gateway's limit, and enrolling many machines at once through one gateway may
+need a retry. Past the limit the answer is an unsigned `429`: `qory` keeps the key it
+made, and the same command, run again within the code's 15 minutes, retries with it
+(with `--print`, `qory` keeps nothing, so it asks for a new code instead). The audit log
+records the gateway's address for the key's arrival.
 
 ### The Forager file
 
@@ -141,10 +224,11 @@ description below). What it shows depends on how the key came:
 - A key connected with a command: the `server` lines the command wrote to
   `~/.config/qory/forager.yaml`, each marked whose it is: `url` (`# Qory Apiary`),
   `access_key_id` (`# this key`) and `apiary_public_key` (`# Qory Apiary's public key`).
-  Only the key ID is the key's; the address and the public key are Qory Apiary's, the
-  same for every machine connected to it. The page says the key's secret is on the
-  machine, in `~/.config/qory/access-key-secret`, where the command saved it. It has
-  never been on a screen.
+  Behind a gateway, the lines end with `via` and its `url`, marked `# the gateway
+  edge-01`. Only the key ID is the key's; the address and the public key are Qory
+  Apiary's, the same for every machine connected to it. The page says the key's secret
+  is on the machine, in `~/.config/qory/access-key-secret`, where the command saved it.
+  It has never been on a screen.
 - A generated key: "What build-01 needs, besides the secret. Nothing here is secret." Four
   numbered steps. **Keep the secret in a secret store**: it was shown once, when the key
   was generated, and belongs in `QORY_ACCESS_KEY_SECRET` in the secret store of the
@@ -152,11 +236,12 @@ description below). What it shows depends on how the key came:
   the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
   key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
   connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the Forager
-  file needs, `gateway.server.url`.
+  file needs, `gateway.server.url`, and, behind a gateway, `gateway.server.via.url`,
+  under **Point qory at Qory Apiary, through edge-01.**
 
 ### For a CI
 
-A CI keeps the key in its own settings rather than in a machine's files. **Generate a key
+A CI keeps the key in its settings rather than in a machine's files. **Generate a key
 in the browser** is the way for it, and a pool's **Access key** tab lists it first.
 `qory access-key enrol` takes `--print` too: it keeps nothing on the machine and prints
 the settings, one `NAME=value` line each.
@@ -201,6 +286,11 @@ A fleet of short-lived CI runners is a node pool with one key.
           url: https://apiary.example.com
       ```
 
+      Behind a gateway, the step is **Point qory at Qory Apiary, through edge-01.**, its
+      lines end with `via:` and `url: https://edge.example.com`, and it adds "via sends
+      every request to Qory Apiary through edge-01." and, for a pool, "A starter that
+      reaches Qory Apiary directly can leave via out."
+
    Only the secret is shown once: it was made in your browser, Qory Apiary never received
    it, and it can't be shown again. Copy it into the secret store before you select
    **Done**.
@@ -224,8 +314,8 @@ for display, the audit and the instance limit: what a request is allowed rests o
 alone.
 
 An instance counts as running while one of its runs is alive. A node runs one at a time,
-and a pool up to its limit: the ping that starts a run, from an instance beyond the limit,
-is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
+and a pool up to its limit: the registration that starts a run, from an instance beyond
+the limit, is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
 the starts refused. Lowering a limit stops nothing that runs; new instances wait
 until fewer run.
 
@@ -237,23 +327,36 @@ Every run records its node and its instance. A run's page names both, beside its
 key; the node's **Overview** lists its recent runs; and on **Runs**, `node:build-01` in the
 filter, or **Node** in the Filter menu, keeps a node's runs alone.
 
-## A separate gateway
+## After an outage
 
-A gateway on a machine of its own, which the agents on other machines connect through, is
-a node of its own, like any other: add it as a node, `gw-01` say, and connect it either
-way. It holds the node's key and is the one that talks to Qory Apiary. The machines behind
-it hold no access key and need no node: their runs reach Qory Apiary through the gateway.
+When the machines could not reach Qory Apiary for a while, each gateway keeps what its
+runs recorded and sends it once Qory Apiary answers again. Qory Apiary reads a heartbeat
+by when it was recorded, not when it arrived, so the catch-up shows what happened:
 
-A run through the gateway belongs to the gateway's node and instance, and its key is the
-gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
-for a program that reports no session has no host and no runtime; its page says it has no
-session. The one who starts a run ends it: such a run ends by the end the gateway reports,
-and neither its page nor the Overview offers **Close** for it.
-<!-- feature: secrets -->
+- A run that ended during the outage stays **Lost**, and under **To review** on the
+  Overview, until its end arrives; then it shows how it ended. A run that is still alive
+  comes back as soon as its recent heartbeats arrive.
+- The alive counts, in the sidebar and on the Overview, count only the runs alive now.
+- An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
+  minutes for the machine's clock, and never later than it arrived.
+- A new run opens during a catch-up, on a node or pool the catching-up runs had filled
+  too: old heartbeats hold no instance's place. Its registration has a separate rate limit,
+  which a catch-up never spends.
+- Every event is kept, however late it arrives, while its run is: retention keeps a lost
+  run for 7 days after it was lost, however short its settings
+  ([Retention](retention.md)).
 
-Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory
-Apiary does not check this: to it, a separate gateway's key is a node's key like any other.
-<!-- /feature -->
+Three limits stay:
+
+- After an outage shorter than about 6½ minutes, a run that ended during it can look alive
+  again for a moment, at most three heartbeat intervals, 90 seconds.
+- A session's run whose heartbeats all arrive late, because the outage began before its
+  first one, comes back while they arrive, and is lost again three heartbeat intervals
+  after the last, unless its end arrives first. Its heartbeats move its key's **Last
+  heartbeat** to their arrival.
+- A run whose machine's clock ran more than about 6½ minutes ahead and was then set back
+  reads **Lost** until its end arrives; a little less, and it can read Lost between its
+  heartbeats.
 
 ## Revoking a key
 

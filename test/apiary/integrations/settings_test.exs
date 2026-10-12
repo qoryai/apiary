@@ -10,7 +10,7 @@ defmodule Apiary.Integrations.SettingsTest do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Integrations.{Release, Source}
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   @keys ~w(integration_url_sources_setting integration_url_sources)a
 

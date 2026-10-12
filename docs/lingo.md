@@ -14,11 +14,11 @@ This is done with Gettext, not with a list of word swaps:
   `priv/gettext/en@software/` is English in the software domain's words. The language and
   the domain stay separate. (A Gettext domain, such as `errors`, is another
   thing: one catalogue file of a locale.)
-- **A domain's catalogue holds only its own sentences.** A message the locale's catalogue
+- **A domain's catalogue holds only the domain's sentences.** A message the locale's catalogue
   lacks is looked up in the next locale of the chain (`ApiaryWeb.Gettext.Fallback`): the
   locale without its `@modifier`, the language's catalogue, then the language without its
   territory, and at the end the source text. `priv/gettext` holds one catalogue,
-  `en@software`. English has no catalogue of its own: the source text is English, and
+  `en@software`. English has no separate catalogue: the source text is English, and
   `en@software` translates every sentence with an engine word.
 - **The locale is built from the person and the workspace**, `language@domain`
   (`ApiaryWeb.Lingo.locale_for/1`). The language is the person's preference
@@ -27,7 +27,7 @@ This is done with Gettext, not with a list of word swaps:
   (`workspaces.domain`, chosen when the workspace is created), read through the registry
   of domains (`Apiary.Lingo.Domain.domains/0`, `for_workspace/1`); software is the only
   one and the default. Every page of a signed-in person who reaches a workspace has one in
-  its scope, the person's own settings included, and reads that workspace's domain. A
+  its scope, the person's settings included, and reads that workspace's domain. A
   scope without a workspace (a person with no membership, on `/users/organisations`, or
   one who reaches no workspace yet, on their organisation's pages) reads the person's
   language in the default domain; a page without a person (log-in, registration) reads
@@ -76,7 +76,7 @@ and do not go through Gettext.
 ## Writing a string
 
 - **Whole sentences.** One msgid per sentence or label. Never build a sentence out of pieces
-  (`"Pruned " <> Enum.join(parts, ", ")`). Write each variant as its own sentence.
+  (`"Pruned " <> Enum.join(parts, ", ")`). Write each variant as a separate sentence.
 - **Interpolate with bindings**, never with `#{}`:
   `gettext("Workspace renamed to %{name}.", name: workspace.name)`. Bindings are names,
   and the test ignores the words in them, so `%{target}` is fine.
@@ -85,7 +85,7 @@ and do not go through Gettext.
   `gettext("Events are pruned after %{days}.", days: days)`. It may never carry a piece
   of grammar.
 - **Counts use `ngettext`**, which chooses the plural form by `n`. Its `%{count}` is the
-  raw number and never shown: a count on the page is its own binding, formatted,
+  raw number and never shown: a count on the page is a separate binding, formatted,
   `ngettext("%{number} event", "%{number} events", n, number: Format.number(n))`
   (Dates and numbers, below).
 - **`pgettext` contexts** keep apart two meanings of the same English text. Use context
@@ -110,13 +110,13 @@ parts are bindings, and `<.rich>` renders the result.
   imports them through `use ApiaryWeb`.
 - Rich text is a string, a list, or `{:b, rich}`, `{:m, text}`, `{:code, text}`,
   `{:bad, rich}`, `{:link, path, rich}`, `{:href, url, rich}` or `{:term, word, standard}`.
-  Add a CSS class as the last element when the page needs its own look, for example
+  Add a CSS class as the last element when the page needs a different look, for example
   `{:b, name, "font-medium text-base-content"}`. A rendered component or `{:safe, iodata}`
   is also rich text and goes in as it is.
 - When a template writes the markup, bind `{:part, name}` and give the `:part` slot of that
   name: `<.rich text={rich_gettext("%{time} by a member", time: {:part, :time})}>` followed
   by `<:part name={:time}><.clock at={@at} /></:part>`.
-- A phrase of its own can be a binding, as with plain Gettext:
+- A self-contained phrase can be a binding, as with plain Gettext:
   `rich_gettext("%{runs} in %{targets}", runs: rich_ngettext(...), targets: rich_ngettext(...))`.
 - Everything is escaped. The bindings never go into the sentence as text, so a host or a
   task that contains `%{...}` stays as it is. Never put markup in a msgid, such as
@@ -141,9 +141,9 @@ parts are bindings, and `<.rich>` renders the result.
   and the script fills it in. A count that the script cannot know ahead of time is passed as
   `[one, other]`, and the script takes `one` for 1. That is the plural rule of English. A
   bounded count, such as the seconds of "N seconds ago", is passed with one string for every
-  value, so the language's own rule chooses the form. A script formats a date, a time or a
+  value, so the language's plural rule chooses the form. A script formats a date, a time or a
   number with `Intl`, in the locale and the time zone on the `<body>` (`data-locale`,
-  `data-time-zone`), never the browser's own (Dates and numbers, below).
+  `data-time-zone`), never the browser's (Dates and numbers, below).
 - **Changeset errors** are in the `errors` Gettext domain. `translate_error/1` translates
   them at render. A custom message is marked where it is written:
   `message: dgettext_noop("errors", "is already the name of a workspace in this organisation")`
@@ -222,7 +222,7 @@ them. CI runs `mix gettext.extract --check-up-to-date`, and so does `mix precomm
 that was not extracted fails there. A string with an engine word that was not translated
 fails the test.
 
-A domain is a locale of its own, and a language's catalogue holds every sentence;
+A domain is a separate locale, and a language's catalogue holds every sentence;
 `mix gettext.merge priv/gettext --locale <locale>` makes the catalogue of either. A
 domain's catalogue leaves every other `msgstr` empty. `ApiaryWeb.Gettext.Plural` takes the
 plural rules from the language part of the locale.

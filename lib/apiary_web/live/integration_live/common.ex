@@ -9,8 +9,8 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   The pages say only what Qory Apiary stores and does. They call a connection of
   `Apiary.Connections` by its kind's word: an Agent (a runtime), an API (a service) or a
-  Program (an integration added from a release); a service definition of the workspace's
-  own is a Custom API. "Integrations" is the section's name alone, and "service
+  Program (an integration added from a release); a service definition the workspace
+  wrote is a Custom API. "Integrations" is the section's name alone, and "service
   definition" is not a word of the pages. Each page says once, near its top, that a run
   receives only its security policy (`not_on_runs/1`), and nothing on them says
   otherwise.
@@ -105,7 +105,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do:
       ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{target_id}/remove"
 
-  @doc "definition_path/3 is the workspace's own custom APIs (service definitions): new, one, its edit or its deletion."
+  @doc "definition_path/3 is the workspace's custom APIs (service definitions): new, one, its edit or its deletion."
   def definition_path(scope, definition, rest \\ nil)
 
   def definition_path(scope, :new, nil),
@@ -170,7 +170,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
   title in the catalogue or an integration's in its description, with the name it has
-  there beside it (`claude`, `github`); a service's own name alone, `{name, nil}`. The
+  there beside it (`claude`, `github`); a service's name alone, `{name, nil}`. The
   machine name is nil where it is the title.
   """
   def names(%Connection{kind: kind, name: name} = connection)
@@ -250,12 +250,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   only_admins/1 is the line a person who may not change the section reads: a reader
   through the edition's reach is told what they may do (`ApiaryWeb.Access.reads_only/1`),
-  a member who and what.
+  a member who and what (`ApiaryWeb.Access.who_may/3`).
   """
   def only_admins(scope) do
     if Apiary.Access.reader(scope),
       do: ApiaryWeb.Access.reads_only(scope),
-      else: gettext("Only owners and admins change the integrations of a workspace.")
+      else:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"connection.write",
+          gettext("Only owners and admins change the integrations of a workspace.")
+        )
   end
 
   ## A description's plain settings

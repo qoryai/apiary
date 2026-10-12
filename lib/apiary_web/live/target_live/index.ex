@@ -4,7 +4,7 @@ defmodule ApiaryWeb.TargetLive.Index do
   row per target, its path the only strong text: the reader's pin, its last run as a dot
   and a time (a word only when it is running or went badly), its runs a day over fourteen
   days, how many of them ended well, its denied attempts in those days, and its policy
-  mode only where it sets its own. Pages of 50.
+  mode only where it overrides the workspace's. Pages of 50.
 
   Narrowed the way every list is (`docs/ui.md`): views as tabs (All, Active this week,
   Never ran), a search that takes qualifiers (`ApiaryWeb.TargetLive.Query`), one Filter
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.TargetLive.Index do
 
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Features, Runs, Targets}
+  alias Apiary.{Access, Runs, Targets}
   alias ApiaryWeb.TargetLive.Query
 
   @refresh_window 1_000
@@ -43,9 +43,7 @@ defmodule ApiaryWeb.TargetLive.Index do
        pinned: MapSet.new(),
        load_error: false,
        refresh: :closed,
-       security:
-         Features.on?(scope, :security) and
-           Access.can?(scope, :"security_policy.read", scope.workspace)
+       security: Access.can?(scope, :"security_policy.read", scope.workspace)
      )}
   end
 
@@ -493,7 +491,7 @@ defmodule ApiaryWeb.TargetLive.Index do
     """
   end
 
-  # The last run: its dot and when, and its word only when it is running or went badly.
+  # The last run: its dot and when, and its word for every state but completed.
   attr :last, :map, required: true
 
   defp last_run(assigns) do
@@ -504,7 +502,7 @@ defmodule ApiaryWeb.TargetLive.Index do
       </span>
       <.relative_time at={@last.at} />
       <span
-        :if={@last.state not in ~w(succeeded ended closed)}
+        :if={Runs.Run.current_state(@last.state) != "completed"}
         class={["q-tgt-lw", "q-sdot-#{@last.state}"]}
         aria-hidden="true"
       >
@@ -609,8 +607,8 @@ defmodule ApiaryWeb.TargetLive.Index do
   defp mode_options,
     do: [
       follows: gettext("Follows the workspace"),
-      observes: gettext("Observes on its own"),
-      enforces: gettext("Enforces on its own")
+      observes: gettext("Overridden: observe"),
+      enforces: gettext("Overridden: enforce")
     ]
 
   defp own_mode("observe"), do: gettext("observes")

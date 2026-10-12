@@ -15,13 +15,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   `mix apiary.demo.console --runs 3000 --days 28`; `--seed` (1) makes it repeatable, and
   `--concurrency` (6) is how many processes write it.
 
-  It fills only a database of its own. Outside the test environment it refuses to start
+  It fills only a demo database. Outside the test environment it refuses to start
   unless `DATABASE_URL`, which would replace the configured database, is unset or empty,
   and `APIARY_DEV_DATABASE` names the database the app is configured with
   (`config/dev.exs` reads it), a name with `demo` in it; so it never fills `apiary_dev`
   or `apiary_core_dev`, the databases people work in. In the test environment it runs
-  only under the tests, which fill their own database. It refuses an instance that has
-  any organisation other than its own, Acme, so the database you work in is never
+  only under the tests, which fill the test database. It refuses an instance that has
+  any organisation other than the one it makes, Acme, so the database you work in is never
   filled by mistake, and an Acme whose fill did not finish (below).
 
   ## What it makes
@@ -35,21 +35,22 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       codeberg.org, of every outcome, with subagents, terminals and network; its nodes,
       one per machine group, each run placed on one as the instance of its host, and
       their access keys; a dozen people at every level, one suspended, and two invitations pending;
-      and the security policy, with versions, a lock and repositories of their own.
+      and the security policy, with versions, a lock, and rules and mode overrides for a
+      few repositories.
       `acme/shop` is on all three forges and `acme/billing` on two, so a path names more
       than one repository.
-    * The seven recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
+    * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
       the last day, under the key of the node **dana-laptop**.
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
       keys added by their public keys; build-01's first key was replaced and revoked. No
       run is placed on them. build-02 has an outstanding enrolment code (below).
-    * With the `secrets` feature (`Apiary.Features.on?/2`, of each workspace): secrets,
+    * With the instance's `secrets` feature (`Apiary.Features.on?/1`): secrets,
       one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
       fetched, and one release whose fetch failed. A run receives only its security policy.
     * Where the edition allows an organisation a second workspace, **Shop ops**
-      (`shop-ops`) is made too, with a smaller history of its own; the core's allows
+      (`shop-ops`) is made too, with a smaller, separate history; the core's allows
       one.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
@@ -97,8 +98,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   # The recordings replayed into Main, by how long before now each ended.
   @replays [
-    {"ping-only", 20},
-    {"no-session", 45},
+    {"registered-only", 20},
     {"unassigned", 95},
     {"session-with-subagents", 170},
     {"failed-run", 400},
@@ -171,7 +171,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   def refusal(:test, true, _database, _env), do: nil
 
   def refusal(:test, false, database, _env),
-    do: refused("the test environment's database, #{database}, is the tests' own")
+    do: refused("the test environment's database, #{database}, belongs to the tests")
 
   def refusal(_mix_env, _tests?, database, env) do
     named = env["APIARY_DEV_DATABASE"]
@@ -202,7 +202,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   defp refused(reason) do
     """
-    mix apiary.demo.console fills only a database of its own: #{reason}.
+    mix apiary.demo.console fills only a demo database: #{reason}.
     Run it in development, with DATABASE_URL unset and APIARY_DEV_DATABASE naming a
     database with "demo" in its name:
 
@@ -259,7 +259,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     replays(main)
     nodes(main)
 
-    if Apiary.Features.on?(main, :secrets) do
+    if Apiary.Features.on?(:secrets) do
       secrets(main)
       variables(main)
       connections(main)
@@ -273,7 +273,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
             ["--seed", "#{seed + 1}"] ++ concurrency
         )
 
-        if Apiary.Features.on?(scope, :secrets), do: variables_of_second(scope)
+        if Apiary.Features.on?(:secrets), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
 
@@ -302,13 +302,14 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   defp scope_of_second(owner, %Scope{workspace: workspace}), do: scope!(owner, workspace.slug)
 
-  # The instance's first sign-up, as the sign-up page makes it, then a log-in link
-  # followed, which confirms the address, and a password set, as Settings would.
+  # The instance's set-up, as its set-up link makes it, then a log-in link followed,
+  # which confirms the address, and a password set, as Settings would.
   defp sign_up!() do
     {:ok, %{user: user}} =
-      Organisations.sign_up_user(
+      Apiary.Setup.set_up(
+        Apiary.Setup.code!(),
         %{"email" => @owner, "organisation_name" => @organisation},
-        nil,
+        password: :optional,
         origin: %{worker: "demo"}
       )
 

@@ -10,7 +10,7 @@ defmodule ApiaryWeb.PageComponents do
   - `settings_page/1`: a page of a level's settings, its section the `<h1>`; the frame names
     the level and lists its sections as the second column (`ApiaryWeb.Layouts.app/1`'s
     `sections` and `section`).
-  - `page_form/1` and `page_form_foot/1`: a create or edit form as a page of its own, never
+  - `page_form/1` and `page_form_foot/1`: a create or edit form as a separate page, never
     a dialog, with Cancel back to where it was opened from.
   - `not_on_runs/1`: the one plain line a page over data no run receives says.
 
@@ -132,8 +132,8 @@ defmodule ApiaryWeb.PageComponents do
   settings_page/1 is a page of a level's settings. The frame names the level (the second
   column's heading, the breadcrumb's level segment and the browser title) and lists its
   sections as the second column: the page passes them to `ApiaryWeb.Layouts.app/1` as
-  `sections` (`ApiaryWeb.SettingsComponents.sections/2`, read when it mounts) and its own
-  key as `section`; a person's own pages and the Instance's pass none, the frame has theirs.
+  `sections` (`ApiaryWeb.SettingsComponents.sections/2`, read when it mounts) and its
+  section's key as `section`; a person's pages and the Instance's pass none, the frame has theirs.
 
   The page: the section's title, the page's one `<h1>` (`#settings-section-title`), one
   sentence of what it is for and its actions, above its content; its parts are `<h2>`s
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.PageComponents do
   end
 
   @doc """
-  page_form/1 is a form that creates or changes one thing, as a page of its own: never a
+  page_form/1 is a form that creates or changes one thing, as a separate page: never a
   dialog over a list. Its title, one line of what it does, then the form in a 720 px
   column. The page's form holds its fields and ends with `page_form_foot/1`, its button
   and Cancel, which leads back to where the form was opened from: the list, or the
@@ -257,7 +257,7 @@ defmodule ApiaryWeb.PageComponents do
 
   @doc """
   not_on_runs/1 is the one plain line a page over data no run receives says, once, near
-  its top: a workspace's secrets, variables and integrations. Its words are the page's own
+  its top: a workspace's secrets, variables and integrations. The page gives its words
   (`inner_block`), saying what a run receives ("A run receives only its security
   policy."): such a page never says that runs receive what it holds.
   """

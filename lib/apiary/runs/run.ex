@@ -2,17 +2,29 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `run_id` is the subject of the run's events, unique within the workspace. The row
-  is created by the receiver on the first event of an unknown subject, in state
-  `pending`; every other field is folded from the events by the projector, so
-  the row can be rebuilt from `events` alone.
+  `run_id` is the subject of the run's events, unique within the workspace. The row is
+  created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
+  the receiver on the first event of an unknown subject. The folded fields are folded
+  from the events by the projector, so they can be rebuilt from `events` alone. The
+  registration fields (`registered_at`, `registration_labels`, `registration_about`,
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
+  are the registration's: written once, when the run registers,
+  and kept by a rebuild. A run that registered is projected from sequence 1, which its
+  registration stands for (`projected_from/1`). A run that registered through a gateway
+  keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild
+  as well.
   """
   use Ecto.Schema
 
   @typedoc "A run of a workspace."
   @type t :: %__MODULE__{}
 
-  @states ~w(pending running succeeded ended failed timed_out lost closed)
+  @states ~w(pending running completed failed cancelled lost)
+
+  # The names a release before this one wrote, each with the state it reads as. The `CHECK`
+  # on the column still allows them, so that rows an older release writes while a deploy
+  # rolls out are stored, and every family and filter counts them as their new state.
+  @old_states %{"succeeded" => "completed", "timed_out" => "cancelled", "ended" => "cancelled"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -31,10 +43,6 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
-    # What opened the run, `opened_by` of `run.started`: "session", a Forager session around
-    # a runtime, or "gateway", a gateway with no session, whose start says no runtime,
-    # command or host and whose exit no state or exit code. Nil until a start says it.
-    field :opened_by, :string
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -57,20 +65,25 @@ defmodule Apiary.Runs.Run do
     field :exit_code, :integer
     field :signal, :string
     field :reason, :string
-    # The quiet period the gateway applied, of an exit with the reason "quiet"; nil otherwise.
+    # The quiet period of an exit with the reason "quiet", which an older Forager wrote; nil
+    # otherwise.
     field :quiet_seconds, :integer
     field :duration_ms, :integer
 
     field :last_event_at, :utc_datetime_usec
+    # When the last heartbeat counts as heard, by its own time and the clock offset below
+    # (`Apiary.Runs.Liveness.heard_at/3`).
     field :last_heartbeat_at, :utc_datetime_usec
     field :elapsed_seconds, :integer
     field :heartbeat_interval_seconds, :integer
+    # The smallest arrival less own time over the run's heartbeats, in milliseconds
+    # (`Apiary.Runs.Fold`); nil until the first.
+    field :clock_offset_ms, :integer
 
     field :policy_digest, :string
     field :run_configuration_digest, :string
     field :reported_run_configuration_digest, :string
 
-    field :closed_at, :utc_datetime_usec
     field :lost_at, :utc_datetime_usec
 
     # Set by `Apiary.Retention` when it deleted the run's events, or its log bytes alone.
@@ -88,12 +101,69 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
-    # The node of the key the run's ping came with, and the instance id that ping claimed:
+    # The node of the key the run's registration came with, and the instance id it claimed:
     # copied when the run is created and never moved, both nil for a key that names no node.
     belongs_to :node, Apiary.Nodes.Node
     field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
-    belongs_to :closed_by, Apiary.Accounts.User
+
+    # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered;
+    # its labels, `about` and heartbeat interval as the body sent them (the interval the run
+    # is held to, before its heartbeats', `Apiary.Runs.Liveness`); the SHA-256 of
+    # the body's bytes, by which a repeat of the same registration is told from another;
+    # and the digest of the run configuration it was given, which a repeat is given again.
+    # All nil for a run that did not register. Not folded: a rebuild keeps them.
+    field :registered_at, :utc_datetime_usec
+    field :registration_labels, :map
+    field :registration_about, :map
+    field :registration_digest, :binary
+    field :registration_interval_seconds, :integer
+    field :registration_answer_digest, :string
+
+    # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
+    # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
+    # `time` its body was built at, on the starter's clock; when this server took it; and
+    # the SHA-256 of the body's bytes. A repeat, the same state and reason again, changes
+    # none of them. All
+    # nil for a run that was given none. Not folded: a rebuild keeps them, and the fold
+    # reads them, so the outcome decides `state` and `reason` whenever it arrives
+    # (`Apiary.Runs.Fold`).
+    field :outcome_state, :string
+    field :outcome_reason, :string
+    field :outcome_time, :utc_datetime_usec
+    field :outcome_received_at, :utc_datetime_usec
+    field :outcome_digest, :binary
+
+    # What the run's `dev.qory.run.exited` said, folded and kept beside an outcome, which
+    # decides `state` and `reason` once there is one: the state the exit means
+    # (`Apiary.Runs.Fold.exit_state/2`) and Forager's reason. Nil until an exit is folded.
+    field :exit_state, :string
+    field :exit_reason, :string
+
+    # When the run's `dev.qory.run.refused` said it did not start, folded, and nil once an
+    # exit decides over it, in whichever order the two are folded. The outcome leaves it as
+    # it is: a run refused and then given an outcome still never started.
+    field :refused_at, :utc_datetime_usec
+
+    # A run that goes through a gateway (`Apiary.Runs.Registration`, `Apiary.Runs.Attach`):
+    # the gateway its node's choice resolved to at its registration, nil should the
+    # gateway's row be purged; the exact bytes of its run key's payload and its signature,
+    # so a repeat is given the same run key, when the run key was made and the end of its
+    # attach window; and, once the gateway attached it, when, the heartbeat interval it
+    # announced, which the run is held to, the digest of the run configuration it was
+    # given, which a repeat of the attach is given again, and the instance id of the
+    # gateway that attached it, the one instance that may attach it again and send for it
+    # (`Apiary.Runs.Sender`), nil until it is known. All nil for a direct run. Not folded: a
+    # rebuild keeps them.
+    belongs_to :gateway, Apiary.Nodes.Node
+    field :run_key_payload, :binary
+    field :run_key_signature, :binary
+    field :run_key_issued_at, :utc_datetime_usec
+    field :attach_by, :utc_datetime_usec
+    field :attached_at, :utc_datetime_usec
+    field :attach_interval_seconds, :integer
+    field :attach_answer_digest, :string
+    field :attach_instance_id, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
@@ -102,30 +172,102 @@ defmodule Apiary.Runs.Run do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @doc "Every state a run can be in, as the `CHECK` on the column lists them."
+  @doc """
+  Every state a run can be in: pending, running, completed, failed, cancelled and lost. The
+  `CHECK` on the column also allows the old names `old_states/0` lists.
+  """
   def states, do: @states
+
+  @doc """
+  The names a release before this one stored a state under, which the `CHECK` on the column
+  still allows: `succeeded` reads as completed, `timed_out` and `ended` as cancelled
+  (`current_state/1`).
+  """
+  def old_states, do: Map.keys(@old_states)
+
+  @doc "The state a stored name reads as: an old name its new state, any other name itself."
+  @spec current_state(String.t()) :: String.t()
+  def current_state(state), do: Map.get(@old_states, state, state)
+
+  @doc """
+  `states` and every old name that reads as one of them, for a query of the stored column:
+  a run an older release stored as `succeeded` counts and lists as completed.
+  """
+  @spec with_old_names([String.t()]) :: [String.t()]
+  def with_old_names(states),
+    do: states ++ for({old, new} <- @old_states, new in states, do: old)
 
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
 
-  @doc """
-  The states of a run that ended well: succeeded, and ended. A run ends `ended` when its exit
-  says no state and a reason that is no failure (`Apiary.Runs.Fold.exit_state/2`): a run a
-  gateway opened that was quiet, whose run credential expired or whose issuer reported it
-  ended.
-  """
-  def ended_well_states, do: ~w(succeeded ended)
+  @doc "The states of a run that ended well: completed, its outcome a success."
+  def ended_well_states, do: ~w(completed)
 
   @doc """
-  The states of a run that ended badly: failed, timed out, lost and closed. A closed run
-  was stopped by the workspace, not by a failure of its own; it sits in this family so
-  that every surface counts runs in the same three families (alive, ended well, ended
-  badly).
+  The states of a run that was stopped before it said how it went: cancelled, by a person,
+  by a rule such as its time limit, or because its work was no longer needed.
   """
-  def ended_badly_states, do: ~w(failed timed_out lost closed)
+  def cancelled_states, do: ~w(cancelled)
 
-  @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
-  @spec no_session?(t() | map()) :: boolean()
-  def no_session?(%{opened_by: "gateway"}), do: true
-  def no_session?(_run), do: false
+  @doc """
+  The states of a run that ended badly: failed and lost. The four families, alive, ended
+  well, cancelled and ended badly, are `Apiary.Runs.Filters.families/0`.
+  """
+  def ended_badly_states, do: ~w(failed lost)
+
+  @doc """
+  The days a lost run counts as lost recently, from its `lost_at`: the Overview lists it
+  that long, and retention prunes nothing of it before (`Apiary.Retention`), so the record
+  a gateway kept through a shorter outage still finds the run.
+  """
+  def lost_days, do: 7
+
+  @doc """
+  Whether the run was refused at its start and never started: failed with no exit time, as
+  the fold stores a `dev.qory.run.refused` (`Apiary.Runs.Fold`), its `reason` the refusal's
+  code, if it gave one. An exit decides over a refusal, so a run with an exit time is not,
+  and so does its starter's outcome, so a run given one is not either.
+  """
+  @spec refused?(t() | map()) :: boolean()
+  def refused?(%{state: "failed", exited_at: nil} = run),
+    do: is_nil(Map.get(run, :outcome_state))
+
+  def refused?(_run), do: false
+
+  @doc """
+  Whether the run's state is its starter's outcome and says something other than its exit
+  did: given an outcome, and either no exit folded yet, or one whose state differs
+  (`exit_state`). A run whose outcome agrees with its exit reads as the exit alone, and so
+  does one whose exit was folded before `exit_state` was kept, which has none.
+  """
+  @spec outcome_differs?(t() | map()) :: boolean()
+  def outcome_differs?(%{outcome_state: outcome} = run) when is_binary(outcome) do
+    case Map.get(run, :exited_at) do
+      nil ->
+        true
+
+      _exited_at ->
+        exit_state = Map.get(run, :exit_state)
+        not is_nil(exit_state) and exit_state != Map.get(run, :state)
+    end
+  end
+
+  def outcome_differs?(_run), do: false
+
+  @doc """
+  Whether the run goes through a gateway: its registration was given a run key, whatever
+  has become of the gateway since.
+  """
+  @spec through_gateway?(t() | map()) :: boolean()
+  def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true
+  def through_gateway?(_run), do: false
+
+  @doc """
+  The sequence a run's projection starts from: 1 for a run that registered, whose
+  registration stands for the record's sequence 1, `dev.qory.run.registered`, which is
+  never posted, as the ping did before it; 0 for a run its batches created.
+  """
+  @spec projected_from(map) :: 0 | 1
+  def projected_from(%{registered_at: %DateTime{}}), do: 1
+  def projected_from(_run), do: 0
 end

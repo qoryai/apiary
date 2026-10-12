@@ -29,7 +29,7 @@ defmodule Mix.Tasks.Docs.All do
     every tree.
   - **A module that declares its feature** with `use ApiaryWeb.Features`, without anything
     in `mix.exs`.
-  - **A passage of a guide**, between marker lines that stand on their own:
+  - **A passage of a guide**, between marker lines that stand alone:
 
         <!-- feature: security -->
         A paragraph about the policy.
@@ -54,9 +54,9 @@ defmodule Mix.Tasks.Docs.All do
 
   ## Another application's modules
 
-  ExDoc documents the project's own application. `source_apps: [:app]` in the docs
+  ExDoc documents the project's application. `source_apps: [:app]` in the docs
   configuration adds the modules of those applications, the project's dependencies, to
-  the same module reference, linked as the project's own are and left out of a tree as
+  the same module reference, linked as the project's modules are and left out of a tree as
   theirs are: a project built on another documents both in one tree.
   """
 

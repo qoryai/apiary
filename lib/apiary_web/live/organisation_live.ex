@@ -82,7 +82,7 @@ defmodule ApiaryWeb.OrganisationLive do
               id="added-open"
               size="xs"
               variant="primary"
-              href={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
+              href={Layouts.workspace_landing(@current_scope)}
             >
               {gettext("Open %{workspace}", workspace: @current_scope.workspace.name)}
             </.button>
@@ -99,8 +99,8 @@ defmodule ApiaryWeb.OrganisationLive do
             <ul id="workspaces" class="q-rows">
               <li :for={workspace <- Enum.take(@workspaces, @shown)} id={"workspace-#{workspace.id}"}>
                 <.workspace_row
-                  scope={@current_scope}
                   workspace={workspace}
+                  landing={@landings[workspace.id]}
                   facts={@facts.ok? && @facts.result[workspace.id]}
                   mode={@modes[workspace.id]}
                 />
@@ -196,8 +196,8 @@ defmodule ApiaryWeb.OrganisationLive do
     """
   end
 
-  attr :scope, :any, required: true
   attr :workspace, :any, required: true
+  attr :landing, :string, required: true, doc: "where the workspace's link leads"
   attr :facts, :any, required: true, doc: "the workspace's facts, nil while they load"
   attr :mode, :string, default: nil
 
@@ -208,7 +208,7 @@ defmodule ApiaryWeb.OrganisationLive do
     ~H"""
     <.link
       id={"workspace-#{@workspace.id}-name"}
-      navigate={~p"/#{@scope.organisation}/#{@workspace}"}
+      navigate={@landing}
       class="q-wr"
     >
       <span class="q-wr-nm">
@@ -303,6 +303,7 @@ defmodule ApiaryWeb.OrganisationLive do
       assign(socket,
         page_title: gettext("No workspace yet"),
         workspaces: [],
+        landings: %{},
         modes: %{},
         waiting: true,
         added: false
@@ -319,6 +320,7 @@ defmodule ApiaryWeb.OrganisationLive do
     |> assign(:waiting, false)
     |> assign(:page_title, scope.organisation.name)
     |> assign(:workspaces, workspaces)
+    |> assign(:landings, landings(scope, workspaces))
     |> assign(:modes, modes(scope, workspaces))
     |> assign(:people, people(scope))
     |> assign_async(:facts, fn -> {:ok, %{facts: Runs.workspace_facts(scope, workspaces)}} end)
@@ -331,6 +333,25 @@ defmodule ApiaryWeb.OrganisationLive do
     case Enum.find(memberships, &(&1.organisation.id == organisation.id)) do
       %{workspaces: [_ | _] = workspaces} -> workspaces
       _none -> [workspace]
+    end
+  end
+
+  # Where each workspace's link leads: the first page its sidebar shows the reader there
+  # (`ApiaryWeb.Layouts.workspace_landing/1`), asked with the scope they would have in it
+  # (`Apiary.Organisations.workspace_scopes/1`), one read for them all; the page's
+  # workspace with the page's scope, and a workspace that read did not find at its
+  # overview, as before.
+  defp landings(scope, workspaces) do
+    scopes = Map.put(Organisations.workspace_scopes(scope), scope.workspace.id, scope)
+
+    for workspace <- workspaces, into: %{} do
+      landing =
+        case Map.fetch(scopes, workspace.id) do
+          {:ok, here} -> Layouts.workspace_landing(here)
+          :error -> ~p"/#{scope.organisation}/#{workspace}"
+        end
+
+      {workspace.id, landing}
     end
   end
 

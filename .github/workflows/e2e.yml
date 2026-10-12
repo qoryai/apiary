@@ -9,18 +9,31 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to a pull request cancels its run in progress. A push to next or main, and a
+# manual run, are each a group of their own, the run's, so no later push cancels its run,
+# in progress or waiting, and the head of every push to them is checked.
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   live-reload:
-    name: Live reload behind a wall
+    # A pull request whose head is next, of this repository, skips the job: the push to
+    # next runs it on the same commit. GitHub does not evaluate the name of a job its if
+    # skips: the skipped job's check shows its name: expression as written, which is never
+    # a required check's name, so a required check is answered only by the push run's job
+    # on that commit. The push run's job carries the readable name. A fork's branch named
+    # next is not this repository's.
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Live reload behind a wall · checked by the push run' || 'Live reload behind a wall' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -32,6 +45,14 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
+
+      # The images this job pulls are qoryai's copies of them in ghcr.io/qoryai/ci-images,
+      # pulled by digest as this job, with its own token, and not without a login from an
+      # address GitHub's runners share, which registries limit.
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
       # Forager at the ref in .forager-e2e-ref, the Forager that qory is written for. The
@@ -82,6 +103,13 @@ jobs:
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
+
+      # The wall's image, curlimages/curl:8.16.0 in e2e/run.sh, is CI's copy of it, put under
+      # that name so that the job finds it and pulls nothing.
+      - name: Put CI's copy of the wall's image under the job's name for it
+        run: |
+          docker pull --quiet ghcr.io/qoryai/ci-images:curl-8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          docker tag ghcr.io/qoryai/ci-images:curl-8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6 curlimages/curl:8.16.0
 
       - name: Run the job
         env:

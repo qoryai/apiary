@@ -6,8 +6,8 @@ defmodule ApiaryWeb.TargetComponents do
 
   **The notation.** A target is its path in mono; its system goes before it, faint, only
   where the same path is in more than one system of the workspace
-  (`Apiary.Runs.shared_paths/2`), its own header included. In words, in titles, labels
-  and toasts, it is named the same way (`target_label/3`).
+  (`Apiary.Runs.shared_paths/2`), the header of the target's page included. In words, in
+  titles, labels and toasts, it is named the same way (`target_label/3`).
 
   **The address** follows the notation (question 9, answer A): `target_path/5` is where a
   target's page is, its path alone, `/:org/:workspace/targets/acme/shop`, and its system
@@ -17,8 +17,8 @@ defmodule ApiaryWeb.TargetComponents do
   alone: the page there lists the targets that share it.
 
   **A run's state** is a dot and, when the run needs a look, a word: running, failed,
-  timed out, lost and pending say so; a run that ended well, or was closed, is the dot
-  alone, its word for a screen reader. Never a pill.
+  timed out, lost and pending say so; a run that ended well is the dot alone, its word
+  for a screen reader. Never a pill.
 
   What Forager reported is untrusted: it is interpolated, never passed to `raw/1`.
   """
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.TargetComponents do
   A). `rest` is the segments of a tab after `-` (`["policy"]`, `["policy", "history"]`),
   none for its Overview. A nil system writes the path alone, whatever `shared` says.
 
-  The path's segments are the target's own, each escaped, unless one of them is empty,
+  The path's segments are the target path's, each escaped, unless one of them is empty,
   `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a segment of it
   is never read as the tab's separator or as a step up.
 
@@ -106,7 +106,7 @@ defmodule ApiaryWeb.TargetComponents do
   def shared?(_shared, _path), do: false
 
   @doc """
-  path_segments/1 is the segments a target's path takes in its page's URL: its own, or
+  path_segments/1 is the segments a target's path takes in its page's URL: its segments, or
   the path whole when a segment of it would be misread (`target_path/4`).
   """
   @spec path_segments(String.t()) :: [String.t()]
@@ -126,9 +126,9 @@ defmodule ApiaryWeb.TargetComponents do
   end
 
   @doc """
-  A run's state as a dot and, when the run needs a look, its word (running, pending,
-  failed, timed out, lost); the dot alone for one that succeeded, ended or was closed, its
-  word there for a screen reader. `word` forces the word, as a header does.
+  A run's state as a dot and its word (pending, running, failed, cancelled, lost); the dot
+  alone for one that completed, its word there for a screen reader. `word` forces the word,
+  as a header does. A name an older release stored reads as its new state.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
@@ -137,7 +137,11 @@ defmodule ApiaryWeb.TargetComponents do
 
   def state_mark(assigns) do
     assigns =
-      assign(assigns, :quiet, assigns.state in ~w(succeeded ended closed) and !assigns.word)
+      assign(
+        assigns,
+        :quiet,
+        Apiary.Runs.Run.current_state(assigns.state) == "completed" and !assigns.word
+      )
 
     ~H"""
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>

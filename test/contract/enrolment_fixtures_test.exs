@@ -57,6 +57,16 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
     })
   end
 
+  defp built("answer-gateway.json") do
+    Enrolment.answer_body(%{
+      access_key_id: "ak_f1xt0re00000000g",
+      node_id: "ng_f1xt0re000000000",
+      node_kind: :gateway,
+      stored_secrets: false,
+      apiary_public_key: server_keys(:one)
+    })
+  end
+
   defp built("refusal-key-invalid.json"),
     do: Enrolment.refusal_body(:key_invalid, server_keys(:one))
 
@@ -71,10 +81,21 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
   defp built("refusal-key-limit-rotation.json"),
     do: Enrolment.refusal_body(:key_limit, server_keys(:rotation))
 
-  @requests ~w(request.json request-two-fingerprints.json)
+  @requests ~w(request.json request-two-fingerprints.json request-gateway.json)
   @answers ~w(answer.json refusal-key-invalid.json refusal-key-limit.json
               refusal-rate-limited.json refusal-key-invalid-rotation.json
-              refusal-key-limit-rotation.json)
+              refusal-key-limit-rotation.json answer-gateway.json)
+
+  # The request each answer answers, whose proof is its line 3.
+  defp request_of("answer-gateway.json"), do: "request-gateway.json"
+
+  defp request_of(name),
+    do: if(name =~ "rotation", do: "request-two-fingerprints.json", else: "request.json")
+
+  # The fixture key a request's proof is under: a gateway's code is redeemed under the
+  # fixture gateway key, a node's under the fixture access key.
+  defp enrolling_key("request-gateway.json"), do: fixture_key!("gateway_key")
+  defp enrolling_key(_name), do: fixture_key!("access_key")
 
   defp schema, do: ContractSchema.schema!(contract_dir(), "enrolment.schema.json")
 
@@ -96,7 +117,8 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
 
       for {name, fingerprints} <- [
             {"request.json", [signing]},
-            {"request-two-fingerprints.json", [signing, next]}
+            {"request-two-fingerprints.json", [signing, next]},
+            {"request-gateway.json", [signing]}
           ] do
         assert {:ok, request} = Enrolment.decode(contract_file!("enrolment/" <> name)), name
         assert request.fingerprints == fingerprints, name
@@ -105,14 +127,16 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       end
     end
 
-    test "each proof is the known answer's lines, and verifies under the fixture access key alone" do
+    test "each proof is the known answer's lines, and verifies under its fixture key alone" do
       %{"enrolment" => enrolments} = known_answers!("signatures")
-      access_key = fixture_key!("access_key")
-      assert length(enrolments) == 2
+
+      assert Enum.sort(Enum.map(enrolments, & &1["body"])) ==
+               Enum.sort(Enum.map(@requests, &("fixtures/enrolment/" <> &1)))
 
       for %{"body" => "fixtures/enrolment/" <> name, "lines" => lines, "length" => length} <-
             enrolments do
         {:ok, request} = Enrolment.decode(contract_file!("enrolment/" <> name))
+        access_key = enrolling_key(name)
 
         message =
           SignedMessage.enrolment(
@@ -173,15 +197,23 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
     test "each is the body the builders make, byte for byte, and validates" do
       for name <- @answers do
         assert built(name) == contract_file!("enrolment/" <> name), name
+
         assert ContractSchema.validate(schema(), Jason.decode!(built(name))) == :ok, name
       end
     end
 
     test "the invalid answers are refused by the schema, and are no body the builders make" do
-      for name <- ~w(enrolment-answer-no-node-id.json enrolment-refusal-no-key.json) do
+      for name <-
+            ~w(enrolment-answer-no-node-id.json enrolment-refusal-no-key.json
+               enrolment-answer-gateway-kind-of-a-node.json) do
         json = contract_json!("invalid/" <> name)
         assert {:error, _} = ContractSchema.validate(schema(), json), name
-        refute contract_file!("invalid/" <> name) in Enum.map(@answers, &built/1), name
+
+        refute contract_file!("invalid/" <> name) in Enum.map(
+                 @answers,
+                 &built/1
+               ),
+               name
       end
     end
 
@@ -197,8 +229,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       for {name, %{"lines" => lines, "signature" => signature, "length" => length}} <-
             enrolment_answers do
         ["qory-enrol-answer-ed25519-v1", status, proof, _hash, "", ""] = lines
-        request = if name =~ "rotation", do: "request-two-fingerprints.json", else: "request.json"
-        assert proof == contract_json!("enrolment/" <> request)["proof"], name
+        assert proof == contract_json!("enrolment/" <> request_of(name))["proof"], name
 
         message = SignedMessage.enrolment_answer(String.to_integer(status), proof, built(name))
         assert message == Enum.join(lines, "\n"), name

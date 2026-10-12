@@ -10,7 +10,7 @@ defmodule Apiary.Integrations.Fetch.Address do
       (`100.100.100.200`, `192.0.0.192`, and all of `fd00:ec2::/32`, where the IPv6
       metadata and pod identity addresses are), multicast, broadcast and the reserved
       `240.0.0.0/4`.
-    * **Private**, a network's own: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, the
+    * **Private**, for use inside a network: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, the
       shared space `100.64.0.0/10`, the rest of `192.0.0.0/24`, the benchmarking
       `198.18.0.0/15`, the unique local `fc00::/7` and Teredo's `2001::/32`.
     * **Public**: every other address.

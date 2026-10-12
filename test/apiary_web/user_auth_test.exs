@@ -8,6 +8,8 @@ defmodule ApiaryWeb.UserAuthTest do
 
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
+  import Phoenix.LiveViewTest
 
   alias Apiary.Organisations
 
@@ -61,6 +63,24 @@ defmodule ApiaryWeb.UserAuthTest do
         |> UserAuth.log_in_user(user)
 
       refute get_session(conn, :to_be_removed)
+    end
+
+    test "lands on the workspace's overview, the first page its sidebar shows", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+
+      conn = UserAuth.log_in_user(conn, user)
+      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}"
+    end
+
+    test "lands on the first page the workspace shows where it shows no overview", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      # The edition hides the record from the person, the overview with it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+
+      conn = UserAuth.log_in_user(conn, user)
+      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}/nodes"
     end
 
     test "redirects to the configured path", %{conn: conn, user: user} do
@@ -494,6 +514,88 @@ defmodule ApiaryWeb.UserAuthTest do
       assert_raise ApiaryWeb.NotFound, fn ->
         UserAuth.on_mount(:load_path_scope, params, session, socket)
       end
+    end
+  end
+
+  describe "the workspace last used in an organisation" do
+    setup %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: main} = signed_up = sign_up_fixture()
+      staging = workspace_fixture(organisation, "Staging")
+      %{conn: log_in_user(conn, user), signed_up: signed_up, main: main, staging: staging}
+    end
+
+    defp last_used(user) do
+      Apiary.Repo.all(
+        from l in Apiary.Organisations.LastWorkspace,
+          where: l.user_id == ^user.id,
+          select: {l.organisation_id, l.workspace_id}
+      )
+    end
+
+    test "a workspace's page records it, a full load and a live navigation alike", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+
+      {:ok, view, _html} = live(conn, ~p"/#{organisation}/#{ctx.main}/runs")
+      assert last_used(user) == [{organisation.id, ctx.main.id}]
+
+      # A live navigation to another workspace's page, with no request of its own.
+      {:ok, _view, _html} = live_redirect(view, to: ~p"/#{organisation}/#{ctx.staging}/nodes")
+      assert last_used(user) == [{organisation.id, ctx.staging.id}]
+
+      # Its organisation's own page opens it, and records nothing.
+      conn = get(conn, ~p"/#{organisation}")
+      assert get_session(conn, :last_workspace_id) == ctx.staging.id
+      assert last_used(user) == [{organisation.id, ctx.staging.id}]
+    end
+
+    test "one row per organisation", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+      other = sign_up_fixture()
+      join_fixture(other.scope, user)
+
+      get(conn, ~p"/#{organisation}/#{ctx.staging}")
+      get(conn, ~p"/#{other.organisation}/#{other.workspace}/runs")
+
+      assert Enum.sort(last_used(user)) ==
+               Enum.sort([
+                 {organisation.id, ctx.staging.id},
+                 {other.organisation.id, other.workspace.id}
+               ])
+    end
+
+    test "a request that is no page records nothing", ctx do
+      %{conn: conn, signed_up: %{user: user, organisation: organisation}} = ctx
+
+      get(conn, ~p"/#{organisation}/#{ctx.staging}/jump")
+      get(conn, ~p"/#{organisation}/#{ctx.staging}/switch/runs")
+      assert last_used(user) == []
+    end
+  end
+
+  describe "reload_scope/1" do
+    test "sends an open page of a feature hidden meanwhile to the organisation's overview, and says so",
+         %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      {:ok, view, _html} = live(log_in_user(conn, user), ~p"/#{organisation}/#{workspace}/runs")
+
+      # The edition hides the record from the person while the page is open.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+      send(view.pid, {:membership_changed, %{organisation_id: organisation.id}})
+
+      {path, flash} = assert_redirect(view)
+      assert path == ~p"/#{organisation}"
+      assert flash["error"] == "That page is no longer shown in #{organisation.name}."
+    end
+
+    test "keeps an open page of a feature still shown", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      {:ok, view, _html} = live(log_in_user(conn, user), ~p"/#{organisation}/#{workspace}/runs")
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
+      send(view.pid, {:membership_changed, %{organisation_id: organisation.id}})
+
+      assert render(view) =~ "Runs"
+      refute_redirected(view)
     end
   end
 

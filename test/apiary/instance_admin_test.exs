@@ -158,5 +158,54 @@ defmodule Apiary.InstanceAdminTest do
 
       assert instance_organisation() == nil
     end
+
+    test "an address an account has already is refused with the sign-up's message" do
+      # An account in no organisation, as one left after its own was deleted.
+      existing = Apiary.AccountsFixtures.user_fixture()
+
+      output =
+        capture_io(fn ->
+          assert {:error, :invalid} = Release.grant_instance_admin(existing.email, "Acme")
+        end)
+
+      assert output == "Not created: email has already been taken.\n"
+      assert instance_organisation() == nil
+    end
+  end
+
+  describe "a level the edition refuses in the instance's organisation" do
+    test "granting is refused where it refuses owner, and changes and records nothing" do
+      %{user: user} = sign_up_fixture()
+      before = Repo.aggregate(Entry, :count)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoOwner)
+
+      assert {:error, {:level_refused, :no_owner}} = Organisations.grant_instance_admin(user)
+      refute membership(user)
+      assert Repo.aggregate(Entry, :count) == before
+    end
+
+    test "revoking is refused where it refuses member, and the admin stays one" do
+      %{user: user} = sign_up_fixture()
+      {:ok, %{membership: %Membership{level: :owner}}} = Organisations.grant_instance_admin(user)
+      before = Repo.aggregate(Entry, :count)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoMember)
+
+      assert {:error, {:level_refused, :no_member}} = Organisations.revoke_instance_admin(user)
+      assert %Membership{level: :owner} = membership(user)
+      assert Repo.aggregate(Entry, :count) == before
+    end
+  end
+
+  test "granting and revoking each ask the edition's rows once, at {:people}" do
+    %{user: user} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.RecordsLockRows)
+
+    assert {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
+    assert_received {:lock_rows, :people}
+    refute_received {:lock_rows, _point}
+
+    assert {:ok, %Membership{level: :member}} = Organisations.revoke_instance_admin(user)
+    assert_received {:lock_rows, :people}
+    refute_received {:lock_rows, _point}
   end
 end

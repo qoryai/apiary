@@ -11,24 +11,24 @@ defmodule Apiary.Deletion.Tables do
   holds. The test checks that too.
 
   The walk is the edition's tables (`c:Apiary.Edition.deletion_tables/0`), in the
-  edition's own delete order, then the core's, in theirs. The edition's go first because a
+  edition's delete order, then the core's, in theirs. The edition's go first because a
   foreign key only ever points from an edition's table to a core table, never back: an
   edition adds tables beside the core's and alters none of them, so no core table can hold
   a key to one of the edition's, and purging all of the edition's tables before any of the
-  core's is always a valid order. Each side keeps its own order within it.
+  core's is always a valid order. Each side keeps its order within it.
 
   A table marked `:workspace` also has `workspace_id` and holds a workspace's rows:
   `workspace_tables/0` lists those, in the same order, the tables a workspace's purge
-  walks. A table marked `:organisation` holds the organisation's own rows: `memberships`
+  walks. A table marked `:organisation` holds the organisation's rows: `memberships`
   has no workspace, since a person stays in the organisation when a workspace goes, and
   only their access to it goes with it. `organisations` itself is not on the list: its row
-  is deleted last, after them all. Nor are the instance's own tables, `users` and
+  is deleted last, after them all. Nor are the instance's tables, `users` and
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
   instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
   keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`) and Oban's.
   """
 
-  @typedoc "What a table holds: an organisation's own rows, or a workspace's too."
+  @typedoc "What a table holds: an organisation's rows, or a workspace's too."
   @type mark :: :organisation | :workspace
 
   # Children first: a run's events, log and connections before the run; the deliveries
@@ -63,6 +63,7 @@ defmodule Apiary.Deletion.Tables do
     {"invitations", :workspace},
     {"memberships", :organisation},
     {"audit_entries", :workspace},
+    {"last_workspaces", :workspace},
     {"workspaces", :organisation}
   ]
 

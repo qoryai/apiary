@@ -3,8 +3,10 @@ defmodule Apiary.Runs.Event do
   One event of a run, stored as received: the record everything else is
   projected from. `run_id` is the row of `runs`, not the subject; `sequence`
   is the ten-digit string of the wire as an integer; `data` is the event's
-  `data` untouched, whatever its type. `projected_at` is null until the
-  projector has folded the event.
+  `data` untouched, whatever its type. `instance_id` is the instance id of the
+  request that delivered it, nil for one stored before it was kept or when it
+  could not be kept (`Apiary.Nodes.Instance.instance_id?/1`). `projected_at` is
+  null until the projector has folded the event.
   """
   use Ecto.Schema
 
@@ -17,6 +19,7 @@ defmodule Apiary.Runs.Event do
     field :time, :utc_datetime_usec
     field :data, :map, default: %{}
     field :received_at, :utc_datetime_usec
+    field :instance_id, :string
     field :projected_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation

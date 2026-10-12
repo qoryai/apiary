@@ -107,12 +107,19 @@ defmodule ApiaryWeb.InvitationLive.Accept do
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
-    {:ok,
-     assign(socket,
-       page_title: gettext("Invitation"),
-       token: token,
-       invitation: Organisations.get_invitation_by_token(token)
-     )}
+    # Counted before the token is looked up (`ApiaryWeb.AttemptLimits`).
+    case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
+      {:ok, socket} ->
+        {:ok,
+         assign(socket,
+           page_title: gettext("Invitation"),
+           token: token,
+           invitation: Organisations.get_invitation_by_token(token)
+         )}
+
+      {:limited, socket} ->
+        {:ok, socket}
+    end
   end
 
   @impl true

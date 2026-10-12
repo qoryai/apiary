@@ -8,6 +8,10 @@ defmodule Apiary.Contract.SignedFixturesTest do
   signed around, 1700000000. The clock is in the application
   environment, so this module is not async.
 
+  The registrations are a sequence, in the order of their names: a fixture that the
+  contract says is replayed after another is replayed after it here
+  (`@replayed_after`), each test on a database of its own.
+
   Every answer is checked for its signature too: a `401`, and a refusal before
   verification, go out unsigned; every other answer is signed under the instance's key
   (`Apiary.SigningKey`), bound to the request's signature.
@@ -17,6 +21,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{ContractSchema, Repo, SigningKey}
   alias Apiary.Runs.{Event, Projector, Run}
@@ -24,7 +29,18 @@ defmodule Apiary.Contract.SignedFixturesTest do
   @moduletag :contract
 
   @clock 1_700_000_000
-  @served ["/.well-known/qory-configuration", "/v1/events", "/v1/run-configuration"]
+  @served ["/.well-known/qory-configuration", "/v1/events", "/v1/runs"]
+  @run "0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f"
+
+  # The fixtures each is replayed after, as its note says: the first acceptance of the run
+  # (register-replayed), then the repeat of it (register-valid), then the reload.
+  # register-instance-limit's node allows one live instance, the fixture instance's run.
+  @replayed_after %{
+    "register-valid.json" => ["register-replayed.json"],
+    "register-run-id-used.json" => ["register-replayed.json"],
+    "register-instance-limit.json" => ["register-replayed.json"],
+    "reload-valid.json" => ["register-replayed.json", "register-valid.json"]
+  }
 
   # Every file whose target is served is replayed; a file named here is not.
   @skipped []
@@ -61,7 +77,10 @@ defmodule Apiary.Contract.SignedFixturesTest do
     |> dispatch(ApiaryWeb.Endpoint, method |> String.downcase() |> String.to_atom(), target, body)
   end
 
-  defp served?(%{"target" => target}), do: URI.parse(target).path in @served
+  defp served?(%{"target" => target}) do
+    path = URI.parse(target).path
+    path in @served or path == "/v1/runs/" <> @run
+  end
 
   # Refused before verification: a header the signature depends on sent twice.
   defp before_verification?(%{"headers" => headers}),
@@ -74,29 +93,34 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
   test "the fixtures are there, and the ones expected" do
     names = Enum.map(@fixtures, &elem(&1, 0))
-    assert length(names) == 11
+    assert length(names) == 16
 
     for name <-
           ~w(batch-valid.json batch-replayed.json batch-tampered.json batch-unknown-key.json
              get-configuration-valid.json get-configuration-stale.json
              get-configuration-bad-signature.json get-configuration-header-twice.json
-             get-configuration-no-instance-id.json get-run-configuration-valid.json
-             get-run-configuration-labels-valid.json),
+             get-configuration-no-instance-id.json register-valid.json
+             register-replayed.json register-run-id-used.json register-instance-limit.json
+             register-stale.json register-interval-too-long.json reload-valid.json),
         do: assert(name in names, name)
+
+    for {name, before} <- @replayed_after, other <- [name | before], do: assert(other in names)
 
     for name <- @skipped, do: assert(name in names)
   end
 
-  for {name, fixture} <- @fixtures, name not in @skipped do
+  for {name, _fixture} <- @fixtures, name not in @skipped do
     @name name
-    # The run configuration is the security feature's: absent, not answered, without it.
-    if fixture |> Map.fetch!("target") |> URI.parse() |> Map.fetch!(:path) ==
-         "/v1/run-configuration",
-       do: @tag(needs: :security)
+    # A reload is answered only where the workspace serves a run configuration, which is
+    # the security feature's: without it, no reload is answered.
+    if String.starts_with?(name, "reload-"), do: @tag(needs: :security)
 
     test "#{name} is answered as the contract expects" do
       fixture = fixture!(@name)
       assert served?(fixture)
+
+      for before <- Map.get(@replayed_after, @name, []),
+          do: assert(replay(fixture!(before)).status == 200, before)
 
       conn = replay(fixture)
       assert conn.status == fixture["expect"], fixture["note"]
@@ -137,15 +161,124 @@ defmodule Apiary.Contract.SignedFixturesTest do
     assert digest == ApiaryWeb.Contract.Configuration.digest(conn.resp_body)
   end
 
-  @tag needs: :security
-  test "get-run-configuration-valid: the answer is a run configuration under its digest" do
-    conn = replay(fixture!("get-run-configuration-valid.json"))
-    assert conn.status == 200
-    assert :ok = Apiary.Policy.Schema.validate(conn.resp_body)
+  test "register-replayed, then register-valid: one run, the same answer again", %{node: node} do
+    first = replay(fixture!("register-replayed.json"))
+    assert first.status == 200
+    assert :ok = Apiary.Policy.Schema.validate(first.resp_body)
 
-    [digest] = Plug.Conn.get_resp_header(conn, "x-qory-run-configuration")
-    assert digest == Apiary.Policy.Render.digest(conn.resp_body)
-    assert Plug.Conn.get_resp_header(conn, "etag") == [~s("#{digest}")]
+    [digest] = Plug.Conn.get_resp_header(first, "x-qory-run-configuration")
+    assert digest == Apiary.Policy.Render.digest(first.resp_body)
+    assert Plug.Conn.get_resp_header(first, "etag") == [~s("#{digest}")]
+
+    # The run, registered under the fixture access key, on its node, from the instance the
+    # request claimed, projected from sequence 1.
+    run = Repo.one!(Run)
+    assert run.run_id == @run
+    assert run.node_id == node.id
+    assert run.instance_id == instance_id()
+    assert run.projected_sequence == 1
+    assert run.registration_labels == %{"forge" => "github.com", "repository" => "acme/shop"}
+
+    again = replay(fixture!("register-valid.json"))
+    assert again.status == 200
+    assert again.resp_body == first.resp_body
+
+    for header <- ~w(x-qory-run-configuration etag x-qory-configuration),
+        do: assert(get_resp_header(again, header) == get_resp_header(first, header), header)
+
+    assert Repo.aggregate(Run, :count) == 1
+  end
+
+  @tag needs: :security
+  test "reload-valid: the run's own run configuration, under the registration's digest" do
+    registered = replay(fixture!("register-valid.json"))
+    assert registered.status == 200
+
+    conn = replay(fixture!("reload-valid.json"))
+    assert conn.status == 200
+    assert conn.resp_body == registered.resp_body
+
+    for header <- ~w(x-qory-run-configuration etag x-qory-configuration),
+        do: assert(get_resp_header(conn, header) == get_resp_header(registered, header), header)
+  end
+
+  test "the refused registrations store no run" do
+    for name <- ~w(register-stale.json register-interval-too-long.json) do
+      assert replay(fixture!(name)).status in [400, 401], name
+      assert Repo.aggregate(Run, :count) == 0, name
+    end
+
+    assert replay(fixture!("register-replayed.json")).status == 200
+    assert replay(fixture!("register-run-id-used.json")).status == 409
+    assert replay(fixture!("register-instance-limit.json")).status == 409
+    assert Repo.all(Run) |> Enum.map(& &1.run_id) == [@run]
+  end
+
+  test "fixtures/run-registration/*.json, signed here at their time, are registered", %{
+    scope: scope,
+    node: node
+  } do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+    files = contract_dir() |> Path.join("fixtures/run-registration/*.json") |> Path.wildcard()
+    {through, direct} = Enum.split_with(files, &String.starts_with?(Path.basename(&1), "gateway"))
+    assert direct != []
+    assert through != []
+
+    # Each on its own, as several name the same run.
+    register = fn file ->
+      Repo.delete_all(Run)
+      body = File.read!(file)
+      {:ok, time, 0} = DateTime.from_iso8601(Jason.decode!(body)["time"])
+      Application.put_env(:apiary, :contract_now, fn -> DateTime.to_unix(time) end)
+
+      conn = signed_register(build_conn(), key_id, seed, body)
+      assert conn.status == 200, Path.basename(file)
+      assert signed_answer?(conn), Path.basename(file)
+      Jason.decode!(conn.resp_body)
+    end
+
+    # The direct shape from the fixture key's node, which goes directly.
+    for file <- direct, do: assert(%{"version" => 1} = register.(file))
+
+    # The gateway shape once the node uses its workspace's default gateway, which has a key.
+    gateway = gateway_fixture(scope)
+    contract_key_fixture(scope, node: gateway)
+
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^node.id),
+      set: [gateway_choice: :default]
+    )
+
+    for file <- through, do: assert(%{"run_key" => "qrk_" <> _} = register.(file))
+  end
+
+  test "fixtures/invalid/run-registration-*.json are refused, signed, as invalid_request" do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+    pattern = Path.join(contract_dir(), "fixtures/invalid/run-registration-*.json")
+    files = pattern |> Path.wildcard() |> Enum.reject(&String.contains?(&1, "-answer-"))
+    assert files != []
+
+    for file <- files do
+      conn = signed_register(build_conn(), key_id, seed, File.read!(file))
+      assert %{"error" => "invalid_request"} = json_response(conn, 400), Path.basename(file)
+      assert signed_answer?(conn)
+    end
+
+    assert Repo.aggregate(Run, :count) == 0
+  end
+
+  test "fixtures/invalid/configuration-*.json fail the schema the discovery document passes" do
+    document = replay(fixture!("get-configuration-valid.json")).resp_body |> Jason.decode!()
+    assert :ok = ContractSchema.validate(configuration_schema(), document)
+
+    pattern = Path.join(contract_dir(), "fixtures/invalid/configuration-*.json")
+    files = Path.wildcard(pattern)
+    assert Enum.any?(files, &(Path.basename(&1) == "configuration-run-url-query.json"))
+
+    for file <- files do
+      assert {:error, _} =
+               ContractSchema.validate(configuration_schema(), Jason.decode!(File.read!(file))),
+             Path.basename(file)
+    end
   end
 
   test "batch-valid and then batch-replayed: both 202, nothing stored twice", %{node: node} do
@@ -175,54 +308,78 @@ defmodule Apiary.Contract.SignedFixturesTest do
     end
   end
 
-  test "the batches of a run a gateway opened: no session, and it ends quiet, or failed when the gateway was lost" do
+  test "a session's run its starter stopped with no outcome: cancelled, stopped" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    project = fn files ->
-      Repo.delete_all(Run)
-
-      for file <- files do
-        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
-        assert conn.status == 202, file
-      end
-
-      {:ok, run} = Projector.project(Repo.one!(Run))
-      run
+    for batch <- ["first.json", "session-stopped.json"] do
+      conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> batch))
+      assert conn.status == 202, batch
     end
 
-    run = project.(["gateway-first.json", "gateway-quiet.json"])
+    {:ok, run} = Projector.project(Repo.one!(Run))
+    assert {run.state, run.reason, run.exit_code} == {"cancelled", "stopped", -1}
+  end
 
-    assert run.opened_by == "gateway"
-    assert Run.no_session?(run)
-    assert {run.runtime, run.command, run.host} == {nil, nil, nil}
-    assert run.labels["run_key"] == "rk-0001"
-    assert {run.state, run.reason, run.quiet_seconds} == {"ended", "quiet", 1800}
-    assert {run.exit_code, run.duration_ms} == {nil, 1_804_900}
+  test "a start the schema refuses for what opened it is refused, signed, as invalid_request" do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+    [started | rest] = contract_json!("batch/first.json")
+    schema = ContractSchema.event!(contract_dir())
 
-    run = project.(["gateway-first.json", "gateway-lost.json"])
+    for started <- [
+          contract_json!("invalid/event-started-unknown-opened-by.json"),
+          put_in(started, ["data", "opened_by"], "gateway"),
+          put_in(started, ["data", "credential"], "none")
+        ] do
+      assert {:error, _} = ContractSchema.validate(schema, started)
+      conn = signed_post(build_conn(), key_id, seed, [started | rest])
+      assert json_response(conn, 400) == %{"error" => "invalid_request"}
+      assert signed_answer?(conn)
+    end
 
-    assert run.opened_by == "gateway"
+    assert Repo.aggregate(Run, :count) == 0
+  end
 
-    assert {run.state, run.reason, run.quiet_seconds, run.exit_code} ==
-             {"failed", "gateway_lost", nil, nil}
+  test "a refusal of the server's with its status is stored as sent, a code the list does not hold included" do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+
+    for {file, code} <- [
+          {"refused-not-found.json", "not_found"},
+          {"refused-unlisted-server-code.json", "example_server_code"}
+        ] do
+      Repo.delete_all(Run)
+      conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
+      assert conn.status == 202, file
+
+      assert [%Event{type: "dev.qory.run.refused", data: data}] = Repo.all(Event)
+      assert data == %{"code" => code, "status" => 404}, file
+    end
   end
 
   test "fixtures/invalid/batch-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    for file <- contract_dir() |> Path.join("fixtures/invalid/batch-*.json") |> Path.wildcard() do
+    files =
+      contract_dir()
+      |> Path.join("fixtures/invalid/batch-*.json")
+      |> Path.wildcard()
+      |> Enum.reject(&String.contains?(&1, "batch-answer-"))
+
+    assert files != []
+
+    for file <- files do
       conn = signed_post(build_conn(), key_id, seed, File.read!(file))
       assert json_response(conn, 400) == %{"error" => "invalid_request"}, Path.basename(file)
       assert signed_answer?(conn)
     end
   end
 
-  test "fixtures/invalid/event-ping-interval-too-long.json, as a batch, is invalid_request" do
+  # The record's registration is never posted: a batch that holds one is refused.
+  test "fixtures/invalid/event-registered-interval-too-long.json, as a batch, is invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
-    ping = contract_json!("invalid/event-ping-interval-too-long.json")
-    assert ping["data"]["interval_seconds"] > 300
+    registered = contract_json!("invalid/event-registered-interval-too-long.json")
+    assert registered["type"] == "dev.qory.run.registered"
 
-    conn = signed_post(build_conn(), key_id, seed, [ping])
+    conn = signed_post(build_conn(), key_id, seed, [registered])
     assert json_response(conn, 400) == %{"error" => "invalid_request"}
     assert signed_answer?(conn)
     assert Repo.aggregate(Run, :count) == 0

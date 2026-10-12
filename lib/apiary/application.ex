@@ -33,8 +33,12 @@ defmodule Apiary.Application do
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
+    # The commit the release was built from, for GET /health.
+    Apiary.Revision.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()
+    # A database connection encrypted without its certificate checked is said once.
+    Apiary.DatabaseUrl.boot()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
@@ -43,35 +47,45 @@ defmodule Apiary.Application do
     # workspace ids and without its arguments.
     Apiary.Job.Log.attach()
 
-    # The edition's processes, once the core's are up and before requests come.
-    children =
-      [
-        ApiaryWeb.Telemetry,
-        Apiary.Repo,
-        {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: Apiary.PubSub},
-        {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
-        Apiary.Runs.RateLimit,
-        Apiary.Nodes.Throttle
-      ] ++
-        migrator() ++
-        [
-          # The job queue, after the migrator so its tables exist when it
-          # starts. `Apiary.Job` is what every job runs inside.
-          {Oban, oban()}
-        ] ++
-        liveness() ++
-        retention() ++
-        Apiary.Edition.children() ++
-        [
-          # Start to serve requests, typically the last entry
-          ApiaryWeb.Endpoint
-        ]
+    children = children()
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Apiary.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  @doc false
+  # The supervisor's children, in the order they start. The edition's processes come once
+  # the core's are up and before requests come; the set-up link's step (`Apiary.Setup`),
+  # which logs the link until the instance is set up, after them, and just before the
+  # endpoint.
+  def children do
+    [
+      ApiaryWeb.Telemetry,
+      Apiary.Repo,
+      {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: Apiary.PubSub},
+      {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
+      Apiary.Runs.RateLimit,
+      Apiary.Nodes.Throttle
+    ] ++
+      migrator() ++
+      key_check() ++
+      mail_cache() ++
+      [
+        # The job queue, after the migrator so its tables exist when it
+        # starts. `Apiary.Job` is what every job runs inside.
+        {Oban, oban()}
+      ] ++
+      liveness() ++
+      retention() ++
+      Apiary.Edition.children() ++
+      setup() ++
+      [
+        # Start to serve requests, typically the last entry
+        ApiaryWeb.Endpoint
+      ]
   end
 
   # Oban's configuration with the crontab built here, the core's and the edition's, so an
@@ -105,6 +119,26 @@ defmodule Apiary.Application do
     else
       []
     end
+  end
+
+  # The check that the instance runs with the keys it first started with, after the
+  # migrator so the columns it reads exist, and before anything serves. It runs with
+  # MIGRATE_ON_BOOT=false too. Off in test, where the tests call `Apiary.KeyCheck.check/0`.
+  defp key_check do
+    if Apiary.KeyCheck.enabled?(), do: [Apiary.KeyCheck], else: []
+  end
+
+  # Off in test, where the tests call `Apiary.Setup.boot/0` themselves.
+  defp setup do
+    if Apiary.Setup.enabled?(), do: [Apiary.Setup], else: []
+  end
+
+  # The node's copy of the mail settings an instance admin saved, after the migrator so
+  # their columns exist, and before anything that sends an email: it says once, then, when
+  # no mail is set (`Apiary.Mail.boot/0`). Off in test, where `Apiary.Mail` reads them from
+  # each test's sandbox.
+  defp mail_cache do
+    if Apiary.Mail.Cache.enabled?(), do: [Apiary.Mail.Cache], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.

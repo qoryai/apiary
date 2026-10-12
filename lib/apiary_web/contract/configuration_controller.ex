@@ -5,11 +5,12 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   `ApiaryWeb.Contract.SignedRequest`, which verifies the request, refuses what the
   contract refuses before the document (a contract revision not served, a stale
   timestamp) and signs the answer. The events URL it names is served by
-  `ApiaryWeb.Contract.EventsController`.
+  `ApiaryWeb.Contract.EventsController`, and the run endpoint's by
+  `ApiaryWeb.Contract.RegistrationController`.
 
-  The document names the key's node or node pool, lists the instance's signing key, and
-  names the `run` section only for a workspace whose policy somebody has made
-  (`Apiary.Policy.managed?/1`); see `ApiaryWeb.Contract.Configuration`.
+  The document names the key's node or node pool and its workspace, where the events go
+  and where a run registers, and lists the instance's signing key; see
+  `ApiaryWeb.Contract.Configuration`.
 
   The answer carries `X-Qory-Configuration`, the digest of the document as
   sent, which the gateway compares with the digest in later answers and fetches
@@ -17,12 +18,11 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   """
   use ApiaryWeb, :controller
 
-  alias Apiary.Policy.Serving
   alias ApiaryWeb.Contract.Configuration
 
   def show(conn, _params) do
     access_key = conn.assigns.access_key
-    {body, digest} = Configuration.document(access_key.node, Serving.managed?(access_key))
+    {body, digest} = Configuration.document(access_key)
 
     conn
     |> put_resp_header("x-qory-configuration", digest)

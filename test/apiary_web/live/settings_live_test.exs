@@ -256,6 +256,40 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert lv |> element("#retention-runs") |> render() =~ "events from before"
       assert lv |> render() |> String.split("retention-run-") |> length() == 2
     end
+
+    test "leaves out the log's size for a reader the run's Terminal is hidden from",
+         %{conn: conn, scope: scope} do
+      import Apiary.RunEventsFixtures
+
+      {:ok, workspace} = Apiary.Retention.update_retention(scope, %{events_retention_days: 10})
+      run = run_fixture(scope)
+      events_fixture(run, record())
+      {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+      now = DateTime.add(DateTime.utc_now(), 40 * 86_400, :second)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs"
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(lv, "#retention-runs li", "1 run: 14 events.")
+      pruned = lv |> element("#retention-runs") |> render()
+      refute pruned =~ "12 B"
+      refute pruned =~ "of log output in"
+      refute pruned =~ "chunk"
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#retention-runs li",
+               "1 run: 14 events and 12 B of log output in 2 chunks."
+             )
+    end
   end
 
   describe "as a member" do
@@ -408,6 +442,18 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#delete-organisation-modal")
     end
 
+    @tag needs: :secrets
+    test "the workspace's list leaves out the sections of a feature hidden from the reader",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutSecrets)
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, base <> "/runs")
+
+      assert has_element?(lv, ~s(#settings-tabs #settings-tab-runs[href="#{base}/runs"]))
+      refute has_element?(lv, "#settings-tab-integrations")
+      refute has_element?(lv, "#settings-tab-secrets")
+    end
+
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
       {:ok, lv, _html} = live(conn, base <> "/runs")
@@ -495,7 +541,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(
                lv,
                "#danger-zone #delete-workspace",
-               "The organisation's only workspace is not deleted on its own"
+               "The organisation's only workspace can't be deleted by itself"
              )
 
       refute has_element?(lv, "#delete-workspace-button")
@@ -523,6 +569,74 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#settings-tab-people")
       assert has_element?(lv, "#settings-tab-runs")
       refute has_element?(lv, "#danger-zone")
+    end
+  end
+
+  describe "the Workspaces tab, per level" do
+    # Whoever may rename or delete a workspace sees the tab and the list; Delete… asks
+    # its own action. In the core's edition owners and admins hold both, members neither.
+    setup do
+      owner = sign_up_fixture()
+      staging = workspace_fixture(owner.organisation, "Staging")
+      %{owner: owner, staging: staging}
+    end
+
+    defp as_level(ctx, :owner), do: {ctx.owner.user, ctx.owner.scope}
+
+    defp as_level(ctx, level) do
+      %{user: user, scope: scope} = member_fixture(ctx.owner.scope, level)
+      {user, scope}
+    end
+
+    for level <- [:owner, :admin] do
+      test "an #{level} sees the tab, the list, Delete… on each row and the note",
+           %{conn: conn, owner: owner, staging: staging} = ctx do
+        {user, scope} = as_level(ctx, unquote(level))
+        conn = log_in_user(conn, user)
+        org = owner.organisation
+
+        assert Organisations.lists_workspaces?(scope)
+
+        {:ok, lv, _html} = live(conn, ~p"/#{org}/settings")
+
+        assert has_element?(
+                 lv,
+                 ~s(#settings-tab-workspaces[href="#{~p"/#{org}/settings/workspaces"}"])
+               )
+
+        {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
+        assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
+
+        for workspace <- [owner.workspace, staging] do
+          assert has_element?(lv, "#workspace-#{workspace.id}", workspace.name)
+          assert has_element?(lv, "#workspace-#{workspace.id}-delete", "Delete…")
+        end
+
+        assert has_element?(lv, "#workspaces-note", "A deleted workspace is purged after")
+      end
+    end
+
+    test "a member sees no tab, and its path is refused",
+         %{conn: conn, owner: owner} = ctx do
+      {user, scope} = as_level(ctx, :member)
+      conn = log_in_user(conn, user)
+      org = owner.organisation
+      settings = ~p"/#{org}/settings"
+
+      refute Organisations.lists_workspaces?(scope)
+      assert Apiary.Targets.count_by_workspace(scope) == %{}
+
+      {:ok, lv, _html} = live(conn, settings)
+      refute has_element?(lv, "#settings-tab-workspaces")
+
+      assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
+               live(conn, ~p"/#{org}/settings/workspaces")
+
+      assert flash["error"] == "Only owners and admins open the list of workspaces."
+    end
+
+    test "nobody without a scope lists them" do
+      refute Organisations.lists_workspaces?(nil)
     end
   end
 

@@ -163,6 +163,39 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     assert text(pending) == "Not allowed"
   end
 
+  describe "rule_form" do
+    defp rule_form(scope) do
+      render_component(&PolicyComponents.rule_form/1,
+        id: "policy-rule",
+        title: "New rule",
+        form:
+          to_form(%{"action" => "allow", "host" => "", "paths" => "", "every" => "false"},
+            as: :rule
+          ),
+        scope: scope,
+        cancel: "/acme/policy"
+      )
+    end
+
+    defp button(html) do
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#policy-rule-add")
+      |> LazyHTML.text()
+      |> String.trim()
+    end
+
+    test "its button reads Add rule for the workspace and a level above it, Add target rule for a target" do
+      assert button(rule_form(:workspace)) == "Add rule"
+      assert button(rule_form(:organisation)) == "Add rule"
+
+      Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+        assert button(rule_form(:target)) == "Add target rule"
+        assert button(rule_form(:organisation)) == "Add rule"
+      end)
+    end
+  end
+
   describe "the list of rules" do
     @at ~U[2026-09-09 10:00:00.000000Z]
     @own %{key: "repo", label: "This repository", rank: 0}
@@ -204,7 +237,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         query={@query}
         path={fn query -> "/acme/main/policy?" <> URI.encode_query(RuleList.to_params(query)) end}
         sections={RuleList.sections(@rows, @activity)}
-        default_sort="Its own first"
+        default_sort="Repository rules first"
         activity={@activity}
         source={@source}
         can_add={@can_add}
@@ -243,7 +276,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~ ~s(id="policy-rules-filter-source-0") and
                html =~ ~s(href="/acme/main/policy?q=source%3Arepo")
 
-      assert html =~ ~s(aria-label="Sort: Its own first")
+      assert html =~ ~s(aria-label="Sort: Repository rules first")
       assert html =~ ~s(id="policy-rules-add" phx-click="composer_open" aria-expanded="false")
       assert text(html) =~ "1–2 of 2"
       # Its own first.
@@ -251,6 +284,86 @@ defmodule ApiaryWeb.PolicyComponentsTest do
 
       refute render_list([row(%{})], can_add: false) =~ "policy-rules-add"
       refute render_list([row(%{})], source: false) =~ "Source"
+    end
+
+    # The list as the core's pages draw it: a section with its header, Add rule a link to
+    # the New rule page and a row's Edit a link to its Edit rule page.
+    defp paged_list(assigns) do
+      ~H"""
+      <PolicyComponents.rule_list
+        id="policy-rules"
+        label="Rules"
+        listing={@listing}
+        query={%RuleList{}}
+        path={fn _query -> "/acme/main/policy" end}
+        sections={[]}
+        default_sort="Locked first"
+        title="Network access"
+        heading_id="policy-hosts-h"
+        count={@count}
+        add_path={@add_path}
+        edit_path={@edit_path}
+      >
+        <:link><a id="policy-reached" href="/acme/main/network">See what the runs reached</a></:link>
+        <:description>The hosts this workspace's runs may reach, and those they may not.</:description>
+      </PolicyComponents.rule_list>
+      """
+    end
+
+    defp paged(rows, opts) do
+      rendered_to_string(
+        paged_list(%{
+          listing: RuleList.list(rows, %RuleList{}, :unavailable),
+          count: length(rows),
+          add_path: opts[:add_path],
+          edit_path: opts[:edit_path]
+        })
+      )
+    end
+
+    test "with add_path, Add rule is the header's one primary button, and Edit a row's link" do
+      rows = [own(%{paths: ["/v1/*"]}), own(%{id: "r2", host: "mcp.example", action: "deny"})]
+
+      html =
+        paged(rows,
+          add_path: "/acme/main/policy/rules/new",
+          edit_path: &"/acme/main/policy/rules/#{&1}/edit"
+        )
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert LazyHTML.text(LazyHTML.query(doc, "#policy-rules-head h2#policy-hosts-h")) =~
+               "Network access"
+
+      assert LazyHTML.text(LazyHTML.query(doc, "#policy-rules-head #policy-rules-count")) =~
+               "2 rules"
+
+      assert Enum.count(LazyHTML.query(doc, "#policy-rules-head #policy-reached")) == 1
+
+      assert Enum.count(
+               LazyHTML.query(
+                 doc,
+                 "#policy-rules-head a#policy-rules-add.btn-primary[href='/acme/main/policy/rules/new']"
+               )
+             ) == 1
+
+      assert text(html) =~ "The hosts this workspace's runs may reach, and those they may not."
+
+      # The bar holds Find, Filter and Sort; Add rule is not in it, and no composer opens.
+      refute html =~ "composer_open"
+      assert Enum.count(LazyHTML.query(doc, "#policy-rules-add")) == 1
+
+      # Edit, for an allow and for a deny, a link to the rule's page.
+      assert html =~ ~s(href="/acme/main/policy/rules/r1/edit")
+      assert html =~ ~s(href="/acme/main/policy/rules/r2/edit")
+      assert Enum.count(LazyHTML.query(doc, "a#rule-r1-edit")) == 1
+      assert text(html) =~ "Edit Change to deny Remove"
+      refute text(html) =~ "Edit paths"
+
+      # A reader, with no add_path: the header, and no Add rule.
+      reader = paged(rows, add_path: nil, edit_path: nil)
+      assert reader =~ ~s(id="policy-hosts-h")
+      refute reader =~ ~s(id="policy-rules-add")
     end
 
     defp narrowed_list(assigns) do
@@ -423,7 +536,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         query={@query}
         path={fn _query -> "/acme/main/policy" end}
         sections={RuleList.sections(@rows, :unavailable)}
-        default_sort="Its own first"
+        default_sort="Repository rules first"
         confirming="r2"
       >
         <:confirm :let={rule}>
@@ -622,6 +735,9 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     end
 
     test "a member sees the card with no Change mode, and the line that says who may" do
+      # The card reads "today" from the clock: in a day of the reader's, clear of midnight
+      # (`Apiary.Midnight`).
+      ApiaryWeb.Format.put_time_zone(Apiary.Midnight.noon_zone())
       assigns = %{scope: @scope}
 
       html =
@@ -642,11 +758,11 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       doc = card(html)
       assert all(doc, "#policy-mode-change, form, input, button") == []
       refute html =~ "aria-disabled"
-      assert text_of(doc, "#policy-mode-source") == "Its own"
+      assert text_of(doc, "#policy-mode-source") == "Overridden"
       assert [_] = all(doc, ".q-modecard-tile .hero-eye")
 
       assert text_of(doc, "#policy-mode-effect") ==
-               "Its own, set by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
+               "Overridden by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
 
       assert text_of(doc, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
     end

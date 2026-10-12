@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
   the organisation, its members and invitations, its workspaces, their access keys, nodes,
-  runs, retention, security policy, stored secrets and variables, the trail's own pruning
+  runs, retention, security policy, stored secrets and variables, the trail's pruning
   and the instance's commands. The page asks it after the edition's describer, and it says
   nil for an action it does not know, as it does for the edition's.
   """
@@ -15,20 +15,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   import ApiaryWeb.RichText, only: [rich_gettext: 2, rich_ngettext: 4]
   import ApiaryWeb.Activity.Describer, only: [text: 1, from_to: 2]
 
-  alias Apiary.Features
-
-  # The actions of the `secrets` feature's surfaces, which `Apiary.Access` keeps under
-  # `security`.
-  @secrets_actions [
-    :"secret.read",
-    :"secret.write",
-    :"secret.use",
-    :"variable.read",
-    :"variable.edit",
-    :"connection.read",
-    :"connection.write"
-  ]
-  alias ApiaryWeb.{Format, RunComponents}
+  alias Apiary.{Access, Features}
+  alias ApiaryWeb.Format
 
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
@@ -39,9 +27,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.change_level"), do: gettext("Member's level changed")
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
+  def label(:"invitation.renew"), do: gettext("Invitation renewed")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
   def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
+  def label(:"account.password_link"), do: gettext("Password link made")
+  def label(:"instance.mail_save"), do: gettext("Mail settings saved")
+  def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -58,7 +50,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"node.edit"), do: gettext("Node changed")
   def label(:"node.delete"), do: gettext("Node deleted")
   def label(:"node.clear_instance"), do: gettext("Instance cleared")
-  def label(:"run.close"), do: gettext("Run closed")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
@@ -69,13 +60,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(_action), do: nil
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
-  # and integrations' only where they are: they ask `on?(scope, :secrets)`. Their entries
-  # still show, by their labels.
+  # and integrations' only where the reader is shown them, and the nodes' and their access
+  # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
+  # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
+  # show, by their labels.
   @impl true
-  def offered?(scope, action) when action in @secrets_actions,
-    do: Features.on?(scope, :secrets)
-
-  def offered?(_scope, _action), do: true
+  def offered?(scope, action) do
+    case Access.shown_as(action) do
+      shown_as when shown_as in [:secrets, :nodes] -> Features.visible?(scope, shown_as)
+      _shown_as -> true
+    end
+  end
 
   @impl true
   def sentence(action, entry, _names) do
@@ -131,6 +126,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Withdrew an invitation that could not be delivered")
 
   defp said(:"invitation.revoke", _details, _actor), do: gettext("Revoked an invitation")
+
+  defp said(:"invitation.renew", _details, _actor),
+    do: gettext("Made a new link for an invitation")
+
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),
@@ -138,6 +137,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"instance_admin.revoke", _details, _actor),
     do: gettext("Made an owner a member, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, :instance),
+    do: gettext("Made a password link, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, _actor),
+    do: gettext("Made a password link for a person")
+
+  defp said(:"instance.mail_save", _details, _actor),
+    do: gettext("Saved the mail settings, which sent a test link")
+
+  defp said(:"instance.mail_on", _details, _actor),
+    do: gettext("Turned mail on, by the test link")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -175,8 +186,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"node.clear_instance", _details, _actor),
     do: gettext("Cleared an instance of a node")
-
-  defp said(:"run.close", _details, _actor), do: gettext("Closed a run")
 
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
@@ -287,7 +296,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
           run_id ->
             href =
-              workspace && Features.on?(scope, :observability) &&
+              workspace && Features.visible?(scope, :observability) &&
                 ~p"/#{scope.organisation}/#{workspace}/runs/#{run_id}"
 
             %{text: String.slice(run_id, 0, 8), mono: true, href: href || nil}
@@ -347,6 +356,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  def change(action, _before, _after, %{"relay" => relay, "port" => port})
+      when action in [:"instance.mail_save", :"instance.mail_on"] and is_binary(relay),
+      do: [{:m, "#{relay}:#{port}"}]
+
   def change(:"member.suspend", _before, _after, _details), do: gettext("Suspended")
   def change(:"member.activate", _before, _after, _details), do: gettext("Active")
 
@@ -386,9 +399,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       )
     ]
   end
-
-  def change(:"run.close", before, after_, _details),
-    do: from_to(state(before["state"]), state(after_["state"]))
 
   def change(:"retention.edit", before, after_, _details) do
     for {field, label} <- [
@@ -456,14 +466,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp level(other), do: other
 
   defp kind_word("pool"), do: gettext("Node pool")
+  defp kind_word("gateway"), do: gettext("Gateway")
   defp kind_word(_node), do: gettext("Node")
 
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")
   defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
   defp limit_or_name(_field, value), do: to_string(value)
-
-  defp state(nil), do: nil
-  defp state(state), do: RunComponents.state_label(state)
 
   defp days(nil), do: gettext("Forever")
 

@@ -17,7 +17,12 @@ config :apiary, Apiary.Repo,
   pool_size: System.schedulers_online() * 2,
   # The read budgets ask the database for a few hundred MiB in one statement, which a
   # CI machine answers in more than the 15 s default. ExUnit's own limit still holds.
-  timeout: 120_000
+  timeout: 120_000,
+  # In the sandbox a test and its pages share one connection, and on a loaded CI machine
+  # a checkout waits longer than the defaults allow (about 100 ms). Now it is dropped only
+  # after 10 to 15 s.
+  queue_target: 5_000,
+  queue_interval: 5_000
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
@@ -32,6 +37,11 @@ config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.D
 
 # In test we don't send emails
 config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
+
+# Nor through the mail settings an instance admin saves (`Apiary.Mail`), which no node
+# keeps a copy of here: each test reads them from its own sandbox.
+config :apiary, Apiary.Mail, smtp_adapter: Swoosh.Adapters.Test
+config :apiary, Apiary.Mail.Cache, enabled: false
 
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
@@ -73,11 +83,29 @@ config :apiary, ApiaryWeb.Contract.EnrolmentController,
   code_rate: 1000,
   code_burst: 100_000
 
+# Every test signs in and opens its links from the same address, and some with the same
+# email address; the limits' own tests set their own (ApiaryWeb.AttemptLimitsTest).
+config :apiary, ApiaryWeb.AttemptLimits,
+  password_address: [rate: 1000, burst: 100_000],
+  password_address_total: [rate: 1000, burst: 100_000],
+  password_client: [rate: 1000, burst: 100_000],
+  link_address: [rate: 1000, burst: 100_000],
+  link_address_total: [rate: 1000, burst: 100_000],
+  link_page_client: [rate: 1000, burst: 100_000]
+
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.
 config :apiary, Apiary.Runs.Projector, async: false
 config :apiary, Apiary.Runs.Liveness, enabled: false
 config :apiary, Apiary.Retention.Scheduler, enabled: false
+
+# The key check at boot would record the test keys outside any test's sandbox; the tests
+# of Apiary.KeyCheck call it themselves.
+config :apiary, Apiary.KeyCheck, enabled: false
+
+# The set-up link's step at boot would store a code outside any test's sandbox; the tests
+# of Apiary.Setup call it themselves.
+config :apiary, Apiary.Setup, enabled: false
 
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.

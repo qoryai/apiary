@@ -42,6 +42,17 @@ defmodule Apiary.RetentionTest do
     Repo.get!(Run, run.id)
   end
 
+  # The same run, lost `lost` days ago (nil: with no `lost_at`).
+  defp lost_run(scope, days, lost) do
+    run = old_run(scope, days)
+
+    Repo.update_all(from(r in Run, where: r.id == ^run.id),
+      set: [state: "lost", lost_at: lost && days_ago(lost)]
+    )
+
+    Repo.get!(Run, run.id)
+  end
+
   defp key_id(scope) do
     %{access_key: %{id: id}} = access_key_fixture(scope)
     id
@@ -198,7 +209,7 @@ defmodule Apiary.RetentionTest do
 
       assert Map.take(pruned, kept) == Map.take(old, kept)
       assert pruned.event_count == 14
-      assert pruned.state == "succeeded"
+      assert pruned.state == "completed"
 
       assert count(Event, young) == 14
       assert Repo.aggregate(from(d in Delivery, where: d.run_id == ^young.run_id), :count) == 1
@@ -263,6 +274,87 @@ defmodule Apiary.RetentionTest do
     end
   end
 
+  describe "a lost run" do
+    test "lost less than 7 days ago keeps its events and its log, however short the settings",
+         %{scope: scope} do
+      scope = retain(scope, events_retention_days: 10, log_retention_days: 1)
+      past_events = lost_run(scope, 30, 6)
+      past_log = lost_run(scope, 6, 6)
+      chunks = count(LogChunk, past_log)
+
+      assert %{runs_pruned: 0, events_deleted: 0, log_chunks_deleted: 0} =
+               Retention.prune_workspace(scope.workspace, now: @now)
+
+      assert count(Event, past_events) == 14
+      assert count(Event, past_log) == 14
+      assert count(LogChunk, past_log) == chunks
+      assert %Run{events_pruned_at: nil, log_pruned_at: nil} = Repo.get!(Run, past_events.id)
+      assert %Run{events_pruned_at: nil, log_pruned_at: nil} = Repo.get!(Run, past_log.id)
+    end
+
+    test "lost 8 days ago is pruned as any run that ended", %{scope: scope} do
+      scope = retain(scope, events_retention_days: 10, log_retention_days: 1)
+      past_events = lost_run(scope, 30, 8)
+      past_log = lost_run(scope, 8, 8)
+
+      assert %{runs_pruned: 2, events_deleted: 16} =
+               Retention.prune_workspace(scope.workspace, now: @now)
+
+      assert count(Event, past_events) == 0
+      assert %Run{events_pruned_at: %DateTime{}} = Repo.get!(Run, past_events.id)
+      assert log_events(past_log) == 0
+      assert count(Event, past_log) == 12
+      assert %Run{events_pruned_at: nil, log_pruned_at: %DateTime{}} = Repo.get!(Run, past_log.id)
+    end
+
+    test "with no lost_at, it counts as lost when it was last heard from", %{scope: scope} do
+      scope = retain(scope, events_retention_days: 1)
+      kept = lost_run(scope, 6, nil)
+      gone = lost_run(scope, 8, nil)
+
+      assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
+      assert count(Event, kept) == 14
+      assert count(Event, gone) == 0
+    end
+
+    test "a run that ended otherwise is pruned as before, and one running again is not",
+         %{scope: scope} do
+      scope = retain(scope, events_retention_days: 1)
+      succeeded = old_run(scope, 6)
+      failed = old_run(scope, 6)
+      Repo.update_all(from(r in Run, where: r.id == ^failed.id), set: [state: "failed"])
+      revived = old_run(scope, 50)
+
+      Repo.update_all(from(r in Run, where: r.id == ^revived.id),
+        set: [state: "running", lost_at: nil]
+      )
+
+      assert %{runs_pruned: 2} = Retention.prune_workspace(scope.workspace, now: @now)
+      assert count(Event, succeeded) == 0
+      assert count(Event, failed) == 0
+      assert count(Event, revived) == 14
+    end
+
+    test "lost less than 7 days ago is not due for a rebuild either", %{scope: scope} do
+      scope = retain(scope, events_retention_days: 1)
+      # The check asks the database's clock, not the test's.
+      ago = &DateTime.add(DateTime.utc_now(), -&1 * 86_400, :second)
+      recent = old_run(scope, 50)
+      long_ago = old_run(scope, 50)
+
+      Repo.update_all(from(r in Run, where: r.id == ^recent.id),
+        set: [state: "lost", lost_at: ago.(6), last_event_at: ago.(6)]
+      )
+
+      Repo.update_all(from(r in Run, where: r.id == ^long_ago.id),
+        set: [state: "lost", lost_at: ago.(8), last_event_at: ago.(8)]
+      )
+
+      refute Retention.due_or_pruned?(Repo.get!(Run, recent.id))
+      assert Retention.due_or_pruned?(Repo.get!(Run, long_ago.id))
+    end
+  end
+
   describe "rebuild on a pruned run" do
     test "keeps the projection of a run whose events are gone", %{scope: scope} do
       scope = retain(scope, events_retention_days: 10)
@@ -271,7 +363,7 @@ defmodule Apiary.RetentionTest do
       pruned = Repo.get!(Run, run.id)
 
       assert {:ok, kept} = Projector.rebuild(pruned)
-      assert kept.state == "succeeded"
+      assert kept.state == "completed"
       assert Repo.get!(Run, run.id) == pruned
       assert count(Connection, run) == 2
 
@@ -292,7 +384,7 @@ defmodule Apiary.RetentionTest do
         set: [events_retention_days: 10]
       )
 
-      assert {:ok, %Run{state: "succeeded"}} = Projector.rebuild(run)
+      assert {:ok, %Run{state: "completed"}} = Projector.rebuild(run)
       assert count(Connection, run) == 2
       assert Repo.get!(Run, run.id).denied_count == 1
     end
@@ -305,7 +397,7 @@ defmodule Apiary.RetentionTest do
       Retention.prune_workspace(scope.workspace, now: @now)
 
       assert {:ok, rebuilt} = Projector.rebuild(Repo.get!(Run, run.id))
-      assert rebuilt.state == "succeeded"
+      assert rebuilt.state == "completed"
       assert rebuilt.projected_sequence == 14
       assert rebuilt.denied_count == 1
       assert %DateTime{} = rebuilt.log_pruned_at

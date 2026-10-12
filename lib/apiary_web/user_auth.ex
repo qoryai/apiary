@@ -268,7 +268,9 @@ defmodule ApiaryWeb.UserAuth do
   # they do not reach, answers as a path that does not exist; the pipeline's
   # `fetch_path_scope/2` has already answered so for the first render, and this answers
   # for a live navigation. An organisation's page carries the workspace the session
-  # remembers, while the user reaches it, or the first they reach. Their ids go into the
+  # remembers, while the user reaches it, else the one they last used there, else the first
+  # they reach; a workspace's page is recorded as the one they last used in its
+  # organisation (`Apiary.Organisations.remember_workspace/1`). Their ids go into the
   # Logger metadata of the LiveView's process (`Apiary.LogMetadata`). An organisation
   # where the user's membership is suspended sends them to their organisations, and says
   # why, rather than that it does not exist.
@@ -281,6 +283,11 @@ defmodule ApiaryWeb.UserAuth do
          ) do
       {:ok, scope} ->
         LogMetadata.put(scope)
+
+        # A live navigation to a workspace's page is a use of it too; the first render's
+        # was recorded by `fetch_path_scope/2`.
+        if Phoenix.LiveView.connected?(socket) and is_binary(params["workspace"]),
+          do: Organisations.remember_workspace(scope)
 
         {:cont,
          socket
@@ -379,8 +386,8 @@ defmodule ApiaryWeb.UserAuth do
 
   # The word beside Policy: the workspace's default mode, once the workspace has a policy
   # of Qory's, and the modes of the targets that set their own. One read. Where the
-  # `security` feature is off there is no Policy entry to put it beside: nothing is read,
-  # and the counts carry no mode at all.
+  # `security` feature is off, or hidden from the reader, there is no Policy entry to put it
+  # beside: nothing is read, and the counts carry no mode at all.
   defp policy_mode(%Scope{workspace: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
@@ -576,7 +583,7 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  on_membership_change/2 makes an open page read its own data again, with `reload`, a
+  on_membership_change/2 makes an open page read its data again, with `reload`, a
   function of the socket, once the scope has been loaded again after a change of its
   person's memberships (`reload_scope/1`), and the page is still theirs: for a page whose
   content such a change alters, as the organisation's settings list its owners.
@@ -595,8 +602,9 @@ defmodule ApiaryWeb.UserAuth do
   as it is now. A page that asks `Apiary.Access.can?/3` as it renders follows. A
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
-  so; a page of a feature taken away from the organisation or the workspace meanwhile
-  (`Apiary.Features.of/2`) sends it to the organisation's overview, which every
+  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`),
+  or whose action (`ApiaryWeb.Access`) belongs to a feature or a part hidden meanwhile
+  (`Apiary.Access.shown_as/1`), sends it to the organisation's overview, which every
   organisation has, and says so; an organisation's page keeps its workspace while the user
   reaches it.
   """
@@ -615,17 +623,17 @@ defmodule ApiaryWeb.UserAuth do
         )
 
     with {:ok, reloaded} <- reloaded || :error,
-         :ok <- page_feature_on(socket, reloaded) do
+         :ok <- page_shown(socket, reloaded) do
       socket
       |> Phoenix.Component.assign(:current_scope, reloaded)
       |> Phoenix.Component.assign(:memberships, Organisations.list_places(scope.user))
       |> Phoenix.Component.assign(:nav_counts, nav_counts(reloaded))
     else
-      {:feature_off, reloaded} ->
+      {:hidden, reloaded} ->
         socket
         |> Phoenix.LiveView.put_flash(
           :error,
-          gettext("What that page showed is no longer part of %{organisation}.",
+          gettext("That page is no longer shown in %{organisation}.",
             organisation: reloaded.organisation.name
           )
         )
@@ -644,15 +652,26 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, is
-  # still on where the scope is now: a feature taken away while the page was open.
-  defp page_feature_on(socket, reloaded) do
+  # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, and
+  # the feature or the part of the action it mounted on (`ApiaryWeb.Access`), if it asked
+  # one, are still shown to the person where the scope is now: a feature or a part hidden
+  # while the page was open.
+  defp page_shown(socket, reloaded) do
     view = socket.view
+    action = socket.private[:access_action]
+    shown_as = action && Apiary.Access.shown_as(action)
 
-    if function_exported?(view, :__feature__, 0) and
-         not Apiary.Features.on?(reloaded, view.__feature__()),
-       do: {:feature_off, reloaded},
-       else: :ok
+    cond do
+      function_exported?(view, :__feature__, 0) and
+          not Apiary.Features.visible?(reloaded, view.__feature__()) ->
+        {:hidden, reloaded}
+
+      shown_as && not Apiary.Features.visible?(reloaded, shown_as) ->
+        {:hidden, reloaded}
+
+      true ->
+        :ok
+    end
   end
 
   # The signed-in user's suspended membership in the organisation `slug`, or nil: an
@@ -710,7 +729,8 @@ defmodule ApiaryWeb.UserAuth do
   signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
-  (`Apiary.Organisations.load_home_scope/2`); the organisation's own path, `/:org`, for a
+  (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
+  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path, `/:org`, for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -723,8 +743,8 @@ defmodule ApiaryWeb.UserAuth do
 
   defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
     case home_scope(conn, Scope.for_user(user)) do
-      %Scope{organisation: %{} = organisation, workspace: %{} = workspace} ->
-        ~p"/#{organisation}/#{workspace}"
+      %Scope{organisation: %{}, workspace: %{}} = scope ->
+        ApiaryWeb.Layouts.workspace_landing(scope)
 
       %Scope{organisation: %{} = organisation} ->
         ~p"/#{organisation}"
@@ -737,7 +757,7 @@ defmodule ApiaryWeb.UserAuth do
   defp signed_in_path(_conn, nil), do: ~p"/"
 
   @doc """
-  home_scope/1 is the request's scope as a person's own pages and the Instance's have it:
+  home_scope/1 is the request's scope as a person's pages and the Instance's have it:
   its user with the workspace the session remembers as last opened, while they still reach
   it, else the first workspace they reach (`Apiary.Organisations.load_home_scope/2`), as
   `on_mount(:load_organisation, ...)` loads it for a LiveView and `signed_in_path/1` reads
@@ -753,8 +773,10 @@ defmodule ApiaryWeb.UserAuth do
   Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation
   and the workspace their path names into the scope
   (`Apiary.Organisations.resolve_scope/4`), an organisation's page the workspace the
-  session remembers while the user reaches it, puts their ids into the request's Logger
-  metadata (`Apiary.LogMetadata`) and remembers the workspace for `signed_in_path/1`. A
+  session remembers while the user reaches it, else the one they last used there, puts
+  their ids into the request's Logger metadata (`Apiary.LogMetadata`) and remembers the
+  workspace for `signed_in_path/1`. A workspace's page is recorded as the one the user
+  last used in its organisation (`Apiary.Organisations.remember_workspace/1`). A
   slug the user holds no membership in, or a workspace they do not reach, is answered as
   a path that does not exist, as the router answers one, but an organisation where their
   membership is suspended: that sends them to `/users/organisations`, which says why.
@@ -769,6 +791,9 @@ defmodule ApiaryWeb.UserAuth do
          ) do
       {:ok, scope} ->
         LogMetadata.put(scope)
+
+        if is_binary(params["workspace"]) and page?(conn),
+          do: Organisations.remember_workspace(scope)
 
         conn
         |> assign(:current_scope, scope)
@@ -790,6 +815,10 @@ defmodule ApiaryWeb.UserAuth do
         end
     end
   end
+
+  # Whether the request is for a page, a LiveView's first render, rather than the palette,
+  # a run's log or a redirect.
+  defp page?(conn), do: Map.has_key?(conn.private, :phoenix_live_view)
 
   # Written only when it changes, so that a page and the log reads of its terminal do not
   # each send the session cookie again.

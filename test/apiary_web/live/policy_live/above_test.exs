@@ -14,6 +14,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
   import Phoenix.LiveViewTest
   import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.Policy
   alias Apiary.Policy.{Above, Effective, Rule}
@@ -197,7 +198,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       render_hook(view, "remove_confirm", %{})
       assert length(Policy.list_rules(scope, nil)) == 3
-      refute has_element?(view, "#policy-composer")
+      # Edit of the level's rule opens no form: the page stays on the list.
+      refute has_element?(view, "#policy-rule-form")
+      assert has_element?(view, "#policy-rules")
       assert Process.alive?(view.pid)
     end
 
@@ -231,12 +234,12 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       above!([rule("allow", "api.example")], own_allows: false)
       view = open(conn, workspace_path(scope, "/policy"))
 
-      assert text(view, "#policy-above") =~ "1 rule , only its own hosts allowed"
+      assert text(view, "#policy-above") =~ "1 rule , only hosts on its list allowed"
       cdn = row(view, "cdn.example")
       assert has_element?(view, "##{cdn}.q-pr-off")
 
       assert text(view, "##{cdn} .q-pr-offw-full") ==
-               "Not in force: Eight Wonders allows only its own hosts"
+               "Not in force: Eight Wonders allows only the hosts on its list"
 
       # A struck rule is still the workspace's to remove.
       assert has_element?(view, "##{cdn}-remove")
@@ -272,6 +275,10 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       target: target,
       path: path
     } do
+      # The card says "today" of the mode the setup set: in a day of the reader's, clear of
+      # midnight (`Apiary.Midnight`).
+      reader_at_noon(scope.user)
+
       above!([rule("deny", "paste.example"), rule("allow", "api.example")],
         floor: true,
         own_allows: false
@@ -282,7 +289,10 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert hosts(view) == ["sms.example", "paste.example", "api.example"]
       sms = row(view, "sms.example")
       assert has_element?(view, "##{sms}.q-pr-off")
-      assert text(view, "##{sms} .q-pr-offw-full") =~ "Eight Wonders allows only its own hosts"
+
+      assert text(view, "##{sms} .q-pr-offw-full") =~
+               "Eight Wonders allows only the hosts on its list"
+
       paste = row(view, "paste.example")
       assert text(view, "##{paste} .q-pr-src") == "E Eight Wonders"
       assert has_element?(view, "##{paste}-lock")
@@ -297,7 +307,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
 
       assert text(view, "#policy-mode-effect") =~
-               "Its own observe, set by #{ApiaryWeb.People.short(scope.user.email)} today, is not in force: Eight Wonders requires enforce."
+               "Its observe override, set by #{ApiaryWeb.People.short(scope.user.email)} today, is not in force: Eight Wonders requires enforce."
 
       refute has_element?(view, "#policy-mode-change")
       render_hook(view, "mode_open", %{"mode" => "enforce"})
@@ -334,7 +344,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       words = text(view, "##{above_row} .q-pr-offw-full")
 
       assert words =~
-               ~r/^Not in force here: this (repository|target)'s own api\.algolia\.example denies it$/
+               ~r/^Not in force here: this (repository|target)'s api\.algolia\.example rule denies it$/
 
       refute words =~ scope.workspace.name
     end
@@ -430,7 +440,37 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
              )
 
       # The row says what holds, where it can be read, and Deny stays.
-      assert text(view, "##{new}-elsewhere") =~ "Eight Wonders allows only its own hosts"
+      assert text(view, "##{new}-elsewhere") =~ "Eight Wonders allows only the hosts on its list"
+      refute has_element?(view, "##{new}-allow")
+      assert has_element?(view, "button##{new}-deny")
+    end
+
+    test "where only the level allows a host, Allow leads to its New rule page with the host and the way back",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevel)
+      above!([], own_allows: false)
+      view = open(conn, workspace_path(scope, "/network"))
+      new = dst("new.example")
+
+      view |> element("button##{new}-allow") |> render_click()
+
+      back = workspace_path(scope, "/network")
+
+      href =
+        "/8wonders/policy/rules/new?" <>
+          URI.encode_query(%{"host" => "new.example", "back" => back})
+
+      assert has_element?(view, ~s(#rule-panel a[href="#{href}"]))
+      refute render(view) =~ "allow="
+    end
+
+    test "where the level has no New rule page, Allow is a lock", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevelWithoutNewRule)
+      above!([], own_allows: false)
+      view = open(conn, workspace_path(scope, "/network"))
+      new = dst("new.example")
+
+      assert has_element?(view, "span##{new}-lock.q-act-lock")
       refute has_element?(view, "##{new}-allow")
       assert has_element?(view, "button##{new}-deny")
     end
@@ -562,7 +602,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
         rule_option: :can_allow,
         deny: true,
         allow_elsewhere: %{name: "Eight Wonders"},
-        allow_path: "/8wonders/policy?allow=new.example"
+        allow_path: "/8wonders/policy/rules/new?host=new.example"
       )
 
     # Its name holds its hint's words.
@@ -575,7 +615,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       rule_option: :can_allow,
       deny: true,
       allow_elsewhere: %{name: "Eight Wonders"},
-      allow_path: "/8wonders/policy?allow=new.example"
+      allow_path: "/8wonders/policy/rules/new?host=new.example"
     }
 
     # The row's Allow asks; it does not navigate on its own.
@@ -591,7 +631,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
     assert html =~ ~s(data-action="allow")
     assert html =~ "rule_open"
-    refute html =~ "/8wonders/policy?allow=new.example"
+    refute html =~ "/8wonders/policy/rules/new?host=new.example"
     assert html =~ ~s(id="a-deny")
 
     html =
@@ -601,13 +641,13 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
           host: "new.example",
           action: :allow,
           refusal: :elsewhere,
-          elsewhere: %{name: "Eight Wonders", path: "/8wonders/policy?allow=new.example"}
+          elsewhere: %{name: "Eight Wonders", path: "/8wonders/policy/rules/new?host=new.example"}
         }
       )
 
-    assert html =~ "Eight Wonders allows only its own hosts"
+    assert html =~ "Eight Wonders allows only the hosts on its list"
     assert html =~ "Open Eight Wonders&#39;s policy"
-    assert html =~ "/8wonders/policy?allow=new.example"
+    assert html =~ "/8wonders/policy/rules/new?host=new.example"
     # In the page's flow, not an overlay: no popover and no dialog; Escape cancels.
     refute html =~ "popover="
     refute html =~ ~s(role="dialog")

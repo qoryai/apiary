@@ -25,8 +25,7 @@ defmodule ApiaryWeb.Storybook.Page.PageTabs do
         slots: [
           ~s|<:tab key={:timeline} patch="#" icon="hero-queue-list">Timeline</:tab>|,
           ~s|<:tab key={:terminal} patch="#" icon="hero-command-line">Terminal</:tab>|,
-          ~s|<:tab key={:connections} patch="#" icon="hero-globe-alt" count={2} tone="error">Network access</:tab>|,
-          ~s|<:tab key={:details} patch="#" icon="hero-information-circle">Details</:tab>|
+          ~s|<:tab key={:connections} patch="#" icon="hero-globe-alt" count={2} tone="error">Network access</:tab>|
         ]
       },
       %Variation{

@@ -9,7 +9,7 @@ defmodule Apiary.OrganisationsTest do
   alias Apiary.Organisations
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
+  alias Apiary.Organisations.{Invitation, LastWorkspace, Membership, Organisation, Workspace}
 
   describe "sign_up_user/2" do
     test "creates the user, the organisation it names, a Main workspace and an owner membership" do
@@ -310,6 +310,111 @@ defmodule Apiary.OrganisationsTest do
     end
   end
 
+  describe "remember_workspace/1 and the workspace last used in an organisation" do
+    setup do
+      %{user: user, organisation: organisation, workspace: main, scope: scope} = sign_up_fixture()
+      # Older than Main, so the oldest is not the one used last.
+      alpha = workspace_fixture(organisation, "Alpha")
+      beta = workspace_fixture(organisation, "Beta")
+      set_inserted_at(alpha, ~U[2026-01-01 09:00:00Z])
+      set_inserted_at(main, ~U[2026-01-01 10:00:00Z])
+      set_inserted_at(beta, ~U[2026-01-01 11:00:00Z])
+
+      %{
+        user: user,
+        organisation: organisation,
+        main: main,
+        alpha: alpha,
+        beta: beta,
+        scope: scope
+      }
+    end
+
+    defp opened(ctx),
+      do: Organisations.resolve_scope(Scope.for_user(ctx.user), ctx.organisation.slug)
+
+    defp rows(user),
+      do: Repo.all(from l in LastWorkspace, where: l.user_id == ^user.id, order_by: l.updated_at)
+
+    test "one row per person and organisation, changed only when the workspace differs", ctx do
+      assert :ok = Organisations.remember_workspace(workspace_scope(ctx.user, ctx.beta))
+      assert [%LastWorkspace{workspace_id: beta_id, updated_at: first}] = rows(ctx.user)
+      assert beta_id == ctx.beta.id
+
+      assert :ok = Organisations.remember_workspace(workspace_scope(ctx.user, ctx.beta))
+      assert [%LastWorkspace{updated_at: ^first}] = rows(ctx.user)
+
+      assert :ok = Organisations.remember_workspace(workspace_scope(ctx.user, ctx.main))
+      assert [%LastWorkspace{workspace_id: main_id, updated_at: later}] = rows(ctx.user)
+      assert main_id == ctx.main.id
+      assert DateTime.compare(later, first) == :gt
+
+      # Another organisation of the same person has its own row.
+      other = sign_up_fixture()
+      %{scope: joined} = join_fixture(other.scope, ctx.user)
+      assert :ok = Organisations.remember_workspace(joined)
+
+      assert ctx.user |> rows() |> Enum.map(& &1.organisation_id) |> Enum.sort() ==
+               Enum.sort([ctx.organisation.id, other.organisation.id])
+
+      # A scope without a workspace or a person records nothing.
+      assert :ok = Organisations.remember_workspace(%{joined | workspace: nil})
+      assert :ok = Organisations.remember_workspace(Scope.for_user(nil))
+      assert length(rows(ctx.user)) == 2
+    end
+
+    test "an organisation's page opens the session's workspace, else the one used last, else the oldest",
+         ctx do
+      assert {:ok, %{workspace: %{id: id}}} = opened(ctx)
+      assert id == ctx.alpha.id
+
+      Organisations.remember_workspace(workspace_scope(ctx.user, ctx.beta))
+      assert {:ok, %{workspace: %{id: id}}} = opened(ctx)
+      assert id == ctx.beta.id
+
+      # The session's workspace in this organisation comes first.
+      assert {:ok, %{workspace: %{id: id}}} =
+               Organisations.resolve_scope(Scope.for_user(ctx.user), ctx.organisation.slug, nil,
+                 last_workspace: ctx.main.id
+               )
+
+      assert id == ctx.main.id
+
+      # One of another organisation is not this one's: the one used here.
+      assert {:ok, %{workspace: %{id: id}}} =
+               Organisations.resolve_scope(Scope.for_user(ctx.user), ctx.organisation.slug, nil,
+                 last_workspace: sign_up_fixture().workspace.id
+               )
+
+      assert id == ctx.beta.id
+    end
+
+    test "a workspace used last and then marked for deletion, or deleted, gives way to the oldest",
+         ctx do
+      Organisations.remember_workspace(workspace_scope(ctx.user, ctx.beta))
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^ctx.beta.id),
+        set: [
+          deletion_marked_at: DateTime.utc_now(),
+          purge_after: DateTime.add(DateTime.utc_now(), 30, :day),
+          purge_trigger: "grace_period"
+        ]
+      )
+
+      assert {:ok, %{workspace: %{id: id}}} = opened(ctx)
+      assert id == ctx.alpha.id
+
+      gamma = workspace_fixture(ctx.organisation, "Gamma")
+      Organisations.remember_workspace(workspace_scope(ctx.user, gamma))
+      Repo.delete!(gamma)
+
+      # The row went with its workspace.
+      assert rows(ctx.user) == []
+      assert {:ok, %{workspace: %{id: id}}} = opened(ctx)
+      assert id == ctx.alpha.id
+    end
+  end
+
   describe "settings" do
     test "owners rename the organisation and the workspace; members cannot" do
       %{scope: owner_scope} = sign_up_fixture()
@@ -399,8 +504,23 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
 
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{name: "Data", slug: "gateways"})
+
+      assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
+
+      assert Organisations.suggest_workspace_slug(scope, "Gateways") == "gateways-2"
+
       assert {:ok, %{slug: "lake"}} =
                Organisations.create_workspace(scope, %{name: "Data", slug: " lake "})
+    end
+
+    test "a name kept back is never a workspace's slug: it gets the slug with -2" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert Organisations.suggest_workspace_slug(scope, "New") == "new-2"
+      assert {:ok, %{slug: "api-2"}} = Organisations.create_workspace(scope, %{"name" => "API"})
     end
 
     test "a name or a slug another workspace of the organisation holds is refused" do

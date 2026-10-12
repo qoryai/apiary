@@ -5,7 +5,7 @@ defmodule Apiary.Policy.Effective do
 
   `mode` is the mode in force and `mode_source` where it came from: `:organisation` when
   the level above the workspace requires it (`Apiary.Policy.Above`'s `floor`), `:target`
-  when the target has a mode of its own, `:workspace` when it follows the workspace's
+  when the target overrides the mode, `:workspace` when it follows the workspace's
   (and for the baseline).
 
   `entries` holds one `Apiary.Policy.Entry` per rule that took part, the level above's,

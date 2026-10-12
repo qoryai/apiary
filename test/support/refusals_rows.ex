@@ -20,8 +20,9 @@ defmodule ApiaryWeb.RefusalsRows do
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an active key and an outstanding enrolment code, a run that has not ended, and
-  a pending invitation; and another organisation, with its owner.
+  instance, an active key and an outstanding enrolment code, a node pool with a limit, a
+  gateway, the workspace's default, and a second gateway, a run that has not ended, and a
+  pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -82,6 +83,10 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :invitation}},
       {:"invitation.revoke", :other_owner, "/:other_org/settings/people", "revoke_invitation",
        %{"id" => :invitation}, answer: :not_found},
+      {:"invitation.renew", :member, "/:org/settings/people", "renew_invitation",
+       %{"id" => :invitation}},
+      {:"invitation.renew", :other_owner, "/:other_org/settings/people", "renew_invitation",
+       %{"id" => :invitation}, answer: :not_found},
       # Suspending and activating a person's membership: an owner acts on admins and
       # members, an admin on members only. A member cannot open a member's suspension, so
       # their `suspend` arrives without it and the page refuses it for their role; the
@@ -104,6 +109,20 @@ defmodule ApiaryWeb.RefusalsRows do
       # opened is made an owner meanwhile, and the event reaches the server's check.
       {:"member.suspend", :owner, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
+      # A password link is an instance admin's, while no mail is set: none of the world's
+      # people is one, and the page offers it to none of them.
+      {:"account.password_link", :owner, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :admin, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :member, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      # The instance's mail is an instance admin's: none of the world's people is one, and
+      # its page does not exist for them.
+      {:"instance.mail_save", :owner, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
+      {:"instance.mail_save", :admin, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
@@ -157,8 +176,8 @@ defmodule ApiaryWeb.RefusalsRows do
        "mode_open", %{"mode" => "enforce"}},
       {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
        "mode_set", %{"mode" => "enforce"}},
-      {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
-       prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
+      {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
+       %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "remove",
        %{"id" => :rule_open}, answer: :not_found},
@@ -181,26 +200,27 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :rule_locked}},
       {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
-      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "composer_save", %{},
+      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy/rules/new", "rule_save",
+       %{},
        prelude: [
-         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+         {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ]},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "remove_confirm", %{},
        prelude: [{"remove", %{"id" => :rule_locked}}]},
-      # A member's deny of a rule that the owner locked after the composer read it.
-      {:"security_policy.lock", :member, "/:org/:workspace/policy", "composer_save", %{},
+      # A member's deny of a rule that the owner locked after the New rule page read it.
+      {:"security_policy.lock", :member, "/:org/:workspace/policy/rules/new", "rule_save", %{},
        prelude: [
-         {"composer_action", %{"action" => "deny"}},
-         {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
+         {"rule_validate",
+          %{"rule" => %{"host" => "open.example", "paths" => "", "action" => "deny"}}}
        ],
        meanwhile: {:locked, :rule_open}},
-      # A member's allow for a target under the workspace's locked deny: the composer
+      # A member's allow for a target under the workspace's locked deny: the New rule page
       # reads the lock and saves nothing. The workspace's rules have no act on a target's
       # page: an event naming one there is dropped.
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "composer_save", %{},
+      {:"security_policy.lock", :member,
+       "/:org/:workspace/targets/:target_page/-/policy/rules/new", "rule_save", %{},
        prelude: [
-         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+         {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ],
        answer: :ignored},
       {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
@@ -222,6 +242,15 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"node" => %{"name" => "renamed"}}},
       {:"node.edit", :removed_member, "/:org/:workspace/nodes/:node", "save",
        %{"node" => %{"name" => "renamed"}}},
+      # A pool's limit, which only a change of it asks.
+      {:"node.set_limit", :member, "/:org/:workspace/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}},
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}},
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/new-pool", "create",
+       %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}}},
+      {:"node.set_limit", :other_owner, "/:other_org/:other_ws/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}, answer: :not_found_at_mount},
       {:"node.delete", :member, "/:org/:workspace/nodes/:node/settings", "delete", %{}},
       {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:node/settings/delete", "delete",
        %{}},
@@ -230,6 +259,27 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"node" => %{"name" => "renamed"}}, answer: :not_found_at_mount},
       {:"node.delete", :other_owner, "/:other_org/:other_ws/nodes/:node/settings/delete",
        "delete", %{}, answer: :not_found_at_mount},
+      # A gateway: made on New gateway, its default mark moved by Make default on its
+      # Overview, and deleted from its Settings; a node's choice of gateway, saved with it.
+      {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new-gateway", "create",
+       %{"node" => %{"name" => "edge-09", "url" => "https://edge-09.example.com"}}},
+      {:"node.edit", :member, "/:org/:workspace/nodes/:gateway", "make_default", %{}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:second_gateway", "make_default",
+       %{}},
+      {:"node.edit", :removed_member, "/:org/:workspace/nodes/:second_gateway", "make_default",
+       %{}},
+      {:"node.edit", :other_owner, "/:other_org/:other_ws/nodes/:second_gateway", "make_default",
+       %{}, answer: :not_found_at_mount},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:gateway/settings", "save",
+       %{"node" => %{"url" => "https://renamed.example.com"}}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:node/settings", "save",
+       %{"node" => %{"gateway" => "default"}}},
+      {:"node.delete", :member, "/:org/:workspace/nodes/:second_gateway/settings", "delete", %{}},
+      {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:second_gateway/settings/delete",
+       "delete", %{}},
+      {:"node.delete", :other_owner,
+       "/:other_org/:other_ws/nodes/:second_gateway/settings/delete", "delete", %{},
+       answer: :not_found_at_mount},
       {:"node.clear_instance", :member, "/:org/:workspace/nodes/:node", "clear_instance", %{}},
       {:"node.clear_instance", :demoted_admin,
        "/:org/:workspace/nodes/:node/instances/:instance/clear", "clear_instance", %{}},
@@ -289,9 +339,9 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :not_found_at_mount},
 
       # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
-      # pages need the `secrets` feature beside their actions' `security`. A member's page
-      # has no dialog to open, so the event reaches the context function, or the page
-      # refuses it for their role; a demoted admin's dialog was open.
+      # pages and actions are the `secrets` feature's. A member's page has no dialog to open,
+      # so the event reaches the context function, or the page refuses it for their role; a
+      # demoted admin's dialog was open.
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
        %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{},
@@ -329,13 +379,7 @@ defmodule ApiaryWeb.RefusalsRows do
        "delete_variable", %{}, needs: :secrets},
       {:"variable.edit", :other_owner,
        "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
-       answer: :refused_at_mount, needs: :secrets},
-
-      # A run.
-      {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}]},
-      {:"run.close", :other_owner, "/:other_org/:other_ws/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}], answer: :not_found}
+       answer: :refused_at_mount, needs: :secrets}
     ]
   end
 
@@ -351,6 +395,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # Turning the instance's mail on is following the test link a save sent, a controller's
+  # redirect, not a page's event: the link's tests refuse it to anyone but the instance
+  # admin it was sent to (`test/apiary/mail_settings_test.exs`,
+  # `test/apiary_web/live/instance_live/mail_test.exs`).
   @impl true
   def exempt do
     %{
@@ -366,6 +414,7 @@ defmodule ApiaryWeb.RefusalsRows do
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
+      link: [:"instance.mail_on"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
@@ -385,18 +434,26 @@ defmodule ApiaryWeb.RefusalsRows do
     {:ok, _} = Deletion.delete_workspace(owner, workspace_c.id, workspace_c.slug)
 
     # The rules are the security policy's, which an instance without it does not have.
-    {rule_open, rule_locked, secret, variable} =
+    {rule_open, rule_locked} =
       if :security in Apiary.Features.enabled() do
         {:ok, open} = Policy.allow(owner, nil, %{host: "open.example"})
         {:ok, locked} = Policy.deny(owner, nil, %{host: "locked.example", locked: true})
+        {open, locked}
+      else
+        {nil, nil}
+      end
+
+    # The stored secret and the variable are the `secrets` feature's.
+    {secret, variable} =
+      if :secrets in Apiary.Features.enabled() do
         {:ok, secret} = Secrets.create_secret(owner, %{name: "FORGE_TOKEN", value: "x"})
 
         {:ok, variable} =
           Variables.create_variable(owner, :workspace, %{name: "NODE_ENV", value: "production"})
 
-        {open, locked, secret, variable}
+        {secret, variable}
       else
-        {nil, nil, nil, nil}
+        {nil, nil}
       end
 
     target =
@@ -410,10 +467,14 @@ defmodule ApiaryWeb.RefusalsRows do
 
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
+    pool = pool_fixture(owner, name: "spot-runners", instance_limit: 5)
     %{access_key: node_key} = node_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
+    # After the node and the pool, which stay direct.
+    gateway = gateway_fixture(owner, name: "edge-01")
+    second_gateway = gateway_fixture(owner, name: "edge-02")
     run = started_run(owner)
     %{invitation: invitation} = invitation_fixture(owner)
     admin = RefusalsCase.person(owner, :admin)
@@ -454,7 +515,10 @@ defmodule ApiaryWeb.RefusalsRows do
       target: target,
       key: key,
       node: node,
+      pool: pool,
       node_key: node_key,
+      gateway: gateway,
+      second_gateway: second_gateway,
       code: code,
       public_key: ed25519_key_pair().encoded,
       instance: instance,
@@ -485,7 +549,10 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:target_page, world), do: world.target.path
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
+  def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
+  def value(:gateway, world), do: {:id, world.gateway.public_id}
+  def value(:second_gateway, world), do: {:id, world.second_gateway.public_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id

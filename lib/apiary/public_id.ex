@@ -1,10 +1,11 @@
 defmodule Apiary.PublicId do
   @moduledoc """
-  The public ids the apiary gives what it names to Forager and in its pages: a prefix and
+  The public ids Qory Apiary gives what it names to Forager and in its pages: a prefix and
   an underscore, then 16 lowercase Crockford base32 characters, 80 random bits, as
   `ak_0123456789abcdef`. Crockford's alphabet leaves out `i`, `l`, `o` and `u`, so an id
   read aloud or copied by hand is not mistaken. The prefix says what the id names:
-  `ak` an access key, `sec` a stored secret, `nd` a node and `np` a node pool.
+  `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool and `ws` a
+  workspace.
   """
 
   # Crockford base32 without the ambiguous letters i, l, o, u.

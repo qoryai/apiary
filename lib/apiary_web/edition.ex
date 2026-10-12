@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Edition do
         router: MyEditionWeb.Router,  # mounts the core's routes (ApiaryWeb.Routes)
         static_app: :my_edition       # its priv/static served before :apiary's
 
-  The core is an edition of its own, `ApiaryWeb.Edition.Core`, and the default: no
+  The core is an edition too, `ApiaryWeb.Edition.Core`, and the default: no
   navigation entry, count, switcher entry, settings tab, slot content, activity words or
   reserved name beyond the core's. A module that `use`s this one gets the core's answer to
   every callback and overrides the ones it changes.
@@ -24,37 +24,48 @@ defmodule ApiaryWeb.Edition do
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
     the core's, `c:new_entries/2`, what New offers before the core's,
-    `c:switcher_entries/1`, the switcher's after its places,
+    `c:switcher_entries/1`, the organisation menu's after its places,
+    `c:workspace_switcher_entries/1`, the workspace menu's after its workspaces,
     `c:account_menu_entries/1`, the account menu's after the core's, and
     `c:instance_sections/1`, the Instance level's before the core's, each an
-    `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
+    `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's groups of
     the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
-    `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
-    switcher gives, for a place the edition lists (`c:Apiary.Edition.places/1`) or a
-    membership it puts more on; `c:place_group/1`, the heading the switcher lists such a
-    place under.
+    `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_group/1`, the heading the organisation
+    menu lists a place the edition lists (`c:Apiary.Edition.places/1`) under;
+    `c:place_scope/2`, which the core no longer asks.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
-    `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
+    `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
+    `c:level_refusal_sentence/2`, what a page says of a level the edition refused;
+    `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
+    the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
-    edition's actions in words on the Activity page; `c:above_policy_link/1`, where the
+    edition's actions in words on the Activity page; `c:activity_actor/2`, who made an
+    entry, in the Activity page's Who column; `c:above_policy_link/1`, where the
     level above a workspace's policy (`c:Apiary.Edition.above_workspace/1`) is read and
     changed, for the policy pages' "View in …" and Network access's "Change in …".
-  - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
+  - **Paths**: `c:reserved_slugs/0`, the names the edition's paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
-  - **Words**: `c:gettext_backend/0`, the Gettext backend of the edition's own sentences,
-    beside the core's (`ApiaryWeb.Gettext.Backends`).
+  - **Gateways and nodes**: `c:gateway_reach_sentence/2`, what the pages of an
+    organisation's gateways say of the workspaces whose nodes can use them;
+    `c:nodes_managed_by_sentence/1`, what the nodes' pages say of who manages the nodes
+    and their access keys, in place of the core's sentence of who may.
+  - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
+    menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
+    `c:gettext_backend/0`, the Gettext backend of the edition's sentences, beside the
+    core's (`ApiaryWeb.Gettext.Backends`).
   """
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryWeb.Nav.Entry
 
   @doc """
   The edition's entries of the sidebar, after the core's of the same section, in the
-  scope of the page; the switcher asks the same entries of each place it leads to.
+  scope of the page; a link of the breadcrumb's menus asks the same entries of the place
+  it leads to (`ApiaryWeb.SwitchController`).
   """
   @callback nav_entries(Scope.t()) :: [Entry.t()]
 
@@ -67,14 +78,24 @@ defmodule ApiaryWeb.Edition do
   @doc """
   The edition's entries of New, the top bar's menu and the palette's actions, before the
   core's (`ApiaryWeb.Layouts.new_entries/2`), in the scope of the page and its place: a
-  workspace's page, an organisation's own, or the person's. Each entry's `action` is
+  workspace's page, an organisation's page, or the person's. Each entry's `action` is
   asked, of the workspace or the organisation as the entry's `place` says, before it is
   offered.
   """
   @callback new_entries(Scope.t(), place :: :workspace | :organisation | :person) :: [Entry.t()]
 
-  @doc "The organisation switcher's entries after the places it switches to."
+  @doc """
+  The organisation menu's entries, the breadcrumb's menu of the organisations the person
+  reaches, after Your organisations, in the scope of the page.
+  """
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
+
+  @doc """
+  The workspace menu's entries, the breadcrumb's menu of the organisation's workspaces,
+  after its workspaces, in the scope of a workspace's page, such as a way to add one;
+  none in the core, which has no page that adds a workspace.
+  """
+  @callback workspace_switcher_entries(Scope.t()) :: [Entry.t()]
 
   @doc """
   The edition's entries of the account menu, after the core's of the same group
@@ -98,7 +119,7 @@ defmodule ApiaryWeb.Edition do
   @callback instance_sections(Scope.t()) :: [Entry.t()]
 
   @doc """
-  The edition's own groups of the sidebar, in order, after the core's: each the `section`
+  The edition's groups of the sidebar, in order, after the core's: each the `section`
   its entries name (`ApiaryWeb.Nav.Entry`) and its heading, translated, or nil for a group
   without one. An entry of a section neither the core nor the edition names goes last,
   without a heading.
@@ -106,25 +127,26 @@ defmodule ApiaryWeb.Edition do
   @callback nav_sections() :: [{atom, String.t() | nil}]
 
   @doc """
-  The heading the switcher lists a place under (`c:Apiary.Edition.places/1`), translated,
-  such as the clients a person reaches through their operator; nil for the person's own
-  organisations, which the switcher lists first.
+  The heading the organisation menu lists a place under (`c:Apiary.Edition.places/1`),
+  translated, such as the clients a person reaches through their operator; nil for the
+  organisations the person is a member of, which the menu lists first.
   """
   @callback place_group(place :: term) :: String.t() | nil
 
   @doc """
-  The scope a place of the organisation switcher gives in `workspace`, as
-  `Apiary.Organisations.resolve_scope/4` would load it, which the switcher asks what its
-  link may open there: for a place of the edition's (`c:Apiary.Edition.places/1`), and a
-  membership the edition's scope carries more of. Nil for the core's own, a membership
-  in its organisation and workspace.
+  The scope a place of the edition's (`c:Apiary.Edition.places/1`), or a membership the
+  edition's scope carries more of, gives in `workspace`, as
+  `Apiary.Organisations.resolve_scope/4` would load it; nil to leave it to the core. The core
+  no longer asks for it: the breadcrumb's menus link every workspace through
+  `ApiaryWeb.SwitchController`, which reads the destination's scope when the link is
+  followed. It stays so that editions which answer it compile.
   """
   @callback place_scope(place :: term, %Workspace{}) :: Scope.t() | nil
 
   @doc """
   What the pages say to a reader (`Apiary.Access.reader/1`), a person who reads the
-  organisation of `scope` through the edition's reach, with no membership there, and
-  changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
+  organisation of `scope` through the edition's reach, with no membership there, in a
+  role that changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
   core's words. The core no longer asks for `:level` (the account menu's line where a
   member's level was); it stays in the type so that editions which answer it compile.
   """
@@ -132,13 +154,88 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   What a page says of a refusal the edition gave, a reason the core does not know, such as
-  one of `c:Apiary.Edition.deletion_refusal/2`'s: one sentence, or nil for the page's own
+  one of `c:Apiary.Edition.deletion_refusal/2`'s: one sentence, or nil for the page's
   words for a change that could not be made.
   """
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
 
   @doc """
-  The sections the edition adds to the organisation's settings, each a page of its own, in
+  What a page says, to the person of `scope` where they are, of a level the edition
+  refused to give (`c:Apiary.Edition.level_refusal/4`), its reason `reason`: one sentence,
+  or nil for the page's words for a change that could not be made.
+  """
+  @callback level_refusal_sentence(reason :: atom, Scope.t()) :: String.t() | nil
+
+  @doc """
+  What a page says of who may take an action in the organisation of `scope`, to a person
+  who is refused it or offered no way to take it, where the core's sentence names the
+  levels that may, such as "Only owners and admins add nodes.": one sentence, translated,
+  or nil for the core's sentence (`ApiaryWeb.Access.who_may/3`). The scope is the page's, with
+  the organisation, the workspace where there is one, the person and how they reach the
+  organisation.
+
+  `about` says what the sentence is of:
+
+  - an action of `Apiary.Access` (`Apiary.Access.actions/0`), the one the page refused or
+    offers no way to take, such as `:"node.create"`; a sentence of the core's may say more
+    than who may, such as the rule a refusal of `:"security_policy.lock"` is of;
+  - `:workspaces`, the organisation's list of its workspaces, which whoever may rename or
+    delete a workspace opens (`Apiary.Organisations.lists_workspaces?/1`);
+  - `:people`, the People page's line of what each level does, which in the core names
+    what owners and admins manage, and what members do: they see the runs, and change the
+    policy's rules that are not locked where a member's role holds
+    `:"security_policy.edit"` and its feature is on.
+
+  It is asked for the refusals, and the notices to whoever may not act, of the nodes'
+  pages and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
+
+  A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
+  where a page refuses them a change.
+  """
+  @callback who_may_sentence(about :: atom, Scope.t()) :: String.t() | nil
+
+  @doc """
+  What the pages of an organisation's gateways say of the workspaces whose nodes and node
+  pools can use them, of `organisation`, the gateways' organisation: one sentence,
+  translated. `kind` says where it stands:
+
+  - `:intro`, under the heading of the organisation's Gateways page;
+  - `:who_can_use`, on an organisation-level gateway's Overview;
+  - `:default_row`, the same Overview's line for the gateway that is the organisation's
+    default.
+
+  The core's sentences name the workspaces of `organisation` alone, as the core's
+  gateways serve no other organisation's: "Nodes in any workspace of Acme can use the
+  gateways added here. A workspace can also add gateways that only its nodes use.",
+  "Nodes in any workspace of Acme can use it." and "The default gateway for workspaces in
+  Acme that don't set one.". An edition whose organisation-level gateways also serve the
+  workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
+  in its answer.
+  """
+  @callback gateway_reach_sentence(
+              kind :: :intro | :who_can_use | :default_row,
+              organisation :: %Organisation{}
+            ) :: String.t()
+
+  @doc """
+  What the nodes' pages say of who manages the nodes, node pools and access keys of
+  `organisation`, the page's: one sentence, translated, or nil for the core's sentence, which
+  says who may by level ("Only owners and admins add nodes.", "An owner or admin adds
+  nodes."). It stands in place of them on a node's page and its Access key tab, where a
+  person may not change the node or its keys, and on the empty Nodes list, where they may
+  not add one.
+  """
+  @callback nodes_managed_by_sentence(organisation :: %Organisation{}) :: String.t() | nil
+
+  @doc """
+  The sections the edition adds to the organisation's settings, each a separate page, in
   the list beside the settings (`ApiaryWeb.SettingsComponents`), after the core's.
   """
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
@@ -154,18 +251,37 @@ defmodule ApiaryWeb.Edition do
   @callback activity_describer() :: module | nil
 
   @doc """
-  Where the level above the workspace's policy is read and changed, for the scope's
-  reader: its `path`, and `can_change`, whether the reader may change it there; nil where
-  the edition keeps no such level, or the reader may not read it. The core's pages draw
-  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here. A
-  link that asks the level to allow a host carries the host as `allow` and, as `back`, the
-  path of the workspace's page it was followed from (its overview, its Network access or
-  a target's, as filtered), for the level's page to offer the way back once it is done.
+  Who made `entry`, as the Activity page's Who column draws it (`ApiaryWeb.Activity.Actor`),
+  or nil for the core's words, which `assigns.actor` holds (`t:ApiaryWeb.Activity.Actor.words/0`):
+  such as the person and how they reached the organisation, from what the edition wrote
+  into the entry's details (`c:Apiary.Edition.audit_details/3`). `assigns`, a function
+  component's, which `Phoenix.Component.assign/3` and `~H` take, holds the core's
+  words (`actor`), the names the page read (`names`, `Apiary.Audit.names/2`, which name the
+  organisation a details key ending in `_id` holds) and the page's scope (`scope`). Asked
+  once for each entry when the page lays out the rows it read, so it reads
+  nothing: what it says comes from the entry and the names. The column keeps its cell and its
+  id around what it renders.
   """
-  @callback above_policy_link(Scope.t()) :: %{path: String.t(), can_change: boolean} | nil
+  @callback activity_actor(Apiary.Audit.Entry.t(), assigns :: map) ::
+              Phoenix.LiveView.Rendered.t() | nil
 
   @doc """
-  The names the edition's own paths take beyond the core's: first segments of the
+  Where the level above the workspace's policy is read and changed, for the scope's
+  reader: its `path`; `can_change`, whether the reader may change it there; and
+  `new_rule_path`, the full path of the level's New rule page, such as
+  `/acme/policy/rules/new`, or nil where it has none. Nil where the edition keeps no such
+  level, or the reader may not read it. The core's pages draw the level's rows and lines
+  from `Apiary.Policy.Effective`'s `above` and link here. A link that asks the level to
+  allow a host leads to `new_rule_path`, with the host as `host` and, as `back`, the path
+  of the workspace's page it was followed from (its overview, its Network access or a
+  target's, as filtered), for the level's page to offer the way back once it is done; a
+  nil `new_rule_path` leaves that link out.
+  """
+  @callback above_policy_link(Scope.t()) ::
+              %{path: String.t(), can_change: boolean, new_rule_path: String.t() | nil} | nil
+
+  @doc """
+  The names the edition's paths take beyond the core's: first segments of the
   instance's paths (`instance`) and pages of an organisation (`organisation`).
   """
   @callback reserved_slugs() :: %{
@@ -174,7 +290,15 @@ defmodule ApiaryWeb.Edition do
             }
 
   @doc """
-  The edition's Gettext backend, whose catalogues hold the sentences of the edition's own
+  The product's name, as the edition names it: the button of the Qory Apiary menu and the
+  menu's name (`ApiaryWeb.Layouts.brand_menu/1`), "Qory Apiary" in the core's. A name, not
+  a sentence: it is not translated. The log-in pages, the page titles and the emails keep
+  "Qory Apiary".
+  """
+  @callback product_name() :: String.t()
+
+  @doc """
+  The edition's Gettext backend, whose catalogues hold the sentences of the edition's
   modules, or nil when the edition has none beyond the core's `ApiaryWeb.Gettext`. It is
   built as the core's is (`docs/lingo.md`), with a catalogue for every locale of the
   core's. A sentence the core translates without knowing whose it is, such as a
@@ -188,19 +312,26 @@ defmodule ApiaryWeb.Edition do
     nav_counts: 1,
     new_entries: 2,
     switcher_entries: 1,
+    workspace_switcher_entries: 1,
     account_menu_entries: 1,
     instance_sections: 1,
     nav_sections: 0,
     place_group: 1,
     place_scope: 2,
     reader_sentence: 2,
+    level_refusal_sentence: 2,
     refusal_sentence: 1,
+    who_may_sentence: 2,
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,
+    activity_actor: 2,
     above_policy_link: 1,
     reserved_slugs: 0,
-    gettext_backend: 0
+    product_name: 0,
+    gettext_backend: 0,
+    gateway_reach_sentence: 2,
+    nodes_managed_by_sentence: 1
   ]
 
   defmacro __using__(_opts) do
@@ -237,22 +368,27 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   The router the endpoint dispatches to: the edition's, which mounts the core's routes
-  (`ApiaryWeb.Routes`) and adds its own, or `ApiaryWeb.Router`.
+  (`ApiaryWeb.Routes`) and adds the edition's routes, or `ApiaryWeb.Router`.
   """
   @spec router() :: module
   def router, do: @router
 
   @doc """
   The application whose `priv/static` the endpoint serves first, before `:apiary`'s; the
-  core's own, `:apiary`, when the edition has none.
+  core's, `:apiary`, when the edition has none.
   """
   @spec static_app() :: atom
   def static_app, do: @static_app
 
-  # One function per callback, which asks the configured module.
+  # One function per callback, which asks the configured module, or a test's stub that
+  # answers it (`Apiary.Edition.put_test_stub/1`).
   for {name, arity} <- @callbacks do
     args = Macro.generate_arguments(arity, __MODULE__)
     @doc false
-    def unquote(name)(unquote_splicing(args)), do: @module.unquote(name)(unquote_splicing(args))
+    def unquote(name)(unquote_splicing(args)),
+      do:
+        Apiary.Edition.answering(unquote(name), unquote(arity), @module).unquote(name)(
+          unquote_splicing(args)
+        )
   end
 end

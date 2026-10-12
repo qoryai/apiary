@@ -4,7 +4,7 @@ defmodule ApiaryWeb.Access do
   the page mount only for a reader who may take `action` on the workspace of the page's
   path, or on the organisation for an organisation's page without one, and answers as a
   path that does not exist otherwise (`ApiaryWeb.NotFound`), as a slug the reader cannot
-  see does. The page's own links and buttons ask `Apiary.Access.can?/3` with the same
+  see does. The page's links and buttons ask `Apiary.Access.can?/3` with the same
   actions.
 
   It follows the path scope's hook, which has loaded the organisation and the workspace,
@@ -14,13 +14,24 @@ defmodule ApiaryWeb.Access do
   is refused here, and its test shows it; an edition's page is refused the same way for
   the action it asks. Every member may read what the other pages ask, so no signed-in
   reader of a workspace is refused by them, nor by the run page's terminal tab
-  (`run.read_log`) or the log endpoint's refusal. Their end-to-end tests land with the
-  first role that is refused one of these; until then the answers are in
-  `Apiary.Access`'s table.
+  (`run.read_log`) or the log endpoint's refusal, but where an edition hides from them
+  what they ask (`c:Apiary.Edition.hidden/1`): the run's Terminal, the part
+  `observability.terminal` that `run.read_log` belongs to, takes the tab, its address and
+  the log endpoint with it, and the tests of the run page and of the log endpoint show it;
+  the nodes, the part `nodes` that `node.read` belongs to, take every page of the nodes,
+  the node pools, their access keys and the gateways, and the tests of those pages show
+  it. A page open when what it asks is hidden from its reader leaves, as one of a hidden
+  feature does (`ApiaryWeb.UserAuth.reload_scope/1`).
 
   A reader (`Apiary.Access.reader/1`), who reads the organisation through the edition's
-  reach with no membership there, reads everything and changes nothing: a page that
-  refuses them a change says so with `reads_only/1`, rather than the level it would take.
+  reach with no membership there, in a role that holds no change, reads everything and
+  changes nothing: a page that refuses them a change says so with `reads_only/1`, rather
+  than the level it would take. One the edition lets in with a role that changes
+  something is told what a refusal says to anyone else.
+
+  A page that refuses anyone else a change, or offers them no way to make it, says who may
+  with `who_may/3`: the core's sentence names the levels that may, and the edition may
+  say it instead.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -37,12 +48,49 @@ defmodule ApiaryWeb.Access do
       gettext("You can read this organisation, and change nothing here.")
   end
 
+  @doc """
+  who_may/3 is the sentence a page says to a person of `scope` who is refused an action
+  or offered no way to take it, of who may take it: the edition's words
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`), or `default`, the core's, which names the
+  levels that may, such as "Only owners and admins add nodes.". `about` is the action, or
+  the page's subject the edition's callback names.
+  """
+  @spec who_may(Apiary.Accounts.Scope.t(), atom, String.t()) :: String.t()
+  def who_may(scope, about, default), do: who_may(ApiaryWeb.Edition, scope, about, default)
+
   @doc false
+  # The same, asked of `edition`, a module of `ApiaryWeb.Edition`'s callbacks: the
+  # configured edition, or a test's.
+  @spec who_may(module, Apiary.Accounts.Scope.t(), atom, String.t()) :: String.t()
+  def who_may(edition, scope, about, default) when is_atom(about) and is_binary(default),
+    do: edition.who_may_sentence(about, scope) || default
+
+  @doc """
+  view_action/1 is the action a LiveView mounts on (`on_mount({ApiaryWeb.Access, action})`),
+  or nil for one that asks none, read from its mount hooks: for an answer about a page that
+  is not open, as where a switch of workspace lands (`ApiaryWeb.SwitchController`).
+  """
+  @spec view_action(module) :: atom | nil
+  def view_action(view) do
+    with true <- Code.ensure_loaded?(view) and function_exported?(view, :__live__, 0),
+         %{lifecycle: %{mount: hooks}} <- view.__live__() do
+      Enum.find_value(hooks, fn
+        %{id: {__MODULE__, action}} when is_atom(action) -> action
+        _hook -> nil
+      end)
+    else
+      _no_live_view -> nil
+    end
+  end
+
+  @doc false
+  # The action is kept with the page, so that an open page whose action's feature or part
+  # is hidden from the reader meanwhile leaves (`ApiaryWeb.UserAuth.reload_scope/1`).
   def on_mount(action, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
     if Apiary.Access.can?(scope, action, scope.workspace || scope.organisation),
-      do: {:cont, socket},
+      do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
   end
 end

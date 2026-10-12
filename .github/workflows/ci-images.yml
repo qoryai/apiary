@@ -1,0 +1,103 @@
+name: CI images
+
+# Copies the images in .github/ci-images.txt to ghcr.io/qoryai/ci-images, the package for
+# the CI of qoryai's repositories to pull them from: on a push to main or next that
+# changes the list or this file, and by hand from the Actions tab. Nothing else runs it.
+on:
+  push:
+    branches: [main, next]
+    paths:
+      - .github/ci-images.txt
+      - .github/workflows/ci-images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two runs never write the same tag at once, and none is cancelled while it runs; a run
+# waiting behind another gives way to a newer one, which copies the whole list too.
+concurrency:
+  group: ci-images
+  cancel-in-progress: false
+
+# Each image is copied with every platform it has and its manifests as they are, so the
+# copy has the source's digest and a reference by that digest pulls the same image from
+# either. An image whose tag already names its digest is left as it is. A copy whose
+# digest is not the one listed fails the run. A line whose digest changes moves its tag;
+# the image it named before stays in the package under its digest, and what pins that
+# digest still pulls it.
+#
+# The sources are pulled without a login, Amazon's copy of Docker Hub's official images
+# for those, and Docker Hub itself for the rest. Both refuse pulls now and then, so a copy
+# that fails is tried twice more, after 30 and after 90 seconds.
+jobs:
+  copy:
+    name: Copy the images
+    # Published from the GitHub repository alone, not a fork or another mirror of it.
+    if: ${{ github.server_url == 'https://github.com' && github.repository == 'qoryai/apiary' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TARGET: ghcr.io/qoryai/ci-images
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Copy each image that is not there yet
+        run: |
+          set -uo pipefail
+          # The sha256 of what a reference names, its manifest as the registry serves it,
+          # or nothing when the registry has nothing under it or cannot be read.
+          digest_of() {
+            local manifest
+            manifest="$(skopeo inspect --raw "docker://$1" 2>/dev/null)" || return 0
+            printf '%s' "$manifest" | sha256sum | cut -d' ' -f1
+          }
+          status=0
+          while read -r tag source || [ -n "$tag" ]; do
+            case "$tag" in ''|'#'*) continue ;; esac
+            digest="${source##*@sha256:}"
+            if [ "$digest" = "$source" ] || ! printf '%s' "$digest" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "::error file=.github/ci-images.txt::$tag: $source is not named by its sha256 digest"
+              status=1
+              continue
+            fi
+            if [ "$(digest_of "$TARGET:$tag")" = "$digest" ]; then
+              echo "$TARGET:$tag is $source already"
+              continue
+            fi
+            # skopeo takes a tag or a digest, not both: the source by its digest alone.
+            repository="${source%@*}"
+            case "${repository##*/}" in *:*) repository="${repository%:*}" ;; esac
+            copied=false
+            for wait in 0 30 90; do
+              sleep "$wait"
+              if skopeo copy --all --preserve-digests "docker://$repository@sha256:$digest" "docker://$TARGET:$tag"; then
+                copied=true
+                break
+              fi
+            done
+            if [ "$copied" != true ]; then
+              echo "::error file=.github/ci-images.txt::$tag: $source could not be copied"
+              status=1
+            else
+              copy="$(digest_of "$TARGET:$tag")"
+              if [ -z "$copy" ]; then
+                echo "::error file=.github/ci-images.txt::$tag: the copy of $source could not be read back"
+                status=1
+              elif [ "$copy" != "$digest" ]; then
+                echo "::error file=.github/ci-images.txt::$tag: the copy of $source has the digest sha256:$copy"
+                status=1
+              else
+                echo "::notice::$TARGET:$tag@sha256:$digest copied from $source"
+              fi
+            fi
+          done < .github/ci-images.txt
+          exit "$status"

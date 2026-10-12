@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.IntegrationLive.Definition do
   @moduledoc """
-  The workspace's own custom APIs, its service definitions in `Apiary.Connections`' words,
+  The workspace's custom APIs, its service definitions in `Apiary.Connections`' words,
   under Workspace settings › Integrations, with the `secrets` feature: New custom API
   (`…/definitions/new`), one custom API (`…/definitions/:id`, its public id `svc_…`) with
   where it is set up, the APIs set up from it, its edit (`…/edit`), a page, and its
@@ -121,7 +121,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         measure="list"
       >
         <:subtitle>
-          {gettext("A custom API of this workspace's own")}
+          {gettext("A custom API of this workspace")}
           <span class="text-faint" aria-hidden="true">·</span>
           <span class="q-mono">{@definition.key}</span>
         </:subtitle>

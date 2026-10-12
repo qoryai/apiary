@@ -156,5 +156,17 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
       refute has_element?(lv, "form")
       assert has_element?(lv, ~s|a[href="/users/log-in"]|, "Send a new link")
     end
+
+    test "without mail, an expired link's page offers no new link", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+
+      {:ok, lv, html} = live(conn, ~p"/users/log-in/invalid-token")
+
+      assert html =~ "That link has expired"
+      assert html =~ "Log-in links work once and for a short time."
+      refute html =~ "Ask for a new one"
+      refute html =~ "Send a new link"
+      assert has_element?(lv, ~s|a[href="/users/log-in"]|, "Log in")
+    end
   end
 end

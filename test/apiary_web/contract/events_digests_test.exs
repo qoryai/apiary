@@ -14,7 +14,6 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs
   alias Apiary.Runs.{Delivery, Projector, Target, Run}
   alias ApiaryWeb.Contract.Configuration
 
@@ -53,42 +52,42 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   defp in_force(conn), do: get_resp_header(conn, "x-qory-run-configuration")
 
+  # A heartbeat of a run whose start has not arrived: nothing names its target.
+  defp beat(subject \\ Ecto.UUID.generate(), sequence \\ 3),
+    do: wire_event(subject, sequence, "run.heartbeat", %{})
+
   defp run!(ctx, subject),
     do:
       Repo.one!(
         from r in Run, where: r.workspace_id == ^ctx.scope.workspace.id and r.run_id == ^subject
       )
 
-  test "the ping of a run that reports nothing is answered the baseline's digest", ctx do
-    {_subject, [ping, _started]} = first_events()
-    conn = deliver(ctx, [ping])
+  test "a batch that names no target, of a run that reports nothing, is answered the baseline's digest",
+       ctx do
+    conn = deliver(ctx, [beat()])
 
     assert response(conn, 202) == ""
     assert in_force(conn) == [ctx.baseline]
-
-    assert get_resp_header(conn, "x-qory-configuration") == [
-             Configuration.digest(ctx.key.node, true)
-           ]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
   end
 
-  test "the ping of a run that holds a digest in force is answered that digest, no other", ctx do
-    {_subject, [ping, _started]} = first_events()
-    assert in_force(deliver(ctx, [ping], run_configuration: ctx.own)) == [ctx.own]
+  test "a batch that names no target, of a run that holds a digest in force, is answered that digest, no other",
+       ctx do
+    assert in_force(deliver(ctx, [beat()], run_configuration: ctx.own)) == [ctx.own]
 
-    {_subject, [ping, _started]} = first_events()
     stale = "sha256=" <> String.duplicate("0", 64)
-    assert in_force(deliver(ctx, [ping], run_configuration: stale)) == [ctx.baseline]
+    assert in_force(deliver(ctx, [beat()], run_configuration: stale)) == [ctx.baseline]
   end
 
   test "the batch that starts the run is answered its target's digest, before any projection",
        ctx do
-    {_subject, [_ping, started]} = first_events()
+    {_subject, [started]} = first_events()
     assert in_force(deliver(ctx, [started])) == [ctx.own]
   end
 
   test "the start's labels name the target by the key's domain without reading a workspace",
        ctx do
-    {_subject, [_ping, started]} = first_events()
+    {_subject, [started]} = first_events()
     handler = "digest-workspaces-#{System.unique_integer()}"
     parent = self()
 
@@ -109,8 +108,8 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   test "once projected, the run's target decides, and a change of policy changes the answer",
        ctx do
-    {subject, [ping, started]} = first_events()
-    deliver(ctx, [ping, started], run_configuration: ctx.own)
+    {subject, batch} = first_events()
+    deliver(ctx, batch, run_configuration: ctx.own)
     {:ok, _run} = Projector.project(run!(ctx, subject))
 
     heartbeat =
@@ -142,17 +141,17 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   end
 
   test "a repeated delivery is answered the digest as well", ctx do
-    {_subject, [_ping, started]} = first_events()
+    {_subject, [started]} = first_events()
     delivery = Ecto.UUID.generate()
     assert in_force(deliver(ctx, [started], delivery: delivery)) == [ctx.own]
     assert in_force(deliver(ctx, [started], delivery: delivery)) == [ctx.own]
   end
 
   test "what the batch reported is kept on the delivery, and only a digest is", ctx do
-    {subject, [ping, started]} = first_events()
-    deliver(ctx, [ping], run_configuration: ctx.own)
+    {subject, [started]} = first_events()
+    deliver(ctx, [beat(subject, 3)], run_configuration: ctx.own)
     deliver(ctx, [started], run_configuration: "not a digest")
-    deliver(ctx, [wire_event(subject, 3, "run.heartbeat", %{})])
+    deliver(ctx, [beat(subject, 4)])
 
     assert [ctx.own, nil, nil] ==
              Repo.all(
@@ -165,12 +164,16 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert run!(ctx, subject).reported_run_configuration_digest == ctx.own
   end
 
-  test "a 410 carries both digests, the run configuration's for the closed run's target",
+  test "a 410 carries both digests, the run configuration's for the pruned run's target",
        ctx do
-    {subject, [ping, started]} = first_events()
-    deliver(ctx, [ping, started])
+    {subject, batch} = first_events()
+    deliver(ctx, batch)
     {:ok, run} = Projector.project(run!(ctx, subject))
-    {:ok, _run} = Runs.close_run(ctx.scope, run)
+
+    # The mark `Apiary.Retention` sets once it has deleted the run's events.
+    Repo.update_all(from(r in Run, where: r.id == ^run.id),
+      set: [events_pruned_at: DateTime.utc_now()]
+    )
 
     conn =
       deliver(ctx, [wire_event(subject, 3, "run.heartbeat", %{})], run_configuration: ctx.own)
@@ -178,9 +181,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert response(conn, 410) == ""
     assert in_force(conn) == [ctx.own]
 
-    assert get_resp_header(conn, "x-qory-configuration") == [
-             Configuration.digest(ctx.key.node, true)
-           ]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
 
     assert Repo.one!(
              from d in Delivery, where: d.status == 410, select: d.run_configuration_digest
@@ -191,17 +192,14 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
        _ctx do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key, secret: secret} = contract_key_fixture(scope)
-    {subject, [ping, started]} = first_events()
+    {subject, [started]} = first_events()
     reported = "sha256=" <> String.duplicate("a", 64)
 
-    for events <- [[ping], [started]] do
+    for events <- [[beat(subject, 3)], [started]] do
       conn = signed_post(build_conn(), key.key_id, secret, events, run_configuration: reported)
       assert response(conn, 202) == ""
       assert in_force(conn) == []
-
-      assert get_resp_header(conn, "x-qory-configuration") == [
-               Configuration.digest(key.node, false)
-             ]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
     end
 
     assert Repo.aggregate(
@@ -211,17 +209,15 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
              :count
            ) == 0
 
-    # The first change: the discovery digest of the workspace's answers changes, which is
-    # what sends a run in flight to fetch the document and find the run section.
+    # The first change: the answers name a run configuration, a digest the run does not
+    # hold, which is what sends a run in flight to reload it; discovery's stays.
     {:ok, _} = Policy.set_mode(scope, "enforce")
 
-    conn =
-      signed_post(build_conn(), key.key_id, secret, [wire_event(subject, 3, "run.heartbeat", %{})])
+    conn = signed_post(build_conn(), key.key_id, secret, [beat(subject, 4)])
 
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node, true)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
     {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
     assert in_force(conn) == [digest]
-    assert Configuration.digest(key.node, true) != Configuration.digest(key.node, false)
   end
 
   test "a refusal carries no digest of a run configuration", ctx do
@@ -231,8 +227,8 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   end
 
   test "the answer reads and renders nothing once the baseline exists", ctx do
-    {subject, [ping, started]} = first_events()
-    deliver(ctx, [ping, started])
+    {subject, batch} = first_events()
+    deliver(ctx, batch)
     {:ok, _run} = Projector.project(run!(ctx, subject))
 
     handler = "digest-queries-#{System.unique_integer()}"

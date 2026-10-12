@@ -2,8 +2,9 @@ defmodule ApiaryWeb.HealthController do
   @moduledoc """
   `GET /health` for load balancers and container orchestrators.
 
-  Answers 200 when the database answers `SELECT 1` and 503 otherwise. No
-  authentication, no session, never cached.
+  Answers 200 when the database answers `SELECT 1` and 503 otherwise, both with the
+  release's version and revision (`Apiary.Revision`). No authentication, no session, never
+  cached.
   """
   use ApiaryWeb, :controller
 
@@ -12,12 +13,17 @@ defmodule ApiaryWeb.HealthController do
 
     case database_status() do
       :ok ->
-        json(conn, %{status: "ok", database: "ok", version: version()})
+        json(conn, %{status: "ok", database: "ok", version: version(), revision: revision()})
 
       :error ->
         conn
         |> put_status(:service_unavailable)
-        |> json(%{status: "degraded", database: "error"})
+        |> json(%{
+          status: "degraded",
+          database: "error",
+          version: version(),
+          revision: revision()
+        })
     end
   end
 
@@ -35,4 +41,6 @@ defmodule ApiaryWeb.HealthController do
   defp version do
     :apiary |> Application.spec(:vsn) |> to_string()
   end
+
+  defp revision, do: Apiary.Revision.get()
 end

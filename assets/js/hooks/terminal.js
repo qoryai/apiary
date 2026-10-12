@@ -23,9 +23,6 @@
 // f key, or its button) puts a class on the root that folds the shell away and gives the
 // window to the box, and Escape gives it back; Full screen is the browser's, on the box.
 //
-// An empty box (data-empty, a run with no session) has no log: its note says why, its
-// controls are disabled, and the hook keeps only Focus and Full screen, reading nothing.
-//
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
 // on the first mount of this hook and by no other page.
 import {singleKeys} from "./shortcuts"
@@ -160,8 +157,6 @@ export const Terminal = {
     this.generation = 0
     this.unseen = 0
     this.dead = false
-
-    if (this.el.dataset.empty === "true") return this.bindWindow()
 
     this.handleEvent("log_advanced", () => this.pull())
     this.retry.addEventListener("click", () => {

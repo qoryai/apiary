@@ -12,10 +12,18 @@ defmodule Apiary.AccessRows do
       instance      the instance itself, in a job no person enqueued
       feature_off   whoever the action is for, an owner, an access key or the instance, on
                     an instance without the action's feature
+      hidden        whoever the action is for, as feature_off, where the edition hides the
+                    action's feature from people, or the part the action belongs to, of
+                    its feature or of none, as the nodes' and their access keys' part
+                    `nodes`: a person meets it as not found, and an access key and the
+                    instance are never asked what is hidden
 
   Accepting an invitation is taken on the strength of the token, which no role is, and
   granting and revoking an instance admin on the strength of a release command run on the
-  instance's machine: nobody's row says yes. Creating an organisation is a sign-up's, which
+  instance's machine: nobody's row says yes. Nor for a password link, which an instance
+  admin makes, as `Apiary.Accounts.build_password_link/3` asks, or a release command, nor
+  for saving the instance's mail settings and turning them on, an instance admin's, as
+  `Apiary.Mail.save_settings/3` and `turn_on/2` ask. Creating an organisation is a sign-up's, which
   asks nothing, in the core; an edition may let a signed-in person create one. Creating,
   deleting and restoring a workspace are asked of the organisation: an owner creates one,
   an owner or an admin deletes any workspace of it; purging is the instance's, once a
@@ -32,33 +40,38 @@ defmodule Apiary.AccessRows do
 
   @doc "actors/0 is the core's actors."
   @spec actors() :: [atom]
-  def actors, do: [:member, :admin, :owner, :other_owner, :access_key, :instance, :feature_off]
+  def actors,
+    do: [:member, :admin, :owner, :other_owner, :access_key, :instance, :feature_off, :hidden]
 
   @doc "rows/0 is the core's rows: every action of the core, with the actors that may."
   @spec rows() :: [{atom, keyword}]
   def rows do
     [
       {:"organisation.create", yes: []},
-      {:"organisation.rename", yes: @owners ++ [:admin, :feature_off]},
-      {:"organisation.delete", yes: @owners ++ [:feature_off]},
-      {:"organisation.restore", yes: @owners ++ [:feature_off]},
-      {:"organisation.purge", yes: [:instance, :feature_off]},
-      {:"member.invite", yes: @owners ++ [:admin, :feature_off], on: :workspace},
-      {:"member.change_level", yes: @owners ++ [:feature_off], on: :workspace},
-      {:"member.remove", yes: @owners ++ [:admin, :feature_off], on: :workspace},
-      {:"invitation.revoke", yes: @owners ++ [:admin, :instance, :feature_off]},
+      {:"organisation.rename", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"organisation.delete", yes: @owners ++ [:feature_off, :hidden]},
+      {:"organisation.restore", yes: @owners ++ [:feature_off, :hidden]},
+      {:"organisation.purge", yes: [:instance, :feature_off, :hidden]},
+      {:"member.invite", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
+      {:"member.change_level", yes: @owners ++ [:feature_off, :hidden], on: :workspace},
+      {:"member.remove", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
+      {:"invitation.revoke", yes: @owners ++ [:admin, :instance, :feature_off, :hidden]},
+      {:"invitation.renew", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"invitation.accept", yes: []},
-      {:"member.suspend", yes: @owners ++ [:admin, :feature_off], on: :workspace},
-      {:"member.activate", yes: @owners ++ [:admin, :feature_off], on: :workspace},
+      {:"member.suspend", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
+      {:"member.activate", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
       {:"instance_admin.grant", yes: []},
       {:"instance_admin.revoke", yes: []},
-      {:"audit.read", yes: @owners ++ [:admin, :feature_off]},
-      {:"audit.prune", yes: [:instance, :feature_off]},
-      {:"workspace.create", yes: @owners ++ [:feature_off]},
-      {:"workspace.rename", yes: @owners ++ [:admin, :feature_off]},
-      {:"workspace.delete", yes: @owners ++ [:admin, :feature_off]},
-      {:"workspace.restore", yes: @owners ++ [:admin, :feature_off]},
-      {:"workspace.purge", yes: [:instance, :feature_off]},
+      {:"account.password_link", yes: []},
+      {:"instance.mail_save", yes: []},
+      {:"instance.mail_on", yes: []},
+      {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
+      {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},
+      {:"workspace.rename", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"workspace.delete", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"workspace.restore", yes: @owners ++ [:admin, :feature_off, :hidden]},
+      {:"workspace.purge", yes: [:instance, :feature_off, :hidden]},
       {:"access_key.create_code", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.cancel_code", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.add", yes: @owners ++ [:admin, :feature_off]},
@@ -66,11 +79,11 @@ defmodule Apiary.AccessRows do
       {:"node.read", yes: @owners ++ [:member, :admin, :feature_off]},
       {:"node.create", yes: @owners ++ [:admin, :feature_off]},
       {:"node.edit", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.set_limit", yes: @owners ++ [:admin, :feature_off]},
       {:"node.delete", yes: @owners ++ [:admin, :feature_off]},
       {:"node.clear_instance", yes: @owners ++ [:admin, :feature_off]},
       {:"run.read", yes: @owners ++ [:member, :admin]},
       {:"run.read_log", yes: @owners ++ [:member, :admin]},
-      {:"run.close", yes: @owners ++ [:member, :admin]},
       {:"retention.edit", yes: @owners ++ [:admin]},
       {:"security_policy.read", yes: @owners ++ [:member, :admin]},
       {:"security_policy.edit", yes: @owners ++ [:member, :admin]},
@@ -83,8 +96,8 @@ defmodule Apiary.AccessRows do
       {:"variable.edit", yes: @owners ++ [:admin]},
       {:"connection.read", yes: @owners ++ [:member, :admin]},
       {:"connection.write", yes: @owners ++ [:admin]},
-      {:"run.post_events", yes: [:access_key]},
-      {:"run_configuration.fetch", yes: [:access_key]}
+      {:"run.post_events", yes: [:access_key, :hidden]},
+      {:"run_configuration.fetch", yes: [:access_key, :hidden]}
     ]
   end
 
@@ -117,13 +130,14 @@ defmodule Apiary.AccessRows do
 
   @doc """
   refusal/3 is why the core's answer is no where it is not the role: a feature that is off
-  is not found, and so is anything of another organisation, and an organisation that does
-  not exist yet, which is no place.
+  or hidden is not found, and so is a hidden part, anything of another organisation, and
+  an organisation that does not exist yet, which is no place.
   """
   @spec refusal(atom, atom, term) :: :not_found | nil
   def refusal(action, actor, _subject) do
     cond do
       actor == :feature_off and Apiary.Access.feature(action) != nil -> :not_found
+      actor == :hidden and Apiary.Access.shown_as(action) != nil -> :not_found
       actor == :other_owner -> :not_found
       Apiary.Access.action(action).asked_of == :new_organisation -> :not_found
       true -> nil

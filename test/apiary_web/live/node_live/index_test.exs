@@ -88,7 +88,10 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   describe "New node and New node pool" do
     setup :register_and_log_in_user
 
-    test "the header has New node, then New node pool, alike", %{conn: conn, scope: scope} do
+    test "the header has New node, New node pool, then New gateway, alike", %{
+      conn: conn,
+      scope: scope
+    } do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
       ids =
@@ -97,7 +100,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
         |> LazyHTML.query("#page-header-actions a")
         |> LazyHTML.attribute("id")
 
-      assert ids == ["new-node", "new-node-pool"]
+      assert ids == ["new-node", "new-node-pool", "new-gateway"]
       refute has_element?(lv, "#page-header-actions .btn-primary")
       # No line under it sends the reader to a workspace's access keys: there are none.
       refute has_element?(lv, "#not-on-runs")
@@ -180,6 +183,31 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
         |> follow_redirect(conn)
 
       assert [%Node{kind: :pool, instance_limit: 10, public_id: "np_" <> _}] =
+               Nodes.list_nodes(scope)
+    end
+
+    test "a pool is made with a limit of 1 by one an edition keeps its limit from",
+         %{conn: conn, scope: scope} do
+      # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool"))
+
+      refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
+
+      # Sent all the same, as the page never sends it.
+      html =
+        render_hook(lv, "create", %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}})
+
+      assert html =~ "You can&#39;t change the instance limit."
+      assert Nodes.list_nodes(scope) == []
+
+      {:ok, _show, _html} =
+        lv
+        |> form("#new-node-form", node: %{name: "spot-runners"})
+        |> render_submit()
+        |> follow_redirect(conn)
+
+      assert [%Node{kind: :pool, name: "spot-runners", instance_limit: 1}] =
                Nodes.list_nodes(scope)
     end
 

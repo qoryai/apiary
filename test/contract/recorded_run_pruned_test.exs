@@ -1,11 +1,14 @@
 defmodule Apiary.Contract.RecordedRunPrunedTest do
   @moduledoc """
-  The record of one run of the server contract, `fixtures/run/<id>/events.jsonl`, delivered
-  again after each phase of retention: nothing is stored and nothing is folded.
+  The record of one run of the server contract, `fixtures/run/<id>/events.jsonl`,
+  registered and delivered, then delivered again after each phase of retention: nothing
+  is stored and nothing is folded, and once its events are pruned the run takes no other
+  registration either.
   """
   use Apiary.DataCase, async: true
 
   import Apiary.AccessKeysFixtures
+  import Apiary.ContractFixtures, only: [record_registration: 1, register_run: 2]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Retention
@@ -67,7 +70,10 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
       scope: scope,
       key: key
     } do
-      lines = @file_path |> File.read!() |> String.split("\n", trim: true)
+      {registration, lines} =
+        @file_path |> File.read!() |> String.split("\n", trim: true) |> record_registration()
+
+      assert {:ok, %{repeated: false}} = register_run(key, registration)
       assert Enum.all?(deliver(key, lines), &(&1.status == 202))
 
       run =
@@ -95,6 +101,10 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
       assert before.events == 0
 
       assert Enum.all?(deliver(key, lines), &(&1.status == 410))
+      # The same registration again is answered as before; any other takes no run here.
+      assert {:ok, %{repeated: true}} = register_run(key, registration)
+      other = Map.put(registration, "labels", %{"repository" => "acme/other"})
+      assert register_run(key, other) == {:error, :gone}
       {:ok, _run} = Projector.project(run)
       assert state(run) == before
     end

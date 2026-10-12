@@ -1,11 +1,15 @@
 defmodule Apiary.Access.Action do
   @moduledoc """
   Action is one verb of `Apiary.Access`: something a person, an access key or the instance
-  may be allowed to do, named once, with everything the rest of the apiary asks of it.
+  may be allowed to do, named once, with everything the rest of Qory Apiary asks of it.
 
   - `name`: the action's atom, `:"noun.verb"`, the name the audit trail records.
   - `feature`: the feature it belongs to (`Apiary.Features`), nil for one every instance
-    has. An action of a feature that is off is not found.
+    has. An action of a feature that is off, or hidden from the person who asks, is not
+    found.
+  - `part`: the part it belongs to (`Apiary.Features.parts/0`), a part of its feature or,
+    for an action of no feature, a part of none; nil for none. An action of a part hidden
+    from the person who asks is not found, as one of a hidden feature is.
   - `what`: one line saying what it is, which the documentation tabulates.
   - `roles`: the roles that hold it, the rows of the role table it is in. An action no
     role holds is taken on the strength of something else, a sign-up, an invitation's
@@ -17,13 +21,19 @@ defmodule Apiary.Access.Action do
     person's account, which is no organisation's; or `:new_organisation`, an organisation
     before it exists.
 
-  The core's actions are `Apiary.Access`'s; an edition adds its own through
+  The core's actions are `Apiary.Access`'s; an edition adds more through
   `c:Apiary.Edition.actions/0`, each an `Action` too. `Apiary.Access.action/1` finds one by
   name.
   """
 
   @enforce_keys [:name, :what]
-  defstruct name: nil, feature: nil, what: nil, roles: [], audited: true, asked_of: :workspace
+  defstruct name: nil,
+            feature: nil,
+            part: nil,
+            what: nil,
+            roles: [],
+            audited: true,
+            asked_of: :workspace
 
   @typedoc "What an action is asked of."
   @type asked_of :: :organisation | :workspace | :account | :new_organisation
@@ -32,6 +42,7 @@ defmodule Apiary.Access.Action do
   @type t :: %__MODULE__{
           name: atom,
           feature: atom | nil,
+          part: atom | nil,
           what: String.t(),
           roles: [atom],
           audited: true | {:not, String.t()},
@@ -42,13 +53,18 @@ defmodule Apiary.Access.Action do
 
   @doc """
   new/3 is the action `name`, which is `what`, with the rest from `opts`: `feature:`
-  (nil), `roles:` (none), `audited:` (`true`) and `asked_of:` (`:workspace`). Raises
-  `ArgumentError` for a name that is not an atom, a description that is not a string, or
-  an option it does not know.
+  (nil), `part:` (nil), `roles:` (none), `audited:` (`true`) and `asked_of:`
+  (`:workspace`). Raises `ArgumentError` for a name that is not an atom, a description
+  that is not a string, a part that is not an atom, or an option it does not know.
+  Whether the part is one of its feature's, or of none for an action of none, is checked
+  by `Apiary.Access`'s registry.
   """
   @spec new(atom, String.t(), keyword) :: t
   def new(name, what, opts \\ []) when is_atom(name) and is_binary(what) do
     action = struct!(__MODULE__, [name: name, what: what] ++ opts)
+
+    unless is_nil(action.part) or (is_atom(action.part) and not is_boolean(action.part)),
+      do: raise(ArgumentError, "#{name}'s part is #{inspect(action.part)}")
 
     unless action.asked_of in @asked_of,
       do: raise(ArgumentError, "#{name} is asked of #{inspect(action.asked_of)}")

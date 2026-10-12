@@ -9,7 +9,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   `ApiaryWeb.SecretLive.Query`); one status line says a switch and what a search left.
   The second column marks the section as the page on Secrets, and as its parent
   (`aria-current="true"`) on Variables and on every page of a form, which shows no tabs.
-  Nothing opens over the page: each act is at a path of its own, a form a page of its own
+  Nothing opens over the page: each act is at a separate path, a form a separate page
   (`ApiaryWeb.PageComponents.page_form/1`: its title, one sentence, the form, its button
   and Cancel back to the tab, the breadcrumb ending with the section and the page), and
   so is the list of a variable's targets; a deletion asks to confirm in place, on its row
@@ -29,8 +29,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     once: the page never renders it, nor keeps it in an assign, so the field is empty
     after a save and after a refused one, and the form the context hands back holds none
     (`Apiary.Secrets.change_secret/2`).
-  - **Variables** (`Apiary.Variables`): the workspace's own, each with its value, which
-    is plain configuration, its lock, and the targets that set their own value or whose
+  - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
+    is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
     Unlock, Delete variable, and the targets of a variable. A name beginning
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.SecretLive.Index do
               id="secrets-read-only"
               class="text-[13px]/5 text-muted"
             >
-              {gettext("Only owners and admins change this.")}
+              {only_admins_change(@current_scope, write_action(@view))}
             </p>
           </div>
 
@@ -775,10 +775,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
 
     ~H"""
-    <span :if={@targets == []} id={@id} class="q-faint">{gettext("None of their own")}</span>
+    <span :if={@targets == []} id={@id} class="q-faint">{gettext("No overrides")}</span>
     <.link :if={@targets != []} id={@id} patch={@path} class="hover:underline">
       <span :if={@own > 0}>
-        {ngettext("%{number} target sets its own", "%{number} targets set their own", @own,
+        {ngettext("%{number} target overrides it", "%{number} targets override it", @own,
           number: Format.number(@own)
         )}
       </span>
@@ -1070,7 +1070,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <.input
         field={@form[:locked]}
         type="checkbox"
-        label={gettext("Locked: a target may not set its own value")}
+        label={gettext("Locked: no target may override it")}
       />
       <.page_form_foot
         id="variable-save"
@@ -1131,7 +1131,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       label={gettext("Find a target")}
       change="find_target"
     />
-    <p :if={@all == []} class="text-muted">{gettext("No target sets its own value.")}</p>
+    <p :if={@all == []} class="text-muted">{gettext("No target overrides this variable.")}</p>
     <.table
       :if={@all != []}
       id="variable-targets"
@@ -1157,7 +1157,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       </:col>
       <:col :let={%{state: state}} label={gettext("Its value")}>
         {if state == :own,
-          do: gettext("Its own value"),
+          do: gettext("Overrides the workspace's value"),
           else: gettext("Its value set aside by the lock")}
       </:col>
     </.table>
@@ -1228,7 +1228,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_sentence(%{act: :variable_targets, variable: variable}),
     do:
       gettext(
-        "The targets that set their own value of %{name}, and those whose own value its lock sets aside.",
+        "The targets that override %{name}, and those whose override its lock sets aside.",
         name: variable.name
       )
 
@@ -1335,7 +1335,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       cancel={@cancel}
     >
       {gettext(
-        "The workspace's value of %{name} is deleted. A target that sets its own keeps it. This cannot be undone.",
+        "The workspace's value of %{name} is deleted. A target that overrides it keeps its override. This cannot be undone.",
         name: @variable.name
       )}
       <.refusal_line id="variable-refused" refusal={@refusal} />
@@ -1364,13 +1364,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Lock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("While %{name} is locked, a target may not set its own value.",
+      {gettext("While %{name} is locked, no target may override it.",
         name: @variable.name
       )}
       <span :if={@own > 0} id="lock-targets">
         {ngettext(
-          "%{number} target sets its own now: the lock sets it aside while it holds.",
-          "%{number} targets set their own now: the lock sets them aside while it holds.",
+          "%{number} target overrides it now: the lock sets the override aside while it holds.",
+          "%{number} targets override it now: the lock sets their overrides aside while it holds.",
           @own,
           number: Format.number(@own)
         )}
@@ -1399,11 +1399,11 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Unlock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("A target's own value of %{name} applies again.", name: @variable.name)}
+      {gettext("Target overrides of %{name} apply again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
-          "%{number} target set its own: the lock no longer sets it aside.",
-          "%{number} targets set their own: the lock no longer sets them aside.",
+          "%{number} target overrides it: the lock no longer sets the override aside.",
+          "%{number} targets override it: the lock no longer sets their overrides aside.",
           @ignored,
           number: Format.number(@ignored)
         )}
@@ -1811,7 +1811,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           values_errors: [],
           refused_saves: 0
         ),
-      else: refused(socket)
+      else: refused(socket, :"secret.write")
   end
 
   defp open(socket, :edit_secret, %{"id" => id}) do
@@ -1877,7 +1877,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           act: :new_variable,
           form: variable_form(fresh(Variables.change_variable(%Variable{})))
         ),
-      else: refused(socket)
+      else: refused(socket, :"variable.edit")
   end
 
   defp open(socket, :variable_targets, %{"id" => id}) do
@@ -1925,13 +1925,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       fun.(socket, secret, value)
     else
       :refused ->
-        refused(socket)
+        refused(socket, :"secret.write")
 
       {:error, :no_value, secret} ->
         back(socket, :error, value_gone(secret))
 
       {:error, :forbidden} ->
-        unauthorized(socket)
+        unauthorized(socket, :"secret.write")
 
       {:error, _not_found} ->
         back(socket, :error, gettext("That secret is no longer in this workspace."))
@@ -1957,10 +1957,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       fun.(socket, variable)
     else
       :refused ->
-        refused(socket)
+        refused(socket, :"variable.edit")
 
       {:error, :forbidden} ->
-        unauthorized(socket)
+        unauthorized(socket, :"variable.edit")
 
       _gone ->
         back(socket, :error, gettext("That variable is no longer in this workspace."), :variables)
@@ -2224,14 +2224,14 @@ defmodule ApiaryWeb.SecretLive.Index do
       when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
     if socket.assigns.may_write,
       do: {:noreply, reload(socket)},
-      else: {:noreply, refused(socket)}
+      else: {:noreply, refused(socket, :"secret.write")}
   end
 
   def handle_event(event, _params, socket)
       when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
     if socket.assigns.may_edit,
       do: {:noreply, reload(socket)},
-      else: {:noreply, refused(socket)}
+      else: {:noreply, refused(socket, :"variable.edit")}
   end
 
   defp change_variable(socket, event, variable) do
@@ -2301,8 +2301,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if own > 0,
       do:
         ngettext(
-          "%{name} is locked: %{number} target that sets its own is set aside by the lock.",
-          "%{name} is locked: %{number} targets that set their own are set aside by the lock.",
+          "%{name} is locked: %{number} target override is set aside.",
+          "%{name} is locked: %{number} target overrides are set aside.",
           own,
           name: name,
           number: Format.number(own)
@@ -2316,8 +2316,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if ignored > 0,
       do:
         ngettext(
-          "%{name} is unlocked: %{number} target that sets its own is no longer set aside.",
-          "%{name} is unlocked: %{number} targets that set their own are no longer set aside.",
+          "%{name} is unlocked: %{number} target override applies again.",
+          "%{name} is unlocked: %{number} target overrides apply again.",
           ignored,
           name: name,
           number: Format.number(ignored)
@@ -2409,7 +2409,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         )
   end
 
-  defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
+  defp refusal(socket, :forbidden, view), do: unauthorized(socket, write_action(view))
 
   # Any other refusal: a deletion's changeset (a form's is answered under its fields), or
   # a reason no clause above names. A deletion's confirmation stays open and says why; a
@@ -2467,14 +2467,24 @@ defmodule ApiaryWeb.SecretLive.Index do
     end)
   end
 
-  # A path or an event for a change the reader may not make, which the page offers no
-  # control for.
-  defp refused(socket), do: back(socket, :error, gettext("Only owners and admins change this."))
+  # A path or an event for a change the reader may not make, `action`, which the page
+  # offers no control for.
+  defp refused(socket, action),
+    do: back(socket, :error, only_admins_change(socket.assigns.current_scope, action))
+
+  # Who may change a view, `action`, in the edition's words where it has some.
+  defp only_admins_change(scope, action),
+    do: ApiaryWeb.Access.who_may(scope, action, gettext("Only owners and admins change this."))
+
+  # The action that changes a view.
+  defp write_action(:variables), do: :"variable.edit"
+  defp write_action(_secrets), do: :"secret.write"
 
   # Refused on the membership as it is now: the page's scope is stale, and is read again,
   # with what the reader may. A membership that is gone sends the page to `/`; a reader
-  # whom the edition lets read the organisation is told so.
-  defp unauthorized(socket) do
+  # whom the edition lets read the organisation is told so, and anyone else who may take
+  # `action`.
+  defp unauthorized(socket, action) do
     socket = reload_scope(socket)
 
     cond do
@@ -2487,7 +2497,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         |> back(:error, ApiaryWeb.Access.reads_only(socket.assigns.current_scope))
 
       true ->
-        socket |> mays() |> refused()
+        socket |> mays() |> refused(action)
     end
   end
 

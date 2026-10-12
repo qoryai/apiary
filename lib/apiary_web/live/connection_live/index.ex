@@ -765,7 +765,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       own =
         if level == :workspace and panel.own_rule,
-          do: gettext("A target's own rule for this host still decides there.")
+          do: gettext("A target rule for this host still decides there.")
 
       sentences = [
         Rules.toast(rule, panel.action, panel.host, panel.path, where),
@@ -1160,7 +1160,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp locked(act, _locks, _scope), do: act
 
   # A row the level above decides links to its rule there, and a row that could be
-  # allowed only there links to its page with the host, where the reader may change it.
+  # allowed only there links to its New rule page with the host, where the reader may
+  # change it and the edition gives one.
   defp above(%{above: %{}, entry: %{host: host}} = act, %{path: path} = link) do
     Map.merge(act, %{
       rule_path: path <> "?" <> URI.encode_query(%{"rule" => host}),
@@ -1169,13 +1170,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     })
   end
 
-  defp above(%{allow_elsewhere: %{}, host: host} = act, %{path: path, can_change: true} = link),
-    do:
-      Map.put(
-        act,
-        :allow_path,
-        path <> "?" <> URI.encode_query(%{"allow" => host, "back" => link.back})
-      )
+  defp above(
+         %{allow_elsewhere: %{}, host: host} = act,
+         %{can_change: true, new_rule_path: new_rule_path} = link
+       )
+       when is_binary(new_rule_path),
+       do:
+         Map.put(
+           act,
+           :allow_path,
+           new_rule_path <> "?" <> URI.encode_query(%{"host" => host, "back" => link.back})
+         )
 
   defp above(act, _link), do: act
 
@@ -1363,13 +1368,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
-      do: gettext("Replaces the target's own rule for the host."),
+      do: gettext("Replaces the target's rule for the host."),
       else: gettext("Disables the workspace's allow rule there. Other targets keep it.")
   end
 
   defp workspace_consequence(baseline, host, own?) do
     cond do
-      own? -> gettext("A target's own allow rule still holds there.")
+      own? -> gettext("A target's allow rule still holds there.")
       Rules.seen(baseline, host) != [] -> gettext("Replaces the workspace's allow rule.")
       true -> nil
     end

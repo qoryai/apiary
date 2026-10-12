@@ -10,7 +10,7 @@ defmodule Apiary.Secrets.Cipher do
       lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
 
   The workspace id is the workspace's UUID in its canonical string form, the secret id
-  its public `sec_` id, and the value id the value's own, or the empty string for a
+  its public `sec_` id, and the value id the value's, or the empty string for a
   secret's one value without one. A value copied to another workspace, another secret or
   another value id does not decrypt there, so the database alone cannot move a value.
 

@@ -3,12 +3,12 @@ defmodule Apiary.Kinds.Schema do
   Schema builds and keeps the JSON Schemas the kinds are validated against with JSV: an
   integration's `description.json` (the integrations contract's
   `description.schema.json`, vendored under `priv/contract/integration/`), a service
-  definition (`priv/schemas/service-definition.schema.json`), and an integration's own
+  definition (`priv/schemas/service-definition.schema.json`), and an integration's
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
   `:persistent_term`. Nothing is fetched over the network: a reference outside the file
   resolves to the Forager contract's `auth.schema.json`, vendored under `priv/contract/`,
-  which a service definition's `auth` refers to by its URL, or through JSV's own local
+  which a service definition's `auth` refers to by its URL, or through JSV's local
   resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules.
   """
 

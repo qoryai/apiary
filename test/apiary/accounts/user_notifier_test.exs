@@ -65,6 +65,67 @@ defmodule Apiary.Accounts.UserNotifierTest do
     assert email.text_body =~ "“می\u200Cخواهم 👨\u200D👩\u200D👧”"
   end
 
+  describe "with no mail set" do
+    # A signed-up account, the fixture's own emails received and set aside.
+    defp account do
+      %{user: user} = sign_up_fixture()
+      flush_emails()
+      user
+    end
+
+    defp flush_emails do
+      receive do
+        {:email, _} -> flush_emails()
+      after
+        0 -> :ok
+      end
+    end
+
+    test "nothing is sent, and the answer says so" do
+      user = account()
+      Apiary.Mail.put_test_source(:none)
+
+      assert {:error, :no_mail} =
+               Apiary.Accounts.deliver_login_instructions(user, &"http://localhost/#{&1}")
+
+      assert {:error, :no_mail} =
+               UserNotifier.deliver_invitation(
+                 "dana@example.com",
+                 %Organisation{name: "Acme"},
+                 "http://localhost/invitations/x"
+               )
+
+      assert {:error, :no_mail} =
+               UserNotifier.deliver_update_email_instructions(user, "http://localhost/x")
+
+      refute_received {:email, _}
+    end
+
+    test "a process the test started sends nothing either" do
+      user = account()
+      Apiary.Mail.put_test_source(:none)
+
+      task =
+        Task.async(fn ->
+          Apiary.Accounts.deliver_login_instructions(user, &"http://localhost/#{&1}")
+        end)
+
+      assert {:error, :no_mail} = Task.await(task)
+      refute_received {:email, _}
+    end
+
+    test "mail from the settings is sent" do
+      user = account()
+      Apiary.Mail.put_test_source(:settings)
+
+      assert {:ok, _email} =
+               Apiary.Accounts.deliver_login_instructions(user, &"http://localhost/#{&1}")
+
+      assert_received {:email, %Swoosh.Email{to: [{"", address}]}}
+      assert address == user.email
+    end
+  end
+
   describe "an organisation's name" do
     # Each kind the name refuses, at creation and at rename, with its error.
     @refused [

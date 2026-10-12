@@ -122,17 +122,169 @@ defmodule Apiary.Runs.LivenessTest do
       assert Liveness.check(@now) == []
     end
 
-    test "far ahead does not hold a silent run alive, nor mask the beats after it", %{
+    test "far ahead holds nothing alive, and the beats after it count by the offset it set", %{
       scope: scope
     } do
+      ahead = DateTime.add(@now, 86_400 * 365, :second)
       run = run_fixture(scope, %{state: "running"})
-      run = beat(run, 3, time: DateTime.add(@now, 86_400 * 365, :second), received_at: ago(200))
+      run = beat(run, 3, time: ahead, received_at: ago(200))
       assert run.last_heartbeat_at == ago(200)
+      assert run.clock_offset_ms == Liveness.clock_offset(ago(200), ahead)
 
+      # The clock set back: the beat counts by its own time and the offset, a year ago.
       run = beat(run, 4, time: ago(86_400), received_at: ago(100))
-      assert run.last_heartbeat_at == ago(100)
+      assert run.clock_offset_ms == Liveness.clock_offset(ago(200), ahead)
+
+      assert run.last_heartbeat_at ==
+               DateTime.add(ago(86_400), run.clock_offset_ms + 300_000, :millisecond)
 
       assert [%Run{state: "lost"}] = Liveness.check(@now)
+    end
+  end
+
+  describe "a heartbeat's own time" do
+    @ping %{
+      "forager_version" => "v0.6.0",
+      "contract_version" => 1,
+      "events" => [],
+      "interval_seconds" => 30
+    }
+
+    defp heartbeat(run, sequence, time, received_at) do
+      event_fixture(
+        run,
+        sequence,
+        "run.heartbeat",
+        %{"elapsed_seconds" => 30 * sequence, "interval_seconds" => 30},
+        time: time,
+        received_at: received_at
+      )
+    end
+
+    defp project!(run) do
+      {:ok, run} = Projector.project(run)
+      run
+    end
+
+    # A session's run whose machine's clock is a second behind this server's: its ping, its
+    # start and four heartbeats, the last 3480 s before @now, each received at once; then
+    # the check finds it lost, at 3300 s before @now.
+    defp lost_in_an_outage(scope) do
+      run = run_fixture(scope, %{inserted_at: ago(3600)})
+      event_fixture(run, 1, "ping", @ping, time: ago(3601), received_at: ago(3600))
+
+      event_fixture(run, 2, "run.started", started_data(),
+        time: ago(3601),
+        received_at: ago(3600)
+      )
+
+      for k <- 1..4, do: heartbeat(run, 2 + k, ago(3601 - 30 * k), ago(3600 - 30 * k))
+
+      assert %Run{state: "running", clock_offset_ms: 1000} = project!(run)
+      assert [%Run{state: "lost"}] = Liveness.check(ago(3300))
+      Repo.get!(Run, run.id)
+    end
+
+    # The heartbeats of the outage, sent at @now in batches: the last recorded 601 s before
+    # @now, when the run ended.
+    defp replay(run) do
+      5..100
+      |> Enum.chunk_every(24)
+      |> Enum.map(fn ks ->
+        for k <- ks, do: heartbeat(run, 2 + k, ago(3601 - 30 * k), @now)
+        project!(run)
+      end)
+    end
+
+    test "a replayed backlog keeps a lost run lost, and on the Overview; an exit whose end was not recorded keeps it so for good",
+         %{
+           scope: scope
+         } do
+      run = lost_in_an_outage(scope)
+      since = ago(7 * 86_400)
+      assert [%Run{id: id}] = Runs.lost_since(scope, since)
+      assert id == run.id
+
+      for replayed <- replay(run) do
+        assert %Run{state: "lost", lost_at: lost_at, clock_offset_ms: 1000} = replayed
+        assert lost_at == ago(3300)
+        assert Enum.map(Runs.lost_since(scope, since), & &1.id) == [run.id]
+        assert Runs.count_alive(scope) == 0
+        assert Liveness.check(@now) == []
+      end
+
+      # Its last real heartbeat, by its own time and the offset, within the tolerance.
+      assert Repo.get!(Run, run.id).last_heartbeat_at == ago(300)
+
+      event_fixture(
+        run,
+        103,
+        "run.exited",
+        %{"state" => "failed", "exit_code" => -1, "reason" => "gateway_lost", "duration_ms" => 1},
+        time: ago(600),
+        received_at: @now
+      )
+
+      # Lost from the exit's time, and final: a heartbeat after it revives nothing.
+      lost_at = ago(600)
+      assert %Run{state: "lost", reason: "gateway_lost", lost_at: ^lost_at} = project!(run)
+      assert Enum.map(Runs.lost_since(scope, since), & &1.id) == [run.id]
+
+      heartbeat(run, 104, ago(5), @now)
+      assert %Run{state: "lost", lost_at: ^lost_at} = project!(run)
+      assert Liveness.check(DateTime.add(@now, 3600, :second)) == []
+    end
+
+    test "a rebuild gives the same offset, the same last heartbeat and, once checked, the same state",
+         %{scope: scope} do
+      run = lost_in_an_outage(scope)
+      replay(run)
+      before = Repo.get!(Run, run.id)
+
+      assert {:ok, rebuilt} = Projector.rebuild(run)
+
+      fields = [
+        :clock_offset_ms,
+        :last_heartbeat_at,
+        :elapsed_seconds,
+        :heartbeat_interval_seconds
+      ]
+
+      assert Map.take(rebuilt, fields) == Map.take(before, fields)
+      assert [%Run{state: "lost"}] = Liveness.check(@now)
+    end
+
+    test "a live run behind a separate gateway whose machine's clock differs from the gateway's stays alive",
+         %{scope: scope} do
+      run = run_fixture(scope, %{inserted_at: ago(130)})
+      # The ping on the gateway's clock, right; the session's start and heartbeats on its
+      # machine's, twenty minutes behind.
+      event_fixture(run, 1, "ping", @ping, time: ago(130), received_at: ago(130))
+
+      event_fixture(run, 2, "run.started", started_data(%{"credential" => "issuer"}),
+        time: ago(1330),
+        received_at: ago(130)
+      )
+
+      for k <- 1..4, do: heartbeat(run, 2 + k, ago(1330 - 30 * k), ago(130 - 30 * k))
+
+      assert %Run{state: "running", clock_offset_ms: 1_200_000} = run = project!(run)
+      assert run.last_heartbeat_at == ago(10)
+      assert Liveness.check(@now) == []
+      assert Runs.count_alive(scope) == 1
+    end
+
+    test "a run with no offset keeps the arrival rule", %{scope: scope} do
+      # A run whose last heartbeat was kept by its arrival, before the offset was.
+      run = run_fixture(scope, %{state: "running", last_heartbeat_at: ago(89)})
+      assert Liveness.check(@now) == []
+
+      # Its next heartbeat sets the offset and counts at its arrival, whatever its own time.
+      heartbeat(run, 9, ago(86_400), ago(5))
+      assert %Run{clock_offset_ms: 86_395_000, last_heartbeat_at: heard} = project!(run)
+      assert heard == ago(5)
+      assert Liveness.check(DateTime.add(@now, 85, :second)) == []
+      assert [_] = Liveness.check(DateTime.add(@now, 86, :second))
     end
   end
 
@@ -146,7 +298,7 @@ defmodule Apiary.Runs.LivenessTest do
       event_fixture(recent, 9, "run.exited", exit, received_at: ago(9))
 
       assert Liveness.sweep(@now) == 1
-      assert state(left) == "succeeded"
+      assert state(left) == "completed"
       assert state(recent) == "running"
       assert Liveness.sweep(@now) == 0
     end
@@ -165,7 +317,7 @@ defmodule Apiary.Runs.LivenessTest do
       )
 
       assert Liveness.check(@now) == []
-      assert state(run) == "succeeded"
+      assert state(run) == "completed"
     end
 
     test "is bounded, oldest first, and the rest waits for the next check", %{scope: scope} do
@@ -210,14 +362,65 @@ defmodule Apiary.Runs.LivenessTest do
     end
   end
 
-  test "a run that has ended or is closed is left alone", %{scope: scope} do
+  describe "a run through a gateway" do
+    # A run whose registration was given a run key, its attach window closing at
+    # `attach_by`: written straight into the table, as the registration stores it.
+    defp through_gateway(scope, inserted_at, attach_by, attrs \\ %{}) do
+      run_fixture(
+        scope,
+        Map.merge(
+          %{
+            inserted_at: inserted_at,
+            registered_at: inserted_at,
+            registration_labels: %{},
+            registration_about: %{},
+            registration_digest: :crypto.hash(:sha256, "registration"),
+            run_key_payload: ~s({"version":1}),
+            run_key_issued_at: inserted_at,
+            attach_by: attach_by
+          },
+          attrs
+        )
+      )
+    end
+
+    test "waits for its gateway until its attach window ends, and is lost then", %{scope: scope} do
+      waiting = through_gateway(scope, ago(500), DateTime.add(@now, 100, :second))
+      closed = through_gateway(scope, ago(700), ago(1))
+
+      assert [%Run{id: id, state: "lost", lost_at: @now}] = Liveness.check(@now)
+      assert id == closed.id
+      assert state(waiting) == "pending"
+    end
+
+    test "once attached, is held to the interval its attach announced, from the attach", %{
+      scope: scope
+    } do
+      attached = fn attached_at ->
+        through_gateway(scope, ago(2000), ago(1400), %{
+          attached_at: attached_at,
+          attach_interval_seconds: 10,
+          attach_answer_digest: "sha256=" <> String.duplicate("0", 64)
+        })
+      end
+
+      silent = attached.(ago(31))
+      fresh = attached.(ago(29))
+
+      assert [%Run{id: id}] = Liveness.check(@now)
+      assert id == silent.id
+      assert state(fresh) == "pending"
+    end
+  end
+
+  test "a run that has ended or is lost is left alone", %{scope: scope} do
     runs =
-      for state <- ~w(succeeded failed timed_out closed lost) do
+      for state <- ~w(succeeded ended failed timed_out lost) do
         run_fixture(scope, %{state: state, last_heartbeat_at: ago(9000), inserted_at: ago(9000)})
       end
 
     assert Liveness.check(@now) == []
-    assert Enum.map(runs, &state/1) == ~w(succeeded failed timed_out closed lost)
+    assert Enum.map(runs, &state/1) == ~w(succeeded ended failed timed_out lost)
   end
 
   test "a second check finds nothing new, and each lost run is announced once", %{scope: scope} do
@@ -253,25 +456,13 @@ defmodule Apiary.Runs.LivenessTest do
 
     event_fixture(run, 9, "run.exited", %{
       "state" => "failed",
-      "exit_code" => -1,
-      "reason" => "gateway_lost",
+      "exit_code" => 1,
       "duration_ms" => 1
     })
 
-    assert {:ok, %Run{state: "failed", reason: "gateway_lost", lost_at: nil}} =
-             Projector.project(run)
+    assert {:ok, %Run{state: "failed", exit_code: 1, lost_at: nil}} = Projector.project(run)
 
     assert Liveness.check(DateTime.add(@now, 3600, :second)) == []
-  end
-
-  test "a closed run stays closed", %{scope: scope} do
-    run = run_fixture(scope, %{state: "running", inserted_at: ago(600)})
-    {:ok, _} = Runs.close_run(scope, run)
-
-    assert Liveness.check(@now) == []
-
-    event_fixture(run, 9, "run.heartbeat", %{"elapsed_seconds" => 1, "interval_seconds" => 30})
-    assert {:ok, %Run{state: "closed"}} = Projector.project(run)
   end
 
   # Started before the sandbox lets it in, its sweep at boot fails, says so and goes on.

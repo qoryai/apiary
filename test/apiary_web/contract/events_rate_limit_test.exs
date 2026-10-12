@@ -31,7 +31,9 @@ defmodule ApiaryWeb.Contract.EventsRateLimitTest do
     assert get_resp_header(conn, "retry-after") == ["1"]
     assert signed_answer?(conn)
 
-    assert build_conn() |> signed_post(other.key_id, other_secret, batch) |> response(202)
+    # Another node's key, with a run of its own: a run takes batches from its own node.
+    {_subject, other_batch} = first_events()
+    assert build_conn() |> signed_post(other.key_id, other_secret, other_batch) |> response(202)
   end
 
   test "a refused batch spends a token like any other verified request" do

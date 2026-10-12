@@ -9,66 +9,365 @@ restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
-The first release of the open core of Qory Apiary: the free edition, complete for one
-team, as `EDITIONS.md` at the root of the repository describes it.
+The first release of the open core of Qory Apiary: Qory Apiary Community, complete for
+one team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
 
-- One organisation and one workspace. The first person to sign up on a new instance
-  creates the instance's organisation, with its workspace Main, and is its owner; everyone
-  after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
-  `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
-  instance and change its admins.
+- One organisation and one workspace. The person who sets a new instance up creates the
+  instance's organisation, with its workspace Main, and is its owner; everyone after joins
+  it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
+  `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` set a new instance
+  up from a shell and change its admins.
+- The set-up link. Until a new instance is set up, every start logs the same line, "Set up
+  Qory Apiary at https://…/setup/<code>.", and nobody can sign up. The page at that link
+  asks for an email address, a password and its confirmation, and the organisation's
+  name; it creates the instance's organisation, its workspace Main and the account as its
+  owner, and signs the person in. The code is 32 random bytes, stored in the instance's
+  settings until it is used and then gone; any set-up link after says the instance is
+  already set up, and a wrong one before is a page that does not exist. On an instance
+  that is set up, a restored one included, a start logs no such line.
+  `grant_instance_admin/2` on a new instance uses the code too.
+- Mail is optional. With `SMTP_RELAY` set, Qory Apiary sends its email through that relay;
+  without it, it starts all the same, sends no email, and says so in one line of its log at
+  each start: people sign up and log in with a password, and invitations and password
+  links are copied by hand. `.env.example` leaves the mail lines empty. `Apiary.Mail` says
+  whether mail is set and where from. TLS, STARTTLS or from the start on port 465, checks
+  the relay's certificate against the system's certificate authorities and the relay's
+  name, TLS 1.2 or 1.3; a relay given as an IP address needs a certificate that names that
+  address. The relay is the host connected to, not its MX records (`Apiary.Mail.TLS`).
+- Without mail, an invitation is a link to copy. The invite page shows the link once, for
+  the person who made it to send themselves, with when it stops working; their account
+  need not be confirmed, since no email goes out in their name. A pending invitation's
+  **Make a new link** replaces a lost one: the same invitation, seven days again, and the
+  old link stops working at once. A link copied, and a new one made, count against
+  `INVITATIONS_PER_DAY` as an emailed invitation does. `Apiary.Organisations.invite_member/3`
+  and `send_invitation/4` hand the link back, `{:ok, invitation, {:link, url}}`, and
+  `renew_invitation/4` (`invitation.renew`) makes a new one. With `action:`, as
+  `insert_invitation/3` takes, an edition that asked `Apiary.Access` itself renews it: the
+  entry records its action, charged to the allowance the invitation was counted against,
+  and the token comes back for `send_invitation/4`, which sends it once the edition's
+  transaction has committed.
+- Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
+  person in as soon as the account is made; an invited person keeps the invitation's
+  address. `Apiary.Organisations.sign_up_user/3` takes `password` and
+  `password_confirmation`: a person's sign-up needs them without mail, and drops them
+  with mail, whose address a link confirms first; the sign-up the instance
+  makes itself (`actor: :instance`) needs none and keeps one given.
+  `ApiaryWeb.CoreComponents.new_password_fields/1` draws the two fields and never writes a
+  password back to the page. Account settings do not change the email address without mail.
+- Password links, without mail. An instance admin makes one for another member of the
+  instance's organisation, never for themselves, from the ⋯ menu of their row on
+  **People**, while no mail is set, after a recent sign-in as Account settings ask: a
+  one-time link, shown once to copy, that sets the account's password at
+  `/users/password/:token` and ends every session of the account. It works for 24 hours,
+  and a new one ends the one before; only its hash is stored. Mail turned on, by the test
+  link of Instance settings › Mail or a start with `SMTP_RELAY`, ends every such link
+  (`Apiary.Mail.end_password_links/0`). Each is an
+  `account.password_link` entry in the organisation's activity. The release command
+  `Apiary.Release.password_link/1` prints one for an hour, mail or not, and
+  `grant_instance_admin/2`'s set-up of a new instance prints one in place of the log-in
+  link when no mail is set. `Apiary.Accounts.build_password_link/3` makes them.
+- The log-in page follows mail. Without mail it asks for the email address and the
+  password only, and says to ask an admin of the instance for a password link when the
+  password is forgotten. An expired log-in link's page then leads to the log-in page, and
+  an expired link, to log in or to change an address, says only that it has expired, not
+  to ask for a new one; Account settings no longer call the password optional beside
+  log-in links. With mail a log-in link stays the default and a password the other way
+  in, whose form's **Email me a link** sends a log-in link to the address typed, counted
+  as one asked for.
+- An account whose password was set before its address was confirmed loses that password
+  at its first log-in link, which confirms the address and ends every other session; the
+  page says so. A sign-up whose confirmation email cannot be sent keeps the account made,
+  and sends the person to the log-in page for a new link.
+- Instance settings › Mail: an instance admin saves the SMTP relay, its port, TLS,
+  username and password, and the sender, stored in the database with the password
+  encrypted under a key derived from `APIARY_ENCRYPTION_SECRET` for that purpose alone.
+  TLS is **Always** with a username, but on port 465, so the password is never sent
+  unencrypted. The section, the save and the test link ask for a recent sign-in, as
+  Account settings do. Saving sends a test link to that admin; mail is on once they follow
+  it, signed in as themselves, and their address is confirmed. The link works once, for 60
+  minutes, and does nothing for anyone else. Each save is an `instance.mail_save` entry in
+  the activity of the instance's organisation, with the relay, port and TLS, and each link
+  followed an `instance.mail_on`. With `SMTP_RELAY` set, the
+  environment wins whole and the section is read only. Each node reads the settings again
+  when they change. The boot's check of `APIARY_ENCRYPTION_SECRET` covers the stored
+  password.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces
   per organisation, which in the core is the one the organisation was made with, and
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
+- A person an edition lets into an organisation without a membership is told they read it
+  and change nothing there (`Apiary.Access.reader/1`) only while the role the edition
+  gives them holds no action that changes anything, that is, none that leaves an entry in
+  the audit trail (`Apiary.Access.reads_only?/1`). One whose role there changes something
+  is told what a refusal tells anyone else. In the core no one is let in without a
+  membership, so no page says it.
+- The organisation's settings list its workspaces under Workspaces for whoever may rename
+  or delete one (`workspace.rename`, `workspace.delete`, asked of the organisation,
+  `Apiary.Organisations.lists_workspaces?/1`), owners and admins in the core. A
+  workspace's Delete…, the deletions waiting to be cancelled and the note on what a
+  deletion does are there for whoever may delete one.
+- An edition may use different words to say who may take an action
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`, asked with the action and the scope, through
+  `ApiaryWeb.Access.who_may/3`), where the core's sentence names the levels, such as
+  "Only owners and admins add nodes.", and the core's sentence stands where it has none,
+  as it does in the core. It is asked for the refusals, and the notices to whoever may not
+  act, of the nodes' pages and a node's Access key tab, the workspace overview's Get the
+  command, the organisation's and the workspace's settings, People, integrations, and the
+  pages that say "Only owners and admins change this."; for People's line of what each
+  level does; for the refusal to cancel an organisation's deletion on Your organisations;
+  for the security policy's refusals (`Apiary.Policy`); and for the policy pages'
+  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
+  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
+  mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
-  revision 1: discovery, events, the run configuration and enrolment): the session as a
-  timeline, the terminal, every connection with its decision and rule, and how the run
-  ended.
-- A run a gateway opened, with no session: no runtime, command or host, and no exit
-  status. When it was quiet, its run credential expired or its issuer reported it ended, it
-  is Ended, a grey dot and the word, or the dot alone, as Closed is, for the repositories
-  list's last run and in a repository's Last runs, counted with the runs that ended well;
-  the runs list's state filter offers it, and its Runtime column says "no session". Its
-  page says why it ended in words after the state; its Terminal tab is the terminal, empty,
-  with a note that the run has no session, and search, follow, wrap, the text size and the
-  download disabled; its timeline starts "by a gateway with no session"; and its Details
-  say what opened it and which Forager reported it, with no
-  Command section, and its Session "none". The one who starts a run ends it: such a run
-  offers no Close, on its page or as a lost run on the Overview, and the server refuses to
-  close it once its start is projected. A run through a separate gateway belongs to the
-  gateway's node and instance, and its Host is the agent's machine.
-- How a run ended, in words, under State in the run's rail, and after its state on the
-  run page where they say more than the state: timed out, closed, gateway lost, session
-  lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
-  reported the run ended. A run's timeline ends "Run ended", why in words and how long it
-  ran, when it was quiet, its run credential expired or its issuer reported it ended,
-  whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
-  lost gateway or session, an expired run credential and the issuer's end in those words,
-  never as `-1`, and the header after its state adds no exit for them.
-- Signed requests and signed answers. Every request the gateway makes names a node's access
-  key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
-  `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
-  clock for a GET; every answer to a verified request is signed with the server's own
-  Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
-  `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
-  refusals come in the contract's order, coded: a header sent twice or an instance id
-  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
-  server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
-  0d0f104.
+  revision 1: discovery, a run's registration, attach, reload and outcome, events and
+  enrolment): the
+  session as a timeline, the terminal, every connection with its decision and rule, and
+  how the run ended.
+- A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
+  id, its labels, what it is about, the heartbeat interval it uses and when it was sent,
+  read strictly, a body it refuses being `400` `invalid_request` with the member at fault
+  in `names`; the answer is its run configuration, `{"version":1}` where the workspace
+  serves no policy, always with `X-Qory-Run-Configuration`, an `ETag` and
+  `X-Qory-Configuration`. The same bytes
+  sent again under any active key of the node that registered the run get the same answer;
+  the run id from another node, or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
+  `410`; a run configuration that cannot be read is `503`, never no policy. No run is
+  stored on any refusal. `GET /v1/runs/<run_id>` reloads a run's configuration for the
+  active keys of the node that registered it, by its registration's labels, and is `404`
+  for a key of any other node, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
+  holds `dev.qory.ping` or `dev.qory.run.registered` is `400` `invalid_request`: a
+  Forager that opens its runs with a ping starts none, so Forager and Qory Apiary are run
+  from the same release.
+- A run's outcome, from its starter. `POST /v1/runs/<run_id>/outcome`, signed by any
+  active key of the run's node, says how the run went:
+  `{"version":1, "state":"succeeded", "reason":"all_checks_passed", "time":"…"}`. The state
+  is `succeeded`, `failed` or `cancelled`, and none is `cancelled` with the reason
+  `stopped`; a reason that is not a code, or is one of Forager's reserved codes, is dropped and the
+  outcome kept; a `time` more than 300 seconds from the server's clock is `401`. The
+  outcome sets the run's state and reason whenever it arrives, before the run's exit or
+  after it, and the exit's code, signal and reason stay on record beside it. Each run gets
+  one: the same state and reason again, whatever the bytes or the `time`, get the same
+  answer, `200` `{"version":1}`, and change nothing; another state or reason is `409`
+  `outcome_given`. A run of another node, one the workspace does not hold, and one whose
+  events retention pruned are `404` `not_found`. Where the outcome's state differs from
+  what the run's exit said, the run page says both, for example "Succeeded, as its starter
+  said; the runtime exited 1". A run refused at its start says the outcome's state alone:
+  "Succeeded, as its starter said". A run whose starter sent its outcome with no state says no such sentence: it
+  reads as any cancelled run, "Cancelled", with "the starter gave no outcome" after it.
+- The end of a run, in the answers to its batches. Once a run's starter has given its
+  outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
+  carries `end` with the outcome's state and reason, as `application/json`,
+  `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, under the answer's
+  signature. Every other answer to a batch has an empty body, as before.
+- A run through a gateway. A run's registration resolves its node's choice of gateway as
+  the records are then. A node that goes directly registers as before; a node whose
+  choice leads to a gateway registers without `forager_version`, `contract_version`,
+  `interval_seconds` and `events`, and may ask for an attach window, `attach_seconds`
+  (600 seconds unless asked, at most 3600: `config :apiary, Apiary.Runs.Registration`,
+  `attach_seconds` and `max_attach_seconds`). Its answer is no run configuration but the
+  run's id and a run key, `{"version":1,"run_id":"…","run_key":"qrk_…"}`, with neither
+  `X-Qory-Run-Configuration` nor `ETag`. A run key (`Apiary.Runs.RunKey`) is `qrk_`, a
+  payload and its Ed25519 signature under the instance's signing key, at most 2048
+  characters; the payload names the run, its workspace, the node that registered it, the
+  gateway with its `https` address and active public keys, the instance, when it was made
+  and the end of its attach window. Before the instance limit, a registration is a signed
+  `409`: `gateway_key` from a gateway's key, `node_is_direct` and `node_uses_gateway`
+  for a body whose shape does not match the node's choice, `no_default_gateway`,
+  `gateway_not_serving` and `gateway_without_key` for a choice that leads nowhere. A
+  gateway attaches the run with a signed `POST /v1/runs/<run_id>/attach` under the gateway's
+  key, with the run key and what a direct registration announces
+  (`Apiary.Runs.Attach`); the answer is the run's run configuration, read under the run's
+  workspace, with the registration's `labels` and `about`. Its refusals, in order:
+  `409` `not_a_gateway`, `400` `run_key_invalid`, the same gateway node and the same
+  instance id attaching the live run again, under any of the node's active keys, is given
+  the same answer, `410` for a run that has ended, then `409` `run_key_expired`,
+  `wrong_gateway`, `workspace_not_served` and `run_attached`, which another gateway node,
+  or another instance of the same one, is given for a live run. The run keeps the instance
+  id the attach was signed with (`X-Qory-Instance-Id`), so one instance of the gateway
+  takes the run on; a gateway that restarts keeps its instance id, and its run. Once
+  attached, the run's batches, heartbeats and reloads are the gateway's alone, under any
+  of its active keys, from the instance that attached it, and a batch from any other key,
+  or from another instance, is a signed `409` `wrong_gateway`, a reload `404`; a
+  gateway's batch never opens a run. Once the run's exit has arrived, it was lost after
+  its attach, or its events were pruned, a batch or heartbeat from any instance of the
+  gateway is answered as the attaching instance's would be, a resend deduplicated and a
+  pruned run `410`; an outcome alone leaves the run to its attaching instance until its
+  exit arrives, and reloads stay that instance's. A run attached before its instance was
+  kept takes the instance of the next attach, batch or heartbeat its gateway sends for it
+  before its sending ends, and holds to it from then on. After a loss, only the attaching
+  instance's heartbeat makes the run live again: another instance's heartbeat is stored
+  and answered, and the run stays lost. A run whose attaching instance is not known yet
+  is made live again by any instance's heartbeat. Its outcome stays its node's. The run is held to
+  the interval its attach announced, from its attach, and a run its gateway never
+  attaches is lost at the end of its window. The console does not show a run's gateway or its attach.
+- A run through a gateway belongs to the node that registered it and its instance, never
+  to the gateway, and its Host is the machine the runtime ran on.
+- Qory Apiary records what a run reports and never ends a run it did not start; it starts
+  none today. No run offers Close, on its page or as a lost run on the Overview, and a run
+  has no Closed state. The events endpoint answers `410` only to a run whose events
+  retention has pruned.
+- Six states of a run, in four families: alive (Pending, Running), ended well (Completed),
+  cancelled (Cancelled) and ended badly (Failed, Lost). A cancelled run was stopped
+  before it said how it went, and counts neither as ended well nor as ended badly: the
+  runs list's Ended badly view and the Overview's Ended badly count Failed and Lost, the
+  share that ended well leaves cancelled runs out, the Filter menu's State section has a
+  Cancelled heading, and the Overview's chart table a Cancelled column. Completed is a
+  green check, Cancelled a grey stop, Failed a red x-mark and Lost an amber
+  signal-slash.
+- How a run ended, by one rule, from its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
+  `succeeded` is Completed, `cancelled` Cancelled and `failed` Failed, but a failed exit
+  with `session_lost` or `gateway_lost` is Lost, for good, and a failed exit an older
+  Forager wrote when it stopped a run itself (`timeout`, `quiet`, `credential_expired`,
+  `run_ended_at_issuer`) is Cancelled. An exit without a `state` is read by its reason.
+  A run that did not start, `dev.qory.run.refused`, is Failed, "did not start" with the
+  refusal's code, and never turns Lost.
+- How a run ended, in words, after its state in the run page's header, under State in its
+  rail, in its timeline's last item, "Run ended", and in the runs list's preview: "time
+  limit reached", "no activity for 30 minutes" (or hours, or seconds), "permission to run
+  expired", "stopped, no outcome given", "interrupted" (a session's run stopped from where
+  it was started, a Ctrl-C or a signal to `qory run`, which is Cancelled whatever its
+  exit), "stopped responding", "end not recorded", "couldn't check whether the run may go
+  on: no answer" (or "unreadable answer"), and any other code as the run's starter gave
+  it, with spaces for underscores ("no longer needed"). An exit stored under one of Forager's earlier names reads in the words of the
+  new one. A session run's Exit in the rail is the runtime's exit as recorded, "not
+  recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
+  same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost
+  lists on the Overview as "Lost, stopped responding" or "Lost, end not recorded".
+- Signed requests and signed answers. Every request the gateway makes names a node's
+  access key and its instance and is signed with that key, Ed25519
+  (`X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300
+  seconds of the server's clock for a GET and a registration's `time`; every answer to a
+  verified request is signed with the server's Ed25519 key, which every machine pins
+  as `apiary_public_key`, and sent with `Cache-Control: no-store, no-transform`, while
+  every `401` goes out unsigned. The refusals come in the contract's order, coded: a
+  header sent twice or an instance id absent or malformed is `400` `bad_request` on every
+  endpoint. Discovery names the key's node (`node_id`), its workspace (`workspaces`) and
+  the server's keys (`apiary_public_key`), so its digest differs by node and workspace.
+  The tests replay the contract's fixtures at the commit `.forager-contract-ref` pins,
+  457a8a7 on Forager's main.
+- A workspace's id in the server contract: every workspace has one, `ws_` and 16
+  characters, made when it is created, and for a workspace that was already there by the
+  migration that adds it (Migrations, below). Discovery lists it as `workspaces`, the one
+  workspace an access key may name, that of its node or node pool. Only the contract
+  names a workspace by it: the console neither shows nor uses it. With it every access
+  key's discovery digest changes once, when this is deployed, so each Forager reads
+  discovery again once.
+- Gateways, a third kind of node beside the node and the node pool: `ng_` and 16
+  characters, with an address (`url`: `https://`, a host
+  and an optional port, nothing more, at most 2048 characters) and no instance limit. A
+  gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
+  node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
+  gateway's key names it (`node_id`, `ng_…`) and lists no workspaces: which workspaces a
+  gateway serves follows from the nodes that use it, and Qory Apiary decides at each
+  registration and attach whether it may serve the run's workspace. Each node and node pool records a choice of gateway: direct, its
+  workspace's default gateway, or a gateway it names, one that may serve its workspace,
+  checked when the choice is saved, and resolved again at each run's registration (a run
+  through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
+  starts on the default when a default gateway resolves for its workspace, and on direct
+  otherwise. A workspace's first gateway becomes its default, and only a gateway made
+  when no default resolves does so by itself, so adding a second one moves no node; a
+  person moves the mark (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only
+  when no node names it, no node on the default resolves to it, and no run through it is
+  live (attached and not ended) or waiting for its attach (registered for it, not
+  attached, not lost or ended, and within its attach window); the refusal names those
+  nodes and runs. A run's registration or attach that meets the gateway's deletion
+  waits for it, and is then refused as for a deleted gateway. After a deletion no node
+  moves, and when no default resolves for the workspace any more, the oldest gateway left
+  becomes the default. Making, changing and deleting a gateway, and moving the mark, are
+  `node.create`, `node.edit` and `node.delete` entries, as for any node. `Apiary.Gateways`
+  answers whether a gateway may serve a workspace, the workspace's default gateway, where
+  a node's choice leads, the workspaces a gateway may serve and the gateways a node may
+  name, and `Apiary.Gateways.chosen/1` the gateway a node's choice names now, with a key
+  or not. On the console, Nodes lists gateways, with their kind, Gateway, the default's
+  mark, Default, and Kind's Gateway in the Filter menu.
+  New gateway (`/nodes/new-gateway`) asks a name and a URL, with the URL's errors under
+  its field, and opens the gateway's Access key tab as a new node's does. A gateway's
+  Overview shows its URL and whether it is the default, with Make default; its Settings
+  change its name and URL; its deletion is confirmed in place, and refused while nodes
+  point to it or runs go through it: "Nodes use this gateway: …", the first five of the
+  workspace by name, then "and N more", which counts the rest and any of other
+  workspaces, and "Runs are going through this gateway: …", the first five to
+  register, named by run id, then "and N more"; both lists when both hold.
+  New node, New node pool and a node's Settings choose its Gateway once the workspace has
+  one: Default gateway, offered only while a default resolves, Direct, or a gateway by
+  name; a new one starts on Default gateway when one resolves. A node's About says where
+  its choice leads, and its Access key tab, command page, Key for a node and Forager file
+  name the gateway its runs go through, with its URL. The command and the Forager file
+  point at Qory Apiary through that gateway: the command, on its page and in the
+  overview's first-run box, carries `--via` and the gateway's URL, with a line under it
+  that a gateway whose certificate a private certificate authority signed needs
+  `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
+  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
+  gateway. A gateway relays the enrolment unchanged, from its address, which the
+  enrolment's per-address limit counts for every machine behind it.
+  A gateway's key enrols the gateway and registers no
+  run, and its Access key tab says so. The audit log calls a
+  gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
+- `gateways` is a reserved workspace slug, refused as the names of the organisation's
+  pages are; a workspace named Gateways gets the slug `gateways-2`.
+- A gateway may live at an organisation as well as at a workspace: its row has no
+  workspace, and nor have its access keys, enrolment codes and instances. It may serve
+  every workspace of its organisation, and those an edition names
+  (`c:Apiary.Edition.serving_organisations/1`, `c:Apiary.Edition.served_organisations/1`;
+  the core's edition names none). An organisation's gateways have names unique among
+  them, and at most one default. A workspace's default gateway is the one it marks;
+  without one, its organisation's; without that, one of an organisation that
+  serves it. `Apiary.Nodes.create_organisation_gateway/2`,
+  `list_organisation_gateways/1` and `list_serving_gateways/1` make and list them, asked
+  of the organisation (`node.create`, `node.read`); a gateway's changes, keys and codes
+  are asked at its place. A change of an organisation's gateways takes turns with every
+  change of a node's choice in a workspace it may serve, on the organisations' rows
+  (`Apiary.Gateways.lock/1`, `docs/access.md`). An organisation's gateway's key is checked while its
+  organisation is out of use, not marked for deletion, and acts for a run only while the
+  run's workspace is in use, the gateway may serve it, and either the gateway's
+  organisation is in use or the run is another organisation's. A gateway acts for a run
+  only while it may serve the run's workspace, asked again at each batch, heartbeat,
+  reload and repeated attach: once it may not, a batch or heartbeat, one accepted before
+  and sent again included, is a signed `410` `workspace_not_served` with no digest and
+  nothing of it stored, before deduplication and before a pruned run's answer, a reload the same `410` with no
+  policy, and a repeated attach a signed `409` `workspace_not_served`; the run goes lost
+  by liveness. A workspace's gateway's key is held to its organisation's use as any
+  node's is. The console offers an
+  organisation's gateways only where an organisation may have more than one workspace
+  (`c:Apiary.Edition.limits/0`): with one workspace, as here, Organisation › Gateways, its
+  sidebar entry and New gateway in New are not offered, and their paths are not found.
+  Where they are offered, Gateways lists them, with their URL, Default and whether each is
+  connected; New gateway is a form page; a gateway's page has the tabs a workspace's
+  gateway has, says whose nodes can use it and which workspaces' nodes use it now,
+  naming only the workspaces the reader reaches and counting the rest, and its deletion
+  is confirmed in place. A workspace's Nodes lists its organisation's gateways beside the
+  workspace's, each "Set for" the organisation; a node's choice groups the gateways by level; a
+  gateway of another organisation is named with its organisation and linked only where
+  the reader may open it. `c:ApiaryWeb.Edition.gateway_reach_sentence/2` and
+  `c:ApiaryWeb.Edition.nodes_managed_by_sentence/1` let an edition word whose nodes can
+  use an organisation's gateways and who manages the nodes.
+- A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
+  it: the events endpoint, and a run's registration and reload, each spend a separate bucket, 50 requests a second and 100 at once, so a gateway flushing a backlog of
+  events still registers a new run. Discovery is not limited.
+- Limits on signing in, on each node: a log-in with a password, 5 per email address from
+  one client network (an IPv4 /24 or an IPv6 /48) and then 1 a minute, 50 per email
+  address from all networks and then 10 a minute, and 20 per client address and then 1
+  every 3 seconds; a log-in link asked for, 3 per email address from one client network
+  and then 1 every 5 minutes, and 30 from all networks and then 10 every 5 minutes, so a
+  stranger's network does not lock an address's owner out of theirs; an invitation's pages and
+  the set-up page, 20 per client address and then 1 every 3 seconds. Every attempt counts before the address
+  is looked up, so past a limit an address with an account and one without get the same
+  answer, "Too many attempts. Try again in a few minutes." The client address is the one
+  the audit trail records, behind the proxies `TRUSTED_PROXIES` names; an IPv6 one counts
+  with the rest of its /64.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
   configuration selects none of a machine's. An edition may keep a level above it (`c:Apiary.Edition.above_workspace/1`,
   an `Apiary.Policy.Above`; the core keeps none): its denies hold everywhere, its allows
   reach every workspace and can be narrowed, never widened, it may require enforce
-  (then `Apiary.Policy.set_mode/3` refuses with `:fixed`) and may allow only its own
-  hosts; the pages list its rules first and link to where it is changed
+  (then `Apiary.Policy.set_mode/3` refuses with `:fixed`) and may allow only the hosts
+  on its list; the pages list its rules first and link to where it is changed
   (`c:ApiaryWeb.Edition.above_policy_link/1`), and a change of it renders every
   workspace again (`Apiary.Policy.rerender_in/3`, an `above_changed` change in each
   workspace's history).
@@ -76,7 +375,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is
   made. Owners and admins add them, rename them, change a pool's limit and delete them
-  (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
+  (`node.create`, `node.edit`, `node.delete`, each in the audit trail). Setting a pool's
+  limit, as it is made or after, is a separate action, `node.set_limit`, held as
+  `node.edit` is, so an edition may keep it from some who change the rest: the node's
+  Settings then show the limit disabled, and New node pool leaves it out and makes the
+  pool with a limit of 1; the entry of the creation or the edit records it. Everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
@@ -114,8 +417,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   lines under `gateway:` (`url`, `access_key_id`, `apiary_public_key`), each marked as
   Qory Apiary's or this key's; for a generated key, four numbered steps: where its secret belongs, then
   `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `gateway.server.url`. The server's address
-  and public key are the instance's own, the same for every organisation, workspace and
-  node. A public key pasted into a node is no way to give it a key: the page that took
+  and public key are set once for the instance, the same for every organisation,
+  workspace and node. A public key pasted into a node is no way to give it a key: the page that took
   one, Add a public key, was removed before the release.
   Owners and admins get and cancel commands and add and revoke keys, each in the audit
   trail; a node holds at most two keys at a time, and deleting a node revokes its keys
@@ -127,15 +430,15 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   over the address's limit, `400` `unsupported_contract_version` and `400`
   `invalid_request`; then `401` for a code not accepted and `409` `key_invalid` for a key
   the key checks refuse or a proof that does not verify, all unsigned; then, signed under
-  `qory-enrol-answer-ed25519-v1`, `429` over the code's own limit, `409` `key_invalid`
+  `qory-enrol-answer-ed25519-v1`, `429` over the code's limit, `409` `key_invalid`
   for a public key used before, `409` `key_limit` and `201`. Every public key received
   passes the contract's key checks, and a public key serves one access key, ever, on the
   instance. Each key's row carries an integrity code, checked before the key is trusted.
 - A node's instances: what Forager, run with the node's access key, reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation.
   Forager names its version in `User-Agent: qory-forager/<version>`, and Qory Apiary
-  records it as a new run's `forager_version`, which the run's ping or `run.started`
-  then replaces, and as the last `forager_version` of the access key and of the instance
+  records it as a new run's `forager_version` when the run registers, which its
+  `run.started` then replaces, and as the last `forager_version` of the access key and of the instance
   that sent it. An instance runs while it has a run the lost-run check holds alive. The Nodes list says
   each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
   whose instances were pruned is last seen when its key was last used), with the
@@ -147,8 +450,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `node:` and has a Node column from 1300 px, and its Filter menu has Node; the run page
   says a run's node and instance. Every run records its node and the instance that
   started it, and every delivery its instance. A pool's instance limit is enforced: the
-  ping of a new run from an instance beyond it is a signed `409` `instance_limit`, the run
-  does not start and nothing is stored, and the node counts the starts refused.
+  registration of a new run from an instance beyond it is a signed `409` `instance_limit`,
+  the run does not start and nothing is stored, and the node counts the starts refused.
 - A workspace no run has reached opens on one box, Send your first run: Add a node (a
   node, or a node pool for a fleet that shares one key), Connect it (one command run on
   the machine, or a key generated in the browser for a CI or another system), and See
@@ -159,24 +462,63 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
-  organisation's People.
+  organisation's People. An edition may refuse a level in an organisation, with a reason
+  (`c:Apiary.Edition.level_refusal/4`, `Apiary.Access.level_refusal/4`): an invitation,
+  its acceptance, a change of level and the release commands that grant and revoke an
+  instance admin each refuse it, asked in the lock order inside their transaction, and
+  People offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
+  and says a refusal in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An edition locks its rows for a change
+  at one point, right after the organisation rows and before any membership
+  (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
+  stay allowed. Several organisations are locked in one order,
+  `Apiary.Organisations.lock_order/1`, which an edition must use whenever it locks the
+  rows of more than one, and `Apiary.Organisations.lock_organisations/2`, through which
+  every change that locks more than one organisation row takes them, in any mode, so
+  what it holds in the end was taken in one statement, and which reads the order again
+  and locks once more when Postgres refuses its lock as a deadlock.
+  A test may have a stub answer some of the edition's callbacks in the test's
+  processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
   organisation, marked first and purged after a grace period.
+- An edition may add to an audit entry's details as it is written, such as how the actor
+  reached the organisation (`c:Apiary.Edition.audit_details/3`), and say who made an entry
+  in the Audit log's Who column (`c:ApiaryWeb.Edition.activity_actor/2`); the core adds
+  nothing and says it as before.
+- Retention prunes nothing of a lost run until 7 days after it was lost, however short the
+  workspace's settings, so a gateway's record sent after a shorter outage is stored.
+- A heartbeat counts by the time it carries, corrected by its run's clock offset, within 300
+  seconds and never after its arrival, so a gateway's record sent after an outage revives
+  no lost run and holds no instance slot: the run stays lost until its exit arrives,
+  which keeps it Lost, for good, when it says `session_lost` or `gateway_lost`, and
+  otherwise sets the state it says; and
+  the access key's Last heartbeat says when its heartbeats were recorded. A run is held to
+  the heartbeat interval its registration stated, and found lost after three of them with
+  nothing heard, 90 seconds at Forager's 30. Three limits
+  stay: after an outage shorter than about 6½ minutes, a run can still look alive for a
+  moment; a session's run whose heartbeats all arrive late, because the outage began
+  before its first one, still comes back for a few minutes; and a run whose machine's
+  clock ran more than about 6½ minutes ahead and was then set back reads lost until its
+  exit arrives.
 - The console's shell: a top bar that says where a page is, the organisation first, and
-  switches to any organisation or workspace with a search, Search or jump to (⌘K) for
-  pages, repositories, runs and places, New, which offers a workspace's page a new
-  node and an organisation's an invitation, and a sidebar of the page's workspace,
-  organisation or account, which folds to icons, with the Qory Apiary menu (docs,
-  changelog, source, version) at its foot. A workspace's settings, an organisation's and
-  your own are each a place of their own with their own sections, GitHub's way, and
-  deleting a workspace, an organisation or your account is the danger zone at the end of
-  its General page or Profile.
+  switches from it (on a phone, from the drawer's head), keeping the page you're on, or
+  its list where the page is one item's (the organisation's menu lists the organisations
+  beside the workspaces of the one pointed at, an organisation opening in the workspace
+  you last used there, and the workspace's menu the organisation's workspaces, each with
+  a search), Search or jump to
+  (⌘K) for pages, repositories, runs and places, New, which offers a workspace's page a
+  new node and an organisation's an invitation, and a sidebar of the page's workspace,
+  organisation or account, which folds to icons, with the Qory Apiary menu (docs, the
+  changelog with the version, source) at its foot. A workspace's settings, an
+  organisation's and yours each have a separate place with separate sections,
+  GitHub's way, and deleting a workspace, an organisation or your account is the danger
+  zone at the end of its General page or Profile.
   Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
   run's page all of it, forms 720 px.
   Each name in the top bar's path is cut short with an ellipsis where it does not fit; on
-  a phone the page's own name is cut first and its parent keeps up to 8rem, so no name
+  a phone the page's name is cut first and its parent keeps up to 8rem, so no name
   runs over a separator or the buttons after it.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
   With denials) with their counts, one filter field that takes qualifiers (`repo:`,
@@ -199,14 +541,36 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   to it. The page was called Connections; its old paths send on to the new ones.
 - The policy's rules on the same list pattern, however long the list grows: views (All,
   Allowed, Denied, Locked) with their counts, "Find a host" with `seen:`, `paths:` and
-  `by:` as tokens, one Filter menu, Sort, Add rule opening the composer over the list, and
-  pages of 50, every choice in the address. A repository's Policy tab is its effective
-  policy on that list, each rule with its source: its own first, changed there; the
+  `by:` as tokens, one Filter menu and Sort, and pages of 50, every choice in the address;
+  Add rule is the one primary button of the Network access section's header. A repository's Policy tab is its effective
+  policy on that list, each rule with its source: the repository's rules first, changed there; the
   workspace's read there and changed on the workspace's page, which their menu leads to;
   what is not in force struck through, saying why. Its mode is one line: Follow the
   workspace, Observe or Enforce, and whose the mode is.
+- A host rule is added and changed on a page, New rule
+  (`/:org/:workspace/policy/rules/new`, a repository's `…/-/policy/rules/new`) and Edit
+  rule (`…/policy/rules/:id/edit`), from Add rule, a row's Edit and the top bar's New
+  (Network access rule). The page asks what runs should do first, Allow or Deny, each
+  saying what it does; then Host and Paths, each with its help; and reads the rule back
+  under "What this rule does" as it is typed. An error is said under its field with its
+  repair as a link, and Add rule, never off, moves to the first field at fault. A pasted
+  list of hosts is added one at a time. A save goes back to the list as it was left, the
+  new rule marked. A declared host's Allow with paths… opens the page with the host
+  filled in. `ApiaryWeb.PolicyComponents.rule_form/1` draws the form; `rule_list/1` takes
+  the section's header (`title`, `count`, `add_path`, `edit_path`), and
+  `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
+  moved. On a page with the form, a Remove that `ApiaryWeb.PolicyLive.Common` answers gives
+  the focus to Add rule, never to a composer the page does not draw.
+- The rule form and its reading also serve a level above the workspace, for an edition
+  that keeps one: `rule_form/1` and `ApiaryWeb.PolicyLive.Reading.host_rule/2` take the
+  scope `:organisation`, whose button reads Add rule and whose sentences say "for every
+  workspace", and `ApiaryWeb.PolicyLive.Common.mount/3` takes `scope` and `may_change`,
+  who may change the page's rules. Where only that level allows a host, Network access and
+  To review lead to its New rule page with the host filled in (`new_rule_path` of
+  `c:ApiaryWeb.Edition.above_policy_link/1`), no longer to its policy page with the host
+  as `allow`.
 - Every form answers a field that is wrong under it, in the page's words, and never with
-  the browser's own bubble: the log-in form says an address cannot be one before it
+  the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the
   documentation every instance serves at `/docs`: the guides and the release notes, and
@@ -214,16 +578,219 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   the list names it: `all`, `all-…`, and a value that is not set or empty leave it off.
 - `APIARY_ENCRYPTION_SECRET`, required, 32 bytes: the integrity codes of stored rows are
   keyed from it.
-- `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
+- `APIARY_SIGNING_SECRET`, required, a separate 32 bytes, never derived from
   `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
   to gateways with. The boot refuses it when it is missing, of another length, the same
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
+- The two 32-byte keys, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET`, in hex
+  too (64 characters, either case), beside base64 (44 characters): both decode to the same
+  bytes, and the boot compares the bytes.
+- A key variable left blank counts as not set: a blank `SECRET_KEY_BASE` or
+  `APIARY_ENCRYPTION_SECRET` now stops the boot as missing, unless the keys file holds it.
+- The key check at boot. The instance records, at its first boot, a check value of
+  `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
+  fingerprint, and a later boot with another of either stops with a message that says
+  which, where it served before with no access key verifying or every machine refusing its
+  answers. `APIARY_ACCEPT_SIGNING_FINGERPRINT`, set to the fingerprint the refusal names,
+  makes a new signing key the instance's on purpose at the next boot; any other value
+  changes nothing, and it never accepts another `APIARY_ENCRYPTION_SECRET`.
+  `Apiary.Release.accept_signing_key/0` does the same in a one-off container.
+- The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
+  request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
+  release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the
+  commit it was built from as the label `org.opencontainers.image.revision`, and
+  `GET /health` reports it as `revision`, `null` in an image built without one, beside
+  `version`, which its `503` has too. It writes no `erl_crash.dump`
+  (`ERL_CRASH_DUMP_BYTES=0`), so a boot that stops leaves no copy of the release's memory,
+  secrets included, on the container's disk. Its base is Debian from
+  `public.ecr.aws/docker/library`, Amazon's public copy of Docker's official images, from
+  which CI also pulls the Postgres, nginx and Docker images it runs, and the end to end
+  job's SMTP sink, Mailpit, comes from `ghcr.io`; the jobs that still pull from Docker Hub
+  log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
+- Pre-release images: `.github/workflows/prerelease.yml`, run by hand only, from the
+  Actions tab or by pushing a commit to the branch `prerelease`, never on a push to any
+  other branch or a schedule, builds a branch, tag or commit as a release's image is
+  built and publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
+  `sha-<7>` and, for `next`, as `next`; the AWS template's Test image field, under For
+  testing only, runs such an image in place of the Edition's.
+- `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
+  in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
+  `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
+  `.env.example` holds no secret, and no `POSTGRES_PASSWORD`. CI runs it as a person
+  does: the install, a restart, the upgrade from the base commit's image, the path from a
+  checkout, and an external Postgres over TLS.
+- The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
+  Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
+  installed from the AWS console's form and upgraded with its Update, with no command. A
+  release attaches it as `apiary.yaml` with the release's version written in
+  (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
+  template, `VersionOverride` left empty. The form asks for the edition, Qory Apiary
+  Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
+  separate secret, deleted with the stack, for the image's pull alone; and the domain,
+  with a Route 53 hosted zone, or without one, the stack then making the certificate and
+  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key,
+  on ARM64, or with no version to install, and a test image without the download key.
+  Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
+  `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
+  stack turns it on once the service is first healthy, so a create that fails
+  before then rolls back whole, and an Update with No turns it off before a delete. The
+  stack sets its stack policy itself, refusing any update that would replace or delete the
+  database or a key's secret: an EventBridge rule sends this stack's status changes to a
+  function of the stack's, which sets the policy once the create completes, and again
+  once each update completes or rolls back, as CloudFormation refuses a stack policy while
+  the stack is in progress. The four secrets are kept when the stack is
+  deleted, each named after the stack and the whole UUID of its stack ID, so they do not
+  block a new stack of the same name, which has a different stack ID, and the database leaves
+  a final snapshot. The log groups, the task's and those of the stack's two functions,
+  are kept too, when the stack is deleted and when a create rolls back, their events for
+  30 days, under names made from the stack ID in the same way. The outputs are the
+  address, the load balancer's DNS name, the edition and the version the stack runs, the
+  key secrets' ARNs (their names, on a stack given the keys of a deleted one), and links
+  into the console: the logs, the set-up link's line in
+  them, the service, the key secrets and the database snapshots. CI lints the template
+  with cfn-lint, and two copies a release would write, one with Qory Apiary Community
+  first and one with Qory Apiary Pro first, and checks the stack policy and the rule,
+  function, permission and role that set it, and that nothing sets it from inside the
+  stack's create or update, that no output is
+  a command, which secrets and log groups the stack keeps and that their names use the
+  stack ID's UUID, the mappings' keys, that every value compared with the edition is one
+  the form allows, and that the template and both copies are ASCII alone, as the AWS
+  console shows any other character as "?".
+- The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
+  generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
+  `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
+  what the file holds, skips what the environment sets, and prints no value. The release
+  reads the file where the environment does not set a name; the environment always wins.
+- `DATABASE_URL` takes libpq's `sslmode`, `disable`, `require` or `verify-full`, and
+  `sslrootcert`, a file or `system`, as managed Postgres services print them:
+  `verify-full` checks the server's certificate and host name, `require` encrypts without
+  checking and says so at boot, and any other `sslmode` stops the boot. `DATABASE_PASSWORD`
+  is the password when the URL has none.
 - A `Content-Security-Policy` on every page of the console, the storybook and the
-  documentation: only the console's own scripts run, and a script injected into a page,
+  documentation: only the console's scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
   browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
+- A feature can have parts, which an edition may hide from a person apart from the rest
+  of the feature (`Apiary.Features.parts/0`, `c:Apiary.Edition.hidden/1`), and an action
+  may belong to one (`part:`). The first is the run's Terminal (`:"observability.terminal"`),
+  which `run.read_log` belongs to: hidden from a person, it hides the run's whole log from
+  them, the Terminal tab, `/runs/:run_id/terminal`, the log's address with every stream and
+  the download, the ⋯ menu's Raw log and Download log and the runs list's preview of the
+  last lines, and the sentences on session events name no terminal. The terminal's size on
+  the run's Details now asks whether the person may read the log (`run.read_log`), as the
+  Terminal tab does.
+- Workspace settings leave out the size of the log a retention pass deleted for a reader
+  the run's Terminal is hidden from.
+- A feature part can belong to no feature; the nodes, node pools, access keys and gateways
+  are the part `nodes`, which an edition may hide from a person while nodes keep working.
+
+### Changed
+
+- A run takes its batches, heartbeats among them, its reloads and its repeated
+  registration from the active keys of one node: the node or node pool whose key
+  registered it, or whose key's batch opened it. Before, any active key of the workspace
+  could post events to any of its runs. A second key of the same node, as while a key is
+  replaced, keeps the run going; a batch from a key of another node is a signed `409`
+  `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
+  `404`. A direct run's outcome is held to the same node, and an outcome from another
+  node's key is `404`. The run is bound to the node, not to the key that registered it:
+  once that key is revoked its requests are `401`, and a second active key of the node
+  carries the run on. A run through a gateway takes its batches, heartbeats and reloads
+  from the gateway that attached it instead, from the instance that attached it, and its
+  repeated registration and its outcome from the node that registered it.
+- `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
+  `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
+  and its organisation are in use, as a key's verification does.
+- Texts no longer use "own" where it was unclear; they name the thing meant.
+- Pages say secret where they said credential.
+- A connection the gateway refused for the form of its host says so in words: "The
+  gateway refuses a host that is neither a name nor an address in canonical form, in
+  either mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+  names link-local addresses: "The wall refuses link-local addresses and the machine's
+  addresses, in either mode.", and so does the Policy page's hint for a rule written as an
+  address.
+- A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
+  address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
+  name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
+  nor ending with `-`, the last not all digits, 253 characters at most, with an optional
+  trailing dot. Before, the host could hold any character a URI's host allows, `;`, `$`,
+  `(`, `)`, `'`, `&`, `*`, `!`, `=`, `+`, `,`, `~` and `_` among them, and the port could
+  be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
+  scheme and a host, with a port if needed, and nothing more", by
+  `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A connection whose host is longer than 255 bytes keeps the host's first 252 bytes, cut
+  on a character boundary, followed by "…", and no rule can be made from it. The host
+  shows so on the connection's row, in the run's timeline, on the Overview and in the list
+  of what enforce would deny, with no Allow. Before, the host was cut to 255 bytes with no
+  mark, and the cut could read as another host name.
+- A host rule takes an address only as four numbers from 0 to 255 with dots between them
+  and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
+  digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1`, `10.0.0.256` and `*.0.0.1` were taken as host names, and the
+  gateway refuses a whole document holding one. They are now refused by the rule form ("An
+  address is four numbers from 0 to 255 with dots between them and no leading zeros, such
+  as 10.0.0.12.", or for `*.` before an address "*. leads a host name, never an address."),
+  by every rule write (the rule's changeset, `Apiary.Policy.Grammar.host?/1`) and by
+  requested changes, and a rendered document is held to the same grammar before it is
+  stored. A rule stored before is kept, not in force, and left out of every rendered
+  document; its row says "Not in force" and offers Remove alone, and a requested removal
+  still removes it. A connection to an address matches a rule only when it names the
+  address in that form and the rule is the same: an address in another form, an IPv6
+  address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
+  a connection reads as not allowed.
+- What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
+  registration, events, attach, outcome and reload, and its run configuration, whatever a
+  level above the workspace shows. An edition can no longer switch a feature off below the
+  instance.
+- Below the instance a feature is shown or hidden, never switched off. An edition says what
+  a person is not shown in an organisation (`c:Apiary.Edition.hidden/1`, the core's answer:
+  nothing); a hidden feature's pages, menu entries and actions are not found for that
+  person, and still work in full for nodes, rendering and the instance's jobs.
+  `c:Apiary.Edition.features_of/3`, `Apiary.Features.of/2` and `Apiary.Features.on?/2` are
+  gone: `Apiary.Features.on?/1` says what is on, `Apiary.Features.visible?/2` what a person
+  is shown.
+- The organisation slugs `admin`, `api` and `new`, and the workspace slugs `api` and `new`,
+  are reserved; an organisation or workspace holding one moves to the first free slug of
+  `-2`, `-3`, ….
+- The documentation, the service definition schema and `.env.example` name the thing
+  where they said "its own".
+<!-- feature: secrets -->
+- The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
+  `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person
+  when a feature it needs is hidden.
+<!-- /feature -->
+
+### Removed
+
+- Runs a gateway opens with no session, and run credentials. A run is opened by a Forager
+  session alone: a batch whose `dev.qory.run.started` has an `opened_by` other than
+  `session`, or a `credential` member, is refused, a signed `400` `invalid_request`, and
+  nothing of it is stored. A run's clock offset is its heartbeats' alone, never its
+  registration's, its attach's or a ping's. The demo recording of a run with no session is
+  gone.
+
+### Fixed
+
+- The runs list's preview shows a run's last log lines, and its Full log link, only to a
+  reader who may read the log (`run.read_log`), as the run page's Terminal tab does.
+  Before, it read and showed them to anyone who could read the runs.
+- A connection's host is isolated wherever it shows, so a right-to-left character in it
+  reorders nothing around it.
+- The Overview and the Policy pages offer no Allow for a destination no rule can change:
+  the wall's refusals and a host no rule can name. The row still shows, and still counts,
+  with no act. Before, its Allow opened and the rule was refused, or was written and changed
+  nothing. The run's timeline shows a long host as its connection's row does: one longer
+  than 255 bytes is its first 252 bytes, cut on a whole character, followed by "…"; before,
+  it showed up to 400 characters.
+- A policy page stays up when asked to edit the paths of an id that is no rule's.
+- Signing in, and a workspace's link on the organisation's Overview, lead to the first page
+  of the workspace the person is shown. Before, they led to the workspace's Overview even
+  where it was not shown, which answered not found.
+- The workspace Overview's "more" link under To review goes to the page for the first item
+  it leaves out: the Policy page for a policy item, the nodes page for an idle key. Before,
+  a policy item led to the nodes page.
 
 ### Migrations
 
@@ -232,7 +799,7 @@ features; among it: the accounts and their tokens (`users`, `users_tokens`),
 `organisations`, `workspaces`, `memberships`, `invitations`, `access_keys`, `targets`,
 `runs`, the record (`events`, `log_chunks`, `connections`, `deliveries`), the security
 policy (`policy_rules`, `run_configurations`), `retention_runs`, `audit_entries`, the
-instance's own tables (`purged_organisations`, `instance_settings`) and Oban's.
+instance-wide tables (`purged_organisations`, `instance_settings`) and Oban's.
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
 refuses a change of a node's kind; `nodes.instance_ids_over_bound` and its time.
@@ -270,6 +837,124 @@ renames them back.
 `20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
 its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
 `ended`; rolled back, a run that ended is failed.
+`20261009230000_record_the_instances_keys` adds `instance_settings.encryption_secret_check`
+(32 bytes) and `instance_settings.signing_key_fingerprint` (22 characters), NULL until the
+first boot after it records them.
+`20261009233000_allow_the_six_states_of_a_run` lets `runs.state` be `completed` and
+`cancelled`, beside the names it held, and rewrites no row: a run stored `succeeded` reads
+and counts as Completed, and one stored `timed_out` or `ended` as Cancelled. Rolled back, a
+completed run is `succeeded`, and a cancelled one `timed_out` when it reached its time limit,
+else `ended`.
+`20261010120000_keep_the_mail_settings` adds the mail settings to `instance_settings`:
+`smtp_relay`, `smtp_port`, `smtp_tls`, `smtp_username`, `mail_from`,
+`smtp_password_ciphertext` with its `mail_key_id`, `mail_saved_at`, `mail_saved_by_id` and
+`mail_verified_at`, all NULL, with checks on the port, the TLS mode and the password's key
+id.
+`20261010143819_register_a_run` adds `runs.registered_at`, `registration_labels`,
+`registration_about`, `registration_digest` (32 bytes), `registration_interval_seconds` and
+`registration_answer_digest`, NULL for every existing row, with a check that a run holds
+all six or none.
+`20261010190000_keep_a_registration_s_time` adds `runs.registration_time`, the `time` a
+run's registration was built at, NULL for every existing row, with a check that it is set
+only on a run that registered.
+`20261011100000_give_a_workspace_its_id` adds `workspaces.public_id`: each workspace's id,
+`ws_` and 16 characters, made for every existing workspace by the function
+`workspace_public_id()`, which is also the column's default; unique, with a check on its
+shape.
+`20261011120000_fix_the_workspace_id_function_s_search_path` sets
+`workspace_public_id()`'s `search_path` to `pg_catalog`, so the function finds
+`gen_random_uuid()` and the others it calls there alone, whatever the session's
+`search_path`; it changes no row.
+`20261011130000_make_a_gateway_a_kind_of_node` lets `nodes.kind` be `gateway`, with an
+`ng_` public id and no instance limit, widening `nodes_kind_check`,
+`nodes_public_id_check` and `nodes_instance_limit_check`; adds `nodes.url`, a gateway's
+address, required for a gateway and NULL otherwise (`nodes_url_check`), and
+`nodes.default_gateway`, false for every existing row, held to a gateway in use
+(`nodes_default_gateway_check`) and to one a workspace (`nodes_default_gateway_index`).
+Rolled back, it refuses while any gateway row is there.
+`20261011131000_let_a_node_choose_its_gateway` adds `nodes.gateway_choice` (`direct`,
+`default` or `named`), `direct` for every existing row and the column's default, and
+`nodes.gateway_id`, a reference to the named gateway's row, NULL for every existing row,
+set NULL when that row is purged while the choice stays `named`, with the check
+`nodes_gateway_choice_check`, an index, and the trigger `nodes_gateway_is_a_gateway`,
+which refuses a reference to a row that is not a gateway in use. Rolled back, every node is
+direct again.
+`20261011140000_record_a_run_s_outcome` adds a run's outcome, `runs.outcome_state`,
+`outcome_reason`, `outcome_time`, `outcome_received_at` and `outcome_digest` (32 bytes),
+and what its exit said, `runs.exit_state` and `exit_reason`, all NULL for every existing
+row, with a check that a run holds the outcome whole or not at all and one on the exit's
+state, both added NOT VALID, so neither scans the table under a lock that blocks writes.
+`exit_state` and `exit_reason` are filled as a run's exit is folded, and for an earlier
+run by a rebuild (`mix apiary.rebuild`). `20261011140100_validate_a_run_s_outcome_checks`
+validates the two checks.
+`20261011150000_let_a_run_go_through_a_gateway` adds what a run through a gateway keeps:
+`runs.gateway_id`, a reference to the gateway's row, set NULL when that row is purged;
+`run_key_payload`, the run key's payload, at most 2048 bytes; `run_key_issued_at`,
+`attach_by`, `attached_at`, `attach_time`, `attach_interval_seconds` (1 to 300) and
+`attach_answer_digest`; all NULL for every existing row. It lets a run that registered
+through a gateway have no interval and no answer digest, widening
+`runs_registration_check`, and adds `runs_run_key_check` and `runs_attach_check`, each
+holding its columns whole or not at all; the three checks and the reference are added NOT
+VALID, so none scans the table under a lock that blocks writes. Rolled back, it refuses
+while any run went through a gateway. `20261011150100_validate_a_run_s_gateway_checks`
+validates them. `20261011150200_index_a_gateway_s_runs` adds a unique index on a run
+through a gateway's gateway and run id, built concurrently.
+`20261011150300_hold_a_gateway_s_address_to_https` holds `nodes.url` to `https://`
+(`nodes_url_check`, re-created NOT VALID), and
+`20261011150400_validate_a_gateway_s_address_check` validates it: a gateway recorded at an
+`http://` address must be given an `https://` one first. Rolled back, `http://` is
+allowed again. `20261011150500_keep_a_run_key_s_signature` adds
+`runs.run_key_signature`, the 64-byte signature of a run's run key, NULL for every
+existing row, held to a run that has a payload (`runs_run_key_signature_check`, NOT
+VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
+`20261011150700_forget_what_a_run_without_a_session_needed` drops `runs.opened_by`,
+`runs.registration_time` and `runs.attach_time`, with `runs_opened_by_check` and
+`runs_registration_time_check`, and re-creates `runs_attach_check` without `attach_time`,
+NOT VALID; `20261011150800_validate_a_run_s_attach_check` validates it. Rolled back, the
+columns and their checks come back, empty but `attach_time`, which takes `attached_at`.
+`20261011160000_keep_when_a_run_was_refused` adds `runs.refused_at`, the time of a run's
+`dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
+existing row. Existing rows need no backfill: the column changes only what a run given an
+outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
+`20261011160100_keep_a_run_s_attaching_instance` adds `runs.attach_instance_id`, the
+instance id a run's attach was signed with, NULL for every existing row, held to a run
+that is attached and to 1 to 128 characters (`runs_attach_instance_id_check`, NOT VALID),
+and `20261011160200_validate_a_run_s_attaching_instance_check` validates it. Nothing is
+backfilled: a run attached with none takes the instance of the next attach, batch or
+heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_event` adds
+`events.instance_id`, the instance id of the request that delivered the event, NULL for
+every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
+and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
+backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160500_let_a_gateway_live_at_an_organisation` lets `nodes.workspace_id`,
+`access_keys.workspace_id`, `access_key_enrolment_codes.workspace_id` and
+`node_instances.workspace_id` be NULL, for a gateway of an organisation and its rows:
+only a gateway may have none (`nodes_place_check`). The keys to the workspace become
+`MATCH SIMPLE` instead of `MATCH FULL`, so they hold a row with a workspace as before and
+leave one without; new composite keys hold each key, code and instance to its node's
+organisation (`(node_id, organisation_id)` to a new unique `(id, organisation_id)` of
+`nodes`), and a key to its enrolment code's; the trigger `node_place_matches` refuses a
+row without a workspace whose node has one. It adds the unique indexes
+`nodes_organisation_live_name_index` and `nodes_organisation_default_gateway_index`. The
+checks and keys are added NOT VALID, and
+`20261011160600_validate_a_gateway_s_organisation_keys` validates them. Nothing is
+backfilled: every row keeps its workspace. Rolled back, it refuses while any row without
+a workspace is there.
+`20261011160650_fix_a_node_s_place` adds the trigger `nodes_place_fixed`, which refuses a
+change of `nodes.workspace_id`, as `nodes_kind_fixed` refuses a change of kind: a node's
+keys, codes and instances stay at its place. Nothing is backfilled.
+`20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
+host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
+and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT
+VALID), and
+`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
+validation fails while any gateway, deleted ones included, has a URL outside the check,
+and its error names those gateways; give each a URL the check holds, then migrate again.
+Rolled back, the host may hold any character a URI's host allows again.
+`20261012100000_move_the_slugs_kept_back` moves an organisation whose slug is `admin`,
+`api` or `new`, and a workspace whose slug is `api` or `new`, to the first free slug of
+`-2`, `-3`, …: an organisation's among all organisations, a workspace's within its
+organisation. Rolled back, nothing moves back.
 
 ### Upgrading
 

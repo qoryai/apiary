@@ -15,33 +15,12 @@ exclude =
     true ->
       IO.puts(
         "Excluding the :contract tests: no Forager contract directory " <>
-          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout, " <>
-          "or fetch #{Apiary.ContractFixtures.pinned_ref()} into ../../forager/main)"
+          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout)"
       )
 
       [:contract]
   end
 
-# A LiveView's async assigns and a PubSub message arrive in milliseconds on an idle machine
-# and not within the default 100 ms under a full, parallel suite: `render_async` and
-# `assert_receive` wait up to five seconds, and return as soon as there is something.
-# The suite with QORY_FEATURES unset or blank, CI's "every feature", runs with every
-# feature: the opt-in ones too (`Apiary.Features.opt_in/0`), which an instance launched so
-# leaves off.
-if String.trim(Application.get_env(:apiary, :features_setting) || "") == "" do
-  Application.put_env(:apiary, :features, Apiary.Features.all())
-end
-
-# A test tagged `needs: feature` exercises that feature; the suite runs in CI under more
-# than one QORY_FEATURES, and a run without the feature leaves such tests out.
-exclude =
-  exclude ++
-    for(feature <- Apiary.Features.all() -- Apiary.Features.enabled(), do: {:needs, feature})
-
-ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
-
-# The instance has had its first sign-up, committed before the sandbox takes over: a
-# sign-up in a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`).
-Apiary.OrganisationsFixtures.ensure_instance_organisation!()
-
-Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)
+# The features, the tags left out beside these, ExUnit, the instance and the sandbox:
+# `Apiary.TestSetup.start!/1` says what each is.
+Apiary.TestSetup.start!(exclude: exclude)

@@ -37,26 +37,11 @@ defmodule Apiary.Runs.SchemaTest do
     end
   end
 
-  test "the database takes every state of the list, ended among them" do
+  test "the database takes every state of the list, and every old name" do
     %{scope: scope} = sign_up_fixture()
 
-    for state <- Run.states() do
+    for state <- Run.states() ++ Run.old_states() do
       assert %Run{state: ^state} = Repo.get!(Run, run_fixture(scope, %{state: state}).id)
-    end
-  end
-
-  test "the database takes what opened a run, session or gateway, and nothing else" do
-    %{scope: scope} = sign_up_fixture()
-
-    for opener <- ["session", "gateway", nil] do
-      run = run_fixture(scope, %{opened_by: opener, quiet_seconds: 1800})
-      assert %Run{opened_by: ^opener, quiet_seconds: 1800} = Repo.get!(Run, run.id)
-    end
-
-    run = run_fixture(scope)
-
-    assert_raise Postgrex.Error, ~r/runs_opened_by_check/, fn ->
-      Repo.query!("UPDATE runs SET opened_by = 'robot' WHERE id = $1", [Ecto.UUID.dump!(run.id)])
     end
   end
 

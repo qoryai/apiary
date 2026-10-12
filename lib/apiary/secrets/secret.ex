@@ -3,7 +3,7 @@ defmodule Apiary.Secrets.Secret do
   A stored secret of a workspace: a name, unique in the workspace whatever its case, a
   public id (`sec_` and 16 lowercase Crockford base32 characters, `Apiary.PublicId`),
   a note on what it is used for, and its values (`Apiary.Secrets.Value`): one without a
-  value id, or several, each with its own.
+  value id, or several, each with a value id.
 
   The row holds no value, and the values a listing loads hold no ciphertext. Changed only
   through `Apiary.Secrets`.

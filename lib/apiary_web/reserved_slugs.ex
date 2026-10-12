@@ -1,22 +1,25 @@
 defmodule ApiaryWeb.ReservedSlugs do
   @moduledoc """
   ReservedSlugs holds the names a slug can never be, beside the router whose paths
-  they are: the core's, and those the edition's own paths take
+  they are: the core's, and those the edition's paths take
   (`c:ApiaryWeb.Edition.reserved_slugs/0`).
 
   Every page of a workspace is under `/:org/:workspace/…` and every page of an
   organisation under `/:org/…`, so an organisation slug shares the first segment of the
-  path with the instance's own paths (`/users`, `/docs`, `/v1`, the static files, the
-  LiveView socket), and a workspace slug shares the second with the organisation's own
+  path with the instance's paths (`/users`, `/docs`, `/v1`, the static files, the
+  LiveView socket), and a workspace slug shares the second with the organisation's
   pages (`/:org/settings`, `/:org/audit-log`). `organisation/0` and `workspace/0` name
   them.
 
-  The core reserves only the paths it serves. An edition reserves the paths it adds, and
-  settles for itself a slug an instance of the core gave out before the edition took the
-  instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of the router the endpoint
-  dispatches to, a static path or a socket of the endpoint takes a segment these lists do
-  not name: a new top-level path or organisation page is added here, or to the edition's
-  list, in the same change, never after an organisation took the name.
+  The core reserves the paths it serves, `gateways` among the organisation's pages, which
+  no workspace slug may take, and a few names kept back: `admin`, `api` and `new` as
+  organisation slugs, `api` and `new` as workspace slugs. An edition reserves the paths it
+  adds, and settles for itself a slug an instance of the core gave out before the edition
+  took the instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of
+  the router the endpoint dispatches to, a static path or a socket of the endpoint takes a
+  segment these lists do not name: a new top-level path or organisation page is added
+  here, or to the edition's list, in the same change, never after an organisation took the
+  name.
 
   As a plug, first in the pipeline of the organisation's and the workspace's pages, it
   answers as the router answers a path it does not know when a segment in the place of a
@@ -29,15 +32,17 @@ defmodule ApiaryWeb.ReservedSlugs do
   @behaviour Plug
 
   # The first segments of the instance's own paths: the routes, the endpoint's sockets
-  # and static files, and the development routes.
+  # and static files, and the development routes; and a few names kept back (`admin`,
+  # `api`, `new`).
   @instance ~w(
-    .well-known assets dev docs favicon-32.png favicon.ico favicon.svg fonts health images
-    instance invitations live phoenix robots.txt users v1
+    .well-known admin api assets dev docs favicon-32.png favicon.ico favicon.svg fonts health
+    images instance invitations live new phoenix robots.txt setup users v1
   )
 
-  # The organisation's own pages, the second segment of `/:org/…`, and the palette's
-  # answers there.
-  @organisation_pages ~w(activity audit-log jump members settings)
+  # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
+  # there and the switcher's link to the organisation (`-`); `gateways` is reserved as a
+  # workspace slug too, and a few names kept back (`api`, `new`).
+  @organisation_pages ~w(- activity api audit-log gateways jump members new settings)
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the

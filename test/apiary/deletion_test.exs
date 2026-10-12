@@ -265,6 +265,8 @@ defmodule Apiary.DeletionTest do
       member = member_fixture(inside, :member)
       fill!(inside)
       fill!(scope)
+      # The workspace its member last used, which goes with it.
+      :ok = Apiary.Organisations.remember_workspace(workspace_scope(member.user, workspace))
       %{scope: other} = sign_up_fixture()
       fill!(other)
 
@@ -590,7 +592,7 @@ defmodule Apiary.DeletionTest do
 
     {:ok, workspace} = Retention.update_retention(scope, %{events_retention_days: 3650})
     Retention.prune_workspace(workspace)
-    :ok
+    :ok = Apiary.Organisations.remember_workspace(scope)
   end
 
   defp counts(filter) do

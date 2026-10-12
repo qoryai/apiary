@@ -12,8 +12,8 @@ defmodule Apiary.Connections.Connection do
       `description_sha256`. `settings` are its plain settings, as canonical JSON of an
       object, and `argument` its argument, if any.
     * **service**: `name` is shown; the row names its definition, built in
-      by key (`service_builtin`) or the workspace's own (`service_definition_id`), and
-      never holds a host, a path or an auth of its own.
+      by key (`service_builtin`) or one of the workspace's (`service_definition_id`), and
+      never holds a host, a path or an auth itself.
 
   A connection's secrets are linked to stored secrets by the links that piece of the
   application keeps; the row holds no secret. The row carries an integrity code over

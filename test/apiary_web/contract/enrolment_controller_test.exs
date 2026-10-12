@@ -185,6 +185,28 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert key.label == "spot-runners"
     end
 
+    test "a gateway enrols as a node does, its kind and ng_ id in the answer", %{scope: scope} do
+      gateway = gateway_fixture(scope, name: "edge")
+      %{code: code} = code(scope, gateway)
+      pair = ed25519_key_pair()
+      body = body(code, pair, name: "edge-1")
+
+      conn = enrol(body)
+      assert conn.status == 201
+      answer = assert_signed(conn, body)
+      assert answer["node_id"] == gateway.public_id
+      assert "ng_" <> _ = answer["node_id"]
+      assert answer["node_kind"] == "gateway"
+
+      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
+      assert key.node_id == gateway.id
+
+      assert {:ok, %AccessKey{node: %{kind: :gateway}}} =
+               AccessKeys.fetch_for_verification(key.key_id)
+
+      assert AccessKeys.active_key?(gateway)
+    end
+
     test "a label a key of the node in use has already gets -2, -3 and on", %{
       scope: scope,
       node: node
@@ -365,6 +387,33 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     test "their account deleted since", ctx do
       %{user: user, code: code, row: row, node: node} = ctx
       {:ok, _} = Accounts.delete_user(user, origin: nil)
+      assert_refused(code, row, node)
+    end
+
+    test "the nodes hidden from the maker since: the code enrols still", %{code: code, user: user} do
+      # The edition hides the nodes from every person: their role and place approve the
+      # key, never what they are shown.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+      assert Repo.get_by!(AccessKey, public_key: pair.public_key).created_by_id == user.id
+    end
+
+    test "the nodes hidden from the maker and made a member since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      assert_refused(code, row, node)
+    end
+
+    test "the nodes hidden from the maker and removed since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      {:ok, _} = Organisations.remove_member(owner, membership.id)
       assert_refused(code, row, node)
     end
 

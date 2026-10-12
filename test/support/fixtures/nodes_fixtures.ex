@@ -23,6 +23,32 @@ defmodule Apiary.NodesFixtures do
     do: node_fixture(scope, Enum.into(attrs, %{kind: "pool", name: unique_node_name()}))
 
   @doc """
+  A gateway of the scope's workspace, at `https://gateway.example` unless `attrs` gives
+  its `url`.
+  """
+  def gateway_fixture(scope, attrs \\ %{}),
+    do:
+      node_fixture(
+        scope,
+        Enum.into(attrs, %{
+          kind: "gateway",
+          name: unique_node_name(),
+          url: "https://gateway.example"
+        })
+      )
+
+  @doc """
+  A gateway of the scope's organisation, one that lives at the organisation with no
+  workspace, made by the scope's person, an owner or an admin: at
+  `https://gateway.example` unless `attrs` gives its `url`.
+  """
+  def organisation_gateway_fixture(scope, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{name: unique_node_name(), url: "https://gateway.example"})
+    {:ok, gateway} = Nodes.create_organisation_gateway(scope, attrs)
+    gateway
+  end
+
+  @doc """
   An instance of `node` as `Apiary.Nodes.seen/3` leaves it, written straight into the
   table: `instance_id` (a fresh one unless given), `name`, and seen first and last at
   `seen_at` (now unless given), or at `first_seen_at` and `last_seen_at`.

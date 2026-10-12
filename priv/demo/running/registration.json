@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "run_id": "3c978b21-5eea-7a79-a094-109b03e8d678",
+  "labels": {
+    "forge": "codeberg.org",
+    "repository": "acme/shop",
+    "task": "cart-badge-count"
+  },
+  "about": {
+    "kind": "Implementation",
+    "title": "Show the cart's badge count",
+    "subjects": [
+      {
+        "type": "ticket",
+        "ref": "SHOP-131",
+        "url": "https://tracker.example.com/browse/SHOP-131",
+        "title": "The cart icon shows no count"
+      }
+    ]
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 300,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-18T09:00:00Z"
+}

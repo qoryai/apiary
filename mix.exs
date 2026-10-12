@@ -151,6 +151,12 @@ defmodule Apiary.MixProject do
       logo: "priv/static/images/logo.svg",
       favicon: "priv/static/favicon.svg",
       api_reference: true,
+      # What the CHANGELOG names of code that is gone: shown as code, linked nowhere.
+      skip_code_autolink_to: [
+        "c:Apiary.Edition.features_of/3",
+        "Apiary.Features.of/2",
+        "Apiary.Features.on?/2"
+      ],
       extras: [
         "guides/quickstart.md",
         "guides/install.md",
@@ -193,8 +199,10 @@ defmodule Apiary.MixProject do
         Operation: [
           Apiary.Release,
           ~r/^Apiary\.Release\./,
+          Apiary.Mail,
           Apiary.Mailer,
           Apiary.Repo,
+          Apiary.DatabaseUrl,
           ~r/^Apiary\.Job(\.|$)/,
           Apiary.LogMetadata
         ],

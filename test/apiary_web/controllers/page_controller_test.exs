@@ -14,7 +14,7 @@ defmodule ApiaryWeb.PageControllerTest do
     offered? = Apiary.Organisations.sign_up_offered?()
     assert response =~ "Create an account" == offered?
     assert response =~ ~p"/users/register" == offered?
-    assert response =~ "Add your machines as nodes, connect each with a key of its own"
+    assert response =~ "Add your machines as nodes, connect each with a separate key"
     # The documentation, which the sidebar's product menu opens once signed in.
     assert response =~ ~r{<a[^>]*id="home-docs"[^>]*>|<a[^>]*href="/docs"[^>]*id="home-docs"}
     assert response =~ ~s(href="/docs")
@@ -65,13 +65,13 @@ defmodule ApiaryWeb.PageControllerTest do
   end
 end
 
-defmodule ApiaryWeb.PageControllerFirstSignUpTest do
+defmodule ApiaryWeb.PageControllerBeforeSetUpTest do
   @moduledoc """
-  The landing on the instance's first sign-up, which every edition offers: the suite's
-  instance organisation is hidden inside the test's sandbox (`Apiary.EditionKit`), and
-  the landing leads to the sign-up.
+  The landing before the instance is set up: nobody signs up before its set-up link is
+  used (`Apiary.Setup`), so it leads to the log-in page alone. The suite's instance
+  organisation is hidden inside the test's sandbox (`Apiary.EditionKit`).
   """
-  # Not async: a test of the first sign-up holds the suite's instance organisation's row.
+  # Not async: the test hides the suite's instance organisation's row.
   use ApiaryWeb.ConnCase, async: false
 
   setup do
@@ -79,9 +79,10 @@ defmodule ApiaryWeb.PageControllerFirstSignUpTest do
     :ok
   end
 
-  test "GET / offers a visitor the first sign-up", %{conn: conn} do
+  test "GET / offers a visitor no sign-up before set-up", %{conn: conn} do
     response = conn |> get(~p"/") |> html_response(200)
-    assert response =~ "Create an account"
-    assert response =~ ~p"/users/register"
+    refute response =~ "Create an account"
+    refute response =~ ~p"/users/register"
+    assert response =~ ~p"/users/log-in"
   end
 end

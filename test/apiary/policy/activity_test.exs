@@ -189,6 +189,68 @@ defmodule Apiary.Policy.ActivityTest do
       assert {:ok, [%{tool: "files", denied: 1}]} = Policy.denied_destinations(scope, since())
     end
 
+    test "an address in another form than a.b.c.d is covered by no rule" do
+      %{scope: scope} = sign_up_fixture()
+
+      started_run(scope, @site,
+        egress: [
+          allowed("10.0.0.12"),
+          allowed("10.0.0.012"),
+          allowed("167772172"),
+          allowed("0xa.0.0.12"),
+          allowed("::ffff:10.0.0.12"),
+          allowed("[::ffff:10.0.0.12]")
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "10.0.0.12"})
+
+      assert {:ok, uncovered} = Policy.uncovered(scope, since())
+
+      assert uncovered |> Enum.map(& &1.host) |> Enum.sort() ==
+               Enum.sort(~w(10.0.0.012 167772172 0xa.0.0.12 ::ffff:10.0.0.12 [::ffff:10.0.0.12]))
+    end
+
+    test "a destination no rule can change says so: the wall refused it, or no rule can name its host" do
+      %{scope: scope} = sign_up_fixture()
+
+      started_run(scope, @site,
+        egress: [
+          allowed("Files.CDN.example."),
+          denied("Files.CDN.example.", %{"rule" => "wall:host-form"}),
+          allowed("metadata.internal"),
+          denied("metadata.internal", %{"rule" => "wall:own-address"}),
+          denied("docs.example", %{"path" => "/a/%2e%2e/b", "path_rule" => "wall:ambiguous-path"}),
+          allowed("10.0.0.012"),
+          denied("10.0.0.012", %{"path" => "/x"}),
+          allowed("flags.example"),
+          denied("flags.example", %{"path" => "/x"})
+        ]
+      )
+
+      unchangeable = ~w(Files.CDN.example. metadata.internal docs.example 10.0.0.012)
+
+      assert {:ok, uncovered} = Policy.uncovered(scope, since())
+      assert {:ok, denied} = Policy.denied_destinations(scope, since())
+      assert length(uncovered) == 4 and length(denied) == 5
+
+      for destination <- uncovered ++ denied do
+        assert destination.unchangeable == destination.host in unchangeable, destination.host
+      end
+
+      # A locked deny that covers one the wall refused: the wall decided, so no rule is
+      # said to hold it, where the rule is named for one a rule can change.
+      {:ok, _} = Policy.deny(scope, nil, %{host: "metadata.internal", locked: true})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "flags.example", locked: true})
+      assert {:ok, denied} = Policy.denied_destinations(scope, since())
+
+      assert %{locked: nil, above: nil, unchangeable: true} =
+               Enum.find(denied, &(&1.host == "metadata.internal"))
+
+      assert %{locked: "flags.example", unchangeable: false} =
+               Enum.find(denied, &(&1.host == "flags.example"))
+    end
+
     test "a destination without a tool names none" do
       %{scope: scope} = sign_up_fixture()
       started_run(scope, @site, egress: [allowed("api.example")])

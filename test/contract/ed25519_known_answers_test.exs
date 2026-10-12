@@ -3,9 +3,10 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   The contract's Ed25519 known answers, from Forager's contract directory at the commit
   in `.forager-contract-ref`: the fixture keys (`known-answers/keys.json`), the keys every
   instance refuses (`known-answers/small-order.json`), the request, enrolment and answer
-  strings with their signatures (`known-answers/signatures.json`), the discovery body they
-  sign (`known-answers/discovery.json`), and the request string of every signed request
-  (`signed/*.json`). The strings are built by `Apiary.Contract.SignedMessage` and checked
+  strings with their signatures (`known-answers/signatures.json`), the discovery,
+  registration and registration answer bodies they sign (`known-answers/discovery.json`,
+  `registration.json`, `registration-answer.json`), and the request string of every
+  signed request (`signed/*.json`). The strings are built by `Apiary.Contract.SignedMessage` and checked
   by `Apiary.Contract.Ed25519`; nothing here goes through a plug.
   """
   use ExUnit.Case, async: true
@@ -65,13 +66,13 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/keys.json" do
-    test "lists the fixture access key and the server's two keys, and no longer the second access key" do
+    test "lists the fixture access key, the gateway key and the server's two keys, and no longer the second access key" do
       assert known_answers!("keys") |> Map.keys() |> Enum.sort() ==
-               ~w(access_key next_signing_key signing_key)
+               ~w(access_key gateway_key next_signing_key signing_key)
     end
 
     test "each key's seed gives its public key and its fingerprint" do
-      for name <- ~w(access_key signing_key next_signing_key) do
+      for name <- ~w(access_key gateway_key signing_key next_signing_key) do
         key = fixture_key!(name)
         assert Ed25519.fingerprint(key.public_key) == key.fingerprint, name
       end
@@ -81,6 +82,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       for {name, range} <- [
             {"access_key", 1..32},
             {"signing_key", 65..96},
+            {"gateway_key", 97..128},
             {"next_signing_key", 161..192}
           ] do
         assert fixture_key!(name).seed == :binary.list_to_bin(Enum.to_list(range)), name
@@ -91,10 +93,12 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
 
       assert access_key.instance_id ==
                "i_" <> Ed25519.encode(:binary.list_to_bin(Enum.to_list(129..144)))
+
+      assert fixture_key!("gateway_key").access_key_id == "ak_f1xt0re00000000g"
     end
 
-    test "the access key and the server's two keys are refused as fixtures, and the second access key the README names" do
-      for name <- ~w(access_key signing_key next_signing_key) do
+    test "the access key, the gateway key and the server's two keys are refused as fixtures, and the second access key the README names" do
+      for name <- ~w(access_key gateway_key signing_key next_signing_key) do
         assert Ed25519.check_public_key(fixture_key!(name).public_key) == {:error, :fixture},
                name
       end
@@ -139,7 +143,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
     test "each is built line by line, and its signature is the access key's" do
       %{"requests" => requests} = known_answers!("signatures")
       access_key = fixture_key!("access_key")
-      assert length(requests) == 2
+      assert length(requests) == 3
 
       for %{"lines" => lines, "length" => length, "signature" => signature} <- requests do
         ["qory-request-ed25519-v1", key_id, instance_id, method, target, last] = lines
@@ -152,16 +156,29 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
         refute verify?(message <> "\n", signature, access_key)
       end
     end
+
+    test "the registration's last line is the raw body of known-answers/registration.json" do
+      %{"requests" => [_discovery, _query, registration]} = known_answers!("signatures")
+
+      assert ["qory-request-ed25519-v1", _key_id, _instance_id, "POST", "/v1/runs", body] =
+               registration["lines"]
+
+      assert body == contract_file!("known-answers/registration.json")
+    end
   end
 
   describe "known-answers/signatures.json, the enrolment proofs" do
     test "each is the body's proof of the five lines SignedMessage builds, under the body's key" do
       %{"enrolment" => enrolments} = known_answers!("signatures")
-      access_key = fixture_key!("access_key")
-      assert length(enrolments) == 2
+      assert length(enrolments) == 3
 
       for %{"lines" => lines, "length" => length, "body" => path} <- enrolments do
         body = path |> body() |> Jason.decode!()
+
+        # A gateway's code is redeemed under the fixture gateway key, a node's under the
+        # fixture access key.
+        access_key =
+          fixture_key!(if path =~ "gateway", do: "gateway_key", else: "access_key")
 
         assert lines == [
                  "qory-enrol-ed25519-v1",
@@ -199,7 +216,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
         Enum.map(requests, & &1["signature"]) ++
           Enum.map(enrolments, &(&1["body"] |> body() |> Jason.decode!() |> Map.fetch!("proof")))
 
-      assert length(answers) == 8
+      assert length(answers) == 10
 
       for %{"lines" => lines, "length" => length, "signature" => signature} = answer <- answers do
         [domain, status, request_signature, hash, configuration, run] = lines
@@ -246,6 +263,19 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       assert configuration == "sha256=" <> hash
     end
 
+    test "the registration answer carries the body's digest as X-Qory-Run-Configuration, bound to the registration" do
+      %{"requests" => [_discovery, _query, registration], "answers" => answers} =
+        known_answers!("signatures")
+
+      answer =
+        Enum.find(answers, &(&1["body"] == "fixtures/known-answers/registration-answer.json"))
+
+      ["qory-answer-ed25519-v1", "200", request, hash, "", run] = answer["lines"]
+      assert request == registration["signature"]
+      assert run == "sha256=" <> hash
+      assert run == Apiary.Policy.Render.digest(body(answer["body"]))
+    end
+
     test "every enrolment answer lists the server's key first, and the next during a rotation" do
       signing_key = Ed25519.encode(fixture_key!("signing_key").public_key)
       next_signing_key = Ed25519.encode(fixture_key!("next_signing_key").public_key)
@@ -268,10 +298,12 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/discovery.json" do
-    test "names the fixture node and lists the server's key" do
+    test "names the fixture node and its workspace, and lists the server's key" do
       discovery = known_answers!("discovery")
 
       assert discovery["node_id"] =~ ~r/\And_[a-z0-9]{16}\z/
+      assert [workspace_id] = discovery["workspaces"]
+      assert Apiary.PublicId.valid?("ws", workspace_id)
 
       assert discovery["apiary_public_key"] == [
                %{
@@ -279,6 +311,30 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
                  "public_key" => Ed25519.encode(fixture_key!("signing_key").public_key)
                }
              ]
+    end
+
+    test "Qory Apiary's own document for the fixture node, workspace, URL and key is the body, and its signed answer the known answer" do
+      %{"node_id" => node_id, "workspaces" => [_] = workspaces, "apiary_public_key" => keys} =
+        known_answers!("discovery")
+
+      body =
+        ApiaryWeb.Contract.Configuration.encode(%{
+          node_id: node_id,
+          workspaces: workspaces,
+          url: "https://qory.example",
+          apiary_public_key: keys
+        })
+
+      %{"answers" => [answer | _]} = known_answers!("signatures")
+      assert body == body(answer["body"])
+      assert byte_size(body) == answer["body_length"]
+
+      ["qory-answer-ed25519-v1", "200", request_signature | _] = answer["lines"]
+      digest = ApiaryWeb.Contract.Configuration.digest(body)
+      message = SignedMessage.answer(200, request_signature, body, digest, nil)
+
+      assert message == Enum.join(answer["lines"], "\n")
+      assert sign(message, fixture_key!("signing_key")) == answer["signature"]
     end
   end
 
@@ -289,7 +345,8 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       for name <- ~w(batch-valid.json batch-tampered.json batch-unknown-key.json
                      get-configuration-valid.json get-configuration-bad-signature.json
                      get-configuration-stale.json get-configuration-no-instance-id.json
-                     get-configuration-header-twice.json get-run-configuration-valid.json),
+                     get-configuration-header-twice.json register-valid.json
+                     register-replayed.json reload-valid.json),
           do: assert(name in names)
     end
 
@@ -324,6 +381,19 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
                name
 
         assert message(fixtures[name]) == Enum.join(discovery["lines"], "\n"), name
+      end
+    end
+
+    test "the registration's signature is the published known answer, and its repeat's" do
+      fixtures = Map.new(signed_fixtures())
+      %{"requests" => [_discovery, _query, registration]} = known_answers!("signatures")
+
+      for name <- ~w(register-valid.json register-replayed.json) do
+        assert header(fixtures[name]["headers"], "X-Qory-Signature-Ed25519") ==
+                 registration["signature"],
+               name
+
+        assert message(fixtures[name]) == Enum.join(registration["lines"], "\n"), name
       end
     end
 

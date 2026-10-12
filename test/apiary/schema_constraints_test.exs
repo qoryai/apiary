@@ -150,6 +150,49 @@ defmodule Apiary.SchemaConstraintsTest do
     end)
   end
 
+  test "the instance's mail settings hold a port, a TLS mode, and a password only with its key id" do
+    Repo.query!(
+      "INSERT INTO instance_settings (updated_at) VALUES (now()) ON CONFLICT DO NOTHING"
+    )
+
+    mail = fn assignments, params ->
+      Repo.query!("UPDATE instance_settings SET #{assignments}", params)
+    end
+
+    refused("instance_settings_smtp_port_range", fn -> mail.("smtp_port = 0", []) end)
+    refused("instance_settings_smtp_port_range", fn -> mail.("smtp_port = 65536", []) end)
+    refused("instance_settings_smtp_tls_check", fn -> mail.("smtp_tls = 'sometimes'", []) end)
+
+    # A password without the key it is encrypted under, a key id without a password, a
+    # key id that is not one, or a ciphertext shorter than its nonce and tag.
+    ciphertext = :crypto.strong_rand_bytes(40)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1", [ciphertext])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("mail_key_id = '0123456789abcdef'", [])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1, mail_key_id = 'not a key id'", [ciphertext])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1, mail_key_id = '0123456789abcdef'", [
+        :crypto.strong_rand_bytes(27)
+      ])
+    end)
+
+    assert %{num_rows: 1} =
+             mail.(
+               "smtp_port = 587, smtp_tls = 'always', smtp_password_ciphertext = $1, " <>
+                 "mail_key_id = '0123456789abcdef'",
+               [ciphertext]
+             )
+  end
+
   test "a node's kind never changes, and holds its public id's prefix and its limit" do
     %{scope: scope} = sign_up_fixture()
     node = node_fixture(scope)
@@ -209,5 +252,173 @@ defmodule Apiary.SchemaConstraintsTest do
     assert %{num_rows: 1} = update!("nodes", pool.id, "instance_limit = 10000")
     assert %{num_rows: 1} = update!("nodes", pool.id, "instance_limit = NULL")
     assert %{num_rows: 1} = update!("nodes", pool.id, "kind = 'pool', name = 'spot-runners'")
+  end
+
+  test "a gateway is ng_, has an address and no limit; only a gateway in use is a default" do
+    %{scope: scope} = sign_up_fixture()
+    gateway = gateway_fixture(scope)
+    other = gateway_fixture(scope)
+    node = node_fixture(scope)
+
+    refused("kind is fixed", fn ->
+      update!("nodes", gateway.id, "kind = 'node', public_id = 'nd_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_public_id_check", fn ->
+      update!("nodes", gateway.id, "public_id = 'np_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_public_id_check", fn ->
+      update!("nodes", node.id, "public_id = 'ng_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_instance_limit_check", fn ->
+      update!("nodes", gateway.id, "instance_limit = 1")
+    end)
+
+    for url <- [
+          nil,
+          "gateway.example",
+          "http://gateway.example:8080",
+          "http://localhost:8080",
+          "https://gateway.example/",
+          "https://a@gateway.example",
+          "https://gateway.example?x",
+          "https://gate way.example",
+          "https://" <> String.duplicate("a", 2041),
+          "https://edge.example.com;rm$IFS-rf$IFS~",
+          "https://edge_01.example",
+          "https://edge..example",
+          "https://-edge.example",
+          "https://" <> String.duplicate("a", 64) <> ".example",
+          "https://10.0.0.256",
+          "https://2001:db8::1",
+          "https://[2001:db8::1%25eth0]",
+          "https://gateway.example:65536",
+          "https://gateway.example:08443"
+        ] do
+      refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
+    end
+
+    refused("nodes_url_check", fn ->
+      update!("nodes", node.id, "url = 'https://gateway.example'")
+    end)
+
+    # Each character outside a DNS name's, alone in the host.
+    for c <- ~w|; $ ( ) ' & * ! = + , ~ _| do
+      refused("nodes_url_check", fn ->
+        update!("nodes", gateway.id, "url = $2", ["https://edge#{c}x.example"])
+      end)
+    end
+
+    # A name of 253 characters, not 254; an IPv4 address and an IPv6 one in brackets.
+    label = String.duplicate("a", 63)
+    longest = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
+
+    for url <- [
+          "https://#{longest}b",
+          "https://#{label}a.example",
+          "https://10.0.0.256",
+          "https://010.0.0.5",
+          "https://10.0.0",
+          "https://[10.0.0.5]",
+          "https://[2001:db8:::1]",
+          "https://[1:2:3:4:5:6:7:8:9]",
+          "https://[2001:db8::g]"
+        ] do
+      refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
+    end
+
+    for url <-
+          ~w(https://gateway.example:8443 https://10.0.0.5 https://255.255.255.255
+             https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://[::]
+             https://gateway.example.) ++ ["https://#{longest}", "https://#{longest}."] do
+      assert %{num_rows: 1} = update!("nodes", gateway.id, "url = $2", [url]), url
+    end
+
+    # One default a workspace; never a node, never a deleted gateway.
+    assert gateway.default_gateway
+
+    refused("nodes_default_gateway_index", fn ->
+      update!("nodes", other.id, "default_gateway = true")
+    end)
+
+    refused("nodes_default_gateway_check", fn ->
+      update!("nodes", node.id, "default_gateway = true")
+    end)
+
+    refused("nodes_default_gateway_check", fn ->
+      update!("nodes", gateway.id, "deleted_at = now()")
+    end)
+
+    assert %{num_rows: 1} =
+             update!("nodes", gateway.id, "default_gateway = false, deleted_at = now()")
+
+    assert %{num_rows: 1} = update!("nodes", other.id, "default_gateway = true")
+  end
+
+  test "a node's choice is direct, default or a gateway in use; a gateway chooses none" do
+    %{scope: scope} = sign_up_fixture()
+    gateway = gateway_fixture(scope)
+    other = gateway_fixture(scope)
+    node = node_fixture(scope)
+    pool = pool_fixture(scope)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", node.id, "gateway_choice = 'through'")
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", node.id, "gateway_choice = 'default', gateway_id = $2", [
+        Ecto.UUID.dump!(gateway.id)
+      ])
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", gateway.id, "gateway_choice = 'default'")
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", gateway.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(other.id)
+      ])
+    end)
+
+    # The trigger: what a node names is a gateway in use.
+    refused("a node's gateway is a gateway in use", fn ->
+      update!("nodes", node.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(pool.id)
+      ])
+    end)
+
+    assert %{num_rows: 1} =
+             update!("nodes", node.id, "gateway_choice = 'named', gateway_id = $2", [
+               Ecto.UUID.dump!(gateway.id)
+             ])
+
+    assert %{num_rows: 1} = update!("nodes", other.id, "deleted_at = now()")
+
+    refused("a node's gateway is a gateway in use", fn ->
+      update!("nodes", pool.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(other.id)
+      ])
+    end)
+
+    # An id of no row: the trigger refuses it before the foreign key would.
+    refused("nodes_gateway_is_a_gateway", fn ->
+      update!("nodes", pool.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(Ecto.UUID.generate())
+      ])
+    end)
+
+    # A node already naming a gateway keeps it through other changes, deleted or not.
+    assert %{num_rows: 1} =
+             update!("nodes", gateway.id, "default_gateway = false, deleted_at = now()")
+
+    assert %{num_rows: 1} = update!("nodes", node.id, "name = 'renamed'")
+
+    # Named with no gateway is a gateway that is gone; the default and direct name none.
+    assert %{num_rows: 1} = update!("nodes", node.id, "gateway_id = NULL")
+    assert %{num_rows: 1} = update!("nodes", pool.id, "gateway_choice = 'default'")
   end
 end

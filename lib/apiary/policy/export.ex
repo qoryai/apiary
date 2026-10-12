@@ -4,7 +4,7 @@ defmodule Apiary.Policy.Export do
 
   The Forager file, `~/.config/qory/forager.yaml`, holds the machine's policy inline as the
   `egress` section under `gateway:`, which says a mode, the hosts allowed, the hosts denied
-  and nothing else. Paths are said by a policy document, the contract's own format, given
+  and nothing else. Paths are said by a policy document, the contract's format, given
   to one run with `qory run --policy <file>`; it narrows the machine's section and never
   widens it, so the two are exported together and agree.
 

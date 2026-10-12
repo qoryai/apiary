@@ -10,7 +10,7 @@ defmodule ApiaryWeb.RichText do
   it at its bindings into rich text; `rich/1` renders rich text. A domain's catalogue may
   move the bindings wherever its sentence needs them. The bindings never pass through the
   sentence as text, so a binding that holds `%{...}` or any other mark stays what it is.
-  They translate with the calling module's own backend, the one its
+  They translate with the calling module's backend, the one its
   `use Gettext, backend: ...` names, as `gettext/2` does, and so extract into its
   catalogues: the core's for a core module, an edition's for the edition's.
 
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.RichText do
 
   @doc """
   `ngettext/4` whose bindings are rich text, as `rich_gettext/2`. `%{count}` is the raw
-  number; to show it formatted or marked up, give it its own binding:
+  number; to show it formatted or marked up, give it a separate binding:
 
       rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, Format.number(n)})
   """
@@ -169,10 +169,10 @@ defmodule ApiaryWeb.RichText do
 
   @doc """
   Renders rich text. A `{:part, name}` in it is filled by the `:part` slot of that name,
-  so a template can put its own markup in a sentence:
+  so a template can put markup in a sentence:
 
-      <.rich text={rich_gettext("%{time} by a member", time: {:part, :time})}>
-        <:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part>
+      <.rich text={rich_gettext("Last heard %{time}", time: {:part, :time})}>
+        <:part name={:time}><.clock at={@run.last_event_at} id="last-event-at" /></:part>
       </.rich>
   """
   attr :text, :any, required: true

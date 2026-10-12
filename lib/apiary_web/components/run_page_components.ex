@@ -46,8 +46,6 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
-  @ended_reasons Apiary.Runs.Fold.ended_reasons()
-
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
                   )
@@ -197,10 +195,25 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
 
+  attr :registered, :boolean,
+    default: false,
+    doc: "for `:not_started`: whether the run registered, else it only pinged"
+
+  attr :terminal, :boolean,
+    default: true,
+    doc:
+      "whether the reader is shown the run's terminal (`run.read_log`): a sentence " <>
+        "that says the run has one says so only then"
+
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
     <.notice class="q-limits">
-      <.limit_sentence reason={@reason} runtime={@runtime} />
+      <.limit_sentence
+        reason={@reason}
+        runtime={@runtime}
+        registered={@registered}
+        terminal={@terminal}
+      />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
       </span>
@@ -216,7 +229,14 @@ defmodule ApiaryWeb.RunPageComponents do
       title={limit_title(@reason, @live)}
       class="q-limits"
     >
-      <.limit_sentence :if={@reason != :no_log} reason={@reason} runtime={@runtime} at={@at} />
+      <.limit_sentence
+        :if={@reason != :no_log}
+        reason={@reason}
+        runtime={@runtime}
+        at={@at}
+        registered={@registered}
+        terminal={@terminal}
+      />
       <.listening
         :if={@reason == :not_started or (@reason == :no_log and @live)}
         class="mt-3 justify-center"
@@ -232,6 +252,8 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :reason, :atom, required: true
   attr :runtime, :string, default: nil
   attr :at, :any, default: nil
+  attr :registered, :boolean, default: false
+  attr :terminal, :boolean, default: true
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -251,6 +273,13 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # A run stored before the registration replaced the ping has only pinged.
+  defp limit_sentence(%{reason: :not_started, registered: true} = assigns) do
+    ~H"""
+    {gettext("The run is registered. Its first event has not arrived.")}
+    """
+  end
+
   defp limit_sentence(%{reason: :not_started} = assigns) do
     ~H"""
     {gettext("Forager has pinged. The run's first event has not arrived.")}
@@ -260,10 +289,17 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :other_runtime} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
-        runtime: {:part, :runtime}
-      )
+      if @terminal,
+        do:
+          rich_gettext(
+            "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
+            runtime: {:part, :runtime}
+          ),
+        else:
+          rich_gettext(
+            "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline.",
+            runtime: {:part, :runtime}
+          )
     }>
       <:part name={:runtime}><code class="q-rule">{@runtime}</code></:part>
     </.rich>
@@ -273,10 +309,17 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :vm_wall} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
-        wall: {:part, :wall}
-      )
+      if @terminal,
+        do:
+          rich_gettext(
+            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
+            wall: {:part, :wall}
+          ),
+        else:
+          rich_gettext(
+            "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has connections and no session timeline.",
+            wall: {:part, :wall}
+          )
     }>
       <:part name={:wall}>
         <.term
@@ -293,9 +336,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :no_hooks} = assigns) do
     ~H"""
-    {gettext(
-      "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
-    )}
+    {if @terminal,
+      do:
+        gettext(
+          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
+        ),
+      else:
+        gettext(
+          "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its connections."
+        )}
     """
   end
 
@@ -495,6 +544,7 @@ defmodule ApiaryWeb.RunPageComponents do
       "q-lane-#{@item.lane.color}",
       @look.shape == :square && "q-n-sys",
       @look.tone == :fail && "q-n-fail",
+      @look.tone == :warn && "q-n-warn",
       @look.tone == :solid && "q-n-solid",
       @look.tone == :info && "q-n-run"
     ]}>
@@ -513,15 +563,19 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :policy_applied}),
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
-  # An end that is no failure, such as a quiet period, stops neutrally.
-  defp node_look(%{kind: :run_exited, reason: reason}) when reason in @ended_reasons,
+  # The run's end is marked as its state is: a check for Completed, a neutral stop for
+  # Cancelled, an amber signal-slash for Lost, a red x-mark for Failed.
+  defp node_look(%{kind: :run_exited, state: "completed"}),
+    do: %{glyph: "hero-check-micro", shape: :square, tone: nil}
+
+  defp node_look(%{kind: :run_exited, state: "cancelled"}),
     do: %{glyph: "hero-stop-micro", shape: :square, tone: nil}
 
-  defp node_look(%{kind: :run_exited} = item) do
-    if item.exit_code == 0 and is_nil(item.signal) and is_nil(item.reason),
-      do: %{glyph: "hero-check-micro", shape: :square, tone: nil},
-      else: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
-  end
+  defp node_look(%{kind: :run_exited, state: "lost"}),
+    do: %{glyph: "hero-signal-slash-micro", shape: :square, tone: :warn}
+
+  defp node_look(%{kind: kind}) when kind in [:run_exited, :run_refused],
+    do: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
 
   defp node_look(%{kind: :session_started}),
     do: %{glyph: "hero-command-line-micro", shape: :round, tone: nil}
@@ -865,23 +919,31 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # A run that was quiet, whose run credential expired or whose issuer reported it ended,
-  # ended: why, in words, then how long it ran.
-  defp item_body(%{item: %{kind: :run_exited, reason: reason}} = assigns)
-       when reason in @ended_reasons do
+  # Every end of a run: why it ended, in words, else the program's exit, then how long it ran.
+  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+    assigns = assign(assigns, :words, end_words(assigns.item))
+
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
-      {RunComponents.reason_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+      {@words}
+      <span :if={@item.duration_ms}><span :if={@words}> · </span><.duration ms={@item.duration_ms} /></span>
     </.head>
     """
   end
 
-  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+  # A run refused at its start: the refusal's code as given, an earlier name read as the new
+  # one.
+  defp item_body(%{item: %{kind: :run_refused}} = assigns) do
+    assigns = assign(assigns, :code, RunComponents.refusal_code(assigns.item.code))
+
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run exited")}>
-      {exit_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={gettext("Run did not start")}
+    >
+      <span :if={@code} class="font-mono">{@code}</span>
     </.head>
     """
   end
@@ -910,10 +972,10 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@item.tool} class="q-dest q-dest-tool">
           <.tool_mark name={@item.tool} />
-          <span class="q-on">{@item.host}:{@item.port}</span>
+          <span class="q-on"><bdi>{@item.host}</bdi>:{@item.port}</span>
         </span>
         <span :if={!@item.tool} class="q-dest">
-          {@item.host}<span class="q-port">:{@item.port}</span>
+          <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
           · {if @item.tool,
@@ -962,8 +1024,6 @@ defmodule ApiaryWeb.RunPageComponents do
     </details>
     """
   end
-
-  defp run_started_words(%{opened_by: "gateway"}), do: gettext("by a gateway with no session")
 
   defp run_started_words(item) do
     bindings = [
@@ -1214,18 +1274,21 @@ defmodule ApiaryWeb.RunPageComponents do
   defp policy_source("none"), do: gettext("no policy, every connection is observed")
   defp policy_source(_other), do: gettext("source n/a")
 
-  @doc "The source of a policy in words, for the Details tab too."
+  @doc "The source of a policy in words, for Details too."
   def policy_source_words(source), do: policy_source(source)
 
-  defp exit_words(%{reason: "timeout"}), do: gettext("timeout")
-  defp exit_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
-  defp exit_words(%{reason: "session_lost"}), do: gettext("session lost")
-  defp exit_words(%{signal: signal}) when is_binary(signal), do: signal
+  # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's
+  # signal or exit code. `-1` with no signal is the gateway's placeholder for an exit it
+  # wrote, not the program's, and an exit with neither has none: nothing is said of either,
+  # and the item says how long the run ran alone.
+  defp end_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
 
-  defp exit_words(%{exit_code: code}) when is_integer(code),
+  defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
+
+  defp exit_code_words(%{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("exit %{code}", code: code)
 
-  defp exit_words(_item), do: gettext("n/a")
+  defp exit_code_words(_item), do: nil
 
   defp result_words(item) do
     [
@@ -1344,18 +1407,13 @@ defmodule ApiaryWeb.RunPageComponents do
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
   a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
   at the size its bytes were written to: the recorded columns are kept, drawn inside the
-  box's own dark ground, which fills the page's width. Without one it fits the screen to
+  box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
   The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
   recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
   download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
   (the browser's, where it has one).
-
-  With a `note`, the log is empty and the box says why: the note sits in the middle of the
-  screen, in the terminal's own message style; search, follow, wrap, the text size and the
-  download are disabled; the hook reads no log and keeps only Focus and Full screen; and
-  the caption under the box is left out.
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -1368,14 +1426,9 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :through, :integer, required: true
   attr :cols, :integer, default: nil
   attr :rows, :integer, default: nil
-  slot :note, doc: "why the log is empty, said on the empty screen"
 
   def terminal(assigns) do
-    assigns =
-      assign(assigns,
-        sized: is_integer(assigns.cols) and is_integer(assigns.rows),
-        empty: assigns.note != []
-      )
+    assigns = assign(assigns, sized: is_integer(assigns.cols) and is_integer(assigns.rows))
 
     ~H"""
     <div
@@ -1393,12 +1446,10 @@ defmodule ApiaryWeb.RunPageComponents do
       data-sized={to_string(@sized)}
       data-cols={@sized && @cols}
       data-rows={@sized && @rows}
-      data-empty={to_string(@empty)}
       data-words={Jason.encode!(terminal_words())}
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a
-          :if={!@empty}
           class="sr-only focus:not-sr-only q-tbtn"
           href={@src <> "?download=1"}
           download
@@ -1421,7 +1472,6 @@ defmodule ApiaryWeb.RunPageComponents do
           <input
             type="text"
             data-find
-            disabled={@empty}
             spellcheck="false"
             autocomplete="off"
             placeholder={gettext("Search the log")}
@@ -1440,7 +1490,6 @@ defmodule ApiaryWeb.RunPageComponents do
           aria-pressed={to_string(@live)}
           title={gettext("Follow the end of the log (End)")}
           data-follow
-          disabled={@empty}
         >
           <.icon name="hero-arrow-down-micro" class="size-4" />
           <span class="q-tbtn-lbl" data-follow-label>{if @live,
@@ -1454,7 +1503,6 @@ defmodule ApiaryWeb.RunPageComponents do
           title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
-          disabled={@empty}
         >
           <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
           <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
@@ -1467,7 +1515,6 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Smaller text")}
             aria-label={gettext("Smaller text")}
             data-size-step="-1"
-            disabled={@empty}
           >
             {gettext("A−")}
           </button>
@@ -1478,7 +1525,6 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Larger text")}
             aria-label={gettext("Larger text")}
             data-size-step="1"
-            disabled={@empty}
           >
             {gettext("A+")}
           </button>
@@ -1489,14 +1535,12 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Fit the recorded columns to the width")}
             aria-pressed="false"
             data-size-fit
-            disabled={@empty}
           >
             {gettext("Fit")}
           </button>
         </div>
         <span class="q-term-sep" aria-hidden="true"></span>
         <a
-          :if={!@empty}
           class="q-tbtn"
           title={gettext("Download the raw bytes")}
           aria-label={gettext("Download the raw bytes")}
@@ -1506,19 +1550,6 @@ defmodule ApiaryWeb.RunPageComponents do
           <.icon name="hero-arrow-down-tray-micro" class="size-4" />
           <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
         </a>
-        <%!-- An empty log has nothing to download: the same control, disabled. --%>
-        <button
-          :if={@empty}
-          type="button"
-          class="q-tbtn"
-          title={gettext("Download the raw bytes")}
-          aria-label={gettext("Download the raw bytes")}
-          data-download
-          disabled
-        >
-          <.icon name="hero-arrow-down-tray-micro" class="size-4" />
-          <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
-        </button>
         <button
           type="button"
           class="q-tbtn"
@@ -1553,9 +1584,6 @@ defmodule ApiaryWeb.RunPageComponents do
           <p data-message-text></p>
           <button type="button" class="q-tbtn" data-retry hidden>{gettext("Try again")}</button>
         </div>
-        <div :if={@empty} id={"#{@id}-note"} class="q-term-msg">
-          <p class="q-term-empty">{render_slot(@note)}</p>
-        </div>
       </div>
       <div class="q-term-foot">
         <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
@@ -1575,7 +1603,7 @@ defmodule ApiaryWeb.RunPageComponents do
         </span>
       </div>
     </div>
-    <p :if={!@empty} class="q-term-note">
+    <p class="q-term-note">
       {if @sized,
         do:
           gettext(
@@ -1682,7 +1710,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The details as `{key, value, form}` rows, by key. A top-level member is a row; one that
-  is a non-empty object is instead a row per member of its own, keyed `outer.inner`, so a
+  is a non-empty object is instead a row per member of that object, keyed `outer.inner`, so a
   key has at most two segments. A value is shown as given when it is a string (`:text`),
   and as compact JSON otherwise (`:json`): a number, true, false, null, an array, and an
   object one level below that, or an empty one. An object nested deeper stays one JSON

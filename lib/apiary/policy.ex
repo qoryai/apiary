@@ -7,8 +7,8 @@ defmodule Apiary.Policy do
 
   The contract's policy document says a mode, the hosts denied, the hosts allowed and the
   paths a host is held to; this policy selects none of the machine's credentials. The
-  workspace has a mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a target has
-  rules of its own on top, and follows the workspace's mode unless it sets its own
+  workspace has a mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a target adds
+  rules on top, and follows the workspace's mode unless it overrides it
   (`get_mode/2`, `set_mode/3`). The mode and the rules are apart: a locked rule of the
   workspace holds in a target's document whatever the target's mode, and a deny holds in
   either mode: `egress.deny` is decided by the gateway first, so under `observe` a host a
@@ -21,7 +21,7 @@ defmodule Apiary.Policy do
 
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
-  host rules of its own, which every read and render of this module takes in, read once
+  its host rules, which every read and render of this module takes in, read once
   per operation; a required mode (the floor), under which the mode in force is `enforce`
   everywhere and `set_mode/3` refuses with `:fixed`; and a switch, off which a host
   allow of the workspace or of a target is not in force. Its deny holds against every
@@ -36,9 +36,10 @@ defmodule Apiary.Policy do
 
   Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
   and the render of the baseline and of every target that has rules (or has had a
-  configuration) of its own.
-  A render is validated against the contract's schema before it is stored; a change whose
-  render the schema or the resolution refuses is rolled back and answered with a sentence.
+  separate configuration).
+  A render is validated against the contract's schema and the host grammar
+  (`Apiary.Policy.Grammar.host?/1`) before it is stored; a change whose render the schema,
+  the grammar or the resolution refuses is rolled back and answered with a sentence.
   A render that gives the same bytes as the version in force writes no new version. After
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
@@ -48,7 +49,7 @@ defmodule Apiary.Policy do
   Changes of the baseline may be asked for away from the policy page and made later, in
   several workspaces at once, in one transaction. `requested_changes/1` checks such
   changes as a write would, and gives them as they are kept; the caller takes
-  `lock_workspaces/2` and makes them with `apply_requested/3`, inside its own transaction,
+  `lock_workspaces/2` and makes them with `apply_requested/3`, inside its transaction,
   as writes of this module by the scope's person, with their questions, locks, renders and
   entries, and announces them with `announce/1` once it has committed.
 
@@ -127,13 +128,14 @@ defmodule Apiary.Policy do
   @doc """
   Whether somebody has made the workspace's policy: there is a change in its history, the
   first rule or the first change of mode. Until then the workspace serves no run
-  configuration at all (discovery names no `run` section, the endpoint answers `404`, the
-  answers to batches name no digest of one), so its machines use the policy of their own
+  configuration (a run's registration is answered `{"version":1}`, the document
+  of no policy; a reload answers `404`; and the answers to batches name no digest of one),
+  so its machines use their local policy, from
   `forager.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
   enforcement away. From the first change on, every run of the workspace takes the
   workspace's policy. The first change anywhere counts, a target's rule or a target's mode
   included: it starts serving every target of the workspace, the others the baseline. For
-  the pages: "machines use their own policy until the first change here".
+  the pages: "Machines use their local policy until the first change here."
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{workspace: %Workspace{id: workspace_id}}),
@@ -186,8 +188,8 @@ defmodule Apiary.Policy do
   ## Targets
 
   @doc """
-  The workspace's targets, by system and path, each with `rule_count`, how many rules of
-  its own it has (a virtual count on the map, not the struct), `own_mode`, the mode it
+  The workspace's targets, by system and path, each with `rule_count`, how many target
+  rules it has (a virtual count on the map, not the struct), `own_mode`, the mode it
   set for itself or nil when it follows the workspace, and `mode`, the one in force for
   it: `[%{target: …, rule_count: n, own_mode: … | nil, mode: …}]`. At most 500.
   """
@@ -253,7 +255,7 @@ defmodule Apiary.Policy do
   end
 
   @typedoc """
-  A target's mode: the one in force, its own (nil when it follows the workspace), the
+  A target's mode: the one in force, its override (nil when it follows the workspace), the
   workspace's, and whether the level above requires `enforce` (then `mode` is `enforce`).
   """
   @type target_mode :: %{
@@ -299,7 +301,7 @@ defmodule Apiary.Policy do
   Sets the mode of the workspace: `set_mode(scope, nil, mode)`. An owner's act in either
   direction; a member is refused with a sentence. The workspace's mode is the default of
   its targets: a change renders the baseline and every target that follows the workspace
-  again, and a target with a mode of its own keeps it.
+  again, and a target that overrides the mode keeps its override.
   """
   @spec set_mode(Scope.t(), String.t()) :: {:ok, String.t()} | refusal
   def set_mode(%Scope{} = scope, mode), do: set_mode(scope, nil, mode)
@@ -309,9 +311,9 @@ defmodule Apiary.Policy do
   (`{:ok, %{mode:, own:, workspace:}}`). A target takes `"observe"`, `"enforce"`, or
   `:inherit` (also `"inherit"`) to follow the workspace again, which is what every target
   does until somebody says otherwise. An owner's act, like the workspace's. It is a change
-  of the target's policy (`mode_changed`, with the target's own mode, or
+  of the target's policy (`mode_changed`, with the target's override, or
   `"inherit"`, before and after) and renders the target's configuration: a
-  target with nothing but a mode of its own has a configuration of its own.
+  target that only overrides the mode has a separate configuration.
   """
   @spec set_mode(Scope.t(), holder, String.t() | :inherit) ::
           {:ok, String.t() | target_mode} | refusal
@@ -461,7 +463,7 @@ defmodule Apiary.Policy do
   @doc """
   Adds `path` to the paths `host` is held to in the holder. The paths in force for the
   holder are taken as the start, so a target that adds a path keeps the workspace's and
-  from then on has a list of its own. Refused when the host is already reached on every
+  from then on has a separate list. Refused when the host is already reached on every
   path, and in a target when the workspace's rule for the host is locked.
   """
   @spec allow_path(Scope.t(), holder, String.t(), String.t()) :: {:ok, Rule.t()} | refusal
@@ -555,6 +557,7 @@ defmodule Apiary.Policy do
           path: String.t() | nil,
           attempts: non_neg_integer,
           tool: String.t() | nil,
+          unchangeable: boolean,
           runs: non_neg_integer,
           last_seen_at: DateTime.t(),
           targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
@@ -564,11 +567,13 @@ defmodule Apiary.Policy do
   The destinations that were let through since `since` and that today's rules do not
   cover: what enforce would start denying. A destination is a host, and a path as well
   where the host is held to paths. Each connection is held to the effective policy of
-  its own run's target (the baseline for a run without one), matched as the gateway
+  its run's target (the baseline for a run without one), matched as the gateway
   matches. Each destination says its allowed `attempts`, how many `runs` made them, when
   it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
   a request to it in the range named one, handed to the tool or refused by a path rule
   before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
+  `unchangeable` is true when no rule can allow it: the wall refused the last attempt of
+  its most recently seen connection, or its host is none a rule can name.
 
   Read from `connections` by the workspace and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -581,9 +586,9 @@ defmodule Apiary.Policy do
   @doc """
   `uncovered/2` for a holder. For the workspace (`nil`, `:workspace`) it is `uncovered/2`:
   what enforcing the workspace would start denying, so only the runs of targets that
-  follow the workspace's mode count, and the runs that name no target; a target with a
-  mode of its own would not change. For a target: what enforcing that target would start
-  denying, from its own runs under its own effective rules, whatever its mode is now.
+  follow the workspace's mode count, and the runs that name no target; a target that
+  overrides the mode would not change. For a target: what enforcing that target would start
+  denying, from its runs under its effective rules, whatever its mode is now.
   A target that is not the workspace's has nothing.
   """
   @spec uncovered(Scope.t(), holder, DateTime.t()) :: {:ok, [uncovered]} | :unavailable
@@ -611,6 +616,7 @@ defmodule Apiary.Policy do
           held: boolean,
           locked: String.t() | nil,
           above: String.t() | nil,
+          unchangeable: boolean,
           denied: pos_integer,
           tool: String.t() | nil,
           runs: pos_integer,
@@ -621,16 +627,18 @@ defmodule Apiary.Policy do
   @doc """
   The destinations (host, port and path) that were denied since `since` and that today's
   effective policy still does not allow: what a member can act on, each held to the
-  policy of its own run's target as `uncovered/2` holds them. A destination allowed
+  policy of its run's target as `uncovered/2` holds them. A destination allowed
   since is left out: the record says it was denied, the rules say it no longer would be.
   `held` is true when the host is allowed and the path is what no rule covers; `locked`
   names the locked workspace deny that covers the host, when one does, so a page can say
   that only an owner changes it, and `above` the deny of the level above that covers it,
   when one does, which no rule of the workspace changes; `tool` names the tool whose host it is, whenever a
   request to it in the range named one: a request to a tool that a path rule refused is a
-  denied request to that tool. The 50 with the most denials, most first, with the
-  targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
-  the cap.
+  denied request to that tool. `unchangeable` is true when no rule can change it: the
+  wall refused the last attempt of its most recently seen connection, or its host is
+  none a rule can name; `locked` and `above` are then nil. The 50 with the most denials,
+  most first, with the targets whose runs were denied. Bounded as `uncovered/2` is,
+  `:unavailable` beyond the cap.
   """
   @spec denied_destinations(Scope.t(), DateTime.t()) :: {:ok, [denied_destination]} | :unavailable
   def denied_destinations(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),
@@ -762,7 +770,7 @@ defmodule Apiary.Policy do
 
   @doc """
   The run configuration in force for the baseline (`nil`) or for a target: the highest
-  version. A target that never had rules of its own is served the baseline's, and the
+  version. A target that never had rules is served the baseline's, and the
   row says so by its `target_id`. A workspace nobody has changed yet (`managed?/1` is
   false) has none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or
   stored by asking. The first version is written by the first change alone.
@@ -791,7 +799,7 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  The run configuration a digest names, as a run reported it: the target's own
+  The run configuration a digest names, as a run reported it: the target's
   version with that digest when it has one, the baseline's otherwise; the newest when the
   same bytes were in force more than once.
   """
@@ -900,11 +908,11 @@ defmodule Apiary.Policy do
   ]
 
   @doc """
-  The newest version of each holder's own run configurations, in one query and without
+  The newest version of each holder's run configurations, in one query and without
   the documents (`document` is nil): `%{key => %RunConfiguration{}}`, the key being the
   target's id, or nil for the baseline. `holders` holds `nil` or `:workspace` for the
   baseline, targets, or target ids; at most #{@bulk_max} are read. A holder with no
-  configuration of its own (a target served the baseline's, another workspace's, an id
+  separate configuration (a target served the baseline's, another workspace's, an id
   that is none) has no key.
   """
   @spec newest_versions(Scope.t(), [holder | Ecto.UUID.t()]) :: %{
@@ -1167,7 +1175,7 @@ defmodule Apiary.Policy do
   organisation at once: the organisation, with what the edition holds beside it
   (`Apiary.Access.lock_places/1`),
   then the workspaces `workspace_ids` in the order of their ids, `FOR NO KEY UPDATE`, as
-  a write of one workspace takes its own. `{:ok, workspaces}`, in that order;
+  a write of one workspace locks that workspace. `{:ok, workspaces}`, in that order;
   `{:error, :not_found}` when none is named, or one is not a workspace of the
   organisation in use: another organisation's, one marked for deletion, or no id at all.
   """
@@ -1362,8 +1370,9 @@ defmodule Apiary.Policy do
   defp requested_rule("rule_removed", entry) do
     with {:ok, attrs} <- attrs(entry) do
       case {attrs["kind"] || "host", attrs} do
+        # A removal names a rule stored before the grammar refused its host too.
         {"host", %{"host" => host}} when is_binary(host) ->
-          if Grammar.host?(host),
+          if Grammar.in_pattern?(host),
             do:
               {:ok, %{"change" => "rule_removed", "rule" => %{"kind" => "host", "host" => host}}},
             else: candidate("deny", attrs)
@@ -1742,7 +1751,7 @@ defmodule Apiary.Policy do
   announce/1 tells the pages that follow each workspace's policy (`topic/1`) of the
   changes a write made, once its transaction has committed:
   `{:policy_changed, %{workspace_id:, target_id:, action:}}`. A write of this module
-  announces its own; a caller that made changes inside its own transaction
+  announces its changes; a caller that made changes inside its transaction
   (`apply_requested/3`) announces them after it commits.
   """
   @spec announce([Change.t()]) :: :ok
@@ -1916,8 +1925,8 @@ defmodule Apiary.Policy do
   @doc """
   rerender_in/3 renders every holder of `workspace` again through today's resolution and
   what holds above it, inside the caller's transaction, on a workspace the caller has
-  locked `FOR NO KEY UPDATE` (`lock_workspaces/2`, or `rerender/1`'s own): each holder
-  whose bytes change gets a new version and a change of its own, no change of the rules
+  locked `FOR NO KEY UPDATE` (`lock_workspaces/2`, or the lock `rerender/1` takes): each
+  holder whose bytes change gets a new version and a separate change, no change of the rules
   (`before` equals `after`), by the scope's person (nil for the instance's); unchanged
   bytes write nothing. `{:ok, changes}`, the baseline's first, `[]` when nothing was
   written, for `announce/1` once the caller has committed; or the first refusal (a
@@ -2098,15 +2107,19 @@ defmodule Apiary.Policy do
      )}
   end
 
+  @doc false
+  # The check of a rendered document before it is stored, for a test to feed it one.
+  def valid_document(document), do: valid(document)
+
   defp valid(document) do
-    case Schema.validate(document) do
+    case with(:ok <- Schema.validate(document), do: in_grammar(document)) do
       :ok ->
         :ok
 
       {:error, reason} ->
         # The document holds hosts and paths, never a secret.
         Logger.error(
-          "a rendered run configuration was refused by the contract's schema: #{inspect(reason, limit: 20)}"
+          "a rendered run configuration was refused by the contract's schema or the host grammar: #{inspect(reason, limit: 20)}"
         )
 
         {:error,
@@ -2116,6 +2129,22 @@ defmodule Apiary.Policy do
              "The change was not made: the run configuration it renders is not one Forager's contract accepts."
            )
          )}
+    end
+  end
+
+  # The schema's host pattern takes an address in any form; the gateway takes one only as
+  # `a.b.c.d`, and refuses the whole document for another. Every host of the document is
+  # held to the grammar again, so no render ever carries one.
+  defp in_grammar(document) do
+    egress = get_in(Jason.decode!(document), ["security_policy", "egress"]) || %{}
+
+    hosts =
+      Map.get(egress, "allow", []) ++
+        Map.get(egress, "deny", []) ++ Map.keys(Map.get(egress, "paths", %{}))
+
+    case Enum.reject(hosts, &Grammar.host?/1) do
+      [] -> :ok
+      refused -> {:error, {:out_of_grammar, refused}}
     end
   end
 
@@ -2134,7 +2163,7 @@ defmodule Apiary.Policy do
         %{
           error
           | message:
-              gettext("In the target %{target}, which has rules of its own: %{refusal}",
+              gettext("In the policy of the target %{target}: %{refusal}",
                 target: "#{system}/#{path}",
                 refusal: error.message
               )
@@ -2165,7 +2194,7 @@ defmodule Apiary.Policy do
     Error.new(
       :unmanaged,
       gettext(
-        "Nobody has made this workspace's policy yet: its machines run under their own, and there is no version until the first change here."
+        "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
       )
     )
   end
@@ -2283,25 +2312,30 @@ defmodule Apiary.Policy do
   defp question(scope, :lock), do: may(scope, :"security_policy.lock", only_an_owner_locks())
 
   # `Apiary.Access`'s answer as the policy says it: a sentence for a role that may not,
+  # `message` in the core's words or who may in the edition's (`ApiaryWeb.Access.who_may/3`),
   # not found where the `security` feature is off. Asked of the scope `write/4` read under
   # the workspace's lock, without another read. A reader, who reads the organisation
-  # through the edition's reach and changes nothing in it (`Apiary.Access.reader/1`), is
-  # told so in the edition's words rather than the level a change would take.
+  # through the edition's reach in a role that changes nothing there
+  # (`Apiary.Access.reader/1`), is told so in the edition's words rather than the level a
+  # change would take.
   defp may(%Scope{} = scope, action, message) do
     case Access.check(scope, action, scope.workspace) do
       :ok ->
         :ok
 
       {:error, :forbidden} ->
-        {:error, Error.new(:forbidden, refusal(scope, message))}
+        {:error, Error.new(:forbidden, refusal(scope, action, message))}
 
       {:error, :not_found} ->
         {:error, not_found(gettext("Not found."))}
     end
   end
 
-  defp refusal(scope, message),
-    do: if(Access.reader(scope), do: ApiaryWeb.Access.reads_only(scope), else: message)
+  defp refusal(scope, action, message) do
+    if Access.reader(scope),
+      do: ApiaryWeb.Access.reads_only(scope),
+      else: ApiaryWeb.Access.who_may(scope, action, message)
+  end
 
   defp may_edit(scope) do
     may(

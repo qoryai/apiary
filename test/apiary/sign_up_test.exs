@@ -1,12 +1,12 @@
 defmodule Apiary.SignUpTest do
   @moduledoc """
-  What a sign-up without an invitation creates: the instance's own organisation on the
-  instance's first, and after it an organisation where the edition opens a later sign-up,
-  or nothing. The suite's instance has had its first sign-up
-  (`ensure_instance_organisation!/0`); a test of the first hides its organisation inside
+  What a sign-up without an invitation creates: nothing before the instance is set up
+  (`Apiary.Setup`, whose own tests are `Apiary.SetupTest`), and after it an organisation
+  where the edition opens a later sign-up, or nothing. The suite's instance is set up
+  (`ensure_instance_organisation!/0`); a test before set-up hides its organisation inside
   its sandbox (`Apiary.EditionKit`).
   """
-  # Not async: a test of the first sign-up holds the suite's instance organisation's row.
+  # Not async: a test before set-up holds the suite's instance organisation's row.
   use Apiary.DataCase, async: false
 
   import Apiary.AccountsFixtures
@@ -24,58 +24,34 @@ defmodule Apiary.SignUpTest do
     |> Organisations.sign_up_user(nil, opts)
   end
 
-  describe "the instance's first sign-up" do
+  describe "before set-up" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
       :ok
     end
 
-    test "creates the instance's organisation it names, its Main workspace and its owner, and nothing else" do
+    test "nobody signs up, whether or not the edition opens a later sign-up, and nothing is made" do
       before = {count(Organisation), count(Workspace), count(Membership)}
 
-      assert Organisations.sign_up_offer(open: false) == :first
-      assert Organisations.sign_up_offered?()
+      for open <- [false, true] do
+        assert Organisations.sign_up_offer(open: open) == :not_set_up
+        assert sign_up(open: open) == {:error, :not_set_up}
+      end
 
-      assert {:ok,
-              %{user: user, organisation: organisation, workspace: workspace, membership: owner}} =
-               Organisations.sign_up_user(
-                 %{email: "first@example.com", organisation_name: "Acme Hosting"},
-                 nil,
-                 open: false
-               )
-
-      assert %Organisation{name: "Acme Hosting"} = organisation
-      assert Apiary.Edition.instance_organisation_id() == organisation.id
-      assert %Workspace{name: "Main"} = workspace
-      assert %Membership{level: :owner, user_id: user_id} = owner
-      assert user_id == user.id
-      assert Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(user))
-
-      {organisations, workspaces, memberships} = before
-      assert count(Organisation) == organisations + 1
-      assert count(Workspace) == workspaces + 1
-      assert count(Membership) == memberships + 1
-
-      # Its entry is the sign-up's, as any organisation's is.
-      assert [entry] =
-               Repo.all(
-                 from e in Entry,
-                   where:
-                     e.organisation_id == ^organisation.id and e.action == "organisation.create"
-               )
-
-      assert entry.details["sign_up"] == true
-      assert entry.details["workspace_id"] == workspace.id
-      assert entry.details["membership_id"] == owner.id
-
-      # The next sign-up is a later one.
-      assert Organisations.sign_up_offer(open: false) == :closed
-      assert Organisations.sign_up_offer(open: true) == :open
+      refute Organisations.sign_up_offered?()
+      assert {count(Organisation), count(Workspace), count(Membership)} == before
     end
 
-    test "is the first whether or not the edition opens a later sign-up" do
-      assert {:ok, %{organisation: organisation}} = sign_up(open: true)
+    test "the set-up makes the instance's organisation; a sign-up after it is a later one" do
+      assert {:ok, %{organisation: organisation}} =
+               Apiary.Setup.set_up(Apiary.Setup.code!(), %{
+                 email: "first@example.com",
+                 organisation_name: "Acme Hosting"
+               })
+
       assert Apiary.Edition.instance_organisation_id() == organisation.id
+      assert Organisations.sign_up_offer(open: false) == :closed
+      assert Organisations.sign_up_offer(open: true) == :open
     end
   end
 

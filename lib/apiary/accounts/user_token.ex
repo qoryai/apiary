@@ -12,6 +12,12 @@ defmodule Apiary.Accounts.UserToken do
   @change_email_validity_in_days 7
   @session_validity_in_days 14
 
+  # A password link (`Apiary.Accounts.build_password_link/3`) sets the account's password,
+  # so whoever holds it may take the account over: it works once, and for a day when an
+  # instance admin makes it, an hour when a release command prints it on a terminal.
+  @password_link_validity_in_minutes %{"password" => 24 * 60, "password:release" => 60}
+  @password_link_contexts Map.keys(@password_link_validity_in_minutes)
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "users_tokens" do
@@ -87,6 +93,58 @@ defmodule Apiary.Accounts.UserToken do
   """
   def build_email_token(user, context) do
     build_hashed_token(user, context, user.email)
+  end
+
+  @doc """
+  Builds a password link's token and its hash, as `build_email_token/2` builds a log-in
+  link's: the encoded token goes into the link, and only its hash is stored, with the
+  account's address, so a change of address ends the link. `context` is `"password"`, the
+  link an instance admin makes, which works for a day, or until mail is set
+  (`Apiary.Mail.end_password_links/0`), or `"password:release"`, the one a
+  release command prints, which works for an hour (`password_link_validity_in_minutes/1`).
+  """
+  def build_password_link_token(user, context) when context in @password_link_contexts do
+    build_hashed_token(user, context, user.email)
+  end
+
+  @doc "The contexts of a password link's token: one for each way to make one."
+  def password_link_contexts, do: @password_link_contexts
+
+  @doc "How long a password link of `context` works, in minutes."
+  def password_link_validity_in_minutes(context),
+    do: Map.fetch!(@password_link_validity_in_minutes, context)
+
+  @doc """
+  Checks a password link's token and returns its lookup query, `{:ok, query}`, or
+  `:error` for a token that is not one.
+
+  The query returns `{user, token}` when the token matches the hash of a password link,
+  of either context, younger than that context's validity, sent to the address the account
+  has now, of an account that is not deleted.
+  """
+  def verify_password_link_token_query(token) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded_token} ->
+        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+        day = @password_link_validity_in_minutes["password"]
+        hour = @password_link_validity_in_minutes["password:release"]
+
+        query =
+          from token in UserToken,
+            join: user in assoc(token, :user),
+            where: token.token == ^hashed_token,
+            where:
+              (token.context == "password" and token.inserted_at > ago(^day, "minute")) or
+                (token.context == "password:release" and
+                   token.inserted_at > ago(^hour, "minute")),
+            where: token.sent_to == user.email and is_nil(user.deleted_at),
+            select: {user, token}
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
   end
 
   defp build_hashed_token(user, context, sent_to) do

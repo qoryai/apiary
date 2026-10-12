@@ -20,7 +20,7 @@ defmodule Apiary.Policy.Resolution do
      lower allows on the same host it holds, paths included, so its allow is never
      widened. An allow of the workspace or of the target is struck without a winner
      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level above allows
-     only its own hosts (`own_allows` off); denies still count. Where it requires
+     only the hosts on its list (`own_allows` off); denies still count. Where it requires
      `enforce` (`floor`), the mode in force is `enforce` whatever the workspace or the
      target set, `mode_source: :organisation`.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
@@ -33,18 +33,23 @@ defmodule Apiary.Policy.Resolution do
      and reaches `api.example`, in either mode. When the allow outranks it (a locked
      `*.example` of the workspace over a target's deny) the deny is overridden. The one
      shape the document cannot say is the mirror: a `*.` deny with an allow below it that
-     outranks the deny (the workspace's unlocked `*.example` deny, a target's own
+     outranks the deny (the workspace's unlocked `*.example` deny, a target's
      `api.example` allow). The allow wins by precedence and is rendered; the deny still
      takes out the allow entries it does outrank, but is **not written to `deny`**, since
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
      are denied by having no allow, as before; under `observe` they are reached and
      recorded with no rule.
-  4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
-     allowed entry (the gateway holds a host to the path list of whichever entry of `paths`
-     it finds first). A `*.` allow of the level above held to paths overrides every lower
-     allow it covers instead, whatever its rank: the level above is never refused for a
-     rule below it.
-  5. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
+  4. **A `*.` suffix held to paths above another allowed entry is refused**: Qory Apiary
+     doesn't let a `*.` suffix with paths cover another allowed host. The gateway holds a
+     host to the path list of its most specific entry of `paths`: its name itself, else the
+     `*.` entry with the longest suffix. A `*.` allow of the level above held to paths
+     overrides every lower allow it covers instead, whatever its rank: the level above is
+     never refused for a rule below it.
+  5. **A rule whose host the grammar refuses** (`Apiary.Policy.Grammar.host?/1`), stored
+     before the grammar refused it, such as the address `127.1`, is not in force
+     (`Apiary.Policy.Entry`'s `reason: :out_of_grammar`) and is left out of the document:
+     the gateway would refuse the whole document for it.
+  6. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
      the connection by `deny`, then by `allow`, and only then the request by `paths`
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
@@ -66,8 +71,8 @@ defmodule Apiary.Policy.Resolution do
   @above_among_allows 4
 
   @doc """
-  Resolves a target's policy from the workspace's mode and the target's own, nil
-  when it follows the workspace: the target's own mode wins, and the effective policy says
+  Resolves a target's policy from the workspace's mode and the target's override, nil
+  when it follows the workspace: the override wins, and the effective policy says
   which it was in `mode_source`; where the level above requires `enforce` (`above`'s
   `floor`), that is the mode, from `:organisation`. The rules resolve as in `resolve/5`,
   whatever the mode: a locked rule of the workspace holds in a target's document under
@@ -107,7 +112,7 @@ defmodule Apiary.Policy.Resolution do
 
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
-  with no rules of its own; `above` is the level above the workspace, with its rules,
+  with no rules; `above` is the level above the workspace, with its rules,
   or nil where the edition keeps none. A level that carries variables only
   (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/6`.
   """
@@ -127,6 +132,7 @@ defmodule Apiary.Policy.Resolution do
     entries =
       entries
       |> only_above_allows(above)
+      |> out_of_grammar()
       |> same_subject()
       |> covered_by_deny()
       |> under_allow()
@@ -181,6 +187,17 @@ defmodule Apiary.Policy.Resolution do
   end
 
   defp only_above_allows(entries, _above), do: entries
+
+  # A rule stored before the grammar refused its host (an address such as `127.1`, which
+  # the gateway refuses the whole document for) is struck before anything meets: it is in
+  # no list, covers nothing, and the page says why.
+  defp out_of_grammar(entries) do
+    Map.new(entries, fn {index, entry} ->
+      if Grammar.host?(entry.host),
+        do: {index, entry},
+        else: {index, %{entry | in_force: false, reason: :out_of_grammar}}
+    end)
+  end
 
   # Rules that meet on the same host: the highest precedence decides it whole.
   defp same_subject(entries) do
@@ -271,8 +288,8 @@ defmodule Apiary.Policy.Resolution do
   end
 
   # A `*.` allow of the level above held to paths overrides every lower allow it covers,
-  # whatever its rank: the document cannot hold both, and the level above is never
-  # refused for a rule below it. The lower allow is narrowed to the level's paths.
+  # whatever its rank: the level above's allow is never widened, and the level above is
+  # never refused for a rule below it. The lower allow is narrowed to the level's paths.
   defp under_above_allow(entries) do
     held =
       for {index, %{action: :allow, source: :organisation, paths: paths} = entry}
@@ -326,7 +343,7 @@ defmodule Apiary.Policy.Resolution do
                ),
                pgettext(
                  "plain",
-                 "The gateway holds a host to one list of paths and cannot tell which of the two applies."
+                 "Qory Apiary doesn't let a *. suffix with paths cover another allowed host."
                ),
                gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
                  host: below.host
@@ -354,7 +371,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -363,7 +380,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :locked, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below,
         name: name
@@ -372,7 +389,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :workspace, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below,
         name: name
@@ -381,7 +398,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :target, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below,
         name: name
@@ -390,7 +407,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -399,7 +416,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -408,7 +425,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -417,7 +434,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -425,7 +442,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -433,7 +450,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )
@@ -441,7 +458,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -449,7 +466,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -457,7 +474,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )
@@ -465,7 +482,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -473,7 +490,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -481,7 +498,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )

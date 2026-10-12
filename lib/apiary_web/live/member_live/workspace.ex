@@ -11,7 +11,7 @@ defmodule ApiaryWeb.MemberLive.Workspace do
   level that reaches every workspace, or that the edition lets into this one. A suspended
   membership reaches nothing, and is not listed. Each person is one row on the row spec
   of the organisation's People (`docs/ui.md`, Lists): the email is the title, "you" beside
-  the reader's own, the level plain text, and no menu. A person is found by their email,
+  the reader's email, the level plain text, and no menu. A person is found by their email,
   `?q=`.
 
   An edition says beside each member's name how they reach the workspace through the slot

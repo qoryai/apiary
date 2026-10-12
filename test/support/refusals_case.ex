@@ -53,6 +53,25 @@ defmodule ApiaryWeb.RefusalsCase do
   The tests are not async: an edition's rows may write through the instance's own
   organisation, committed once outside the sandbox, whose row and owners they lock
   (docs/conventions.md, Tests).
+
+  `cast:` says how often the world is made (`world/1`). `:test`, the default: for each
+  row, in the row's own sandbox. `:module`: once, in the module's `setup_all`, in one
+  sandbox for the whole module (`Apiary.DataCase.setup_module_sandbox/2`); each row is
+  sent in that world (`assert_row/3`, the test's context has it as `refusals_world`),
+  inside a savepoint that rolls back what the row wrote, its `setup:`, its `meanwhile:`
+  and its actor's change among it, so the next row finds the world as it was made. The
+  pages a row opens write on the module's connection too, in the sandbox's shared mode.
+  With `:module`:
+
+  - the world is made under the suite's features, as each row's is on `:test`; a test
+    tagged `with_features:` raises, and belongs in a module of its own on `:test`;
+  - what lives in a process is the test's own: `setup_all` runs in a process no test has
+    among its `$callers`, so an edition's stub (`Apiary.Edition.put_test_stub/1`) or
+    another entry of the process dictionary is set in each test's `setup`, never in a
+    rows module's `c:setup/1`, which runs there; the features are the whole node's and
+    each test sets them as on `:test`;
+  - a row that commits outside the sandbox, or needs an instance as fresh as a row's
+    own sandbox gives it, stays on `:test`.
   """
 
   use ExUnit.CaseTemplate
@@ -130,18 +149,32 @@ defmodule ApiaryWeb.RefusalsCase do
   using opts do
     modules = Keyword.fetch!(opts, :rows)
     covers = Keyword.get(opts, :covers, :all)
+    cast = Keyword.get(opts, :cast, :test)
 
-    quote bind_quoted: [modules: modules, covers: covers] do
+    unless cast in [:test, :module] do
+      raise ArgumentError, "cast: is :test or :module, not #{inspect(cast)}"
+    end
+
+    quote bind_quoted: [modules: modules, covers: covers, cast: cast] do
       use ApiaryWeb.ConnCase, async: false
 
       @refusals_modules modules
       @refusals_covers covers
 
+      # The world, made once for the module: each row is sent inside a savepoint.
+      if cast == :module do
+        setup_all context do
+          Apiary.DataCase.setup_module_sandbox(context, fn ->
+            %{refusals_world: ApiaryWeb.RefusalsCase.world(@refusals_modules)}
+          end)
+        end
+      end
+
       for {row, n} <- Enum.with_index(ApiaryWeb.RefusalsCase.rows(modules), 1) do
         @tag refusal: row, needs: row.needs, capture_log: row.answer == :not_found_at_mount
         test "#{n}. #{row.action}: #{row.actor} sends #{row.event} on #{row.page}, #{row.answer}",
              ctx do
-          ApiaryWeb.RefusalsCase.assert_row(ctx.refusal, @refusals_modules)
+          ApiaryWeb.RefusalsCase.assert_row(ctx.refusal, @refusals_modules, ctx[:refusals_world])
         end
       end
 
@@ -247,12 +280,13 @@ defmodule ApiaryWeb.RefusalsCase do
   end
 
   @doc """
-  assert_row/2 makes the world of `modules`, sends the row's attempt as its actor, and
-  asserts the row's answer, that nothing watched changed, and that no email was sent.
+  assert_row/3 makes the world of `modules`, or takes `world`, one made already
+  (`world/1`), sends the row's attempt as its actor, and asserts the row's answer, that
+  nothing watched changed, and that no email was sent.
   """
-  @spec assert_row(map, [module]) :: :ok
-  def assert_row(row, modules) do
-    world = world(modules)
+  @spec assert_row(map, [module], world | nil) :: :ok
+  def assert_row(row, modules, world \\ nil) do
+    world = world || world(modules)
     outcome = attempt(modules, world, row, & &1)
     assert_answer(modules, row, outcome, world)
     :ok

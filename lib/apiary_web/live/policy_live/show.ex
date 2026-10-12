@@ -2,20 +2,24 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
   The workspace's security policy: the mode card above the tabs, whose choices open in
   place and are saved by one button, Network access (the
-  hosts and paths allowed and denied, with the composer that reads a rule back before it
-  is saved, and a link to the Network access page, what the runs reached), the targets
-  and their policy, the history with diffs, one version with its
-  document, and the export. The Network access page's rule links (`?rule=`) lead to the
-  rule in that section.
+  hosts and paths allowed and denied, with Add rule, and a link to the Network access
+  page, what the runs reached), the New rule and Edit rule pages (a form that reads a rule
+  back before it is saved, `ApiaryWeb.PolicyComponents.rule_form/1`), the targets
+  and their policy, the history with diffs, the document in force (the Document tab, which
+  shows the new version in place after a change), one version with its document, and the
+  export. The Network access page's rule links (`?rule=`) lead to the rule in that
+  section.
 
-  One LiveView, five live actions, so a tab is a patch. A version and its export name
-  themselves in the frame's breadcrumb, after Policy. Filters, the opened change, the
-  compared version and the export page are in the URL. The page calls `Apiary.Policy`
-  and nothing under it, except the contract's grammar for the reading line. It follows
-  `policy:<workspace>` and reads again at most once per 250 ms.
+  One LiveView, eight live actions, so a tab and the rule form are a patch: the form goes
+  back to the list as it was left. A version and its export name
+  themselves in the frame's breadcrumb, after Policy, and have no mode card: they state
+  the version's mode. Filters, the opened change, the compared version and the export page
+  are in the URL. The page calls `Apiary.Policy` and nothing under it, except the
+  contract's grammar for the reading line. It follows `policy:<workspace>` and reads
+  again at most once per 250 ms.
 
   A workspace nobody has changed yet is not served a policy by Qory: its machines use
-  their own until the first change here, and the page says so.
+  their local policy until the first change here, and the page says so.
 
   Where the edition keeps a level above the workspace's policy (`Apiary.Policy.Above`,
   the `above` of the effective policy), the page says so under its title, lists the
@@ -33,11 +37,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.PolicyLive.{Common, RuleList}
 
+  # The live actions of the rule form, a page of its own.
+  @forms [:new_rule, :edit_rule]
+
   @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> Common.mount(nil)
+      |> Common.mount(nil, form: "policy-rule")
       |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, targets: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
@@ -95,6 +102,26 @@ defmodule ApiaryWeb.PolicyLive.Show do
       )
     end)
     |> load_record()
+    |> follow_document()
+  end
+
+  # The Document tab shows the version in force: after a change, read again with the page,
+  # it shows the new one in place.
+  defp follow_document(%{assigns: %{loaded: true, live_action: :document}} = socket),
+    do: document(socket)
+
+  defp follow_document(socket), do: socket
+
+  defp document(socket) do
+    with %{version: n} <- socket.assigns.version,
+         {:ok, v} <- Common.version(socket, n, socket.assigns.params) do
+      assign(socket,
+        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
+        page_title: gettext("Version %{version} · Policy", version: n)
+      )
+    else
+      _ -> socket
+    end
   end
 
   # What the level above the workspace fixes: the mode, when it requires enforce.
@@ -168,11 +195,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
         else: socket
 
     socket =
-      if socket.assigns.live_action in [:version, :export],
+      if socket.assigns.live_action in [:version, :export, :new_rule, :edit_rule],
         do: assign(socket, mode_pick: nil, would: nil),
         else: socket
 
     action = socket.assigns.live_action
+
+    # A refusal said on the rule form stays there: Cancel leaves it.
+    socket =
+      if socket.assigns.shown in @forms and action not in @forms,
+        do: assign(socket, :write_error, nil),
+        else: socket
 
     {:noreply,
      socket
@@ -207,6 +240,20 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # The rule form: a page of the policy, reached by a patch from the list, which it goes
+  # back to as it was left. A reader who may not change the policy is sent back to it.
+  defp apply_action(socket, :new_rule, params) do
+    socket
+    |> assign(page_title: form_title(socket, gettext("New rule")))
+    |> Common.new_rule(params)
+  end
+
+  defp apply_action(socket, :edit_rule, %{"id" => id}) do
+    socket
+    |> assign(page_title: form_title(socket, gettext("Edit rule")))
+    |> Common.edit_rule(id)
+  end
+
   defp apply_action(socket, :targets, params) do
     socket
     |> assign(page_title: gettext("Targets · Policy"), own_only: params["mode"] == "own")
@@ -226,15 +273,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     assign(socket, history: history, open_change: open, diff: diff, summary: summary(socket))
   end
 
+  # The document in force, under the card and the tabs; with none yet, the page.
   defp apply_action(socket, :document, _params) do
     scope = socket.assigns.current_scope
 
     case socket.assigns.version do
-      %{version: n} ->
-        push_navigate(socket,
-          to: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}",
-          replace: true
-        )
+      %{version: _} ->
+        socket |> assign(:v, nil) |> document()
 
       _ ->
         push_navigate(socket,
@@ -281,6 +326,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
           page_title: gettext("Policy")
         )
     end
+  end
+
+  # The form's title in the browser, the page's name first, then where it is.
+  defp form_title(socket, page) do
+    %{workspace: workspace, organisation: organisation} = socket.assigns.current_scope
+
+    gettext("%{page} · Policy · %{workspace} · %{organisation}",
+      page: page,
+      workspace: workspace.name,
+      organisation: organisation.name
+    )
   end
 
   # The versions count from 1 without a gap, so the newest one's number is how many.
@@ -450,7 +506,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick =
@@ -469,7 +525,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick_mode(socket, mode)
@@ -484,7 +540,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       is_nil(pick) ->
         socket
@@ -503,7 +559,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     scope = socket.assigns.current_scope
 
     case Enum.find(would.destinations, &(would_key(&1) == key)) do
-      nil ->
+      # None, or one no rule can allow: it has no Allow.
+      destination when is_nil(destination) or destination.unchangeable ->
         socket
 
       destination ->
@@ -523,7 +580,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               :announce,
               gettext("%{host} is allowed for the workspace.", host: destination.host)
             )
-            |> Common.focus_next_allow(would, key, "policy-mode-set")
+            |> Common.focus_next_allow(would, key, "policy-mode-set", &(!&1.unchangeable))
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -549,7 +606,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
         assign(
           socket,
           :write_error,
-          gettext("Only an owner can lock, unlock or change a locked rule.")
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"security_policy.lock",
+            gettext("Only an owner can lock, unlock or change a locked rule.")
+          )
         )
 
       {:error, error} ->
@@ -569,26 +630,19 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  defp event("edit_paths", %{"id" => id}, socket) do
-    case Policy.get_rule(socket.assigns.current_scope, id) do
-      {:ok, %{kind: "host", target_id: nil} = rule} ->
-        socket
-        |> assign(:composer_open, true)
-        |> Common.read(%{
-          "action" => "allow",
-          "host" => rule.host,
-          "paths" => Enum.join(rule.paths || [], " "),
-          "every" => "false"
-        })
-        |> Common.set_fields()
-        |> Common.focus("policy-composer-paths")
-
-      _ ->
-        socket
+  # Edit is a page now; a browser that still sends the old event is led to it. Only an id
+  # in a rule id's form (a UUID) is led there, and Edit rule sends one that names no rule
+  # back to the list; anything else is dropped.
+  defp event("edit_paths", %{"id" => id}, socket) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> push_patch(socket, to: Common.edit_rule_path(socket, id))
+      :error -> socket
     end
   end
 
-  # The other action for the same host: the domain replaces the rule, as the composer's
+  defp event("edit_paths", _params, socket), do: socket
+
+  # The other action for the same host: the domain replaces the rule, as the form's
   # "Replace with deny" does, and the toast names the version it made.
   defp event("change_action", %{"id" => id}, socket) do
     scope = socket.assigns.current_scope
@@ -742,9 +796,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
   # written elsewhere that has a page to change it on (`rule_line/1`).
   defp menu?(row), do: (row.own and row.can_change) or (not row.own and row.view != nil)
 
-  # Adding a rule: Add rule over the list, or the first rule of a page with none, which
-  # shows no list (`rules_tab/1`'s `empty?`).
-  defp add_rule(%{assigns: %{own: [], effective: %{above: nil}, composer_open: false}}),
+  # Adding a rule: Add rule in the section's header, or the first rule of a page with none,
+  # which shows no list (`rules_tab/1`'s `empty?`).
+  defp add_rule(%{assigns: %{own: [], effective: %{above: nil}}}),
     do: "policy-first-rule"
 
   defp add_rule(_socket), do: "policy-rules-add"
@@ -898,6 +952,60 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
+  # The New rule and Edit rule pages: the form, under the breadcrumb that leads back to the
+  # list as it was left. The page's root and its hook are the list's, so the focus a save
+  # sends lands once the list is drawn again.
+  def render(%{live_action: action} = assigns) when action in @forms do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:policy}
+      width="list"
+    >
+      <:crumb patch={Common.cancel_path(assigns)}>{gettext("Policy")}</:crumb>
+      <:crumb>
+        {if @live_action == :new_rule, do: gettext("New rule"), else: gettext("Edit rule")}
+      </:crumb>
+
+      <div id="policy-page" phx-hook="PolicyPage" class="q-policy grid grid-cols-[minmax(0,1fr)]">
+        <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
+        <.rule_form
+          id="policy-rule"
+          title={
+            if @rule_edit,
+              do: gettext("Edit the rule for %{host}", host: @rule_edit.host),
+              else: gettext("New rule")
+          }
+          form={@composer}
+          scope={:workspace}
+          reading={@reading}
+          queued={length(@queue)}
+          editing={@rule_edit && @rule_edit.host}
+          error={@write_error}
+          cancel={Common.cancel_path(assigns)}
+        >
+          <:description>
+            {if @rule_edit,
+              do:
+                gettext(
+                  "Change what this workspace's runs may do with %{host}. The host stays; to rule on another host, add a new rule.",
+                  host: @rule_edit.host
+                ),
+              else:
+                gettext(
+                  "Let this workspace's runs reach a host, or stop them reaching it. A workspace rule applies to every target of %{workspace}; a target rule may override it unless it is locked.",
+                  workspace: @current_scope.workspace.name
+                )}
+          </:description>
+        </.rule_form>
+      </div>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -952,7 +1060,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 }
                 copy
               />
+              <%!-- On the Document tab the document's own bar is the one place: Copy, Download. --%>
               <.button
+                :if={@live_action != :document}
                 id="policy-export-button"
                 navigate={
                   ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export"
@@ -1053,13 +1163,23 @@ defmodule ApiaryWeb.PolicyLive.Show do
           summary={@summary}
           now={@now}
         />
-        <.version_view :if={@live_action == :version && @v} v={@v} base={@base} now={@now} />
+        <.version_head
+          :if={@live_action == :document && @v}
+          v={@v}
+          base={@base}
+          heading="h2"
+          export={false}
+        />
+        <.version_view
+          :if={@live_action in [:version, :document] && @v}
+          v={@v}
+          base={@base}
+          now={@now}
+        />
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
-          done={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
-          }
+          done={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/document"}
         />
         <.empty_state
           :if={@missing}
@@ -1099,7 +1219,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :heading, :string,
     default: "h1",
     values: ~w(h1 h2),
-    doc: "h2 under a page's own title, as a target's Policy tab has"
+    doc: "h2 under a page's title, as a target's Policy tab and the Document tab have"
+
+  attr :away, :boolean,
+    default: false,
+    doc: "the version is another page's (the workspace's, on a target served it): Export leaves"
+
+  attr :export, :boolean,
+    default: true,
+    doc: "false on the Document view, whose document's bar has Copy and Download instead"
 
   # The heading takes the focus a page sends it (`policy-version-h`) when the version is
   # reached by a patch, as Done from its export is.
@@ -1129,8 +1257,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <% end %>
         </span>
       </div>
-      <div class="q-head-side">
-        <.button id="version-export" patch={"#{@base}/versions/#{@v.latest}/export"}>
+      <div :if={@export} class="q-head-side">
+        <.button
+          id="version-export"
+          patch={!@away && "#{@base}/versions/#{@v.latest}/export"}
+          navigate={@away && "#{@base}/versions/#{@v.latest}/export"}
+        >
           <.icon name="hero-arrow-up-tray" class="size-4" />{if @v.current?,
             do: gettext("Export"),
             else: gettext("Export the version in force")}
@@ -1200,7 +1332,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
-  # The tab a live action is under: a version and its export are the Document's.
+  # The tab a live action is under: a version and its export are the Document's too.
   defp tab_key(action) when action in [:version, :export, :document], do: :document
   defp tab_key(action), do: action
 
@@ -1213,10 +1345,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       assigns
       |> assign(:edit?, edit?)
       |> assign(:above, above)
-      |> assign(
-        :empty?,
-        assigns.own == [] and is_nil(above) and not (assigns.composer_open and edit?)
-      )
+      |> assign(:empty?, assigns.own == [] and is_nil(above))
+      |> assign(:edit_path, edit? && fn id -> Common.edit_rule_path(assigns, id) end)
       |> assign(:activity_now, async_value(assigns.activity, :loading))
       |> assign(:listing, Common.listing(assigns))
 
@@ -1231,7 +1361,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span :if={!@managed?} id="policy-unmanaged">
           {pgettext(
             "plain",
-            "Until the first change here, every machine of this workspace runs under its own policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its local policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1247,7 +1377,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             :if={@edit?}
             id="policy-first-rule"
             variant="primary"
-            phx-click="composer_open"
+            patch={Common.new_rule_path(assigns)}
           >
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
@@ -1262,7 +1392,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
         {gettext(
-          "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own."
+          "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its local policy."
         )}
       </p>
       <p
@@ -1278,22 +1408,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     </div>
 
     <section :if={!@empty?} id="policy-hosts" class="q-psec" aria-labelledby="policy-hosts-h">
-      <div class="q-psec-h">
-        <h2 id="policy-hosts-h">{gettext("Network access")}</h2>
-        <span class="grow"></span>
-        <.link
-          id="policy-hosts-network"
-          navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/network"}
-          class="q-sect-link"
-        >
-          {gettext("See what the runs reached")}<.icon
-            name="hero-arrow-right-micro"
-            class="size-3.5"
-          />
-        </.link>
-      </div>
       <.rule_list
         id="policy-rules"
+        title={gettext("Network access")}
+        heading_id="policy-hosts-h"
+        count={length(@rows)}
+        add_path={@edit? && Common.new_rule_path(assigns)}
+        edit_path={@edit_path}
         label={gettext("Network access rules of the workspace")}
         listing={@listing}
         query={@list_query}
@@ -1306,14 +1427,27 @@ defmodule ApiaryWeb.PolicyLive.Show do
         }
         activity={@activity_now}
         source={@above != nil}
-        can_add={@edit?}
-        adding={@composer_open}
         can_lock={Common.may?(@current_scope, :"security_policy.lock")}
         fresh={@fresh}
         ruled_host={@ruled_host}
-        empty={gettext("No host rules yet. Add the first above.")}
+        empty={gettext("No host rules yet. Add the first with Add rule.")}
         confirming={confirming(@dialog)}
       >
+        <:link>
+          <.link
+            id="policy-hosts-network"
+            navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/network"}
+            class="q-sect-link"
+          >
+            {gettext("See what the runs reached")}<.icon
+              name="hero-arrow-right-micro"
+              class="size-3.5"
+            />
+          </.link>
+        </:link>
+        <:description>
+          {gettext("The hosts this workspace's runs may reach, and those they may not.")}
+        </:description>
         <:confirm>
           <.lock_ask
             :if={match?({:lock, _, _}, @dialog)}
@@ -1326,23 +1460,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
             overriders={elem(@dialog, 2)}
           />
         </:confirm>
-        <:composer>
-          <.rule_composer
-            :if={@composer_open && @edit?}
-            id="policy-composer"
-            class="q-composer-line"
-            form={@composer}
-            scope={:workspace}
-            reading={@reading}
-            queued={length(@queue)}
-          />
-        </:composer>
       </.rule_list>
       <p id="policy-hosts-note" class="q-psec-note">
         {if @above,
           do:
             gettext(
-              "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s own may only narrow them. A deny holds in either mode.",
+              "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s rules may only narrow them. A deny holds in either mode.",
               name: @above.name,
               workspace: @current_scope.workspace.name
             ),
@@ -1406,8 +1529,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span>
           <.rich text={
             rich_ngettext(
-              "%{number} with rules of their own",
-              "%{number} with rules of their own",
+              "%{number} with target rules",
+              "%{number} with target rules",
               Enum.count(@rows, &(&1.own > 0)),
               number: {:b, Format.number(Enum.count(@rows, &(&1.own > 0)))}
             )
@@ -1416,8 +1539,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span>
           <.rich text={
             rich_ngettext(
-              "%{number} sets its own mode",
-              "%{number} set their own mode",
+              "%{number} overrides the mode",
+              "%{number} override the mode",
               Enum.count(@rows, & &1.own_mode),
               number: {:b, Format.number(Enum.count(@rows, & &1.own_mode))}
             )
@@ -1434,7 +1557,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           } />
         </span>
         <span :if={@own_only} id="targets-own-only">
-          {gettext("Showing those that set their own mode.")}
+          {gettext("Showing those that override the mode.")}
           <.link patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"} class="q-link">{gettext(
             "Show all"
           )}</.link>
@@ -1452,7 +1575,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <th role="columnheader">{gettext("Target")}</th>
               <th role="columnheader">{gettext("Mode")}</th>
               <th role="columnheader">{gettext("Policy")}</th>
-              <th role="columnheader" class="q-num">{gettext("Own rules")}</th>
+              <th role="columnheader" class="q-num">{gettext("Target rules")}</th>
               <th role="columnheader" class="q-num">{gettext("Overrides")}</th>
               <th role="columnheader" class="q-num">{gettext("Suggestions")}</th>
               <th role="columnheader">{gettext("Version")}</th>
@@ -1462,7 +1585,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <tbody>
             <tr :if={@shown == []} role="row">
               <td role="cell" colspan="8" class="!whitespace-normal text-[13px] text-faint">
-                {gettext("No target sets its own mode. Every one follows the workspace's default.")}
+                {gettext("No target overrides the mode. Every one follows the workspace's default.")}
               </td>
             </tr>
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
@@ -1485,12 +1608,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
               </td>
               <td role="cell" class="q-c-mode">
                 <span :if={row.own_mode} class="q-hot">{row.mode}</span>
-                <span :if={row.own_mode} class="q-faint">{gettext("its own")}</span>
+                <span :if={row.own_mode} class="q-faint">{gettext("overridden")}</span>
                 <span :if={!row.own_mode}>{row.mode}</span>
               </td>
               <td role="cell">
-                <span :if={row.own > 0}>{gettext("Own rules")}</span>
-                <span :if={row.own == 0 && row.own_mode}>{gettext("Own mode")}</span>
+                <span :if={row.own > 0}>{gettext("Target rules")}</span>
+                <span :if={row.own == 0 && row.own_mode}>{gettext("Mode overridden")}</span>
                 <span :if={row.own == 0 && !row.own_mode} class="q-faint">
                   {gettext("Follows the workspace")}
                 </span>
@@ -1551,7 +1674,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </div>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
         {gettext(
-          "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the workspace baseline, and so is a run that names no target."
+          "A target appears here once a run names it. A target with no rules and no mode override is served the workspace baseline, and so is a run that names no target."
         )}
       </p>
     </div>
@@ -1598,7 +1721,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <span :if={!@started}>
       {pgettext(
         "plain",
-        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
       )}
     </span>
     """
@@ -1613,7 +1736,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                                                                                                          part}
     <% end %>
     {gettext(
-      "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+      "A target that overrides the mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
     )}
     """
   end
@@ -1625,7 +1748,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   # What enforce would deny, under the question of enforce: what the last 14 days let
-  # through with no rule, each with its Allow.
+  # through with no rule, each with its Allow, but for one no rule can allow.
   defp mode_would(assigns) do
     shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
@@ -1655,10 +1778,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.tool_mark name={destination.tool} /><span
               :if={destination.path}
               class="text-muted"
-            >{destination.path}</span><span class="text-faint">{destination.host}</span>
+            >{destination.path}</span><span class="text-faint"><bdi>{destination.host}</bdi></span>
           </span>
           <span :if={!destination[:tool]} class="q-dest">
-            {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
@@ -1671,7 +1794,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             )}
           </small>
           <button
-            :if={MapSet.member?(@would.open, would_key(destination))}
+            :if={MapSet.member?(@would.open, would_key(destination)) && !destination.unchangeable}
             id={"would-#{would_key(destination)}-allow"}
             type="button"
             class="btn btn-xs"
@@ -1793,8 +1916,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp own_words(n),
     do:
       ngettext(
-        "%{number} target sets its own mode and does not change.",
-        "%{number} targets set their own mode and do not change.",
+        "%{number} target overrides the mode and does not change.",
+        "%{number} targets override the mode and do not change.",
         n,
         number: Format.number(n)
       )
@@ -1857,13 +1980,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     >
       <span :if={@rule.locked}>
         {gettext(
-          "This rule is locked: it holds against every target, and removing it lets their own rules decide again."
+          "This rule is locked: it holds against every target, and removing it lets target rules decide again."
         )}
       </span>
       <span :if={@overriders != []}>
         {ngettext(
-          "%{number} target has a rule of its own on this host; it then has nothing to override and is kept.",
-          "%{number} targets have a rule of their own on this host; it then has nothing to override and is kept.",
+          "%{number} target has a rule on this host; it then has nothing to override and is kept.",
+          "%{number} targets have a rule on this host; it then has nothing to override and is kept.",
           length(@overriders),
           number: Format.number(length(@overriders))
         )}
@@ -1893,4 +2016,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     do: gettext("Remove the deny rule %{host}?", host: host)
 
   defp remove_title(%{host: host}), do: gettext("Remove the allow rule %{host}?", host: host)
+
+  # Who may set a mode, in the edition's words where it has some.
+  defp only_admins_set_mode(socket),
+    do:
+      ApiaryWeb.Access.who_may(
+        socket.assigns.current_scope,
+        :"security_policy.set_mode",
+        gettext("Only an owner or an admin sets a mode.")
+      )
 end

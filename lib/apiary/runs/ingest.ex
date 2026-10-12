@@ -7,7 +7,7 @@ defmodule Apiary.Runs.Ingest do
   run in the key's workspace when its subject is new, inserts the events that are
   new, records the delivery and counts. It projects nothing: once the
   transaction has committed, the use of the key is recorded, the projector is
-  asked to project the run on its own time, and the caller answers.
+  asked to project the run, without waiting for it, and the caller answers.
 
   Delivery is at least once and in any order, so nothing here is an error that
   the gateway could cause by sending again: an event already stored is skipped, a
@@ -15,13 +15,34 @@ defmodule Apiary.Runs.Ingest do
   with another (its id under a different run, or its sequence under a different
   id) is dropped and counted.
 
-  **Where a run runs.** A run is created on the node of the key its first batch came
-  with, and the instance id that batch claimed (`Apiary.Nodes.placement/2`), both fixed
-  from then on; each delivery records its instance id too. The first batch of a run that
-  holds its ping is admitted by the node's instance limit (`Apiary.Nodes.admit/4`), in
-  the transaction that creates the run: an instance beyond the limit is
-  `{:error, :instance_limit}` and nothing is stored. A batch that claims no instance id
-  places the run on its key's node with no instance, and is not held to a limit.
+  **Where a run runs.** A run starts by its registration (`Apiary.Runs.Registration`),
+  which the node's instance limit admits (`Apiary.Nodes.admit/4`) and which creates its
+  row: its batches are stored on that row and admitted by nothing again. A batch of a run
+  the workspace does not hold creates it, on the node of the key it came with and the
+  instance id it claimed (`Apiary.Nodes.placement/2`), both fixed from then on, and held
+  to no limit; each delivery records its instance id too.
+
+  **Who may send.** A run's batches, its heartbeats among them, are taken only from the
+  active keys of the node or node pool it is bound to (`Apiary.Runs.Sender`): the node
+  whose key registered it, or whose key's batch opened it. A batch of a run of another
+  node is refused whole, `{:error, :wrong_node}`, and nothing of it is stored: a batch is
+  one run's, every event's subject the same. A run through a gateway takes them from the
+  gateway that attached it, under any of its active keys, and from the instance that
+  attached it alone (`meta.instance_id`): a batch from another node's key, or from
+  another instance of the gateway, is refused whole, `{:error, :wrong_gateway}`, until the
+  run's sending has ended (`Apiary.Runs.Sender.sending_ended?/1`: its exit arrived, it was
+  lost after its attach, or its events were pruned). From then on a batch from any
+  instance of the gateway is answered as the attaching instance's would be: a resend is
+  deduplicated, and a run whose events were pruned is answered 410. Each event is stored
+  with the instance id of the request that delivered it (`events.instance_id`), and after
+  a loss, only the attaching instance's heartbeat makes the run live again, once that
+  instance is known (`Apiary.Runs.Fold`). A run attached before
+  its instance was known takes the instance of the first batch its gateway sends while
+  its sending has not ended, under the run's row lock.
+
+  **The end.** Once the run's starter has given its outcome (`Apiary.Runs.Outcome`), every
+  answer for the run says so, `end` in the result, until the run's `dev.qory.run.exited`
+  arrives: the answer to the batch that carries it, and to every batch after, has none.
 
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the
@@ -37,13 +58,11 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Accounts.Scope
   alias Apiary.Policy.Serving
   alias Apiary.Repo
-  alias Apiary.Runs
-  alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
+  alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run, Sender}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
-  @heartbeat "dev.qory.run.heartbeat"
-  @ping "dev.qory.ping"
   @log "dev.qory.run.log"
+  @exited "dev.qory.run.exited"
   @insert_chunk 500
 
   @typedoc """
@@ -63,27 +82,40 @@ defmodule Apiary.Runs.Ingest do
         }
 
   @doc """
-  Stores the batch. `{:ok, result}` with `status` 202, or 410 when the workspace has
-  closed the run, or retention has pruned its events (`runs.events_pruned_at`), and
-  nothing but the delivery was recorded; `inserted` events
-  were new, `duplicates` were already held, `conflicts` were dropped,
-  `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
-  delivery id had been recorded before; `managed` says whether the workspace serves a run
-  configuration (nil when that could not be read) and `run_configuration_digest` is
-  the digest in force for the run's target, for the answer's headers (nil for a
-  workspace that is not managed, and when it could not be read). `{:error, :unavailable}`
-  when the batch could not be stored, `{:error, :not_found}` when the key may not post
-  (`run.post_events` in `Apiary.Access`), and `{:error, :instance_limit}` when the batch
-  holds the ping of a new run from an instance its node's limit refuses.
+  Stores the batch. `{:ok, result}` with `status` 202, or 410 when retention has pruned
+  the run's events (`runs.events_pruned_at`) and nothing but the delivery was recorded;
+  `inserted` events were new, `duplicates` were already held, `conflicts` were dropped,
+  and `repeated` says the delivery id had been recorded before; `managed` says whether
+  the workspace serves a run configuration (nil when that could not be read) and
+  `run_configuration_digest` is the digest in force for the run's target, for the
+  answer's headers (nil for a workspace that is not managed, and when it could not be
+  read); `end` is the run's outcome, `%{state: state, reason: reason}` (reason nil when it
+  gave none), while the run has one and no `dev.qory.run.exited` has arrived, else nil.
+  `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
+  the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
+  when the run is another node's, and `{:error, :wrong_gateway}` when the run goes
+  through a gateway and the batch is not from the gateway that attached it and its
+  attaching instance (`Apiary.Runs.Sender`), with nothing stored. Then, for a run through
+  a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`,
+  asked under the run's lock), `{:error, :workspace_not_served}`, with nothing stored and
+  nothing of the run told: before the pruned run's answer and before a delivery id
+  recorded before is answered again.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
   commit, outside the run's lock, and never rendered: a read that says the workspace is
   managed, then one read of an index for the digest, two when the run's target has
-  no configuration of its own and the baseline's is read after it.
+  no separate configuration and the baseline's is read after it.
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
-          {:ok, map} | {:error, :unavailable | :not_found | :instance_limit}
+          {:ok, map}
+          | {:error,
+             :unavailable
+             | :not_found
+             | :wrong_node
+             | :wrong_gateway
+             | :unauthorized
+             | :workspace_not_served}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
@@ -93,17 +125,22 @@ defmodule Apiary.Runs.Ingest do
 
     with :ok <- may_post(scope),
          {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
-      if not result.repeated, do: touch(access_key, result, meta, now)
+      if not result.repeated, do: touch(access_key, meta, now)
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
 
-      {:ok, Map.merge(result, in_force(access_key, result.run, batch, meta))}
+      {:ok, Map.merge(result, in_force(place(result.run, access_key), result.run, batch, meta))}
     end
   end
 
-  # A key's scope is never refused a role here; what can refuse it is a feature that is off.
+  # What is read for the run is read under its own place, a gateway's batch's too.
+  defp place(%Run{} = run, access_key), do: Sender.place_key(run, access_key)
+  defp place(nil, access_key), do: access_key
+
+  # A key's scope is never refused a role here; what can refuse it is a feature the instance
+  # does not have.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
@@ -129,68 +166,85 @@ defmodule Apiary.Runs.Ingest do
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
-    cond do
-      Runs.closed?(access_key.workspace_id, batch.subject) ->
-        Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
-
-      held_to_limit?(access_key, batch, meta) ->
-        Nodes.admit(
-          access_key.node,
-          meta.instance_id,
-          fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end,
-          now
-        )
-
-      true ->
-        Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
-    end
+    Repo.transact(fn -> store(access_key, batch, meta, delivery_id, now) end)
   rescue
     exception ->
       Logger.error("a delivery could not be stored: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
 
-  # The instance limit holds the ping of a run the workspace has not seen yet, claimed by
-  # an instance of the key's node: the batch that would create the run.
-  defp held_to_limit?(%AccessKey{node: %Nodes.Node{}} = access_key, batch, meta) do
-    is_binary(meta[:instance_id]) and Enum.any?(batch.events, &(&1.type == @ping)) and
-      not Repo.exists?(
-        from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
-      )
+  defp store(access_key, batch, meta, delivery_id, now) do
+    case held(access_key, batch, meta, now) do
+      # A gateway's batch of a run that is not one it attached: a gateway opens no run.
+      nil ->
+        {:error, :wrong_gateway}
+
+      run ->
+        with {:ok, run} <- sender(run, access_key, meta),
+             do: stored(run, access_key, batch, meta, delivery_id, now)
+    end
   end
 
-  defp held_to_limit?(_access_key, _batch, _meta), do: false
+  # Another node's run, or another instance's of the gateway that attached it while the
+  # run's sending has not ended: refused whole, before anything of the batch is recorded,
+  # and the transaction rolls back. A run through a gateway whose attaching instance is
+  # not known yet takes this one's (`Apiary.Runs.Sender.batch_sender/3`).
+  defp sender(run, access_key, meta) do
+    case Sender.batch_sender(run, access_key, meta[:instance_id]) do
+      {:ok, run} -> {:ok, run}
+      :refused -> {:error, Sender.refusal(run)}
+    end
+  end
 
-  defp store(access_key, batch, meta, delivery_id, now) do
-    run = upsert_run(access_key, batch, meta, now)
-
+  defp stored(run, access_key, batch, meta, delivery_id, now) do
     cond do
-      run.state == "closed" ->
-        gone(access_key, batch, meta, delivery_id, now)
+      # A run through a gateway is held to its own place, as a key of it would be.
+      (refused = place_refusal(run, access_key)) != :ok ->
+        refused
+
+      # The gateway may no longer serve the run's workspace, decided as at the attach:
+      # refused whole, before the delivery id is read or recorded, so it is told nothing of
+      # the run, not even of a delivery accepted before (fails closed).
+      not Sender.serves?(run, access_key) ->
+        {:error, :workspace_not_served}
 
       # Retention deleted the run's events, and with them what a replay would be
       # deduplicated against: the workspace wants nothing more of this run.
       not is_nil(run.events_pruned_at) ->
-        gone(access_key, batch, meta, delivery_id, now)
+        {:ok, gone(access_key, run, batch, meta, delivery_id, now)}
 
-      not new_delivery?(access_key, batch, meta, delivery_id, now) ->
-        %{result(202, run) | repeated: true}
+      not new_delivery?(access_key, run, batch, meta, delivery_id, now) ->
+        {:ok, %{result(202, run) | repeated: true, end: run_end(run, batch)}}
 
       true ->
-        {batch, pruned} = without_pruned_log(run, batch)
-        {inserted, duplicates, conflicts, heartbeat} = insert_events(run, batch, now)
+        {stored_batch, pruned} = without_pruned_log(run, batch)
+        instance_id = placement(access_key, meta).instance_id
+        {inserted, duplicates, conflicts} = insert_events(run, stored_batch, instance_id, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
-        %{
-          result(202, run)
-          | inserted: inserted,
-            duplicates: duplicates + pruned,
-            conflicts: conflicts,
-            heartbeat: heartbeat
-        }
+        {:ok,
+         %{
+           result(202, run)
+           | inserted: inserted,
+             duplicates: duplicates + pruned,
+             conflicts: conflicts,
+             end: run_end(run, batch)
+         }}
     end
+  end
+
+  # The run's outcome, while the run has one and its exit has not arrived: not in this
+  # batch, and not among the events it holds. Read under the run's lock, so an outcome
+  # stored meanwhile is seen by the next answer.
+  defp run_end(%Run{outcome_state: nil}, _batch), do: nil
+
+  defp run_end(%Run{} = run, %Batch{events: events}) do
+    exited? =
+      Enum.any?(events, &(&1.type == @exited)) or
+        Repo.exists?(from e in Event, where: e.run_id == ^run.id and e.type == @exited)
+
+    if not exited?, do: %{state: run.outcome_state, reason: run.outcome_reason}
   end
 
   # A run whose log retention has pruned takes no more log events: the ones it had are
@@ -204,11 +258,49 @@ defmodule Apiary.Runs.Ingest do
     {%{batch | events: kept}, length(events) - length(kept)}
   end
 
-  # The workspace has closed the run, or pruned its events: the delivery is recorded,
-  # nothing else is kept.
-  defp gone(access_key, batch, meta, delivery_id, now) do
-    repeated = not new_delivery?(access_key, batch, meta, delivery_id, now, 410)
+  # Retention has pruned the run's events: the delivery is recorded, nothing else is
+  # kept.
+  defp gone(access_key, run, batch, meta, delivery_id, now) do
+    repeated = not new_delivery?(access_key, run, batch, meta, delivery_id, now, 410)
     %{result(410, nil) | repeated: repeated}
+  end
+
+  # The run of the batch, its row locked: a gateway's batch finds a run it attached, by the
+  # gateway and the run's id, and opens none; it finds a run of its own workspace that is
+  # not one through it only to be refused with that run's code. Any other key's batch
+  # finds its workspace's run, or opens it.
+  defp held(%AccessKey{node: %Nodes.Node{kind: :gateway}} = access_key, batch, _meta, _now) do
+    Repo.one(Sender.run_query(access_key, batch.subject, lock: true)) ||
+      own_run(access_key, batch)
+  end
+
+  defp held(access_key, batch, meta, now), do: upsert_run(access_key, batch, meta, now)
+
+  # A run of the gateway key's own workspace, none for a key with no workspace, an
+  # organisation-level gateway's.
+  defp own_run(%AccessKey{workspace_id: nil}, _batch), do: nil
+
+  defp own_run(access_key, batch) do
+    Repo.one(
+      from r in Run,
+        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+    )
+  end
+
+  # The run's organisation and workspace, for a run through a gateway, whose key may be of
+  # another place: out of use is refused as a key of it would be. A feature is the
+  # instance's: one the instance does not have is refused as a path that does not exist.
+  defp place_refusal(run, access_key) do
+    cond do
+      not Run.through_gateway?(run) ->
+        :ok
+
+      not AccessKeys.place_in_use?(run.organisation_id, run.workspace_id) ->
+        {:error, :unauthorized}
+
+      true ->
+        may_post(Scope.for_access_key(Sender.place_key(run, access_key)))
+    end
   end
 
   defp result(status, run) do
@@ -218,16 +310,14 @@ defmodule Apiary.Runs.Ingest do
       inserted: 0,
       duplicates: 0,
       conflicts: 0,
-      heartbeat: false,
-      repeated: false
+      repeated: false,
+      end: nil
     }
   end
 
   # Two first batches of one run may arrive at once: the insert that loses waits
   # for the one that wins and inserts nothing, and the read after it sees the row.
-  # The read locks the row for the rest of the transaction, so a close that
-  # committed first is seen here, and one that comes after waits for this batch:
-  # a closed run never gains an event.
+  # The read locks the row for the rest of the transaction.
   defp upsert_run(access_key, batch, meta, now) do
     Repo.insert_all(
       Run,
@@ -260,16 +350,17 @@ defmodule Apiary.Runs.Ingest do
   end
 
   # The delivery is inserted first with nothing counted, so a delivery id seen
-  # before is known before any event is touched.
-  defp new_delivery?(access_key, batch, meta, delivery_id, now, status \\ 202) do
+  # before is known before any event is touched. It is the run's workspace's, whichever
+  # key posted it.
+  defp new_delivery?(access_key, run, batch, meta, delivery_id, now, status \\ 202) do
     {count, _} =
       Repo.insert_all(
         Delivery,
         [
           %{
             id: Ecto.UUID.generate(),
-            organisation_id: access_key.organisation_id,
-            workspace_id: access_key.workspace_id,
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id,
             access_key_id: access_key.id,
             delivery_id: delivery_id,
             run_id: batch.subject,
@@ -299,7 +390,7 @@ defmodule Apiary.Runs.Ingest do
     )
   end
 
-  defp insert_events(run, batch, now) do
+  defp insert_events(run, batch, instance_id, now) do
     rows =
       Enum.map(batch.events, fn event ->
         %{
@@ -312,7 +403,8 @@ defmodule Apiary.Runs.Ingest do
           type: event.type,
           time: event.time,
           data: event.data,
-          received_at: now
+          received_at: now,
+          instance_id: instance_id
         }
       end)
 
@@ -326,7 +418,7 @@ defmodule Apiary.Runs.Ingest do
         {inserted, returned} =
           Repo.insert_all(Event, chunk,
             on_conflict: :nothing,
-            returning: [:event_id, :type],
+            returning: [:event_id],
             log: false
           )
 
@@ -335,7 +427,7 @@ defmodule Apiary.Runs.Ingest do
 
     skipped = length(rows) - inserted
     conflicts = if skipped > 0, do: conflicts(run, rows, stored), else: 0
-    {inserted, skipped - conflicts, conflicts, Enum.any?(stored, &(&1.type == @heartbeat))}
+    {inserted, skipped - conflicts, conflicts}
   end
 
   # An event that was not inserted is a duplicate when the workspace holds the same id
@@ -397,15 +489,14 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # Bookkeeping on the key, after the commit: it never fails the delivery. The
-  # heartbeat is dated by this server's clock, when it was received: Forager's
-  # clock, which may be wrong or ahead, never pins it.
-  defp touch(access_key, result, meta, now) do
+  # Bookkeeping on the key, after the commit: it never fails the delivery. The key's
+  # last heartbeat is the projector's (`Apiary.Runs.Projector`), by the heartbeat's own
+  # time.
+  defp touch(access_key, meta, now) do
     AccessKeys.touch_delivery(access_key, %{
       last_used_at: now,
       last_forager_version: meta[:forager_version],
-      last_contract_version: meta.contract_version,
-      last_heartbeat_at: if(result.heartbeat, do: now)
+      last_contract_version: meta.contract_version
     })
   rescue
     _exception -> :ok

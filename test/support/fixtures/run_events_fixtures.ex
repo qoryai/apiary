@@ -132,25 +132,6 @@ defmodule Apiary.RunEventsFixtures do
   end
 
   @doc """
-  The data of a `run.started` a gateway sends for a run it opened, with no session: no
-  runtime, command, host or terminal, and its labels, `run_key` among them.
-  """
-  def gateway_started_data(extra \\ %{}) do
-    Map.merge(
-      %{
-        "opened_by" => "gateway",
-        "forager_version" => "v0.6.0",
-        "labels" => %{
-          "forge" => "git.example.com",
-          "repository" => "example-org/example-repo",
-          "run_key" => "rk-0001"
-        }
-      },
-      extra
-    )
-  end
-
-  @doc """
   A `run.policy_applied` whose run has one tool, `files`, serving `files.tools.internal`
   under a path rule. Not a line of `priv/demo`.
   """

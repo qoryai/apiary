@@ -463,6 +463,7 @@ defmodule Apiary.Policy.AboveTest do
       refute Enum.any?(Policy.list_changes(scope, nil).items, &(&1.action == "above_changed"))
     end
 
+    @tag needs: :secrets
     test "is still the top of the variables' chain", %{scope: scope} do
       variables_only!()
 
@@ -494,6 +495,7 @@ defmodule Apiary.Policy.AboveTest do
     end
   end
 
+  @tag needs: :secrets
   test "a level with a policy and variables holds both", %{scope: scope} do
     above = %Above{
       id: Ecto.UUID.generate(),

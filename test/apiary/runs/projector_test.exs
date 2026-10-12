@@ -31,7 +31,6 @@ defmodule Apiary.Runs.ProjectorTest do
           :workspace,
           :access_key,
           :target,
-          :closed_by,
           :events,
           :log_chunks,
           :connections
@@ -89,7 +88,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert {:ok, %Run{} = projected} = Projector.project(run)
 
-      assert projected.state == "succeeded"
+      assert projected.state == "completed"
       assert projected.forager_version == "v0.4.0"
       assert projected.contract_version == 1
       assert projected.runtime == "claude"
@@ -265,6 +264,52 @@ defmodule Apiary.Runs.ProjectorTest do
       {:ok, run} = Projector.project(run)
       {:ok, run} = Projector.project(run)
       assert run.denied_count == 3
+
+      before = projection(run)
+      {:ok, rebuilt} = Projector.rebuild(run)
+      assert rebuilt.denied_count == 3
+      assert projection(run) == before
+    end
+
+    test "a denial to a host longer than 255 bytes is a row with the host cut, and counts",
+         %{run: run} do
+      prefix = String.duplicate("abcdefgh.", 28)
+      denied = %{"decision" => "denied", "rule" => ""}
+
+      event_fixture(
+        run,
+        1,
+        "run.egress",
+        egress_data(Map.put(denied, "host", prefix <> "one.example"))
+      )
+
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 1
+
+      # Other hosts with the same first 252 bytes: the same row, from another pass and
+      # from two events in one pass.
+      event_fixture(
+        run,
+        2,
+        "run.egress",
+        egress_data(Map.put(denied, "host", prefix <> "two.example"))
+      )
+
+      {:ok, run} = Projector.project(run)
+
+      events_fixture(run, [
+        {3, "run.egress", egress_data(%{"host" => prefix <> "three.example"})},
+        {4, "run.egress", egress_data(Map.put(denied, "host", prefix <> "four.example"))}
+      ])
+
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 3
+
+      cut = prefix <> "…"
+      assert byte_size(cut) == 255
+
+      assert [%{host: ^cut, attempts: 4, allowed: 1, denied: 3, last_sequence: 4}] =
+               projection(run).connections
 
       before = projection(run)
       {:ok, rebuilt} = Projector.rebuild(run)
@@ -456,13 +501,13 @@ defmodule Apiary.Runs.ProjectorTest do
       events_fixture(run, rest)
       {:ok, run} = Projector.project(run)
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.projected_sequence == 0
 
       events_fixture(run, [started])
       {:ok, run} = Projector.project(run)
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.runtime == "claude"
       assert run.projected_sequence == 0
 
@@ -602,13 +647,6 @@ defmodule Apiary.Runs.ProjectorTest do
       assert {:ok, %Run{projected_sequence: 2500}} = Projector.project(run)
     end
 
-    test "a closed run stays closed whatever arrives", %{scope: scope, run: run} do
-      {:ok, _} = Runs.close_run(scope, run)
-      events_fixture(run, record())
-
-      assert {:ok, %Run{state: "closed", exit_code: 0}} = Projector.project(run)
-    end
-
     test "broadcasts on the workspace's topic and the run's", %{scope: scope, run: run} do
       Runs.subscribe(scope)
       Runs.subscribe(scope, run)
@@ -636,7 +674,7 @@ defmodule Apiary.Runs.ProjectorTest do
     test "projects", %{run: run} do
       events_fixture(run, record())
       assert :ok = Projector.project_async(run)
-      assert Repo.get!(Run, run.id).state == "succeeded"
+      assert Repo.get!(Run, run.id).state == "completed"
     end
   end
 
@@ -651,7 +689,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
       incremental = projection(run)
 
-      assert {:ok, %Run{state: "succeeded"}} = Projector.rebuild(run)
+      assert {:ok, %Run{state: "completed"}} = Projector.rebuild(run)
       assert projection(run) == incremental
 
       # And it is a rebuild: projections that no event accounts for are gone.
@@ -662,6 +700,35 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projection(run) == incremental
 
       assert Runs.get_run!(scope, run.id).host == "dev-laptop"
+    end
+
+    test "keeps the registration's fields, which no event folds", %{run: run} do
+      labels = %{"forge" => "git.example.com", "repository" => "acme/shop"}
+      registered_at = DateTime.utc_now()
+      digest = :crypto.hash(:sha256, "the registration's body")
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          registered_at: registered_at,
+          registration_labels: labels,
+          registration_about: %{"kind" => "fix"},
+          registration_digest: digest,
+          registration_interval_seconds: 100,
+          registration_answer_digest: "sha256=" <> String.duplicate("0", 64)
+        ]
+      )
+
+      events_fixture(run, record())
+      assert {:ok, _} = Projector.project(run)
+      assert {:ok, _} = Projector.rebuild(run)
+
+      rebuilt = Repo.get!(Run, run.id)
+      assert rebuilt.registration_labels == labels
+      assert rebuilt.registration_about == %{"kind" => "fix"}
+      assert rebuilt.registered_at == registered_at
+      assert rebuilt.registration_digest == digest
+      assert rebuilt.registration_interval_seconds == 100
+      assert rebuilt.registration_answer_digest == "sha256=" <> String.duplicate("0", 64)
     end
 
     test "what the run is about is stored and survives a rebuild", %{run: run} do
@@ -722,17 +789,19 @@ defmodule Apiary.Runs.ProjectorTest do
               rebuilt.about_details} == {nil, nil, [], nil}
     end
 
-    # Only a run without an end is closed (`Runs.close_run/2`): the record here stops
-    # before its exit.
-    test "keeps a close, which no event records", %{scope: scope, run: run} do
+    # The record here stops before its exit: a lost run is rebuilt from its events alone,
+    # and the next liveness check finds it lost again.
+    test "rebuilds a lost run from its events alone", %{run: run} do
       events_fixture(run, Enum.drop(record(), -1))
       {:ok, %{state: "running"}} = Projector.project(run)
-      {:ok, closed} = Runs.close_run(scope, run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now()]
+      )
 
       assert {:ok, rebuilt} = Projector.rebuild(run)
-      assert rebuilt.state == "closed"
-      assert rebuilt.closed_at == closed.closed_at
-      assert rebuilt.closed_by_id == scope.user.id
+      assert rebuilt.state == "running"
+      assert rebuilt.lost_at == nil
       assert rebuilt.runtime == "claude"
       assert rebuilt.elapsed_seconds == 60
     end

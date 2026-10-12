@@ -10,12 +10,16 @@ defmodule ApiaryWeb.UserLive.Confirmation do
       <.hex_tile icon="hero-clock" tone="neutral" />
       <Layouts.auth_heading>
         {gettext("That link has expired")}
-        <:subtitle>
+        <:subtitle :if={@mail?}>
           {gettext("Log-in links work once and for a short time. Ask for a new one.")}
+        </:subtitle>
+        <%!-- Without mail no new link can be asked for: the log-in page takes a password. --%>
+        <:subtitle :if={!@mail?}>
+          {gettext("Log-in links work once and for a short time.")}
         </:subtitle>
       </Layouts.auth_heading>
       <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
-        {gettext("Send a new link")}
+        {if @mail?, do: gettext("Send a new link"), else: gettext("Log in")}
       </.button>
     </Layouts.auth>
     """
@@ -77,6 +81,7 @@ defmodule ApiaryWeb.UserLive.Confirmation do
      assign(socket,
        user: user,
        form: form,
+       mail?: Apiary.Mail.configured?(),
        trigger_submit: false,
        page_title: if(user, do: gettext("Log in"), else: gettext("That link has expired"))
      ), temporary_assigns: [form: nil]}

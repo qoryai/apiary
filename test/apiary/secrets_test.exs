@@ -1,7 +1,7 @@
 defmodule Apiary.SecretsTest do
   use Apiary.DataCase, async: true
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog

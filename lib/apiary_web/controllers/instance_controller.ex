@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.InstanceController do
   @moduledoc """
-  `/instance`, the Instance level itself, which has no page of its own: sent on to the
+  `/instance`, the Instance level itself, which has no page apart from its sections: sent on to the
   first of its sections the person may open (`ApiaryWeb.Layouts.instance_sections/1`),
   where the Qory Apiary menu's Instance settings and the breadcrumb's lead, and answered
   as a path that does not exist (`ApiaryWeb.NotFound`) for whoever may open none. Not a

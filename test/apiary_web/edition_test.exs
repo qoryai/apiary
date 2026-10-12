@@ -3,9 +3,27 @@ defmodule ApiaryWeb.EditionTest do
 
   import Phoenix.LiveViewTest
 
+  alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias ApiaryWeb.Activity.Actor
   alias ApiaryWeb.Edition
   alias ApiaryWeb.Nav.Entry
+
+  # An edition that says who made an entry with how they reached the organisation, from the
+  # details its audit edition wrote, and leaves the rest to the core.
+  defmodule Through do
+    use Phoenix.Component
+
+    def activity_actor(%{details: %{"reached_through_id" => id}}, assigns) do
+      assigns = assign(assigns, :through, assigns.names.organisations[id])
+
+      ~H"""
+      <span class="through">{@actor.text} of {@through}</span>
+      """
+    end
+
+    def activity_actor(_entry, _assigns), do: nil
+  end
 
   test "the core's web edition adds nothing" do
     core = Edition.Core
@@ -19,11 +37,14 @@ defmodule ApiaryWeb.EditionTest do
     assert core.place_scope(%Apiary.Organisations.Membership{}, %Workspace{}) == nil
     assert core.reader_sentence(:level, nil) == nil
     assert core.reader_sentence(:refused, nil) == nil
+    assert core.who_may_sentence(:"node.create", nil) == nil
     assert core.settings_tabs(nil) == []
     assert core.slot(:notices, %{}) == nil
     assert core.activity_describer() == nil
+    assert core.activity_actor(%Apiary.Audit.Entry{}, %{}) == nil
     assert core.above_policy_link(nil) == nil
     assert core.reserved_slugs() == %{}
+    assert core.product_name() == "Qory Apiary"
     assert core.gettext_backend() == nil
   end
 
@@ -52,6 +73,104 @@ defmodule ApiaryWeb.EditionTest do
       assert_raise ArgumentError, ~r/no slot :nowhere/, fn ->
         render_component(&ApiaryWeb.Extension.slot/1, name: :nowhere, scope: nil)
       end
+    end
+  end
+
+  describe "who made an entry" do
+    setup do
+      person = Ecto.UUID.generate()
+      through = Ecto.UUID.generate()
+
+      names = %{
+        users: %{person => "dana@example.com"},
+        access_keys: %{},
+        nodes: %{},
+        workspaces: %{},
+        targets: %{},
+        runs: %{},
+        organisations: %{through => "Northwind"}
+      }
+
+      entry = %Apiary.Audit.Entry{id: Ecto.UUID.generate(), actor_kind: :person, actor_id: person}
+      %{person: person, through: through, names: names, entry: entry}
+    end
+
+    test "is the core's words in the core", ctx do
+      scope = %Scope{user: %User{id: ctx.person}}
+      actor = Actor.of(ctx.entry, ctx.names, scope, Edition.Core)
+
+      assert actor == %{
+               words: %{kind: :person, text: "dana@example.com", you?: true},
+               edition: nil
+             }
+
+      html = render_component(&Actor.actor/1, id: "who", actor: actor)
+      assert html =~ ~s(id="who")
+      assert html =~ "dana@example.com"
+      assert html =~ "you"
+
+      gone = %{ctx.entry | actor_id: Ecto.UUID.generate()}
+      html = render_component(&Actor.actor/1, id: "who", actor: Actor.of(gone, ctx.names, scope))
+      assert html =~ "Former member"
+
+      instance = %{ctx.entry | actor_kind: :instance, actor_id: nil}
+
+      html =
+        render_component(&Actor.actor/1, id: "who", actor: Actor.of(instance, ctx.names, scope))
+
+      assert html =~ "Qory Apiary"
+    end
+
+    test "is drawn by the core as it always was", ctx do
+      key = Ecto.UUID.generate()
+      names = put_in(ctx.names, [:access_keys, key], %{label: "build-01", key_id: "ak_1"})
+      key_entry = %{ctx.entry | actor_kind: :access_key, actor_id: key}
+      instance = %{ctx.entry | actor_kind: :instance, actor_id: nil}
+      gone = %{ctx.entry | actor_id: Ecto.UUID.generate()}
+      cell = ~s(<span phx-r id="who" class="inline-flex min-w-0 items-center gap-2">\n  \n)
+      icon = &~s(<span phx-r class="hero-#{&1} size-3.5 flex-none text-faint"></span>)
+
+      for {entry, scope, inner} <- [
+            {ctx.entry, %Scope{user: %User{id: Ecto.UUID.generate()}},
+             ~s(      <span class="truncate">dana@example.com</span>\n      \n    \n)},
+            {ctx.entry, %Scope{user: %User{id: ctx.person}},
+             ~s(      <span class="truncate">dana@example.com</span>\n) <>
+               ~s(      <span class="q-faint">you</span>\n    \n)},
+            {gone, %Scope{},
+             ~s(      <span class="q-faint truncate">Former member</span>\n    \n)},
+            {key_entry, %Scope{},
+             ~s(      #{icon.("key")}\n) <>
+               ~s(      <span class="truncate">build-01</span>\n) <>
+               ~s(      <span class="q-faint q-mono">ak_1</span>\n    \n)},
+            {instance, %Scope{},
+             ~s(      #{icon.("cpu-chip")}\n      <span>Qory Apiary</span>\n  \n)}
+          ] do
+        actor = Actor.of(entry, names, scope, Edition.Core)
+
+        assert render_component(&Actor.actor/1, id: "who", actor: actor) ==
+                 cell <> inner <> "</span>"
+      end
+    end
+
+    test "is the edition's where it says it, and the core's where it says nil", ctx do
+      scope = %Scope{}
+      reached = %{ctx.entry | details: %{"reached_through_id" => ctx.through}}
+
+      actor = Actor.of(reached, ctx.names, scope, Through)
+      assert actor.words == %{kind: :person, text: "dana@example.com", you?: nil}
+
+      html = render_component(&Actor.actor/1, id: "who", actor: actor)
+      assert html =~ ~s(id="who")
+      assert html =~ ~r{<span[^>]* class="through">dana@example.com of Northwind</span>}
+
+      html =
+        render_component(&Actor.actor/1,
+          id: "who",
+          actor: Actor.of(ctx.entry, ctx.names, scope, Through)
+        )
+
+      assert html =~ "dana@example.com"
+      refute html =~ "Northwind"
     end
   end
 end

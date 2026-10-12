@@ -100,6 +100,33 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert Accounts.get_user_by_email(user.email)
     end
 
+    test "without mail, the address cannot be changed, and the page says why", %{
+      conn: conn,
+      user: user
+    } do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, html} = live(conn, ~p"/users/settings")
+
+      assert html =~
+               "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
+
+      refute html =~ "We send a confirmation link to the new address."
+      assert has_element?(lv, "#email_form input[name='user[email]'][disabled]")
+      assert has_element?(lv, "#email_form button[type=submit][disabled]")
+
+      # A crafted submit changes nothing and sends nothing.
+      lv
+      |> element("#email_form")
+      |> render_submit(%{"user" => %{"email" => unique_user_email()}})
+
+      refute_received {:email, %Swoosh.Email{subject: "Confirm your new email address" <> _}}
+
+      refute Apiary.Repo.get_by(Accounts.UserToken,
+               user_id: user.id,
+               context: "change:#{user.email}"
+             )
+    end
+
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
 
@@ -134,6 +161,21 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     setup %{conn: conn} do
       user = user_fixture()
       %{conn: log_in_user(conn, user), user: user}
+    end
+
+    test "with mail, the password is optional beside log-in links", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#password_form", "Optional. Log-in links keep working either way.")
+    end
+
+    test "without mail, the password form says nothing of log-in links", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#password_form button[type=submit]", "Save password")
+      refute html =~ "Log-in links keep working"
+      refute html =~ "Optional."
     end
 
     test "updates the user password", %{conn: conn, user: user} do
@@ -230,6 +272,14 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert path == ~p"/users/settings"
       assert %{"error" => message} = flash
       assert message == "That link has expired. Ask for a new one below."
+    end
+
+    test "without mail, an expired link does not offer a new one", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+
+      {:error, redirect} = live(conn, ~p"/users/settings/confirm-email/oops")
+      assert {:live_redirect, %{to: "/users/settings", flash: %{"error" => message}}} = redirect
+      assert message == "That link has expired."
     end
 
     test "does not update email with invalid token", %{conn: conn, user: user} do

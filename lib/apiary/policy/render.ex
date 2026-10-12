@@ -23,6 +23,14 @@ defmodule Apiary.Policy.Render do
     )
   end
 
+  @doc """
+  The document of no policy, `{"version":1}`, encoded as `document/1` encodes one: what a
+  run is given where its workspace serves no run configuration. Always the same bytes, so
+  always the same digest.
+  """
+  @spec no_policy_document() :: binary
+  def no_policy_document, do: Jason.encode!(ordered(version: @version), escape: :json)
+
   @doc "The digest of a document's bytes: `sha256=` and lower-case hex."
   @spec digest(binary) :: String.t()
   def digest(document) when is_binary(document) do

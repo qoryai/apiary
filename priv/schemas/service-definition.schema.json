@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/apiary/service-definition.schema.json",
   "title": "Service definition",
-  "description": "A static-key API: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret. Built-in definitions ship in priv/services; a workspace may write its own.",
+  "description": "A static-key API: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret. Built-in definitions ship in priv/services; a workspace may write more.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "key", "title", "hosts", "auth", "declares"],
   "properties": {
     "version": {"const": 1},
     "key": {
-      "description": "The definition's key, unique among the built-in definitions, and among a workspace's own.",
+      "description": "The definition's key, unique among the built-in definitions, and among a workspace's definitions.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
@@ -32,7 +32,7 @@
       "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
     },
     "auth": {
-      "description": "How the value is sent: Apiary's own auth. Its scheme, header and username are the members of the Forager contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
+      "description": "How the value is sent: Qory Apiary's auth. Its scheme, header and username are the members of the Forager contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
       "type": "object",
       "additionalProperties": false,
       "required": ["scheme", "secret"],

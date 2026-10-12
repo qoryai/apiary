@@ -9,13 +9,14 @@ defmodule Apiary.Runs.Projector do
   events were left unprojected, by a task that died or a node that stopped.
 
   A pass takes a Postgres advisory transaction lock on the run, so two projections of one
-  run never interleave on any node, then locks the run's row, so a close or a lost-run
-  check decided meanwhile is seen and not overwritten. It reads the events with
+  run never interleave on any node, then locks the run's row, so a lost-run check decided
+  meanwhile is seen and not overwritten. It reads the events with
   `projected_at is null` in `sequence` order, folds them (`Apiary.Runs.Fold`), writes the
   result and marks the events projected in the same transaction: an event is folded
   exactly once, and a pass with nothing to fold changes nothing. Events that arrive late
   with a lower sequence are folded when they arrive; the fold decides by sequence alone, so
-  the order of arrival does not show in the result.
+  the order of arrival does not show in the result, but for one revive that the next
+  lost-run check settles (`Apiary.Runs.Fold`, Times).
 
   One event never blocks a run. The fold is total, and should a pass raise all the same, its
   events are projected one by one and the one that fails is marked projected and named in
@@ -23,6 +24,10 @@ defmodule Apiary.Runs.Projector do
 
   `projected_sequence` is the highest sequence up to which every event has been
   projected: it stops before the first gap and moves on when the gap fills.
+
+  Once its passes have committed, a projection records the run's `last_heartbeat_at` as
+  its access key's last heartbeat when it is later than the key's
+  (`Apiary.AccessKeys.touch_heartbeat/2`), so the key's is the latest of its runs'.
 
   Event data is never logged from here: a failure is logged with the run's id and the
   kind of the error, nothing more, and every query that carries event data as a parameter
@@ -33,18 +38,21 @@ defmodule Apiary.Runs.Projector do
 
   require Logger
 
+  alias Apiary.AccessKeys
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
 
-  # What the fold may change on the run's row.
+  # What the fold may change on the run's row. The registration's fields
+  # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
   @folded_fields ~w(
-    state forager_version contract_version opened_by runtime runtime_version command args
+    state forager_version contract_version runtime runtime_version command args
     dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
-    target_system target_path started_at exited_at exit_code
+    target_system target_path started_at exited_at exit_code exit_state exit_reason refused_at
     signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
+    clock_offset_ms
     policy_digest run_configuration_digest lost_at cost_usd
   )a
 
@@ -53,6 +61,7 @@ defmodule Apiary.Runs.Projector do
   @rebuilt_fields @folded_fields -- [:state, :forager_version, :contract_version]
 
   @pass_size 1000
+  @heartbeat "dev.qory.run.heartbeat"
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -65,6 +74,7 @@ defmodule Apiary.Runs.Projector do
         {:ok, run}
 
       {:ok, run, {first, last}} ->
+        touch_heartbeat(run)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
 
@@ -107,8 +117,8 @@ defmodule Apiary.Runs.Projector do
 
   @doc """
   Deletes the run's projections, clears `projected_at` on its events and projects again:
-  the projections come from `events` alone. A close is not an event and is kept; a lost
-  run is found lost again by the next liveness check.
+  the projections come from `events` alone. A lost run is found lost again by the next
+  liveness check.
 
   A run whose events retention has deleted, or is due to delete (`Apiary.Retention.due_or_pruned?/1`),
   is returned as it is: its projection is all that is left of it, and nothing here deletes
@@ -153,13 +163,19 @@ defmodule Apiary.Runs.Projector do
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
     blank = Map.take(%Run{}, @rebuilt_fields)
-    state = if current.state == "closed", do: "closed", else: "pending"
+    # The starter's outcome is not folded: it decides the state the run starts again from,
+    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`).
+    blank =
+      Map.merge(
+        blank,
+        Fold.outcome(%{current | state: "pending", reason: nil, lost_at: nil})
+        |> Map.take([:state, :reason, :lost_at])
+      )
 
     current
     |> Ecto.Changeset.change(blank)
     |> Ecto.Changeset.change(
-      state: state,
-      projected_sequence: 0,
+      projected_sequence: Run.projected_from(current),
       target_id: nil,
       denied_count: 0
     )
@@ -278,7 +294,14 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
-      fold = fold_module().fold(%{run | workspace: workspace}, events, latest(id, events))
+
+      fold =
+        fold_module().fold(
+          %{run | workspace: workspace},
+          events,
+          latest(run, events),
+          projected(run, events)
+        )
 
       run =
         run
@@ -351,19 +374,73 @@ defmodule Apiary.Runs.Projector do
 
   # The highest sequence already projected in each rank this pass's events compete in.
   # Most passes hold logs and egress only and ask nothing. One that asks walks the run's
-  # sequence index backwards to the last such event: a heartbeat back, for a heartbeat.
-  defp latest(id, events) do
+  # sequence index backwards to the last such event: a heartbeat back, for a heartbeat,
+  # of the instance whose heartbeats count (`Apiary.Runs.Fold.liveness_instance/1`).
+  defp latest(%Run{} = run, events) do
     ranks =
       events |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.flat_map(&Fold.ranks/1) |> Enum.uniq()
 
-    for rank <- ranks, sequence = last_projected(id, Fold.rank_types(rank)), into: %{} do
+    for rank <- ranks, sequence = last_projected(run, rank), into: %{} do
       {rank, sequence}
     end
   end
 
-  defp last_projected(id, types) do
+  # What the fold needs of the run's events already projected (`Apiary.Runs.Fold`), read
+  # only for a pass that holds a heartbeat, which can lower the run's clock offset: the
+  # time and arrival of its heartbeat with the highest sequence, which a lower offset
+  # counts again.
+  defp projected(run, events) do
+    %{beat: if(Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(run))}
+  end
+
+  defp last_beat(%Run{id: id} = run) do
     Repo.one(
-      from e in Event,
+      from e in counted(run),
+        where: e.run_id == ^id and e.type == @heartbeat and not is_nil(e.projected_at),
+        order_by: [desc: e.sequence],
+        limit: 1,
+        select: %{time: e.time, received_at: e.received_at}
+    )
+  end
+
+  # The events whose heartbeats count towards the run's liveness: every one, but for a run
+  # through a gateway whose attaching instance is known, whose heartbeats count from that
+  # instance and from every event stored with no instance id alone.
+  defp counted(run) do
+    case Fold.liveness_instance(run) do
+      nil ->
+        Event
+
+      instance_id ->
+        from e in Event, where: is_nil(e.instance_id) or e.instance_id == ^instance_id
+    end
+  end
+
+  # One `UPDATE` by the key's id, which changes nothing when the key holds a later one.
+  # After the commit, it never fails the projection: a failure is logged by run and the
+  # kind of the error.
+  defp touch_heartbeat(%Run{access_key_id: key_id, last_heartbeat_at: %DateTime{} = at} = run)
+       when is_binary(key_id) do
+    AccessKeys.touch_heartbeat(key_id, at)
+  rescue
+    error -> log_touch_failure(run, error.__struct__)
+  catch
+    kind, _reason -> log_touch_failure(run, kind)
+  end
+
+  defp touch_heartbeat(_run), do: :ok
+
+  defp log_touch_failure(%Run{id: id}, what) do
+    Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")
+    :ok
+  end
+
+  defp last_projected(%Run{id: id} = run, rank) do
+    types = Fold.rank_types(rank)
+    events = if rank == @heartbeat, do: counted(run), else: Event
+
+    Repo.one(
+      from e in events,
         where: e.run_id == ^id and e.type in ^types and not is_nil(e.projected_at),
         order_by: [desc: e.sequence],
         limit: 1,

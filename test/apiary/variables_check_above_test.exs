@@ -5,7 +5,7 @@ defmodule Apiary.VariablesCheckAboveTest do
   """
   use Apiary.DataCase, async: true
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   import Apiary.OrganisationsFixtures
 

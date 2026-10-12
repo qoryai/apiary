@@ -2,13 +2,15 @@ defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
   The core's sections of the organisation's and the workspace's settings, one section a
   page, its title the page's h1, beside the list of its kind's sections
-  (`ApiaryWeb.SettingsComponents`), under the scope's own sidebar, whose Organisation
+  (`ApiaryWeb.SettingsComponents`), under the scope's sidebar, whose Organisation
   settings or Workspace settings is the current entry.
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
     its owners and, last, its danger zone, the deletion of the organisation; Workspaces,
-    `/:org/settings/workspaces` (`:workspaces`), for an owner or an admin, with the
-    deletion of one and the cancelling of a deletion.
+    `/:org/settings/workspaces` (`:workspaces`), for whoever may rename or delete a
+    workspace (`Apiary.Organisations.lists_workspaces?/1`), an owner or an admin in the
+    core's edition, with the deletion of one and the cancelling of a deletion for whoever
+    may take them.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
     slug, its type (its domain, read only: "A software workspace") and, last, its danger
     zone, its deletion while it is one of several; Runs,
@@ -17,19 +19,19 @@ defmodule ApiaryWeb.SettingsLive do
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited. Deleting asks to type the
-  slug, in place, never in a dialog, each at a path of its own: the organisation's and this
+  slug, in place, never in a dialog, each at a separate path: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
   (`:danger`, and `/:org/settings/delete`, `:delete_organisation`), this workspace's at
   `/:org/:workspace/settings/danger` (`:workspace_danger`, and
   `/:org/:workspace/settings/delete`, `:delete_this_workspace`); any workspace's in its
   row of Workspaces (`SettingsComponents.workspace_list/1`), at
-  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are no section of their own: nothing that
+  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are not separate sections: nothing that
   cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
   notice at the top of Workspaces, where an owner or an admin cancels it until it is
   purged (`Apiary.Deletion`).
 
-  An edition adds sections to the organisation's settings, each a page of its own
+  An edition adds sections to the organisation's settings, each a separate page
   (`ApiaryWeb.SettingsComponents`), and to each workspace's ⋯ menu in Workspaces the items
   its `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
 
@@ -38,7 +40,7 @@ defmodule ApiaryWeb.SettingsLive do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Deletion, Organisations, Retention}
+  alias Apiary.{Access, Deletion, Features, Organisations, Retention}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   # Each page of this LiveView: the settings it is part of and its section's key.
@@ -93,8 +95,12 @@ defmodule ApiaryWeb.SettingsLive do
   defp section(%{section: :organisation} = assigns) do
     ~H"""
     <.notice :if={refused_for_level?(@current_scope, :"organisation.rename")} kind={:info}>
-      {gettext(
-        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      {ApiaryWeb.Access.who_may(
+        @current_scope,
+        :"organisation.rename",
+        gettext(
+          "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+        )
       )}
     </.notice>
 
@@ -259,6 +265,7 @@ defmodule ApiaryWeb.SettingsLive do
       scope={@current_scope}
       workspaces={@workspaces}
       targets={@workspace_targets}
+      may_delete={may?(@current_scope, :"workspace.delete")}
       confirming={@live_action == :delete_workspace && @deleting}
       confirm_form={@confirm_form}
     />
@@ -269,8 +276,12 @@ defmodule ApiaryWeb.SettingsLive do
   defp section(%{section: :general} = assigns) do
     ~H"""
     <.notice :if={refused_for_level?(@current_scope, :"workspace.rename")} kind={:info}>
-      {gettext(
-        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      {ApiaryWeb.Access.who_may(
+        @current_scope,
+        :"workspace.rename",
+        gettext(
+          "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+        )
       )}
     </.notice>
 
@@ -346,7 +357,7 @@ defmodule ApiaryWeb.SettingsLive do
             ),
           else:
             gettext(
-              "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+              "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
             )}
         <:lost>{SettingsComponents.workspace_lost()}</:lost>
         <:field>
@@ -440,7 +451,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.state_word :if={!run.complete} hot class="text-[12.5px]">
             {gettext("Not finished")}
           </.state_word>
-          <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
+          <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run, @current_scope)}</span>
         </li>
       </ul>
       <p :if={@retention_runs != []} id="retention-runs-note" class="q-foot-note">
@@ -576,10 +587,29 @@ defmodule ApiaryWeb.SettingsLive do
     # The instance's organisation is deleted by nobody, which its danger zone says too.
     sentence =
       cond do
-        action in @delete_organisation and organisation_kept?(scope) -> organisation_kept()
-        action in @delete_organisation -> gettext("Only owners delete the organisation.")
-        action == :workspaces -> gettext("Only owners and admins open the list of workspaces.")
-        true -> gettext("Only owners and admins delete a workspace.")
+        action in @delete_organisation and organisation_kept?(scope) ->
+          organisation_kept()
+
+        action in @delete_organisation ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"organisation.delete",
+            gettext("Only owners delete the organisation.")
+          )
+
+        action == :workspaces ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :workspaces,
+            gettext("Only owners and admins open the list of workspaces.")
+          )
+
+        true ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"workspace.delete",
+            gettext("Only owners and admins delete a workspace.")
+          )
       end
 
     socket
@@ -638,7 +668,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"organisation.rename")}
     end
   end
 
@@ -668,7 +698,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :workspace_form, to_form(changeset))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"workspace.rename")}
     end
   end
 
@@ -696,7 +726,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :retention_form, to_form(changeset, as: :retention))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"retention.edit")}
     end
   end
 
@@ -725,7 +755,12 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, gettext("Only owners delete the organisation."))}
+        {:noreply,
+         unauthorized(
+           socket,
+           :"organisation.delete",
+           gettext("Only owners delete the organisation.")
+         )}
 
       # A refusal of the edition's is said in its words, where it has some.
       {:error, reason} ->
@@ -772,14 +807,19 @@ defmodule ApiaryWeb.SettingsLive do
          |> put_flash(
            :error,
            gettext(
-             "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+             "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
            )
          )
          |> load_workspaces()
          |> push_patch(to: section_path(scope, socket.assigns.live_action))}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, gettext("Only owners and admins delete a workspace."))}
+        {:noreply,
+         unauthorized(
+           socket,
+           :"workspace.delete",
+           gettext("Only owners and admins delete a workspace.")
+         )}
 
       _not_found ->
         {:noreply, gone(socket)}
@@ -814,6 +854,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply,
          unauthorized(
            socket,
+           :"workspace.restore",
            gettext("Only owners and admins cancel the deletion of a workspace.")
          )}
 
@@ -876,17 +917,21 @@ defmodule ApiaryWeb.SettingsLive do
     assign(socket, :confirm_form, to_form(params, as: :confirm, errors: errors))
   end
 
-  # The workspaces of the organisation in use, and those marked for deletion, for whoever
-  # may delete one: Workspaces lists them, and a workspace's danger zone asks whether it is
-  # the only one.
+  # The workspaces of the organisation in use, for whoever may rename or delete one, and
+  # those marked for deletion, for whoever may delete one: Workspaces lists them, and a
+  # workspace's danger zone asks whether it is the only one.
   defp load_workspaces(socket) do
     scope = socket.assigns.current_scope
 
-    if may?(scope, :"workspace.delete") do
+    if Organisations.lists_workspaces?(scope) do
       assign(socket,
         workspaces: Organisations.list_workspaces(scope),
         workspace_targets: Apiary.Targets.count_by_workspace(scope),
-        marked_workspaces: Deletion.list_marked_workspaces(scope)
+        marked_workspaces:
+          if(may?(scope, :"workspace.delete"),
+            do: Deletion.list_marked_workspaces(scope),
+            else: []
+          )
       )
     else
       assign(socket, workspaces: [], workspace_targets: %{}, marked_workspaces: [])
@@ -990,27 +1035,39 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
-  defp pruned_sentence(%{runs_pruned: 0}), do: gettext("Nothing was old enough to prune.")
+  defp pruned_sentence(%{runs_pruned: 0}, _scope),
+    do: gettext("Nothing was old enough to prune.")
 
-  defp pruned_sentence(run) do
-    pruned =
+  defp pruned_sentence(run, scope) do
+    runs =
+      ngettext("%{number} run", "%{number} runs", run.runs_pruned,
+        number: Format.number(run.runs_pruned)
+      )
+
+    events =
+      ngettext("%{number} event", "%{number} events", run.events_deleted,
+        number: Format.number(run.events_deleted)
+      )
+
+    Enum.join([pruned_counts(run, runs, events, scope) | cutoffs(run)], " ")
+  end
+
+  # The log's size is the Terminal's figure: a reader the run's Terminal is hidden from
+  # (`:"observability.terminal"`) is told the runs and the events only.
+  defp pruned_counts(run, runs, events, scope) do
+    if Features.visible?(scope, :"observability.terminal") do
       gettext("%{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-        runs:
-          ngettext("%{number} run", "%{number} runs", run.runs_pruned,
-            number: Format.number(run.runs_pruned)
-          ),
-        events:
-          ngettext("%{number} event", "%{number} events", run.events_deleted,
-            number: Format.number(run.events_deleted)
-          ),
+        runs: runs,
+        events: events,
         bytes: Format.bytes(run.log_bytes_deleted),
         chunks:
           ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
             number: Format.number(run.log_chunks_deleted)
           )
       )
-
-    Enum.join([pruned | cutoffs(run)], " ")
+    else
+      gettext("%{runs}: %{events}.", runs: runs, events: events)
+    end
   end
 
   defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: []
@@ -1030,10 +1087,11 @@ defmodule ApiaryWeb.SettingsLive do
     ]
   end
 
-  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
-  # A person who no longer reaches the workspace, or is no longer a member, is sent to `/`;
-  # anyone else is told `sentence`, what the refused change asks of a role.
-  defp unauthorized(socket, sentence \\ nil) do
+  # Refused `action` on the membership as it is now: the page's scope is stale, and is
+  # loaded again. A person who no longer reaches the workspace, or is no longer a member,
+  # is sent to `/`; anyone else is told who may (`ApiaryWeb.Access.who_may/3`), `sentence`
+  # in the core's words, what the refused change asks of a role.
+  defp unauthorized(socket, action, sentence \\ nil) do
     socket = UserAuth.reload_scope(socket)
 
     if socket.redirected do
@@ -1043,7 +1101,11 @@ defmodule ApiaryWeb.SettingsLive do
       |> assign_forms()
       |> put_flash(
         :error,
-        sentence || gettext("Only owners and admins can change these settings.")
+        ApiaryWeb.Access.who_may(
+          socket.assigns.current_scope,
+          action,
+          sentence || gettext("Only owners and admins can change these settings.")
+        )
       )
     end
   end

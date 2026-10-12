@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "run_id": "2291d8cd-c310-711e-bec2-7378a661c935",
+  "labels": {
+    "forge": "codeberg.org",
+    "repository": "acme/shop",
+    "task": "checkout-redesign"
+  },
+  "about": {
+    "kind": "Implementation",
+    "title": "Redesign the checkout steps",
+    "subjects": [
+      {
+        "type": "ticket",
+        "ref": "SHOP-128",
+        "url": "https://tracker.example.com/browse/SHOP-128",
+        "title": "Split the checkout form into address, delivery and payment steps"
+      },
+      {
+        "type": "pull request",
+        "ref": "#412",
+        "url": "https://git.example.com/acme/shop/pull/412"
+      }
+    ],
+    "details": {
+      "branch": "qory/checkout-steps",
+      "attempt": 1
+    }
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 60,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-18T09:00:00Z"
+}

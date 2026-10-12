@@ -2,7 +2,7 @@ defmodule Apiary.Audit.PruneSweep do
   @moduledoc """
   The daily sweep of the audit trail's retention: enqueues an `Apiary.Audit.PruneJob` for
   every organisation on the instance (`Apiary.Job.insert_per_organisation/3`), so one
-  organisation's failure does not stop the others and each has its own retries. Oban's
+  organisation's failure does not stop the others and each is retried separately. Oban's
   cron plugin enqueues it once a day, from the crontab the application starts Oban with;
   it is the instance's work, and names no organisation.
   """

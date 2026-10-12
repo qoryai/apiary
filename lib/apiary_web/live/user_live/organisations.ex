@@ -2,7 +2,7 @@ defmodule ApiaryWeb.UserLive.Organisations do
   @moduledoc """
   A person's organisations, `/users/organisations`, from the account menu: each
   organisation they are a member of, leading to the first workspace of it they reach, or
-  to the organisation's own path when they reach none yet, and the
+  to the organisation's path when they reach none yet, and the
   organisations marked for deletion that they own, which show here and nowhere else
   until they are purged, each with the day it is purged and a button that cancels the
   deletion (`Apiary.Deletion.restore_organisation/2`), and the organisations where their
@@ -13,7 +13,7 @@ defmodule ApiaryWeb.UserLive.Organisations do
   The page offers what the organisation switcher offers after its places, the edition's
   entries (`c:ApiaryWeb.Edition.switcher_entries/1`), as its actions: beside its title,
   or beside the way to join one for a person in none. It is Organisations, a section of
-  the person's own settings, whose list is their sidebar.
+  the person's settings, whose list is their sidebar.
   """
   use ApiaryWeb, :live_view
 
@@ -224,11 +224,23 @@ defmodule ApiaryWeb.UserLive.Organisations do
       {:error, _reason} ->
         {:noreply,
          socket
-         |> put_flash(
-           :error,
-           gettext("Only an owner of the organisation can cancel its deletion.")
-         )
+         |> put_flash(:error, only_owners_restore(socket, id))
          |> load()}
+    end
+  end
+
+  # Who may cancel the deletion of the organisation `id`, in the edition's words where it
+  # has some, asked in the scope the person reaches it with; in the core's, of an
+  # organisation the page no longer lists or they no longer reach.
+  defp only_owners_restore(socket, id) do
+    sentence = gettext("Only an owner of the organisation can cancel its deletion.")
+    scope = socket.assigns.current_scope
+
+    with %{} = organisation <- Enum.find(socket.assigns.pending, &(&1.id == id)),
+         {:ok, scope} <- Organisations.put_reach(scope, organisation) do
+      ApiaryWeb.Access.who_may(scope, :"organisation.restore", sentence)
+    else
+      _unreached -> sentence
     end
   end
 

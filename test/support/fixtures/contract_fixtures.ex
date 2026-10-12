@@ -43,12 +43,13 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`),
-  held under its published id on `node`, active, as a receiver under test holds it.
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`, or
+  `"gateway_key"` on a gateway), held under its published id on `node`, active, as a receiver under test holds it.
   Written straight into the table, past the key checks, which refuse every fixture key:
   test support only.
   """
-  def fixture_access_key!(%Scope{user: user}, node, "access_key" = name) do
+  def fixture_access_key!(%Scope{user: user}, node, name)
+      when name in ~w(access_key gateway_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
     %{public_key: public_key} = fixture_key!(name)
     now = DateTime.utc_now()
@@ -130,16 +131,13 @@ defmodule Apiary.ContractFixtures do
     }
   end
 
-  @doc "A ping and a start of a fresh run: `{subject, events}`."
+  @doc """
+  The first batch of a fresh run, its start: `{subject, events}`. Its sequence is 2, as the
+  gateway posts it, the record's first event, `dev.qory.run.registered`, being never posted.
+  """
   def first_events(subject \\ Ecto.UUID.generate()) do
     {subject,
      [
-       wire_event(subject, 1, "ping", %{
-         "forager_version" => "0.4.0",
-         "events" => ["*"],
-         "contract_version" => 1,
-         "interval_seconds" => 30
-       }),
        wire_event(subject, 2, "run.started", %{
          "opened_by" => "session",
          "runtime" => "claude",
@@ -153,6 +151,140 @@ defmodule Apiary.ContractFixtures do
          "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"}
        })
      ]}
+  end
+
+  @doc """
+  A run's registration as the gateway builds it, decoded: `run_id`, the labels of a
+  software run, the gateway's versions, a heartbeat interval of 30 seconds, every event
+  type, and `time`, the contract's clock now (`ApiaryWeb.Contract.SignedRequest.now/0`) to
+  the second. `attrs` (string keys) replace members; a nil value leaves one out.
+  """
+  def registration(run_id \\ Ecto.UUID.generate(), attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_id" => run_id,
+      "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+      "forager_version" => "0.4.0",
+      "contract_version" => 1,
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  A run's registration through a gateway, as its starter builds it, decoded: `run_id`, the
+  labels of a software run, an `about` with a title, and `time`, the contract's clock now
+  to the second; no versions, interval or events, which move to the attach. `attrs`
+  (string keys) replace members; a nil value leaves one out.
+  """
+  def gateway_registration(run_id \\ Ecto.UUID.generate(), attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_id" => run_id,
+      "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+      "about" => %{"title" => "Fix the failing build"},
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  A run's attach, as its gateway builds it, decoded: `run_key`, the gateway's versions, a
+  heartbeat interval of 30 seconds, every event type, and `time`, the contract's clock now
+  to the second. `attrs` (string keys) replace members; a nil value leaves one out.
+  """
+  def attach_body(run_key, attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_key" => run_key,
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "forager_version" => "0.7.0",
+      "contract_version" => 1,
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  Posts `body` (a binary, or an attach to encode) to `/v1/runs/<run_id>/attach` as a
+  gateway attaches a run: `signed_post/5`, as `application/json`, with no
+  `X-Qory-Delivery`. The options are `signed_post/5`'s.
+  """
+  def signed_attach(conn, key_id, seed, run_id, body, opts \\ []) do
+    defaults = [
+      target: "/v1/runs/#{run_id}/attach",
+      content_type: "application/json",
+      delivery: nil
+    ]
+
+    signed_post(conn, key_id, seed, body, Keyword.merge(defaults, opts))
+  end
+
+  @doc """
+  The registration a record's gateway sent, from the record's lines (`events.jsonl`): its
+  `dev.qory.run.registered`, sequence 1, which the record alone holds, and the labels and
+  `about` of its `dev.qory.run.started`, built now (`registration/2`). Returns
+  `{registration, lines}` with the lines that are posted: all but the registered one.
+  """
+  def record_registration([first | posted] = _lines) do
+    %{"type" => "dev.qory.run.registered", "subject" => run_id, "data" => data} =
+      Jason.decode!(first)
+
+    started =
+      posted
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.find(%{"data" => %{}}, &(&1["type"] == "dev.qory.run.started"))
+
+    registration =
+      registration(
+        run_id,
+        Map.merge(Map.take(data, ~w(forager_version contract_version interval_seconds events)), %{
+          "labels" => started["data"]["labels"],
+          "about" => started["data"]["about"]
+        })
+      )
+
+    {registration, posted}
+  end
+
+  @doc """
+  Registers `registration` (`registration/2`) through `Apiary.Runs.Registration`, as the
+  run endpoint does once it has verified the request: `{:ok, answer}` or `{:error, reason}`.
+  """
+  def register_run(key, registration, instance_id \\ nil) do
+    bytes = Jason.encode!(registration)
+    {:ok, parsed} = Apiary.Runs.Registration.parse(Jason.decode!(bytes))
+
+    Apiary.Runs.Registration.register(key, parsed, %{
+      body: bytes,
+      contract_version: 1,
+      instance_id: instance_id
+    })
+  end
+
+  @doc """
+  Posts `body` (a binary, or a registration to encode) to the run endpoint as the gateway
+  registers a run: `signed_post/5` to `/v1/runs`, as `application/json`, with no
+  `X-Qory-Delivery`. The options are `signed_post/5`'s.
+  """
+  def signed_register(conn, key_id, seed, body, opts \\ []) do
+    defaults = [target: "/v1/runs", content_type: "application/json", delivery: nil]
+    signed_post(conn, key_id, seed, body, Keyword.merge(defaults, opts))
   end
 
   @doc """
@@ -198,14 +330,15 @@ defmodule Apiary.ContractFixtures do
   @doc """
   A signed GET of `target`, a path with its query exactly as it is sent, as the gateway
   sends it: under `key_id`, signed with the Ed25519 `seed`, from the instance
-  `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (nil for
+  `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (the
+  contract's clock now, `ApiaryWeb.Contract.SignedRequest.now/0`, by default; nil for
   none, signed as an empty line), `:signature`, `:instance_id` (nil for none),
   `:contract_version` (nil for none, a list for each of its values), `:user_agent`,
   `:headers` (sent beside the others).
   """
   def signed_get(conn, key_id, seed, target, opts \\ []) do
     timestamp =
-      case Keyword.get(opts, :timestamp, System.os_time(:second)) do
+      case Keyword.get_lazy(opts, :timestamp, &ApiaryWeb.Contract.SignedRequest.now/0) do
         nil -> nil
         timestamp -> to_string(timestamp)
       end
@@ -236,10 +369,9 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  Forager's contract directory: `FORAGER_CONTRACT_DIR`, else the contract at the
-  commit in `.forager-contract-ref`, taken once from the sibling checkout of qoryai/forager
-  (`../../forager/main`) with `git archive` into the build directory, whatever that
-  checkout has checked out; else nil. The checkout is only read.
+  Forager's contract directory: `FORAGER_CONTRACT_DIR`, set to `contracts/forager/v1` of a
+  qoryai/forager checkout at the commit in `.forager-contract-ref`. Unset, a default that
+  fits the maintainers' own checkout layout applies. Nil when there is neither.
   """
   def contract_dir do
     case System.get_env("FORAGER_CONTRACT_DIR") do
@@ -306,21 +438,22 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   known_answers!/1 decodes `fixtures/known-answers/<name>.json`: `"keys"`,
-  `"signatures"`, `"discovery"` or `"small-order"`.
+  `"signatures"`, `"discovery"`, `"small-order"` or `"through-gateway"`.
   """
-  def known_answers!(name) when name in ~w(keys signatures discovery small-order),
-    do: contract_json!("known-answers/#{name}.json")
+  def known_answers!(name)
+      when name in ~w(keys signatures discovery small-order through-gateway),
+      do: contract_json!("known-answers/#{name}.json")
 
   @doc """
   fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
-  (`"access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  (`"access_key"`, `"gateway_key"`, `"signing_key"`, `"next_signing_key"`), with
   its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
   published one, and the published `:fingerprint`, plus `:access_key_id` and
   `:instance_id` where the file gives them. Test support only: every instance refuses
   these keys.
   """
   def fixture_key!(name)
-      when name in ~w(access_key signing_key next_signing_key) do
+      when name in ~w(access_key gateway_key signing_key next_signing_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
 
     encoded_seed =

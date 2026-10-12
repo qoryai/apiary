@@ -82,7 +82,7 @@ defmodule Apiary.Secrets do
   list_secrets/1 is the scope's workspace's secrets, by name whatever its case, each with
   its values, their value ids and when they were set, never their ciphertext:
   `{:ok, secrets}`, for a reader who may `secret.read`; else `{:error, reason}`,
-  `:not_found` where the `security` feature is off.
+  `:not_found` where the `secrets` feature is off.
   """
   @spec list_secrets(Scope.t()) :: {:ok, [Secret.t()]} | {:error, Access.reason()}
   def list_secrets(%Scope{} = scope) do
@@ -178,7 +178,7 @@ defmodule Apiary.Secrets do
 
   `{:ok, secret}`, its values loaded without their ciphertext; or `{:error, refusal}`, a
   changeset whose errors are on `name`, `note`, `value` or `value_id`, or, for several
-  values, on `values` and on each value's own changeset. More than `max_values/0` values
+  values, on `values` and on each value's changeset. More than `max_values/0` values
   are refused with an error on `values` before any of them is looked at, and none is
   under it. Otherwise, several values refused by their checks or by the secret's name
   have their changesets under `values`, in the order they came, each with its errors on
@@ -598,7 +598,7 @@ defmodule Apiary.Secrets do
   the log that names the secret and the value id, never the value.
 
   It asks nothing of `Apiary.Access`, and is the one function of this module that does
-  not: it is the server's own sealing path, called by the secrets endpoint once it has
+  not: it is the server's sealing path, called by the secrets endpoint once it has
   verified the gateway's signed request and decided what that gateway may receive, with no
   person's scope to ask about. The plaintext goes into the seal and nowhere else: not
   into a log, an assign, a process's state or an error.

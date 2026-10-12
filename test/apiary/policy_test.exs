@@ -508,7 +508,7 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{reason: :conflict, message: message}} =
                Policy.allow(scope, nil, %{host: "*.example", paths: ["/b"]})
 
-      assert message =~ "In the repository github.example/acme/site"
+      assert message =~ "In the policy of the repository github.example/acme/site"
       assert [] = Policy.list_rules(scope, nil)
     end
   end
@@ -1058,6 +1058,175 @@ defmodule Apiary.PolicyTest do
     end
   end
 
+  describe "an address" do
+    @address "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+
+    # A rule stored before the grammar refused its host: inserted as it is, past the changeset.
+    defp stored_rule(scope, target, action, host) do
+      Repo.insert!(%Rule{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        target_id: target && target.id,
+        kind: "host",
+        action: action,
+        host: host
+      })
+    end
+
+    test "is taken only as a.b.c.d; another form is refused with its own sentence",
+         %{scope: scope} do
+      assert {:ok, %Rule{host: "10.0.0.12"}} = Policy.allow(scope, nil, %{host: "10.0.0.12"})
+
+      for host <- ~w(127.1 2130706433 0x7f.0.0.1 010.0.0.1 10.0.0.256 *.0.0.1 example.123) do
+        assert {:error, %Error{reason: :invalid, field: :host, message: @address}} =
+                 Policy.allow(scope, nil, %{host: host}),
+               host
+      end
+
+      # Another bad host keeps its sentence.
+      assert {:error, %Error{field: :host, message: "A host is a lower-case name" <> _}} =
+               Policy.deny(scope, nil, %{host: "api.example:443"})
+
+      # The changeset itself says it, in the errors domain.
+      changeset = Rule.changeset(%Rule{}, %{action: "allow", host: "127.1"})
+      assert %{host: [@address]} = errors_on(changeset)
+
+      assert [%Rule{host: "10.0.0.12"}] = Policy.list_rules(scope, nil)
+    end
+
+    test "a connection to an address in another form makes no rule", %{scope: scope} do
+      run =
+        started_run(scope, shop(),
+          egress: [%{"host" => "127.1"}, %{"host" => "0x7f.0.0.1"}, %{"host" => "10.0.0.12"}]
+        )
+
+      connections = Repo.all(from c in Connection, where: c.run_id == ^run.id)
+
+      for host <- ["127.1", "0x7f.0.0.1"], level <- [:target, :workspace] do
+        connection = Enum.find(connections, &(&1.host == host))
+
+        assert {:error, %Error{reason: :invalid, field: :host, message: message}} =
+                 Policy.rule_from_connection(scope, connection, :allow, level)
+
+        assert message ==
+                 "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
+      end
+
+      assert {:ok, %Rule{host: "10.0.0.12"}} =
+               Policy.rule_from_connection(
+                 scope,
+                 Enum.find(connections, &(&1.host == "10.0.0.12")),
+                 :deny,
+                 :workspace
+               )
+    end
+
+    test "a rule stored in another form is left out of every document, which the schema accepts",
+         %{scope: scope} do
+      target = target_fixture(scope)
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      stored = stored_rule(scope, nil, "allow", "127.1")
+      stored_deny = stored_rule(scope, nil, "deny", "*.0.0.1")
+      stored_target = stored_rule(scope, target, "allow", "2130706433")
+
+      # A change renders every holder: the stored rules are in none of them.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "10.0.0.1"})
+      {:ok, _} = Policy.allow(scope, target, %{host: "api.example"})
+
+      assert policy(current!(scope, nil))["egress"] == %{
+               "mode" => "enforce",
+               "allow" => ["10.0.0.1"]
+             }
+
+      assert policy(current!(scope, target))["egress"] == %{
+               "mode" => "enforce",
+               "allow" => ["10.0.0.1", "api.example"]
+             }
+
+      for configuration <- Repo.all(RunConfiguration) do
+        assert :ok = Schema.validate(configuration.document)
+        refute configuration.document =~ "127.1"
+        refute configuration.document =~ "*.0.0.1"
+        refute configuration.document =~ "2130706433"
+      end
+
+      # Not in force, and said why; nothing is deleted.
+      entries = Map.new(Policy.effective(scope, target).entries, &{&1.rule.id, &1})
+
+      for rule <- [stored, stored_deny, stored_target] do
+        assert %{in_force: false, reason: :out_of_grammar, overridden_by: nil} =
+                 entries[rule.id]
+      end
+
+      assert %{in_force: true} =
+               Enum.find_value(entries, fn {_, e} -> e.host == "10.0.0.1" && e end)
+
+      assert length(Policy.list_rules(scope, nil)) == 3
+
+      # A render again, as after an upgrade, writes the same bytes.
+      before = current!(scope, nil)
+      assert {:ok, _} = Policy.rerender(scope.workspace.id)
+      assert current!(scope, nil).digest == before.digest
+
+      # Removed like any rule.
+      assert {:ok, _} = Policy.remove_rule(scope, stored.id)
+      assert length(Policy.list_rules(scope, nil)) == 2
+    end
+
+    test "a requested removal names a rule stored in another form, and removes it; adding one is refused",
+         %{scope: scope} do
+      stored = stored_rule(scope, nil, "allow", "127.1")
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+
+      assert {:ok, requested} =
+               Policy.requested_changes(%{
+                 "rules" => [%{"change" => "rule_removed", "host" => "127.1"}]
+               })
+
+      assert {:ok, [%Change{action: "rule_removed", subject: "127.1"}]} =
+               Repo.transact(fn ->
+                 {:ok, [workspace]} = Policy.lock_workspaces(scope, [scope.workspace.id])
+                 Policy.apply_requested(scope, [workspace], requested)
+               end)
+
+      refute Repo.get(Rule, stored.id)
+      assert [%Rule{host: "api.example"}] = Policy.list_rules(scope, nil)
+
+      for change <- ~w(rule_added rule_changed) do
+        assert {:error, %Error{field: :host, message: @address}} =
+                 Policy.requested_changes(%{
+                   "rules" => [%{"change" => change, "action" => "allow", "host" => "127.1"}]
+                 })
+      end
+    end
+
+    @tag :capture_log
+    test "a rendered document is refused when a host in it is out of the grammar" do
+      document = fn egress ->
+        Jason.encode!(%{
+          "version" => 1,
+          "security_policy" => %{
+            "version" => 1,
+            "egress" => Map.merge(%{"mode" => "enforce", "allow" => ["api.example"]}, egress)
+          }
+        })
+      end
+
+      assert :ok = Policy.valid_document(document.(%{}))
+      assert :ok = Schema.validate(document.(%{"allow" => ["127.1"]}))
+
+      for egress <- [
+            %{"allow" => ["api.example", "127.1"]},
+            %{"deny" => ["127.1"]},
+            %{"paths" => %{"127.1" => ["/v1/*"]}}
+          ] do
+        assert {:error, %Error{reason: :invalid_document}} =
+                 Policy.valid_document(document.(egress)),
+               inspect(egress)
+      end
+    end
+  end
+
   describe "every stored document" do
     test "is valid under the contract's schema, and its digest is of its bytes", %{scope: scope} do
       target = target_fixture(scope)
@@ -1189,6 +1358,28 @@ defmodule Apiary.PolicyTest do
 
       assert {:ok, %Rule{}} =
                Policy.rule_from_connection(ctx.scope, connection, :allow, :workspace)
+    end
+
+    test "a host cut for being longer than 255 bytes makes no rule", ctx do
+      # Cut to its first 255 bytes it would read as a host name; cut and marked it does not.
+      long = String.duplicate("abcdefgh.", 33) <> "example"
+
+      run =
+        started_run(ctx.scope, shop(),
+          egress: [%{"host" => long, "decision" => "denied", "rule" => ""}]
+        )
+
+      connection = Repo.one!(from c in Connection, where: c.run_id == ^run.id)
+      assert String.ends_with?(connection.host, "…")
+      rules = {Policy.list_rules(ctx.scope, nil), Policy.list_rules(ctx.scope, ctx.target)}
+
+      for action <- [:allow, :deny], level <- [:target, :workspace] do
+        assert {:error, %Error{reason: :invalid, field: :host}} =
+                 Policy.rule_from_connection(ctx.scope, connection, action, level)
+      end
+
+      assert {Policy.list_rules(ctx.scope, nil), Policy.list_rules(ctx.scope, ctx.target)} ==
+               rules
     end
   end
 

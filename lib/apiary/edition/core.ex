@@ -3,14 +3,17 @@ defmodule Apiary.Edition.Core do
   The core edition, and the default (`Apiary.Edition`): one organisation with one
   workspace, which the instance's first sign-up creates and whose owners run the instance;
   later people join by invitation. The instance's features are those switched on at launch,
-  in every organisation and workspace alike. Nothing is added to the core's actions,
-  roles, tables, features, jobs or migrations, and nothing is left out of a query.
+  shown to every person in every organisation and workspace alike. Nothing is added to the
+  core's actions, roles, tables, features, jobs or migrations, and nothing is left out of a
+  query.
 
   An edition that `use`s `Apiary.Edition` answers as this module does for every callback it
   does not override.
   """
 
   @behaviour Apiary.Edition
+
+  use Gettext, backend: ApiaryWeb.Gettext
 
   import Ecto.Query, warn: false
 
@@ -45,6 +48,9 @@ defmodule Apiary.Edition.Core do
   end
 
   @impl true
+  def first_sign_up_line, do: gettext("Your organisation and its first workspace.")
+
+  @impl true
   def above_workspace(_workspace), do: nil
 
   @impl true
@@ -76,6 +82,9 @@ defmodule Apiary.Edition.Core do
   def places_to_lock(%Organisation{id: id}), do: [id]
 
   @impl true
+  def lock_rows(_about), do: :ok
+
+  @impl true
   def every_workspace_levels, do: [:owner, :admin, :member]
 
   @impl true
@@ -97,6 +106,12 @@ defmodule Apiary.Edition.Core do
   def places(user), do: Organisations.list_memberships(user)
 
   @impl true
+  def serving_organisations(_organisation_id), do: []
+
+  @impl true
+  def served_organisations(_organisation_id), do: []
+
+  @impl true
   def accepting(_repo, _invitation, _user), do: {:ok, :member}
 
   @impl true
@@ -104,6 +119,9 @@ defmodule Apiary.Edition.Core do
 
   @impl true
   def membership_changed(_repo, _scope, _event, _old, _new), do: :ok
+
+  @impl true
+  def level_refusal(_scope, _organisation, _level, _opts), do: nil
 
   @impl true
   def deletion_refusal(_what, %Organisation{id: id}) do
@@ -122,7 +140,10 @@ defmodule Apiary.Edition.Core do
   def features, do: []
 
   @impl true
-  def features_of(_organisation, _workspace, enabled), do: enabled
+  def hidden(_scope), do: []
+
+  @impl true
+  def audit_details(_scope, _organisation_id, details), do: details
 
   @impl true
   def subject_kinds, do: %{}

@@ -999,7 +999,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert variable.locked
       assert has_element?(lv, "#variable-#{variable.id}-value", "https://registry.example.com")
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
-      assert has_element?(lv, "#variable-#{variable.id}-targets", "None of their own")
+      assert has_element?(lv, "#variable-#{variable.id}-targets", "No overrides")
     end
 
     test "a QORY_ name is refused, and a name already set too", %{conn: conn, scope: scope} do
@@ -1011,7 +1011,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> form("#variable-form", variable: %{name: "qory_token", value: "x"})
         |> render_submit()
 
-      assert html =~ "names beginning QORY_ are Forager&#39;s own"
+      assert html =~ "names beginning QORY_ are reserved for Forager"
 
       # The error describes the field in place of its hint, and the hint goes.
       assert has_element?(lv, "#variable_name[aria-describedby=variable_name-error]")
@@ -1066,7 +1066,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       variable!(scope, shop, "NODE_ENV", "staging")
 
       {:ok, lv, _html} = live(conn, variables_path(scope))
-      assert has_element?(lv, "#variable-#{variable.id}-targets", "2 repositories set their own")
+      assert has_element?(lv, "#variable-#{variable.id}-targets", "2 repositories override it")
 
       lv |> element("#variable-#{variable.id}-change") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
@@ -1089,7 +1089,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-lock-item") |> render_click()
 
       assert render(lv) =~
-               "NODE_ENV is locked: 2 repositories that set their own are set aside by the lock."
+               "NODE_ENV is locked: 2 repository overrides are set aside."
 
       refute render(lv) =~ "are given"
 
@@ -1116,14 +1116,14 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#variable-#{variable.id}-confirm",
-               "A repository's own value of NODE_ENV applies again."
+               "Repository overrides of NODE_ENV apply again."
              )
 
-      assert has_element?(lv, "#unlock-targets", "2 repositories set their own")
+      assert has_element?(lv, "#unlock-targets", "2 repositories override it")
       lv |> element("#variable-#{variable.id}-confirm button", "Unlock") |> render_click()
 
       assert render(lv) =~
-               "NODE_ENV is unlocked: 2 repositories that set their own are no longer set aside."
+               "NODE_ENV is unlocked: 2 repository overrides apply again."
 
       refute render(lv) =~ "are given"
 
@@ -1136,7 +1136,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#lock-targets",
-               "2 repositories set their own now: the lock sets them aside while it holds."
+               "2 repositories override it now: the lock sets their overrides aside while it holds."
              )
 
       lv |> element("#variable-#{variable.id}-confirm button", "Lock") |> render_click()
@@ -1212,7 +1212,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#variable-targets-foot a[href='#{variables_path(scope)}']")
 
       for target <- targets, do: assert(has_element?(lv, "#variable-target-#{target.id}"))
-      assert has_element?(lv, "#variable-targets", "Its own value")
+      assert has_element?(lv, "#variable-targets", "Overrides the workspace's value")
 
       # The table's region is named apart from the page's.
       assert has_element?(lv, "[role=region][aria-label=Repositories] #variable-targets")

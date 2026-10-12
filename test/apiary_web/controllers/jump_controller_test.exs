@@ -47,9 +47,12 @@ defmodule ApiaryWeb.JumpControllerTest do
     nodes = Enum.find(go_to["items"], &(&1["label"] == "Nodes"))
     assert nodes["href"] == workspace_path(scope, "/nodes")
 
-    # nothing else is listed for nothing typed but what New offers; Add integration,
-    # secrets and variables with the `secrets` feature, whose they are
+    # nothing else is listed for nothing typed but what New offers; a network access rule
+    # with the `security` feature, Add integration, secrets and variables with the
+    # `secrets` feature, whose they are
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
+
+    rule = if Apiary.Features.on?(:security), do: ["Network access rule"], else: []
 
     security =
       if Apiary.Features.on?(:secrets),
@@ -57,7 +60,7 @@ defmodule ApiaryWeb.JumpControllerTest do
         else: []
 
     assert labels(group(answer, "Actions")) ==
-             ["New node", "New node pool"] ++ security ++ ["Invite people"]
+             ["New node", "New node pool"] ++ rule ++ security ++ ["Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
@@ -159,6 +162,35 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     # three characters are not an id
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
+  end
+
+  test "a run with no target is said by its state's word, an old name by its new state's",
+       %{conn: conn, scope: scope} do
+    completed =
+      started_run(scope, %{},
+        about: %{"title" => "Weekly report"},
+        exit: %{"state" => "succeeded", "exit_code" => 0}
+      )
+
+    cancelled =
+      started_run(scope, %{},
+        about: %{"title" => "Weekly cleanup"},
+        exit: %{"state" => "cancelled", "reason" => "no_longer_needed"}
+      )
+
+    # Stored by an older release as timed out.
+    older = started_run(scope, %{}, about: %{"title" => "Weekly mirror"})
+
+    older |> Ecto.Changeset.change(state: "timed_out") |> Apiary.Repo.update!()
+
+    answer = jump(conn, workspace_path(scope, "/jump"), "weekly")
+    detail = Map.new(group(answer, "Runs")["items"], &{&1["href"], &1["detail"]})
+
+    assert detail == %{
+             workspace_path(scope, "/runs/#{completed.run_id}") => "Completed",
+             workspace_path(scope, "/runs/#{cancelled.run_id}") => "Cancelled",
+             workspace_path(scope, "/runs/#{older.run_id}") => "Cancelled"
+           }
   end
 
   test "a target whose path another system has is at its address, with its system",

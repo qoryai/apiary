@@ -117,11 +117,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               {if @pruning,
                 do:
                   gettext(
-                    "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+                    "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
                   ),
                 else:
                   gettext(
-                    "Qory Apiary does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
+                    "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."
                   )}
             </.setting>
           </dl>

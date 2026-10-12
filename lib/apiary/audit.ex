@@ -1,10 +1,10 @@
 defmodule Apiary.Audit do
   @moduledoc """
-  The audit trail: what people, access keys and the instance did to what the apiary
-  holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
+  The audit trail: what people, access keys and the instance did to what Qory
+  Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. It is not the
   record: the record is what runs did (their events, their log), the trail is what was
-  done to the apiary. The events the gateway posts are the record and leave no entry.
+  done to Qory Apiary. The events the gateway posts are the record and leave no entry.
 
   ## Written with the change
 
@@ -29,7 +29,7 @@ defmodule Apiary.Audit do
   **The action** is one of `Apiary.Access.actions/0`. **The subject** is the row acted
   on, of a kind the trail knows (`subject_kinds/0`): an organisation, a workspace, a
   membership, an invitation, an access key, a node, a run, a target, a rule, a stored
-  secret or a variable, and the rows of the edition's own kinds
+  secret or a variable, and the rows of the edition's kinds
   (`c:Apiary.Edition.subject_kinds/0`). It gives
   the entry its organisation and workspace: none for what the organisation itself owns, a
   membership among it. **From
@@ -37,30 +37,39 @@ defmodule Apiary.Audit do
   worker. **Before and after** are the changed fields (`changed/3`), and `details` what
   else the entry says, as JSON maps. They never hold a secret, and never a person's name
   or email address: a person is named by their user id, and a page looks the account up
-  when it shows them.
+  when it shows them. The edition may add to `details` as each entry is written
+  (`c:Apiary.Edition.audit_details/3`), such as how the actor reached the organisation,
+  which the entry keeps after that way is gone.
 
   ## What is audited
 
   Every action of `Apiary.Access` that changes something (`audited?/1`); the others are
   listed with the reason by `not_audited/0`: reads, and the server contract's calls. What
-  the application removes of its own accord is audited too, by the action that removes
+  the application removes by itself is audited too, by the action that removes
   it: an expired invitation deleted when a new one goes to its address, and one whose
   email could not be delivered, are each an `invitation.revoke` by the person who sent
-  the new invitation, `details.reason` `expired` or `undelivered`, and an invitation
+  the new invitation, `details.reason` `expired` or `undelivered` (the latter naming the
+  entry that counted the sending it undoes, `details.entry_id`), and an invitation
   expired for 30 days, which the daily sweep deletes, an `invitation.revoke` by the
   instance with the reason `expired`. A release command run on the instance's machine that
   makes an account an owner of the instance's organisation, or an owner of it a member, is
   an `instance_admin.grant` or an `instance_admin.revoke` in that organisation's trail, by
-  the instance. A new organisation's trail begins with the entry of its creation,
+  the instance. A password link, which an instance admin or a release command makes for an
+  account (`Apiary.Accounts.build_password_link/3`), is an `account.password_link` in that
+  organisation's trail too, by the person or the instance, naming the account by user id
+  and never holding the link. Saving the instance's mail settings and turning them on
+  (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
+  `instance.mail_on` there, by the instance admin, never holding the password. A new
+  organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
   the same way, and what the edition changes in the core's transactions is an entry of
-  its own actions. A person who deletes their account leaves the organisations they were
+  the edition's actions. A person who deletes their account leaves the organisations they were
   in: each membership's end is a `member.remove` there, by the person, `details.reason`
   `account_deleted`; the account itself belongs to no organisation and has no entry. A workspace's deletion, its cancelling and its purge are
   entries of the organisation, with no workspace, so they outlive it; an organisation's
-  purge deletes its trail with it. The record's own retention is not a change to the
-  apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
+  purge deletes its trail with it. The record's retention is not a change to Qory
+  Apiary and writes a separate record (`Apiary.Retention.RetentionRun`); a run marked lost is
   the record's too.
 
   ## Append-only
@@ -183,7 +192,12 @@ defmodule Apiary.Audit do
   renders; a version 7 UUID, `Ecto.UUID.generate(version: 7, precision: :monotonic)`.
   `place: :organisation` makes the entry the organisation's, with no workspace, though
   its subject is a workspace: the deletion, the restoring and the purge of a workspace,
-  whose entries must outlive the workspace's own, which its purge deletes.
+  whose entries must outlive the workspace's entries, which its purge deletes. `edition:`, the
+  module whose `audit_details/3` is asked, `Apiary.Edition` unless said, for tests.
+
+  Every entry's `details` pass once through the edition's
+  `c:Apiary.Edition.audit_details/3`, which may add keys, such as how the actor
+  reached the organisation; the core's answer adds none.
 
   Raises `ArgumentError` for an action that is not one of `Apiary.Access.actions/0`, a
   scope without an actor, a subject of a kind the trail does not know, or a subject of
@@ -211,7 +225,8 @@ defmodule Apiary.Audit do
   end
 
   def record(repo, %Scope{} = scope, action, subject, data, opts) when is_atom(repo) do
-    entry = build(scope, action, subject, data || %{})
+    edition = Keyword.get(opts, :edition, Apiary.Edition)
+    entry = build(scope, action, subject, data || %{}, edition)
 
     entry =
       case Keyword.get(opts, :place) do
@@ -295,7 +310,7 @@ defmodule Apiary.Audit do
     end
   end
 
-  defp build(%Scope{} = scope, action, subject, data) when is_map(data) do
+  defp build(%Scope{} = scope, action, subject, data, edition) when is_map(data) do
     unless action in Access.actions() do
       raise ArgumentError, "#{inspect(action)} is not an action of Apiary.Access"
     end
@@ -320,11 +335,47 @@ defmodule Apiary.Audit do
           subject_id: subject_id,
           before: json(data[:before]),
           after: json(data[:after]),
-          details: json(data[:details])
+          details: edition_details(edition, scope, organisation_id, json(data[:details]))
         },
         origin(scope)
       )
     )
+  end
+
+  # The keys the core finds entries by whatever their action, which an edition adding them
+  # to another entry would make count: an invitation's allowance.
+  @queried_details ["allowance_id"]
+
+  # The entry's details as the edition leaves them (`c:Apiary.Edition.audit_details/3`), as
+  # JSON has them: nil still for none, when the edition adds none either. The edition adds,
+  # and changes nothing the core wrote.
+  defp edition_details(edition, scope, organisation_id, details) do
+    given = details || %{}
+
+    case edition.audit_details(scope, organisation_id, given) do
+      ^given ->
+        details
+
+      answer when is_map(answer) ->
+        answer = json(answer)
+        added = Map.keys(answer) -- Map.keys(given)
+
+        cond do
+          Map.take(answer, Map.keys(given)) !== given ->
+            raise ArgumentError,
+                  "the edition's audit details add keys, and change or remove none of the entry's"
+
+          Enum.any?(added, &(&1 in @queried_details)) ->
+            raise ArgumentError,
+                  "the edition's audit details may not add #{Enum.join(@queried_details, ", ")}"
+
+          true ->
+            answer
+        end
+
+      answer ->
+        raise ArgumentError, "the edition's audit details are a map, got: #{inspect(answer)}"
+    end
   end
 
   # The one who acts: an access key at the server contract, the instance in its own job,
@@ -562,10 +613,10 @@ defmodule Apiary.Audit do
   prune/2 deletes the entries of the scope's organisation older than `retention_days/0`
   days, and clears the address and the client (`remote_ip`, `user_agent`) of those older
   than `address_retention_days/0`, which keep the rest of what they say. It records what
-  it did as an entry of its own when it deleted any (`audit.prune`, `details` with how
+  it did as a separate entry when it deleted any (`audit.prune`, `details` with how
   many it deleted and cleared and the cut-offs), in one transaction: `{:ok, count}`, the
   entries deleted. Clearing alone writes no entry: it comes every day to an organisation
-  that is used every day, and the trail would fill with its own upkeep; how long an
+  that is used every day, and the trail would fill with its upkeep; how long an
   address is kept is the instance's setting, the same for every entry. The scope is the
   instance's (`Apiary.Accounts.Scope.for_instance/2`): nobody else may prune,
   `{:error, :forbidden}`.
@@ -652,6 +703,13 @@ defmodule Apiary.Audit do
         Application.fetch_env!(:apiary, :audit_address_retention_days)
     end
   end
+
+  @doc """
+  retention_min_days/0 is the fewest days the trail keeps an entry, the least
+  `AUDIT_RETENTION_DAYS` takes (`parse_retention_days/1`): #{@retention_min}.
+  """
+  @spec retention_min_days() :: pos_integer
+  def retention_min_days, do: @retention_min
 
   @doc """
   parse_retention_days/1 reads a value of `AUDIT_RETENTION_DAYS`: `{:ok, days}`, a whole
