@@ -282,6 +282,35 @@ defmodule ApiaryWeb.NodesPartTest do
       refute without =~ "runs-new-node"
       refute without =~ workspace_path(scope, "/nodes")
     end
+
+    test "the Runs list's empty state of a workspace with no node hints at no node",
+         %{conn: conn, scope: scope, node: node} do
+      {:ok, _} = Apiary.Nodes.delete_node(scope, node)
+      %{user: member} = Apiary.OrganisationsFixtures.member_fixture(scope, :member)
+      member = log_in_user(build_conn(), member)
+
+      empty = fn conn ->
+        {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
+        render_async(view)
+        html = view |> element("#runs-page") |> render()
+        html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.replace(~r/\s+/, " ")
+      end
+
+      # Shown: the owner is told to add a node, a member that an owner or admin adds them.
+      assert empty.(conn) =~ "Add a node, connect a machine to it, and start a run."
+      refute empty.(conn) =~ "An owner or admin adds nodes."
+      assert empty.(member) =~ "Add a node, connect a machine to it, and start a run."
+      assert empty.(member) =~ "An owner or admin adds nodes."
+
+      hide([:nodes])
+
+      for reader <- [conn, member] do
+        page = empty.(reader)
+        assert page =~ "No runs yet"
+        refute page =~ "Add a node"
+        refute page =~ "An owner or admin adds nodes."
+      end
+    end
   end
 
   describe "shown" do

@@ -478,8 +478,10 @@ defmodule ApiaryWeb.RunLive.Index do
             {gettext(
               "A run appears here when a machine connected to a node of this workspace starts one."
             )}
-            {gettext("Add a node, connect a machine to it, and start a run.")}
-            <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
+            <%= if @nodes_shown do %>
+              {gettext("Add a node, connect a machine to it, and start a run.")}
+              <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
+            <% end %>
             <:actions :if={@may_add_node or @may_read_nodes}>
               <.button
                 :if={@may_add_node}
@@ -725,13 +727,16 @@ defmodule ApiaryWeb.RunLive.Index do
   # what the edition shows them, changes (`ApiaryWeb.UserAuth.on_membership_change/2`).
   defp offers(socket) do
     scope = socket.assigns.current_scope
+    nodes_shown = Apiary.Features.visible?(scope, :nodes)
 
     assign(socket,
       security: Access.can?(scope, :"security_policy.read", scope.workspace),
       # The empty list's words: a workspace with no node has the reader add one; one with
       # a node listens for the first run. A reader the nodes are hidden from adds none and
       # is told nothing of the workspace's nodes: theirs listens, whatever nodes it has.
-      listens: not Apiary.Features.visible?(scope, :nodes) or has_nodes?(scope),
+      listens: not nodes_shown or has_nodes?(scope),
+      # The hints to add a node, where the nodes are shown to the reader.
+      nodes_shown: nodes_shown,
       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
       may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
