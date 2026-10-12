@@ -397,7 +397,7 @@ Resources:
   #
   # Each is named after the stack and the whole UUID of its stack ID, such as
   # qory-0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b/secret-key-base. A new stack of the same name
-  # has a stack ID of its own, so the secrets a deleted stack kept do not block it.
+  # has a new stack ID, so the secrets a deleted stack kept do not block it.
   # KeysFromStack names them by that prefix.
   #
   # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory Apiary reads: every
@@ -710,10 +710,10 @@ Resources:
           ContainerPort: 4100
           TargetGroupArn: !Ref TargetGroup
 
-  # The stack policy, set by a function of the stack's own, so nobody has to set it.
+  # The stack policy, set by a function in this stack, so nobody has to set it.
   # CloudFormation refuses SetStackPolicy while the stack is in progress, so nothing inside
   # the stack's create or update can set it: no custom resource does. Instead StackPolicyRule,
-  # on the account's default event bus, sends the function this stack's own status changes
+  # on the account's default event bus, sends the function this stack's status changes
   # to CREATE_COMPLETE, UPDATE_COMPLETE and UPDATE_ROLLBACK_COMPLETE, and the function sets
   # the policy each time: after the create, and after every update, so a policy changed in a
   # later release takes effect once its update completes, and after a rolled-back update,
@@ -722,7 +722,7 @@ Resources:
   # before the stack completes. The function runs apart from the stack, which never waits on
   # it: a call that fails changes nothing in the stack, and is logged, and Lambda tries the
   # event twice more. Its role may set the policy of this stack and nothing else, and write
-  # its own log group, which is kept as the task's is. Only the rule may invoke it.
+  # StackPolicyLogGroup, which is kept as the task's is. Only the rule may invoke it.
   # The runtime is pinned, and kept current with each release.
   StackPolicyLogGroup:
     Type: AWS::Logs::LogGroup
@@ -767,8 +767,8 @@ Resources:
       Timeout: 60
       LoggingConfig:
         LogGroup: !Ref StackPolicyLogGroup
-      # The stack and the policy are the function's own, never the event's: the policy of
-      # deploy/aws/stack-policy.json, which CI keeps the same
+      # The function takes the stack and the policy from its environment, never from the
+      # event: the policy of deploy/aws/stack-policy.json, which CI keeps the same
       # (scripts/aws-template-check.py policy).
       Environment:
         Variables:
@@ -827,7 +827,7 @@ Resources:
                   raise
               print(f"The stack policy was set at {status}.")
 
-  # This stack's own status changes, as CloudFormation sends them to the default event bus,
+  # This stack's status changes, as CloudFormation sends them to the default event bus,
   # to the three statuses the function acts on; any other is never sent to it.
   StackPolicyRule:
     Type: AWS::Events::Rule
@@ -854,7 +854,7 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt StackPolicyRule.Arn
 
-  # The database's deletion protection, set by a function of the stack's own once the
+  # The database's deletion protection, set by a function in this stack once the
   # service is healthy: DatabaseProtection is made after the service, whose create waits
   # until its task answers /health. A create that fails before then leaves the database
   # unprotected, so the rollback deletes it with the rest. On Create, and on each Update,
@@ -865,8 +865,9 @@ Resources:
   # database; only while the stack's create rolls back does it turn the protection off, so
   # that rollback can delete the database too. It answers CloudFormation even when its call
   # fails, and a request that names another stack fails and changes nothing. Its role may
-  # read and modify this database alone, read this stack, and write its own log group, which
-  # is kept as the task's is. The runtime is pinned, and kept current with each release.
+  # read and modify this database alone, read this stack, and write
+  # DatabaseProtectionLogGroup, which is kept as the task's is. The runtime is pinned, and
+  # kept current with each release.
   DatabaseProtectionLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
@@ -915,9 +916,10 @@ Resources:
       Timeout: 600
       LoggingConfig:
         LogGroup: !Ref DatabaseProtectionLogGroup
-      # The stack and the database are the function's own, never the request's. The request
-      # gives whether to protect, and names the database only so that a replaced database
-      # sends an Update: the function acts only when that name is its own.
+      # The function takes the stack and the database from its environment, never from the
+      # request. The request gives whether to protect, and names the database only so that a
+      # replaced database sends an Update: the function acts only when that name is the one
+      # in its environment.
       Environment:
         Variables:
           STACK_ID: !Ref AWS::StackId
