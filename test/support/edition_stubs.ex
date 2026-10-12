@@ -522,6 +522,45 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule MembersReachMarked do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), where a member reaches every
+    workspace, each as the edition marks it: the workspace's id, which it merges beside
+    the workspace (`c:Apiary.Edition.reached_workspaces/2`) and so the core puts on the
+    scope's `edition` where the member opens it, and the scope reaches only the workspace
+    its mark names (`c:Apiary.Edition.reaches_workspace?/3`), from what it carries and
+    without a read. Owners and admins reach every workspace.
+    """
+    import Ecto.Query
+
+    defdelegate limits, to: ManyWorkspaces
+
+    def every_workspace_levels, do: [:owner, :admin]
+
+    def reached_workspaces(query, _scope),
+      do: select_merge(query, [workspace: w], %{reach_mark: w.id})
+
+    def reaches_workspace?(%{edition: %{reach_mark: mark}}, workspace_id, _opts),
+      do: mark == workspace_id
+
+    def reaches_workspace?(_scope, _workspace_id, _opts), do: false
+  end
+
+  defmodule MembersReachNamedWithoutRecord do
+    @moduledoc """
+    A member reaches the workspaces the test names (`MembersReachNamed`, whose `put/1` names
+    them), and every organisation and workspace has the instance's features but
+    `observability` and `security` (`WithoutRecordOrPolicy`).
+    """
+    defdelegate limits, to: MembersReachNamed
+    defdelegate every_workspace_levels, to: MembersReachNamed
+    defdelegate reached_workspaces(query, scope), to: MembersReachNamed
+    defdelegate reaches_workspace?(scope, workspace_id, opts), to: MembersReachNamed
+
+    defdelegate features_of(organisation, workspace, enabled),
+      to: Apiary.EditionStubs.WithoutRecordOrPolicy
+  end
+
   defmodule GatewaysWorded do
     @moduledoc """
     An edition whose organisations have many workspaces and whose organisation-level

@@ -162,6 +162,21 @@ defmodule Apiary.Organisations do
 
   def put_reach(_scope, _organisation), do: :error
 
+  @doc """
+  workspace_scopes/1 is the scope as the person would have it in each workspace of the
+  scope's organisation they reach, by the workspace's id: `scope` with that workspace,
+  what the edition says of the person there (`c:Apiary.Edition.reached_workspaces/2`),
+  and what the workspace has (`Apiary.Features.of/2`), as `resolve_scope/4` puts them when
+  the person opens it. One read, whatever the number of workspaces.
+  """
+  @spec workspace_scopes(Scope.t()) :: %{Ecto.UUID.t() => Scope.t()}
+  def workspace_scopes(%Scope{organisation: %Organisation{}} = scope) do
+    for row <- scope |> reached_query() |> Repo.all(), into: %{} do
+      {workspace, _extras} = place = place(row)
+      {workspace.id, put_place(scope, place)}
+    end
+  end
+
   # The person's membership in the organisation, while it is not suspended and their
   # account is in use: a suspended one reaches nothing.
   defp active_membership(organisation_id, user_id) do

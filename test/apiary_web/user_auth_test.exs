@@ -65,6 +65,24 @@ defmodule ApiaryWeb.UserAuthTest do
       refute get_session(conn, :to_be_removed)
     end
 
+    test "lands on the workspace's overview, the first page its sidebar shows", %{conn: conn} do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+
+      conn = UserAuth.log_in_user(conn, user)
+      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}"
+    end
+
+    test "lands on the first page the workspace shows where it shows no overview", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      # The edition leaves the record out of the organisation, the overview with it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+
+      conn = UserAuth.log_in_user(conn, user)
+      assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}/nodes"
+    end
+
     test "redirects to the configured path", %{conn: conn, user: user} do
       conn = conn |> put_session(:user_return_to, "/hello") |> UserAuth.log_in_user(user)
       assert redirected_to(conn) == "/hello"
