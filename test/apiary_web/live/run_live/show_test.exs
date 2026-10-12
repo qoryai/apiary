@@ -904,6 +904,76 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
+  describe "where the run's Terminal is hidden from the reader" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+    end
+
+    test "no Terminal tab, no log in the more menu, no terminal on Details; the rest reads",
+         %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+
+      {:ok, lv, html} = live(conn, path)
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("nav#run-tab > a")
+             |> Enum.map(&LazyHTML.attribute(&1, "id"))
+             |> List.flatten() == ~w(run-tab-timeline run-tab-connections)
+
+      refute has_element?(lv, "#run-tab-terminal")
+      assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.run_id}"]))
+      refute has_element?(lv, "#run-menu-raw")
+      refute has_element?(lv, "#run-menu-download")
+      refute html =~ "/runs/#{run.run_id}/log"
+      refute html =~ "/runs/#{run.run_id}/terminal"
+
+      # The timeline, the connections and the outcome are there as before.
+      assert item_ids(html) != []
+      assert has_element?(lv, "#run-meta #run-state")
+
+      {:ok, lv, _html} = live(conn, path <> "/network")
+      assert has_element?(lv, "#run-tab-connections[aria-current]")
+      refute has_element?(lv, "#run-tab-terminal")
+    end
+
+    test "/terminal is a path that does not exist, the part hidden or its feature",
+         %{conn: conn, scope: scope} do
+      run = projected(scope, record())
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal"
+
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      assert {:ok, lv, _html} = live(conn, path)
+      assert has_element?(lv, "#terminal[phx-hook='Terminal']")
+    end
+
+    test "Details names no terminal size", %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
+          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network"
+
+      {:ok, lv, html} = live(conn, path)
+      refute "Terminal" in details_terms(lv)
+      refute html =~ "120×40"
+      assert "Interactive" in details_terms(lv)
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      {:ok, lv, html} = live(conn, path)
+      assert "Terminal" in details_terms(lv)
+      assert html =~ "120×40"
+    end
+  end
+
   describe "live (P6, P7)" do
     setup %{scope: scope} do
       now = DateTime.utc_now()
@@ -2205,6 +2275,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   # The terms of the rail's Run section, in order.
+  defp details_terms(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#run-details dt")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
   defp run_terms(lv) do
     lv
     |> render()

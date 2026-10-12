@@ -205,6 +205,32 @@ defmodule ApiaryWeb.RunLogControllerTest do
                404
     end
 
+    test "where the run's Terminal is hidden from the reader, every stream and the download are not found",
+         %{conn: conn, scope: scope} do
+      run = sized_run(scope)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log"
+
+      queries =
+        ~w(? ?stream=terminal ?stream=stdout ?stream=stderr ?download=1 ?after=3&limit=1
+           ?download=1&stream=stdout)
+
+      for query <- queries, do: assert(get(conn, path <> query).status == 200, query)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      for hidden <- [[:"observability.terminal"], [:observability]], query <- queries do
+        :ok = Apiary.EditionStubs.HidesNamed.put(hidden)
+        conn = get(conn, path <> query)
+
+        assert conn.status == 404, inspect({hidden, query})
+        # The log endpoint's refusal, or the feature's gate before it.
+        assert conn.resp_body in ["not found", "Not Found"]
+        assert get_resp_header(conn, "x-qory-log-through") == []
+        assert get_resp_header(conn, "x-qory-log-size") == []
+        assert get_resp_header(conn, "content-disposition") == []
+      end
+    end
+
     test "a run of another organisation is not found by its own address", %{conn: conn} do
       theirs = scope_fixture()
       run = run_with_log(theirs)

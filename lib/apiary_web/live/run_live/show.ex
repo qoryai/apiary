@@ -921,8 +921,14 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">{@run.dir || na()}</dd>
           <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
-          <dt :if={@run.terminal_cols}>{gettext("Terminal")}</dt>
-          <dd :if={@run.terminal_cols} class="font-mono">
+          <%!-- The terminal's size is the log's, as the Terminal tab is. --%>
+          <dt :if={@run.terminal_cols && Access.can?(@scope, :"run.read_log", @run)}>
+            {gettext("Terminal")}
+          </dt>
+          <dd
+            :if={@run.terminal_cols && Access.can?(@scope, :"run.read_log", @run)}
+            class="font-mono"
+          >
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
           <dt>{gettext("Forager")}</dt>
@@ -2617,10 +2623,12 @@ defmodule ApiaryWeb.RunLive.Show do
     do: socket |> follow_timeline(old) |> assign_window_counts()
 
   # The log is read by difference: what followed the last chunk the page knows of. The
-  # hook is told how far it has come, and fetches the bytes itself.
+  # hook is told how far it has come, and fetches the bytes itself. Only for a reader who
+  # may read the log, as the tab is: `refuse_terminal/1` keeps anyone else off it already.
   defp flush_tab(socket, :terminal, _old, _types, range) when range != nil do
     %{current_scope: scope, run: run, log: log} = socket.assigns
-    more = Record.log_summary(scope, run, log.through)
+    log? = Access.can?(scope, :"run.read_log", run)
+    more = if log?, do: Record.log_summary(scope, run, log.through), else: %{chunks: 0}
 
     if more.chunks > 0 do
       log = Record.add_log_summary(log, more)

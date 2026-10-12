@@ -653,12 +653,13 @@ defmodule Apiary.EditionStubs do
 
   defmodule HidesNamed do
     @moduledoc """
-    Every person is shown the instance's features but the ones the test names (`put/1` in
-    the test's process, which the processes it starts read too), as an edition that hides
-    them below the instance would (`c:Apiary.Edition.hidden/1`). It reads nothing.
+    Every person is shown the instance's features but the features and the parts the test
+    names (`put/1` in the test's process, which the processes it starts read too), as an
+    edition that hides them below the instance would (`c:Apiary.Edition.hidden/1`). It
+    reads nothing.
     """
 
-    @doc "put/1 names the features a person is not shown."
+    @doc "put/1 names the features and the parts a person is not shown."
     def put(features) when is_list(features) do
       Process.put(:hides_named, features)
       :ok
