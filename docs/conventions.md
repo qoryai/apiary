@@ -21,7 +21,8 @@ who restarts a self-hosted installation; the short form:
   keys).
 
 The release's section in `CHANGELOG.md` names the tables the migration touches under
-Migrations and anything the operator has to do under Upgrading.
+Migrations and anything whoever runs the instance has to do under Upgrading, when there is
+anything to do.
 
 The core's migrations are in `priv/repo/migrations`. An edition's are in a separate
 folder, which sorts after the core's baseline, and the two run as one sequence by version

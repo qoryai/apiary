@@ -28,8 +28,9 @@ the restart, for example to watch a long migration.
 ## Before an upgrade
 
 - Read the release's section in `CHANGELOG.md`, the file at the root of the repository.
-  Every section has **Migrations**, the tables it touches and whether a migration is long,
-  and **Upgrading**, anything whoever runs the instance has to do or know.
+  When there is anything to do, the section has **Migrations**, the tables it touches
+  and whether a migration is long, and **Upgrading**, anything whoever runs the instance
+  has to do or know.
 - Back up Postgres. It is the only state; a `pg_dump` of the database is a complete backup.
   `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`, which
   `compose.yaml` keeps in the volume `keys`, are the other three things to keep: without

@@ -7,7 +7,7 @@ sign in with a password. For an installation other people sign in to, read
 [Install and configure](install.md) and the [hosting checklist](hosting-checklist.md).
 
 You need Docker with the `docker compose` command, and `curl`. From step 5 on you need the
-`qory` command, one that has `qory access-key`, on the same machine.
+`qory` command, version 0.13.0, and `git`, on the same machine.
 
 ## Run it
 
@@ -182,6 +182,35 @@ their keys](nodes.md) says more about both ways, node pools and revoking a key.
 
 ## 6. First run
 
+The machine holds an access key now, so every run there needs a wall: the agent runs in a
+container whose one way out is the gateway's proxy. Without a wall, `qory run` refuses the run,
+`key_needs_wall`, as [An access key needs a
+wall](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#an-access-key-needs-a-wall)
+says. A wall needs Docker and an image that holds the agent.
+
+Qory publishes no such image: build it from a checkout of `qory` at its release's tag
+([Qory's images](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#qorys-images)):
+
+```sh
+git clone https://github.com/qoryai/qory && git -C qory checkout v0.13.0
+docker build -t qory-agent qory/images/agent
+```
+
+Add the wall to `~/.config/qory/forager.yaml`, the file step 5 wrote:
+
+```yaml
+wall:
+  adapter: docker
+  image: qory-agent
+  helper: /path/to/linux/qory   # on a Mac only
+```
+
+On a Mac, `wall.helper` is the Linux `qory` of the same release, from its archive
+`qory_0.13.0_linux_arm64` or `qory_0.13.0_linux_amd64`, matching Docker's architecture; on
+Linux, leave the line out ([The
+wall](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#the-wall)).
+`qory image check` checks the image against what the wall needs of it.
+
 Write the command's hello example into an empty directory, compose its harness and start
 one headless turn:
 
@@ -189,12 +218,15 @@ one headless turn:
 mkdir hello && cd hello
 qory setup example
 qory harness compose
-qory run -- -p "/hello"
+qory run --env CLAUDE_CODE_OAUTH_TOKEN -- -p "/hello"
 ```
 
-The example is composed for the `claude` runtime, so that runtime's command has to be
-installed on this machine and able to start a session. Arguments after `--` go to the
-runtime.
+The example is composed for the `claude` runtime, which the image holds. It needs a model
+credential, here `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, set in this shell;
+[The wall](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#the-wall) has the
+other ways. `--env` passes that one variable into the container, and nothing else of your
+environment goes in. Arguments after `--` go to the runtime. The agent greets you, and
+`qory` prints `✓ claude exited 0`.
 
 Before the runtime starts, the gateway fetches Qory Apiary's configuration, signed with the
 machine's access key, checks the answer under Qory Apiary's key it pinned, and registers
