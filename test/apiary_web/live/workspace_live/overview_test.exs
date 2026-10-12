@@ -1836,12 +1836,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "a denied host longer than 255 bytes is listed with the host cut, and makes no rule", %{
-      conn: conn,
-      scope: scope
-    } do
-      long = String.duplicate("abcdefgh.", 33) <> "example"
-      cut = String.duplicate("abcdefgh.", 28) <> "…"
+    test "a denied host longer than 255 bytes is listed with the host cut and marked, and offers no act",
+         %{conn: conn, scope: scope} do
+      long = String.duplicate("a", 292) <> ".example"
+      assert byte_size(long) == 300
+      cut = String.duplicate("a", 252) <> "…"
 
       run =
         started_run(scope, shop(),
@@ -1857,12 +1856,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         |> LazyHTML.query("#attention-list li[data-kind=denied]")
         |> LazyHTML.attribute("id")
 
+      # The host as its connection keeps it, still counted, with no Allow and no rule.
       assert text(view, "##{item}") =~ cut
+      refute text(view, "##{item}") =~ String.duplicate("a", 253)
+      assert text(view, "##{item}") =~ "Denied once in 1 run"
+      refute has_element?(view, "##{item}-act")
+      refute has_element?(view, "##{item} .q-ar-act *")
 
-      view |> element("##{item}-act") |> render_click()
-      view |> element("#rule-panel form") |> render_submit()
-
-      assert text(view, "#rule-panel-error") =~ "This host cannot be named in a policy"
+      # Asked anyway, the panel does not open, and no rule is written.
+      render_hook(view, "rule_open", %{"id" => item, "level" => "target"})
+      refute has_element?(view, "#rule-panel")
       assert Policy.list_rules(scope, target) == []
       assert Policy.list_rules(scope, nil) == []
     end

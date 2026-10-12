@@ -312,7 +312,7 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
-    with host when is_binary(host) <- host(data),
+    with host when is_binary(host) <- host(string(data, "host", :infinity)),
          port when is_integer(port) <- integer(data, "port", 0..65_535) do
       key = {host, port, string(data, "path", @text) || ""}
       decision = string(data, "decision", 64)
@@ -424,19 +424,16 @@ defmodule Apiary.Runs.Fold do
   # bytes), which the grammar of a rule's host refuses, so no rule can be made from it.
   # Two hosts that share the first 252 bytes, the port and the path fold into one row. A
   # longer host that is not valid UTF-8 has no character boundary to cut on, and is not a
-  # connection.
-  defp host(data) do
-    case data do
-      %{"host" => host} when is_binary(host) and byte_size(host) <= @host_max ->
-        host
+  # connection. The run's timeline shows an egress event's host with it, so a long host
+  # reads there as on its connection's row (`Apiary.Runs.Record.Timeline.egress_host/1`).
+  @doc false
+  def host(host) when is_binary(host) and byte_size(host) <= @host_max, do: host
 
-      %{"host" => host} when is_binary(host) ->
-        if String.valid?(host), do: cut(host, @host_max - byte_size(@cut_mark)) <> @cut_mark
-
-      _ ->
-        nil
-    end
+  def host(host) when is_binary(host) do
+    if String.valid?(host), do: cut(host, @host_max - byte_size(@cut_mark)) <> @cut_mark
   end
+
+  def host(_host), do: nil
 
   # The tool whose host a request was for: a name, never empty. Kept whatever the
   # decision; with the decision it says whether the request was a tool invocation.
@@ -660,13 +657,10 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # Cut by bytes, on a character boundary. The run's timeline cuts an egress event's host
-  # with it, so it shows the host as a connection keeps it
-  # (`Apiary.Runs.Record.Timeline.egress_host/1`).
-  @doc false
-  def cut(value, max) when byte_size(value) <= max, do: value
+  # Cut by bytes, on a character boundary.
+  defp cut(value, max) when byte_size(value) <= max, do: value
 
-  def cut(value, max) do
+  defp cut(value, max) do
     value |> binary_part(0, max) |> String.chunk(:valid) |> List.first("")
   end
 

@@ -661,17 +661,24 @@ defmodule Apiary.Runs.RecordTest do
                Enum.find(items, &(&1.kind == :connection))
     end
 
-    test "a long host reads in the timeline as on its connection's row: 255 bytes, whole characters",
+    test "a long host reads in the timeline as on its connection's row: 252 bytes, whole characters, and …",
          %{scope: scope} do
       accented = String.duplicate("é", 200) <> ".example"
       plain = String.duplicate("x", 400) <> ".example"
+      three_hundred = String.duplicate("a", 292) <> ".example"
+      just_over = String.duplicate("o", 256)
+      exact = String.duplicate("w", 255)
       machine = String.duplicate("m", 300)
+      assert byte_size(three_hundred) == 300
 
       run =
         projected(scope, [
           {1, "run.started", started_data(%{"host" => machine})},
           {2, "run.egress", egress_data(%{"host" => accented, "decision" => "denied"})},
-          {3, "run.egress", egress_data(%{"host" => plain, "decision" => "denied"})}
+          {3, "run.egress", egress_data(%{"host" => plain, "decision" => "denied"})},
+          {4, "run.egress", egress_data(%{"host" => three_hundred, "decision" => "denied"})},
+          {5, "run.egress", egress_data(%{"host" => just_over, "decision" => "denied"})},
+          {6, "run.egress", egress_data(%{"host" => exact, "decision" => "denied"})}
         ])
 
       index = Record.timeline(scope, run)
@@ -680,11 +687,18 @@ defmodule Apiary.Runs.RecordTest do
       rows = Record.connections(scope, run).rows |> Enum.map(& &1.host) |> Enum.sort()
       shown = for %{kind: :connection, connection: %{host: host}} <- items, do: host
 
-      # The fold keeps 255 bytes: 127 two-byte characters, the half of one left off.
       assert Enum.sort(shown) == rows
 
+      # A host longer than 255 bytes, 256 among them, keeps its first 252 on a whole
+      # character (126 two-byte ones), then "…"; one of 255 bytes is kept whole.
       assert Enum.sort(shown) ==
-               Enum.sort([String.duplicate("é", 127), String.duplicate("x", 255)])
+               Enum.sort([
+                 String.duplicate("é", 126) <> "…",
+                 String.duplicate("x", 252) <> "…",
+                 String.duplicate("a", 252) <> "…",
+                 String.duplicate("o", 252) <> "…",
+                 exact
+               ])
 
       # The index groups by the same host, and the machine's name is not a connection's.
       assert index.items |> Enum.map(& &1[:host]) |> Enum.reject(&is_nil/1) |> Enum.sort() ==

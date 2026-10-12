@@ -721,8 +721,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
 - A connection whose host is longer than 255 bytes keeps the host's first 252 bytes, cut
-  on a character boundary, followed by "…", and no rule can be made from it. Before, the
-  host was cut to 255 bytes with no mark, and the cut could read as another host name.
+  on a character boundary, followed by "…", and no rule can be made from it. The host
+  shows so on the connection's row, in the run's timeline, on the Overview and in the list
+  of what enforce would deny, with no Allow. Before, the host was cut to 255 bytes with no
+  mark, and the cut could read as another host name.
 - A host rule takes an address only as four numbers from 0 to 255 with dots between them
   and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
   digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
@@ -777,8 +779,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The Overview and the Policy pages offer no Allow for a destination no rule can change:
   the wall's refusals and a host no rule can name. The row still shows, and still counts,
   with no act. Before, its Allow opened and the rule was refused, or was written and changed
-  nothing. The run's timeline shows a long host as its connection's row does, cut at 255
-  bytes on a whole character; before, it showed up to 400 characters.
+  nothing. The run's timeline shows a long host as its connection's row does: one longer
+  than 255 bytes is its first 252 bytes, cut on a whole character, followed by "…"; before,
+  it showed up to 400 characters.
 - A policy page stays up when asked to edit the paths of an id that is no rule's.
 - Signing in, and a workspace's link on the organisation's Overview, lead to the first page
   of the workspace the person is shown. Before, they led to the workspace's Overview even
