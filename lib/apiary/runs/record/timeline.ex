@@ -1105,11 +1105,12 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   @doc false
-  # An egress event's host as its connection keeps it: at most 255 bytes, cut on a
-  # character boundary by the fold's cut (`Apiary.Runs.Fold`), so a long host reads
-  # the same in the timeline as on its connection's row. Any other event's is as it is.
+  # An egress event's host as its connection keeps it (`Apiary.Runs.Fold.host/1`): at most
+  # 255 bytes, and a longer one its first 252 bytes, cut on a character boundary, then
+  # "…", so a long host reads the same in the timeline as on its connection's row. Any
+  # other event's is as it is.
   def egress_host(%{type: @prefix <> "run.egress", host: host} = event) when is_binary(host),
-    do: %{event | host: Fold.cut(host, 255)}
+    do: %{event | host: Fold.host(host)}
 
   def egress_host(event), do: event
 

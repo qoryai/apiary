@@ -107,6 +107,10 @@ defmodule Apiary.Runs.Fold do
   @refused "dev.qory.run.refused"
   @result "dev.qory.session.result"
 
+  # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
+  @host_max 255
+  @cut_mark "…"
+
   @forager_version "forager_version"
   @terminal_rank "terminal"
 
@@ -308,7 +312,7 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
-    with host when is_binary(host) <- string(data, "host", 255),
+    with host when is_binary(host) <- host(string(data, "host", :infinity)),
          port when is_integer(port) <- integer(data, "port", 0..65_535) do
       key = {host, port, string(data, "path", @text) || ""}
       decision = string(data, "decision", 64)
@@ -414,6 +418,22 @@ defmodule Apiary.Runs.Fold do
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  # The destination's host, at most 255 bytes. A longer one is kept, so the attempt is
+  # counted and shown: its first 252 bytes, cut on a character boundary, then "…" (3
+  # bytes), which the grammar of a rule's host refuses, so no rule can be made from it.
+  # Two hosts that share the first 252 bytes, the port and the path fold into one row. A
+  # longer host that is not valid UTF-8 has no character boundary to cut on, and is not a
+  # connection. The run's timeline shows an egress event's host with it, so a long host
+  # reads there as on its connection's row (`Apiary.Runs.Record.Timeline.egress_host/1`).
+  @doc false
+  def host(host) when is_binary(host) and byte_size(host) <= @host_max, do: host
+
+  def host(host) when is_binary(host) do
+    if String.valid?(host), do: cut(host, @host_max - byte_size(@cut_mark)) <> @cut_mark
+  end
+
+  def host(_host), do: nil
 
   # The tool whose host a request was for: a name, never empty. Kept whatever the
   # decision; with the decision it says whether the request was a tool invocation.
@@ -637,13 +657,10 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # Cut by bytes, on a character boundary. The run's timeline cuts an egress event's host
-  # with it, so it shows the host as a connection keeps it
-  # (`Apiary.Runs.Record.Timeline.egress_host/1`).
-  @doc false
-  def cut(value, max) when byte_size(value) <= max, do: value
+  # Cut by bytes, on a character boundary.
+  defp cut(value, max) when byte_size(value) <= max, do: value
 
-  def cut(value, max) do
+  defp cut(value, max) do
     value |> binary_part(0, max) |> String.chunk(:valid) |> List.first("")
   end
 

@@ -2126,6 +2126,44 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-cx-p\">:443</span>"
       refute html =~ "elpmaxe.<script>"
     end
+
+    test "longer than 255 bytes reads in the timeline as on its connection's row: cut and marked",
+         %{conn: conn, scope: scope} do
+      long = String.duplicate("a", 292) <> ".example"
+      assert byte_size(long) == 300
+      cut = String.duplicate("a", 252) <> "…"
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", egress_data(%{"host" => long, "rule" => ""})},
+          {3, "run.egress", egress_data(%{"host" => long, "rule" => ""})},
+          {4, "run.egress",
+           egress_data(%{
+             "host" => long,
+             "decision" => "denied",
+             "outcome" => "refused",
+             "rule" => ""
+           })},
+          {5, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", cut)
+      assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", cut)
+      assert has_element?(lv, "#e-4 .q-dest > bdi", cut)
+      assert html =~ "<bdi>#{cut}</bdi><span class=\"q-port\">:443</span>"
+      refute html =~ String.duplicate("a", 253)
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+
+      assert has_element?(lv, ".q-cx-h > bdi", cut)
+      assert html =~ "<bdi>#{cut}</bdi><span class=\"q-cx-p\">:443</span>"
+      refute html =~ String.duplicate("a", 253)
+    end
   end
 
   describe "a run with tools" do

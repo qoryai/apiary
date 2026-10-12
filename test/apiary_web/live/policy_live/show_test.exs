@@ -1227,6 +1227,39 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
     end
 
+    test "a host longer than 255 bytes is listed cut and marked, as its connection keeps it, with no Allow",
+         %{conn: conn, scope: scope} do
+      long = String.duplicate("a", 292) <> ".example"
+      assert byte_size(long) == 300
+      cut = String.duplicate("a", 252) <> "…"
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => long, "decision" => "allowed", "rule" => ""},
+          %{"host" => "flags.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+      pick_mode(view, "enforce")
+
+      # Enforce denies both: both are counted.
+      assert text(view, "#mode-would-n") == "2 destinations"
+
+      key = Common.would_key(%{host: cut, path: nil})
+      assert text(view, "#would-#{key}") =~ cut
+      refute text(view, "#would-#{key}") =~ String.duplicate("a", 253)
+      refute has_element?(view, "#would-#{key}-allow")
+      refute has_element?(view, "#would-#{key} button")
+
+      # Asked anyway, nothing is written and nothing is refused.
+      render_hook(view, "would_allow", %{"key" => key})
+      refute has_element?(view, "p.text-error-soft-content[role=alert]")
+      assert Policy.list_rules(scope, nil) |> Enum.map(& &1.host) == ["registry.example"]
+
+      assert has_element?(view, "#mode-would button", "Allow for the workspace: flags.example")
+    end
+
     test "each Allow names its destination, and the focus goes on to the next one open",
          %{conn: conn, scope: scope} do
       started_run(scope, shop(),

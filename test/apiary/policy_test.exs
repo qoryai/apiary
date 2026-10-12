@@ -1359,6 +1359,28 @@ defmodule Apiary.PolicyTest do
       assert {:ok, %Rule{}} =
                Policy.rule_from_connection(ctx.scope, connection, :allow, :workspace)
     end
+
+    test "a host cut for being longer than 255 bytes makes no rule", ctx do
+      # Cut to its first 255 bytes it would read as a host name; cut and marked it does not.
+      long = String.duplicate("abcdefgh.", 33) <> "example"
+
+      run =
+        started_run(ctx.scope, shop(),
+          egress: [%{"host" => long, "decision" => "denied", "rule" => ""}]
+        )
+
+      connection = Repo.one!(from c in Connection, where: c.run_id == ^run.id)
+      assert String.ends_with?(connection.host, "…")
+      rules = {Policy.list_rules(ctx.scope, nil), Policy.list_rules(ctx.scope, ctx.target)}
+
+      for action <- [:allow, :deny], level <- [:target, :workspace] do
+        assert {:error, %Error{reason: :invalid, field: :host}} =
+                 Policy.rule_from_connection(ctx.scope, connection, action, level)
+      end
+
+      assert {Policy.list_rules(ctx.scope, nil), Policy.list_rules(ctx.scope, ctx.target)} ==
+               rules
+    end
   end
 
   describe "suggestions" do

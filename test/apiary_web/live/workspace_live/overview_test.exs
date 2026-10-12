@@ -1834,6 +1834,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
       assert has_element?(view, "##{item}-done", "Allowed for the workspace")
     end
+
+    @tag needs: :security
+    test "a denied host longer than 255 bytes is listed with the host cut and marked, and offers no act",
+         %{conn: conn, scope: scope} do
+      long = String.duplicate("a", 292) <> ".example"
+      assert byte_size(long) == 300
+      cut = String.duplicate("a", 252) <> "…"
+
+      run =
+        started_run(scope, shop(),
+          egress: [%{"host" => long, "decision" => "denied", "rule" => ""}]
+        )
+
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      view = open(conn, scope)
+
+      [item] =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> LazyHTML.attribute("id")
+
+      # The host as its connection keeps it, still counted, with no Allow and no rule.
+      assert text(view, "##{item}") =~ cut
+      refute text(view, "##{item}") =~ String.duplicate("a", 253)
+      assert text(view, "##{item}") =~ "Denied once in 1 run"
+      refute has_element?(view, "##{item}-act")
+      refute has_element?(view, "##{item} .q-ar-act *")
+
+      # Asked anyway, the panel does not open, and no rule is written.
+      render_hook(view, "rule_open", %{"id" => item, "level" => "target"})
+      refute has_element?(view, "#rule-panel")
+      assert Policy.list_rules(scope, target) == []
+      assert Policy.list_rules(scope, nil) == []
+    end
   end
 
   describe "live" do

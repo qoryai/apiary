@@ -271,6 +271,52 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projection(run) == before
     end
 
+    test "a denial to a host longer than 255 bytes is a row with the host cut, and counts",
+         %{run: run} do
+      prefix = String.duplicate("abcdefgh.", 28)
+      denied = %{"decision" => "denied", "rule" => ""}
+
+      event_fixture(
+        run,
+        1,
+        "run.egress",
+        egress_data(Map.put(denied, "host", prefix <> "one.example"))
+      )
+
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 1
+
+      # Other hosts with the same first 252 bytes: the same row, from another pass and
+      # from two events in one pass.
+      event_fixture(
+        run,
+        2,
+        "run.egress",
+        egress_data(Map.put(denied, "host", prefix <> "two.example"))
+      )
+
+      {:ok, run} = Projector.project(run)
+
+      events_fixture(run, [
+        {3, "run.egress", egress_data(%{"host" => prefix <> "three.example"})},
+        {4, "run.egress", egress_data(Map.put(denied, "host", prefix <> "four.example"))}
+      ])
+
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 3
+
+      cut = prefix <> "…"
+      assert byte_size(cut) == 255
+
+      assert [%{host: ^cut, attempts: 4, allowed: 1, denied: 3, last_sequence: 4}] =
+               projection(run).connections
+
+      before = projection(run)
+      {:ok, rebuilt} = Projector.rebuild(run)
+      assert rebuilt.denied_count == 3
+      assert projection(run) == before
+    end
+
     test "the mode, path rule, credential and request method are the last attempt's", %{
       run: run
     } do
