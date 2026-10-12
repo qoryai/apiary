@@ -689,7 +689,7 @@ defmodule ApiaryWeb.RunComponentsTest do
              ) =~ "The path can be read two ways. The wall denies it in either mode."
     end
 
-    @host_form "The wall refuses a host that is neither a name nor an address in canonical form,"
+    @host_form "The gateway refuses a host that is neither a name nor an address in canonical form,"
     @own_address "The wall refuses link-local addresses and the machine's addresses,"
 
     defp wall_inline(host, rule \\ "wall:host-form") do

@@ -78,11 +78,12 @@ defmodule Apiary.Policy.ResolutionTest do
   ]
 
   # {name, workspace rules, target rules, what the sentence says}
+  @one_path_list "Qory Apiary doesn't let a *. suffix with paths cover another allowed host."
   @refused [
     {"a suffix held to paths above another entry",
-     [{:allow, "*.example", paths: ["/a"]}, {:allow, "git.example"}], [], ~r/one list of paths/},
+     [{:allow, "*.example", paths: ["/a"]}, {:allow, "git.example"}], [], @one_path_list},
     {"two suffixes held to paths, one above the other", [{:allow, "*.example", paths: ["/a"]}],
-     [{:allow, "*.s.example", paths: ["/b"]}], ~r/one list of paths/}
+     [{:allow, "*.s.example", paths: ["/b"]}], @one_path_list}
   ]
 
   defp rules(specs) do

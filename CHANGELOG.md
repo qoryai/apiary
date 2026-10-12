@@ -691,9 +691,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
-- A connection the wall refused for the form of its host says so in words: "The wall
-  refuses a host that is neither a name nor an address in canonical form, in either
-  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+- A connection the gateway refused for the form of its host says so in words: "The
+  gateway refuses a host that is neither a name nor an address in canonical form, in
+  either mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
   names link-local addresses: "The wall refuses link-local addresses and the machine's
   addresses, in either mode.", and so does the Policy page's hint for a rule written as an
   address.

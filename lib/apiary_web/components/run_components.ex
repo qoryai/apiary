@@ -2802,7 +2802,7 @@ defmodule ApiaryWeb.RunComponents do
         :host_form ->
           [
             gettext(
-              "The wall refuses a host that is neither a name nor an address in canonical form,"
+              "The gateway refuses a host that is neither a name nor an address in canonical form,"
             ),
             gettext("in either mode.")
           ]
@@ -2954,7 +2954,7 @@ defmodule ApiaryWeb.RunComponents do
         )}
       <% :host_form -> %>
         <b>{gettext(
-          "The wall refuses a host that is neither a name nor an address in canonical form,"
+          "The gateway refuses a host that is neither a name nor an address in canonical form,"
         )}</b> {gettext("in either mode.")}
       <% :ambiguous_path -> %>
         <b>{gettext("The path can be read two ways.")}</b> {gettext(
