@@ -602,8 +602,10 @@ defmodule ApiaryWeb.UserAuth do
   as it is now. A page that asks `Apiary.Access.can?/3` as it renders follows. A
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
-  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`)
-  sends it to the organisation's overview, which every organisation has, and says so; an organisation's page keeps its workspace while the user
+  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`),
+  or whose action (`ApiaryWeb.Access`) belongs to a feature or a part hidden meanwhile
+  (`Apiary.Access.shown_as/1`), sends it to the organisation's overview, which every
+  organisation has, and says so; an organisation's page keeps its workspace while the user
   reaches it.
   """
   @spec reload_scope(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
@@ -650,16 +652,26 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, is
-  # still shown to the person where the scope is now: a feature hidden while the page was
-  # open.
+  # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, and
+  # the feature or the part of the action it mounted on (`ApiaryWeb.Access`), if it asked
+  # one, are still shown to the person where the scope is now: a feature or a part hidden
+  # while the page was open.
   defp page_shown(socket, reloaded) do
     view = socket.view
+    action = socket.private[:access_action]
+    shown_as = action && Apiary.Access.shown_as(action)
 
-    if function_exported?(view, :__feature__, 0) and
-         not Apiary.Features.visible?(reloaded, view.__feature__()),
-       do: {:hidden, reloaded},
-       else: :ok
+    cond do
+      function_exported?(view, :__feature__, 0) and
+          not Apiary.Features.visible?(reloaded, view.__feature__()) ->
+        {:hidden, reloaded}
+
+      shown_as && not Apiary.Features.visible?(reloaded, shown_as) ->
+        {:hidden, reloaded}
+
+      true ->
+        :ok
+    end
   end
 
   # The signed-in user's suspended membership in the organisation `slug`, or nil: an

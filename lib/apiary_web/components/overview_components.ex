@@ -1719,7 +1719,8 @@ defmodule ApiaryWeb.OverviewComponents do
   command, which carries `--via` and the gateway's URL, and the line on a private
   certificate authority under it, as on the command's page. Anyone else reads who
   connects it. `landed` is the first run while the page is open; the box leaves at the
-  next navigation.
+  next navigation. `box={false}`, for a reader not shown the nodes (`node.read`; an
+  edition may hide them), leaves the box out, and only the line under it stays.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1760,6 +1761,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
+  attr :box, :boolean,
+    default: true,
+    doc: "whether the box is shown: false for a reader not shown the nodes"
+
   def onboarding(assigns) do
     used =
       assigns.keys
@@ -1784,7 +1789,7 @@ defmodule ApiaryWeb.OverviewComponents do
       )
 
     ~H"""
-    <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
+    <section :if={@box} id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
       <div class="q-onb-steps">
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">

@@ -390,6 +390,33 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert_refused(code, row, node)
     end
 
+    test "the nodes hidden from the maker since: the code enrols still", %{code: code, user: user} do
+      # The edition hides the nodes from every person: their role and place approve the
+      # key, never what they are shown.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+      assert Repo.get_by!(AccessKey, public_key: pair.public_key).created_by_id == user.id
+    end
+
+    test "the nodes hidden from the maker and made a member since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      assert_refused(code, row, node)
+    end
+
+    test "the nodes hidden from the maker and removed since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      {:ok, _} = Organisations.remove_member(owner, membership.id)
+      assert_refused(code, row, node)
+    end
+
     test "the same code again, with the same key, once the maker is a member", ctx do
       %{scope: owner, membership: membership, code: code} = ctx
       pair = ed25519_key_pair()

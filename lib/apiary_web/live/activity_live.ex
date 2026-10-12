@@ -379,13 +379,14 @@ defmodule ApiaryWeb.ActivityLive do
       else: ~p"/#{scope.organisation}/audit-log?#{query}"
   end
 
-  # The actions a reader can filter by: those that change something, of the features the
-  # reader is shown, that every describer offers the reader, each by the words of its filter.
+  # The actions a reader can filter by: those that change something, of the features and
+  # the parts the reader is shown (`Apiary.Access.shown_as/1`), that every describer offers
+  # the reader, each by the words of its filter.
   defp action_options(scope) do
     describers = Describer.describers()
 
     for action <- Audit.audited_actions(),
-        shown?(scope, Access.feature(action)),
+        shown?(scope, Access.shown_as(action)),
         Enum.all?(describers, & &1.offered?(scope, action)),
         do: {Atom.to_string(action), action_label(describers, action)}
   end

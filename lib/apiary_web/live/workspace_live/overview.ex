@@ -28,7 +28,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   or log line, until the page goes, the command expires, it is cancelled on the tab, or
   the machine runs it. The page hears the last two on the node's topic
   (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
-  on.
+  on. A reader not shown the nodes (`node.read`; an edition may hide them) reads no box,
+  only the line under it, and no link of To review leads them to the nodes page.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -61,6 +62,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.Runs.Run
 
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.{NodeComponents, UserAuth}
   alias ApiaryWeb.PolicyLive.Common
   alias Phoenix.LiveView.JS
 
@@ -127,6 +129,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           through={@onboarding.through}
           through_connected={@onboarding.through_connected}
           landed={@landed}
+          box={Common.may?(@current_scope, :"node.read")}
         />
 
         <div :if={@live?} class="q-ov">
@@ -900,21 +903,29 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
          |> put_flash(:error, only_admins_connect(scope))}
 
       {:error, _reason} ->
-        {:noreply,
-         socket
-         |> assign(:onboarding, read_onboarding(scope))
-         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+        if NodeComponents.hidden_now?(scope),
+          do: {:noreply, UserAuth.reload_scope(socket)},
+          else:
+            {:noreply,
+             socket
+             |> assign(:onboarding, read_onboarding(scope))
+             |> put_flash(:error, gettext("Nothing was changed. Try again."))}
     end
   end
 
   # Get the command where the box offers none: a second click once the command shows, or
   # an event the page never sent. One who may connect a node is shown the page as it is;
-  # anyone else is refused, and nothing is made.
+  # one the nodes are hidden from has the page's scope read again, which takes the box
+  # away, as a change they hear of does (`ApiaryWeb.UserAuth.reload_scope/1`); anyone else
+  # is refused, and nothing is made.
   def handle_event("get_command", _params, socket) do
-    if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
-      do: {:noreply, socket},
-      else:
-        {:noreply, put_flash(socket, :error, only_admins_connect(socket.assigns.current_scope))}
+    scope = socket.assigns.current_scope
+
+    cond do
+      Common.may?(scope, :"access_key.create_code") -> {:noreply, socket}
+      NodeComponents.hidden_now?(scope) -> {:noreply, UserAuth.reload_scope(socket)}
+      true -> {:noreply, put_flash(socket, :error, only_admins_connect(scope))}
+    end
   end
 
   ## The one-click allow of a denied destination: the panel of a connection row's Allow,
@@ -1461,19 +1472,24 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             )
         }
 
+      # The nodes page, where the reader is shown it: an edition may hide the nodes.
       _ ->
-        %{
-          count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
-          title:
-            ngettext(
-              "%{number} more item, on the nodes page",
-              "%{number} more items, on the nodes page",
-              count,
-              number: Format.number(count)
-            )
-        }
+        if Common.may?(scope, :"node.read"), do: nodes_more(scope, count)
     end
+  end
+
+  defp nodes_more(scope, count) do
+    %{
+      count: count,
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
+      title:
+        ngettext(
+          "%{number} more item, on the nodes page",
+          "%{number} more items, on the nodes page",
+          count,
+          number: Format.number(count)
+        )
+    }
   end
 
   # What became of an item that is no longer on the record's list, in words.

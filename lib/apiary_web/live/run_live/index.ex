@@ -480,7 +480,7 @@ defmodule ApiaryWeb.RunLive.Index do
             )}
             {gettext("Add a node, connect a machine to it, and start a run.")}
             <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
-            <:actions>
+            <:actions :if={@may_add_node or @may_read_nodes}>
               <.button
                 :if={@may_add_node}
                 id="runs-new-node"
@@ -490,7 +490,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 {gettext("New node")}
               </.button>
               <.button
-                :if={!@may_add_node}
+                :if={!@may_add_node and @may_read_nodes}
                 id="runs-go-to-nodes"
                 navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
               >
@@ -501,7 +501,7 @@ defmodule ApiaryWeb.RunLive.Index do
           <.empty_state :if={@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
             {gettext("A machine posts once it is connected to a node.")}
-            <:actions>
+            <:actions :if={@may_read_nodes}>
               <.button
                 id="runs-go-to-nodes"
                 navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
@@ -562,7 +562,9 @@ defmodule ApiaryWeb.RunLive.Index do
           assign(assigns,
             kind: :node,
             node_name: if(node, do: node.name, else: value),
-            page: node && ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
+            page:
+              node && Access.can?(scope, :"node.read", node) &&
+                ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
             policy: nil,
             shared_alone: false,
             all: page_path(scope, Filters.put(filters, node: nil))
@@ -717,7 +719,9 @@ defmodule ApiaryWeb.RunLive.Index do
        security: Access.can?(scope, :"security_policy.read", scope.workspace),
        has_nodes:
          Nodes.count_nodes(scope) |> Map.take([:node, :pool]) |> Map.values() |> Enum.sum() > 0,
-       may_add_node: Access.can?(scope, :"node.create", scope.workspace)
+       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
+       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
+       may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
      )}
   end
 

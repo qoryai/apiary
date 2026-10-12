@@ -486,6 +486,15 @@ defmodule Apiary.EditionStubs do
     def limits, do: %{organisations: :unlimited, workspaces: :unlimited}
   end
 
+  defmodule ManyWorkspacesHidesNamed do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), whose gateways the console offers
+    at the organisation, where every person is shown what `HidesNamed` shows them.
+    """
+    defdelegate limits, to: Apiary.EditionStubs.ManyWorkspaces
+    defdelegate hidden(scope), to: Apiary.EditionStubs.HidesNamed
+  end
+
   defmodule MembersReachNamed do
     @moduledoc """
     Organisations of many workspaces (`ManyWorkspaces`), where a member reaches only the

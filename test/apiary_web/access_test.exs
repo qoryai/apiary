@@ -25,8 +25,10 @@ defmodule ApiaryWeb.AccessTest do
     %{scope: owner} = sign_up_fixture()
     %{scope: member} = member_fixture(owner, :member)
 
+    # The page keeps the action, so that it leaves once what it asks is hidden.
     socket = socket(member)
-    assert {:cont, ^socket} = ApiaryWeb.Access.on_mount(:"run.read", %{}, %{}, socket)
+    assert {:cont, mounted} = ApiaryWeb.Access.on_mount(:"run.read", %{}, %{}, socket)
+    assert mounted == Phoenix.LiveView.put_private(socket, :access_action, :"run.read")
   end
 
   test "a scope without a membership there is a path that does not exist" do

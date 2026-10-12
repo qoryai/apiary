@@ -60,12 +60,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(_action), do: nil
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
-  # and integrations' only where the reader is shown them: their actions belong to the
-  # `secrets` feature (`Apiary.Access.feature/1`), and they ask `visible?(scope, :secrets)`.
-  # Their entries still show, by their labels.
+  # and integrations' only where the reader is shown them, and the nodes' and their access
+  # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
+  # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
+  # show, by their labels.
   @impl true
-  def offered?(scope, action),
-    do: Access.feature(action) != :secrets or Features.visible?(scope, :secrets)
+  def offered?(scope, action) do
+    case Access.shown_as(action) do
+      shown_as when shown_as in [:secrets, :nodes] -> Features.visible?(scope, shown_as)
+      _shown_as -> true
+    end
+  end
 
   @impl true
   def sentence(action, entry, _names) do

@@ -169,7 +169,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          |> assign_activity()
          |> assign_through()
          |> load()
-         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
+         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))
+         |> NodeComponents.leave_when_hidden(~w(create_code generate_key revoke revoke_code))}
 
       nil ->
         raise Ecto.NoResultsError, queryable: Node
@@ -796,27 +797,35 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # What the act named is not there for it: the key or the command, or the node itself,
   # or the workspace's, now. A node the reader still reads says so on the tab; one gone
-  # sends them to the list.
+  # sends them to the list. Where the nodes were hidden from the reader meanwhile, the page
+  # leaves as it does once it hears of it, and says that instead.
   defp not_found(socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    if NodeComponents.find_node(scope, socket.assigns.place, node.public_id),
-      do:
-        to_tab(
-          socket,
-          :error,
-          gettext("That key or code is gone: this node's keys changed meanwhile.")
-        ),
-      else: gone(socket)
+    if NodeComponents.find_node(scope, socket.assigns.place, node.public_id) &&
+         not NodeComponents.hidden_now?(scope),
+       do:
+         to_tab(
+           socket,
+           :error,
+           gettext("That key or code is gone: this node's keys changed meanwhile.")
+         ),
+       else: gone(socket)
   end
 
-  # The node was deleted, or left the reader's reach, since the page opened.
+  # The node was deleted, or left the reader's reach, since the page opened. Where the
+  # nodes were hidden from the reader meanwhile, the page leaves as it does once it hears
+  # of it, and says that instead.
   defp gone(socket) do
-    socket
-    |> put_flash(:error, gettext("This node is gone: it was deleted."))
-    |> push_navigate(
-      to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
-    )
+    if NodeComponents.hidden_now?(socket.assigns.current_scope) do
+      UserAuth.reload_scope(socket)
+    else
+      socket
+      |> put_flash(:error, gettext("This node is gone: it was deleted."))
+      |> push_navigate(
+        to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
+      )
+    end
   end
 
   # An act the reader may not take, `action`, as the database has their membership now:
@@ -827,6 +836,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     scope = Access.reload(socket.assigns.current_scope)
 
     cond do
+      # The nodes hidden from them meanwhile: the page leaves as it does once it hears of
+      # it (`ApiaryWeb.UserAuth.reload_scope/1`).
+      not Apiary.Features.visible?(scope, :nodes) ->
+        ApiaryWeb.UserAuth.reload_scope(socket)
+
       Access.reader(scope) ->
         socket
         |> assign(may: Map.new(@acts, fn {act, _} -> {act, false} end), manages: false)

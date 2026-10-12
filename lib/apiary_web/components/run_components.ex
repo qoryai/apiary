@@ -2170,8 +2170,9 @@ defmodule ApiaryWeb.RunComponents do
   defp key_label(_run), do: nil
 
   @doc """
-  The node a run ran on, by name: a link to its page while it is in use, its name and
-  "(deleted)" once it is deleted, n/a when the run's node was not read.
+  The node a run ran on, by name: a link to its page while it is in use and the reader may
+  open it (`node.read`; an edition may hide the nodes from them), else its name alone; its
+  name and "(deleted)" once it is deleted, n/a when the run's node was not read.
   """
   attr :scope, :map, required: true
   attr :node, :any, required: true, doc: "the run's node, or nil or false when not read"
@@ -2179,10 +2180,12 @@ defmodule ApiaryWeb.RunComponents do
   def node_name(assigns) do
     ~H"""
     <%= cond do %>
-      <% @node && is_nil(@node.deleted_at) -> %>
+      <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
         <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
           {@node.name}
         </.link>
+      <% @node && is_nil(@node.deleted_at) -> %>
+        {@node.name}
       <% @node -> %>
         {gettext("%{name} (deleted)", name: @node.name)}
       <% true -> %>

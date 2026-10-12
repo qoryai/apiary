@@ -792,6 +792,33 @@ defmodule ApiaryWeb.NodeComponents do
     do: Apiary.Access.can?(scope, :"node.read", scope.organisation)
 
   @doc """
+  hidden_now?/1 says whether the nodes are hidden from the person of `scope` as the
+  database has it now (`Apiary.Access.reload/2`): an edition may hide them (the part
+  `nodes`, `Apiary.Features`) while a page that acts on them is open. Such a page leaves
+  (`ApiaryWeb.UserAuth.reload_scope/1`) rather than say a node or a key is gone.
+  """
+  @spec hidden_now?(Scope.t()) :: boolean
+  def hidden_now?(scope),
+    do: not Apiary.Features.visible?(Apiary.Access.reload(scope), :nodes)
+
+  @doc """
+  leave_when_hidden/2 gives a page of the nodes the gate of its acts, `acts`, the names of
+  the events that change something: an act asked once the nodes are hidden from the reader
+  (`hidden_now?/1`) changes and reads nothing, and the page leaves
+  (`ApiaryWeb.UserAuth.reload_scope/1`), as it does once it hears of the change.
+  """
+  @spec leave_when_hidden(Phoenix.LiveView.Socket.t(), [String.t()]) ::
+          Phoenix.LiveView.Socket.t()
+  def leave_when_hidden(socket, acts) do
+    Phoenix.LiveView.attach_hook(socket, :nodes_hidden, :handle_event, fn
+      event, _params, socket ->
+        if event in acts and hidden_now?(socket.assigns.current_scope),
+          do: {:halt, ApiaryWeb.UserAuth.reload_scope(socket)},
+          else: {:cont, socket}
+    end)
+  end
+
+  @doc """
   no_longer_member/1 tells one whose membership no longer reaches the page's place, a
   workspace's or the organisation's, that it is gone.
   """

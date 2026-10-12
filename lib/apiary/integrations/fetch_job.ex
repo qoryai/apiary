@@ -7,8 +7,8 @@ defmodule Apiary.Integrations.FetchJob do
 
   It asks the instance's `secrets` feature first (`Apiary.Features.on?/1`): where the
   instance does not have it, it fetches nothing and is cancelled as `:not_found`, not
-  retried. A fetch someone asked for stops once the security policy is no longer shown
-  to them.
+  retried. A fetch someone asked for stops once the integrations are no longer shown to
+  them.
   """
   use Apiary.Job,
     queue: :default,

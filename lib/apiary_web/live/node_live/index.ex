@@ -65,7 +65,9 @@ defmodule ApiaryWeb.NodeLive.Index do
     end
 
     {:ok,
-     assign(socket,
+     socket
+     |> NodeComponents.leave_when_hidden(["create"])
+     |> assign(
        page_title: gettext("Nodes"),
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),
@@ -349,6 +351,11 @@ defmodule ApiaryWeb.NodeLive.Index do
     path = list_path(socket.assigns.current_scope, socket.assigns.filters)
 
     cond do
+      # The nodes hidden from them meanwhile: the page leaves as it does once it hears of
+      # it (`ApiaryWeb.UserAuth.reload_scope/1`).
+      not Apiary.Features.visible?(scope, :nodes) ->
+        ApiaryWeb.UserAuth.reload_scope(socket)
+
       Access.reader(scope) ->
         socket |> put_flash(:error, ApiaryWeb.Access.reads_only(scope)) |> push_patch(to: path)
 

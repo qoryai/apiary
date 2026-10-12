@@ -44,7 +44,7 @@ defmodule Apiary.Edition do
     entry's details as it is written.
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
     (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
-  - **What a person is shown**: `hidden/1`, features and parts of them
+  - **What a person is shown**: `hidden/1`, features and parts
     (`Apiary.Features.visible?/2`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
@@ -148,7 +148,8 @@ defmodule Apiary.Edition do
   @callback roles() :: %{atom => String.t()}
 
   @doc """
-  Asked by `Apiary.Access.check/3` once the action's feature is on and shown to the scope,
+  Asked by `Apiary.Access.check/3` once the action's feature, or its part, is on and shown
+  to the scope, and by `Apiary.Access.check_code_maker/2`, which asks only that it is on,
   and before the place is checked: `:continue` leaves the answer to the core, anything else
   is the answer. An answer that must come after the place's, as the core's would, asks
   `Apiary.Access.check_place/3` first. `scope` is nil when no one in particular asks, as
@@ -462,8 +463,9 @@ defmodule Apiary.Edition do
 
   @doc """
   What the scope's person is not shown in the scope's organisation: features the instance
-  has (`Apiary.Features.enabled/0`), and parts of them (`Apiary.Features.parts/0`), such
-  as the run's Terminal, `:"observability.terminal"`. What is hidden still works in full:
+  has (`Apiary.Features.enabled/0`), and parts (`Apiary.Features.parts/0`): of a feature,
+  such as the run's Terminal, `:"observability.terminal"`, or of none, `:nodes`, the
+  nodes, the node pools, their access keys and the gateways. What is hidden still works in full:
   what nodes are served, enforcement, rendering, the instance's jobs, retention and the
   audit trail never ask this. A person meets a hidden feature as one the instance lacks:
   its pages, menu entries and actions are not found (`Apiary.Features.visible?/2`); a
