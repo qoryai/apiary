@@ -197,6 +197,17 @@ defmodule ApiaryWeb.FeaturesTest do
                )
     end
 
+    # The controllers' gate asks the person's scope: the record's controllers, which ask
+    # nothing else of the feature, answer the person as a path that does not exist.
+    test "a controller of a feature hidden from the person answers not found",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.EditionStubs.HidesNamed.put([:observability])
+
+      jump = put_req_header(conn, "accept", "application/json")
+      assert jump |> get(workspace_path(scope, "/jump?q=main")) |> response(404)
+      assert conn |> get(workspace_path(scope, "/switch/runs")) |> response(404)
+    end
+
     test "a node is still served the workspace's policy", ctx do
       # The policy made while the person was shown it.
       :ok = Apiary.EditionStubs.HidesNamed.put([])

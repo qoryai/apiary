@@ -141,7 +141,10 @@ defmodule Apiary.Accounts.Scope do
         workspace: nil,
         membership: nil,
         reach: nil,
-        edition: %{}
+        edition: %{},
+        # Nothing of the scope's organisation is carried over: an audit entry's scope asks
+        # no gate, so nil, nothing hidden, rather than an ask of the edition here.
+        hidden: nil
     }
   end
 

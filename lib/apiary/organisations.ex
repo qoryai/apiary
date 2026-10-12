@@ -150,13 +150,17 @@ defmodule Apiary.Organisations do
   def put_reach(%Scope{user: %User{id: user_id}} = scope, %Organisation{} = organisation) do
     own = active_membership(organisation.id, user_id)
 
+    # Nothing of another organisation's hidden is carried over: `put_place/2` asks it for
+    # this one once the workspace is put, and a caller that stops here, which asks no
+    # page's gate, keeps nil, nothing hidden, rather than asking the edition twice.
     Edition.reach(%{
       scope
       | organisation: organisation,
         membership: own && %{own | organisation: organisation},
         reach: nil,
         workspace: nil,
-        edition: %{}
+        edition: %{},
+        hidden: nil
     })
   end
 

@@ -148,8 +148,8 @@ defmodule Apiary.Edition do
 
   @doc """
   Asked by `Apiary.Access.check/3` once the action's feature is on and shown to the scope,
-  and before the place is checked: `:continue` leaves the answer to the core, anything else is the answer. An
-  answer that must come after the place's, as the core's would, asks
+  and before the place is checked: `:continue` leaves the answer to the core, anything else
+  is the answer. An answer that must come after the place's, as the core's would, asks
   `Apiary.Access.check_place/3` first. `scope` is nil when no one in particular asks, as
   `Apiary.Access.refused_on?/2` does: `{:error, :forbidden}` then says the subject refuses
   the action whoever asks.
@@ -467,9 +467,11 @@ defmodule Apiary.Edition do
 
   Asked for a person's scope only, never an access key's or the instance's, once the
   scope's organisation and the edition's reach are on it: in
-  `Apiary.Organisations.resolve_scope/4`, once for every workspace in
-  `Apiary.Organisations.workspace_scopes/1`, in `Apiary.Organisations.job_scope/3`, and in
-  `Apiary.Access.reload/2` after `c:reload/2`, where with `lock: :share` the edition's rows
+  `Apiary.Organisations.resolve_scope/4`; in `Apiary.Organisations.load_scope/2` and
+  `Apiary.Organisations.load_home_scope/2`, with the reach of the person's membership and
+  without `c:reach/1`; in `Apiary.Organisations.workspace_scopes/1`, once for all of them;
+  in `Apiary.Organisations.job_scope/3`; and in `Apiary.Access.reload/2` after
+  `c:reload/2`, where with `lock: :share` the edition's rows
   are held already (`c:lock_rows/1`, `{:places, scope}`): it reads and locks nothing. The
   answer must not depend on the scope's workspace. The core's answer is `[]`.
   """
