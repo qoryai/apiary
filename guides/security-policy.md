@@ -152,8 +152,8 @@ What the document cannot say is refused when it is written, with a sentence that
 to do instead. Nothing is ever rendered that allows more than the page shows.
 
 - **A `*.` suffix held to paths above another allowed entry.** The gateway holds a host to
-  the path list of whichever entry it finds first, and the order is not fixed. A name held
-  to paths under a suffix that is free of paths is fine.
+  the path list of its most specific entry: its name itself, else the `*.` entry with the
+  longest suffix. A name held to paths under a suffix that is free of paths is fine.
 - **A rule outside the grammar**: a URL, a port, capitals, a `*` anywhere but the lead. The
   New rule page checks a rule as it is typed and reads it back in words before it can be
   saved.

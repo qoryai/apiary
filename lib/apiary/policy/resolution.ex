@@ -40,8 +40,8 @@ defmodule Apiary.Policy.Resolution do
      are denied by having no allow, as before; under `observe` they are reached and
      recorded with no rule.
   4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
-     allowed entry (the gateway holds a host to the path list of whichever entry of `paths`
-     it finds first). A `*.` allow of the level above held to paths overrides every lower
+     allowed entry. The gateway holds a host to the path list of its most specific entry of
+     `paths`: its name itself, else the `*.` entry with the longest suffix. A `*.` allow of the level above held to paths overrides every lower
      allow it covers instead, whatever its rank: the level above is never refused for a
      rule below it.
   5. **A rule whose host the grammar refuses** (`Apiary.Policy.Grammar.host?/1`), stored
