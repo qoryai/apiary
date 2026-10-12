@@ -80,9 +80,14 @@ version: in the template, or in each FILE given (such as a release's copy of the
 one Custom::Version resource finds the version to install. Its function's role is trusted
 by Lambda alone and allows exactly three things: secretsmanager:GetSecretValue on
 RegistryCredentials, under LooksUpWithDownloadKey (a download key, and Qory Apiary Pro);
-cloudformation:DescribeStacks on this stack; and writing to the function's log group. Neither the resource nor the function is given the
-download key itself, ProDownloadKey. And the task's image, without a test image, is the
-resource's Image: the image the lookup pinned by its digest.
+cloudformation:DescribeStacks on this stack; and writing to the function's log group; and no AWS::IAM::Policy, ManagedPolicy or
+RolePolicy attaches more to it, by a reference to the role or by its RoleName. Neither the
+resource, the function nor the role is given the download key itself, ProDownloadKey, or a
+dynamic reference ({{resolve:...}}) that could resolve to it. RegistryCredentials, the key's
+secret, is named only where it is needed: the resource's DownloadKeySecret, the role's
+grant, the task's RepositoryCredentials and the task's execution role, which pulls the
+image with it. And the task's image, without a test image, is the resource's Image: the
+image the lookup pinned by its digest.
 
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
 !Ref, as their long forms), except for release.
@@ -728,7 +733,8 @@ def normal(statement):
 def check_version(paths):
     failures = []
     for path in paths:
-        resources = load(path).get("Resources", {})
+        template = load(path)
+        resources = template.get("Resources", {})
         lookups = of_type(resources, VERSION_TYPE)
         if len(lookups) != 1:
             failures.append(f"{path}: {len(lookups)} {VERSION_TYPE} resources, not one, find the version to install")
@@ -774,9 +780,34 @@ def check_version(paths):
                     f"describing this stack and writing to {log_group}: {json.dumps(found)}"
                 )
 
-        for where, value in ((name, lookup), (function_name, function)):
+        for where, value in ((name, lookup), (function_name, function), (role_name, role)):
             if DOWNLOAD_KEY_PARAMETER in list(refs(value)):
                 failures.append(f"{path}: {where} is given ProDownloadKey: the function reads the key from {DOWNLOAD_KEY}")
+            if DYNAMIC_REFERENCE in json.dumps(value):
+                failures.append(f"{path}: {where} holds a dynamic reference ({DYNAMIC_REFERENCE}...), which could carry the key")
+
+        task_definitions = of_type(resources, "AWS::ECS::TaskDefinition")
+        execution_roles = {get_att(task.get("Properties", {}).get("ExecutionRoleArn")) for task in task_definitions.values()}
+        allowed = {("Resources", name, "Properties", "DownloadKeySecret"), ("Resources", role_name, "Properties", "Policies")}
+        allowed |= {("Resources", execution_role, "Properties", "Policies") for execution_role in execution_roles}
+        for where in names_of(template, DOWNLOAD_KEY, ()):
+            in_repository_credentials = (
+                where[:1] == ("Resources",)
+                and where[1] in task_definitions
+                and where[2:4] == ("Properties", "ContainerDefinitions") and where[5:6] == ("RepositoryCredentials",)
+            )
+            if not in_repository_credentials and not any(where[: len(place)] == place for place in allowed):
+                failures.append(
+                    f"{path}: {'.'.join(map(str, where))} names {DOWNLOAD_KEY}, the download key's secret, "
+                    f"outside {name}'s DownloadKeySecret, {role_name}'s grant and the task's pull"
+                )
+
+        role_name_text = role.get("Properties", {}).get("RoleName")
+        for other, policy in resources.items():
+            if policy.get("Type") not in ATTACHED_POLICIES:
+                continue
+            if list(names_of(policy, role_name, ())) or (role_name_text and json.dumps(role_name_text) in json.dumps(policy)):
+                failures.append(f"{path}: {other}, an {policy['Type']}, attaches more to {role_name}")
 
         images = [
             without_test_parts(container.get("Image"))
@@ -786,6 +817,41 @@ def check_version(paths):
         if not images or any(get_att(image, "Image") != name for image in images):
             failures.append(f"{path}: the task's image is not {name}'s Image, pinned by its digest: {json.dumps(images)}")
     return failures
+
+
+DYNAMIC_REFERENCE = "{{resolve:"
+ATTACHED_POLICIES = {"AWS::IAM::Policy", "AWS::IAM::ManagedPolicy", "AWS::IAM::RolePolicy"}
+
+
+def names_of(value, logical_id, where):
+    """Where a value names a logical ID: a !Ref, a !GetAtt, a ${...} in a Fn::Sub, or a
+    DependsOn; each by its path of keys and indexes."""
+    if isinstance(value, dict):
+        if value == {"Ref": logical_id} or get_att_names(value) == logical_id:
+            yield where
+            return
+        for key, item in value.items():
+            if key == "Fn::Sub":
+                text = item[0] if isinstance(item, list) else item
+                if isinstance(text, str) and re.search(r"\$\{" + re.escape(logical_id) + r"(\.[^}]*)?\}", text):
+                    yield where + (key,)
+            if key == "DependsOn" and logical_id in as_list(item):
+                yield where + (key,)
+            yield from names_of(item, logical_id, where + (key,))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from names_of(item, logical_id, where + (index,))
+
+
+def get_att_names(value):
+    """The logical ID a !GetAtt names, whatever its attribute, or None."""
+    if isinstance(value, dict) and list(value) == ["Fn::GetAtt"]:
+        argument = value["Fn::GetAtt"]
+        if isinstance(argument, str):
+            argument = argument.split(".", 1)
+        if isinstance(argument, list) and argument:
+            return argument[0]
+    return None
 
 
 def refs(value):

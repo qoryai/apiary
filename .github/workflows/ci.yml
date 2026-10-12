@@ -145,9 +145,11 @@ jobs:
         run: python scripts/aws-template-check.py editions
 
       # The version is found by one Custom::Version resource, whose function's role may read
-      # the download key's secret, describe this stack and write its log group, nothing
-      # else; neither the resource nor the function is given the download key itself; and
-      # the task runs the image the resource found, by its digest.
+      # the download key's secret for Qory Apiary Pro, describe this stack and write its log
+      # group, nothing else, and has no other policy attached; neither the resource, the
+      # function nor the role is given the download key itself or a dynamic reference; the
+      # key's secret is named only where it is needed; and the task runs the image the
+      # resource found, by its digest.
       - name: Check the template's version lookup
         run: python scripts/aws-template-check.py version
 
@@ -157,8 +159,10 @@ jobs:
         run: python scripts/aws-template-check.py ascii
 
       # The release script's tests: the release copy and the test copy of the repository's
-      # template, and what the script refuses. And the version lookup's tests: its function's
-      # code, taken from the template, with the registry and AWS stubbed.
+      # template, and what the script refuses. The version lookup's tests: its function's
+      # code, taken from the template, with the registry and AWS stubbed. And the version
+      # check's, on templates changed in one place each, read with cfn-lint, which this
+      # python3 has.
       - name: Test the AWS template's release script and version lookup
         run: python3 -m unittest discover -s scripts -p "test_*.py"
 
