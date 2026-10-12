@@ -2854,12 +2854,12 @@ defmodule ApiaryWeb.RunComponents do
     Enum.join(words, " ") <> if(mixed, do: " · " <> gettext("last attempt"), else: "")
   end
 
-  # "Rule api.example, path /v1/*, credential model-key", as the row shows it.
+  # "Rule api.example, path /v1/*, secret model-key", as the row shows it.
   defp rule_words(c) do
     [
       gettext("Rule") <> " " <> (c.rule || ""),
       c.path_rule && gettext("path") <> " " <> c.path_rule,
-      c.decision == "allowed" && c.credential && gettext("credential") <> " " <> c.credential
+      c.decision == "allowed" && c.credential && gettext("secret") <> " " <> c.credential
     ]
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join(", ")
@@ -2992,7 +2992,7 @@ defmodule ApiaryWeb.RunComponents do
         <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
           "path"
         )}
-        <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("credential")}
+        <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("secret")}
         <.rule value={@c.credential} /></span>
       <% :unknown -> %>
         <span class="text-faint">{gettext("n/a")}</span>
