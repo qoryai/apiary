@@ -35,7 +35,7 @@ defmodule Apiary.Integrations.Description do
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
   `domains`, `program_version`, every role it names, its secrets (each `name`, and `title`,
-  its own or its name), the names of its plain settings, and the decoded document.
+  the secret's title or else its name), the names of its plain settings, and the decoded document.
   """
   @type t :: %__MODULE__{
           name: String.t(),
@@ -164,7 +164,7 @@ defmodule Apiary.Integrations.Description do
       a secret nor a secret's `<name>_file`, else `integration_settings_not_allowed`: a
       connection never holds a secret, and a `<name>_file` is a path on the node that a
       server never sends;
-    * each setting must be valid against its own property's schema in the description's
+    * each setting must be valid against its property's schema in the description's
       `settings`, `integration_settings_invalid`;
     * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`.
 

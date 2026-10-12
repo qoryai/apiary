@@ -31,7 +31,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   (`Apiary.Access.grantable_levels/1`, all three in the core's edition) and the one the
   member holds, each with what it may do, suspending, activating and
   removing, each of the last three but activating confirmed in place, the member's row
-  turned into its confirmation (`CoreComponents.inline_confirm/1`) at a path of its own,
+  turned into its confirmation (`CoreComponents.inline_confirm/1`) at a separate path,
   `/:org/settings/people/:id/remove` or `…/suspend`, whose Cancel goes back to People.
 
   An edition adds to the page through its slots (`ApiaryWeb.Extension`): under its title
@@ -51,7 +51,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   works once, for 24 hours, or until mail is set (`Apiary.Mail.end_password_links/0`), and
   a new one ends the one before. The page shows it once, above the list, to copy and send
   to the person, until Done or until the reader leaves (`CoreComponents.one_time_link/1`,
-  `kind: :password`); it keeps the link in its own process alone, never in a path, a flash
+  `kind: :password`); it keeps the link in its process alone, never in a path, a flash
   or a title.
   """
   use ApiaryWeb, :live_view

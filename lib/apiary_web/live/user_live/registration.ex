@@ -18,7 +18,7 @@ defmodule ApiaryWeb.UserLive.Registration do
   which signs the person in with the password the browser holds. The account is
   unconfirmed until mail is set and a log-in link is followed.
 
-  An edition whose sign-up asks more of the form serves its own page at this path
+  An edition whose sign-up asks more of the form serves its sign-up page at this path
   (`ApiaryWeb.Routes`, `except:`).
   """
   use ApiaryWeb, :live_view

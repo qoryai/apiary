@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ContentSecurityPolicy do
   @moduledoc """
   The `content-security-policy` of every answer the router gives and of the documentation
-  under `/docs`: only the console's own scripts run. A script that a bug lets into a page,
+  under `/docs`: only the console's scripts run. A script that a bug lets into a page,
   in markup, an attribute or a `javascript:` address, is refused by the browser, so a page
   that shows a secret once shows it to the person in front of it and to no script.
 
@@ -22,8 +22,8 @@ defmodule ApiaryWeb.ContentSecurityPolicy do
 
   The policy, directive by directive:
 
-  - `default-src 'self'`: whatever has no directive of its own (frames, workers, media,
-    the manifest) comes from the console's own origin.
+  - `default-src 'self'`: whatever no other directive covers (frames, workers, media,
+    the manifest) comes from the console's origin.
   - `script-src 'self' 'nonce-…'`: the bundles under `/assets` and the scripts that carry
     the request's nonce; never `'unsafe-inline'`, `'unsafe-eval'` or `'strict-dynamic'`
     (no script loads another from elsewhere). Under `/docs` the policy also allows the one
@@ -40,19 +40,19 @@ defmodule ApiaryWeb.ContentSecurityPolicy do
     draws icons and select arrows with.
   - `font-src 'self'`: the fonts under `/fonts`.
   - `connect-src 'self' ws(s)://<host>`: LiveView's socket and its long-poll fallback, and
-    the console's own requests. CSP Level 3 counts a `ws:` or `wss:` address of the page's
-    own host and port as `'self'`; the socket's origin from the endpoint's URL
+    the console's requests. CSP Level 3 counts a `ws:` or `wss:` address of the page's
+    host and port as `'self'`; the socket's origin from the endpoint's URL
     (`PUBLIC_URL`) is named as well, for a browser that does not.
   - `object-src 'none'`: no plug-ins.
   - `base-uri 'self'`: no `<base>` sends relative addresses elsewhere.
   - `form-action 'self'`: forms post to the console only.
   - `frame-ancestors 'none'`: no page is framed, by another site or by the console. The
     development tools under `/dev` (the storybook, LiveDashboard, the mailbox) frame
-    their own pages, and only there `allow_frames: :self` makes it `'self'`.
+    the console's pages, and only there `allow_frames: :self` makes it `'self'`.
 
   A reverse proxy in front of the release must pass the header on as it is: one that
   strips or replaces it takes this protection away (`guides/hosting-checklist.md`).
-  `Phoenix.Controller.put_secure_browser_headers/2` sets its own short policy only when
+  `Phoenix.Controller.put_secure_browser_headers/2` sets a short policy only when
   there is none, so it leaves this one in place.
   """
 
@@ -89,7 +89,7 @@ defmodule ApiaryWeb.ContentSecurityPolicy do
 
   @doc """
   The policy for `nonce`: under `/docs` when `docs?` is true, and framed by the console's
-  own pages when `allow_frames` is `:self` rather than `:none`.
+  pages when `allow_frames` is `:self` rather than `:none`.
   """
   @spec policy(String.t(), boolean(), :none | :self) :: String.t()
   def policy(nonce, docs? \\ false, allow_frames \\ :none) do

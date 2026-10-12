@@ -8,7 +8,8 @@ defmodule ApiaryWeb.Features.Routes do
   pipelines would answer first, and differently from an unknown path: an anonymous
   visitor redirected to sign in, an unsigned gateway told `401`, a JSON error where the
   unknown path gets text, the browser's security headers set. Each is a sign the route
-  exists. Raising `Phoenix.Router.NoRouteError` here makes the answer the router's own.
+  exists. Raising `Phoenix.Router.NoRouteError` here makes the answer the one the router
+  gives an unknown path.
 
   The route is found with `Phoenix.Router.route_info/4` and its feature read from the
   LiveView or controller that declares one (`use ApiaryWeb.Features`). Below the instance,

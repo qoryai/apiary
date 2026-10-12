@@ -7,7 +7,7 @@ defmodule Apiary.Runs.Ingest do
   run in the key's workspace when its subject is new, inserts the events that are
   new, records the delivery and counts. It projects nothing: once the
   transaction has committed, the use of the key is recorded, the projector is
-  asked to project the run on its own time, and the caller answers.
+  asked to project the run, without waiting for it, and the caller answers.
 
   Delivery is at least once and in any order, so nothing here is an error that
   the gateway could cause by sending again: an event already stored is skipped, a
@@ -105,7 +105,7 @@ defmodule Apiary.Runs.Ingest do
   and, as the last one reported, on the run. The digest in force is read after the
   commit, outside the run's lock, and never rendered: a read that says the workspace is
   managed, then one read of an index for the digest, two when the run's target has
-  no configuration of its own and the baseline's is read after it.
+  no separate configuration and the baseline's is read after it.
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
           {:ok, map}

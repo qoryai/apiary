@@ -99,8 +99,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   `Apiary.Policy.remove_rule/2` (the scope, a rule or its id) and `get` as
   `Apiary.Policy.get_rule/2` (the scope, an id), each answering `{:ok, rule}` or
   `{:error, %Apiary.Policy.Error{}}`; and `written`, the toast of a host rule written
-  (the action, `"allow"` or `"deny"`, and the host), or none for the holder's own words
-  (`rule_written/3`).
+  (the action, `"allow"` or `"deny"`, and the host), or none for the toast that names the
+  holder (`rule_written/3`).
   """
   @type writer :: %{
           required(:allow) => (Scope.t(), term, map ->
@@ -230,13 +230,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Where a rule of the workspace's baseline is written, as a list of rules names it
   (`ApiaryWeb.PolicyLive.RuleList`): the workspace, by its name, its slug the `source:`
-  qualifier's value, after a target's own rules in the list's order.
+  qualifier's value, after the target rules in the list's order.
   """
   def workspace_source(scope),
     do: %{key: scope.workspace.slug, label: scope.workspace.name, rank: 2}
 
   @doc """
-  Where a target's own rule is written, on its Policy tab: this target, first in the
+  Where a target rule is written, on its Policy tab: this target, first in the
   list's order, `source:` and the word the search takes for a target.
   """
   def target_source,
@@ -244,8 +244,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   Where a rule of the level above the workspace is written (`Apiary.Policy.Above`): the
-  level by its name, with its tile, its slug the `source:` qualifier's value, between a
-  target's own rules and the workspace's in the list's order. Nil where there is no
+  level by its name, with its tile, its slug the `source:` qualifier's value, between the
+  target rules and the workspace's in the list's order. Nil where there is no
   level, and for one that carries variables only (`policy: false`), which writes no rule.
   """
   def above_source(%Above{policy: true, name: name, slug: slug}),
@@ -297,7 +297,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The host rules of the workspace's page, one row each (`ApiaryWeb.PolicyComponents.rule_line/1`):
-  every one the workspace's own, changed here; one the baseline does not hold in force
+  every one a workspace rule, changed here; one the baseline does not hold in force
   (an allow a `*.` deny covers) says why. `locks` is `locks/1`'s.
   """
   def workspace_rules(rules, socket, locks) do
@@ -345,10 +345,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp above_name(_effective), do: nil
 
   @doc """
-  The host rules in force for a target, on its Policy tab, one row each: its own, changed
-  here, and the workspace's, read here and changed on the workspace's page (the row's
-  `view`). A rule that is not in force for the target (its own, held by a locked rule of
-  the workspace; the workspace's, which the target's own decides) is kept, and says why.
+  The host rules in force for a target, on its Policy tab, one row each: the target rules,
+  changed here, and the workspace's, read here and changed on the workspace's page (the
+  row's `view`). A rule that is not in force for the target (a target rule, held by a
+  locked rule of the workspace; a workspace rule, which a target rule decides) is kept,
+  and says why.
   """
   def target_rules(%Policy.Effective{entries: entries} = effective, socket) do
     scope = socket.assigns.current_scope
@@ -1038,7 +1039,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   The toast of a host rule written on the page:
   `123.example is allowed for the workspace.`, `… is denied for acme/shop.`, or the
-  writer's own words where it has them.
+  writer's words where it has them.
   """
   def rule_written(%{assigns: %{writer: %{written: written}}}, action, host)
       when is_function(written, 2),
@@ -1401,7 +1402,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  @doc "The change in the page's own words, for the rules panel of a diff: `[{:add | :del | :ctx, rich}]`."
+  @doc "The change in the page's words, for the rules panel of a diff: `[{:add | :del | :ctx, rich}]`."
   def rule_lines(change) do
     diff = Policy.diff(change)
     rules = change.after["rules"] || []

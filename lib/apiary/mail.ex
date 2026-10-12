@@ -48,7 +48,7 @@ defmodule Apiary.Mail do
   processes it starts that keep it among their `$callers` (a `Task`, a LiveView under
   test), and for no other process, so tests that set different sources run at once
   (`async: true`). Under it, an email that is sent still goes through the application's
-  own adapter, the Swoosh test adapter in the tests.
+  configured adapter, the Swoosh test adapter in the tests.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext

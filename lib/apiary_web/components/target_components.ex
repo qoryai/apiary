@@ -6,8 +6,8 @@ defmodule ApiaryWeb.TargetComponents do
 
   **The notation.** A target is its path in mono; its system goes before it, faint, only
   where the same path is in more than one system of the workspace
-  (`Apiary.Runs.shared_paths/2`), its own header included. In words, in titles, labels
-  and toasts, it is named the same way (`target_label/3`).
+  (`Apiary.Runs.shared_paths/2`), the header of the target's page included. In words, in
+  titles, labels and toasts, it is named the same way (`target_label/3`).
 
   **The address** follows the notation (question 9, answer A): `target_path/5` is where a
   target's page is, its path alone, `/:org/:workspace/targets/acme/shop`, and its system
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.TargetComponents do
   A). `rest` is the segments of a tab after `-` (`["policy"]`, `["policy", "history"]`),
   none for its Overview. A nil system writes the path alone, whatever `shared` says.
 
-  The path's segments are the target's own, each escaped, unless one of them is empty,
+  The path's segments are the target path's, each escaped, unless one of them is empty,
   `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a segment of it
   is never read as the tab's separator or as a step up.
 
@@ -106,7 +106,7 @@ defmodule ApiaryWeb.TargetComponents do
   def shared?(_shared, _path), do: false
 
   @doc """
-  path_segments/1 is the segments a target's path takes in its page's URL: its own, or
+  path_segments/1 is the segments a target's path takes in its page's URL: its segments, or
   the path whole when a segment of it would be misread (`target_path/4`).
   """
   @spec path_segments(String.t()) :: [String.t()]

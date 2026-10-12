@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
   the organisation, its members and invitations, its workspaces, their access keys, nodes,
-  runs, retention, security policy, stored secrets and variables, the trail's own pruning
+  runs, retention, security policy, stored secrets and variables, the trail's pruning
   and the instance's commands. The page asks it after the edition's describer, and it says
   nil for an action it does not know, as it does for the edition's.
   """

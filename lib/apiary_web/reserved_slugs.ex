@@ -1,13 +1,13 @@
 defmodule ApiaryWeb.ReservedSlugs do
   @moduledoc """
   ReservedSlugs holds the names a slug can never be, beside the router whose paths
-  they are: the core's, and those the edition's own paths take
+  they are: the core's, and those the edition's paths take
   (`c:ApiaryWeb.Edition.reserved_slugs/0`).
 
   Every page of a workspace is under `/:org/:workspace/…` and every page of an
   organisation under `/:org/…`, so an organisation slug shares the first segment of the
-  path with the instance's own paths (`/users`, `/docs`, `/v1`, the static files, the
-  LiveView socket), and a workspace slug shares the second with the organisation's own
+  path with the instance's paths (`/users`, `/docs`, `/v1`, the static files, the
+  LiveView socket), and a workspace slug shares the second with the organisation's
   pages (`/:org/settings`, `/:org/audit-log`). `organisation/0` and `workspace/0` name
   them.
 

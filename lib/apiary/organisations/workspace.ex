@@ -85,7 +85,7 @@ defmodule Apiary.Organisations.Workspace do
 
   @doc """
   put_slug/2 gives a new workspace its slug, checked against the rules and the names of
-  the organisation's own pages; the unique index answers for a slug another workspace of
+  the organisation's pages; the unique index answers for a slug another workspace of
   the organisation holds.
   """
   def put_slug(changeset, slug) do

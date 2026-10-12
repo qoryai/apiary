@@ -193,7 +193,7 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
-  organisation's own or the person's, for the top bar's menu and the palette's actions, as
+  organisation's page or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
   then the core's: on a workspace's page a node, a node pool, with the `security` feature
   a network access rule, and with the `secrets` feature an integration, a secret and a
@@ -371,7 +371,7 @@ defmodule ApiaryWeb.Layouts do
   @doc """
   account_menu_entries/1 is what the account menu lists in `scope`, as
   `ApiaryWeb.Nav.Entry` values in their groups (`section`): `:account`, Settings (the
-  person's own, under "Your personal account") and Your organisations, then the
+  person's settings, under "Your personal account") and Your organisations, then the
   edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`, `:account` where it names no
   group); `:instance`, after the theme and before Log out, the edition's alone. The
   Instance level is not the person's: its Instance settings is the Qory Apiary menu's
@@ -446,7 +446,7 @@ defmodule ApiaryWeb.Layouts do
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
-  `ApiaryWeb.Extension`): the page beneath says the rest. A person's own pages carry none.
+  `ApiaryWeb.Extension`): the page beneath says the rest. A person's pages carry none.
 
   **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
@@ -456,7 +456,7 @@ defmodule ApiaryWeb.Layouts do
   button under the top bar that opens the same links in place (`#settings-disclosure`).
   A level with a single section gets none. The level leaves the page: a settings page's h1
   is its section, and the frame writes the breadcrumb's level and section segments, so the
-  page's `crumb` slots hold only what follows the section. A person's own page and an
+  page's `crumb` slots hold only what follows the section. A person's page and an
   Instance page keep the sidebar the person came from, the workspace the session
   remembers; with no workspace, the person's sidebar is their sections alone, as one
   column. `aria-current="page"` marks the exact page's entry alone; its parents carry
@@ -493,7 +493,7 @@ defmodule ApiaryWeb.Layouts do
   attr :notices, :boolean,
     default: nil,
     doc:
-      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of a workspace or an organisation, which passes `nav` or `place`, unless given; a person's own pages show none"
+      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of a workspace or an organisation, which passes `nav` or `place`, unless given; a person's pages show none"
 
   attr :counts, :map,
     default: nil,
@@ -514,23 +514,22 @@ defmodule ApiaryWeb.Layouts do
   attr :sections, :list,
     default: nil,
     doc:
-      "the sections of the level's settings the page is one of, as `ApiaryWeb.Nav.Entry` values in their order (`SettingsComponents.sections/2`, read when the page mounts): with two or more they open as the second column beside the sidebar, `section` current. A person's own pages and the Instance's need not pass theirs: the frame has them"
+      "the sections of the level's settings the page is one of, as `ApiaryWeb.Nav.Entry` values in their order (`SettingsComponents.sections/2`, read when the page mounts): with two or more they open as the second column beside the sidebar, `section` current. A person's pages and the Instance's need not pass theirs: the frame has them"
 
   attr :section, :atom,
     default: nil,
-    doc:
-      "the key of the page's own section in the second column; on a person's own page `nav` serves"
+    doc: "the key of the page's section in the second column; on a person's page `nav` serves"
 
   attr :section_path, :string,
     default: nil,
     doc:
-      "on a page under a section of a level's settings (one that adds `crumb` segments), where the breadcrumb's section segment leads: the section's own path unless given, such as a tab of it"
+      "on a page under a section of a level's settings (one that adds `crumb` segments), where the breadcrumb's section segment leads: the section's path unless given, such as a tab of it"
 
   attr :section_current, :string,
     default: nil,
     values: [nil, "page", "true"],
     doc:
-      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none, a tab of the section included"
+      "how the second column marks the page's section: `\"page\"` where the page is the section's page, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none, a tab of the section included"
 
   attr :narrowed, :map,
     default: nil,
@@ -543,7 +542,7 @@ defmodule ApiaryWeb.Layouts do
 
     attr :patch, :string,
       doc:
-        "where the segment leads within the page's own LiveView, as its tabs do; in place of `navigate`"
+        "where the segment leads within the page's LiveView, as its tabs do; in place of `navigate`"
   end
 
   slot :inner_block, required: true
@@ -2201,7 +2200,7 @@ defmodule ApiaryWeb.Layouts do
   (`c:ApiaryWeb.Edition.product_name/0`), opening upward from the sidebar's foot and
   downward from the bar when there is no sidebar. It holds what is about the product
   itself, not about the person: first, for whoever may open a section of the Instance
-  level (`instance_path`, its first), the instance's own settings, Instance settings, and
+  level (`instance_path`, its first), the instance's settings, Instance settings, and
   a rule; then the docs this instance serves, its changelog with the running version
   (`version`, none when nil) faint at the right, and the source. Folded, the sidebar shows
   the mark alone, still the menu's button.
@@ -2453,11 +2452,11 @@ defmodule ApiaryWeb.Layouts do
   switch_workspace_path/3 is the link of the breadcrumb's menus to `workspace` of
   `organisation`, from a page whose navigation entry is `nav`:
   `GET /:org/:workspace/switch/:section` (`ApiaryWeb.SwitchController`), which lands on
-  the reader's page there, given as `?page=` the path after the page's own
+  the reader's page there, given as `?page=` the path after the page's
   `/:org/:workspace`, which the menu adds when it opens; else on the section, else the
   overview. A link from an organisation's page, with no `page`, lands on the overview.
   Without a workspace, for an organisation the person reaches none of, the organisation's
-  own path, which says so.
+  path, which says so.
   """
   @spec switch_workspace_path(atom | nil, struct, struct | nil) :: String.t()
   def switch_workspace_path(_nav, organisation, nil), do: ~p"/#{organisation}"
@@ -2469,7 +2468,7 @@ defmodule ApiaryWeb.Layouts do
   switch_organisation_path/2 is the organisation menu's link to `organisation`, from a
   page whose navigation entry is `nav`: `GET /:org/-/switch/:section`, which lands in the
   workspace the person last used there (`Apiary.Organisations.resolve_scope/4`), at the
-  page as `switch_workspace_path/3`'s link does, `?page=` too; in the organisation's own
+  page as `switch_workspace_path/3`'s link does, `?page=` too; in the organisation's
   path where they reach no workspace.
   """
   @spec switch_organisation_path(atom | nil, struct) :: String.t()

@@ -4,7 +4,7 @@ defmodule ApiaryWeb.Access do
   the page mount only for a reader who may take `action` on the workspace of the page's
   path, or on the organisation for an organisation's page without one, and answers as a
   path that does not exist otherwise (`ApiaryWeb.NotFound`), as a slug the reader cannot
-  see does. The page's own links and buttons ask `Apiary.Access.can?/3` with the same
+  see does. The page's links and buttons ask `Apiary.Access.can?/3` with the same
   actions.
 
   It follows the path scope's hook, which has loaded the organisation and the workspace,
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.Access do
 
   A page that refuses anyone else a change, or offers them no way to make it, says who may
   with `who_may/3`: the core's sentence names the levels that may, and the edition may
-  say it in its own words.
+  say it instead.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext

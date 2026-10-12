@@ -754,6 +754,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The organisation slugs `admin`, `api` and `new`, and the workspace slugs `api` and `new`,
   are reserved; an organisation or workspace holding one moves to the first free slug of
   `-2`, `-3`, ….
+- The documentation, the service definition schema and `.env.example` name the thing
+  where they said "its own".
 <!-- feature: secrets -->
 - The stored secrets', variables' and integrations' actions (`secret.*`, `variable.*`,
   `connection.*`) belong to the `secrets` feature, and a feature is hidden from a person

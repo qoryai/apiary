@@ -5,7 +5,7 @@ defmodule Apiary.Job do
 
   Work Qory Apiary does outside a request runs as a job in Oban's durable queue on Postgres:
   a row that survives a restart, retried with backoff. A job module says `use Apiary.Job`
-  with the options of `Oban.Worker` and one of its own, `:scope`, and implements
+  with the options of `Oban.Worker` and one more, `:scope`, and implements
   `c:perform/2`:
 
       defmodule Apiary.Example.Job do
@@ -26,7 +26,7 @@ defmodule Apiary.Job do
 
     * `:workspace`, the default: `organisation_id` and `workspace_id`, both set.
     * `:organisation`: `organisation_id` set and `workspace_id` nil, for an organisation's
-      own work.
+      work.
     * `:instance`: neither, for work that is the instance's and no organisation's. It is
       chosen by name, never a job's default.
 
@@ -37,7 +37,7 @@ defmodule Apiary.Job do
 
   Work across the instance, such as a sweep, enqueues one job per workspace or organisation
   with `insert_per_workspace/3` or `insert_per_organisation/3`, so one workspace's failure
-  does not stop the others' and each has its own retries. A sweep's job is unique, so a
+  does not stop the others' and each has separate retries. A sweep's job is unique, so a
   sweep that stops half way can be run again and enqueues only what is missing, whenever
   it is run again. Its `unique:` takes one of two shapes, and a sweep refuses any other:
 
@@ -54,7 +54,7 @@ defmodule Apiary.Job do
   everything again on a run a minute later.
 
   A job that must not be enqueued twice for the same thing says so with Oban's `unique:`,
-  its `keys:` naming `organisation_id`, `workspace_id` and the job's own arguments that
+  its `keys:` naming `organisation_id`, `workspace_id` and the job's other arguments that
   say what it is for; never `user_id`, since who asked does not make it other work.
 
   ## Who acts
@@ -217,7 +217,7 @@ defmodule Apiary.Job do
   inserted; a job already enqueued is not counted, so a sweep run again after it stopped
   half way enqueues what is missing.
 
-  The workspaces are read a page at a time and each job is inserted on its own, in the
+  The workspaces are read a page at a time and each job is inserted separately, in the
   short transaction of Oban's unique insert: nothing is held open for the whole sweep.
   `opts` are the job's, and `oban:` the Oban instance, `Oban` by default; `page:`, a
   function of a cursor and a limit that pages the ids as

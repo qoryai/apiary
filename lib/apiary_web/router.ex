@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Router do
   @moduledoc """
   The core's router: the core's routes (`ApiaryWeb.Routes`) and nothing else, with, in
   development, the component storybook (`ApiaryWeb.Routes.storybook_routes/0`). It is the
-  router the endpoint dispatches to when no edition names its own
+  router the endpoint dispatches to when no edition names one
   (`ApiaryWeb.Edition.router/0`), and the one the core's `~p` are verified against, since
   every edition's router holds its routes.
   """

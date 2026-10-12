@@ -378,7 +378,7 @@ defmodule Apiary.Access do
      a part hidden from the scope's person, is `{:error, :not_found}`: a feature that is
      off or hidden is absent, not forbidden, and so is a hidden part.
   2. **The edition** (`c:Apiary.Edition.check/3`), asked once: it may answer, for what it
-     adds or narrows, or leave the answer to the steps below. The core's own edition
+     adds or narrows, or leave the answer to the steps below. The core's edition
      leaves every answer to them.
   3. **Where the subject is** (`check_place/3`). A subject of another organisation, or of
      another workspace than the scope's, is `{:error, :not_found}`, so the answer does not
@@ -397,9 +397,9 @@ defmodule Apiary.Access do
      the membership (`reload/2`), so a page opened before the marking acts on nothing
      after it.
   6. **Whose membership it is.** Anyone with a membership may leave the organisation,
-     `member.remove` of their own membership, whatever their level (`own/0`); the rule
+     `member.remove` of their membership, whatever their level (`own/0`); the rule
      that an organisation keeps an owner still holds (`Apiary.Organisations`). Nobody
-     suspends or activates their own membership.
+     suspends or activates their membership.
   7. **The role** of the one asking (`role/1`), in the role table below. An action the
      role does not hold is `{:error, :forbidden}`, and so is every action for a person
      without a membership where the scope is, unless the edition gives them a role there;
@@ -442,8 +442,8 @@ defmodule Apiary.Access do
   |---|---|---|
   #{Enum.map_join(@roles, "\n", fn {role, who} -> "| `#{role}` | #{who} | #{@actions |> Enum.filter(&(role in &1.roles)) |> Enum.map_join(", ", &"`#{&1.name}`")} |" end)}
 
-  Anyone with a membership, at any level, may also remove their own: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
-  Nobody suspends or activates their own membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
+  Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
+  Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
 
   An admin may what an owner may inside the organisation but change a person's level,
   lock, unlock, change or remove a locked rule of the security policy, and delete the
@@ -799,7 +799,7 @@ defmodule Apiary.Access do
 
   def instance_admin_membership?(_membership), do: false
 
-  @doc "own/0 is the actions anyone with a membership may take on their own membership."
+  @doc "own/0 is the actions anyone with a membership may take on their membership."
   @spec own() :: [action]
   def own, do: @own
 
@@ -813,7 +813,7 @@ defmodule Apiary.Access do
   @doc """
   acts_on?/2 says whether `role` takes the actions over people on a person at `level`: an
   owner on anyone, an admin on members only, any other role on nobody. For an edition's
-  action over people, which asks it as the core asks it of its own.
+  action over people, which asks it as the core asks it of the core's.
   """
   @spec acts_on?(role | nil, Membership.level()) :: boolean
   def acts_on?(role, level), do: level in Map.get(@acts_on, role, [])
@@ -1051,9 +1051,9 @@ defmodule Apiary.Access do
   allowed while it is written: the first rows of the lock order (docs/access.md). A
   change that must not happen under such a write locks these rows for update, and waits
   for the write, or comes first and is seen; a row that only names the organisation
-  takes `FOR KEY SHARE`, which does not wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  takes `FOR KEY SHARE`, which does not wait. Then the edition's rows for such a write (`c:Apiary.Edition.lock_rows/1`,
   `{:places, scope}`), before any workspace, membership or account. `reload/2` with
-  `lock: :share` takes them first; a write that locks a row of its own before it asks, as
+  `lock: :share` takes them first; a write that locks a row itself before it asks, as
   the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
@@ -1068,11 +1068,11 @@ defmodule Apiary.Access do
 
   @doc """
   lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
-  edition for no rows of its own: for a change whose one point asks the edition itself
+  edition for none of its rows: for a change whose one point asks the edition itself
   (`Apiary.Organisations.lock_people/1`). The scope's organisation, read as it is now
   without a lock, and those `c:Apiary.Edition.places_to_lock/1` names for it, are taken
   `FOR SHARE` in one statement (`Apiary.Organisations.lock_organisations/2`), under a
-  savepoint of its own. Then `places_to_lock/1` is asked again of the organisation held:
+  separate savepoint. Then `places_to_lock/1` is asked again of the organisation held:
   should it name one not taken, it lets go of what it took, rolling back to the
   savepoint, and takes the fresh set in one statement again, at most
   #{@place_attempts} times in all; so what it holds at the end was taken in one statement.

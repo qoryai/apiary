@@ -482,7 +482,7 @@ defmodule ApiaryWeb.CoreComponents do
   reads Copied once it is copied (`copy_button/1`, `done_tip`), and says until when the
   link works and that it is shown only now; then the `actions`, Done.
 
-  Only the link's hash is stored, so the page that shows it holds it in its own process
+  Only the link's hash is stored, so the page that shows it holds it in its process
   alone, and shows it until the reader leaves: never in a path, a flash or a title, and
   nothing logs it (a log line that would carry such a link has its token replaced,
   `Apiary.SecretLogFilter`). It takes the focus as it shows, so a screen reader reads it.
@@ -1424,7 +1424,7 @@ defmodule ApiaryWeb.CoreComponents do
   A column says what its cells are with `kind`: `"title"` for the row's name (14 px,
   medium, the text colour; a secondary word inside it takes `q-side`), `"hot"` for the
   one fact that needs someone, `"faint"` for what is tertiary, `"num"` for a count
-  (right-aligned, tabular). `from` hides a column below a width of the table's own
+  (right-aligned, tabular). `from` hides a column while the table is narrower than a width
   (`"sm"` 600 px, `"md"` 1000 px, `"lg"` 1300 px), so a table in a narrow pane reflows as
   on a narrow screen. A row's actions are its last column: a text action for the one
   thing a row's state asks for, and the rest in a `row_menu/1`; never a bordered button
@@ -1546,7 +1546,7 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   Renders a confirmation in place, where the act was asked for: never an overlay
   (`docs/ui.md`, Confirmations). A row of a table becomes one (`table/1`'s `confirming`
-  and `confirm` slot), and so does a page's own control, such as a danger zone's line.
+  and `confirm` slot), and so does a control elsewhere on a page, such as a danger zone's line.
 
   It reads as one line that wraps: the question in the text colour ("Delete
   FORGE_TOKEN?"), what happens in a muted sentence, then its button, red for what cannot
@@ -1653,7 +1653,7 @@ defmodule ApiaryWeb.CoreComponents do
   The ⋯ menu of a row: the actions a row offers beyond its one text action, under the
   `Menu` hook. The list floats in the top layer (`data-float`), so the table's scroll
   region never clips it. Its items are `menu_item/1`, with `menu_heading/1` and
-  `menu_divider/1` between them; an edition's slot may add items of its own. A menu
+  `menu_divider/1` between them; an edition's slot may add more items. A menu
   with no item shows no trigger.
 
       <.row_menu id={"key-\#{key.id}-menu"} label={gettext("Actions for %{label}", label: key.label)}>

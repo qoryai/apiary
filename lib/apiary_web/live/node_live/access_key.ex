@@ -7,7 +7,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   **The two ways.** A node gets a key one of two ways, and the tab offers both wherever it
   offers one, the node's kind deciding only the order and the primary button: a node, one
-  machine of its own, leads with **Connect with a command**, a pool with **Generate a
+  machine, leads with **Connect with a command**, a pool with **Generate a
   key**.
 
   - **Connect with a command** makes an enrolment code at once, in one click (`create_code`,
@@ -19,7 +19,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     to "… is connected", with the key and its fingerprint to check. A command that no longer
     works, expired or cancelled, says so. Where the server's address is a loopback one, a
     notice says machines can't reach it and names `PUBLIC_URL`.
-  - **Generate a key** (`…/access-key/generate`), a page of its own: the key's name alone,
+  - **Generate a key** (`…/access-key/generate`), a separate page: the key's name alone,
     prefilled with the node's. The browser makes the key (the `GenerateKey` hook,
     `assets/js/hooks/generate_key.js`) and sends Qory its public half alone, in the one
     event `generate_key` (`{"key" => %{"label", "public_key"}}`); the form has no field for
@@ -36,7 +36,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     public key the server stored (`data-public-key`), its ids the key's, so that a patch to
     another key's page replaces it; set the key's ID; set Qory Apiary's public key; point
     qory at Qory Apiary, the Forager file's address. The hook writes the secret into the
-    slot only beside its own public key, empties a slot that shows a secret for another
+    slot only beside the secret's public key, empties a slot that shows a secret for another
     public key, and empties it as the page goes. The server never has the secret: not in
     assigns, a render, a log line or the record. What the page says of the secret follows
     what the browser holds, not the server, whose render is the same whether the page made
@@ -64,8 +64,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     arrives), its key id with Copy, how and by whom it was added, where its secret is, its
     use where the record holds any, its fingerprint and its stored-secrets flag, and who
     revoked it and when. A key whose row does not match its integrity code says so: it
-    can't be used. Owners and admins revoke an active key, confirmed in place, at a path of
-    its own (`…/access-key/keys/:key_id/revoke`).
+    can't be used. Owners and admins revoke an active key, confirmed in place, at a separate
+    path (`…/access-key/keys/:key_id/revoke`).
   - **Add a key**, once the node holds an active key: the same two ways as rows, in the
     same order, for moving to a new key; at the limit, only the line that says to revoke
     one first, and a command still waiting, which can still be cancelled.
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     too: four numbered steps, point qory at Qory Apiary (the Forager file's address), set
     Qory Apiary's public key, set the key's ID (its value while one key is active, else a
     pointer to the key's card), keep the key's secret in a secret store (never shown).
-  - **Forager file for a key** (`…/access-key/keys/:key_id/forager-file`), a page of its own
+  - **Forager file for a key** (`…/access-key/keys/:key_id/forager-file`), a separate page
     for an active key, linked from its card for everyone who reads the node, since nothing
     on it is secret. What it says follows how the key came: a key connected with a command
     has the Forager file's `server` lines the command wrote, each marked as Qory Apiary's or
@@ -95,12 +95,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   the gateway; a pool's step adds that a starter that reaches Qory Apiary directly can
   leave `via` out.
 
-  **A gateway's tab.** A gateway's own tab has the same layout, in its own words: its key
+  **A gateway's tab.** A gateway's Access key tab has the same layout, in words for a gateway: its key
   enrols the gateway and registers no run.
 
-  **The server's part.** The address and `QORY_APIARY_PUBLIC_KEY`, the instance's own
+  **The server's part.** The address and `QORY_APIARY_PUBLIC_KEY`, the instance's
   signing key, are Qory Apiary's, the same for every machine connected to it, so the pages
-  name them as Qory Apiary's, apart from the key's own values, from
+  name them as Qory Apiary's, apart from the key's values, from
   `Apiary.AccessKeys.server_lines/2` and `server_variable/1`, which ask for no key.
 
   Leaving a page or a confirmation gives the focus back to the button that opened it, or,

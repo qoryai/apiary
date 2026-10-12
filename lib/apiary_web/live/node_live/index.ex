@@ -19,8 +19,8 @@ defmodule ApiaryWeb.NodeLive.Index do
   last), all in the URL.
 
   Owners and admins make a node, a node pool or a gateway here (`node.create`), a pool's
-  instance limit asked only of one who sets it (`node.set_limit`), each a page of its
-  own, `/nodes/new`, `/nodes/new-pool` and `/nodes/new-gateway`, on the pattern of a form
+  instance limit asked only of one who sets it (`node.set_limit`), each a separate
+  page, `/nodes/new`, `/nodes/new-pool` and `/nodes/new-gateway`, on the pattern of a form
   page (`docs/ui.md`, A form is a page): the breadcrumb `Nodes / New node`, the page's
   heading and one sentence, the form in the 720 px column, its button and Cancel back to
   the list (`ApiaryWeb.PageComponents.page_form/1`). A gateway's form asks its name and

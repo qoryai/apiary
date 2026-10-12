@@ -2,9 +2,9 @@ defmodule ApiaryWeb.Contract.AttachController do
   @moduledoc """
   A run's attach, as the gateway its run key names gives it: a signed
   `POST /v1/runs/<run_id>/attach` whose body is the attach (`Apiary.Runs.Attach`), under
-  the gateway's own access key. Reached only through `ApiaryWeb.Contract.SignedRequest`,
-  as the run endpoint is, under the run endpoint's own bucket of the key's rate limit,
-  which verifies the request, refuses what the contract refuses before the endpoint's own
+  the gateway's access key. Reached only through `ApiaryWeb.Contract.SignedRequest`,
+  as the run endpoint is, under the run endpoint's bucket of the key's rate limit,
+  which verifies the request, refuses what the contract refuses before the endpoint does
   (a content type other than `application/json`, a header sent twice, a request that does
   not verify, the key's rate, an instance id, a contract revision not served) and signs
   the answer. A key whose organisation is out of use verifies under no key, and is

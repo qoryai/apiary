@@ -4,7 +4,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
-  level has its own look (`docs/ui.md`, Lists): the summary is the largest type on the
+  level looks different (`docs/ui.md`, Lists): the summary is the largest type on the
   page, a block is one box with a band and its rows, a row is one line; no block grows
   with the data, each shows the few and links the many.
 

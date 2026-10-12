@@ -77,7 +77,7 @@ defmodule Apiary.Runs.Outcome do
   @doc "The most seconds an outcome's `time` may be from the server's clock."
   def max_skew_seconds, do: @max_skew_seconds
 
-  @doc "The reasons a starter may not give: Forager's own, and the old names it never writes."
+  @doc "The reasons a starter may not give: Forager's reasons, and the old names it never writes."
   def reserved_reasons, do: @reserved
 
   @doc "Reads an outcome's decoded body: see the moduledoc for the rules."

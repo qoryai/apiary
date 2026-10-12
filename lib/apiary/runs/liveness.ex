@@ -19,7 +19,7 @@ defmodule Apiary.Runs.Liveness do
     * a run through a gateway that its gateway has not attached is lost at the end of its
       attach window (`attach_by`), and not before, whatever its interval.
 
-  **A heartbeat's time.** A heartbeat counts as heard at its own `time`, corrected by the
+  **A heartbeat's time.** A heartbeat counts as heard at its `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
   (`heard_at/3`); the fold keeps that as the run's `last_heartbeat_at`. The offset,
   `clock_offset_ms`, is the smallest arrival less own time over the run's heartbeats
@@ -126,7 +126,7 @@ defmodule Apiary.Runs.Liveness do
 
   @doc """
   The clock offset an event gives, in milliseconds: when this server received it less its
-  own `time`, rounded down.
+  `time`, rounded down.
   """
   @spec clock_offset(DateTime.t(), DateTime.t()) :: integer()
   def clock_offset(%DateTime{} = received_at, %DateTime{} = time),

@@ -67,7 +67,7 @@ defmodule Apiary.Runs.Attach do
   attach itself is held to the answers above, an outcome's end included.
 
   The answer is the run configuration in force for the run's target, read under the
-  run's own place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
+  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
   `labels` and `about` of the run's registration added after its last member, each left
   out when the registration had none; and its digest, which is the configuration's, for
   `X-Qory-Run-Configuration` and `ETag`.

@@ -17,7 +17,7 @@ defmodule Apiary.Nodes do
 
   Making, changing and deleting a node, and clearing an instance, are owners' and admins'
   (`node.create`, `node.edit`, `node.delete`, `node.clear_instance`), and so is setting a
-  pool's instance limit, as it is made or after, an action of its own (`node.set_limit`)
+  pool's instance limit, as it is made or after, a separate action (`node.set_limit`)
   that an edition may keep from some who change the rest; everyone in the workspace reads
   them (`node.read`, asked by the pages). A node's access keys are
   `Apiary.AccessKeys`'s; deleting a node revokes them. Each change asks
@@ -200,7 +200,7 @@ defmodule Apiary.Nodes do
   list_serving_gateways/2 is the organisation-level gateways in use that may serve the
   scope's workspace (`Apiary.Gateways.may_serve?/2`): its organisation's, then those of
   the organisations that serve it, as `Apiary.Gateways.gateway_choices/1` orders them,
-  narrowed by `filters` as `list_nodes/2` narrows the workspace's own.
+  narrowed by `filters` as `list_nodes/2` narrows the workspace's nodes.
   """
   @spec list_serving_gateways(Scope.t(), filters) :: [Node.t()]
   def list_serving_gateways(%Scope{} = scope, filters \\ %{}) do
@@ -926,7 +926,7 @@ defmodule Apiary.Nodes do
   `{:error, reason}` (an error rolls the whole back); `{:error, :instance_limit}` when it
   is refused, after the transaction has rolled back with nothing stored, and then the
   node's `instance_limit_refused` is counted and `instance_limit_refused_at` set, in a
-  statement of its own. Raises inside a transaction: it is the store's transaction.
+  separate statement. Raises inside a transaction: it is the store's transaction.
 
   The receiving side calls it for a run's registration (`Apiary.Runs.Registration`).
   """
@@ -961,7 +961,7 @@ defmodule Apiary.Nodes do
   @doc """
   clear_instance/3 clears the instance `instance_id` of `node` (`node.clear_instance`,
   owners and admins), for one that stopped without saying so: its open runs on the node,
-  pending or running, are marked lost through the lost-run check's own update
+  pending or running, are marked lost through the lost-run check's update
   (`Apiary.Runs.Liveness.mark/2`), so they no longer count against the instance limit and
   another instance can start at once; its row, when there is one, records who cleared it
   and when; and the change is audited, with how many runs it marked. Once committed, each

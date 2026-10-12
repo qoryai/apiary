@@ -4,10 +4,10 @@ defmodule ApiaryWeb.Edition.Core do
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
   entry of the organisation menu or the workspace menu, account menu entry, Instance
   section, group of places or place, or settings tab beyond the core's, every slot empty,
-  no words for a reader, a refusal or actions beyond the core's, the core's own words for
+  no words for a reader, a refusal or actions beyond the core's, the core's words for
   who may take an action, no level above a workspace's policy to link to, no reserved
   name beyond the core's, the product named Qory Apiary, no Gettext backend beside
-  the core's own, its own sentences of whose workspaces an organisation's gateways reach,
+  the core's, the core's sentences of whose workspaces an organisation's gateways reach,
   and the core's words for who manages the nodes.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every

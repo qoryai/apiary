@@ -5,8 +5,8 @@ defmodule Apiary.Runs.Rebuild do
   record.
 
   Runs are walked by id, `batch:` runs at a time (default 100), so what reading one batch
-  costs is bounded by its runs, however many the table holds. Each run is rebuilt in its
-  own transactions by `Apiary.Runs.Projector.rebuild/1`, so the work can be stopped and
+  costs is bounded by its runs, however many the table holds. Each run is rebuilt in separate
+  transactions by `Apiary.Runs.Projector.rebuild/1`, so the work can be stopped and
   started again, and rebuilding a run twice gives the same rows. A run that fails is
   logged by its id, without any event data, and the walk goes on. Safe beside a running
   server: a rebuild takes the run's projection lock like any projection.

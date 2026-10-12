@@ -41,7 +41,7 @@ defmodule ApiaryWeb.Contract.EventsController do
 
   A workspace nobody has given a policy is served no policy: its runs' registrations are
   answered `{"version":1}`, the answers to their batches carry no
-  `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
+  `X-Qory-Run-Configuration`, and its machines keep their local policy. The digest the request
   reported is stored on the delivery and on the run. Errors are short JSON and never
   repeat anything sent. The body, the signature and the headers are never logged.
   """

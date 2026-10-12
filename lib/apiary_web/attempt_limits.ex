@@ -19,7 +19,7 @@ defmodule ApiaryWeb.AttemptLimits do
   itself. Every attempt counts, before anything is looked up: an address with an account
   and one without spend their buckets alike, and past them get the same answer,
   `message/0`, as soon. A log-in with a password spends its client's bucket first, and
-  the address's only when the client's allowed it: a client past its own limit spends no
+  the address's only when the client's allowed it: a client past its limit spends no
   one else's. The client address is `ApiaryWeb.Origin`'s, which reads `X-Forwarded-For`
   only from the proxies `TRUSTED_PROXIES` names; an IPv6 one counts with the rest of its
   /64, which one machine is commonly given whole.

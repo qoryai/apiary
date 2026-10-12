@@ -64,7 +64,7 @@ defmodule Apiary.Mail.TLS do
 
   @doc """
   verify_ip/3 is the `verify_fun` of `:ssl` for a relay that is the IP address `ip`: as
-  OTP's own, it fails every certificate the path validation fails and every unknown
+  OTP's default does, it fails every certificate the path validation fails and every unknown
   extension, and it passes the relay's certificate only where that names `ip`. `:ssl`
   checks no name itself where no server name is sent.
   """

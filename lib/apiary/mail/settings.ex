@@ -1,7 +1,7 @@
 defmodule Apiary.Mail.Settings do
   @moduledoc """
   The mail settings an instance admin saves in Instance settings › Mail, in the instance's
-  own row of `instance_settings` (`Apiary.Mail`): the relay, its port, TLS and username,
+  row of `instance_settings` (`Apiary.Mail`): the relay, its port, TLS and username,
   the sender, and the relay's password, kept encrypted (`Apiary.Mail.Password`) and never
   in this struct as plain text but in the changeset of a save, as the virtual field
   `smtp_password`, which `inspect/1` redacts.

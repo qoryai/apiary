@@ -14,7 +14,7 @@ defmodule Apiary.Release do
   scripted install, which claims a fresh instance, and for recovery when none is left.
   `password_link/1` prints a one-time link that sets an account's password.
   `accept_signing_key/0` records a new signing key's fingerprint, for the boot's key
-  check (`Apiary.KeyCheck`). An edition's own commands run the way these do (`run/1`).
+  check (`Apiary.KeyCheck`). An edition's commands run the way these do (`run/1`).
   """
   @app :apiary
 
@@ -138,7 +138,7 @@ defmodule Apiary.Release do
   @doc """
   Deletes the account whose email address is `email`, for whoever runs the instance, with
   shell access: `bin/apiary eval 'Apiary.Release.delete_account("dana@example.com")'`.
-  The same rules as a person deleting their own (`Apiary.Accounts.delete_user/2`): the
+  The same rules as a person deleting their account (`Apiary.Accounts.delete_user/2`): the
   account becomes a tombstone, its memberships end, each an entry in its organisation's
   trail, here by the instance; refused while the person is the only owner of an
   organisation, which the output names by id. Prints what it did and returns
@@ -359,7 +359,7 @@ defmodule Apiary.Release do
   Makes the instance admin whose email address is `email` a member of the instance's
   organisation, no admin any more:
   `bin/apiary eval 'Apiary.Release.revoke_instance_admin("dana@example.com")'`. They stay in
-  the instance's own organisation, where an owner removes them if they should leave; an
+  the instance's organisation, where an owner removes them if they should leave; an
   entry in its trail, `instance_admin.revoke`, by the instance
   (`Apiary.Organisations.revoke_instance_admin/2`). Refused for the last instance admin,
   `{:error, :last_owner}`: grant another first. Prints what it did and returns

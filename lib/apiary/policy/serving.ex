@@ -5,7 +5,7 @@ defmodule Apiary.Policy.Serving do
   strings, read by the workspace's domain (`Apiary.Lingo.Domain`) and compared to stored
   ones, nothing more. The key comes with its workspace, domain included, read in the one
   query that verifies it (`Apiary.AccessKeys.fetch_for_verification/1`), so naming the
-  target costs no read of its own.
+  target costs no separate read.
 
   A workspace serves a run configuration only once somebody has made its policy
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
@@ -17,13 +17,13 @@ defmodule Apiary.Policy.Serving do
 
   `fetch/2` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
   reload: the stored bytes and their digest for the target the labels name, the
-  baseline's for a target the workspace does not know or that has no rules of its own. A managed workspace always has a baseline: its first change
+  baseline's for a target the workspace does not know or that has no rules. A managed workspace always has a baseline: its first change
   rendered one, and nothing here renders anything.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
   reads and never renders: the digest in force for the run's target, after the read
   that says the workspace is managed. Each is a read of an index; a target without a
-  configuration of its own costs one more, for the baseline's. A run's target is known
+  separate configuration costs one more, for the baseline's. A run's target is known
   once its start is projected, which is after the receiver answers; until then it is
   taken from the start event when the batch holds it, and a run that names none yet (its
   batches held no start so far) is answered the digest it reported when that is one in force in the workspace, the

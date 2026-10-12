@@ -23,7 +23,7 @@ end
 # PUBLIC_URL is the address people and machines use to reach this instance: a scheme, a
 # host and, when it has one, a port, for example https://qory.example, or
 # http://localhost:4100 for a trial on one machine. Nothing after the host: Forager
-# takes a server URL without a path, and over plain http only to its own machine. The
+# takes a server URL without a path, and over plain http only to the machine it runs on. The
 # endpoint derives its `url` from it so `ApiaryWeb.Endpoint.url/0` returns exactly that
 # address in links, emails and the discovery document. Returns a keyword list for `url:`,
 # or raises with the reason.
@@ -248,9 +248,9 @@ if config_env() == :prod do
 
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
 
-  # APIARY_SIGNING_SECRET is the seed of the instance's own Ed25519 signing key
+  # APIARY_SIGNING_SECRET is the seed of the instance's Ed25519 signing key
   # (Apiary.SigningKey): it signs every answer to a gateway, and every machine pins its
-  # public key as apiary_public_key. It is a secret of its own, never derived from
+  # public key as apiary_public_key. It is a separate secret, never derived from
   # APIARY_ENCRYPTION_SECRET, and has no fallback. Changing it means pinning every machine
   # again, so keep it with APIARY_ENCRYPTION_SECRET. Refused here: the same bytes as
   # APIARY_ENCRYPTION_SECRET, and the dev and test seeds config/dev.exs and

@@ -13,7 +13,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
   and a workspace's gateways are its Nodes'.
 
   Owners and admins add a gateway here (`node.create`, asked of the organisation), on a
-  page of its own, `/gateways/new`, on the pattern of a form page (`docs/ui.md`, A form is
+  separate page, `/gateways/new`, on the pattern of a form page (`docs/ui.md`, A form is
   a page): its name and its URL. Adding one leads to its Access key tab, with a flash.
   Everyone in the organisation reads the list (`node.read`); a member sees it without the
   button, and the form's path refuses them. A gateway's page is `ApiaryWeb.NodeLive.Show`'s

@@ -9,12 +9,12 @@ defmodule Apiary.Policy.Entry do
       `locked`: its glyph is its source's;
     * `in_force`: whether the rule decides anything in this policy;
     * `overridden_by`: the entry that beat it when it is not in force (a rule of the level
-      above, a locked rule of the workspace, the target's own rule, a `*.` deny that
-      covers it, a `*.` allow above it), without its own `overridden_by` and `overrides`;
+      above, a locked rule of the workspace, a rule of the target, a `*.` deny that
+      covers it, a `*.` allow above it), without that entry's `overridden_by` and `overrides`;
     * `overrides`: the entries this one beat, likewise;
     * `reason`: why it is not in force when nothing beat it: `:only_above_allows`, a host
-      allow of the workspace or of a target where the level above allows only its own
-      hosts; `:out_of_grammar`, a rule stored before the grammar refused its host (an
+      allow of the workspace or of a target where the level above allows only the hosts on
+      its list; `:out_of_grammar`, a rule stored before the grammar refused its host (an
       address in a form other than `a.b.c.d`), which no document holds; nil otherwise.
   """
 

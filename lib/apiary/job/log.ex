@@ -17,7 +17,7 @@ defmodule Apiary.Job.Log do
       (`scope_gone`, `invalid_arguments`).
     * A plugin's failure is an error naming the plugin and the error's module.
 
-  Oban's own default logger is not used: it logs a job's arguments and the error's message.
+  Oban's default logger is not used: it logs a job's arguments and the error's message.
   """
 
   require Logger

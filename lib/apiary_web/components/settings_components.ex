@@ -1,15 +1,15 @@
 defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
-  The settings of an organisation and of a workspace, GitHub's way: each kind its own
-  place, reached from its own scope, one section a page with the list of that kind's
+  The settings of an organisation and of a workspace, GitHub's way: each kind in a
+  separate place, reached from its scope, one section a page with the list of that kind's
   sections beside it (`layout/1`), while the sidebar stays the scope's, its Organisation
   settings or Workspace settings the current entry. Configuration lives here, set up once and changed rarely; the sidebar
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
     it), People (its members, invitations and suspended memberships), Workspaces, then the
-    edition's sections (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the
-    edition's own. Its audit log is a record, not a setting: a page of the organisation's
+    edition's sections (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page the
+    edition serves. Its audit log is a record, not a setting: a page of the organisation's
     sidebar (`ApiaryWeb.ActivityLive`).
   - A workspace's (`/:org/:workspace/settings/…`), in the map's order: General (its name,
     and deleting it), People (who reaches it, and at what level: read here, managed in the
@@ -21,19 +21,19 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
 
-  A person's own settings are the person's pages: the frame lists them as the second
-  column beside the sidebar the person came from, or alone in the person's own sidebar
+  A person's settings are the person's pages: the frame lists them as the second
+  column beside the sidebar the person came from, or alone in the person's sidebar
   where they have no workspace (`ApiaryWeb.Layouts`). A list holds its kind's sections
   only: no other kind's, no link
   across. A section the reader may not open is absent from it, as a navigation entry is;
   its page still refuses them. What cannot be undone is never an entry: it is the danger
   zone at the end of its scope's General page, or of Account (`danger_zone/1`), and its
-  confirmation expands in place there, at a path of its own (`danger_action/1`).
+  confirmation expands in place there, at a separate path (`danger_action/1`).
 
   A page of the settings reads its sections when it mounts, and again when the reader's
   membership changes (`sections/2`), since an edition's section may ask the database
   whether it has anything for the reader, and passes them to the frame, which lists them
-  as its second column, its own marked current (`ApiaryWeb.Layouts.app/1`'s `sections`
+  as its second column, the page's marked current (`ApiaryWeb.Layouts.app/1`'s `sections`
   and `section`); a node's settings list theirs in the page (`layout/1`).
   """
   use ApiaryWeb, :html
@@ -151,7 +151,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   page_title/3 is the browser title of a page of a level's settings, the most specific
-  first: the page's own words (`parts`: the section, or a form's act and the section, or
+  first: the page's words (`parts`: the section, or a form's act and the section, or
   a tab and the section), the level's settings, then, for a workspace's, the workspace's
   name and the organisation's, and for an organisation's, the organisation's; the root
   layout adds Qory Apiary. So two workspaces' settings in two browser tabs never share a
@@ -185,10 +185,10 @@ defmodule ApiaryWeb.SettingsComponents do
   actions above its content. The section's title is the page's `<h1>`: the frame names the
   level, "Organisation settings" or "Workspace settings", in the second column's heading,
   the breadcrumb and the browser title. A node's settings, a tab of its page, sit under the
-  page's own `<h1>`, so there the section's title is an `<h2>`.
+  node page's `<h1>`, so there the section's title is an `<h2>`.
 
   The list of the sections is the frame's second column: the page passes its sections
-  (`sections/2`) to `ApiaryWeb.Layouts.app/1` as `sections`, its own as `section`, and
+  (`sections/2`) to `ApiaryWeb.Layouts.app/1` as `sections`, its section as `section`, and
   none here (`ApiaryWeb.PageComponents.settings_page/1` is this page without the list).
   Given `sections` here, as a node's settings do, the list is in the page, beside the
   section from 1024 px and a row of links above it below.
@@ -338,7 +338,7 @@ defmodule ApiaryWeb.SettingsComponents do
   section has one main action, and beside it one muted line of who may change it or what
   happens once it is saved.
 
-  On a page of its own that creates or changes one thing, Cancel follows the button: a link back to the list the page was opened from (`cancel`), by `patch`
+  On a separate page that creates or changes one thing, Cancel follows the button: a link back to the list the page was opened from (`cancel`), by `patch`
   within the list's LiveView and by `navigate` from another.
   """
   attr :id, :string, default: nil
@@ -380,7 +380,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   theme_picker/1 is Preferences' choice of the theme: Auto, Light and Dark as three radios,
-  each drawn as a small picture of the theme (the theme's own tokens, set by `data-theme`
+  each drawn as a small picture of the theme (the theme's tokens, set by `data-theme`
   on the picture) with its name. The theme is the account menu's, a reading preference of
   the browser that the root layout's script keeps: a choice is the same `phx:set-theme`
   event, and the script marks the one in force.
@@ -439,12 +439,12 @@ defmodule ApiaryWeb.SettingsComponents do
   it, its targets where the page counted them (`targets`), when it was created, and its ⋯
   menu, the edition's items (the `:workspace_actions`
   slot) then Delete…, for a reader who may delete a workspace (`may_delete`), which leads
-  to the deletion's own path, by `patch` from the
+  to the deletion's path, by `patch` from the
   organisation's settings and by `navigate` from an edition's page over the same list;
   there the workspace's row (`confirming`) is the deletion's confirmation in place of its
   cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then,
   for that reader, the note under the list, what a deletion does, or why the only
-  workspace is not deleted on its own. A ⋯ menu with no item is not shown.
+  workspace can't be deleted alone. A ⋯ menu with no item is not shown.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
@@ -565,7 +565,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   workspace_lost/0 is what deleting a workspace loses, the sentence of its confirmation,
-  from Workspaces and from the workspace's own danger zone.
+  from Workspaces and from the workspace's danger zone.
   """
   def workspace_lost do
     days = Apiary.Deletion.grace_days()
@@ -598,7 +598,7 @@ defmodule ApiaryWeb.SettingsComponents do
   danger_action/1 is one line of a danger zone: the act's title, one muted sentence of
   what it does and what cannot be undone, and at the right its button (`button`), a
   default one in the error colour. The confirmation is in place, never a dialog: the
-  button is a patch to the act's own path (`open_path`), and there (`open`) the line
+  button is a patch to the act's path (`open_path`), and there (`open`) the line
   expands under its sentence into the act's `deletion_confirm/1`, what is lost (`:lost`),
   the field asked to confirm (`:field`), such as the slug typed, then the question
   (`question`) with its red button, enabled once `ready`, and Cancel. The button above
@@ -618,7 +618,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   attr :disabled, :boolean, default: false, doc: "the button shown but not offered"
   attr :open, :boolean, default: false, doc: "whether the confirmation is expanded"
-  attr :open_path, :string, default: nil, doc: "the act's own path, which expands it"
+  attr :open_path, :string, default: nil, doc: "the act's path, which expands it"
   attr :close_path, :string, default: nil, doc: "the page's path, which folds it"
   attr :question, :string, default: nil, doc: "the confirmation's question, such as Delete Acme?"
   attr :form, :any, default: nil, doc: "the confirmation's form, where it asks for a field"
@@ -641,7 +641,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   slot :field, doc: "the field asked to confirm"
-  slot :action, doc: "a control of the page's own in place of the button"
+  slot :action, doc: "a control the page supplies in place of the button"
 
   def danger_action(assigns) do
     assigns =

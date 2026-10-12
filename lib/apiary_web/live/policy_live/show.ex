@@ -13,13 +13,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
   One LiveView, eight live actions, so a tab and the rule form are a patch: the form goes
   back to the list as it was left. A version and its export name
   themselves in the frame's breadcrumb, after Policy, and have no mode card: they state
-  their own mode. Filters, the opened change, the compared version and the export page
+  the version's mode. Filters, the opened change, the compared version and the export page
   are in the URL. The page calls `Apiary.Policy` and nothing under it, except the
   contract's grammar for the reading line. It follows `policy:<workspace>` and reads
   again at most once per 250 ms.
 
   A workspace nobody has changed yet is not served a policy by Qory: its machines use
-  their own until the first change here, and the page says so.
+  their local policy until the first change here, and the page says so.
 
   Where the edition keeps a level above the workspace's policy (`Apiary.Policy.Above`,
   the `above` of the effective policy), the page says so under its title, lists the
@@ -1219,7 +1219,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :heading, :string,
     default: "h1",
     values: ~w(h1 h2),
-    doc: "h2 under a page's own title, as a target's Policy tab and the Document tab have"
+    doc: "h2 under a page's title, as a target's Policy tab and the Document tab have"
 
   attr :away, :boolean,
     default: false,

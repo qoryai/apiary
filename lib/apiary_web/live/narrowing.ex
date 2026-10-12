@@ -78,7 +78,7 @@ defmodule ApiaryWeb.Narrowing do
 
   @doc """
   chosen/2 is the target the rail marks and the Filter menu holds: the one target read,
-  as its `{system, path}`, so a path given alone is its target's; else the filters' own.
+  as its `{system, path}`, so a path given alone is its target's; else the filters' target.
   """
   @spec chosen(t | nil, Filters.target()) :: Filters.target()
   def chosen(%{target: %Target{system: system, path: path}}, _target), do: {system, path}
@@ -101,7 +101,7 @@ defmodule ApiaryWeb.Narrowing do
   def shared?(_narrowing), do: false
 
   @doc """
-  The system the line writes before the path: the filters' own where the path is shared,
+  The system the line writes before the path: the filters' system where the path is shared,
   or where it names no target of the workspace (the address says which it meant); none
   otherwise, as the target is addressed.
   """

@@ -43,7 +43,7 @@ defmodule Apiary.Retention do
   marked for deletion (`Apiary.Deletion`), which is purged whole once its grace period is
   over. Every delete is one statement over
   at most `:batch` rows (2,000) of one run, found through the unique indexes on
-  `(run_id, sequence)`, in its own short transaction under the run's projection lock: no
+  `(run_id, sequence)`, in a separate short transaction under the run's projection lock: no
   statement scans `events`, and none holds a lock longer than its batch. The runs that are
   due are read through the partial indexes `runs_retention_events_index` and
   `runs_retention_log_index`, which a pruned run leaves. One night prunes at most

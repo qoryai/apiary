@@ -63,12 +63,12 @@ defmodule Apiary.Runs.Fold do
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
   applies it, so its state and reason are the run's, and the exit's stay beside them.
 
-  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
-  own, the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
-  counts as heard (`Apiary.Runs.Liveness.heard_at/3`): its own time corrected by the run's
+  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
+  the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
+  counts as heard (`Apiary.Runs.Liveness.heard_at/3`): the heartbeat's time corrected by the run's
   clock offset, within a tolerance, and never after this server received it, because the
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
-  The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
+  The offset, `clock_offset_ms`, is the smallest of arrival less the heartbeat's time over every
   heartbeat of the run, whatever its sequence: a minimum, so it is the same in any order.
   A session's heartbeats are on the session's machine's clock, which behind a separate
   gateway is not the gateway's. Whenever a pass folds a later heartbeat or
@@ -220,7 +220,7 @@ defmodule Apiary.Runs.Fold do
   `exit_state`, `exit_reason`, `exit_code`, `signal` and `exited_at`, and so does a
   refusal's `refused_at`.
 
-  The last step of every fold, and what the outcome's own write and a rebuild's reset
+  The last step of every fold, and what the outcome's write and a rebuild's reset
   apply, so the outcome decides whenever it arrives, before the exit or after it, and a
   rebuild gives the same run.
   """
