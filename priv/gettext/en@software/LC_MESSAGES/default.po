@@ -13220,11 +13220,6 @@ msgstr ""
 msgid "Where it is set up"
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "Where nodes reach the gateway: https://, a host, and a port if needed."
-msgstr ""
-
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Where the runs of this workspace reached out to, and what the policy made of it."
@@ -13238,6 +13233,16 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Where you are"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
