@@ -8,7 +8,7 @@ defmodule ApiaryWeb.Edition.Core do
   who may take an action, no level above a workspace's policy to link to, no reserved
   name beyond the core's, the product named Qory Apiary, no Gettext backend beside
   the core's, the core's sentences of whose workspaces an organisation's gateways reach,
-  and the core's words for who manages the nodes.
+  the core's words for who manages the nodes, and the core's sentences on People.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
@@ -104,6 +104,15 @@ defmodule ApiaryWeb.Edition.Core do
         organisation: organisation.name
       )
 
+  def gateway_reach_sentence(:empty, organisation),
+    do:
+      gettext("Add one so the nodes in %{organisation}'s workspaces can send runs through it.",
+        organisation: organisation.name
+      )
+
   @impl true
   def nodes_managed_by_sentence(_organisation), do: nil
+
+  @impl true
+  def people_sentence(_about, _scope, _bindings), do: nil
 end

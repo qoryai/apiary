@@ -46,6 +46,16 @@ defmodule ApiaryWeb.EditionTest do
     assert core.reserved_slugs() == %{}
     assert core.product_name() == "Qory Apiary"
     assert core.gettext_backend() == nil
+
+    for about <-
+          [:invite_by_mail, :invite_by_link] ++
+            for(l <- [:owner, :admin, :member], do: {:level_hint, l}),
+        do: assert(core.people_sentence(about, nil, %{}) == nil)
+  end
+
+  test "the core's web edition says the empty Gateways page's body in the core's words" do
+    assert Edition.Core.gateway_reach_sentence(:empty, %Organisation{name: "Acme"}) ==
+             "Add one so the nodes in Acme's workspaces can send runs through it."
   end
 
   test "an entry leads to its path, or where its function says" do

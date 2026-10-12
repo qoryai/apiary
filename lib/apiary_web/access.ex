@@ -93,4 +93,13 @@ defmodule ApiaryWeb.Access do
       do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
   end
+
+  @doc """
+  people_sentence/4 is a sentence of the People pages, `about` as
+  `c:ApiaryWeb.Edition.people_sentence/3` names it: the edition's words, given `bindings`,
+  or `default`, the core's.
+  """
+  @spec people_sentence(Apiary.Accounts.Scope.t(), term, map, String.t()) :: String.t()
+  def people_sentence(scope, about, bindings, default) when is_binary(default),
+    do: ApiaryWeb.Edition.people_sentence(about, scope, bindings) || default
 end
