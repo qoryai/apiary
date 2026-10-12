@@ -257,17 +257,28 @@ defmodule ApiaryWeb.NodesPartTest do
       refute render(view) =~ workspace_path(scope, "/nodes")
     end
 
-    test "the Runs list's empty state of a workspace with no node leads nowhere either",
+    test "the Runs list's empty state is the same whether the workspace has a node or none",
          %{conn: conn, scope: scope, node: node} do
+      hide([:nodes])
+
+      empty = fn ->
+        {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
+        render_async(view)
+        view |> element("#runs-page") |> render()
+      end
+
+      with_node = empty.()
+      hide([])
       {:ok, _} = Apiary.Nodes.delete_node(scope, node)
       hide([:nodes])
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
-      render_async(view)
+      without = empty.()
 
-      assert render(view) =~ "An owner or admin adds nodes."
-      refute has_element?(view, "#runs-go-to-nodes")
-      refute has_element?(view, "#runs-new-node")
-      refute render(view) =~ workspace_path(scope, "/nodes")
+      assert with_node == without
+      assert without =~ "A machine posts once it is connected to a node."
+      refute without =~ "An owner or admin adds nodes."
+      refute without =~ "runs-go-to-nodes"
+      refute without =~ "runs-new-node"
+      refute without =~ workspace_path(scope, "/nodes")
     end
   end
 

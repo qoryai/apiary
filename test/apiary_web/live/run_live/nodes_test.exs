@@ -339,6 +339,32 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     end
   end
 
+  describe "the Node column, with the nodes hidden from the reader" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+    end
+
+    test "is there where a run names a node, not where the workspace only has one", %{
+      conn: conn,
+      scope: scope
+    } do
+      bare = run_fixture(scope)
+      node = node_fixture(scope, name: "build-01")
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, row(bare))
+      refute has_element?(view, "#runs th.q-rl-c5")
+
+      run = node_run_fixture(node, "i_1")
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert has_element?(view, "#runs th.q-rl-c5", "Node")
+      assert has_element?(view, "#{row(run)} td.q-rl-c5", "build-01")
+      assert has_element?(view, "#{row(bare)} td.q-rl-c5", "n/a")
+    end
+  end
+
   describe "the nodes hidden while the list is open" do
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)

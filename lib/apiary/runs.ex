@@ -253,6 +253,22 @@ defmodule Apiary.Runs do
     do: Repo.aggregate(filtered(scope, filters, now), :count)
 
   @doc """
+  ran_on_a_node?/1 is whether a run of the scope's workspace names a node of it, as the
+  runs list's node filter offers them, deleted ones included: what a reader the nodes are
+  hidden from (`Apiary.Features.visible?/2`) may know of the workspace's nodes.
+  """
+  @spec ran_on_a_node?(Scope.t()) :: boolean
+  def ran_on_a_node?(%Scope{} = scope) do
+    Repo.exists?(
+      from [run: r] in in_scope(scope),
+        join: n in Node,
+        on:
+          n.id == r.node_id and n.organisation_id == r.organisation_id and
+            n.workspace_id == r.workspace_id
+    )
+  end
+
+  @doc """
   run_node/2 is the node in use of the scope's workspace that `value` names, by its public
   id or else by its name, among only the nodes a run of the workspace ran on: the nodes the
   runs list already names. `nil` for any other value. It is what a filter's node reads for
