@@ -81,6 +81,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           |> assign_form(Nodes.change_node(node))
           |> assign_activity()
           |> UserAuth.on_membership_change(&assign_may/1)
+          |> NodeComponents.leave_when_hidden(~w(save delete make_default clear_instance))
 
         if connected?(socket) do
           Nodes.subscribe(scope, place)
@@ -383,13 +384,14 @@ defmodule ApiaryWeb.NodeLive.Show do
          |> push_patch(to: node_path(socket, :overview))}
 
       {:error, :not_found} ->
-        if NodeComponents.find_node(scope, socket.assigns.place, node.public_id),
-          do:
-            {:noreply,
-             socket
-             |> put_flash(:error, gettext("This node has no such instance."))
-             |> push_patch(to: node_path(socket, :overview))},
-          else: {:noreply, gone(socket)}
+        if NodeComponents.find_node(scope, socket.assigns.place, node.public_id) &&
+             not NodeComponents.hidden_now?(scope),
+           do:
+             {:noreply,
+              socket
+              |> put_flash(:error, gettext("This node has no such instance."))
+              |> push_patch(to: node_path(socket, :overview))},
+           else: {:noreply, gone(socket)}
 
       {:error, :forbidden} ->
         {:noreply,
@@ -490,13 +492,19 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # The node was deleted, or left the reader's reach, since the page opened.
+  # The node was deleted, or left the reader's reach, since the page opened. Where the
+  # nodes were hidden from the reader meanwhile, the page leaves as it does once it hears
+  # of it, and says that instead.
   defp gone(socket) do
-    socket
-    |> put_flash(:error, gettext("This node is gone: it was deleted."))
-    |> push_navigate(
-      to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
-    )
+    if NodeComponents.hidden_now?(socket.assigns.current_scope) do
+      UserAuth.reload_scope(socket)
+    else
+      socket
+      |> put_flash(:error, gettext("This node is gone: it was deleted."))
+      |> push_navigate(
+        to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
+      )
+    end
   end
 
   # A save refused: one who still changes the node was refused its limit alone, and reads

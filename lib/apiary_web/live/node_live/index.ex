@@ -65,7 +65,9 @@ defmodule ApiaryWeb.NodeLive.Index do
     end
 
     {:ok,
-     assign(socket,
+     socket
+     |> NodeComponents.leave_when_hidden(["create"])
+     |> assign(
        page_title: gettext("Nodes"),
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),

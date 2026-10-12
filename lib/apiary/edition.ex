@@ -149,8 +149,8 @@ defmodule Apiary.Edition do
 
   @doc """
   Asked by `Apiary.Access.check/3` once the action's feature, or its part, is on and shown
-  to the scope, and by `Apiary.Access.check_role_and_place/3`, which does not ask that, and
-  before the place is checked: `:continue` leaves the answer to the core, anything else
+  to the scope, and by `Apiary.Access.check_code_maker/2`, which asks only that it is on,
+  and before the place is checked: `:continue` leaves the answer to the core, anything else
   is the answer. An answer that must come after the place's, as the core's would, asks
   `Apiary.Access.check_place/3` first. `scope` is nil when no one in particular asks, as
   `Apiary.Access.refused_on?/2` does: `{:error, :forbidden}` then says the subject refuses

@@ -733,7 +733,7 @@ defmodule Apiary.AccessKeys do
     with {:ok, scope} <-
            Apiary.Organisations.job_scope(code.organisation_id, code.workspace_id, maker_id),
          %Scope{user: %Apiary.Accounts.User{}} = scope <- Access.reload(scope, lock: :share),
-         :ok <- Access.check_role_and_place(scope, :"access_key.create_code", code) do
+         :ok <- Access.check_code_maker(scope, code) do
       :ok
     else
       _refused -> {:error, :unauthorized}

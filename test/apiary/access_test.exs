@@ -577,9 +577,11 @@ defmodule Apiary.AccessTest do
       assert Access.check(key_scope, :"run_configuration.fetch", owner.workspace) == :ok
     end
 
-    test "check_role_and_place/3 answers as check/3 but never asks what is shown" do
+    test "check_code_maker/2 answers as check/3 but never asks what is shown" do
       %{scope: owner} = sign_up_fixture()
       member = member_fixture(owner, :member).scope
+      node = node_fixture(owner)
+      {:ok, code, _secret} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
       :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
 
@@ -587,21 +589,10 @@ defmodule Apiary.AccessTest do
       member = Access.reload(member)
       other = Access.reload(sign_up_fixture().scope)
 
-      assert Access.check(owner, :"access_key.create_code", owner.workspace) ==
-               {:error, :not_found}
-
-      assert Access.check_role_and_place(owner, :"access_key.create_code", owner.workspace) ==
-               :ok
-
-      assert Access.check_role_and_place(member, :"access_key.create_code", owner.workspace) ==
-               {:error, :forbidden}
-
-      assert Access.check_role_and_place(other, :"access_key.create_code", owner.workspace) ==
-               {:error, :not_found}
-
-      assert_raise ArgumentError, fn ->
-        Access.check_role_and_place(owner, :"no.such_action", owner.workspace)
-      end
+      assert Access.check(owner, :"access_key.create_code", code) == {:error, :not_found}
+      assert Access.check_code_maker(owner, code) == :ok
+      assert Access.check_code_maker(member, code) == {:error, :forbidden}
+      assert Access.check_code_maker(other, code) == {:error, :not_found}
     end
 
     test "the registry takes the part of no feature only on an action of no feature" do
@@ -618,6 +609,12 @@ defmodule Apiary.AccessTest do
           Access.build_registry([action.(opts)], %{})
         end
       end
+
+      assert_raise ArgumentError,
+                   ~r/report.read belongs to the part :"observability.terminal", no part an action of no feature may have/,
+                   fn ->
+                     Access.build_registry([action.(part: :"observability.terminal")], %{})
+                   end
     end
   end
 

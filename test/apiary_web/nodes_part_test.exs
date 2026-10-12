@@ -123,6 +123,93 @@ defmodule ApiaryWeb.NodesPartTest do
       refute Apiary.Repo.get_by(Apiary.Nodes.Node, name: "build-02")
     end
 
+    test "a node's settings saved, or a key revoked, after the nodes were hidden leaves and says so",
+         %{conn: conn, scope: scope, node: node, key: key} do
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes/#{node.public_id}/settings"))
+      hide([:nodes])
+      view |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
+
+      {to, flash} = assert_redirect(view)
+      assert to == ~p"/#{scope.organisation}"
+      assert flash["error"] == "That page is no longer shown in #{scope.organisation.name}."
+      assert Apiary.Repo.get!(Apiary.Nodes.Node, node.id).name == "build-01"
+
+      hide([])
+
+      path =
+        workspace_path(scope, "/nodes/#{node.public_id}/access-key/keys/#{key.key_id}/revoke")
+
+      {:ok, view, _html} = live(conn, path)
+      hide([:nodes])
+      view |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+
+      {to, flash} = assert_redirect(view)
+      assert to == ~p"/#{scope.organisation}"
+      assert flash["error"] == "That page is no longer shown in #{scope.organisation.name}."
+      assert is_nil(Apiary.Repo.get!(Apiary.AccessKeys.AccessKey, key.id).revoked_at)
+    end
+
+    test "every act asked after the nodes were hidden changes nothing, and the page leaves",
+         %{conn: conn, scope: scope, node: node, key: key, code: code, gateway: gateway} do
+      instance_fixture(node, instance_id: "i_1")
+      node_page = &workspace_path(scope, "/nodes/#{node.public_id}" <> &1)
+      gateway_page = ~p"/#{scope.organisation}/gateways/#{gateway.public_id}"
+      tab = node_page.("/access-key")
+
+      acts = [
+        {node_page.("/settings"), :submit, "save", %{"node" => %{"name" => "build-02"}}},
+        {node_page.("/settings/delete"), :click, "delete", %{}},
+        {gateway_page, :click, "make_default", %{}},
+        {node_page.("/instances/i_1/clear"), :click, "clear_instance", %{}},
+        {tab, :click, "create_code", %{}},
+        {tab <> "/keys/#{key.key_id}/revoke", :click, "revoke", %{}},
+        {tab <> "/codes/#{code.id}/revoke", :click, "revoke_code", %{}},
+        {tab <> "/generate", :click, "generate_key", %{}},
+        {workspace_path(scope, "/nodes/new-pool"), :submit, "create",
+         %{"node" => %{"name" => "spot-runners", "kind" => "pool"}}},
+        {~p"/#{scope.organisation}/gateways/new", :submit, "create",
+         %{"node" => %{"name" => "edge-2"}}}
+      ]
+
+      for {path, how, event, params} <- acts do
+        hide([])
+        {:ok, view, _html} = live(conn, path)
+        hide([:nodes])
+
+        case how do
+          :submit -> render_submit(view, event, params)
+          :click -> render_click(view, event, params)
+        end
+
+        {to, flash} = assert_redirect(view)
+        assert to == ~p"/#{scope.organisation}", "#{event} on #{path}"
+
+        assert flash["error"] == "That page is no longer shown in #{scope.organisation.name}.",
+               "#{event} on #{path}"
+      end
+
+      assert %{name: "build-01", deleted_at: nil} = Apiary.Repo.get!(Apiary.Nodes.Node, node.id)
+      assert is_nil(Apiary.Repo.get!(Apiary.AccessKeys.AccessKey, key.id).revoked_at)
+
+      assert %{cancelled_at: nil} =
+               Apiary.Repo.get!(Apiary.AccessKeys.EnrolmentCode, code.id)
+
+      refute Apiary.Repo.get_by(Apiary.Nodes.Node, name: "spot-runners")
+      refute Apiary.Repo.get_by(Apiary.Nodes.Node, name: "edge-2")
+      assert Apiary.Repo.aggregate(Apiary.AccessKeys.EnrolmentCode, :count) == 1
+    end
+
+    test "a node deleted, or its settings saved, while shown still says the node is gone",
+         %{conn: conn, scope: scope, node: node} do
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes/#{node.public_id}/settings"))
+      {:ok, _} = Apiary.Nodes.delete_node(scope, node)
+      view |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
+
+      {to, flash} = assert_redirect(view)
+      assert to == workspace_path(scope, "/nodes")
+      assert flash["error"] == "This node is gone: it was deleted."
+    end
+
     test "an open page whose nodes are still shown stays", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, workspace_path(scope, "/nodes"))
       hide([:"observability.terminal"])

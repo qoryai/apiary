@@ -38,6 +38,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
     {:ok,
      socket
      |> assign(may_create: Access.can?(scope, :"node.create", scope.organisation), form: nil)
+     |> NodeComponents.leave_when_hidden(["create"])
      |> load()}
   end
 

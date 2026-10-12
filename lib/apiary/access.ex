@@ -511,7 +511,7 @@ defmodule Apiary.Access do
   access keys and the gateways, their pages and every action on them, while the nodes keep
   working. What a node is served asks an access key's scope or the instance's, which is
   never asked what is hidden; an enrolment code's maker approves the key it brings by
-  their role and place alone (`check_role_and_place/3`).
+  their role and place, whatever is hidden from them (`check_code_maker/2`).
   """
 
   @typedoc "An action, one of `actions/0`."
@@ -627,8 +627,7 @@ defmodule Apiary.Access do
     for %Action{feature: feature, part: part} = action <- actions,
         not is_nil(part),
         part not in parts or Features.feature_of(part) != feature do
-      raise ArgumentError,
-            "#{action.name} belongs to the part #{inspect(part)}, no part of #{inspect(feature)}"
+      raise ArgumentError, part_refused(action.name, part, feature)
     end
 
     %{
@@ -640,6 +639,12 @@ defmodule Apiary.Access do
         end)
     }
   end
+
+  defp part_refused(name, part, nil),
+    do: "#{name} belongs to the part #{inspect(part)}, no part an action of no feature may have"
+
+  defp part_refused(name, part, feature),
+    do: "#{name} belongs to the part #{inspect(part)}, no part of #{inspect(feature)}"
 
   ## Levels and reach
 
@@ -884,20 +889,29 @@ defmodule Apiary.Access do
     # (`Apiary.Features.visible?/2`).
     if not is_nil(shown_as) and not Features.visible?(scope, shown_as),
       do: {:error, :not_found},
-      else: check_role_and_place(scope, action, subject)
+      else: role_and_place(scope, action, subject)
   end
 
   @doc """
-  check_role_and_place/3 is the answer of `check/3` without asking what the scope's
-  person is shown (step 1 of the moduledoc): the edition's answer, the place's and the
-  role's, steps 2 to 8. For a context function that asks whether a person's role still
-  backs what they approved, whatever the edition hides from them, as an enrolment code's
-  maker approves the key it brings (`Apiary.AccessKeys.enrol/2`).
+  check_code_maker/2 is whether the maker of an enrolment code, `scope`, the person who
+  made `code`, may still make it, so that the code still approves the key it brings
+  (`Apiary.AccessKeys.enrol/2`): the answer of `check/3` for `access_key.create_code` on
+  the code, but that step 1 asks only whether its part, `nodes`, is on for the instance
+  (`Apiary.Features.visible?/2` with no scope), which a part of no feature always is,
+  never what the edition hides from the person; then the edition's answer, the place's
+  and the role's, steps 2 to 8. For that one question alone: every other asks `check/3`.
   """
-  @spec check_role_and_place(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
-  def check_role_and_place(scope, action, subject) do
-    %Action{} = action(action)
+  @spec check_code_maker(Scope.t(), struct()) :: :ok | {:error, reason}
+  def check_code_maker(scope, code) do
+    action = :"access_key.create_code"
+    shown_as = shown_as(action)
 
+    if not is_nil(shown_as) and not Features.visible?(nil, shown_as),
+      do: {:error, :not_found},
+      else: role_and_place(scope, action, code)
+  end
+
+  defp role_and_place(scope, action, subject) do
     case Edition.check(scope, action, subject) do
       :continue -> check_in_place(scope, action, subject)
       answer -> answer

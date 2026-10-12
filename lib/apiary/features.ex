@@ -198,8 +198,8 @@ defmodule Apiary.Features do
     part_of = part_of ++ Enum.map(@featureless, &{&1, nil})
     parts = Enum.map(part_of, &elem(&1, 0))
 
-    # A part's name is its feature's and its own, or one of no feature: listed twice, or
-    # the name of a feature, it would answer for two things.
+    # A part's name is its feature's name and the part's, or the name of a part of no
+    # feature: listed twice, or the name of a feature, it would answer for two things.
     case (parts -- Enum.uniq(parts)) ++ Enum.filter(parts, &(&1 in names)) do
       [] -> :ok
       twice -> raise ArgumentError, "a part is listed once, got twice: #{names(Enum.uniq(twice))}"

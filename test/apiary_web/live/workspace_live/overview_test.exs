@@ -707,6 +707,28 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, ".q-onb-after") =~ "fill in once the first run lands"
     end
 
+    test "Get the command asked anyway reads the scope again, and says nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      node_fixture(scope, name: "build-01")
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      view = open(conn, scope)
+      assert has_element?(view, "#onboarding-enrol")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      render_click(view, "get_command", %{})
+
+      refute has_element?(view, "#onboarding")
+      refute render(view) =~ "Only owners and admins connect a node."
+      refute render(view) =~ "Nothing was changed."
+      assert Apiary.Repo.aggregate(Apiary.AccessKeys.EnrolmentCode, :count) == 0
+
+      # Asked again, with the box gone, nothing is said either.
+      render_click(view, "get_command", %{})
+      refute render(view) =~ "Only owners and admins connect a node."
+    end
+
     test "shown again, the box is back", %{conn: conn, scope: scope} do
       :ok = Apiary.EditionStubs.HidesNamed.put([])
       view = open(conn, scope)

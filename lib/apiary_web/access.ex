@@ -65,6 +65,24 @@ defmodule ApiaryWeb.Access do
   def who_may(edition, scope, about, default) when is_atom(about) and is_binary(default),
     do: edition.who_may_sentence(about, scope) || default
 
+  @doc """
+  view_action/1 is the action a LiveView mounts on (`on_mount({ApiaryWeb.Access, action})`),
+  or nil for one that asks none, read from its mount hooks: for an answer about a page that
+  is not open, as where a switch of workspace lands (`ApiaryWeb.SwitchController`).
+  """
+  @spec view_action(module) :: atom | nil
+  def view_action(view) do
+    with true <- Code.ensure_loaded?(view) and function_exported?(view, :__live__, 0),
+         %{lifecycle: %{mount: hooks}} <- view.__live__() do
+      Enum.find_value(hooks, fn
+        %{id: {__MODULE__, action}} when is_atom(action) -> action
+        _hook -> nil
+      end)
+    else
+      _no_live_view -> nil
+    end
+  end
+
   @doc false
   # The action is kept with the page, so that an open page whose action's feature or part
   # is hidden from the reader meanwhile leaves (`ApiaryWeb.UserAuth.reload_scope/1`).

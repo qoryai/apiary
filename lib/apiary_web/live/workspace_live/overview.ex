@@ -62,6 +62,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.Runs.Run
 
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.{NodeComponents, UserAuth}
   alias ApiaryWeb.PolicyLive.Common
   alias Phoenix.LiveView.JS
 
@@ -902,21 +903,29 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
          |> put_flash(:error, only_admins_connect(scope))}
 
       {:error, _reason} ->
-        {:noreply,
-         socket
-         |> assign(:onboarding, read_onboarding(scope))
-         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+        if NodeComponents.hidden_now?(scope),
+          do: {:noreply, UserAuth.reload_scope(socket)},
+          else:
+            {:noreply,
+             socket
+             |> assign(:onboarding, read_onboarding(scope))
+             |> put_flash(:error, gettext("Nothing was changed. Try again."))}
     end
   end
 
   # Get the command where the box offers none: a second click once the command shows, or
   # an event the page never sent. One who may connect a node is shown the page as it is;
-  # anyone else is refused, and nothing is made.
+  # one the nodes are hidden from has the page's scope read again, which takes the box
+  # away, as a change they hear of does (`ApiaryWeb.UserAuth.reload_scope/1`); anyone else
+  # is refused, and nothing is made.
   def handle_event("get_command", _params, socket) do
-    if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
-      do: {:noreply, socket},
-      else:
-        {:noreply, put_flash(socket, :error, only_admins_connect(socket.assigns.current_scope))}
+    scope = socket.assigns.current_scope
+
+    cond do
+      Common.may?(scope, :"access_key.create_code") -> {:noreply, socket}
+      NodeComponents.hidden_now?(scope) -> {:noreply, UserAuth.reload_scope(socket)}
+      true -> {:noreply, put_flash(socket, :error, only_admins_connect(scope))}
+    end
   end
 
   ## The one-click allow of a denied destination: the panel of a connection row's Allow,

@@ -203,6 +203,24 @@ defmodule ApiaryWeb.SwitchControllerTest do
       assert switch(conn, place, "runs", "/runs") == workspace_path(place, "/runs")
     end
 
+    test "with the nodes hidden: a page of them leads to the section's page, or the overview",
+         %{conn: conn, place: place} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      assert switch(conn, place, "runs", "/nodes/new") == workspace_path(place, "/nodes/new")
+      assert switch(conn, place, "nodes", "/nodes/nd_1") == workspace_path(place, "/nodes")
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+
+      for page <- ["/nodes", "/nodes/new", "/nodes/nd_1", "/nodes/nd_1/access-key"] do
+        assert switch(conn, place, "runs", page) == workspace_path(place, "/runs"), page
+        assert switch(conn, place, "nodes", page) == workspace_path(place), page
+      end
+
+      assert switch(conn, place, "runs", "/runs") == workspace_path(place, "/runs")
+    end
+
     @tag with_features: Apiary.Features.all()
     test "with the record alone shown: a secret's page leads to the settings, the policy's to the overview",
          %{conn: conn, place: place} do

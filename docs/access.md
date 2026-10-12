@@ -311,36 +311,38 @@ who may act cannot leave.
 
 The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
 scope, and a feature that is off, or hidden from the scope's person, is
-`{:error, :not_found}`: absent, as a feature the instance lacks. A feature is hidden from a
-person where a feature it needs is, directly or through another: hiding `security` hides
-`secrets`, and hiding `observability` hides both (`Apiary.Features.hidden_of/1` adds them).
-The stored secrets', the variables' and the integrations' actions (`secret.*`, `variable.*`,
-`connection.*`) belong to `secrets`, the feature of their pages. An action that belongs to
-a part of its feature is asked of the part, which is hidden where it or its feature is:
-`run.read_log` belongs to `observability.terminal`, the run's Terminal, so an edition that
-hides it hides the run's whole log from that person, the Terminal tab, the log's address
-with every stream and the download, the ⋯ menu's Raw log and Download log, the runs list's
-preview of the last lines and the terminal's size on Details, and the sentences on session
-events name no terminal; the rest of the run is as it is. A part may belong to no feature,
-and is then hidden where it is named alone: the `node.*` and `access_key.*` actions belong
-to `nodes`, so an edition that hides it hides from that person the nodes, the node pools,
-their access keys and the gateways: their pages, which answer not found and leave once
-open, their entries in the navigation, New and the palette, the Overview's box for a
-workspace with no run yet and its link to the nodes page, Go to nodes on the empty Runs list,
-and the links to a node's page from the runs list, the run preview and the run page,
-which name the node without a link. The Activity filter leaves out their actions, and
-their entries keep their labels. The nodes keep working: what a node is served never asks
-what is hidden, and an enrolment code's maker approves the key it brings by their role and
-place alone (`Apiary.Access.check_role_and_place/3`), so their codes keep working where
-the nodes are hidden from them. What a person is not shown in an
-organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), the one answer
-([architecture.md](architecture.md), Features): in the core, nothing. A person's scope
-carries it (`hidden`): `Apiary.Organisations.resolve_scope/4` loads it with the
-organisation and the workspace, and `reload/2` asks it again after the edition's reload,
-under the edition's locks, so what an edition changes of it under the organisation's lock
-is waited for, or seen. An access key, and its scope, and the instance answer as the
-instance: `run.post_events` and `run_configuration.fetch` follow the instance's features
-alone.
+`{:error, :not_found}`: absent, as a feature the instance lacks. A feature is hidden from a person
+where a feature it needs is, directly or through another: hiding `security` hides
+`secrets`, and hiding `observability` hides both (`Apiary.Features.hidden_of/1` adds
+them). The stored secrets', the variables' and the integrations' actions (`secret.*`,
+`variable.*`, `connection.*`) belong to `secrets`, the feature of their pages. An action
+that belongs to a part of its feature is asked of the part, which is hidden where it or
+its feature is: `run.read_log` belongs to `observability.terminal`, the run's Terminal, so
+an edition that hides it hides the run's whole log from that person, the Terminal tab, the
+log's address with every stream and the download, the ⋯ menu's Raw log and Download log,
+the runs list's preview of the last lines and the terminal's size on Details, and the
+sentences on session events name no terminal; the rest of the run is as it is. A part may
+belong to no feature, and is then hidden where it is named alone: the `node.*` and
+`access_key.*` actions belong to `nodes`, so an edition that hides it hides from that
+person the nodes, the node pools, their access keys and the gateways: their pages, which
+answer not found and leave once open, their entries in the navigation, New and the
+palette, the Overview's box for a workspace with no run yet and its link to the nodes
+page, Go to nodes on the empty Runs list, and the links to a node's page from the runs
+list, the run preview and the run page, which name the node without a link. The Activity
+filter leaves out their actions, and their entries keep their labels. The nodes keep
+working: what a node is served never asks what is hidden, and an enrolment code's maker
+approves the key it brings by their role and place, whatever is hidden from them
+(`Apiary.Access.check_code_maker/2`), so their codes keep working where the nodes are
+hidden from them. A page of the nodes open when they are hidden leaves, and so does one
+whose act is asked after they are hidden; a switch of workspace never lands on one. What a
+person is not shown in an organisation is the edition's answer
+(`c:Apiary.Edition.hidden/1`), the one answer ([architecture.md](architecture.md),
+Features): in the core, nothing. A person's scope carries it (`hidden`):
+`Apiary.Organisations.resolve_scope/4` loads it with the organisation and the workspace,
+and `reload/2` asks it again after the edition's reload, under the edition's locks, so
+what an edition changes of it under the organisation's lock is waited for, or seen. An
+access key, and its scope, and the instance answer as the instance: `run.post_events` and
+`run_configuration.fetch` follow the instance's features alone.
 
 ## Who asks
 
