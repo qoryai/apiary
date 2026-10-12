@@ -794,7 +794,10 @@ defmodule ApiaryWeb.RunLive.Show do
   defp details_rail(assigns) do
     assigns =
       assign(assigns,
-        labels: ordered_labels(assigns.run.labels, assigns.scope.workspace)
+        labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
+        # The terminal's size is the log's, as the Terminal tab is.
+        terminal_size:
+          assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
       )
 
     ~H"""
@@ -922,14 +925,8 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">{@run.dir || na()}</dd>
           <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
-          <%!-- The terminal's size is the log's, as the Terminal tab is. --%>
-          <dt :if={@run.terminal_cols && Access.can?(@scope, :"run.read_log", @run)}>
-            {gettext("Terminal")}
-          </dt>
-          <dd
-            :if={@run.terminal_cols && Access.can?(@scope, :"run.read_log", @run)}
-            class="font-mono"
-          >
+          <dt :if={@terminal_size}>{gettext("Terminal")}</dt>
+          <dd :if={@terminal_size} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
           <dt>{gettext("Forager")}</dt>
