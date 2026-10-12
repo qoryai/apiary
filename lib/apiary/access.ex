@@ -349,7 +349,7 @@ defmodule Apiary.Access do
     nothing.
   - **`action`** is a verb of the engine, one of `actions/0`, each an
     `Apiary.Access.Action` named once, with the feature it belongs to, and the part of it
-    where it belongs to one, in the table below; an edition adds its own
+    where it belongs to one, in the table below; an edition adds further actions
     (`c:Apiary.Edition.actions/0`). The registry of both is built once, checked, and kept
     for the node: an action named twice, a role or a feature nobody knows, or a part that
     is not one of its feature's, stops it. An action that is in neither raises

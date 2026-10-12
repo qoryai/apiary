@@ -951,6 +951,61 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#terminal[phx-hook='Terminal']")
     end
 
+    test "an open Terminal tab leaves for the Timeline once the part is hidden from the reader",
+         %{conn: conn, scope: scope} do
+      run = projected(scope, record())
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      {:ok, lv, _html} = live(conn, path <> "/terminal")
+      assert has_element?(lv, "#terminal[data-src]")
+
+      # Hidden meanwhile: the page hears of it as of any change to the reader's place.
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      send(lv.pid, {:membership_changed, :hidden})
+
+      assert_patch(lv, path)
+      refute has_element?(lv, "#terminal")
+      refute has_element?(lv, "#run-tab-terminal")
+      refute render(lv) =~ "/runs/#{run.run_id}/log"
+      assert has_element?(lv, "#run-tab-timeline[aria-current]")
+    end
+
+    test "the live follow of an open Terminal tab reads no more once the reader may not read the log",
+         %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(%{"interactive" => true}), time: now},
+          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
+        ])
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      project_more(run, [
+        {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
+      ])
+
+      flush(lv)
+      assert_push_event(lv, "log_advanced", %{through: 3})
+
+      # The edition refuses the log from now on, with no change to the reader's place to
+      # load the scope again: the page asks at each read, and pushes nothing.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLog)
+
+      project_more(run, [
+        {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("three\n")}, time: now}
+      ])
+
+      flush(lv)
+      refute_push_event(lv, "log_advanced", %{})
+      refute has_element?(lv, "#terminal")
+    end
+
     test "Details names no terminal size", %{conn: conn, scope: scope} do
       run =
         projected(scope, [

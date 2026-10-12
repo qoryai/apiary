@@ -30,10 +30,11 @@ defmodule Apiary.Accounts.Scope do
   What a scope may do is `Apiary.Access`'s answer.
 
   `hidden` is what the person is not shown in the organisation, the features and the parts
-  of them the edition hides from them (`c:Apiary.Edition.hidden/1`, as `Apiary.Features.hidden_of/1` keeps it),
-  read when the scope was loaded or read again (`Apiary.Access.reload/2`), which
-  `Apiary.Features.visible?/2` answers from; nil, nothing hidden, where nothing loaded it,
-  as in an access key's scope and the instance's jobs, which then answer as the instance.
+  of them the edition hides from them (`c:Apiary.Edition.hidden/1`, as
+  `Apiary.Features.hidden_of/1` keeps it), read when the scope was loaded or read again
+  (`Apiary.Access.reload/2`), which `Apiary.Features.visible?/2` answers from; nil, nothing
+  hidden, where nothing loaded it, as in an access key's scope and the instance's jobs,
+  which then answer as the instance.
 
   `origin` says from where the caller acts, for the audit trail (`Apiary.Audit`): the
   address and the client of the request, `%{remote_ip:, user_agent:}`, which the web side

@@ -356,7 +356,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
             <% @tab == :timeline -> %>
               <.timeline_tab {assigns} />
-            <% @tab == :terminal -> %>
+            <% @tab == :terminal and Access.can?(@current_scope, :"run.read_log", @run) -> %>
               <.terminal_tab scope={@current_scope} run={@run} log={@log} />
             <% @tab == :connections -> %>
               <.connections_tab
@@ -372,6 +372,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 in_force={@in_force}
                 security={@security}
               />
+            <% true -> %>
           <% end %>
         </div>
       </div>
@@ -1265,7 +1266,8 @@ defmodule ApiaryWeb.RunLive.Show do
        win_last: nil
      )
      |> stream_configure(:items, dom_id: & &1.id)
-     |> stream(:items, [])}
+     |> stream(:items, [])
+     |> ApiaryWeb.UserAuth.on_membership_change(&leave_terminal/1)}
   end
 
   @impl true
@@ -1301,6 +1303,19 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp refuse_terminal(_socket), do: :ok
+
+  # An open Terminal tab whose reader may no longer read the log, once the scope is loaded
+  # again after a change of their memberships, or of what the edition hides from them,
+  # leaves for the run's Timeline.
+  defp leave_terminal(%{assigns: %{tab: :terminal, run: %Run{} = run}} = socket) do
+    scope = socket.assigns.current_scope
+
+    if Access.can?(scope, :"run.read_log", run),
+      do: socket,
+      else: push_patch(socket, to: tab_path(scope, run, :timeline), replace: true)
+  end
+
+  defp leave_terminal(socket), do: socket
 
   # The run row is read for the first, static render too: it says found or not found, and
   # gives the header. Everything else waits for the socket, so that opening the page reads
