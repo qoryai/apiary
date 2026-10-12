@@ -554,9 +554,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - Signing in, and a workspace's link on the organisation's Overview, lead to the first
   page of the workspace the person is shown.
 - The workspace Overview's "more" link under To review goes to the page for the first
-  item it leaves out: Network access for a denial, the runs for a lost, quiet or late run,
-  the Policy page for a policy item and the nodes page for an idle key, each where the
-  reader may read it.
+  item it leaves out: Network access for a denial, the runs for a lost or quiet run, or
+  one behind the policy in force, the Policy page for a policy item and the nodes page for
+  an idle key, each where the reader may read it.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
   With denials) with their counts, one filter field that takes qualifiers (`repo:`,
   `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:`) and free text
@@ -581,9 +581,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - A connection the wall refused says so in words on the run page and on Network access:
   "Forager refuses a host that is neither a name nor an address in canonical form, in
   either mode." and "The wall refuses link-local addresses and the machine's addresses,
-  in either mode."; in a table, its tooltip says what refused it. The Policy page's hint
-  for a rule written as an address says the wall refuses link-local addresses whatever
-  the policy says, and the machine's addresses unless the policy allows that host by name.
+  in either mode."; in a table, its tooltip says what refused it. The rule form's error
+  for an address written with a port, a path or brackets says the wall refuses link-local
+  addresses whatever the policy says, and the machine's addresses unless the policy
+  allows that host by name.
 - A connection whose host is longer than 255 bytes keeps the host's first 252 bytes, cut
   on a character boundary, followed by "…", and no rule can be made from it. It shows so
   on the connection's row, in the run's timeline, on the Overview and in the list of what
@@ -708,8 +709,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   a download key, for an edition that needs one, which the stack keeps as a separate
   secret, deleted with the stack; and the domain, with a Route 53 hosted zone, or without
   one, the stack then making the certificate and waiting for its validation record. Rules
-  refuse an edition that needs a download key without one, and, in the test copy, a test
-  image without the download key.
+  refuse an edition that needs a download key without one, and an edition built for
+  X86_64 alone on ARM64, and, in the test copy, a test image without the download key.
   Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack turns it on once the service is first healthy, so a create that fails

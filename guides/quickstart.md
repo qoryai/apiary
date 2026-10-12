@@ -183,8 +183,8 @@ their keys](nodes.md) says more about both ways, node pools and revoking a key.
 ## 6. First run
 
 The machine holds an access key now, so every run there needs a wall: the agent runs in a
-container whose one way out is the gateway's proxy. Without a wall, `qory run` refuses the run,
-`key_needs_wall`, as [An access key needs a
+container whose one way out is the gateway's proxy. Without a wall, `qory run` refuses
+the run, `key_needs_wall`, as [An access key needs a
 wall](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#an-access-key-needs-a-wall)
 says. A wall needs Docker and an image that holds the agent.
 
@@ -206,8 +206,8 @@ wall:
 ```
 
 On a Mac, `wall.helper` is the Linux `qory` of the same release, from its archive
-`qory_0.13.0_linux_arm64` or `qory_0.13.0_linux_amd64`, matching Docker's architecture; on
-Linux, leave the line out ([The
+`qory_0.13.0_linux_arm64.tar.gz` or `qory_0.13.0_linux_amd64.tar.gz`, matching Docker's
+architecture; on Linux, leave the line out ([The
 wall](https://github.com/qoryai/qory/blob/v0.13.0/docs/run.md#the-wall)).
 `qory image check` checks the image against what the wall needs of it.
 
