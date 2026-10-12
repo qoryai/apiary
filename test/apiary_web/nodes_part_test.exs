@@ -223,7 +223,9 @@ defmodule ApiaryWeb.NodesPartTest do
          %{conn: conn, scope: scope} do
       hide([:nodes])
 
+      # The empty state renders once the page's runs are loaded (`start_async`).
       {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
+      render_async(view)
       assert has_element?(view, "#sidebar a#nav-runs")
       refute has_element?(view, "#nav-nodes")
       refute has_element?(view, "#new-menu-node")
@@ -284,7 +286,9 @@ defmodule ApiaryWeb.NodesPartTest do
         assert {:ok, _view, _html} = live(conn, path)
       end
 
+      # The empty state renders once the page's runs are loaded (`start_async`).
       {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
+      render_async(view)
       assert has_element?(view, "#nav-nodes")
       assert has_element?(view, "#new-menu-node")
       assert has_element?(view, "#new-menu-node_pool")
