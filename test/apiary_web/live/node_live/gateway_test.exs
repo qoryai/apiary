@@ -640,9 +640,10 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
 
       assert text(lv, "#node-configure-steps-1") =~
-               "Point qory at Qory Apiary, through edge-02. In the Forager file. It is required: without it, qory ignores the three variables below. via sends every request to Qory Apiary through edge-02."
+               "Point the node at Qory Apiary, through edge-02. In the Forager file. It is required: without it, qory ignores the three variables below. via sends every request to Qory Apiary through edge-02."
 
       refute text(lv, "#node-configure-steps-1") =~ "A starter"
+      refute render(lv) =~ "Point qory at"
 
       assert String.trim(lines(lv, "#node-configure-yaml")) ==
                "gateway:\n  server:\n    url: #{server}\n    via:\n      url: https://edge-02.example.com"
@@ -675,22 +676,27 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/generated"))
 
       assert text(lv, "#key-generated-steps-4") =~
-               "Point qory at Qory Apiary, through edge-01. In the Forager file. It is required: without it, qory ignores the three variables. " <>
+               "Point the node pool at Qory Apiary, through edge-01. In the Forager file. It is required: without it, qory ignores the three variables. " <>
                  note
 
       assert String.trim(lines(lv, "#key-generated-yaml")) == address
+      refute render(lv) =~ "Point qory at"
 
       {:ok, lv, _html} =
         live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/forager-file"))
 
       assert text(lv, "#key-forager-file-steps-4") =~
-               "Point qory at Qory Apiary, through edge-01."
+               "Point the node pool at Qory Apiary, through edge-01."
 
       assert text(lv, "#key-forager-file-via") == note
 
       assert String.trim(lines(lv, "#key-forager-file-url")) == address
 
       {:ok, lv, _html} = live(conn, node_path(scope, pool, "/access-key"))
+
+      assert text(lv, "#node-configure-steps-1") =~
+               "Point the node pool at Qory Apiary, through edge-01."
+
       assert text(lv, "#node-configure-steps-1") =~ "below. " <> note
       assert String.trim(lines(lv, "#node-configure-yaml")) == address
     end
@@ -749,17 +755,25 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         assert text(lv, "#code-issued-header-description") =~
                  "The command connects #{node.name} by itself: it makes the machine's key there,"
 
+        # The step names what is pointed: a gateway, through nothing, or the node.
+        title =
+          if node.kind == :gateway,
+            do: "Point the gateway at Qory Apiary.",
+            else: "Point the node at Qory Apiary."
+
         %{access_key: key} = browser_key_fixture(scope, node)
         {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
-        assert text(lv, "#node-configure-steps-1") =~ "Point qory at Qory Apiary. In the"
+        assert text(lv, "#node-configure-steps-1") =~ title <> " In the"
         refute text(lv, "#node-configure-steps-1") =~ "via"
+        refute render(lv) =~ "Point qory at"
         assert String.trim(lines(lv, "#node-configure-yaml")) == address
 
         {:ok, lv, _html} =
           live(conn, node_path(scope, node, "/access-key/keys/#{key.key_id}/forager-file"))
 
-        assert text(lv, "#key-forager-file-steps-4") =~ "Point qory at Qory Apiary."
+        assert text(lv, "#key-forager-file-steps-4") =~ title
         refute text(lv, "#key-forager-file-steps-4") =~ "through"
+        refute render(lv) =~ "Point qory at"
 
         refute has_element?(lv, "#key-forager-file-via")
         assert String.trim(lines(lv, "#key-forager-file-url")) == address

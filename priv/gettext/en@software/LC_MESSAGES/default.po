@@ -9400,12 +9400,27 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Point qory at Qory Apiary, through %{gateway}."
+msgid "Point the gateway at Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Point qory at Qory Apiary."
+msgid "Point the node at Qory Apiary, through %{gateway}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Point the node at Qory Apiary."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Point the node pool at Qory Apiary, through %{gateway}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Point the node pool at Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
