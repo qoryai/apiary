@@ -10,8 +10,10 @@ defmodule ApiaryWeb.InstanceLive.General do
   (`Apiary.ProductName.edition_name/0`) as its placeholder, and saving it empty sets no
   name: the defaults show again (`Apiary.ProductName`). The name's rules are an
   organisation's name's, and its errors show under the field. Saving reloads the page, so
-  its browser title and its sidebar show the new name at once; every other page and email
-  shows it from then on.
+  its browser title and its sidebar show the new name at once. Every page opened after it
+  shows the new name, and every email sent after it, except where a live page opened
+  before sends one: that page, and its emails, keep the name it read as it connected until
+  the person leaves it (`Apiary.ProductName.hold/0`).
   """
   use ApiaryWeb, :live_view
 

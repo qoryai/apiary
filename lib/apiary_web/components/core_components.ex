@@ -43,9 +43,9 @@ defmodule ApiaryWeb.CoreComponents do
   The mark with the product's name on this instance (`name`, by default
   `Apiary.ProductName.name/0`: the name an instance admin set, else Qory Apiary), as a
   link to `/`; a name too long for its place ends in an ellipsis and shows whole on hover.
-  `xs` is the sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
-  the `/users/organisations` top bar and the auth header strip (22 px mark),
-  `lg` the auth panel (28 px mark).
+  `sm` is the auth layout's header strip (22 px mark), `lg` its brand panel (28 px mark)
+  (`ApiaryWeb.Layouts.auth/1`); `xs` is an 18 px mark with a grey wordmark, a signature
+  rather than a heading.
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"

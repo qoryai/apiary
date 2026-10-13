@@ -44,7 +44,7 @@ config :apiary, Apiary.Mail, smtp_adapter: Swoosh.Adapters.Test
 config :apiary, Apiary.Mail.Cache, enabled: false
 
 # Nor of the product's name an instance admin sets (`Apiary.ProductName`): each test reads
-# it from its own sandbox.
+# it inside the test's database sandbox.
 config :apiary, Apiary.ProductName.Cache, enabled: false
 
 # Disable swoosh api client as it is only required for production adapters

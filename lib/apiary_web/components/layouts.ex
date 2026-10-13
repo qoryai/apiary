@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Layouts do
   @moduledoc """
   Layouts: the application shell (`app/1`) for signed-in pages and the split
-  view (`auth/1`) for log-in, registration, invitation and welcome pages. The
-  product on every surface is Qory Apiary.
+  view (`auth/1`) for log-in, registration, invitation and welcome pages. Both name the
+  product as this instance does (`Apiary.ProductName`).
 
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the

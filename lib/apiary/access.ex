@@ -496,8 +496,9 @@ defmodule Apiary.Access do
   (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
   either: the context function asks `instance_admin?/1`. So do saving the mail settings
   and turning them on (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
-  `instance.mail_on`, `Apiary.Mail.turn_on/2`), which also ask for a recent sign-in. So
-  does setting the product's name (`instance.rename`, `Apiary.ProductName.rename/2`).
+  `instance.mail_on`, `Apiary.Mail.turn_on/2`), which also ask for a recent sign-in, and
+  setting the product's name (`instance.rename`, `Apiary.ProductName.rename/2`), which
+  asks for none.
 
   ## Features
 
