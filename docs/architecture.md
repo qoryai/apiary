@@ -22,9 +22,17 @@ beside it:
   and activating a member, renaming, and the instance's organisation and its owners,
   the instance admins. A membership is the organisation's and carries the level (owner,
   admin or member); in the core every level reaches every workspace (Memberships, below).
-- `Apiary.Instance`: the instance's setting for how many invitations an organisation
-  sends a day (`INVITATIONS_PER_DAY`), read and checked at boot. Who may sign up after
-  the first sign-up is the edition's to say (`c:Apiary.Edition.sign_up_open?/0`).
+- `Apiary.Instance`: how many invitations an organisation sends a day
+  (`INVITATIONS_PER_DAY`, checked at boot, or the value saved in Instance settings ›
+  Configuration). Who may sign up after the first sign-up is the edition's to say
+  (`c:Apiary.Edition.sign_up_open?/0`).
+- `Apiary.InstanceConfig`: the instance's settings an instance admin changes in Instance
+  settings › Configuration, in the row of `instance_settings`: the audit trail's two
+  periods, the grace period and the invitations a day. Each is the variable of the
+  server's environment when set and not empty, else the value saved, else the default.
+  Each node keeps a copy (`Apiary.InstanceConfig.Cache`), read again over `Apiary.PubSub`
+  after each save; a node that misses the broadcast keeps the values it had until it
+  starts again.
 - `Apiary.Features`: the instance's features, switched at launch (`QORY_FEATURES`), and
   what a person is shown of them (Features, below).
 - `Apiary.Deletion`: deleting a workspace or an organisation, which marks it, and the
@@ -493,10 +501,11 @@ events the gateway posts are the record and leave no entry.
 - **Append-only.** Nothing in the application changes an entry, and nothing deletes one
   but the purge of a deleted workspace or organisation, whose entries go with it
   (Deletion, below), and the trail's retention: `Audit.PruneJob`, one per organisation a
-  day, deletes what is older than `AUDIT_RETENTION_DAYS` and records that it did, as the
-  instance. The address and the client are personal data kept for less,
-  `AUDIT_ADDRESS_RETENTION_DAYS` (90 days unless set, never longer than the trail): the
-  same job clears them from older entries and leaves the rest. Clearing writes no entry,
+  day, deletes what is older than the trail's period (`AUDIT_RETENTION_DAYS`, or Instance
+  settings › Configuration) and records that it did, as the instance. The address and the
+  client are personal data kept for less, the address period,
+  `AUDIT_ADDRESS_RETENTION_DAYS` or Instance settings › Configuration (90 days unless set,
+  never longer than the trail): the same job clears them from older entries and leaves the rest. Clearing writes no entry,
   since it comes every day to an organisation used every day; a deletion's
   entry counts what it cleared beside.
 - **Organisation-keyed** like every table: `organisation_id` always, `workspace_id` for a
@@ -538,7 +547,9 @@ but a person's account, which leaves a tombstone.
 - **A workspace or an organisation is marked first** (`Apiary.Deletion`): an owner or an
   admin deletes a workspace, an owner the organisation, typing its slug, and
   `deletion_marked_at`, `deletion_marked_by_id`, `purge_trigger` and `purge_after` are
-  set, `DELETION_GRACE_DAYS` (30 unless set, 1 to 90) from now. From then it is gone from
+  set, the grace period from now (`DELETION_GRACE_DAYS`, or Instance settings ›
+  Configuration; 30 days unless set, 1 to 90), which a later change of the period leaves
+  as it is. From then it is gone from
   every scope the product loads (`Apiary.Organisations.resolve_scope/4`,
   `list_memberships/1`, `list_workspaces/1`) and every sweep over the organisations and
   workspaces in use, its URLs answer not found, `Apiary.Access` answers not found to

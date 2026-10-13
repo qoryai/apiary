@@ -314,9 +314,13 @@ replaces the navigation it is in.
   edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
   core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
   recent sign-in, and Configuration (`/instance/configuration`,
-  `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration), read only: what
-  whoever runs Qory Apiary set, as Qory Apiary read it when it started, each value with
-  the setting it is set by. Anyone else is answered not found. The sidebar stays the one
+  `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration): the instance's
+  settings. Retention, Deletion and Invitations are each a form with its Save: a field for
+  each setting the environment does not set, with its unit and the hint "Empty: …", saved
+  after a recent sign-in with a toast; a setting the environment sets shows read only,
+  with the variable that sets it. Then the edition's parts
+  (`c:ApiaryWeb.Edition.configuration_parts/1`). Features, Integrations and Run pruning
+  are read only. Anyone else is answered not found. The sidebar stays the one
   the person came from, and the sections are the second column (`#instance-tabs`,
   `instance-tab-<key>`).
 

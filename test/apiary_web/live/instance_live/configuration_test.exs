@@ -467,22 +467,14 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, "#breadcrumb a[href='#{path}']", "Instance settings")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Configuration")
 
-      case ApiaryWeb.Layouts.instance_sections(scope) do
-        [_configuration] ->
-          # The core's Instance has the one section: no second column, and so no
-          # disclosure, and a phone's bar keeps both segments.
-          refute has_element?(view, "#instance-tabs")
-          refute has_element?(view, "#settings-disclosure")
-          refute has_element?(view, "#breadcrumb li.q-trail-lead")
+      # The core's General and Mail, and an edition's sections, before it: the second
+      # column lists Configuration too, the current page.
+      assert [_, _ | _] = ApiaryWeb.Layouts.instance_sections(scope)
 
-        [_, _ | _] ->
-          # An edition's sections before it: the second column lists Configuration too,
-          # the current page.
-          assert has_element?(
-                   view,
-                   "#instance-tabs a#instance-tab-configuration[href='/instance/configuration'][aria-current='page']"
-                 )
-      end
+      assert has_element?(
+               view,
+               "#instance-tabs a#instance-tab-configuration[href='/instance/configuration'][aria-current='page']"
+             )
 
       # The sidebar's lists open whole: nothing carries a target here.
       assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")
