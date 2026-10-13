@@ -1367,10 +1367,42 @@ defmodule ApiaryWeb.RunComponentsTest do
              ]
     end
 
-    test "a host no rule can name says so to a screen reader alone; a rule just added, nothing" do
+    test "the wall's lock says why by the wall's reason; any other reason, that no rule changes it" do
+      for {connection, tip} <- [
+            {%{rule: "wall:own-address"},
+             "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."},
+            {%{rule: "wall:host-form"},
+             "The wall refused this, not a rule: no rule can name a host written this way."},
+            {%{rule: "api.example.com", path_rule: "wall:ambiguous-path"},
+             "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."},
+            # As a row of the workspace's page names them.
+            {%{last_rule: "wall:own-address"},
+             "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."},
+            {%{last_rule: "", last_path_rule: "wall:ambiguous-path"},
+             "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."},
+            {%{rule: "wall:another-reason"}, "No rule changes this"}
+          ] do
+        doc =
+          acts(%{rule_option: :wall, connection: Map.put(connection, :host, "api.example.com")})
+
+        assert slots(doc) == ["r-lock", :gap]
+        assert attr_of(doc, "span#r-lock.q-act-lock.tooltip", "tabindex") == ["0"]
+        assert attr_of(doc, "#r-lock", "data-tip") == [tip]
+        assert attr_of(doc, "span#r-lock[role=img]", "aria-label") == [tip]
+      end
+    end
+
+    test "a host no rule can name is a lock the keyboard reaches, its hint why; a rule just added, nothing" do
       doc = acts(%{rule_option: :unnameable})
-      assert slots(doc) == [:gap, :gap]
-      assert doc |> LazyHTML.query(".sr-only") |> LazyHTML.text() == "No rule can name this host"
+      assert slots(doc) == ["r-lock", :gap]
+      assert attr_of(doc, "span#r-lock.q-act-lock.tooltip", "tabindex") == ["0"]
+      assert attr_of(doc, "#r-lock", "data-tip") == ["No rule can name this host."]
+
+      assert attr_of(doc, "span#r-lock[role=img]", "aria-label") == [
+               "No rule can name this host."
+             ]
+
+      refute LazyHTML.query(doc, "button") |> Enum.any?()
 
       assert slots(acts(%{rule_option: {:rule_added, :allow}})) == [:gap, :gap]
     end

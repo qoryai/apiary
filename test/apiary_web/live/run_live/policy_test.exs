@@ -36,6 +36,12 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     "rule" => "",
     "outcome" => "refused"
   }
+  # The hints of a lock where no rule can change what became of a request.
+  @wall_own_address "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."
+  @wall_host_form "The wall refused this, not a rule: no rule can name a host written this way."
+  @wall_ambiguous_path "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."
+  @unnameable "No rule can name this host."
+
   @wall %{
     "host" => "169.254.169.254",
     "port" => 80,
@@ -524,10 +530,51 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(span#{id.("169.254.169.254")}-lock[tabindex="0"][data-tip="No rule changes this"])
+               ~s(span#{id.("169.254.169.254")}-lock[tabindex="0"][data-tip="#{@wall_own_address}"])
              )
 
       refute has_element?(view, "#rule-panel")
+    end
+
+    test "a lock where no rule can change a row, its hint why: the wall's reason, or the host",
+         %{conn: conn, scope: scope} do
+      denied = &Map.merge(%{"decision" => "denied", "rule" => "", "outcome" => "refused"}, &1)
+
+      run =
+        policy_run(scope,
+          egress: [
+            denied.(%{"host" => "Files.CDN.example.", "rule" => "wall:host-form"}),
+            denied.(%{
+              "host" => "api.example",
+              "path" => "/a/%2e%2e/b",
+              "path_rule" => "wall:ambiguous-path"
+            }),
+            denied.(%{"host" => "10.0.0.012"}),
+            denied.(%{"host" => "other.example", "rule" => "wall:some-other-reason"})
+          ]
+        )
+
+      view = connections(conn, scope, run)
+      id = &"#cx-#{connection_id(run, &1)}"
+
+      for {host, tip} <- [
+            {"Files.CDN.example.", @wall_host_form},
+            {"api.example", @wall_ambiguous_path},
+            {"10.0.0.012", @unnameable},
+            # A reason the page has no words for keeps the hint it had.
+            {"other.example", "No rule changes this"}
+          ] do
+        lock = id.(host) <> "-lock"
+
+        assert has_element?(
+                 view,
+                 ~s(span#{lock}.q-act-lock.tooltip[tabindex="0"][role=img][data-tip="#{tip}"][aria-label="#{tip}"])
+               ),
+               host
+
+        refute has_element?(view, id.(host) <> "-allow"), host
+        refute has_element?(view, id.(host) <> "-deny"), host
+      end
     end
 
     test "a refused request to a tool's host acts on its host and path, as any row does", %{

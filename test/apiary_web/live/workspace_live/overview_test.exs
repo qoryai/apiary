@@ -18,6 +18,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   alias Apiary.Runs.{Liveness, Projector, Run}
   alias ApiaryWeb.Format
 
+  # The hints of a lock where no rule can change what became of a request.
+  @wall_own_address "The wall refused this, not a rule. A rule naming this exact host opens the machine's addresses to it; link-local addresses never open."
+  @wall_host_form "The wall refused this, not a rule: no rule can name a host written this way."
+  @wall_ambiguous_path "The wall refused this, not a rule: the request's path reads two ways. A request with a plain path gets through."
+  @unnameable "No rule can name this host."
+
   setup :register_and_log_in_user
 
   # No coalescing and no throttling here, so a broadcast is followed by its read as the
@@ -1780,7 +1786,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "a denial no rule can change offers no act: the wall's refusals and a host no rule can name",
+    test "a denial no rule can change offers a lock, its hover why: the wall's refusals and a host no rule can name",
          %{conn: conn, scope: scope} do
       started_run(scope, shop(),
         egress: [
@@ -1811,11 +1817,26 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         id
       end
 
-      # Each still shows, with no act: no Allow, and no rule to open.
-      for needle <- ["Files.CDN.example.", "metadata.internal", "files.cdn.example", "10.0.0.012"] do
+      # Each still shows, with no act: no Allow, and no rule to open; a faint lock where
+      # Allow would be, its hover why.
+      for {needle, tip} <- [
+            {"Files.CDN.example.", @wall_host_form},
+            {"metadata.internal", @wall_own_address},
+            {"files.cdn.example", @wall_ambiguous_path},
+            {"10.0.0.012", @unnameable}
+          ] do
         id = item.(needle)
         assert text(view, "##{id}") =~ "Denied once in 1 run", needle
-        refute has_element?(view, "##{id} .q-ar-act *"), needle
+        refute has_element?(view, "##{id} .q-ar-act a, ##{id} .q-ar-act button"), needle
+
+        assert view
+               |> render()
+               |> LazyHTML.from_document()
+               |> LazyHTML.query("##{id} .q-ar-act span##{id}-act.q-act-lock")
+               |> LazyHTML.attribute("title") == [tip],
+               needle
+
+        assert text(view, "##{id}-act .sr-only") == tip, needle
 
         # Asked anyway, the panel does not open.
         render_hook(view, "rule_open", %{"id" => id, "level" => "target"})
@@ -1824,6 +1845,29 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       # A denial a rule can change keeps its Allow.
       assert has_element?(view, "##{item.("flags.example")}-act", "Allow here")
+    end
+
+    @tag needs: :security
+    test "a wall's refusal for a reason the page has no words for offers nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "other.example", "decision" => "denied", "rule" => "wall:another-reason"}
+        ]
+      )
+
+      view = open(conn, scope)
+
+      [item] =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> LazyHTML.attribute("id")
+
+      assert text(view, "##{item}") =~ "other.example"
+      refute has_element?(view, "##{item} .q-ar-act *")
     end
 
     @tag needs: :security
@@ -1890,8 +1934,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "##{item}") =~ cut
       refute text(view, "##{item}") =~ String.duplicate("a", 253)
       assert text(view, "##{item}") =~ "Denied once in 1 run"
-      refute has_element?(view, "##{item}-act")
-      refute has_element?(view, "##{item} .q-ar-act *")
+      assert has_element?(view, ~s(span##{item}-act.q-act-lock[title="#{@unnameable}"]))
+      refute has_element?(view, "##{item} .q-ar-act a, ##{item} .q-ar-act button")
 
       # Asked anyway, the panel does not open, and no rule is written.
       render_hook(view, "rule_open", %{"id" => item, "level" => "target"})

@@ -66,8 +66,8 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    the workspace a managed one that serves a run configuration), and makes a node,
    `build-01` (`Apiary.Nodes.create_node/2`). It generates a fresh Ed25519 key and adds
    its public key to the node the way the node's Generate a key adds one made in a
-   browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added, without stored
-   secrets. The key's `server` lines, the server's `url` and `apiary_public_key` pin
+   browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added.
+   The key's `server` lines, the server's `url` and `apiary_public_key` pin
    (`Apiary.AccessKeys.server_lines/2`) and the key's `access_key_id`
    (`Apiary.AccessKeys.key_line/1`), under `gateway:`, and the wall section become the
    node's `forager.yaml`. The key's secret, `qak_` and its seed, goes into `access-key-secret`

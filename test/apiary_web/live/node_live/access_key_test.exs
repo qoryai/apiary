@@ -539,7 +539,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert words(lv, "#key-forager-file-steps-1") ==
                "1 Keep the secret in a secret store. It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET in the secret store of the system that runs qory. If it is lost, generate a new key and revoke this one."
 
-      assert words(lv, "#key-forager-file-steps-2") =~ "2 Set the key's ID. As a plain setting."
+      assert words(lv, "#key-forager-file-steps-2") =~
+               "2 Set the key's ID. Copy variable"
+
+      refute render(lv) =~ "plain setting"
 
       assert lv |> element("#key-forager-file-key-env") |> render() |> text() |> String.trim() ==
                "QORY_ACCESS_KEY_ID=#{key.key_id}"
@@ -547,7 +550,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-forager-file-key-env-copy", "Copy variable")
 
       assert words(lv, "#key-forager-file-steps-3") =~
-               "3 Set Qory Apiary's public key. As a plain setting."
+               "3 Set Qory Apiary's public key. Copy variable"
 
       assert lv |> element("#key-forager-file-server-env") |> render() |> text() |> String.trim() ==
                env_pin
@@ -1263,7 +1266,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert has_element?(lv, "#node-configure-yaml-copy", "Copy lines")
 
         assert words(lv, "#node-configure-steps-2") ==
-                 "2 Set Qory Apiary's public key. QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary. #{pin}"
+                 "2 Set Qory Apiary's public key. QORY_APIARY_PUBLIC_KEY. The same for every machine connected to this Qory Apiary. #{pin}"
 
         assert lv |> element("#node-configure-pin") |> render() |> text() |> String.trim() == pin
 
@@ -1286,7 +1289,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
       assert words(lv, "#node-configure-steps-3") ==
-               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting. #{key.key_id}"
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID. #{key.key_id}"
+
+      refute render(lv) =~ "plain setting"
 
       assert has_element?(lv, "#node-configure-key-id", key.key_id)
 
@@ -1301,7 +1306,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
 
       assert words(lv, "#node-configure-steps-3") ==
-               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID: the ID of the key the machine uses, on its card above."
 
       refute has_element?(lv, "#node-configure-key-id")
       refute lv |> element("#node-configure") |> render() =~ first.key_id
@@ -1571,11 +1576,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "1 Store the secret. In the secret store of the system that runs spot-runners, such as your CI's. QORY_ACCESS_KEY_SECRET secret · shown once"
 
       assert words(lv, "#key-generated-steps-2") ==
-               "2 Set the key's ID. As a plain setting. It stays on the Access key tab. QORY_ACCESS_KEY_ID plain setting #{added.key_id}"
+               "2 Set the key's ID. It stays on the Access key tab. QORY_ACCESS_KEY_ID #{added.key_id}"
 
       assert words(lv, "#key-generated-steps-3") ==
-               "3 Set Qory Apiary's public key. As a plain setting. The same for every machine connected to this Qory Apiary. It stays on the Access key tab. QORY_APIARY_PUBLIC_KEY plain setting " <>
+               "3 Set Qory Apiary's public key. The same for every machine connected to this Qory Apiary. It stays on the Access key tab. QORY_APIARY_PUBLIC_KEY " <>
                  String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "")
+
+      refute render(lv) =~ "plain setting"
 
       assert words(lv, "#key-generated-steps-4") =~
                "4 Point the node pool at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."

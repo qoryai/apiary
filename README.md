@@ -54,9 +54,11 @@ or set it under **Instance settings › Mail** and follow the test link it sends
 
 Then add a node under **Nodes**, select **Get the command** on its **Access key** tab, and
 run the command it gives, `qory access-key enrol <server> <code>`, on the machine, which
-needs the [`qory`](https://github.com/qoryai/qory) command. Start a run there, and it shows
-up under **Runs**. With `PUBLIC_URL` on `localhost`, that machine is this one; for other
-machines Qory Apiary needs an `https` address, as
+needs the [`qory`](https://github.com/qoryai/qory) command, version 0.13.0, and runs each
+run behind a wall, in Docker, from an agent image you build, as [the quickstart's first
+run](https://github.com/qoryai/apiary/blob/main/guides/quickstart.md#6-first-run) shows.
+The run then shows up under **Runs**. With `PUBLIC_URL` on `localhost`, that machine is
+this one; for other machines Qory Apiary needs an `https` address, as
 [Install](https://github.com/qoryai/apiary/blob/main/guides/install.md) says.
 [The quickstart](https://github.com/qoryai/apiary/blob/main/guides/quickstart.md) walks
 through set-up, the node and the first run step by step.

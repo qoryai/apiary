@@ -6,10 +6,11 @@ Changes go under `[Unreleased]` in `CHANGELOG.md`. A release is one pull request
 that turns `[Unreleased]` into the release's section. Its heading is
 `## [X.Y.Z] - YYYY-MM-DD`, dated the day the tag lands: `scripts/changelog-section.sh` finds
 the section by a line that starts `## [X.Y.Z] `. The section has Added, Changed and Fixed
-as they apply, and always **Migrations**, the tables the release's migrations touch and
-whether one is long, and **Upgrading**, anything the operator has to do or know. The same
-pull request puts back an empty `## [Unreleased]` above the new section, for the changes
-after it. It also sets `version` in `mix.exs` to the version without the `v`: that is what
+as they apply, and, when there is anything to do, **Migrations**, the tables the release's
+migrations touch and whether one is long, and **Upgrading**, anything whoever runs the
+instance has to do or know. The same pull request puts back an empty `## [Unreleased]`
+above the new section, for the changes after it. It also sets `version` in `mix.exs` to
+the version without the `v`: that is what
 `GET /health` and `bin/apiary version` report. Once it is merged, the tag `vX.Y.Z` goes on
 the commit its merge left on `main`, and that tag is the release.
 `gh pr view <N> --json mergeCommit` prints that commit: the merge commit, the squash commit
