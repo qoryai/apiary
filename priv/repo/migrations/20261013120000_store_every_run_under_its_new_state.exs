@@ -18,6 +18,11 @@ defmodule Apiary.Repo.Migrations.StoreEveryRunUnderItsNewState do
   # Outside a transaction, in batches of 1,000 ids in the order of `id`, each batch
   # committed before the next starts, so none holds its rows for long on a large `runs`.
   #
+  # Then the guard. A row still in `succeeded`, `timed_out` or `ended` after the batches
+  # was written during them, by a build without 20261009233000 that still writes to the
+  # database: the migration raises, and the boot stops before the endpoint serves. A
+  # migration that raises is not recorded, so the next start rewrites and checks again.
+  #
   # Rolled back, nothing changes: the rewrite is what a rebuild gives, and a release with
   # 20261009233000 reads the new names.
   @disable_ddl_transaction true
@@ -33,7 +38,20 @@ defmodule Apiary.Repo.Migrations.StoreEveryRunUnderItsNewState do
       reason IN (#{@lost_reasons}, #{@stopped_reasons})))
   """
 
-  def up, do: rewrite(nil)
+  def up do
+    rewrite(nil)
+
+    %{rows: [[count]]} =
+      repo().query!(
+        "SELECT count(*) FROM runs WHERE state IN ('succeeded', 'timed_out', 'ended')"
+      )
+
+    if count > 0 do
+      raise "runs holds #{count} rows in a state an earlier build wrote (succeeded, " <>
+              "timed_out or ended): a build without migration 20261009233000 is still " <>
+              "writing to this database. Stop it, then start this release again."
+    end
+  end
 
   def down, do: :ok
 
