@@ -73,6 +73,7 @@ defmodule Apiary.Application do
       migrator() ++
       key_check() ++
       mail_cache() ++
+      product_name_cache() ++
       [
         # The job queue, after the migrator so its tables exist when it
         # starts. `Apiary.Job` is what every job runs inside.
@@ -139,6 +140,13 @@ defmodule Apiary.Application do
   # each test's sandbox.
   defp mail_cache do
     if Apiary.Mail.Cache.enabled?(), do: [Apiary.Mail.Cache], else: []
+  end
+
+  # The node's copy of the product's name an instance admin set, after the migrator so its
+  # column exists, and before anything that shows a page or sends an email. Off in test,
+  # where `Apiary.ProductName` reads it from each test's sandbox.
+  defp product_name_cache do
+    if Apiary.ProductName.Cache.enabled?(), do: [Apiary.ProductName.Cache], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.

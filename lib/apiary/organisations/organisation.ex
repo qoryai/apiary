@@ -46,23 +46,40 @@ defmodule Apiary.Organisations.Organisation do
     organisation
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> validate_length(:name, min: 1, max: 120)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
+    |> validate_name(:name)
+  end
+
+  @doc """
+  validate_name/2 checks `field` of `changeset` by the rules of an organisation's name: at
+  most 120 characters, and none that is a control character, an invisible one, a joining
+  character at either end, a web address or a quotation mark. The name an instance admin
+  gives the product keeps the same rules (`Apiary.ProductName`): both are shown inside
+  sentences Qory writes.
+  """
+  @spec validate_name(Ecto.Changeset.t(), atom) :: Ecto.Changeset.t()
+  def validate_name(changeset, field) do
+    changeset
+    |> validate_length(field, min: 1, max: 120)
+    |> validate_format(field, ~r/\A[^[:cntrl:]]+\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
     )
     |> refuse_in_name(
+      field,
       invisible(),
       dgettext_noop("errors", "must not contain invisible characters")
     )
     |> refuse_in_name(
+      field,
       ~r/\A[\x{200C}\x{200D}]|[\x{200C}\x{200D}]\z/u,
       dgettext_noop("errors", "must not start or end with a joining character")
     )
     |> refuse_in_name(
+      field,
       ~r{://|www\.}iu,
       dgettext_noop("errors", "must not contain a web address; a name like acme.io is fine")
     )
     |> refuse_in_name(
+      field,
       ~r/["„‹›″‶‟＂〝〞״ˮʺ]|(?![‘’])[\p{Pi}\p{Pf}]/u,
       dgettext_noop("errors", "must not contain quotation marks")
     )
@@ -78,9 +95,9 @@ defmodule Apiary.Organisations.Organisation do
   # name and an emoji sequence need.
   defp invisible, do: ~r/(?![\x{200C}\x{200D}])\p{Cf}/u
 
-  defp refuse_in_name(changeset, pattern, message) do
-    validate_change(changeset, :name, fn :name, name ->
-      if Regex.match?(pattern, name), do: [name: message], else: []
+  defp refuse_in_name(changeset, field, pattern, message) do
+    validate_change(changeset, field, fn ^field, name ->
+      if Regex.match?(pattern, name), do: [{field, message}], else: []
     end)
   end
 

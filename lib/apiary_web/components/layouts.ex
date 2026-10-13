@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Layouts do
   @moduledoc """
   Layouts: the application shell (`app/1`) for signed-in pages and the split
-  view (`auth/1`) for log-in, registration, invitation and welcome pages. The
-  product on every surface is Qory Apiary.
+  view (`auth/1`) for log-in, registration, invitation and welcome pages. Both name the
+  product as this instance does (`Apiary.ProductName`).
 
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
@@ -329,16 +329,28 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   instance_sections/1 is the Instance level's sections the scope's person may open, as
-  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the edition's
-  (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail and Configuration,
-  for an instance admin (`Apiary.Access.instance_admin?/1`). It reads the database, so
-  it is read once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as
-  `:instance`), not on every render: the Qory Apiary menu's Instance settings leads to
-  the first, and with two or more the Instance's pages list them as the second column.
+  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, then
+  the edition's (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail and
+  Configuration; the core's for an instance admin (`Apiary.Access.instance_admin?/1`). It
+  reads the database, so it is read once with the navigation's counts
+  (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`), not on every render: the Qory
+  Apiary menu's Instance settings leads to the first, and with two or more the Instance's
+  pages list them as the second column.
   """
   @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
   def instance_sections(%{user: %{}} = scope) do
     admin? = Access.instance_admin?(scope)
+
+    general =
+      admin? &&
+        %Entry{
+          section: :instance,
+          key: :general,
+          label: gettext("General"),
+          icon: "hero-adjustments-horizontal",
+          path: ~p"/instance/general",
+          place: :instance
+        }
 
     mail =
       admin? &&
@@ -362,7 +374,8 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.instance_sections(scope) ++ [mail, configuration],
+    for %Entry{} = entry <-
+          [general] ++ ApiaryWeb.Edition.instance_sections(scope) ++ [mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 
@@ -2060,6 +2073,10 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-chevron-double-left-micro" class="q-collapse-icon size-4" />
           </button>
         </div>
+        <%!-- Beside a name an instance admin set; folded, the menu says it instead. --%>
+        <p :if={Apiary.ProductName.powered_by?()} id="powered-by" class="q-brand-powered">
+          {gettext("Powered by Qory Apiary")}
+        </p>
       </div>
     </aside>
     """
@@ -2196,21 +2213,31 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
-  The product's menu, on the brand: the mark and the edition's name
-  (`c:ApiaryWeb.Edition.product_name/0`), opening upward from the sidebar's foot and
-  downward from the bar when there is no sidebar. It holds what is about the product
-  itself, not about the person: first, for whoever may open a section of the Instance
-  level (`instance_path`, its first), the instance's settings, Instance settings, and
-  a rule; then the docs this instance serves, its changelog with the running version
-  (`version`, none when nil) faint at the right, and the source. Folded, the sidebar shows
-  the mark alone, still the menu's button.
+  The product's menu, on the brand: the mark and the product's name on this instance
+  (`Apiary.ProductName.button_name/0`: the name an instance admin set, else the
+  edition's), cut
+  with an ellipsis where it is too long for the sidebar and whole on hover, opening upward
+  from the sidebar's foot and downward from the bar when there is no sidebar. It holds
+  what is about the product itself, not about the person: first, for whoever may open a
+  section of the Instance level (`instance_path`, its first), the instance's settings,
+  Instance settings, and a rule; then the docs this instance serves, its changelog with
+  the running version (`version`, none when nil) faint at the right, and the source.
+  Folded, the sidebar shows the mark alone, still the menu's button.
+
+  Its last line, beside a name set, is "Powered by Qory Apiary"
+  (`Apiary.ProductName.powered_by?/0`), plain text: always on the bar, and in the sidebar
+  only while it is folded, since the sidebar's foot says it under the menu's row
+  otherwise.
   """
   attr :version, :any, required: true
   attr :direction, :string, required: true, values: ~w(up down)
   attr :instance_path, :string, default: nil
 
   def brand_menu(assigns) do
-    assigns = assign(assigns, :product, ApiaryWeb.Edition.product_name())
+    assigns =
+      assigns
+      |> assign(:product, Apiary.ProductName.button_name())
+      |> assign(:powered_by, Apiary.ProductName.powered_by?())
 
     ~H"""
     <div
@@ -2229,7 +2256,7 @@ defmodule ApiaryWeb.Layouts do
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.logo_mark class="size-[18px]" />
-        <span class="q-brand-name">{@product}</span>
+        <span class="q-brand-name" title={@product}>{@product}</span>
         <.icon
           name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
           class="q-brand-chev size-4"
@@ -2286,6 +2313,10 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
             <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </.link>
+        </li>
+        <li :if={@powered_by} class="menu-divider q-brand-powered-item" role="separator"></li>
+        <li :if={@powered_by} id="brand-menu-powered" class="q-brand-powered-item" role="none">
+          <span class="q-brand-powered-text">{gettext("Powered by Qory Apiary")}</span>
         </li>
       </ul>
     </div>
@@ -2552,7 +2583,9 @@ defmodule ApiaryWeb.Layouts do
   @doc """
   The split view for log-in, registration, confirmation, invitation and the
   welcome page: a brand panel from 1024 px (a header strip below), and a
-  352 px form column with no card around it.
+  352 px form column with no card around it. Both name the product as this instance
+  does (`Apiary.ProductName.name/0`), and under the form, beside a name an instance admin
+  set, it says "Powered by Qory Apiary" (`Apiary.ProductName.powered_by?/0`).
 
       <Layouts.auth flash={@flash}>
         ...
@@ -2563,6 +2596,8 @@ defmodule ApiaryWeb.Layouts do
   slot :inner_block, required: true
 
   def auth(assigns) do
+    assigns = assign(assigns, :product, Apiary.ProductName.name())
+
     ~H"""
     <a
       href="#main"
@@ -2573,7 +2608,7 @@ defmodule ApiaryWeb.Layouts do
 
     <div class="grid min-h-dvh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <aside
-        aria-label="Qory Apiary"
+        aria-label={@product}
         class="relative hidden flex-col justify-between gap-8 overflow-hidden border-r border-line bg-base-200 p-8 lg:flex lg:p-10"
       >
         <svg
@@ -2592,7 +2627,7 @@ defmodule ApiaryWeb.Layouts do
           </defs>
           <rect width="100%" height="100%" fill="url(#comb)" />
         </svg>
-        <div class="relative"><.brand size="lg" /></div>
+        <div class="relative"><.brand size="lg" name={@product} /></div>
         <div class="relative flex min-h-0 flex-1 items-center justify-center py-2">
           <img
             src={~p"/images/qbee-agent.png"}
@@ -2610,7 +2645,8 @@ defmodule ApiaryWeb.Layouts do
           <%!-- Before sign-in there is no organisation: the instance's features decide. --%>
           <p :if={Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
             {gettext(
-              "Every run of a connected machine reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
+              "Every run of a connected machine reports to %{name}: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that.",
+              name: @product
             )}
           </p>
           <p :if={!Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
@@ -2623,7 +2659,7 @@ defmodule ApiaryWeb.Layouts do
 
       <div class="relative flex min-h-dvh min-w-0 flex-col bg-base-100">
         <header class="flex h-14 flex-none items-center justify-between border-b border-line px-4 lg:absolute lg:right-5 lg:top-5 lg:h-auto lg:border-0 lg:px-0">
-          <.brand class="lg:hidden" />
+          <.brand class="lg:hidden" name={@product} />
           <.theme_menu />
         </header>
         <main
@@ -2633,6 +2669,13 @@ defmodule ApiaryWeb.Layouts do
         >
           <div class="grid w-full max-w-[352px] gap-4">
             {render_slot(@inner_block)}
+            <p
+              :if={Apiary.ProductName.powered_by?()}
+              id="powered-by"
+              class="text-[12px]/4 text-faint"
+            >
+              {gettext("Powered by Qory Apiary")}
+            </p>
           </div>
         </main>
       </div>

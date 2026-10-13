@@ -126,15 +126,21 @@ page and an Instance page, the one the person came from (Two levels, below).
   bare Settings, and so its tooltip while folded; the current entry on every page of them
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
-  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the edition's
-  name (`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), no version,
-  opening upward to what is about the product rather than the person: first, only
-  for whoever may open a section of the Instance level
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the product's
+  name on the instance (`Apiary.ProductName.button_name/0`: the name an instance admin set
+  in Instance settings › General, else the edition's,
+  `c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), a name too long for
+  the sidebar cut with an ellipsis and whole on hover, no version, opening upward to what
+  is about the product rather than the
+  person: first, only for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
   Changelog with the running version faint at its right (`#brand-version`), a rule and
   Source on GitHub; and at the right of it the fold. Folded, and from the bar on a page
-  without a sidebar, it is the same menu.
+  without a sidebar, it is the same menu. Beside a name an instance admin set that is not
+  Qory Apiary (`Apiary.ProductName.powered_by?/0`), the foot says "Powered by Qory Apiary"
+  in plain text: a faint line under the menu's row (`#powered-by`), in the sidebar and the
+  drawer; folded, and from the bar, the menu's last line instead (`#brand-menu-powered`).
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar
@@ -297,14 +303,22 @@ replaces the navigation it is in.
   `ApiaryWeb.Routes.instance_routes/2`, each page with `place={:instance}`), from the Qory
   Apiary menu's Instance settings, shown only when the person may open a section of it
   (`ApiaryWeb.Layouts.instance_sections/1`) and leading to the first, as `/instance`
-  itself does: the edition's sections
-  (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
-  Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
-  `<h1>` Configuration), read only: what whoever runs Qory Apiary set, as Qory Apiary read it
-  when it started, each value with the setting it is set by. Anyone else is answered not
-  found. The sidebar stays the one the person came from. In the core Configuration is the
-  one section, so there is no second column; an edition's sections add to it, and with two
-  or more they are the second column (`#instance-tabs`, `instance-tab-<key>`).
+  itself does. For the instance's admins the core's General comes first
+  (`/instance/general`, `ApiaryWeb.InstanceLive.General`, its `<h1>` General): one field,
+  Name, the product's name on the instance (`Apiary.ProductName`), its placeholder and its
+  hint's "Empty: …" the edition's name (`Apiary.ProductName.edition_name/0`), which the
+  menu's button shows where no name is set, while titles, log-in pages and emails show
+  Qory Apiary there; and under Save, where the edition says "Powered by Qory Apiary", the
+  note of when it does. Saving reloads the page with the toast "Instance renamed to …"; a
+  name breaking an organisation's name's rules shows its error under the field. Then the
+  edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
+  core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
+  recent sign-in, and Configuration (`/instance/configuration`,
+  `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration), read only: what
+  whoever runs Qory Apiary set, as Qory Apiary read it when it started, each value with
+  the setting it is set by. Anyone else is answered not found. The sidebar stays the one
+  the person came from, and the sections are the second column (`#instance-tabs`,
+  `instance-tab-<key>`).
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
@@ -331,9 +345,11 @@ The breadcrumb names the level and ends with the section, both written by the fr
 a person's page starts with Your settings and an Instance page with Instance
 settings, then the section (The top bar, under The shell). The browser title is the most
 specific first, the page's words, the level, then the workspace's name and the organisation's
-(`SettingsComponents.page_title/3`): `Runs · Workspace settings · Main · Acme · Qory
-Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
-settings · Qory Apiary`, `Configuration · Instance settings · Qory Apiary`.
+(`SettingsComponents.page_title/3`), then the product's name on the instance
+(`Apiary.ProductName.name/0`, the root layout's): `Runs · Workspace settings · Main ·
+Acme · Qory Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account ·
+Your settings · Qory Apiary`, `General · Instance settings · Qory Apiary`; with the name
+Acme Agents set, `General · Instance settings · Acme Agents`.
 
 **A form is a page.** Creating or changing one thing is a page of its section at a separate
 path, never a dialog over the list: the second column stays beside it, its section the
@@ -1518,10 +1534,22 @@ other page. The screen is `role="log"` with `aria-live="off"`.
 
 ## Words
 
-Every visible or announced string goes through Gettext in engine words, one whole
-sentence per msgid, and markup inside a sentence goes through `ApiaryWeb.RichText`; the
-rules are in [lingo.md](lingo.md). A page says organisation and workspace as plain words,
-and names the product Qory Apiary.
+Every visible or announced string goes through Gettext in engine words, one whole sentence
+per msgid, and markup inside a sentence goes through `ApiaryWeb.RichText`; the rules are
+in [lingo.md](lingo.md). A page says organisation and workspace as plain words, and names
+the product Qory Apiary. Where an instance admin set a name in Instance settings › General
+(`Apiary.ProductName`), it replaces Qory Apiary in the browser title, the Qory Apiary
+menu's button and names (which, where no name is set, show the edition's name,
+`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), the log-in, sign-up,
+set-up and welcome pages (`Layouts.auth`: the name beside the mark, the brand panel's name
+and line, the headings, and the sentences there that say "this Qory Apiary", which then
+name the instance), the button of the page `/docs` shows when the docs are not built, and
+every email's from-name, subject and body. Those places then also say "Powered by Qory
+Apiary": the sidebar's foot (The shell), under the form of every page with the brand panel
+(`#powered-by`), and each email's last line.
+Everything else keeps Qory Apiary: the docs, the console's other sentences that say "this
+Qory Apiary", the sentences where Qory Apiary acts or is what a machine connects to, and
+the Activity page's.
 
 - Plain and exact: second person, present tense, sentence case. Full stops on sentences,
   none on buttons, labels or headings. No exclamation marks, no "oops", no "successfully".

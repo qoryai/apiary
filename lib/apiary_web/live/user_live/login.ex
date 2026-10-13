@@ -38,7 +38,9 @@ defmodule ApiaryWeb.UserLive.Login do
 
       <div :if={!@sent_to} class="grid gap-4">
         <Layouts.auth_heading>
-          {if @current_scope, do: gettext("Confirm it is you"), else: gettext("Log in to Qory Apiary")}
+          {if @current_scope,
+            do: gettext("Confirm it is you"),
+            else: gettext("Log in to %{name}", name: Apiary.ProductName.name())}
           <:subtitle :if={subtitle(assigns)}>{subtitle(assigns)}</:subtitle>
         </Layouts.auth_heading>
 
@@ -148,12 +150,14 @@ defmodule ApiaryWeb.UserLive.Login do
           <%= if @mail? do %>
             <.button variant="link" type="button" phx-click="email_link">{gettext("Email me a link")}</.button>.
           <% else %>
-            {gettext("Ask an admin of this Qory Apiary for a password link.")}
+            {if name = Apiary.ProductName.get(),
+              do: gettext("Ask an admin of %{name} for a password link.", name: name),
+              else: gettext("Ask an admin of this Qory Apiary for a password link.")}
           <% end %>
         </p>
 
         <p :if={!@current_scope && @sign_up?} class="mt-1 text-center text-[13px]/[18px] text-muted">
-          {gettext("New to Qory Apiary?")}
+          {gettext("New to %{name}?", name: Apiary.ProductName.name())}
           <.button variant="link" navigate={~p"/users/register"}>
             {gettext("Create an account")}
           </.button>

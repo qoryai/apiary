@@ -345,7 +345,8 @@ defmodule ApiaryWeb.Routes do
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks access itself. The
   block's routes go into the `live_session :instance`, after the core's. The core's pages
-  here are Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
+  here are Instance settings › General (`ApiaryWeb.InstanceLive.General`), Instance
+  settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
   (`ApiaryWeb.InstanceMailController`), and Instance settings › Configuration
   (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
   sends on to the first section the person may open, and is not found for whoever may
@@ -367,6 +368,8 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # Instance › General: the product's name on the instance.
+            live "/instance/general", InstanceLive.General, :show
             # Instance › Mail: the mail server.
             live "/instance/mail", InstanceLive.Mail, :show
             # Instance › Configuration: what whoever runs the server set, read only.

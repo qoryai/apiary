@@ -59,7 +59,9 @@ defmodule Apiary.Audit do
   organisation's trail too, by the person or the instance, naming the account by user id
   and never holding the link. Saving the instance's mail settings and turning them on
   (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
-  `instance.mail_on` there, by the instance admin, never holding the password. A new
+  `instance.mail_on` there, by the instance admin, never holding the password. Setting the
+  product's name (`Apiary.ProductName.rename/2`) is an `instance.rename` there, by the
+  instance admin, with the name before and after, nil for none. A new
   organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries

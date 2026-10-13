@@ -34,6 +34,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"account.password_link"), do: gettext("Password link made")
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
+  def label(:"instance.rename"), do: gettext("Instance renamed")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -149,6 +150,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")
+
+  defp said(:"instance.rename", _details, _actor), do: gettext("Renamed the instance")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -339,6 +342,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(action, before, after_, _details)
       when action in [:"organisation.rename", :"workspace.rename"],
       do: from_to(before["name"], after_["name"])
+
+  # A name set or emptied: an empty name shows as the edition's (`Apiary.ProductName`).
+  def change(:"instance.rename", before, after_, _details),
+    do:
+      from_to(
+        before["name"] || Apiary.ProductName.edition_name(),
+        after_["name"] || Apiary.ProductName.edition_name()
+      )
 
   def change(action, before, after_, _details)
       when action in [:"member.change_level", :"instance_admin.grant", :"instance_admin.revoke"] and

@@ -686,6 +686,11 @@ msgstr ""
 msgid "%{name} is added."
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is already set up."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is at %{version}."
@@ -728,6 +733,11 @@ msgid "%{name} is locked: %{number} target override is set aside."
 msgid_plural "%{name} is locked: %{number} target overrides are set aside."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is not set up yet: use the set-up link from its install."
+msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -3439,6 +3449,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
+msgid "Ask an admin of %{name} for a password link."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
@@ -3500,7 +3515,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
-msgid "Back to Qory Apiary"
+msgid "Back to %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -4092,7 +4107,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "Confirm your Qory Apiary account"
+msgid "Confirm your %{name} account"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -4102,7 +4117,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "Confirm your new email address for Qory Apiary"
+msgid "Confirm your new email address for %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -5257,7 +5272,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Every run of a connected machine reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
+msgid "Every run of a connected machine reports to %{name}: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -5887,7 +5902,9 @@ msgstr ""
 msgid "Gateways"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -6181,6 +6198,11 @@ msgstr ""
 msgid "If you did not create a Qory Apiary account, ignore this email."
 msgstr ""
 
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "If you did not create an account on %{name}, ignore this email."
+msgstr ""
+
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace}: %{reason}"
@@ -6286,6 +6308,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance limit"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Instance renamed"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Instance renamed to %{name}."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7249,7 +7281,7 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
-msgid "Log in to Qory Apiary"
+msgid "Log in to %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7614,6 +7646,7 @@ msgid "Moved an integration to another version"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -7783,7 +7816,7 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
-msgid "New to Qory Apiary?"
+msgid "New to %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9289,6 +9322,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
+msgid "Password links work once and for a short time. Ask an admin of %{name} for a new one."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
 msgid "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
 msgstr ""
 
@@ -9468,6 +9506,12 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "Port"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Powered by Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -9921,6 +9965,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Renamed a value ID of a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Renamed the instance"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -10408,6 +10457,7 @@ msgstr ""
 msgid "SMTP relay"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -10457,6 +10507,7 @@ msgstr ""
 msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -10759,14 +10810,14 @@ msgstr ""
 msgid "Set up"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Set up %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set up API"
-msgstr ""
-
-#: lib/apiary_web/live/setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Set up Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10950,6 +11001,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Shown in the breadcrumb, the switcher and invitations."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "Shown in the browser tab, the sidebar, the log-in pages and every email. Empty: %{name}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -11833,6 +11889,11 @@ msgstr ""
 msgid "The name runs connect to, in lower case, without %{scheme} or a port. Start it with %{suffix} to cover every host below a domain, such as %{example}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "The name this instance shows on its pages and in its email."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The next page shows the secret once, with everything else the machine needs, for you to set where %{name} runs."
@@ -12345,7 +12406,11 @@ msgstr ""
 msgid "This Qory Apiary is not set up yet: use the set-up link from its install."
 msgstr ""
 
-#: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "This account cannot log in at the moment. Ask the admins of %{name}."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
@@ -12773,7 +12838,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "Turn on mail for Qory Apiary"
+msgid "Turn on mail for %{name}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13139,7 +13204,7 @@ msgstr ""
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
-msgid "Welcome to Qory Apiary"
+msgid "Welcome to %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -13241,6 +13306,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "When"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/general.ex
+#, elixir-autogen, elixir-format
+msgid "When a name other than Qory Apiary is set, the sidebar, the log-in pages and every email also say “Powered by Qory Apiary”."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex
@@ -13513,7 +13583,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "You are invited to join the organisation “%{organisation}” on Qory Apiary. You can accept the invitation by visiting the URL below:"
+msgid "You are invited to join the organisation “%{organisation}” on %{name}. You can accept the invitation by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -13590,17 +13660,17 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the email address of your Qory Apiary account by visiting the URL below:"
+msgid "You can change the email address of your %{name} account by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "You can confirm your Qory Apiary account by visiting the URL below:"
+msgid "You can confirm your %{name} account by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "You can log in to Qory Apiary by visiting the URL below:"
+msgid "You can log in to %{name} by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary_web/access.ex
@@ -13690,7 +13760,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:"
+msgid "You saved the mail settings of %{name}. To turn mail on, visit the URL below while you are logged in as %{email}:"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -13700,7 +13770,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "Your Qory Apiary log-in link"
+msgid "Your %{name} log-in link"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -13756,7 +13826,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
-msgid "Your invitation to Qory Apiary"
+msgid "Your invitation to %{name}"
 msgstr ""
 
 #: lib/apiary_web/user_auth.ex
