@@ -9421,6 +9421,11 @@ msgstr ""
 msgid "Paths of %{subject}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Paths on a policy rule's form."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Paths, optional"

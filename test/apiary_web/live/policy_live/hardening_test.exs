@@ -78,7 +78,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       view |> element("#policy-rules-add") |> render_click()
 
       view
-      |> form("#policy-rule-form", rule: %{host: "*.paste.example", paths: ""})
+      |> form("#policy-rule-form", rule: %{host: "*.paste.example"})
       |> render_change()
 
       render_hook(view, "rule_save", %{})

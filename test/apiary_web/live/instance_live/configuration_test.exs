@@ -480,6 +480,26 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")
       assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
     end
+
+    # An opt-in feature is listed only where the instance has it.
+    @tag with_features: Apiary.Features.all()
+    test "lists path_rules, on, with what it covers, where the instance has it", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+
+      assert text(view, "#config-feature-path_rules") =~ "path_rules"
+      assert text(view, "#config-feature-path_rules-value") == "On"
+      assert text(view, "#config-feature-path_rules") =~ "Paths on a policy rule's form."
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:path_rules]
+    test "does not list path_rules where the instance does not have it", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/instance/configuration")
+
+      assert has_element?(view, "#config-feature-security")
+      refute has_element?(view, "#config-feature-path_rules")
+      refute html =~ "path_rules"
+      refute html =~ "Paths on a policy rule's form."
+    end
   end
 
   describe "for a plain member of the instance's organisation" do

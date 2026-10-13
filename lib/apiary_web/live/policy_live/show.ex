@@ -49,6 +49,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
       |> assign(target_list: [], summary: nil, shown: nil)
+      # The rule form's Paths row, drawn where the instance has `path_rules`.
+      |> assign(:path_rules, Apiary.Features.on?(:path_rules))
       |> assign(:target_details, Phoenix.LiveView.AsyncResult.loading())
       |> assign(:target_suggestions, Phoenix.LiveView.AsyncResult.loading())
 
@@ -987,6 +989,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           editing={@rule_edit && @rule_edit.host}
           error={@write_error}
           cancel={Common.cancel_path(assigns)}
+          paths={@path_rules}
         >
           <:description>
             {if @rule_edit,

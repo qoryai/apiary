@@ -1076,6 +1076,13 @@ defmodule ApiaryWeb.PolicyComponents do
     default: nil,
     doc: "nil says \"api.example.com\""
 
+  # Whether the form draws its Paths row, on Allow and on Deny: the page passes whether the
+  # instance has `path_rules` (`Apiary.Features.on?/1`), as a component does not ask
+  # `Apiary.Features` (docs/ui.md); a caller that does not pass it keeps the row. Without
+  # the row the form still carries the rule's paths: Edit fills them, and its save writes
+  # them unchanged.
+  attr :paths, :boolean, default: true
+
   slot :description, doc: "one sentence: what the page is for, and where the rule applies"
 
   def rule_form(assigns) do
@@ -1187,13 +1194,20 @@ defmodule ApiaryWeb.PolicyComponents do
           <.rule_field_error :if={@host_error} id={"#{@id}-host-error"} error={@host_error} />
         </div>
 
-        <div :if={@deny?} class="q-rule-field">
+        <%!-- The Paths row, drawn only with `paths`. Paths, optional, for an allow: left
+             empty, every path is allowed; separate paths with spaces, and end one with `*`
+             for everything below it, such as `/v1/*`. A deny covers every path of the host.
+             Host and Paths are each labelled with their help under them (a deny takes no
+             paths and says so); a path's error has the repair Every path. A target's
+             suggestion's Allow with paths… opens New rule with the host filled and the
+             focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny). --%>
+        <div :if={@paths && @deny?} class="q-rule-field">
           <span class="q-rule-label">{gettext("Paths")}</span>
           <p id={"#{@id}-paths-deny"} class="q-rule-hint">
             {gettext("A deny covers every path of the host.")}
           </p>
         </div>
-        <div :if={!@deny?} class="q-rule-field">
+        <div :if={@paths && !@deny?} class="q-rule-field">
           <label for={"#{@id}-paths"} class="q-rule-label">
             {gettext("Paths")}<span class="q-rule-opt">{gettext("Optional")}</span>
           </label>

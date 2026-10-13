@@ -476,19 +476,18 @@ over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/
 Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
 Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
 (`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
-Allow and Deny as two radio cards that each say what they do; then Host and Paths, each
-labelled with its help under it (a deny takes no paths and says so); then "What this
-rule does", the rule read back in plain words as it is typed (`PolicyLive.Reading`), a
-polite live region. An error is said under its field, with its repair as a link (Use
-api.example, Every path, Show it); a refusal, a lock's or the domain's, takes the read
-back's place above the foot. Add rule is never off: pressed with an error, it moves the
-focus to the first field at fault. A pasted list of hosts fills Host with the first and
-counts the rest beside its label; each is added in turn, the page staying until the last.
+Allow and Deny as two radio cards that each say what they do; then Host, labelled with
+its help under it; then "What this rule does", the rule read back in plain words as it
+is typed (`PolicyLive.Reading`), a polite live region. An error is said under its field,
+with its repair as a link (Use api.example, Show it); a refusal, a lock's or the
+domain's, takes the read back's place above the foot. Add rule is never off: pressed
+with an error, it moves the focus to the first field at fault. A pasted list of hosts
+fills Host with the first and counts the rest beside its label; each is added in turn,
+the page staying until the last.
 A save goes back to the list as it was left, on the page that holds the rule, its row
 marked and New in its version, the focus on its ⋯, with the flash that names the version;
 Cancel goes back to the list as it was left. On Edit rule the host is shown, not a field:
-another host is a new rule. A target's suggestion's Allow with paths… opens New rule with
-the host filled and the focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny).
+another host is a new rule.
 A target's Policy tab shows each rule's Source; the target rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
