@@ -443,6 +443,56 @@ defmodule Apiary.AuditTest do
       assert {:error, :forbidden} = Audit.prune(scope)
     end
 
+    test "keeps the entries and their addresses for the periods saved in Instance settings › Configuration" do
+      for key <- [:audit_retention_days, :audit_address_retention_days] do
+        previous = Application.fetch_env!(:apiary, key)
+        Application.put_env(:apiary, key, nil)
+        on_exit(fn -> Application.put_env(:apiary, key, previous) end)
+      end
+
+      Repo.insert_all(
+        Apiary.InstanceConfig.Row,
+        [
+          %{
+            id: true,
+            audit_retention_days: 60,
+            audit_address_retention_days: 30,
+            updated_at: DateTime.utc_now()
+          }
+        ],
+        on_conflict: {:replace, [:audit_retention_days, :audit_address_retention_days]},
+        conflict_target: :id
+      )
+
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      origin = %{remote_ip: "203.0.113.7", user_agent: "Browser/1.0"}
+      {:ok, _} = Organisations.update_workspace(Scope.put_origin(scope, origin), %{name: "A"})
+      gone = last()
+      {:ok, _} = Organisations.update_workspace(Scope.put_origin(scope, origin), %{name: "B"})
+      cleared = last()
+
+      for {entry, days} <- [{gone, 61}, {cleared, 31}] do
+        Repo.query!("UPDATE audit_entries SET inserted_at = $1 WHERE id = $2", [
+          DateTime.add(DateTime.utc_now(), -days * 86_400, :second),
+          Ecto.UUID.dump!(entry.id)
+        ])
+      end
+
+      assert {:ok, 1} = Audit.prune(Scope.for_instance(organisation))
+      assert Repo.get(Entry, gone.id) == nil
+      assert %Entry{remote_ip: nil, user_agent: nil} = Repo.get!(Entry, cleared.id)
+
+      assert %Entry{
+               action: "audit.prune",
+               details: %{
+                 "removed" => 1,
+                 "retention_days" => 60,
+                 "addresses_cleared" => 1,
+                 "address_retention_days" => 30
+               }
+             } = last()
+    end
+
     test "clears the address and the client of entries older than their period, and keeps the rest" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{scope: other} = sign_up_fixture()

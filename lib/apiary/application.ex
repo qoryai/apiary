@@ -73,6 +73,7 @@ defmodule Apiary.Application do
       migrator() ++
       key_check() ++
       mail_cache() ++
+      instance_config_cache() ++
       product_name_cache() ++
       [
         # The job queue, after the migrator so its tables exist when it
@@ -140,6 +141,14 @@ defmodule Apiary.Application do
   # each test's sandbox.
   defp mail_cache do
     if Apiary.Mail.Cache.enabled?(), do: [Apiary.Mail.Cache], else: []
+  end
+
+  # The node's copy of the settings an instance admin saved in Instance settings ›
+  # Configuration, after the migrator so their columns exist, and before anything that
+  # reads them: the audit trail's job, a deletion or an invitation. Off in test, where
+  # `Apiary.InstanceConfig` reads them from each test's sandbox.
+  defp instance_config_cache do
+    if Apiary.InstanceConfig.Cache.enabled?(), do: [Apiary.InstanceConfig.Cache], else: []
   end
 
   # The node's copy of the product's name an instance admin set, after the migrator so its

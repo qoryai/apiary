@@ -954,6 +954,7 @@ msgid_plural "%{number} connections while this call was open"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/instance_config.ex
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -3486,6 +3487,7 @@ msgstr ""
 msgid "Audit log"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Audit log entries"
@@ -3815,6 +3817,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed the instance's configuration"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed the policy"
 msgstr ""
 
@@ -4077,6 +4084,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Configuration"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Configuration changed"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6006,6 +6018,7 @@ msgstr ""
 msgid "Go to your workspace"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Grace period"
@@ -6176,6 +6189,7 @@ msgstr ""
 msgid "How the console shows things to you, in every organisation you belong to."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "IP addresses in the audit log"
@@ -6406,6 +6420,7 @@ msgstr ""
 msgid "Invitations"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Invitations a day"

@@ -511,6 +511,33 @@ defmodule Apiary.DeletionTest do
     end
   end
 
+  describe "the grace period saved in Instance settings › Configuration" do
+    test "a marking takes it; one made before keeps its purge date", %{scope: scope} do
+      previous = Application.fetch_env!(:apiary, :deletion_grace_days)
+      Application.put_env(:apiary, :deletion_grace_days, nil)
+      on_exit(fn -> Application.put_env(:apiary, :deletion_grace_days, previous) end)
+
+      before = workspace_fixture(scope.organisation, "Before")
+      {:ok, first} = Deletion.delete_workspace(scope, before.id, before.slug)
+      assert DateTime.diff(first.purge_after, first.deletion_marked_at, :day) == 30
+
+      Repo.insert_all(
+        Apiary.InstanceConfig.Row,
+        [%{id: true, deletion_grace_days: 7, updated_at: DateTime.utc_now()}],
+        on_conflict: {:replace, [:deletion_grace_days]},
+        conflict_target: :id
+      )
+
+      assert Deletion.grace_days() == 7
+      assert ApiaryWeb.SettingsComponents.workspace_lost() =~ "It is purged after 7 days;"
+
+      later = workspace_fixture(scope.organisation, "Later")
+      {:ok, second} = Deletion.delete_workspace(scope, later.id, later.slug)
+      assert DateTime.diff(second.purge_after, second.deletion_marked_at, :day) == 7
+      assert Repo.get!(Workspace, before.id).purge_after == first.purge_after
+    end
+  end
+
   describe "DELETION_GRACE_DAYS" do
     test "30 when unset, a number of days from 1 to 90" do
       assert Deletion.parse_grace_days(nil) == {:ok, 30}

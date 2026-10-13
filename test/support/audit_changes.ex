@@ -62,6 +62,7 @@ defmodule Apiary.AuditChanges do
       :"instance.mail_save",
       :"instance.mail_on",
       :"instance.rename",
+      :"instance.configure",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -232,6 +233,24 @@ defmodule Apiary.AuditChanges do
     admin = password_link_admin()
     before = entries()
     {:ok, "Acme Agents"} = Apiary.ProductName.rename(admin, %{"product_name" => "Acme Agents"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # An instance admin's, after a recent sign-in, in the trail of the instance's
+  # organisation, about the organisation.
+  def make(:"instance.configure", _ctx) do
+    admin = password_link_admin() |> mail_signed_in(0)
+    before = entries()
+
+    {:ok, %{invitations_per_day: 50}} =
+      Apiary.InstanceConfig.save(admin, :invitations, %{"invitations_per_day" => "50"})
+
     instance = instance_organisation()
 
     %{
@@ -495,7 +514,15 @@ defmodule Apiary.AuditChanges do
     {before, Apiary.ProductName.rename(scope, %{"product_name" => "Acme Agents"})}
   end
 
-  # An instance admin whose sign-in is no longer recent signs in again first.
+  # An instance admin whose sign-in is no longer recent signs in again first, for the
+  # instance's settings as for its mail.
+  def refuse(:"instance.configure", _ctx) do
+    admin = password_link_admin() |> mail_signed_in(-21)
+    before = entries()
+
+    {before, Apiary.InstanceConfig.save(admin, :invitations, %{"invitations_per_day" => "50"})}
+  end
+
   def refuse(:"instance.mail_save", _ctx) do
     admin = mail_admin() |> mail_signed_in(-21)
     before = entries()

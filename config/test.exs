@@ -47,6 +47,10 @@ config :apiary, Apiary.Mail.Cache, enabled: false
 # it inside the test's database sandbox.
 config :apiary, Apiary.ProductName.Cache, enabled: false
 
+# Nor of the settings an instance admin saves in Instance settings › Configuration
+# (`Apiary.InstanceConfig`): each test reads them inside the test's database sandbox.
+config :apiary, Apiary.InstanceConfig.Cache, enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

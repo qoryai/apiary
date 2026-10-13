@@ -61,7 +61,9 @@ defmodule Apiary.Audit do
   (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
   `instance.mail_on` there, by the instance admin, never holding the password. Setting the
   product's name (`Apiary.ProductName.rename/2`) is an `instance.rename` there, by the
-  instance admin, with the name before and after, nil for none. A new
+  instance admin, with the name before and after, nil for none. Saving the instance's
+  settings (`Apiary.InstanceConfig.save/3`) is an `instance.configure` there, by the
+  instance admin, with the values before and after. A new
   organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
@@ -80,8 +82,10 @@ defmodule Apiary.Audit do
   the purge of a deleted workspace or organisation (`Apiary.Deletion`), whose entries go
   with it: the trail keeps an organisation's entries for `retention_days/0` days, an
   instance setting, and a daily job per organisation (`Apiary.Audit.PruneJob`) deletes the
-  older ones. The setting is from 30 days to the edition's ceiling
-  (`c:Apiary.Edition.audit_retention_max_days/0`), 90 days in the core, and 90 when unset.
+  older ones. The setting is `AUDIT_RETENTION_DAYS`, or the value saved in Instance
+  settings › Configuration (`Apiary.InstanceConfig`), from 30 days to the edition's
+  ceiling (`c:Apiary.Edition.audit_retention_max_days/0`), 90 days in the core, and 90
+  when neither sets it.
   The address and the client an entry came from are personal data kept for no longer,
   `address_retention_days/0`, after which the same job clears them and leaves the rest.
   Each prune that deleted entries is itself an entry, by the instance.
@@ -677,34 +681,22 @@ defmodule Apiary.Audit do
 
   @doc """
   retention_days/0 is how many days the instance keeps an audit entry:
-  `AUDIT_RETENTION_DAYS`, checked at boot (`boot!/0`), #{@default_retention_days} when
-  unset.
+  `AUDIT_RETENTION_DAYS`, checked at boot (`boot!/0`), or the value saved in Instance
+  settings › Configuration (`Apiary.InstanceConfig`), #{@default_retention_days} when
+  neither sets it; never more than the edition's ceiling.
   """
   @spec retention_days() :: pos_integer
-  def retention_days do
-    case Application.fetch_env(:apiary, :audit_retention_days) do
-      {:ok, days} -> days
-      :error -> boot!()
-    end
-  end
+  def retention_days, do: Apiary.InstanceConfig.value(:audit_retention_days)
 
   @doc """
   address_retention_days/0 is how many days the instance keeps the address and the client
   an audit entry came from: `AUDIT_ADDRESS_RETENTION_DAYS`, checked at boot (`boot!/0`),
-  #{@default_address_retention_days} when unset, or the trail's period when that is
-  shorter.
+  or the value saved in Instance settings › Configuration (`Apiary.InstanceConfig`),
+  #{@default_address_retention_days} when neither sets it; never longer than the trail's
+  period.
   """
   @spec address_retention_days() :: pos_integer
-  def address_retention_days do
-    case Application.fetch_env(:apiary, :audit_address_retention_days) do
-      {:ok, days} ->
-        days
-
-      :error ->
-        boot!()
-        Application.fetch_env!(:apiary, :audit_address_retention_days)
-    end
-  end
+  def address_retention_days, do: Apiary.InstanceConfig.value(:audit_address_retention_days)
 
   @doc """
   retention_min_days/0 is the fewest days the trail keeps an entry, the least
@@ -774,17 +766,25 @@ defmodule Apiary.Audit do
 
   @doc """
   boot!/0 reads `AUDIT_RETENTION_DAYS` and `AUDIT_ADDRESS_RETENTION_DAYS` as
-  `config/runtime.exs` left them, checks them and fixes both periods for the life of the
-  node; it returns the trail's. Called at boot; raises on a value
-  `parse_retention_days/1` or `parse_address_retention_days/2` refuses, and on subject
-  kinds `subject_kinds/2` refuses, so the instance does not start.
+  `config/runtime.exs` left them and checks them, the address's period against the
+  trail's that the variable gives, or #{@default_retention_days} days where it is not
+  set. It keeps each variable's value for the life of the node, under
+  `:audit_retention_days` and `:audit_address_retention_days`: the number of days where
+  the variable is set and not blank, nil otherwise, so the value saved in Instance
+  settings › Configuration applies (`Apiary.InstanceConfig`). It reads no saved value,
+  since it runs before the database is reached. It returns the trail's period the
+  variable gives, #{@default_retention_days} where it is not set. Called at boot; raises
+  on a value `parse_retention_days/1` or `parse_address_retention_days/2` refuses, and on
+  subject kinds `subject_kinds/2` refuses, so the instance does not start.
   """
   @spec boot!() :: pos_integer
   def boot! do
     subject_kinds()
 
+    retention_setting = Application.get_env(:apiary, :audit_retention_setting)
+
     days =
-      case parse_retention_days(Application.get_env(:apiary, :audit_retention_setting)) do
+      case parse_retention_days(retention_setting) do
         {:ok, days} ->
           days
 
@@ -811,8 +811,15 @@ defmodule Apiary.Audit do
           """
       end
 
-    Application.put_env(:apiary, :audit_retention_days, days)
-    Application.put_env(:apiary, :audit_address_retention_days, address_days)
+    Application.put_env(:apiary, :audit_retention_days, set(retention_setting, days))
+    Application.put_env(:apiary, :audit_address_retention_days, set(setting, address_days))
     days
   end
+
+  # The value a variable sets: the days read from it where it is set and not blank, nil
+  # where it is not set, or is blank.
+  defp set(setting, days) when is_binary(setting),
+    do: if(String.trim(setting) == "", do: nil, else: days)
+
+  defp set(nil, _days), do: nil
 end

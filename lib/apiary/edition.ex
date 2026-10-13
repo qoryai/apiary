@@ -133,7 +133,10 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  @doc "The most days `AUDIT_RETENTION_DAYS` may say."
+  @doc """
+  The most days the audit trail keeps an entry, by `AUDIT_RETENTION_DAYS` or Instance
+  settings › Configuration.
+  """
   @callback audit_retention_max_days() :: pos_integer
 
   @doc ~s(Whether the product's pages and emails carry "Powered by Qory Apiary".)
