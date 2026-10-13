@@ -348,9 +348,9 @@ defmodule ApiaryWeb.Routes do
   here are Instance settings › General (`ApiaryWeb.InstanceLive.General`), Instance
   settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
   (`ApiaryWeb.InstanceMailController`), and Instance settings › Configuration
-  (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
-  sends on to the first section the person may open, and is not found for whoever may
-  open none (`ApiaryWeb.InstanceController`).
+  (`ApiaryWeb.InstanceLive.Configuration`), the instance's settings, some saved there, for
+  the instance's admins; `/instance` itself sends on to the first section the person may
+  open, and is not found for whoever may open none (`ApiaryWeb.InstanceController`).
   """
   defmacro instance_routes(opts \\ [], block \\ []) do
     routes =
@@ -372,7 +372,7 @@ defmodule ApiaryWeb.Routes do
             live "/instance/general", InstanceLive.General, :show
             # Instance › Mail: the mail server.
             live "/instance/mail", InstanceLive.Mail, :show
-            # Instance › Configuration: what whoever runs the server set, read only.
+            # Instance › Configuration: the instance's settings, some saved there.
             live "/instance/configuration", InstanceLive.Configuration, :show
             unquote(@block)
           end

@@ -130,9 +130,11 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"instance" => %{"product_name" => "Acme Agents"}}, answer: :not_found_at_mount},
       # So are the instance's settings.
       {:"instance.configure", :owner, "/instance/configuration", "save",
-       %{"part" => "invitations", "invitations_per_day" => "50"}, answer: :not_found_at_mount},
+       %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
+       answer: :not_found_at_mount},
       {:"instance.configure", :admin, "/instance/configuration", "save",
-       %{"part" => "invitations", "invitations_per_day" => "50"}, answer: :not_found_at_mount},
+       %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
+       answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",

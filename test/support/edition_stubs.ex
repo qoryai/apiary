@@ -747,6 +747,61 @@ defmodule Apiary.EditionStubs do
     def audit_retention_max_days, do: 60
   end
 
+  defmodule ConfigurationPart do
+    @moduledoc """
+    A part of Instance settings › Configuration after the core's
+    (`c:ApiaryWeb.Edition.configuration_parts/1`), built from the core's
+    `ApiaryWeb.InstanceLive.ConfigurationComponents`: one row, read only, and a Save that
+    saves nothing. It asks `Apiary.InstanceConfig.authorize_save/1`, as an edition's part
+    would, and says it saved, or sends the page `{:configuration, :sudo}`.
+    """
+    def configuration_parts(_scope), do: [__MODULE__.Part]
+
+    defmodule Part do
+      @moduledoc false
+      use ApiaryWeb, :live_component
+
+      alias ApiaryWeb.InstanceLive.ConfigurationComponents
+
+      @impl true
+      def render(assigns) do
+        ~H"""
+        <section id="config-example" class="q-part">
+          <h2 class="q-part-h">Example</h2>
+          <form id="config-example-form" phx-submit="save" phx-target={@myself}>
+            <dl class="grid gap-4">
+              <ConfigurationComponents.setting
+                id="config-example-row"
+                label="Example setting"
+                value="On"
+                source={ConfigurationComponents.env_line("EXAMPLE_SETTING")}
+              >
+                What the example decides.
+              </ConfigurationComponents.setting>
+            </dl>
+            <button type="submit">Save</button>
+          </form>
+        </section>
+        """
+      end
+
+      @impl true
+      def handle_event("save", _params, socket) do
+        case Apiary.InstanceConfig.authorize_save(socket.assigns.current_scope) do
+          :ok ->
+            {:noreply, ConfigurationComponents.saved(socket, "Example saved.")}
+
+          {:error, :sudo} ->
+            send(self(), {:configuration, :sudo})
+            {:noreply, socket}
+
+          {:error, :forbidden} ->
+            {:noreply, socket}
+        end
+      end
+    end
+  end
+
   defmodule WithoutSecrets do
     @moduledoc """
     Every person is shown the instance's features but `secrets`

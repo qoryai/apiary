@@ -40,6 +40,8 @@ defmodule ApiaryWeb.Edition do
     `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
     the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
+    `c:configuration_parts/1`, the parts the edition adds to Instance settings ›
+    Configuration, after the core's;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
     edition's actions in words on the Activity page; `c:activity_actor/2`, who made an
@@ -274,6 +276,15 @@ defmodule ApiaryWeb.Edition do
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
 
   @doc """
+  The parts the edition adds to Instance settings › Configuration
+  (`ApiaryWeb.InstanceLive.Configuration`), after the core's, in order, for the scope's
+  instance admin: each a `Phoenix.LiveComponent`, which the page renders with an `id`,
+  `config-part-1` for the first, and the page's `current_scope`. Each holds its form, its
+  save and what it saves, and is built from `ApiaryWeb.InstanceLive.ConfigurationComponents`.
+  """
+  @callback configuration_parts(Scope.t()) :: [module]
+
+  @doc """
   What the edition renders in the named slot of a core page, given the slot's assigns
   (`ApiaryWeb.Extension`), or nil for nothing.
   """
@@ -360,6 +371,7 @@ defmodule ApiaryWeb.Edition do
     refusal_sentence: 1,
     who_may_sentence: 2,
     settings_tabs: 1,
+    configuration_parts: 1,
     slot: 2,
     activity_describer: 0,
     activity_actor: 2,
