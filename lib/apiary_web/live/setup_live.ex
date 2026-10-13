@@ -35,7 +35,9 @@ defmodule ApiaryWeb.SetupLive do
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <div :if={@state == :set_up} id="setup-done" class="grid gap-4">
         <Layouts.auth_heading>
-          {gettext("This Qory Apiary is already set up.")}
+          {if name = Apiary.ProductName.get(),
+            do: gettext("%{name} is already set up.", name: name),
+            else: gettext("This Qory Apiary is already set up.")}
         </Layouts.auth_heading>
         <.button
           :if={@current_scope && @current_scope.user}
@@ -59,7 +61,7 @@ defmodule ApiaryWeb.SetupLive do
 
       <div :if={@state == :form} class="grid gap-4">
         <Layouts.auth_heading>
-          {gettext("Set up Qory Apiary")}
+          {gettext("Set up %{name}", name: Apiary.ProductName.name())}
           <:subtitle>{@line}</:subtitle>
         </Layouts.auth_heading>
         <p id="setup-admin" class="text-sm/5 text-muted">
@@ -192,11 +194,21 @@ defmodule ApiaryWeb.SetupLive do
 
   @doc """
   not_set_up_line/0 is what the sign-up and log-in pages say before the instance is set
-  up, in place of their forms.
+  up, in place of their forms: it names the instance by the name an instance admin set,
+  and says "This Qory Apiary" where none is set.
   """
   @spec not_set_up_line() :: String.t()
-  def not_set_up_line,
-    do: gettext("This Qory Apiary is not set up yet: use the set-up link from its install.")
+  def not_set_up_line do
+    case Apiary.ProductName.get() do
+      nil ->
+        gettext("This Qory Apiary is not set up yet: use the set-up link from its install.")
+
+      name ->
+        gettext("%{name} is not set up yet: use the set-up link from its install.",
+          name: name
+        )
+    end
+  end
 
   defp change_set_up(params),
     do: Organisations.change_sign_up(params, validate_unique: false, password: :required)

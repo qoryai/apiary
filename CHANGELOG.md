@@ -10,6 +10,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ## [Unreleased]
 
+### Added
+
+- An instance admin can rename the product in Instance settings › General: the browser
+  tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
+  Apiary” beside it.
+
 ## [0.1.0] - 2026-10-13
 
 The first release of the open core of Qory Apiary: Qory Apiary Community, complete for

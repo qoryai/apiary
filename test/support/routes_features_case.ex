@@ -51,6 +51,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.UserLive.Password,
     ApiaryWeb.InvitationLive.Accept,
     ApiaryWeb.SetupLive,
+    ApiaryWeb.InstanceLive.General,
     ApiaryWeb.InstanceLive.Mail,
     ApiaryWeb.InstanceMailController,
     ApiaryWeb.InstanceLive.Configuration,

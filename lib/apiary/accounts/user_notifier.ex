@@ -6,6 +6,10 @@ defmodule Apiary.Accounts.UserNotifier do
   address that may have no account yet, so it is written in the calling process's locale:
   a request or a LiveView has already set the inviter's (`ApiaryWeb.Lingo`).
 
+  Each names the product as this instance does (`Apiary.ProductName.name/0`), in its
+  from-name, its subject and its body; beside a name an instance admin set, its last line,
+  under the closing rule, says "Powered by Qory Apiary" (`Apiary.ProductName.powered_by?/0`).
+
   With no mail set (`Apiary.Mail.configured?/0`), every function here sends nothing and
   returns `{:error, :no_mail}`.
   """
@@ -20,7 +24,7 @@ defmodule Apiary.Accounts.UserNotifier do
   # `Apiary.Mail.mailer_config/0` gives; with no mail set it sends nothing and answers
   # `{:error, :no_mail}`, the answer of an email that did not go out. The body's
   # paragraphs are whole, translated sentences, set between the rules the tests and mail
-  # clients expect.
+  # clients expect; "Powered by Qory Apiary" follows the closing rule, beside a name set.
   defp deliver(recipient, subject, paragraphs) do
     case Apiary.Mail.mailer_config() do
       nil -> {:error, :no_mail}
@@ -37,6 +41,11 @@ defmodule Apiary.Accounts.UserNotifier do
 
     ==============================
     """
+
+    body =
+      if Apiary.ProductName.powered_by?(),
+        do: body <> "\n" <> gettext("Powered by Qory Apiary") <> "\n",
+        else: body
 
     email =
       new()
@@ -55,10 +64,13 @@ defmodule Apiary.Accounts.UserNotifier do
   """
   def deliver_update_email_instructions(user, url) do
     ApiaryWeb.Lingo.with_locale(nil, user, fn ->
-      deliver(user.email, gettext("Confirm your new email address for Qory Apiary"), [
+      name = Apiary.ProductName.name()
+
+      deliver(user.email, gettext("Confirm your new email address for %{name}", name: name), [
         gettext("Hi %{email},", email: user.email),
         gettext(
-          "You can change the email address of your Qory Apiary account by visiting the URL below:"
+          "You can change the email address of your %{name} account by visiting the URL below:",
+          name: name
         ),
         url,
         gettext("If you did not ask for this change, ignore this email.")
@@ -79,9 +91,11 @@ defmodule Apiary.Accounts.UserNotifier do
   end
 
   defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, gettext("Your Qory Apiary log-in link"), [
+    name = Apiary.ProductName.name()
+
+    deliver(user.email, gettext("Your %{name} log-in link", name: name), [
       gettext("Hi %{email},", email: user.email),
-      gettext("You can log in to Qory Apiary by visiting the URL below:"),
+      gettext("You can log in to %{name} by visiting the URL below:", name: name),
       url,
       gettext(
         "The link works once, for 15 minutes. If you did not ask for it, ignore this email."
@@ -90,11 +104,16 @@ defmodule Apiary.Accounts.UserNotifier do
   end
 
   defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, gettext("Confirm your Qory Apiary account"), [
+    name = Apiary.ProductName.name()
+
+    deliver(user.email, gettext("Confirm your %{name} account", name: name), [
       gettext("Hi %{email},", email: user.email),
-      gettext("You can confirm your Qory Apiary account by visiting the URL below:"),
+      gettext("You can confirm your %{name} account by visiting the URL below:", name: name),
       url,
-      gettext("If you did not create a Qory Apiary account, ignore this email.")
+      if(set = Apiary.ProductName.get(),
+        do: gettext("If you did not create an account on %{name}, ignore this email.", name: set),
+        else: gettext("If you did not create a Qory Apiary account, ignore this email.")
+      )
     ])
   end
 
@@ -109,14 +128,17 @@ defmodule Apiary.Accounts.UserNotifier do
   line by itself.
   """
   def deliver_invitation(email, organisation, url) do
+    name = Apiary.ProductName.name()
+
     deliver(
       email,
-      gettext("Your invitation to Qory Apiary"),
+      gettext("Your invitation to %{name}", name: name),
       [
         gettext("Hi %{email},", email: email),
         gettext(
-          "You are invited to join the organisation “%{organisation}” on Qory Apiary. You can accept the invitation by visiting the URL below:",
-          organisation: Organisation.displayable_name(organisation.name)
+          "You are invited to join the organisation “%{organisation}” on %{name}. You can accept the invitation by visiting the URL below:",
+          organisation: Organisation.displayable_name(organisation.name),
+          name: name
         ),
         url,
         gettext(
@@ -134,14 +156,17 @@ defmodule Apiary.Accounts.UserNotifier do
   """
   def deliver_mail_test_link(user, url, config, sender) when is_list(config) do
     ApiaryWeb.Lingo.with_locale(nil, user, fn ->
+      name = Apiary.ProductName.name()
+
       deliver(
         user.email,
-        gettext("Turn on mail for Qory Apiary"),
+        gettext("Turn on mail for %{name}", name: name),
         [
           gettext("Hi %{email},", email: user.email),
           gettext(
-            "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:",
-            email: user.email
+            "You saved the mail settings of %{name}. To turn mail on, visit the URL below while you are logged in as %{email}:",
+            email: user.email,
+            name: name
           ),
           url,
           gettext(

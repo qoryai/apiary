@@ -40,21 +40,26 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  The mark with the wordmark "Qory Apiary", as a link to `/`. `xs` is the
-  sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
+  The mark with the product's name on this instance (`name`, by default
+  `Apiary.ProductName.name/0`: the name an instance admin set, else the edition's), as a
+  link to `/`; a name too long for its place ends in an ellipsis and shows whole on hover.
+  `xs` is the sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
   the `/users/organisations` top bar and the auth header strip (22 px mark),
   `lg` the auth panel (28 px mark).
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"
   attr :size, :string, default: "sm", values: ~w(xs sm lg)
+  attr :name, :string, default: nil, doc: "the product's name; nil reads it"
 
   def brand(assigns) do
+    assigns = assign(assigns, :name, assigns.name || Apiary.ProductName.name())
+
     ~H"""
     <a
       href={@href}
       class={[
-        "inline-flex items-center gap-2 rounded-field",
+        "inline-flex max-w-full min-w-0 items-center gap-2 rounded-field",
         if(@size == "xs",
           do: "text-muted transition-colors hover:text-base-content",
           else: "text-base-content"
@@ -69,15 +74,18 @@ defmodule ApiaryWeb.CoreComponents do
           "lg" -> "size-7"
         end
       } />
-      <span class={[
-        "whitespace-nowrap tracking-[-0.03em]",
-        case @size do
-          "xs" -> "text-[13px]/[18px] font-medium"
-          "sm" -> "text-base/5 font-semibold"
-          "lg" -> "text-[19px]/6 font-semibold"
-        end
-      ]}>
-        Qory Apiary
+      <span
+        title={@name}
+        class={[
+          "min-w-0 truncate tracking-[-0.03em]",
+          case @size do
+            "xs" -> "text-[13px]/[18px] font-medium"
+            "sm" -> "text-base/5 font-semibold"
+            "lg" -> "text-[19px]/6 font-semibold"
+          end
+        ]}
+      >
+        {@name}
       </span>
     </a>
     """

@@ -194,7 +194,9 @@ one mail or not (`Apiary.Release.password_link/1`).
 Saving the instance's mail settings and turning them on by the test link
 (`instance.mail_save`, `Apiary.Mail.save_settings/3`; `instance.mail_on`,
 `Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
-`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Revoking
+`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Setting
+the product's name in Instance settings › General (`instance.rename`,
+`Apiary.ProductName.rename/2`) is an instance admin's too, asked the same way. Revoking
 the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a new
 instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its log
 shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no

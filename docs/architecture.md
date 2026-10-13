@@ -371,7 +371,9 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
   (`activity_describer/0`), and who made an entry, in its Who column
   (`activity_actor/2`); the names the edition's paths take (`reserved_slugs/0`); and the
-  product's name on the Qory Apiary menu's button (`product_name/0`).
+  product's name where no instance admin set one (`product_name/0`), which every page
+  title, the Qory Apiary menu's button, the log-in pages and every email show
+  (`Apiary.ProductName`).
 
 A core page never names a module of an edition: it links to the edition's pages only
 through the places the core gives it, slots, settings tabs and navigation entries, and a

@@ -1642,6 +1642,26 @@
     margin-left: auto;
     color: var(--q-faint);
   }
+  /* "Powered by Qory Apiary", beside a name an instance admin set: a faint line under the
+     menu's row, and the menu's last line where that row is not shown (the bar, the folded
+     sidebar). */
+  .q-brand-powered {
+    margin: 2px 0 0;
+    padding-inline: 8px;
+    color: var(--q-faint);
+    font-size: 0.71875rem;
+    line-height: 1rem;
+  }
+  .q-brand-powered-text {
+    display: block;
+    padding: 0.25rem 0.5rem;
+    color: var(--q-faint);
+    font-size: 0.71875rem;
+    line-height: 1rem;
+  }
+  .q-sidebar .q-brand-powered-item {
+    display: none;
+  }
   /* The top bar's, on a page without a sidebar. */
   .q-topbar .q-brand {
     flex: none;
@@ -1837,6 +1857,13 @@
     }
     [data-sidebar="collapsed"] :is(.q-brand-name, .q-brand-chev) {
       display: none;
+    }
+    /* Folded, "Powered by Qory Apiary" is the menu's last line, not the foot's. */
+    [data-sidebar="collapsed"] .q-brand-powered {
+      display: none;
+    }
+    [data-sidebar="collapsed"] .q-sidebar .q-brand-powered-item {
+      display: block;
     }
   }
 

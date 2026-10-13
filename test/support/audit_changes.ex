@@ -61,6 +61,7 @@ defmodule Apiary.AuditChanges do
       :"account.password_link",
       :"instance.mail_save",
       :"instance.mail_on",
+      :"instance.rename",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -222,6 +223,21 @@ defmodule Apiary.AuditChanges do
       subject: {"organisation", instance.id},
       before: before,
       secret: @mail_attrs["smtp_password"]
+    }
+  end
+
+  # An instance admin's, in the trail of the instance's organisation, about the
+  # organisation.
+  def make(:"instance.rename", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+    {:ok, "Acme Agents"} = Apiary.ProductName.rename(admin, %{"product_name" => "Acme Agents"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
     }
   end
 
@@ -471,6 +487,12 @@ defmodule Apiary.AuditChanges do
     user = Apiary.AccountsFixtures.user_fixture()
     before = entries()
     {before, Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")}
+  end
+
+  # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"instance.rename", %{scope: scope}) do
+    before = entries()
+    {before, Apiary.ProductName.rename(scope, %{"product_name" => "Acme Agents"})}
   end
 
   # An instance admin whose sign-in is no longer recent signs in again first.

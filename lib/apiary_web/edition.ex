@@ -52,8 +52,9 @@ defmodule ApiaryWeb.Edition do
     organisation's gateways say of the workspaces whose nodes can use them;
     `c:nodes_managed_by_sentence/1`, what the nodes' pages say of who manages the nodes
     and their access keys, in place of the core's sentence of who may.
-  - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
-    menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
+  - **Words**: `c:product_name/0`, the product's name where no instance admin set one
+    (`Apiary.ProductName`): every page title, the button of the Qory Apiary menu and the
+    menu's name (`ApiaryWeb.Layouts.brand_menu/1`), the log-in pages and every email;
     `c:gettext_backend/0`, the Gettext backend of the edition's sentences, beside the
     core's (`ApiaryWeb.Gettext.Backends`); `c:people_sentence/3`, what the People pages
     say of an invitation and of a level (`ApiaryWeb.Access.people_sentence/4`).
@@ -319,10 +320,11 @@ defmodule ApiaryWeb.Edition do
             }
 
   @doc """
-  The product's name, as the edition names it: the button of the Qory Apiary menu and the
-  menu's name (`ApiaryWeb.Layouts.brand_menu/1`), "Qory Apiary" in the core's. A name, not
-  a sentence: it is not translated. The log-in pages, the page titles and the emails keep
-  "Qory Apiary".
+  The product's name, as the edition names it, "Qory Apiary" in the core's: the name
+  every page and email shows where no instance admin set one in Instance settings ›
+  General (`Apiary.ProductName.name/0`), the page titles, the button of the Qory Apiary
+  menu and the menu's name (`ApiaryWeb.Layouts.brand_menu/1`), the log-in pages and every
+  email's from-name and subject. A name, not a sentence: it is not translated.
   """
   @callback product_name() :: String.t()
 

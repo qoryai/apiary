@@ -737,6 +737,11 @@ The last owner of the organisation who may act is not suspended, made an admin o
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way
 back.
 
+**The name.** An instance admin can rename the product in **Instance settings › General**.
+The name replaces Qory Apiary in the browser tab, the sidebar, the log-in pages and every
+email, and those places then also say “Powered by Qory Apiary”. Empty the field to go back
+to Qory Apiary. The docs keep the name Qory Apiary.
+
 ### Compose only
 
 `docker compose` reads these, and the release does not. Compose takes a variable from the
