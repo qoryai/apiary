@@ -1117,6 +1117,172 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "a row with an after line says its reason in the past tense" do
+    @line %{
+      action: :allow,
+      level: :workspace,
+      version: nil,
+      by: nil,
+      at: nil,
+      state: :pending,
+      reloaded_at: nil
+    }
+
+    defp act_row(connection, variant, line) do
+      base = %{
+        id: "c1",
+        host: "files.cdn.example",
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        attempts: 3,
+        allowed: 0,
+        denied: 3,
+        runs: 1,
+        last_decision: "denied",
+        last_rule: "",
+        last_outcome: "refused",
+        last_mode: "enforce",
+        first_seen_at: ~U[2026-09-20 14:02:20Z],
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      act = %{rule_option: {:rule_added, :allow}, after: line}
+      assigns = %{c: Map.merge(base, connection), variant: variant, act: act}
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="cx-1" connection={@c} variant={@variant} act={@act} />
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    # The Reason cell, the fold under the destination, the cell's title and its bold lead.
+    defp why(doc) do
+      cell = LazyHTML.query(doc, ".q-why-l")
+
+      %{
+        cell: text(LazyHTML.to_html(cell)),
+        fold: text(LazyHTML.to_html(LazyHTML.query(doc, ".q-cx-fold"))),
+        title: cell |> LazyHTML.attribute("title") |> List.first(),
+        bold: cell |> LazyHTML.query("b") |> LazyHTML.text()
+      }
+    end
+
+    test "with Rule added and with In force in this run, on both tables" do
+      past = "No rule matched. Enforce mode denied it."
+
+      for variant <- ~w(table workspace), state <- [:pending, :in_force] do
+        doc = act_row(%{}, variant, %{@line | state: state})
+
+        assert text(LazyHTML.to_html(LazyHTML.query(doc, "#cx-1-after .badge"))) ==
+                 if(state == :in_force, do: "In force in this run", else: "Rule added")
+
+        assert why(doc) == %{cell: past, fold: past, title: past, bold: "No rule matched."}
+        refute text(LazyHTML.to_html(doc)) =~ "No rule matches"
+      end
+    end
+
+    test "every sentence of a reason with no rule, and what follows it unchanged" do
+      for variant <- ~w(table workspace) do
+        assert why(act_row(%{last_mode: nil}, variant, @line)).title ==
+                 "No rule matched. The policy denied it."
+
+        no_path = %{last_rule: "api.example", path: "/v2/models", last_path_rule: ""}
+
+        assert why(act_row(no_path, variant, @line)) == %{
+                 cell: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 fold: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 title: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 bold: "Host allowed, no path rule matched."
+               }
+
+        assert why(act_row(%{last_mode: nil} |> Map.merge(no_path), variant, @line)).title ==
+                 "Host allowed, no path rule matched. The policy denied it."
+
+        observed = %{
+          last_decision: "allowed",
+          last_mode: "observe",
+          last_outcome: "connected",
+          allowed: 3,
+          denied: 0
+        }
+
+        assert why(act_row(observed, variant, @line)) == %{
+                 cell: "No rule matched. Observe mode let it through.",
+                 fold: "No rule matched. Observe mode let it through.",
+                 title: "No rule matched. Observe mode let it through.",
+                 bold: "No rule matched."
+               }
+
+        assert why(act_row(%{observed | last_mode: nil}, variant, @line)).cell ==
+                 "No rule matched. It was let through."
+
+        # A tool's row keeps its tail after the lead.
+        tool =
+          Map.merge(observed, %{
+            host: "files.tools.internal",
+            method: "HTTPS",
+            path: "/media/acme/shop/checkout.png",
+            last_path_rule: "/media/acme/shop/*",
+            last_tool: "files"
+          })
+
+        handed =
+          "No rule matched. Observe mode let it through. Handed to files, path /media/acme/shop/*"
+
+        assert why(act_row(tool, variant, @line)).title == handed
+        assert why(act_row(tool, variant, @line)).cell == handed
+
+        assert why(act_row(%{tool | last_mode: nil, last_outcome: "dial_failed"}, variant, @line)).title ==
+                 "No rule matched. It was let through. For files, path /media/acme/shop/*"
+
+        # A denied request to a tool's host still says it never reached the tool.
+        assert why(act_row(Map.put(no_path, :last_tool, "files"), variant, @line)).title ==
+                 "Host allowed, no path rule matched. Enforce mode denied it. Refused before reaching the tool files."
+      end
+
+      # The workspace's title of a mixed destination keeps the last attempt.
+      mixed = act_row(%{allowed: 2, denied: 3, attempts: 5}, "workspace", @line)
+      assert why(mixed).title == "No rule matched. Enforce mode denied it. · last attempt"
+    end
+
+    test "a row without an after line, and the timeline's row, keep the present tense" do
+      for variant <- ~w(table workspace) do
+        doc = act_row(%{}, variant, nil)
+        refute LazyHTML.query(doc, "#cx-1-after") |> Enum.any?()
+        present = "No rule matches. Enforce mode denies it."
+
+        assert why(doc) == %{
+                 cell: present,
+                 fold: present,
+                 title: present,
+                 bold: "No rule matches."
+               }
+      end
+
+      event = %{
+        host: "files.cdn.example",
+        port: 443,
+        method: "CONNECT",
+        decision: "denied",
+        rule: "",
+        mode: "enforce",
+        outcome: "refused",
+        at: ~U[2026-09-20 14:02:20.300Z]
+      }
+
+      assigns = %{event: event}
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-5" connection={@event} variant="inline" />
+        """)
+
+      assert text(html) =~ "Denied. No rule matches. Enforce mode denies it."
+      refute text(html) =~ "matched"
+    end
+  end
+
   describe "the Outcome column's tooltip" do
     test "says what a refusal is, in a run's table and in a workspace's" do
       for variant <- ~w(table workspace) do

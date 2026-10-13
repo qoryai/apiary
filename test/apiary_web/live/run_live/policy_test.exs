@@ -657,6 +657,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
+      # before the rule, the row has no line after it and its reason is in the present
+      refute has_element?(view, "#cx-#{id}-after")
+      assert text(view, "#cx-#{id}") =~ "No rule matches. Enforce mode denies it."
+
       view |> element("#cx-#{id}-allow") |> render_click()
 
       assert text(view, "#rule-panel-next") =~
@@ -670,10 +674,16 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       new = in_force(scope, target)
 
-      # the row is the record: still denied, the same counts and reason
+      # the row is the record: still denied, the same counts; its reason, in the cell, the
+      # fold and the title, is in the past tense once the line after it says what holds now
       refute has_element?(view, "#rule-panel")
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied[data-decision=denied]))
-      assert text(view, "#cx-#{id}") =~ "No rule matches. Enforce mode denies it."
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert text(view, "#cx-#{id} .q-cx-fold") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+      assert text(view, "#cx-#{id} .q-why-l b") == "No rule matched."
+      refute text(view, "#cx-#{id}") =~ "No rule matches"
 
       # and it gains the line: a rule was added, and this run has not reloaded
       line = text(view, "#cx-#{id}-after")
@@ -709,6 +719,17 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       refute line =~ "has not reloaded"
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied))
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+
+      # the timeline's row of the same attempt has no line after it: the present
+      {:ok, timeline, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert text(timeline, "#e-5 .q-cx-denied") =~
+               "Denied. No rule matches. Enforce mode denies it."
+
+      refute text(timeline, "#e-5 .q-cx-denied") =~ "matched"
     end
 
     test "a target whose path another system has is named and linked with its system", %{
@@ -921,6 +942,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                )
 
       assert text(view, "#cx-#{id}-after") =~ "Denied for this repository"
+      # the row was let through, and says so in the past tense above its line
+      assert text(view, "#cx-#{id} .q-why-l") == "No rule matched. Observe mode let it through."
     end
 
     test "what the domain refuses is said in its sentence, and nothing is written", %{

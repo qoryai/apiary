@@ -2390,6 +2390,7 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:c, c)
       |> assign(:share, share(c.allowed, c.denied))
       |> assign(:mixed, c.allowed > 0 and c.denied > 0)
+      |> assign(:past, past?(assigns.act))
 
     ~H"""
     <tr
@@ -2400,7 +2401,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-cx-d">
         <.destination_title c={@c} line copy_id={"#{@id}-copy"} />
         <span :if={@security} class="q-cx-fold">
-          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} />
+          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} past={@past} />
         </span>
       </td>
       <td class="q-num q-from-lg">{Format.number(@c.attempts)}</td>
@@ -2408,19 +2409,20 @@ defmodule ApiaryWeb.RunComponents do
         <.split allowed={@c.allowed} denied={@c.denied} share={@share} />
       </td>
       <td :if={@security} class="q-why q-from-sm">
-        <span :if={!elsewhere?(@act)} class="q-why-l" title={reason_title(@c, @mixed)}>
+        <span :if={!elsewhere?(@act)} class="q-why-l" title={reason_title(@c, @mixed, @past)}>
           <.reason
             c={@c}
             variant="workspace"
             rule_path={rule_link(@act, @c)}
             rule_id={"#{@id}-rule"}
+            past={@past}
           />
         </span>
         <span
           :if={elsewhere?(@act)}
           class="q-why-l q-above-why"
           id={"#{@id}-elsewhere"}
-          title={reason_title(@c, @mixed)}
+          title={reason_title(@c, @mixed, @past)}
         >
           <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
           {gettext("%{name} allows only the hosts on its list", name: @act.allow_elsewhere.name)}
@@ -2462,6 +2464,7 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:c, c)
       |> assign(:share, share(c.allowed, c.denied))
       |> assign(:mixed, c.allowed > 0 and c.denied > 0)
+      |> assign(:past, past?(assigns.act))
 
     ~H"""
     <tr
@@ -2488,7 +2491,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-cx-d">
         <.destination_title c={@c} copy_id={"#{@id}-copy"} />
         <span :if={@security} class="q-cx-fold">
-          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} />
+          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} past={@past} />
         </span>
       </td>
       <td class="q-num q-cx-runs">{Format.number(@c.runs)}</td>
@@ -2522,7 +2525,7 @@ defmodule ApiaryWeb.RunComponents do
           :if={!(@act && @act[:above]) && elsewhere?(@act)}
           class="q-why-l q-above-why"
           id={"#{@id}-elsewhere"}
-          title={reason_title(@c, @mixed)}
+          title={reason_title(@c, @mixed, @past)}
         >
           <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
           {gettext("%{name} allows only the hosts on its list", name: @act.allow_elsewhere.name)}
@@ -2530,13 +2533,14 @@ defmodule ApiaryWeb.RunComponents do
         <span
           :if={!(@act && @act[:above]) && !elsewhere?(@act)}
           class="q-why-l"
-          title={reason_title(@c, @mixed)}
+          title={reason_title(@c, @mixed, @past)}
         >
           <.reason
             c={@c}
             variant="workspace"
             rule_path={rule_link(@act, @c)}
             rule_id={"#{@id}-rule"}
+            past={@past}
           /><span
             :if={@mixed}
             class="text-faint"
@@ -2642,6 +2646,10 @@ defmodule ApiaryWeb.RunComponents do
   # A row only the level above can allow: the reason a reader needs is that level's.
   defp elsewhere?(%{rule_option: :can_allow, allow_elsewhere: %{}}), do: true
   defp elsewhere?(_act), do: false
+
+  # A row with an after line (`after_line/1`) is a record of what held before what holds
+  # now: its reason is told in the past tense.
+  defp past?(act), do: !!(act && act[:after])
 
   # The rule the reason names links to the rule in force only when they are one: a record
   # that names a rule since replaced is about the past. A rule just added has the after
@@ -2794,8 +2802,8 @@ defmodule ApiaryWeb.RunComponents do
   defp destination_title_words(c), do: "#{c.host}:#{c.port} #{c.path}"
 
   # The reason as words alone, for the title that shows a cut reason whole: the sentences
-  # `reason/1` shows for a row of the workspace, in the same order.
-  defp reason_title(c, mixed) do
+  # `reason/1` shows for a row of the workspace, in the same order and the same tense.
+  defp reason_title(c, mixed, past) do
     parts = %{rule: c.rule || "", path: c.path_rule || ""}
 
     main =
@@ -2821,23 +2829,23 @@ defmodule ApiaryWeb.RunComponents do
           ]
 
         :denied_no_rule ->
-          [gettext("No rule matches."), mode_sentence(c.mode, :denies)]
+          [no_rule_sentence(past), mode_sentence(c.mode, :denies, past)]
 
         :denied_no_path_rule ->
-          [gettext("Host allowed, no path rule matches."), mode_sentence(c.mode, :denies)]
+          [no_path_rule_sentence(past), mode_sentence(c.mode, :denies, past)]
 
         :tool_by_rule ->
           [plain_text(handed_sentence(c), parts)]
 
         :tool_no_rule ->
           [
-            gettext("No rule matches."),
-            mode_sentence(c.mode, :lets_through),
+            no_rule_sentence(past),
+            mode_sentence(c.mode, :lets_through, past),
             plain_text(handed_sentence(c), parts)
           ]
 
         :allowed_no_rule ->
-          [gettext("No rule matches."), mode_sentence(c.mode, :lets_through)]
+          [no_rule_sentence(past), mode_sentence(c.mode, :lets_through, past)]
 
         kind when kind in [:denied_by_rule, :allowed_by_rule] ->
           [rule_words(c)]
@@ -2932,6 +2940,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :security, :boolean, default: true
   attr :rule_path, :string, default: nil, doc: "where the rule the reason names is, to link it"
   attr :rule_id, :string, default: nil, doc: "the id of that link"
+  attr :past, :boolean, default: false, doc: "the row has an after line: the past tense"
 
   # Without security only the inline row has a reason, and it is the record's: the
   # decision, and the tool a request was for. Which rule matched, and in which mode, is
@@ -2968,9 +2977,9 @@ defmodule ApiaryWeb.RunComponents do
           "The wall denies it in either mode."
         )}
       <% :denied_no_rule -> %>
-        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :denies)}
+        <b>{no_rule_sentence(@past)}</b> {mode_sentence(@c.mode, :denies, @past)}
       <% :denied_no_path_rule -> %>
-        <b>{gettext("Host allowed, no path rule matches.")}</b> {mode_sentence(@c.mode, :denies)}
+        <b>{no_path_rule_sentence(@past)}</b> {mode_sentence(@c.mode, :denies, @past)}
       <% :denied_by_rule -> %>
         {gettext("Rule")}
         <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
@@ -2983,12 +2992,12 @@ defmodule ApiaryWeb.RunComponents do
           <:part name={:path}><.rule value={@c.path_rule || ""} /></:part>
         </.rich>
       <% :tool_no_rule -> %>
-        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :lets_through)}
+        <b>{no_rule_sentence(@past)}</b> {mode_sentence(@c.mode, :lets_through, @past)}
         <.rich text={handed_sentence(@c)}>
           <:part name={:path}><.rule value={@c.path_rule || ""} /></:part>
         </.rich>
       <% :allowed_no_rule -> %>
-        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :lets_through)}
+        <b>{no_rule_sentence(@past)}</b> {mode_sentence(@c.mode, :lets_through, @past)}
       <% :allowed_by_rule -> %>
         <span :if={@variant == "inline"}><b>{gettext("Allowed")}</b> {gettext("by rule")}</span><span :if={
           @variant != "inline"
@@ -3081,11 +3090,23 @@ defmodule ApiaryWeb.RunComponents do
     )
   end
 
+  defp no_rule_sentence(false), do: gettext("No rule matches.")
+  defp no_rule_sentence(true), do: gettext("No rule matched.")
+
+  defp no_path_rule_sentence(false), do: gettext("Host allowed, no path rule matches.")
+  defp no_path_rule_sentence(true), do: gettext("Host allowed, no path rule matched.")
+
   # The mode is the event's; an event that names neither mode says only what it knows.
-  defp mode_sentence("enforce", :denies), do: gettext("Enforce mode denies it.")
-  defp mode_sentence("observe", :lets_through), do: gettext("Observe mode lets it through.")
-  defp mode_sentence(_mode, :denies), do: gettext("The policy denies it.")
-  defp mode_sentence(_mode, :lets_through), do: gettext("It was let through.")
+  defp mode_sentence("enforce", :denies, false), do: gettext("Enforce mode denies it.")
+  defp mode_sentence("enforce", :denies, true), do: gettext("Enforce mode denied it.")
+
+  defp mode_sentence("observe", :lets_through, false),
+    do: gettext("Observe mode lets it through.")
+
+  defp mode_sentence("observe", :lets_through, true), do: gettext("Observe mode let it through.")
+  defp mode_sentence(_mode, :denies, false), do: gettext("The policy denies it.")
+  defp mode_sentence(_mode, :denies, true), do: gettext("The policy denied it.")
+  defp mode_sentence(_mode, :lets_through, _past), do: gettext("It was let through.")
 
   attr :value, :string, required: true
   attr :path, :string, default: nil, doc: "the rule's page, where the name links to it"
