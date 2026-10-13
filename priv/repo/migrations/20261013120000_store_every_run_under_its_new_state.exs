@@ -1,9 +1,11 @@
 defmodule Apiary.Repo.Migrations.StoreEveryRunUnderItsNewState do
   use Ecto.Migration
 
-  # Every run a release before 20261009233000 stored is stored under the state a rebuild
-  # folds for it today (`Apiary.Runs.Fold.exit_state/2`), so the next migration can allow
-  # the six states only:
+  # Every run a release before 20261009233000 stored under an old name, and every failed
+  # exit below, is stored under the state the fold gives it today
+  # (`Apiary.Runs.Fold.exit_state/2`), so the next migration can allow the six states
+  # only. An exit without a state with the reason `stopped`, and an exit whose state was
+  # `cancelled`, which that release stored as failed, take their state from a rebuild.
   #
   # - `succeeded` is `completed`; `timed_out` and `ended` are `cancelled`.
   # - A run that exited `failed` with the reason `session_lost` or `gateway_lost`, with no
@@ -19,9 +21,9 @@ defmodule Apiary.Repo.Migrations.StoreEveryRunUnderItsNewState do
   # committed before the next starts, so none holds its rows for long on a large `runs`.
   #
   # Then the guard. A row still in `succeeded`, `timed_out` or `ended` after the batches
-  # was written during them, by a build without 20261009233000 that still writes to the
-  # database: the migration raises, and the boot stops before the endpoint serves. A
-  # migration that raises is not recorded, so the next start rewrites and checks again.
+  # was written during or after them, by a build without 20261009233000 that still writes
+  # to the database: the migration raises, and the boot stops before the endpoint serves.
+  # A migration that raises is not recorded, so the next start rewrites and checks again.
   #
   # Rolled back, nothing changes: the rewrite is what a rebuild gives, and a release with
   # 20261009233000 reads the new names.
