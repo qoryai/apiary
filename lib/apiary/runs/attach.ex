@@ -113,9 +113,8 @@ defmodule Apiary.Runs.Attach do
   @document_version 1
   @int4 2_147_483_647
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
-  # The states of a run that has ended, with the old names an older release stored them
-  # under (`Apiary.Runs.Run.old_states/0`).
-  @ended Run.with_old_names(~w(completed failed cancelled))
+  # The states of a run that has ended.
+  @ended ~w(completed failed cancelled)
 
   @typedoc "An attach's body, as `parse/1` read it."
   @type t :: %__MODULE__{

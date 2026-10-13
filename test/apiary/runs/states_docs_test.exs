@@ -34,9 +34,6 @@ defmodule Apiary.Runs.StatesDocsTest do
 
     assert Map.keys(rows) -- Run.states() == [],
            "docs/contract-assumptions.md lists a state that is not one"
-
-    for old <- Run.old_states(),
-        do: assert(text =~ "`#{old}`", "docs/contract-assumptions.md does not name #{old}")
   end
 
   test "ui.md lists every state under its family, as the Filter menu does" do

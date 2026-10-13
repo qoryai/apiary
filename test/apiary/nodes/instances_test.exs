@@ -297,7 +297,7 @@ defmodule Apiary.Nodes.InstancesTest do
       now = DateTime.utc_now()
 
       # Ended, lost, silent past three intervals, of another node, or of no instance.
-      node_run_fixture(node, "i_1", %{state: "succeeded"})
+      node_run_fixture(node, "i_1", %{state: "completed"})
       node_run_fixture(node, "i_2", %{state: "lost"})
       node_run_fixture(node, "i_3", %{state: "pending", inserted_at: ago(91, now)})
 
@@ -432,7 +432,7 @@ defmodule Apiary.Nodes.InstancesTest do
       instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
       open = node_run_fixture(node, "i_1", %{state: "running", started_at: ago(30)})
       pending = node_run_fixture(node, "i_1")
-      ended = node_run_fixture(node, "i_1", %{state: "succeeded"})
+      ended = node_run_fixture(node, "i_1", %{state: "completed"})
       other = node_run_fixture(node, "i_2")
       Runs.subscribe(scope)
       Nodes.subscribe(scope)
@@ -442,7 +442,7 @@ defmodule Apiary.Nodes.InstancesTest do
                Nodes.clear_instance(scope, node, "i_1")
 
       assert Enum.sort(Enum.map(runs, & &1.id)) == Enum.sort([open.id, pending.id])
-      assert Enum.map([open, pending, ended, other], &state/1) == ~w(lost lost succeeded pending)
+      assert Enum.map([open, pending, ended, other], &state/1) == ~w(lost lost completed pending)
       assert cleared.id == instance.id
       assert cleared.cleared_by_id == scope.user.id
       assert %DateTime{} = cleared.cleared_at

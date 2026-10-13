@@ -128,7 +128,7 @@ defmodule ApiaryWeb.TargetComponents do
   @doc """
   A run's state as a dot and its word (pending, running, failed, cancelled, lost); the dot
   alone for one that completed, its word there for a screen reader. `word` forces the word,
-  as a header does. A name an older release stored reads as its new state.
+  as a header does.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
@@ -140,7 +140,7 @@ defmodule ApiaryWeb.TargetComponents do
       assign(
         assigns,
         :quiet,
-        Apiary.Runs.Run.current_state(assigns.state) == "completed" and !assigns.word
+        assigns.state == "completed" and !assigns.word
       )
 
     ~H"""

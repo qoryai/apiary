@@ -2483,10 +2483,9 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A state its starter's outcome set, unlike what the exit said, is said as the header
-  # says it (`outcome_sentence/1`). A state stored under an earlier name is said as the
-  # state that took it in.
+  # says it (`outcome_sentence/1`).
   defp state_sentence(%Run{state: state} = run),
-    do: outcome_sentence(run) || state_sentence(Run.current_state(state), run)
+    do: outcome_sentence(run) || state_sentence(state, run)
 
   defp state_sentence("completed", %Run{duration_ms: ms}) when is_integer(ms),
     do: gettext("Run completed after %{duration}.", duration: format_duration_ms(ms))
@@ -2726,7 +2725,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # non-zero by itself and no reason words stand: "exit 1", "SIGKILL". Nil otherwise.
   # A run whose outcome's sentence says the exit says it there.
   defp program_exit(%Run{} = run) do
-    if Run.current_state(run.state) == "failed" and is_nil(reason_words(run)) and
+    if run.state == "failed" and is_nil(reason_words(run)) and
          is_nil(outcome_sentence(run)) do
       cond do
         signal?(run) -> run.signal

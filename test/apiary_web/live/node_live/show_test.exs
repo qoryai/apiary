@@ -403,7 +403,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       instance_fixture(pool, instance_id: "i_1", name: "spot-1")
       node_run_fixture(pool, "i_1")
       node_run_fixture(pool, "i_2")
-      node_run_fixture(pool, "i_3", %{state: "succeeded"})
+      node_run_fixture(pool, "i_3", %{state: "completed"})
 
       Repo.update_all(from(n in Node, where: n.id == ^pool.id),
         set: [instance_limit_refused: 4, instance_limit_refused_at: ago(60)]

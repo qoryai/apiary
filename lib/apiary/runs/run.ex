@@ -21,11 +21,6 @@ defmodule Apiary.Runs.Run do
 
   @states ~w(pending running completed failed cancelled lost)
 
-  # The names a release before this one wrote, each with the state it reads as. The `CHECK`
-  # on the column still allows them, so that rows an older release writes while a deploy
-  # rolls out are stored, and every family and filter counts them as their new state.
-  @old_states %{"succeeded" => "completed", "timed_out" => "cancelled", "ended" => "cancelled"}
-
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "runs" do
@@ -173,29 +168,9 @@ defmodule Apiary.Runs.Run do
   end
 
   @doc """
-  Every state a run can be in: pending, running, completed, failed, cancelled and lost. The
-  `CHECK` on the column also allows the old names `old_states/0` lists.
+  Every state a run can be in: pending, running, completed, failed, cancelled and lost.
   """
   def states, do: @states
-
-  @doc """
-  The names a release before this one stored a state under, which the `CHECK` on the column
-  still allows: `succeeded` reads as completed, `timed_out` and `ended` as cancelled
-  (`current_state/1`).
-  """
-  def old_states, do: Map.keys(@old_states)
-
-  @doc "The state a stored name reads as: an old name its new state, any other name itself."
-  @spec current_state(String.t()) :: String.t()
-  def current_state(state), do: Map.get(@old_states, state, state)
-
-  @doc """
-  `states` and every old name that reads as one of them, for a query of the stored column:
-  a run an older release stored as `succeeded` counts and lists as completed.
-  """
-  @spec with_old_names([String.t()]) :: [String.t()]
-  def with_old_names(states),
-    do: states ++ for({old, new} <- @old_states, new in states, do: old)
 
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)

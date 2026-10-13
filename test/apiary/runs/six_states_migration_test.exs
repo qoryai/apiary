@@ -55,9 +55,8 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
     %{scope: scope} = sign_up_fixture()
 
     assert Run.states() == ~w(pending running completed failed cancelled lost)
-    assert Enum.sort(Run.old_states()) == ~w(ended succeeded timed_out)
 
-    for state <- Run.states() ++ Run.old_states(),
+    for state <- Run.states() ++ ~w(succeeded timed_out ended),
         do: assert(state(insert!(scope, state)) == state)
 
     for state <- ~w(closed paused Completed), do: refused?(scope, state)

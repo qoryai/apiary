@@ -768,7 +768,7 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "a run that ended is not revived" do
-      for state <- ~w(completed failed cancelled succeeded ended timed_out) do
+      for state <- ~w(completed failed cancelled) do
         %{run: run} = Fold.fold(%{@run | state: state}, [heartbeat(5, 30)])
         assert run.state == state
       end

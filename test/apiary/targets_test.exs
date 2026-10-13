@@ -237,21 +237,21 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "a target's page" do
-    test "every state counts in its family, an old name in its new state's" do
+    test "every state counts in its family" do
       %{scope: scope} = sign_up_fixture()
       ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60)
       shop = target(scope, "github.example", "acme/shop")
       at = DateTime.add(@now, -120, :second)
 
-      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+      for state <- ~w(pending running completed failed cancelled lost),
           do: run_fixture(scope, %{state: state, started_at: at, target_id: shop.id})
 
       # Cancelled is neither ended well nor ended badly, so a page's share leaves it out.
       assert Targets.summary(scope, shop, @now).window ==
-               %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2, denied: 0}
+               %{runs: 7, ended_well: 2, cancelled: 1, ended_badly: 2, denied: 0}
 
       assert %{rows: [row]} = Targets.page(scope, %{}, @now)
-      assert %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2} = row
+      assert %{runs: 7, ended_well: 2, cancelled: 1, ended_badly: 2} = row
     end
 
     test "its summary, runs, denials, machines, runtimes and the same path elsewhere" do

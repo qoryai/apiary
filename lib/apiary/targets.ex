@@ -287,9 +287,8 @@ defmodule Apiary.Targets do
               :day
             ),
           runs: count(r.id),
-          ended_well:
-            filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
-          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
+          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+          cancelled: filter(count(r.id), r.state in ^Run.cancelled_states()),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: sum(r.denied_count)
         }
@@ -456,10 +455,8 @@ defmodule Apiary.Targets do
                 :day
               ),
             runs: count(r.id),
-            ended_well:
-              filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
-            cancelled:
-              filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
+            ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+            cancelled: filter(count(r.id), r.state in ^Run.cancelled_states()),
             ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
             denied: coalesce(sum(r.denied_count), 0)
           }

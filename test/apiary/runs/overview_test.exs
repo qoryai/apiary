@@ -36,13 +36,11 @@ defmodule Apiary.Runs.OverviewTest do
     } do
       run(scope, 10, "running")
       run(scope, 20, "pending", %{started_at: nil})
-      # Stored by an older release as succeeded: it ended well.
-      run(scope, 3600, "succeeded", %{denied_count: 2, cost_usd: Decimal.new("0.50")})
+      run(scope, 3600, "completed", %{denied_count: 2, cost_usd: Decimal.new("0.50")})
       run(scope, 2 * 86_400, "failed", %{denied_count: 1, cost_usd: Decimal.new("0.25")})
       run(scope, 2 * 86_400 + 60, "lost")
-      # A cancelled run, and one an older release stored as ended, which reads as cancelled:
-      # neither ended well nor ended badly.
-      run(scope, 2 * 86_400 + 120, "ended")
+      # Two cancelled runs: neither ended well nor ended badly.
+      run(scope, 2 * 86_400 + 120, "cancelled")
       run(scope, 2 * 86_400 + 180, "cancelled")
       run(scope, 2 * 86_400 + 240, "completed")
       # Just before the window: not counted.
@@ -97,7 +95,7 @@ defmodule Apiary.Runs.OverviewTest do
       old = run(scope, 300, "running")
       new = run(scope, 30, "running")
       pinged = run(scope, 10, "pending", %{started_at: nil})
-      run(scope, 5, "succeeded")
+      run(scope, 5, "completed")
       run(other, 1, "running")
 
       assert Enum.map(Runs.list_alive(scope), & &1.id) == [pinged.id, new.id, old.id]
@@ -105,7 +103,7 @@ defmodule Apiary.Runs.OverviewTest do
     end
 
     test "the last runs are by start, alive ones included", %{scope: scope} do
-      first = run(scope, 300, "succeeded")
+      first = run(scope, 300, "completed")
       second = run(scope, 30, "running")
       third = run(scope, 20, "failed")
 
@@ -137,9 +135,9 @@ defmodule Apiary.Runs.OverviewTest do
       %{access_key: theirs} = access_key_fixture(other)
 
       for host <- ~w(ci-01 ci-02 ci-02 ci-03),
-          do: run(scope, 600, "succeeded", %{access_key_id: pool.id, host: host})
+          do: run(scope, 600, "completed", %{access_key_id: pool.id, host: host})
 
-      run(scope, 8 * 86_400, "succeeded", %{access_key_id: pool.id, host: "ci-old"})
+      run(scope, 8 * 86_400, "completed", %{access_key_id: pool.id, host: "ci-old"})
       run(scope, 60, "running", %{access_key_id: laptop.id, host: "dev-laptop"})
       run(scope, 30, "pending", %{access_key_id: laptop.id, started_at: nil, host: nil})
       run(other, 30, "running", %{access_key_id: theirs.id, host: "elsewhere"})
@@ -164,7 +162,7 @@ defmodule Apiary.Runs.OverviewTest do
       %{access_key: idle} = access_key_fixture(scope)
       %{access_key: theirs} = access_key_fixture(other)
 
-      run(scope, 300, "succeeded", %{access_key_id: a.id})
+      run(scope, 300, "completed", %{access_key_id: a.id})
       newest_a = run(scope, 30, "running", %{access_key_id: a.id})
       only_b = run(scope, 600, "failed", %{access_key_id: b.id})
       run(other, 1, "running", %{access_key_id: theirs.id})
