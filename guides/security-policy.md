@@ -221,8 +221,9 @@ it is stored.
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to repository rules are in that repository's history. The history is the policy's part of the organisation's audit
   trail, and is kept as long as the trail: 90 days unless the instance says otherwise
-  (`AUDIT_RETENTION_DAYS`, [Install and configure](install.md)). The versions are kept
-  whatever their age.
+  (**Instance settings › Configuration**, or `AUDIT_RETENTION_DAYS`:
+  [Install and configure](install.md#audit-trail)). The versions are kept whatever their
+  age.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
   `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.

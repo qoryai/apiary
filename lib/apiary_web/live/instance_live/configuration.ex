@@ -3,9 +3,9 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   Instance settings › Configuration, `/instance/configuration`: the settings of the whole
   instance, for the instance's admins (`Apiary.Access.instance_admin?/1`), who reach it
   from the Qory Apiary menu's Instance settings; anyone else is answered as a path that
-  does not exist (`ApiaryWeb.NotFound`). In the core edition it is the Instance level's one
-  page, so it has no second column; an edition's sections come before it
-  (`ApiaryWeb.Layouts.instance_sections/1`).
+  does not exist (`ApiaryWeb.NotFound`). It is the Instance level's last page, after the
+  core's General, an edition's sections and the core's Mail, and the second column lists
+  it with them (`ApiaryWeb.Layouts.instance_sections/1`).
 
   Each line is a value the application reads, with where it comes from where that is not
   its field: the setting of the server's environment that set it, or the default, where

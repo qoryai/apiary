@@ -20,6 +20,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deleted and when an update replaced it. Without `--yes` it lists them and deletes
   nothing; it refuses a stack that is not deleted and anything a stack that is not
   deleted still uses, and says what is left after a delete.
+- An instance admin can change, in Instance settings › Configuration, how long the audit
+  log keeps an entry and the IP address it came from, the grace period before a deleted
+  workspace or organisation is purged, and the invitations an organisation makes a day:
+  each part a form with its Save, after a recent sign-in. A variable of the server's
+  environment that is set, `AUDIT_RETENTION_DAYS`, `AUDIT_ADDRESS_RETENTION_DAYS`,
+  `DELETION_GRACE_DAYS` or `INVITATIONS_PER_DAY`, still wins, and the page shows its value
+  read only; one set empty counts as not set. A shorter retention applies at the next
+  daily job, a new grace period to what is deleted after it, and a new number of
+  invitations at once. Each change is an `instance.configure` entry in the trail of the
+  instance's organisation, with the values before and after.
 - The AWS template's Advanced group has Features (optional), `Features`, passed as
   `QORY_FEATURES` only when set. An Update with a new value starts a new task with it, and
   a name Qory Apiary does not know rolls the update back. As with every field but the
@@ -30,6 +40,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
+
+### Migrations
+
+- `instance_settings`: four columns for Instance settings › Configuration,
+  `audit_retention_days`, `audit_address_retention_days`, `deletion_grace_days` and
+  `invitations_per_day`, all NULL, with checks on their ranges that hold in every edition:
+  at least 30, at least 1, 1 to 90, and at least 1. It changes no existing row.
 
 ## [0.1.0] - 2026-10-13
 
