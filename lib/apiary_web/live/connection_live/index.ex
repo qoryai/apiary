@@ -1116,6 +1116,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
+        changed?: match?(%{action: "rule_changed"}, change),
         version:
           change && is_integer(change.version) &&
             %{

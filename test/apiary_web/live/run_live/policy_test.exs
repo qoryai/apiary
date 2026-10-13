@@ -688,6 +688,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       # and it gains the line: a rule was added, and this run has not reloaded
       line = text(view, "#cx-#{id}-after")
       assert line =~ "Rule added"
+      refute line =~ "Rule changed"
 
       assert line =~
                "Allowed for this repository in v#{new.version} · of acme/shop by you"
@@ -1057,6 +1058,105 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view |> element("#cx-#{cdn}-allow") |> render_click()
       view |> form("#rule-panel-form") |> render_submit()
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, target(scope, run))
+    end
+  end
+
+  describe "the line after a rule that was changed" do
+    @denied_by_rule %{
+      "host" => "files.cdn.example",
+      "decision" => "denied",
+      "rule" => "files.cdn.example",
+      "outcome" => "refused"
+    }
+    @allowed_by_rule %{"host" => "files.cdn.example", "rule" => "files.cdn.example"}
+
+    test "a deny rule changed to allow says Rule changed on the denied row", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert has_element?(view, ~s(tr#cx-#{id}[data-decision=denied]))
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+
+      refute text(view, "#cx-#{id}-after") =~ "Rule added"
+    end
+
+    test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert has_element?(view, ~s(tr#cx-#{id}[data-decision=allowed]))
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "the newest change decides: a rule added in v1 whose paths changed in v2", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@denied, @allowed_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
+
+      # the history's newest page, newest first
+      assert [{"rule_changed", 2}, {"rule_added", 1}] =
+               for(
+                 change <- Policy.list_changes(scope, nil, 1).items,
+                 change.subject == "files.cdn.example",
+                 do: {change.action, change.version_after}
+               )
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
+         %{conn: conn, scope: scope} do
+      run = policy_run(scope, egress: [@denied])
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert text(view, "#cx-#{id} .q-cx-fold") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+    end
+
+    test "once the run has the changed rule, the line says In force in this run", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = report(run, in_force(scope, nil).digest)
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "In force in this run"
+      assert text(view, "#cx-#{id}-after") =~ "Allowed for the workspace in v2"
+      refute text(view, "#cx-#{id}-after") =~ "Rule changed"
     end
   end
 

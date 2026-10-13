@@ -301,6 +301,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
       line = text(view, "##{cdn}-after")
       assert line =~ "Rule added"
+      refute line =~ "Rule changed"
 
       assert line =~
                "Allowed for the workspace in v#{configuration.version} · of the workspace's policy by you"
@@ -441,6 +442,87 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert text(view, "##{cdn}-after a##{cdn}-after-rule") == "Show the rule"
       assert text(view, "##{cdn}-after") =~ "Allowed for the workspace"
+    end
+  end
+
+  describe "the line after a rule that was changed" do
+    @denied_by_rule %{
+      "host" => "files.cdn.example",
+      "decision" => "denied",
+      "rule" => "files.cdn.example",
+      "outcome" => "refused"
+    }
+    @allowed_by_rule %{"host" => "files.cdn.example", "rule" => "files.cdn.example"}
+
+    test "a deny rule changed to allow says Rule changed on the denied row", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      # the later run's attempt is the destination's last
+      started_run(scope, shop(), ago: 10, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert has_element?(view, ~s(tr##{cdn}[data-decision=denied]))
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+
+      assert text(view, "##{cdn}-after") =~
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+
+      refute text(view, "##{cdn}-after") =~ "Rule added"
+    end
+
+    test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
+
+      view = open(conn, scope)
+      registry = dst("registry.example")
+      assert has_element?(view, ~s(tr##{registry}[data-decision=allowed]))
+      assert text(view, "##{registry}-after .badge") == "Rule changed"
+
+      assert text(view, "##{registry}-after") =~
+               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "the newest change decides: a rule added in v2 whose paths changed in v3", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      started_run(scope, shop(), ago: 10, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
+
+      # the history's newest page, newest first
+      assert [{"rule_changed", 3}, {"rule_added", 2}] =
+               for(
+                 change <- Policy.list_changes(scope, nil, 1).items,
+                 change.subject == "files.cdn.example",
+                 do: {change.action, change.version_after}
+               )
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+
+      assert text(view, "##{cdn}-after") =~
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+    end
+
+    test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "##{cdn} .q-why-l") == past
+      assert text(view, "##{cdn} .q-cx-fold") == past
+      assert has_element?(view, ~s(##{cdn} .q-why-l[title="#{past}"]))
     end
   end
 

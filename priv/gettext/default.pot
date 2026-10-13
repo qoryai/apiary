@@ -10188,6 +10188,11 @@ msgstr ""
 msgid "Rule added."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Rule changed"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex

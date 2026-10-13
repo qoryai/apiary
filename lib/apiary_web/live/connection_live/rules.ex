@@ -534,8 +534,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The change that made the rule of `entry`, from the newest page of the history of the
-  entry's scope: `%{version:, by:, by_id:, at:}` or nil when it is further back. Handed
-  the pages already read, so a page of rows costs one read a scope.
+  entry's scope: `%{action:, version:, by:, by_id:, at:}` or nil when it is further back,
+  `action` being `"rule_added"` or `"rule_changed"`. Handed the pages already read, so a
+  page of rows costs one read a scope.
   """
   def change_for(%Entry{} = entry, changes) when is_map(changes) do
     key = if entry.source == :target, do: :target, else: :workspace
@@ -552,6 +553,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
       change ->
         %{
+          action: change.action,
           version: change.version_after,
           by: ApiaryWeb.People.email(change.changed_by),
           by_id: change.changed_by_id,

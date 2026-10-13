@@ -3644,7 +3644,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The line a row gains once a rule answers it. The row above it is the record and stays as
-  it was. `line` is `%{action, level, version, by, at, state, reloaded_at}`; `state` is
+  it was. `line` is `%{action, level, version, by, at, state, reloaded_at}`, with
+  `changed?` true when the rule was changed rather than added; `state` is
   `:pending` (the run is alive and has not reported the digest in force), `:in_force` (it
   has: claimed from the record, never after a timer), `:ended`, `:machine` (the run takes
   no policy from this server) or `:workspace` (the workspace's page, which says nothing of
@@ -3659,9 +3660,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <div id={@id} class="q-after" data-state={@line.state}>
       <.badge color={after_color(@line.state)}>
-        <.icon name="hero-shield-check-micro" class="size-3" />{if @line.state == :in_force,
-          do: gettext("In force in this run"),
-          else: gettext("Rule added")}
+        <.icon name="hero-shield-check-micro" class="size-3" />{after_badge(@line)}
       </.badge>
       <span>
         <.rich text={after_head(@line)}>
@@ -3677,6 +3676,10 @@ defmodule ApiaryWeb.RunComponents do
     </div>
     """
   end
+
+  defp after_badge(%{state: :in_force}), do: gettext("In force in this run")
+  defp after_badge(%{changed?: true}), do: gettext("Rule changed")
+  defp after_badge(_line), do: gettext("Rule added")
 
   defp after_color(:in_force), do: "success"
   defp after_color(:pending), do: "info"
