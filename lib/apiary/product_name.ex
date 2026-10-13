@@ -6,9 +6,9 @@ defmodule Apiary.ProductName do
   email shows: every page title, the Qory Apiary menu's button, the log-in, sign-up,
   set-up and welcome pages, and every email's from-name and subject.
 
-  **Where it is kept.** `instance_settings.product_name`, the instance's row; `NULL`, or no
-  row, is no name set, which shows the edition's. `updated_by_id` is the admin who set it
-  last. `get/0` is the name set, nil for none.
+  **Where it is kept.** `instance_settings.product_name`, the instance's row; `NULL`, or
+  no row, is no name set, which shows the edition's. `updated_by_id` is the admin who set
+  it last. `get/0` is the name set, nil for none.
 
   **Its rules.** A name given keeps the rules of an organisation's name, all of them
   (`Apiary.Organisations.Organisation.validate_name/2`): it is shown inside sentences Qory
@@ -20,8 +20,8 @@ defmodule Apiary.ProductName do
   Apiary", where the edition carries it (`c:Apiary.Edition.attribution?/0`).
 
   **Renaming** (`rename/2`) is an instance admin's (`Apiary.Access.instance_admin?/1`), an
-  `instance.rename` entry in the trail of the instance's organisation, with the name before
-  and after, nil for none.
+  `instance.rename` entry in the trail of the instance's organisation, with the name
+  before and after, nil for none.
 
   Each node keeps a copy (`Apiary.ProductName.Cache`), read again over `Apiary.PubSub`
   whenever an admin renames the instance; without it, as in the tests, `get/0` reads the
@@ -117,12 +117,12 @@ defmodule Apiary.ProductName do
   end
 
   @doc """
-  rename/2 sets the name `attrs` gives, `"product_name"`, for the instance admin of `scope`,
-  by the rules of the module's documentation: an empty name is none, and the edition's
-  shows. A change is an `instance.rename` entry in the trail of the instance's
+  rename/2 sets the name `attrs` gives, `"product_name"`, for the instance admin of
+  `scope`, by the rules of the module's documentation: an empty name is none, and the
+  edition's shows. A change is an `instance.rename` entry in the trail of the instance's
   organisation, by the admin, about the organisation, with the name before and after, nil
-  for none; once committed, every node's cache reads it again. `{:ok, name}`, nil for none;
-  `{:error, changeset}`; or `{:error, :forbidden}` for anyone but an instance admin.
+  for none; once committed, every node's cache reads it again. `{:ok, name}`, nil for
+  none; `{:error, changeset}`; or `{:error, :forbidden}` for anyone but an instance admin.
   """
   @spec rename(Scope.t() | nil, map) ::
           {:ok, String.t() | nil} | {:error, Ecto.Changeset.t() | :forbidden}
@@ -185,7 +185,7 @@ defmodule Apiary.ProductName do
     end
   end
 
-  # The instance's own organisation, whose trail holds the entry; its owners are the
+  # The instance's organisation, whose trail holds the entry; its owners are the
   # instance's admins.
   defp instance_organisation do
     with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),

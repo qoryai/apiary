@@ -8,7 +8,8 @@ defmodule Apiary.Accounts.UserNotifier do
 
   Each names the product as this instance does (`Apiary.ProductName.name/0`), in its
   from-name, its subject and its body; beside a name an instance admin set, its last line,
-  under the closing rule, says "Powered by Qory Apiary" (`Apiary.ProductName.powered_by?/0`).
+  under the closing rule, says "Powered by Qory Apiary"
+  (`Apiary.ProductName.powered_by?/0`).
 
   With no mail set (`Apiary.Mail.configured?/0`), every function here sends nothing and
   returns `{:error, :no_mail}`.

@@ -22,9 +22,9 @@ defmodule Apiary.ProductName.Row do
 
   @doc """
   changeset/3 is the name an instance admin sets, `"product_name"` of `attrs`, where the
-  edition names the product `default`: spaces at either end taken off; empty, none; equal
-  to `default` where that is "Qory Apiary", none as well, so the edition's shows; otherwise
-  checked by the rules of an organisation's name
+  edition names the product `default`: spaces at either end taken off; empty, none;
+  equal to `default` where that is "Qory Apiary", none as well, so the edition's shows;
+  otherwise checked by the rules of an organisation's name
   (`Apiary.Organisations.Organisation.validate_name/2`).
   """
   @spec changeset(t, map, String.t()) :: Ecto.Changeset.t()

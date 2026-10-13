@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <meta name="color-scheme" content="light dark" />
-    <%!-- The product's name on this instance: an instance admin's, else the edition's. --%>
+    <%!-- The product's name: an instance admin's, else the edition's. --%>
     <.live_title
       default={Apiary.ProductName.name()}
       suffix={" · " <> Apiary.ProductName.name()}

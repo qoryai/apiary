@@ -1,7 +1,7 @@
 defmodule Apiary.ProductName.Cache do
   @moduledoc """
-  Each node's copy of the product's name an instance admin set (`Apiary.ProductName.get/0`),
-  so a page or an email that shows the name reads no row.
+  Each node's copy of the product's name an instance admin set
+  (`Apiary.ProductName.get/0`), so a page or an email that shows the name reads no row.
 
   It reads the row when it starts, after the migrator and before anything serves, and
   again whenever an admin renames the instance: the node that renamed it broadcasts
@@ -24,7 +24,7 @@ defmodule Apiary.ProductName.Cache do
   @spec start_link(keyword) :: GenServer.on_start()
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @doc "enabled?/0 is whether the application starts the cache: true unless configured off."
+  @doc "enabled?/0 is whether the application starts the cache: true unless set off."
   @spec enabled?() :: boolean
   def enabled?, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :enabled, true)
 
