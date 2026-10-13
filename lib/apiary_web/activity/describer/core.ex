@@ -35,6 +35,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"instance.rename"), do: gettext("Instance renamed")
+  def label(:"instance.configure"), do: gettext("Configuration changed")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -152,6 +153,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Turned mail on, by the test link")
 
   defp said(:"instance.rename", _details, _actor), do: gettext("Renamed the instance")
+
+  defp said(:"instance.configure", _details, _actor),
+    do: gettext("Changed the instance's configuration")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -425,6 +429,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  # The instance's settings, each by its row on Instance settings › Configuration, as it
+  # was and as it is: a number of days, or of invitations.
+  def change(:"instance.configure", before, after_, _details) do
+    for {field, label} <- [
+          {"audit_retention_days", gettext("Audit log entries")},
+          {"audit_address_retention_days", gettext("IP addresses in the audit log")},
+          {"deletion_grace_days", gettext("Grace period")},
+          {"invitations_per_day", gettext("Invitations a day")}
+        ],
+        Map.has_key?(after_, field) do
+      rich_gettext("%{what}: %{from} → %{to}",
+        what: label,
+        from: configured(field, before[field]),
+        to: configured(field, after_[field])
+      )
+    end
+  end
+
   def change(:"audit.prune", _before, _after, %{"removed" => removed} = details) do
     rich_ngettext(
       "%{number} entry older than %{days}",
@@ -483,6 +505,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")
   defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
   defp limit_or_name(_field, value), do: to_string(value)
+
+  defp configured("invitations_per_day", n) when is_integer(n), do: Format.number(n)
+  defp configured("invitations_per_day", _other), do: gettext("n/a")
+  defp configured(_days, n), do: days(n)
 
   defp days(nil), do: gettext("Forever")
 

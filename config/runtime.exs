@@ -66,12 +66,17 @@ config :apiary, :features_setting, System.get_env("QORY_FEATURES")
 # AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
 # 30 to the edition's ceiling (Apiary.Edition.audit_retention_max_days/0, 90 in the core),
 # 90 when unset. Read in every environment, as QORY_FEATURES is; `Apiary.Audit.boot!/0`
-# checks it at boot and stops a boot it refuses, one above the ceiling included.
+# checks it at boot and stops a boot it refuses, one above the ceiling included. Set and
+# not blank, it wins over the value an instance admin saves in Instance settings ›
+# Configuration (`Apiary.InstanceConfig`); unset or blank, that value applies, else the
+# default.
 config :apiary, :audit_retention_setting, System.get_env("AUDIT_RETENTION_DAYS")
 
 # AUDIT_ADDRESS_RETENTION_DAYS is how long an audit entry keeps the address and the client
 # it came from: 1 day up to AUDIT_RETENTION_DAYS, 90 when unset, or AUDIT_RETENTION_DAYS
-# when that is shorter. Checked with it.
+# when that is shorter. Checked with it. Set and not blank, it wins over the value an
+# instance admin saves in Instance settings › Configuration (`Apiary.InstanceConfig`);
+# unset or blank, that value applies, else the default.
 config :apiary,
        :audit_address_retention_setting,
        System.get_env("AUDIT_ADDRESS_RETENTION_DAYS")
@@ -79,12 +84,17 @@ config :apiary,
 # DELETION_GRACE_DAYS is how long a workspace or an organisation marked for deletion is
 # kept before it is purged: a number of days from 1 to 90, 30 when unset. Read in every
 # environment; `Apiary.Deletion.boot!/0` checks it at boot and stops a boot it refuses.
+# Set and not blank, it wins over the value an instance admin saves in Instance settings ›
+# Configuration (`Apiary.InstanceConfig`); unset or blank, that value applies, else the
+# default.
 config :apiary, :deletion_grace_setting, System.get_env("DELETION_GRACE_DAYS")
 
 # INVITATIONS_PER_DAY is how many invitations an organisation sends in 24 hours: a whole
 # number from 1, 20 when unset. `Apiary.Instance.boot!/0` checks it at boot and stops a
-# boot it refuses. Not read under test: the suite runs with the default, whatever the
-# shell running it has set.
+# boot it refuses. Set and not blank, it wins over the value an instance admin saves in
+# Instance settings › Configuration (`Apiary.InstanceConfig`); unset or blank, that value
+# applies, else the default. Not read under test: the suite runs with the default,
+# whatever the shell running it has set.
 if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end

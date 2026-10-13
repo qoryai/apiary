@@ -74,9 +74,19 @@ msgstr ""
 msgid "can't be blank with a password"
 msgstr ""
 
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be longer than the audit log entries are kept: %{days}"
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "cannot be longer than the events are kept: the log goes with a run's events"
+msgstr ""
+
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be shorter than the IP addresses are kept: %{days}"
 msgstr ""
 
 #: lib/apiary/organisations.ex
@@ -317,6 +327,11 @@ msgstr ""
 msgid "must be a version such as 1.4.0"
 msgstr ""
 
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "must be a whole number from 1 to %{max}, or empty for the default"
+msgstr ""
+
 ## From Ecto.Changeset.validate_acceptance/3
 msgid "must be accepted"
 msgstr ""
@@ -325,6 +340,11 @@ msgstr ""
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
 msgid "must be at most %{count} bytes"
+msgstr ""
+
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "must be between %{min} and %{max} days, or empty for the default"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex

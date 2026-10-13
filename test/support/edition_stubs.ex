@@ -739,6 +739,14 @@ defmodule Apiary.EditionStubs do
     def product_name, do: "Another Product"
   end
 
+  defmodule ShortRetention do
+    @moduledoc """
+    An audit trail kept at most 60 days (`c:Apiary.Edition.audit_retention_max_days/0`), as
+    an edition with a lower ceiling than the core's would.
+    """
+    def audit_retention_max_days, do: 60
+  end
+
   defmodule WithoutSecrets do
     @moduledoc """
     Every person is shown the instance's features but `secrets`

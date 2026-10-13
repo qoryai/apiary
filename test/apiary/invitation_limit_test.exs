@@ -214,6 +214,28 @@ defmodule Apiary.InvitationLimitTest do
     assert {:ok, %Invitation{}} = invite(sign_up_fixture().scope)
   end
 
+  test "without INVITATIONS_PER_DAY, the number saved in Instance settings › Configuration" do
+    Application.put_env(:apiary, :invitations_per_day, nil)
+
+    Repo.insert_all(
+      Apiary.InstanceConfig.Row,
+      [%{id: true, invitations_per_day: 2, updated_at: DateTime.utc_now()}],
+      on_conflict: {:replace, [:invitations_per_day]},
+      conflict_target: :id
+    )
+
+    %{scope: scope} = sign_up_fixture()
+
+    for _ <- 1..2, do: assert({:ok, %Invitation{}} = invite(scope))
+    assert {:error, %Ecto.Changeset{} = changeset} = invite(scope)
+    assert [message] = errors_on(changeset).email
+    assert message =~ "has made 2 invitations in the last 24 hours"
+
+    # The variable, set, wins over it.
+    Application.put_env(:apiary, :invitations_per_day, 3)
+    assert {:ok, %Invitation{}} = invite(scope)
+  end
+
   test "at the default of 20 a day, the 21st is refused" do
     Application.put_env(:apiary, :invitations_per_day, 20)
     %{scope: scope} = sign_up_fixture()
