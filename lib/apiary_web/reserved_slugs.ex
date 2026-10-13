@@ -12,14 +12,14 @@ defmodule ApiaryWeb.ReservedSlugs do
   them.
 
   The core reserves the paths it serves, `gateways` among the organisation's pages, which
-  no workspace slug may take, and a few names kept back: `admin`, `api` and `new` as
-  organisation slugs, `api` and `new` as workspace slugs. An edition reserves the paths it
-  adds, and settles for itself a slug an instance of the core gave out before the edition
-  took the instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of
-  the router the endpoint dispatches to, a static path or a socket of the endpoint takes a
-  segment these lists do not name: a new top-level path or organisation page is added
-  here, or to the edition's list, in the same change, never after an organisation took the
-  name.
+  no workspace slug may take, and a few names kept back: `admin`, `api`, `new` and
+  `settings` as organisation slugs, `api` and `new` as workspace slugs. An edition
+  reserves the paths it adds, and settles for itself a slug an instance of the core gave
+  out before the edition took the instance over. The test (`ApiaryWeb.ReservedSlugsCase`)
+  fails when a route of the router the endpoint dispatches to, a static path or a socket
+  of the endpoint takes a segment these lists do not name: a new top-level path or
+  organisation page is added here, or to the edition's list, in the same change, never
+  after an organisation took the name.
 
   As a plug, first in the pipeline of the organisation's and the workspace's pages, it
   answers as the router answers a path it does not know when a segment in the place of a
@@ -33,10 +33,10 @@ defmodule ApiaryWeb.ReservedSlugs do
 
   # The first segments of the instance's own paths: the routes, the endpoint's sockets
   # and static files, and the development routes; and a few names kept back (`admin`,
-  # `api`, `new`).
+  # `api`, `new`, `settings`).
   @instance ~w(
     .well-known admin api assets dev docs favicon-32.png favicon.ico favicon.svg fonts health
-    images instance invitations live new phoenix robots.txt setup users v1
+    images instance invitations live new phoenix robots.txt settings setup users v1
   )
 
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers

@@ -33,8 +33,9 @@ being one. Every variable named here is described in [Install and configure](ins
   `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
   [Backup and restore](backup.md) says what each loss costs.
 - **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
-  all of them. A feature that is off is absent for everybody on the instance, so decide
-  before they arrive: [Install and configure](install.md#features).
+  every feature that is on by default. A feature that is off is absent for everybody on
+  the instance, so decide before they arrive:
+  [Install and configure](install.md#features).
 - **Postgres that is backed up.** The database is the only state. Schedule the dump, and
   restore one into an empty database once, before it is needed.
 - **Set the instance up.** Until it is set up, every start logs its set-up link, "Set up

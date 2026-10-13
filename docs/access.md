@@ -156,8 +156,8 @@ may:
   add nodes.", which stays where the edition has none (`ApiaryWeb.Access.who_may/3`). It
   is asked for the refusals, and the notices to whoever may not act, of the nodes' pages
   and a node's Access key tab, the workspace overview's Get the command, the
-  organisation's and the workspace's settings, People, stored secrets and variables, and
-  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's and the workspace's settings, and People; for People's line of what each
+  level does; for the refusal to cancel an
   organisation's deletion on Your organisations; for the security policy's refusals
   (`Apiary.Policy`); for the policy pages' refusals of a click on the mode or a lock; and,
   with `:"security_policy.lock"`, for each sentence that says who may change a locked rule:
@@ -317,10 +317,8 @@ who may act cannot leave.
 The feature an action belongs to is asked first, of `Apiary.Features.visible?/2` with the
 scope, and a feature that is off, or hidden from the scope's person, is
 `{:error, :not_found}`: absent, as a feature the instance lacks. A feature is hidden from a person
-where a feature it needs is, directly or through another: hiding `security` hides
-`secrets`, and hiding `observability` hides both (`Apiary.Features.hidden_of/1` adds
-them). The stored secrets', the variables' and the integrations' actions (`secret.*`,
-`variable.*`, `connection.*`) belong to `secrets`, the feature of their pages. An action
+where a feature it needs is, directly or through another: hiding `observability` hides
+`security` (`Apiary.Features.hidden_of/1` adds it). An action
 that belongs to a part of its feature is asked of the part, which is hidden where it or
 its feature is: `run.read_log` belongs to `observability.terminal`, the run's Terminal, so
 an edition that hides it hides the run's whole log from that person, the Terminal tab, the
@@ -449,8 +447,7 @@ for each other and never on each other at once:
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
    (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
-   then renders each again (`Apiary.Policy.rerender_in/3`), or checks its variables
-   against each (`Apiary.Variables.check_above/2`).
+   then renders each again (`Apiary.Policy.rerender_in/3`).
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
@@ -523,15 +520,10 @@ The modes keep a row that only names another out of it:
   `FOR SHARE`. The seams read and lock nothing, and are read once, not again under the
   lock: an edition's change of the relation they answer takes a row these writes take
   too, in a mode that conflicts with theirs.
-- A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
-  (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation
+- A write of the security policy holds the organisation
   `FOR SHARE` (`Apiary.Access.lock_places/1`),
   then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
-  under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns,
-  so the checks that span its rows, a secret's data key made once, a variable's names and
-  limits across the workspace and its repositories, and the overlap of the connections,
-  see every write before them. A change to one secret, variable or connection then locks
-  its row `FOR UPDATE`.
+  under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns.
 - A marking for deletion locks the organisation's row `FOR NO KEY UPDATE`, and a
   workspace's marking locks every workspace of the organisation in use: they wait for a
   write in flight, and one asked after them waits and then sees them. What an edition

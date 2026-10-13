@@ -246,7 +246,14 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     refute has_element?(view, "##{row}-allow")
     refute has_element?(view, "##{row}-deny")
 
-    if security?(), do: assert(text(view, "##{row}") =~ "No rule can name this host")
+    if security?() do
+      tip = "No rule can name this host."
+
+      assert has_element?(
+               view,
+               ~s(span##{row}-lock.q-act-lock[tabindex="0"][data-tip="#{tip}"][aria-label="#{tip}"])
+             )
+    end
   end
 
   describe "destinations across runs (C2, C3)" do

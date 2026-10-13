@@ -1,6 +1,6 @@
-# The commit of qoryai/forager the end to end job builds qory against (.qory-e2e-ref): a
-# commit of Forager's main branch, put in place of the one qory at .qory-e2e-ref names in
-# its go.mod (e2e/run.sh, FORAGER_SRC). The
-# contract the tests replay is pinned in .forager-contract-ref, a pin of its own, kept
-# apart so that the two can move separately.
-457a8a701852be14cdb0ac45765af068bea12c1c
+# The commit of qoryai/forager the end to end job builds qory against (.qory-e2e-ref):
+# Forager's release v0.7.0, a commit of its main branch, put in place of the one qory at
+# .qory-e2e-ref names in its go.mod (e2e/run.sh, FORAGER_SRC). The contract the tests
+# replay is pinned in .forager-contract-ref, a pin of its own, kept apart so that the two
+# can move separately.
+4d036d1fe3fe63e6e8ba3078c0a6a91b35982148

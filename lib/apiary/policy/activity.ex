@@ -35,7 +35,8 @@ defmodule Apiary.Policy.Activity do
   A destination, of either list, carries `unchangeable`, true when no rule can change
   what became of it: the wall refused the last attempt of its most recently seen
   connection, or its host is none a rule can name. A denied one of those is said to be
-  held by no rule (`locked` and `above` are nil).
+  held by no rule (`locked` and `above` are nil). Where the wall refused it, `wall` is
+  that attempt's `%{rule:, path_rule:}`, which say why; else nil.
   """
 
   import Ecto.Query, warn: false
@@ -84,6 +85,7 @@ defmodule Apiary.Policy.Activity do
         attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
         tool: host_tool(rows),
         unchangeable: unchangeable?(rows),
+        wall: wall(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -171,6 +173,7 @@ defmodule Apiary.Policy.Activity do
         locked: locked,
         above: above,
         unchangeable: unchangeable,
+        wall: wall(rows),
         denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
         tool: host_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
@@ -190,6 +193,13 @@ defmodule Apiary.Policy.Activity do
   defp unchangeable?(rows) do
     last = Enum.max_by(rows, & &1.last_seen_at, DateTime)
     wall?(last) or not nameable?(last.host)
+  end
+
+  # The wall's refusal of the destination's most recently seen connection, its last
+  # attempt's rule and path rule, or nil where the wall did not refuse it.
+  defp wall(rows) do
+    last = Enum.max_by(rows, & &1.last_seen_at, DateTime)
+    if wall?(last), do: Map.take(last, [:rule, :path_rule])
   end
 
   defp wall?(%{rule: "wall:" <> _reason}), do: true
@@ -280,7 +290,8 @@ defmodule Apiary.Policy.Activity do
           allowed: c.allowed,
           denied: c.denied,
           tool: c.last_tool,
-          # Whether the wall refused the last attempt is all that is read of its rules.
+          # Whether the wall refused the last attempt, and why, is all that is read of its
+          # rules.
           rule: fragment("left(?, 64)", c.last_rule),
           path_rule: fragment("left(?, 64)", c.last_path_rule),
           last_seen_at: c.last_seen_at,

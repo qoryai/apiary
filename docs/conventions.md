@@ -21,7 +21,8 @@ who restarts a self-hosted installation; the short form:
   keys).
 
 The release's section in `CHANGELOG.md` names the tables the migration touches under
-Migrations and anything the operator has to do under Upgrading.
+Migrations and anything whoever runs the instance has to do under Upgrading, when there is
+anything to do.
 
 The core's migrations are in `priv/repo/migrations`. An edition's are in a separate
 folder, which sorts after the core's baseline, and the two run as one sequence by version
@@ -101,8 +102,8 @@ at the commit in `.forager-contract-ref`. They take it from `FORAGER_CONTRACT_DI
 `contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
 excluded and a line says so; CI checks Forager out at that commit
 and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is
-one on Forager's `main` branch, pinned by its id. The end to end job builds qory against
-Forager at `.forager-e2e-ref`, pinned apart.
+that of Forager's release `v0.7.0`, on its `main` branch, pinned by its id. The end to end
+job builds qory against Forager at `.forager-e2e-ref`, pinned apart.
 
 The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
 suite leaves them out (`Apiary.TestSetup.start!/1`). The one of a gateway's backlog flushed
