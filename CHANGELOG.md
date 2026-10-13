@@ -15,6 +15,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
+- `deploy/aws/delete-kept.sh` deletes what a deleted test stack of the AWS template kept:
+  its key secrets, its log groups, and the snapshots its database left when the stack was
+  deleted and when an update replaced it. Without `--yes` it lists them and deletes
+  nothing; it refuses a stack that is not deleted and anything a stack that is not
+  deleted still uses, and says what is left after a delete.
 
 ### Changed
 
