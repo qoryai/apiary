@@ -394,7 +394,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     path: path
   } do
     view = open(conn, path)
-    type(view, %{host: "telemetry.example", paths: ""})
+    type(view, %{host: "telemetry.example"})
 
     assert text(view, "#policy-rule-reads") =~
              "telemetry.example is denied for the workspace. This rule allows it for this repository; other repositories keep the deny."
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert_patch(view, path <> "/rules/new")
     assert text(view, "#policy-rule-add") == "Add repository rule"
 
-    type(view, %{host: "bin.paste.example", paths: ""})
+    type(view, %{host: "bin.paste.example"})
 
     assert has_element?(view, "#policy-rule-refusal[role=alert]")
 
@@ -511,10 +511,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     add(view)
     refute own(scope, target, "bin.paste.example")
 
-    type(view, %{host: "mcp.acme.example", paths: "/mcp/*"})
+    type(view, %{host: "mcp.acme.example"})
     add(view)
 
-    assert own(scope, target, "mcp.acme.example").paths == ["/mcp/*"]
+    assert own(scope, target, "mcp.acme.example").action == "allow"
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
   end
 
@@ -556,7 +556,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     words = fn ->
       view = open(member, path)
       tip = attribute(view, lock, "data-tip")
-      type(view, %{host: "bin.paste.example", paths: ""})
+      type(view, %{host: "bin.paste.example"})
 
       # A destination enforce would deny, listed before a locked deny came to cover it.
       owner = pick_mode(open(conn, path), "enforce")
@@ -594,7 +594,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     %{user: member} = member_fixture(scope, :member)
     view = compose(open(log_in_user(build_conn(), member), path))
 
-    type(view, %{host: "bin.paste.example", paths: ""})
+    type(view, %{host: "bin.paste.example"})
 
     assert text(view, "#policy-rule-refusal") =~ "Only an owner can change or unlock it."
   end
@@ -1247,7 +1247,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
         refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
       end
 
-      type(view, %{host: "tracker.example", paths: "", action: "deny"})
+      type(view, %{host: "tracker.example", action: "deny"})
 
       assert text(view, "#policy-rule-host-error") =~
                "tracker.example is already denied for this repository, by #{local} on"

@@ -22,7 +22,8 @@ defmodule Mix.Tasks.Docs.All do
 
   - **An extra or a module**, in the `:features` of the docs configuration in `mix.exs`:
     `security: [extras: [...], modules: [...]]`, a module given by name or by a regex on
-    it. The key `all` is every feature: the module reference, but for the tasks the guides
+    it. The key `all` is every feature the documentation differs by
+    (`Apiary.Features.documented/0`): the module reference, but for the tasks the guides
     name, is only in the tree of an instance that has every one, since the prose of a
     shared module names features too, and ExDoc reads it from the compiled docs, where no
     marker reaches. An extra listed under no feature, such as the release notes, is in
@@ -43,9 +44,12 @@ defmodule Mix.Tasks.Docs.All do
 
   A tree is named by its features in the order of `Apiary.Features.all/0`, joined with
   `+`, or `all` for every feature (`ApiaryWeb.DocsController.tree_name/1`), and holds what
-  those features need. The core builds `observability` (nothing that needs a feature),
-  `observability+security`, and `all`, which is the one with the module reference; an
-  edition's features add the trees between them. There is one tree for each different
+  those features need. The trees are built over the features the documentation differs
+  by (`Apiary.Features.documented/0`): a feature listed with `docs: false` names no tree
+  and is in none, and an instance is served the same tree with it on or off. The core
+  builds `observability` (nothing that needs a feature), `observability+security`, and
+  `all`, which is the one with the module reference; an edition's features add the trees
+  between them. There is one tree for each different
   content an instance can be owed, so adding markers for a feature that had none adds the
   trees it needs and nothing else.
   A link from a guide into a page a tree leaves out is a warning, which
@@ -148,7 +152,7 @@ defmodule Mix.Tasks.Docs.All do
 
   ## What needs which features
 
-  defp needs_of(:all), do: Apiary.Features.all()
+  defp needs_of(:all), do: Apiary.Features.documented()
   defp needs_of(feature), do: [check!(feature)]
 
   defp extra_needs(owned) do
@@ -262,12 +266,12 @@ defmodule Mix.Tasks.Docs.All do
     do: Enum.any?(app_modules(apps), &covered?(needs_of_module(&1, module_needs), tree))
 
   defp check!(feature) do
-    if feature in Apiary.Features.all() do
+    if feature in Apiary.Features.documented() do
       feature
     else
       Mix.raise(
-        "docs: #{inspect(feature)} is not a feature; the features are " <>
-          inspect(Apiary.Features.all())
+        "docs: #{inspect(feature)} is not a feature the documentation differs by; they are " <>
+          inspect(Apiary.Features.documented())
       )
     end
   end
@@ -275,21 +279,22 @@ defmodule Mix.Tasks.Docs.All do
   @doc """
   The trees to build for the given needs, each a list of features in the order of
   `Apiary.Features.all/0`: for every set of features an instance can be launched with,
-  the features among `needs` it covers, plus `observability`, which every instance has.
-  Sets that come to the same tree are built once.
+  the features among `needs` it covers, plus `observability`, which every instance has,
+  of the features the documentation differs by (`Apiary.Features.documented/0`). Sets
+  that come to the same tree are built once.
 
       iex> Mix.Tasks.Docs.All.trees([[:security]])
       [[:observability], [:observability, :security]]
   """
   @spec trees([[Apiary.Features.feature()]]) :: [[Apiary.Features.feature()]]
   def trees(needs) do
-    all = Apiary.Features.all()
+    documented = Apiary.Features.documented()
 
-    for instance <- subsets(all),
+    for instance <- subsets(Apiary.Features.all()),
         {:ok, ^instance} <- [Apiary.Features.parse(Enum.map_join(instance, ",", &to_string/1))],
         uniq: true do
       covered = for need <- needs, covered?(need, instance), feature <- need, do: feature
-      Enum.filter(all, &(&1 == :observability or &1 in covered))
+      Enum.filter(documented, &(&1 == :observability or &1 in covered))
     end
     |> Enum.sort_by(&length/1)
   end
@@ -342,11 +347,11 @@ defmodule Mix.Tasks.Docs.All do
 
   defp features!(list, file, number) do
     features = list |> String.split(",") |> Enum.map(&String.trim/1)
-    known = Map.new(Apiary.Features.all(), &{Atom.to_string(&1), &1})
+    known = Map.new(Apiary.Features.documented(), &{Atom.to_string(&1), &1})
 
     for feature <- features do
       Map.get(known, feature) ||
-        marker!(file, number, "#{inspect(feature)} is not a feature")
+        marker!(file, number, "#{inspect(feature)} is not a feature the documentation differs by")
     end
   end
 

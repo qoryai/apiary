@@ -164,17 +164,26 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   end
 
   describe "rule_form" do
-    defp rule_form(scope) do
-      render_component(&PolicyComponents.rule_form/1,
-        id: "policy-rule",
-        title: "New rule",
-        form:
-          to_form(%{"action" => "allow", "host" => "", "paths" => "", "every" => "false"},
-            as: :rule
-          ),
-        scope: scope,
-        cancel: "/acme/policy"
+    defp rule_form(scope, opts \\ []) do
+      action = Keyword.get(opts, :action, "allow")
+
+      render_component(
+        &PolicyComponents.rule_form/1,
+        [
+          id: "policy-rule",
+          title: "New rule",
+          form:
+            to_form(%{"action" => action, "host" => "", "paths" => "", "every" => "false"},
+              as: :rule
+            ),
+          scope: scope,
+          cancel: "/acme/policy"
+        ] ++ Keyword.take(opts, [:paths])
       )
+    end
+
+    defp has?(html, selector) do
+      html |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.any?()
     end
 
     defp button(html) do
@@ -193,6 +202,32 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         assert button(rule_form(:target)) == "Add target rule"
         assert button(rule_form(:organisation)) == "Add rule"
       end)
+    end
+
+    test "draws the Paths row on Allow and on Deny unless paths is false" do
+      for scope <- [:workspace, :target, :organisation] do
+        allow = rule_form(scope)
+        assert has?(allow, "label[for=policy-rule-paths]")
+        assert has?(allow, "#policy-rule-paths[name='rule[paths]']")
+        assert has?(allow, "#policy-rule-paths-hint")
+        assert has?(rule_form(scope, action: "deny"), "#policy-rule-paths-deny")
+        assert rule_form(scope, paths: true) == allow
+
+        allow = rule_form(scope, paths: false)
+        deny = rule_form(scope, action: "deny", paths: false)
+
+        for html <- [allow, deny] do
+          refute has?(html, "label[for=policy-rule-paths]")
+          refute has?(html, "#policy-rule-paths")
+          refute has?(html, "#policy-rule-paths-hint")
+          refute has?(html, "#policy-rule-paths-deny")
+          refute html =~ "Paths"
+          refute html =~ "Every path"
+          refute html =~ "A deny covers every path of the host."
+          assert has?(html, "#policy-rule-host")
+          assert has?(html, "#policy-rule-preview")
+        end
+      end
     end
   end
 

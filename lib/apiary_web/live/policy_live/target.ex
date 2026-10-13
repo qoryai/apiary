@@ -51,6 +51,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(composer_open: false, summary: nil, would: nil, params: %{}, shown: nil)
       |> assign(:version_base, nil)
+      # The rule form's Paths row, drawn where the instance has `path_rules`.
+      |> assign(:path_rules, Apiary.Features.on?(:path_rules))
 
     if connected?(socket),
       do: socket |> load() |> assign(loaded: true, network: network_path(socket, target)),
@@ -757,6 +759,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         editing={@rule_edit && @rule_edit.host}
         error={@write_error}
         cancel={Common.cancel_path(assigns)}
+        paths={@path_rules}
         host_placeholder={gettext("mcp.acme.example")}
       >
         <:description>

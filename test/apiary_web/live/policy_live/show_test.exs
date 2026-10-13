@@ -264,7 +264,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_patch(view, workspace_path(scope, "/policy/rules/new"))
       assert has_element?(view, "#policy-rule-form")
 
-      type(view, %{host: "api.example", paths: ""})
+      type(view, %{host: "api.example"})
       add(view)
 
       assert has_element?(view, "#policy-rules tr.q-fresh", "api.example")
@@ -301,6 +301,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#policy-rule-form")
     end
 
+    @tag needs: :path_rules
     test "reads a host, a suffix and paths back before saving", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -321,6 +322,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "Allow api.example on 2 paths : everything below /v1/ , and /health exactly."
     end
 
+    @tag needs: :path_rules
     test "a deny reads back, and takes no paths", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -341,7 +343,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "https://API.Example:443/v1/messages", paths: ""})
+      type(view, %{host: "https://API.Example:443/v1/messages"})
 
       assert text(view, "#policy-rule-host-error") =~
                "A rule names a host and nothing else: lower case, no scheme, no port, no path."
@@ -356,6 +358,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rule-reads") =~ "Allow api.example on 1 path"
     end
 
+    @tag needs: :path_rules
     test "says what is wrong in the contract's grammar", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -376,7 +379,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace"
@@ -402,6 +405,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rule-add") == "Replace with deny"
     end
 
+    @tag needs: :path_rules
     test "a host held to paths is not opened without saying so", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
       view = open(conn, scope)
@@ -425,7 +429,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "tax.internal.example", paths: ""})
+      type(view, %{host: "tax.internal.example"})
       assert text(view, "#policy-rule-reads") =~ "Already allowed by *.internal.example"
       assert has_element?(view, "#policy-rule-preview.q-rule-preview-note")
       add(view)
@@ -469,7 +473,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example", paths: ["/v1/*"]})
       view = open(conn, scope)
 
-      type(view, %{host: "files.cdn.example", paths: ""})
+      type(view, %{host: "files.cdn.example"})
       add(view)
 
       assert text(view, "#policy-rule-write-error") =~ "held to paths"
@@ -837,6 +841,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
     end
 
+    @tag needs: :path_rules
     test "Edit opens the rule's page, its paths in the field", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       id = rule(scope, "api.example").id
@@ -941,7 +946,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     test "edits what is not locked", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
-      type(view, %{host: "api.example", paths: ""})
+      type(view, %{host: "api.example"})
       add(view)
       assert rule(scope, "api.example")
     end
@@ -962,7 +967,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert attribute(view, known, "data-tip") =~
                ~r/\A#{by}[^.]+\. Only an owner can change or unlock it\.\z/
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
 
       assert text(view, "#policy-rule-refusal") ==
                "Only an owner can lock, unlock or change a locked rule."
@@ -975,14 +980,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert attribute(view, known, "data-tip") =~
                ~r/\A#{by}[^.]+\. #{Regex.escape(sentence)}\z/
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
       assert text(view, "#policy-rule-refusal") == sentence
     end
 
     test "is refused on the New rule page on a locked rule", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
 
       assert text(view, "#policy-rule-refusal") =~
                "Only an owner can lock, unlock or change a locked rule."
@@ -1574,7 +1579,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Apiary.Accounts.delete_user(member)
 
       view = open(conn, scope)
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace, by Former member on"
@@ -1593,7 +1598,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
       refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
 
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace, by #{local} on"

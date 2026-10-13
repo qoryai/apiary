@@ -499,6 +499,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:secrets),
     do: gettext("Stored secrets, variables and integrations, in each workspace's settings.")
 
+  defp description(:path_rules), do: gettext("Paths on a policy rule's form.")
+
   defp description(_feature), do: nil
 
   # Where each value read only at start comes from: the setting of the server's

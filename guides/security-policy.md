@@ -90,9 +90,6 @@ it too, as **Network access rule**. The page asks:
    it with `*.` to cover every host below a domain, such as `*.example.com`. An address is
    written as four numbers with dots between them and no leading zeros, such as
    `10.0.0.12`, never with `*.`.
-3. **Paths**, optional, for an allow: left empty, every path is allowed; separate paths
-   with spaces, and end one with `*` for everything below it, such as `/v1/*`. A deny covers
-   every path of the host.
 
 Under **What this rule does** the page reads the rule back in plain words as it is typed,
 or says what an allow or a deny of the same host already there would become. An error is

@@ -10,11 +10,28 @@ defmodule Mix.Tasks.Docs.AllTest do
       assert All.trees([]) == [[:observability]]
     end
 
-    # Security's tree is one of its own: every feature is more, the core's opt-in `secrets`
-    # among them.
+    # Security's tree is a separate one: every feature the documentation differs by is
+    # more, the core's opt-in `secrets` among them.
     test "security's documentation and the module reference are a tree each" do
-      assert All.trees([[:security], Apiary.Features.all()]) ==
-               Enum.uniq([[:observability], [:observability, :security], Apiary.Features.all()])
+      every = Apiary.Features.documented()
+
+      assert All.trees([[:security], every]) ==
+               Enum.uniq([[:observability], [:observability, :security], every])
+    end
+
+    # A feature listed with `docs: false` is in no tree and names none, so the trees are
+    # the same as without it.
+    test "a feature the documentation does not differ by is in no tree" do
+      every = Apiary.Features.documented()
+      assert every != Apiary.Features.all()
+
+      for needs <- [[], [[:security]], [[:security], every]] do
+        trees = All.trees(needs)
+        assert Enum.all?(List.flatten(trees), &(&1 in every)), inspect(needs)
+      end
+
+      assert All.trees([[:security], every]) |> Enum.map(&ApiaryWeb.DocsController.tree_name/1) ==
+               Enum.uniq(["observability", "observability+security", "all"])
     end
   end
 
@@ -71,9 +88,20 @@ defmodule Mix.Tasks.Docs.AllTest do
         All.split!("<!-- /feature -->\n", "g.md")
       end
 
-      assert_raise Mix.Error, ~s(g.md:1: "secruity" is not a feature), fn ->
-        All.split!("<!-- feature: secruity -->\n<!-- /feature -->\n", "g.md")
-      end
+      assert_raise Mix.Error,
+                   ~s(g.md:1: "secruity" is not a feature the documentation differs by),
+                   fn ->
+                     All.split!("<!-- feature: secruity -->\n<!-- /feature -->\n", "g.md")
+                   end
+
+      # A feature listed with `docs: false` marks no passage.
+      [undocumented | _] = Apiary.Features.all() -- Apiary.Features.documented()
+
+      assert_raise Mix.Error,
+                   ~s(g.md:1: "#{undocumented}" is not a feature the documentation differs by),
+                   fn ->
+                     All.split!("<!-- feature: #{undocumented} -->\n<!-- /feature -->\n", "g.md")
+                   end
     end
   end
 end

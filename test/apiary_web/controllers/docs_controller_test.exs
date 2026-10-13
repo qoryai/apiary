@@ -18,6 +18,9 @@ defmodule ApiaryWeb.DocsControllerTest do
   @every "all"
 
   defp security_tree, do: ApiaryWeb.DocsController.tree_name([:observability, :security])
+
+  # The features listed with `docs: false`: the documentation does not differ by them.
+  @undocumented Apiary.Features.all() -- Apiary.Features.documented()
   defp trees, do: Enum.uniq(["observability", security_tree(), @every])
 
   defp build(tmp_dir, trees) do
@@ -48,6 +51,18 @@ defmodule ApiaryWeb.DocsControllerTest do
 
     @tag with_features: [:observability, :security]
     test "an instance with security is served the security tree", %{conn: conn} do
+      assert served(conn, "/docs/index.html") == security_tree()
+    end
+
+    # Every feature the documentation differs by, without the ones it does not differ by.
+    @tag with_features: Apiary.Features.documented()
+    test "a feature the documentation does not differ by, off, leaves the tree of every feature",
+         %{conn: conn} do
+      assert served(conn, "/docs/index.html") == @every
+    end
+
+    @tag with_features: [:observability, :security | @undocumented]
+    test "a feature the documentation does not differ by, on, adds no tree", %{conn: conn} do
       assert served(conn, "/docs/index.html") == security_tree()
     end
 
@@ -135,6 +150,21 @@ defmodule ApiaryWeb.DocsControllerTest do
     test "is not served to an instance without the tree's features", %{conn: conn, name: name} do
       assert conn |> get("/docs/#{name}") |> html_response(404)
       assert conn |> get("/docs/#{security_tree()}/#{name}") |> html_response(404)
+    end
+  end
+
+  describe "tree_name/1" do
+    test "names a tree by the features the documentation differs by alone" do
+      assert Apiary.Features.documented() != Apiary.Features.all()
+      assert ApiaryWeb.DocsController.tree_name(Apiary.Features.all()) == @every
+      assert ApiaryWeb.DocsController.tree_name(Apiary.Features.documented()) == @every
+
+      for features <- [[:observability], [:observability, :security]] do
+        assert ApiaryWeb.DocsController.tree_name(features ++ @undocumented) ==
+                 ApiaryWeb.DocsController.tree_name(features)
+      end
+
+      assert security_tree() == "observability+security"
     end
   end
 
