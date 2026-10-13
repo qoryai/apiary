@@ -355,7 +355,7 @@ defmodule Apiary.Features do
       unknown ->
         # The message does not list the features: an instance shows nothing of a feature
         # it does not have, its boot errors included. The Install guide lists them, but for
-        # one the documentation does not differ by (`docs: false`), which no page names.
+        # one the documentation does not differ by (`docs: false`), which no guide names.
         {:error,
          "unknown #{plural(unknown, "feature", "features")} #{names(unknown)}; " <>
            "the Install guide at /docs lists the features"}
