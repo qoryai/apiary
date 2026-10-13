@@ -55,10 +55,10 @@ tab=$(printf '\t')
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
-# The aws command in the region, its output as text. Its error goes to $err, and is
-# printed when the call fails, unless the caller reads it first.
+# The aws command in the region, its output as text, its times in UTC. Its error goes to
+# $err, and is printed when the call fails, unless the caller reads it first.
 aws_() {
-	aws --region "$region" --output text "$@" 2>"$err"
+	TZ=UTC aws --region "$region" --output text "$@" 2>"$err"
 }
 
 fail() {
@@ -72,8 +72,11 @@ aws_failed() {
 	fail "the aws command failed: $*"
 }
 
+# Whether the failed call's error is that the item is not there: only the error code, as
+# the aws command prints it, counts, never the word elsewhere in a message.
 gone_error() {
-	grep -q -e ResourceNotFoundException -e DBSnapshotNotFound "$err"
+	grep -q -e '^An error occurred (ResourceNotFoundException) ' -e '^An error occurred (DBSnapshotNotFound) ' \
+		-e '^An error occurred (DBSnapshotNotFoundFault) ' "$err"
 }
 
 # --- The stack ---------------------------------------------------------------------------
@@ -117,7 +120,8 @@ echo "  $stack_id"
 
 # --- What it kept ------------------------------------------------------------------------
 # One line per item: its kind, then its ID. A kept resource of a type this script does not
-# delete is listed as "other" and left alone.
+# delete is listed as "other" and left alone, and so is a secret or log group not named for
+# this stack's keys, or one with no ID.
 items=
 add() {
 	items="$items$1$tab$2
@@ -130,8 +134,16 @@ skipped=$(aws_ cloudformation list-stack-resources --stack-name "$stack_id" \
 while IFS=$tab read -r type id; do
 	case "$type" in
 	'') ;;
-	AWS::SecretsManager::Secret) add secret "$id" ;;
-	AWS::Logs::LogGroup) add log-group "$id" ;;
+	AWS::SecretsManager::Secret)
+		case "$id" in
+		*:secret:"$keys_name"/*) add secret "$id" ;;
+		*) add other "$type $id" ;;
+		esac ;;
+	AWS::Logs::LogGroup)
+		case "$id" in
+		/qory/"$keys_name" | /qory/"$keys_name"/*) add log-group "$id" ;;
+		*) add other "$type $id" ;;
+		esac ;;
 	*) add other "$type $id, a type this script does not delete" ;;
 	esac
 done <<EOF
@@ -195,6 +207,9 @@ done
 uses=$(aws_ cloudformation describe-stacks \
 	--query 'Stacks[].[StackName, Parameters[?ParameterKey==`KeysFromStack`].ParameterValue | [0], Parameters[?ParameterKey==`DatabaseSnapshot`].ParameterValue | [0]]') ||
 	aws_failed describe-stacks
+# The aws command prints a parameter given "" as an empty field, and read takes a run of
+# tabs as one, which would shift the fields after it: each empty field becomes None first.
+uses=$(printf '%s\n' "$uses" | awk -F "$tab" -v OFS="$tab" '{ for (i = 1; i <= NF; i++) if ($i == "") $i = "None"; print }')
 in_use=
 while IFS=$tab read -r user keys snapshot; do
 	[ -n "$user" ] || continue
@@ -202,8 +217,11 @@ while IFS=$tab read -r user keys snapshot; do
 		in_use="$in_use  $user uses the key secrets $keys_name
 "
 	fi
+	# A snapshot's identifier is the same in any case.
+	used=$(printf '%s' "${snapshot##*:}" | tr '[:upper:]' '[:lower:]')
 	while IFS=$tab read -r kind id; do
-		if [ "$kind" = snapshot ] && [ -n "$snapshot" ] && [ "${snapshot##*:}" = "$id" ]; then
+		if [ "$kind" = snapshot ] && [ -n "$snapshot" ] &&
+			[ "$used" = "$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')" ]; then
 			in_use="$in_use  $user restored its database from the snapshot $id
 "
 		fi
@@ -219,14 +237,29 @@ if [ -n "$in_use" ]; then
 fi
 
 # --- Exists, delete ------------------------------------------------------------------------
+# The items this run deleted, and those whose delete failed. One line per item, as in $items.
+removed=
+failed=
+# Whether the list $1 has the item of kind $2 and ID $3.
+has() {
+	case "
+$1" in *"
+$2$tab$3
+"*) return 0 ;; esac
+	return 1
+}
+
 # Succeeds when the item exists; fails when it is gone or being deleted. Any other error
 # from the aws command stops the script, so an error never reads as gone.
 exists() {
 	case "$1" in
 	secret)
+		# A secret scheduled for deletion still answers, with its DeletedDate, and is there
+		# until its window ends. Only this run's delete without recovery, which finishes a
+		# little later, makes it gone while it answers.
 		out=$(aws_ secretsmanager describe-secret --secret-id "$2" --query DeletedDate) ||
 			{ gone_error && return 1; aws_failed describe-secret; }
-		[ "$out" = None ] ;;
+		[ "$out" = None ] || ! has "$removed" secret "$2" ;;
 	log-group)
 		out=$(aws_ logs describe-log-groups --log-group-name-prefix "$2" \
 			--query "logGroups[?logGroupName=='$2'].logGroupName") || aws_failed describe-log-groups
@@ -278,11 +311,15 @@ while IFS=$tab read -r kind id; do
 	exists "$kind" "$id" || continue
 	if delete "$kind" "$id"; then
 		echo "Deleted $kind $id"
+		removed="$removed$kind$tab$id
+"
 	elif gone_error; then
 		echo "Already gone: $kind $id"
 	else
 		echo "Could not delete $kind $id:" >&2
 		cat "$err" >&2
+		failed="$failed$kind$tab$id
+"
 	fi
 done <<EOF
 $items
@@ -292,7 +329,8 @@ left=0
 echo "Left:"
 while IFS=$tab read -r kind id; do
 	[ -n "$kind" ] || continue
-	if exists "$kind" "$id"; then
+	# An item whose delete failed is left, whatever the look says.
+	if has "$failed" "$kind" "$id" || exists "$kind" "$id"; then
 		printf '  %-10s %s\n' "$kind" "$id"
 		left=$((left + 1))
 	fi
