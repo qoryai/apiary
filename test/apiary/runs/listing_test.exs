@@ -141,11 +141,10 @@ defmodule Apiary.Runs.ListingTest do
       assert Enum.map(Filters.families(), & &1.label) ==
                ["Alive", "Ended well", "Cancelled", "Ended badly"]
 
-      # Every state is in exactly one family, and an old name in none.
+      # Every state is in exactly one family.
       states = Filters.families() |> Enum.flat_map(& &1.states)
       assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.states())
       assert length(states) == length(Enum.uniq(states))
-      assert Apiary.Runs.Run.old_states() -- states == Apiary.Runs.Run.old_states()
 
       assert Filters.family_states("alive") == ~w(pending running)
       assert Filters.family_states("ended_well") == ~w(completed)
@@ -168,8 +167,6 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.families_of(~w(failed)) == nil
       assert Filters.families_of(~w(running completed)) == nil
       assert Filters.families_of(~w(running completed lost)) == nil
-      assert Filters.families_of(~w(succeeded)) == nil
-      assert Filters.families_of(~w(timed_out ended)) == nil
       assert Filters.families_of([]) == nil
     end
 
@@ -603,7 +600,7 @@ defmodule Apiary.Runs.ListingTest do
       # One run a day at noon, for sixty days back from @now's day.
       for day <- 0..59 do
         at = DateTime.new!(Date.add(~D[2026-09-20], -day), ~T[12:00:00.000000], "Etc/UTC")
-        run_fixture(scope, %{state: "succeeded", started_at: at})
+        run_fixture(scope, %{state: "completed", started_at: at})
       end
 
       newest = parse(%{"per" => "25"})
@@ -637,7 +634,7 @@ defmodule Apiary.Runs.ListingTest do
             run_id: Ecto.UUID.generate(),
             organisation_id: organisation.id,
             workspace_id: workspace.id,
-            state: "succeeded",
+            state: "completed",
             # Every third run has only pinged: it is placed by inserted_at.
             started_at: if(rem(n, 3) == 0, do: nil, else: at),
             inserted_at: at,
@@ -662,64 +659,11 @@ defmodule Apiary.Runs.ListingTest do
     end
   end
 
-  describe "a state an older release stored" do
-    test "reads as its new state: succeeded completed, timed out and ended cancelled" do
-      alias Apiary.Runs.Run
-
-      assert Run.current_state("succeeded") == "completed"
-      assert Run.current_state("timed_out") == "cancelled"
-      assert Run.current_state("ended") == "cancelled"
-      for state <- Run.states(), do: assert(Run.current_state(state) == state)
-
-      assert Run.with_old_names(~w(completed)) == ~w(completed succeeded)
-      assert Enum.sort(Run.with_old_names(~w(cancelled))) == ~w(cancelled ended timed_out)
-
-      assert Run.with_old_names(~w(pending running failed lost)) ==
-               ~w(pending running failed lost)
-
-      assert Run.with_old_names([]) == []
-    end
-
-    test "lists, filters and counts in its new state's family", %{scope: scope} do
-      at = DateTime.add(@now, -60, :second)
-      stored = fn state -> run_fixture(scope, %{state: state, started_at: at}) end
-
-      completed = stored.("completed")
-      succeeded = stored.("succeeded")
-      cancelled = stored.("cancelled")
-      timed_out = stored.("timed_out")
-      ended = stored.("ended")
-      failed = stored.("failed")
-
-      listed = fn params ->
-        Runs.page_runs(scope, parse(params), @now).runs |> ids() |> Enum.sort()
-      end
-
-      assert listed.(%{"state" => "completed"}) == Enum.sort([completed.id, succeeded.id])
-
-      assert listed.(%{"state" => "cancelled"}) ==
-               Enum.sort([cancelled.id, timed_out.id, ended.id])
-
-      assert listed.(%{"state" => "failed,lost"}) == [failed.id]
-
-      facets = Runs.run_facets(scope, parse(%{}), now: @now)
-
-      assert facets.state.options == [
-               {"completed", "completed", 2},
-               {"failed", "failed", 1},
-               {"cancelled", "cancelled", 3}
-             ]
-
-      assert %{all: 6, alive: 0, ended_badly: 1} = Runs.view_counts(scope, parse(%{}), @now)
-
-      assert [%{runs: 6, ended_well: 2, cancelled: 3, ended_badly: 1}] =
-               Runs.day_facts(scope, DateTime.add(@now, -3600, :second))
-    end
-
-    test "every state counts in its family, each old name in its new state's", %{scope: scope} do
+  describe "the states" do
+    test "every state counts in its family", %{scope: scope} do
       at = DateTime.add(@now, -60, :second)
 
-      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+      for state <- ~w(pending running completed failed cancelled lost),
           do: run_fixture(scope, %{state: state, started_at: at})
 
       facets = Runs.run_facets(scope, parse(%{}), now: @now)
@@ -727,17 +671,17 @@ defmodule Apiary.Runs.ListingTest do
       assert facets.state.options == [
                {"pending", "pending", 1},
                {"running", "running", 1},
-               {"completed", "completed", 2},
+               {"completed", "completed", 1},
                {"failed", "failed", 1},
-               {"cancelled", "cancelled", 3},
+               {"cancelled", "cancelled", 1},
                {"lost", "lost", 1}
              ]
 
       assert Runs.view_counts(scope, parse(%{}), @now) ==
-               %{all: 9, alive: 2, ended_badly: 2, with_denials: 0}
+               %{all: 6, alive: 2, ended_badly: 2, with_denials: 0}
 
       assert [day] = Runs.day_facts(scope, DateTime.add(@now, -3600, :second))
-      assert %{runs: 9, alive: 2, ended_well: 2, cancelled: 3, ended_badly: 2} = day
+      assert %{runs: 6, alive: 2, ended_well: 1, cancelled: 1, ended_badly: 2} = day
       # The four families count every run once.
       assert day.alive + day.ended_well + day.cancelled + day.ended_badly == day.runs
 

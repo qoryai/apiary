@@ -66,22 +66,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "-soft"
     end
 
-    test "a state stored under its earlier name reads as the state that took it in" do
-      for {earlier, now} <- [
-            {"succeeded", "completed"},
-            {"timed_out", "cancelled"},
-            {"ended", "cancelled"}
-          ] do
-        assert RunComponents.state_label(earlier) == RunComponents.state_label(now)
-
-        assert RunComponents.state_label(String.to_atom(earlier)) ==
-                 RunComponents.state_label(now)
-
-        assert render_component(&RunComponents.run_state/1, state: earlier) ==
-                 render_component(&RunComponents.run_state/1, state: now)
-      end
-    end
-
     test "a failed run shows its exit code, or its signal instead" do
       assert text(render_component(&RunComponents.run_state/1, state: "failed", exit_code: 1)) ==
                "Failed exit 1"
@@ -102,29 +86,23 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a row's mark: a completed run's word is for a screen reader, a cancelled run's is grey" do
-      for state <- ~w(completed succeeded) do
-        html = render_component(&RunComponents.run_mark/1, state: state)
-        assert html =~ "q-st-#{state}"
-        assert html =~ ~s(class="q-st-w sr-only")
-        assert text(html) == "Completed"
-      end
+      html = render_component(&RunComponents.run_mark/1, state: "completed")
+      assert html =~ "q-st-completed"
+      assert html =~ ~s(class="q-st-w sr-only")
+      assert text(html) == "Completed"
 
-      for state <- ~w(cancelled timed_out ended) do
-        html = render_component(&RunComponents.run_mark/1, state: state)
-        assert html =~ "q-st-#{state}"
-        refute html =~ "sr-only"
-        assert text(html) == "Cancelled"
-      end
+      html = render_component(&RunComponents.run_mark/1, state: "cancelled")
+      assert html =~ "q-st-cancelled"
+      refute html =~ "sr-only"
+      assert text(html) == "Cancelled"
     end
 
     test "an ended run's sentence says its state" do
       for {state, run, sentence} <- [
             {"completed", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
-            {"succeeded", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
             {"completed", %{}, "Completed"},
             {"cancelled", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"timed_out", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"ended", %{}, "Cancelled"},
+            {"cancelled", %{}, "Cancelled"},
             {"failed", %{exit_code: 1}, "Failed with exit 1"}
           ] do
         html = render_component(&RunComponents.alive/1, state: state, run: run)
@@ -165,14 +143,14 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a run stopped where it was started reads interrupted, whatever the state" do
-      for state <- [nil, "cancelled", :cancelled, "failed", "completed", "succeeded"] do
+      for state <- [nil, "cancelled", :cancelled, "failed", "completed"] do
         assert RunComponents.reason_words(%{reason: "interrupted", state: state}) ==
                  "interrupted"
       end
     end
 
     test "stopped beside an outcome says only that the run was stopped" do
-      for state <- ["completed", :completed, "succeeded", "failed", :failed] do
+      for state <- ["completed", :completed, "failed", :failed] do
         assert RunComponents.reason_words(%{reason: "stopped", state: state}) == "stopped"
       end
 
@@ -216,7 +194,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
 
       # The earlier name came with no outcome, whatever state its exit said.
-      for state <- [nil, "failed", "cancelled", "ended"] do
+      for state <- [nil, "failed", "cancelled"] do
         assert RunComponents.reason_words(%{reason: "run_ended_at_issuer", state: state}) ==
                  "stopped, no outcome given"
       end
@@ -295,7 +273,7 @@ defmodule ApiaryWeb.RunComponentsTest do
               state <-
                 member_of(
                   [nil] ++
-                    ~w(pending running completed failed cancelled lost succeeded timed_out ended) ++
+                    ~w(pending running completed failed cancelled lost) ++
                     [:completed, :failed, :cancelled]
                 ),
               seconds <- one_of([constant(nil), positive_integer()]),

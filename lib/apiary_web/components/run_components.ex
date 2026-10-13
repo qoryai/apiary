@@ -63,10 +63,9 @@ defmodule ApiaryWeb.RunComponents do
   ## Run state
 
   @doc """
-  The badge of a run's state, one word, mark and colour for each of the six states (a name a
-  run stored before Completed and Cancelled reads as the state that took it in,
-  `state_label/1`). `quiet_for` (seconds since the last heartbeat, set by the server once it
-  is over one interval) turns a running badge amber and adds the note beside it.
+  The badge of a run's state, one word, mark and colour for each of the six states
+  (`state_label/1`). `quiet_for` (seconds since the last heartbeat, set by the server once
+  it is over one interval) turns a running badge amber and adds the note beside it.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :exit_code, :integer, default: nil, doc: "after Failed when not 0 and not -1"
@@ -78,7 +77,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :class, :any, default: nil
 
   def run_state(assigns) do
-    assigns = assign(assigns, :state, current_state(assigns.state))
+    assigns = assign(assigns, :state, state_name(assigns.state))
     quiet? = assigns.state == "running" and is_integer(assigns.quiet_for)
 
     assigns =
@@ -127,29 +126,14 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  # The names a run's state had before Completed and Cancelled took them in. A run stored
-  # under one of them reads as its state today, and so does an exit's `state` as the contract
-  # writes it (`succeeded`).
-  @earlier_states %{
-    "succeeded" => "completed",
-    "timed_out" => "cancelled",
-    "ended" => "cancelled"
-  }
+  # A state's name as a string, also when it is given as an atom.
+  defp state_name(state) when is_atom(state) and not is_nil(state), do: Atom.to_string(state)
+  defp state_name(state), do: state
 
-  # A state's name as a string, an earlier name as the state that took it in.
-  defp current_state(state) when is_atom(state) and not is_nil(state),
-    do: current_state(Atom.to_string(state))
-
-  defp current_state(state), do: Map.get(@earlier_states, state, state)
-
-  @doc """
-  The word of a state, as the badge says it, for its name as a string or an atom. A name a
-  run stored before Completed and Cancelled reads as their word: `succeeded` Completed,
-  `timed_out` and `ended` Cancelled.
-  """
+  @doc "The word of a state, as the badge says it, for its name as a string or an atom."
   @spec state_label(String.t() | atom()) :: String.t()
   def state_label(state) do
-    case current_state(state) do
+    case state_name(state) do
       "pending" -> gettext("Pending")
       "running" -> gettext("Running")
       "completed" -> gettext("Completed")
@@ -278,7 +262,7 @@ defmodule ApiaryWeb.RunComponents do
   # Forager writes `stopped` only with cancelled, when the starter gave no outcome; beside an
   # outcome it says only that the run was stopped.
   defp words_of("stopped", run) do
-    if current_state(Map.get(run, :state)) in ~w(completed failed),
+    if state_name(Map.get(run, :state)) in ~w(completed failed),
       do: gettext("stopped"),
       else: gettext("stopped, no outcome given")
   end
@@ -849,7 +833,7 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" -> %>
           <span>{gettext("Alive")}</span>
         <% true -> %>
-          <span>{outcome_sentence(@run) || ended_sentence(current_state(@state), @run)}</span>
+          <span>{outcome_sentence(@run) || ended_sentence(state_name(@state), @run)}</span>
       <% end %>
     </span>
     """
@@ -1720,7 +1704,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns =
       assign(assigns,
         quiet?: assigns.state == "running" and is_integer(assigns.quiet_for),
-        completed?: current_state(assigns.state) == "completed"
+        completed?: state_name(assigns.state) == "completed"
       )
 
     ~H"""
@@ -1756,7 +1740,7 @@ defmodule ApiaryWeb.RunComponents do
   its exit, "exit 1", "SIGKILL", for a run that completed or failed; nil otherwise.
   """
   def exit_note(run) do
-    reason_words(run) || exit_code_note(current_state(run.state), run)
+    reason_words(run) || exit_code_note(state_name(run.state), run)
   end
 
   defp exit_code_note(state, %{signal: signal})
@@ -2003,7 +1987,7 @@ defmodule ApiaryWeb.RunComponents do
   leaves out its Duration.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(succeeded completed ended failed timed_out cancelled) do
+      when state in ~w(completed failed cancelled) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """

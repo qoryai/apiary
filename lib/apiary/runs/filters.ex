@@ -156,10 +156,8 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The four families the states read as, in the order they are shown: alive (`pending`,
   `running`), ended well (`completed`), cancelled (`cancelled`) and ended badly (`failed`,
-  `lost`). Every state is in exactly one; a name an older release stored is in none, and is
-  read as its new state where runs are counted and listed (`Apiary.Runs.Run.with_old_names/1`).
-  The labels are in the domain's words: translated here, at call time, because the list is
-  made at compile time.
+  `lost`). Every state is in exactly one. The labels are in the domain's words: translated
+  here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]
   def families,

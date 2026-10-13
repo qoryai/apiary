@@ -164,8 +164,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
   end
 
-  test "a run with no target is said by its state's word, an old name by its new state's",
-       %{conn: conn, scope: scope} do
+  test "a run with no target is said by its state's word", %{conn: conn, scope: scope} do
     completed =
       started_run(scope, %{},
         about: %{"title" => "Weekly report"},
@@ -178,18 +177,12 @@ defmodule ApiaryWeb.JumpControllerTest do
         exit: %{"state" => "cancelled", "reason" => "no_longer_needed"}
       )
 
-    # Stored by an older release as timed out.
-    older = started_run(scope, %{}, about: %{"title" => "Weekly mirror"})
-
-    older |> Ecto.Changeset.change(state: "timed_out") |> Apiary.Repo.update!()
-
     answer = jump(conn, workspace_path(scope, "/jump"), "weekly")
     detail = Map.new(group(answer, "Runs")["items"], &{&1["href"], &1["detail"]})
 
     assert detail == %{
              workspace_path(scope, "/runs/#{completed.run_id}") => "Completed",
-             workspace_path(scope, "/runs/#{cancelled.run_id}") => "Cancelled",
-             workspace_path(scope, "/runs/#{older.run_id}") => "Cancelled"
+             workspace_path(scope, "/runs/#{cancelled.run_id}") => "Cancelled"
            }
   end
 

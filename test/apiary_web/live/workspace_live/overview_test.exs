@@ -1007,9 +1007,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       yesterday = Date.add(today, -1)
       noon = DateTime.new!(yesterday, ~T[12:00:00.000000], "Etc/UTC")
 
-      # Yesterday, every state that ends, with the names an older release stored:
-      # succeeded ended well, timed_out and ended were cancelled.
-      for state <- ~w(completed succeeded cancelled timed_out ended failed lost),
+      # Yesterday, every state that ends: two runs ended well, three were cancelled.
+      for state <- ~w(completed completed cancelled cancelled cancelled failed lost),
           do: run_fixture(scope, %{state: state, started_at: noon})
 
       for state <- ~w(pending running completed cancelled failed),
@@ -1098,7 +1097,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "with no run in the fortnight the chart has fourteen stubs and no target is active",
          %{conn: conn, scope: scope} do
       run_fixture(scope, %{
-        state: "succeeded",
+        state: "completed",
         started_at: DateTime.add(DateTime.utc_now(), -20, :day)
       })
 

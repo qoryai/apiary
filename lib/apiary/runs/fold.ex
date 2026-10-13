@@ -143,9 +143,8 @@ defmodule Apiary.Runs.Fold do
   @max_cells 65_535
   @statuses 100..599
 
-  # The states no start or heartbeat folded later changes, with the old names an older
-  # release stored them under (`Apiary.Runs.Run.old_states/0`).
-  @terminal ~w(completed failed cancelled succeeded ended timed_out)
+  # The states no start or heartbeat folded later changes.
+  @terminal ~w(completed failed cancelled)
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went

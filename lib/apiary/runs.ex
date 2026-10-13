@@ -499,15 +499,13 @@ defmodule Apiary.Runs do
   defp facet_limit(_n), do: @facet_size
 
   defp state_facet(scope, filters, now) do
-    # A name an older release stored counts as its new state.
     counts =
       Repo.all(
         from r in filtered(scope, %{filters | states: []}, now),
           group_by: r.state,
           select: {r.state, count(r.id)}
       )
-      |> Enum.group_by(&Run.current_state(elem(&1, 0)), &elem(&1, 1))
-      |> Map.new(fn {state, counts} -> {state, Enum.sum(counts)} end)
+      |> Map.new()
 
     options = for state <- Run.states(), count = counts[state], do: {state, state, count}
     %{options: options, total: length(options)}
@@ -678,7 +676,7 @@ defmodule Apiary.Runs do
     {from, to} = Filters.bounds(f, now)
 
     in_scope(scope)
-    |> where_if(f.states != [], dynamic([r], r.state in ^Run.with_old_names(f.states)))
+    |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
     |> where_target(f.target)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
@@ -1294,7 +1292,7 @@ defmodule Apiary.Runs do
   well, the cancelled and the ended badly (`alive`, `ended_well`, `cancelled`,
   `ended_badly`), with the denials of those runs and the cost they reported: `cost` is the
   sum of `cost_usd` over the day's runs, nil when none reported one, and `costed` how many
-  did. A name an older release stored counts in its new state's family.
+  did.
   """
   @type day_facts :: %{
           day: Date.t(),
@@ -1333,9 +1331,8 @@ defmodule Apiary.Runs do
             ),
           runs: count(r.id),
           alive: filter(count(r.id), r.state in ^Run.alive_states()),
-          ended_well:
-            filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
-          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
+          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+          cancelled: filter(count(r.id), r.state in ^Run.cancelled_states()),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: type(coalesce(sum(r.denied_count), 0), :integer),
           cost: sum(r.cost_usd),

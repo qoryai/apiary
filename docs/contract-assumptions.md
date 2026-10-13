@@ -722,10 +722,7 @@ row shows the value as recorded, whatever the state: the signal, else the code, 
 recorded" for `-1` without a signal. The state comes from `state` and `reason`, never from
 the exit code: a run its starter judged a failure can show Exit 0.
 
-The column `runs.state` also accepts the names a release before this one stored:
-`succeeded`, read as Completed, and `timed_out` and `ended`, read as Cancelled
-(`Apiary.Runs.Run.old_states/0`, `current_state/1`). Every family, count, filter, word and
-mark reads a row stored under one of them as its new state.
+The column `runs.state` holds one of the six states.
 
 A run's starter may give its outcome (The run endpoint). It is stored on the run, not
 folded, and it sets the run's state and reason whenever it arrives, before the exit or
