@@ -1,7 +1,9 @@
 defmodule Apiary.Runs.SixStatesMigrationTest do
   # The migration that allows the six states beside the three old names, run down and up
-  # again inside the test's transaction, which rolls it all back. It changes the `runs`
-  # table under every other test, so it is not async.
+  # again inside the test's transaction, which rolls it all back, on the schema as it left
+  # it: the three migrations after it, which store every run under its new state and
+  # narrow the check, are run down first. It changes the `runs` table under every other
+  # test, so it is not async.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -9,14 +11,34 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
   alias Apiary.Runs.Run
 
   @version 20_261_009_233_000
+  @options [log: false, migration_lock: false]
   @migration Apiary.Repo.Migrations.AllowTheSixStatesOfARun
 
+  # The migrations after it, the latest first.
+  @later [
+    {20_261_013_120_200, Apiary.Repo.Migrations.ValidateTheSixStatesCheck,
+     "validate_the_six_states_check"},
+    {20_261_013_120_100, Apiary.Repo.Migrations.AllowOnlyTheSixStatesOfARun,
+     "allow_only_the_six_states_of_a_run"},
+    {20_261_013_120_000, Apiary.Repo.Migrations.StoreEveryRunUnderItsNewState,
+     "store_every_run_under_its_new_state"}
+  ]
+
   setup_all do
-    unless Code.ensure_loaded?(@migration) do
+    migrations = [{@version, @migration, "allow_the_six_states_of_a_run"} | @later]
+
+    for {version, migration, name} <- migrations, not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join("#{@version}_allow_the_six_states_of_a_run.exs")
+      |> Path.join("#{version}_#{name}.exs")
       |> Code.require_file()
     end
+
+    :ok
+  end
+
+  setup do
+    for {version, migration, _name} <- @later,
+        do: assert(:ok = Ecto.Migrator.down(Repo, version, migration, @options))
 
     :ok
   end
@@ -55,9 +77,8 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
     %{scope: scope} = sign_up_fixture()
 
     assert Run.states() == ~w(pending running completed failed cancelled lost)
-    assert Enum.sort(Run.old_states()) == ~w(ended succeeded timed_out)
 
-    for state <- Run.states() ++ Run.old_states(),
+    for state <- Run.states() ++ ~w(succeeded timed_out ended),
         do: assert(state(insert!(scope, state)) == state)
 
     for state <- ~w(closed paused Completed), do: refused?(scope, state)
@@ -73,7 +94,7 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
     lost = insert!(scope, "lost", "gateway_lost")
     succeeded = insert!(scope, "succeeded")
 
-    assert :ok = Ecto.Migrator.down(Repo, @version, @migration, log: false, migration_lock: false)
+    assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
 
     assert state(completed) == "succeeded"
     assert state(timed_out) == "timed_out"
@@ -84,7 +105,7 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
 
     for state <- ~w(completed cancelled), do: refused?(scope, state)
 
-    assert :ok = Ecto.Migrator.up(Repo, @version, @migration, log: false, migration_lock: false)
+    assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
 
     for state <- ~w(completed cancelled succeeded timed_out ended),
         do: assert(state(insert!(scope, state)) == state)

@@ -10,6 +10,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ## [Unreleased]
 
+### Migrations
+
+- `runs`: the check on `runs.state` allows the six states only, `pending`, `running`,
+  `completed`, `failed`, `cancelled` and `lost`; a release before this one already stored
+  no other. Going back to 0.1.0 needs no step.
+
 ## [0.1.0] - 2026-10-13
 
 The first release of the open core of Qory Apiary: Qory Apiary Community, complete for
