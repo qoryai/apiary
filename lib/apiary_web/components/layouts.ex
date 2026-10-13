@@ -2214,7 +2214,8 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   The product's menu, on the brand: the mark and the product's name on this instance
-  (`Apiary.ProductName.name/0`: the name an instance admin set, else the edition's), cut
+  (`Apiary.ProductName.button_name/0`: the name an instance admin set, else the
+  edition's), cut
   with an ellipsis where it is too long for the sidebar and whole on hover, opening upward
   from the sidebar's foot and downward from the bar when there is no sidebar. It holds
   what is about the product itself, not about the person: first, for whoever may open a
@@ -2235,7 +2236,7 @@ defmodule ApiaryWeb.Layouts do
   def brand_menu(assigns) do
     assigns =
       assigns
-      |> assign(:product, Apiary.ProductName.name())
+      |> assign(:product, Apiary.ProductName.button_name())
       |> assign(:powered_by, Apiary.ProductName.powered_by?())
 
     ~H"""

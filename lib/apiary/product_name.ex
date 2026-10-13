@@ -1,14 +1,21 @@
 defmodule Apiary.ProductName do
   @moduledoc """
   The product's name on this instance: the name an instance admin sets in Instance
-  settings › General, else the edition's (`c:ApiaryWeb.Edition.product_name/0`, "Qory
-  Apiary" in the core's). `name/0` is the one function that gives the name a page or an
-  email shows: every page title, the Qory Apiary menu's button, the log-in, sign-up,
-  set-up and welcome pages, and every email's from-name and subject.
+  settings › General, else a default, which is one of two:
+
+  - `name/0`, the name a page or an email shows: every page title, the log-in, sign-up,
+    set-up and welcome pages, the docs' not-built page, and every email's from-name,
+    subject and body. Where no name is set it is "Qory Apiary", in every edition.
+  - `button_name/0`, the name on the Qory Apiary menu's button and the menu's names.
+    Where no name is set it is the edition's (`edition_name/0`,
+    `c:ApiaryWeb.Edition.product_name/0`, "Qory Apiary" in Qory Apiary Community).
+
+  The form of Instance settings › General, its toast and the Activity page say an empty
+  name as the edition's (`edition_name/0`), as the button shows it.
 
   **Where it is kept.** `instance_settings.product_name`, the instance's row; `NULL`, or
-  no row, is no name set, which shows the edition's. `updated_by_id` is the admin who set
-  it last. `get/0` is the name set, nil for none.
+  no row, is no name set. `updated_by_id` is the admin who set it last. `get/0` is the
+  name set, nil for none.
 
   **Its rules.** A name given keeps the rules of an organisation's name, all of them
   (`Apiary.Organisations.Organisation.validate_name/2`): it is shown inside sentences Qory
@@ -46,17 +53,26 @@ defmodule Apiary.ProductName do
 
   @doc """
   name/0 is the name a page or an email shows: the name an instance admin set (`get/0`),
-  else the edition's (`default/0`). A name, not a sentence: it is not translated.
+  else "Qory Apiary", in every edition. A name, not a sentence: it is not translated.
   """
   @spec name() :: String.t()
-  def name, do: get() || default()
+  def name, do: get() || @product
 
   @doc """
-  default/0 is the edition's name for the product, shown where no name is set
-  (`c:ApiaryWeb.Edition.product_name/0`): "Qory Apiary" in the core's.
+  button_name/0 is the name on the Qory Apiary menu's button and the menu's names: the
+  name an instance admin set (`get/0`), else the edition's (`edition_name/0`).
   """
-  @spec default() :: String.t()
-  def default, do: ApiaryWeb.Edition.product_name()
+  @spec button_name() :: String.t()
+  def button_name, do: get() || edition_name()
+
+  @doc """
+  edition_name/0 is the edition's name for the product
+  (`c:ApiaryWeb.Edition.product_name/0`), "Qory Apiary" in Qory Apiary Community: the
+  button's where no name is set, and how the form, its toast and the Activity page say an
+  empty name.
+  """
+  @spec edition_name() :: String.t()
+  def edition_name, do: ApiaryWeb.Edition.product_name()
 
   @doc """
   get/0 is the name an instance admin set, as this node's `Apiary.ProductName.Cache` holds
@@ -113,13 +129,13 @@ defmodule Apiary.ProductName do
   """
   @spec change(map) :: Ecto.Changeset.t()
   def change(attrs \\ %{}) do
-    Row.changeset(%Row{product_name: get()}, attrs, default())
+    Row.changeset(%Row{product_name: get()}, attrs, edition_name())
   end
 
   @doc """
   rename/2 sets the name `attrs` gives, `"product_name"`, for the instance admin of
   `scope`, by the rules of the module's documentation: an empty name is none, and the
-  edition's shows. A change is an `instance.rename` entry in the trail of the instance's
+  defaults show. A change is an `instance.rename` entry in the trail of the instance's
   organisation, by the admin, about the organisation, with the name before and after, nil
   for none; once committed, every node's cache reads it again. `{:ok, name}`, nil for
   none; `{:error, changeset}`; or `{:error, :forbidden}` for anyone but an instance admin.
@@ -135,7 +151,7 @@ defmodule Apiary.ProductName do
   defp save(%Scope{user: user} = scope, attrs) do
     Repo.transact(fn ->
       current = lock_row()
-      changeset = Row.changeset(current, attrs, default())
+      changeset = Row.changeset(current, attrs, edition_name())
 
       with true <- changeset.valid? || {:error, %{changeset | action: :update}},
            {:ok, organisation} <- instance_organisation(),

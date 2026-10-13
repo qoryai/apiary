@@ -347,8 +347,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(:"instance.rename", before, after_, _details),
     do:
       from_to(
-        before["name"] || Apiary.ProductName.default(),
-        after_["name"] || Apiary.ProductName.default()
+        before["name"] || Apiary.ProductName.edition_name(),
+        after_["name"] || Apiary.ProductName.edition_name()
       )
 
   def change(action, before, after_, _details)

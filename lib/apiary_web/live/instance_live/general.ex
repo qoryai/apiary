@@ -7,10 +7,11 @@ defmodule ApiaryWeb.InstanceLive.General do
   Configuration (`ApiaryWeb.Layouts.instance_sections/1`).
 
   The form holds one field, the name. Empty, it shows the edition's name
-  (`Apiary.ProductName.default/0`) as its placeholder, and saving it empty goes back to
-  that name. The name's rules are an organisation's name's, and its errors show under the
-  field. Saving reloads the page, so its browser title and its sidebar show the new name
-  at once; every other page and email shows it from then on.
+  (`Apiary.ProductName.edition_name/0`) as its placeholder, and saving it empty sets no
+  name: the defaults show again (`Apiary.ProductName`). The name's rules are an
+  organisation's name's, and its errors show under the field. Saving reloads the page, so
+  its browser title and its sidebar show the new name at once; every other page and email
+  shows it from then on.
   """
   use ApiaryWeb, :live_view
 
@@ -74,7 +75,7 @@ defmodule ApiaryWeb.InstanceLive.General do
            SettingsComponents.page_title(socket.assigns.current_scope, :instance, [
              gettext("General")
            ]),
-         default: ProductName.default(),
+         default: ProductName.edition_name(),
          attribution: Apiary.Edition.attribution?(),
          form: to_form(ProductName.change(), as: "instance")
        )}

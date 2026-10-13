@@ -196,6 +196,47 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       assert text(view, "#entry-#{renamed.id}-actor") =~ scope.user.email
     end
 
+    test "where the edition names the product otherwise, the form, its toast and the Activity page say an empty name as that name, and the title Qory Apiary",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
+      {:ok, view, html} = live(conn, ~p"/instance/general")
+
+      assert html =~ ~r{<title[^>]*>\s*General · Instance settings · Qory Apiary\s*</title>}
+      assert text(view, "#sidebar #brand-menu-button") == "Another Product"
+
+      assert has_element?(
+               view,
+               "#instance-name-form input#instance_product_name[placeholder='Another Product']"
+             )
+
+      assert render(view) =~ String.replace_suffix(@hint, "Qory Apiary.", "Another Product.")
+
+      {_flash, view, _html} = save_and_reload(conn, view, "Acme Agents")
+      {flash, view, html} = save_and_reload(conn, view, "")
+
+      assert flash == "Instance renamed to Another Product."
+      assert ProductName.get() == nil
+      assert html =~ ~r{<title[^>]*>\s*General · Instance settings · Qory Apiary\s*</title>}
+      assert text(view, "#sidebar #brand-menu-button") == "Another Product"
+      refute has_element?(view, "#powered-by")
+
+      # Qory Apiary typed in is a name here, kept as typed, with no Powered by.
+      {flash, view, _html} = save_and_reload(conn, view, "Qory Apiary")
+      assert flash == "Instance renamed to Qory Apiary."
+      assert ProductName.get() == "Qory Apiary"
+      assert has_element?(view, "#instance_product_name[value='Qory Apiary']")
+      refute has_element?(view, "#powered-by")
+
+      {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
+      render_async(view)
+
+      {:ok, %{entries: [typed, emptied | _]}} =
+        Apiary.Audit.list_entries(scope, %{action: "instance.rename"})
+
+      assert text(view, "#entry-#{emptied.id}-change") == "Acme Agents → Another Product"
+      assert text(view, "#entry-#{typed.id}-change") == "Another Product → Qory Apiary"
+    end
+
     test "one who is no longer an instance admin, on the page, is answered not found",
          %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/instance/general")

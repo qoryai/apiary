@@ -731,6 +731,14 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule AnotherName do
+    @moduledoc """
+    The product named Another Product (`c:ApiaryWeb.Edition.product_name/0`), as an
+    edition that names it otherwise than Qory Apiary would.
+    """
+    def product_name, do: "Another Product"
+  end
+
   defmodule WithoutSecrets do
     @moduledoc """
     Every person is shown the instance's features but `secrets`

@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.ProductNamePlacesTest do
   @moduledoc """
   Every place that names the product (`Apiary.ProductName`), read from the pages and the
-  emails as a person sees them: with no name set, each reads as it always has; with a name
-  an instance admin set, each reads that name, the sentences that say "this Qory Apiary"
-  name the instance, and the sidebar's foot, the log-in pages and every email say
-  "Powered by Qory Apiary". The numbers are the places' in the approved list.
+  emails as a person sees them: with no name set, each reads as it always has, and where
+  the edition names the product otherwise, only the menu's button and its names show that
+  name; with a name an instance admin set, each reads that name, the sentences that say
+  "this Qory Apiary" name the instance, and the sidebar's foot, the log-in pages and every
+  email say "Powered by Qory Apiary". The numbers are the places' in the approved list.
   """
   # Not async: the set-up page and the not-set-up line hide the instance's organisation, a
   # row every test shares, and the docs' page points the application at a directory.
@@ -349,6 +350,36 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
       assert List.last(last) == "=============================="
       refute Enum.join(last, "\n") =~ @powered
     end
+  end
+
+  test "with no name set, where the edition names the product otherwise, only the menu's button shows that name",
+       %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
+    places = places(conn)
+
+    # The titles, the log-in pages and the emails keep Qory Apiary.
+    for n <- 1..32, n not in [3, 4, 5, 8, 17] do
+      assert {n, places[n]} == {n, @before[n]}
+    end
+
+    assert @before[17] in places[17]
+    if line = security_line(places[8]), do: assert(line == @before[8])
+    assert places.people_title == "People · Organisation settings · Acme · Qory Apiary"
+
+    # The menu's button and its names show the edition's.
+    assert places[3] == "Another Product"
+    assert places[4] == "Another Product menu"
+    assert places[5] == "Another Product"
+
+    powered = places.powered
+    assert powered.sidebar == ""
+    assert powered.sidebar_menu == ""
+    assert powered.log_in == ""
+    assert Enum.all?(powered.pages, &(&1 == ""))
+    assert powered.emails.from == [{"Qory Apiary", "qory@example.com"}]
+
+    for last <- powered.emails.last_lines,
+        do: assert(List.last(last) == "==============================")
   end
 
   test "with a name set, every place reads it, and the three lines say Powered by Qory Apiary",

@@ -41,7 +41,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   The mark with the product's name on this instance (`name`, by default
-  `Apiary.ProductName.name/0`: the name an instance admin set, else the edition's), as a
+  `Apiary.ProductName.name/0`: the name an instance admin set, else Qory Apiary), as a
   link to `/`; a name too long for its place ends in an ellipsis and shows whole on hover.
   `xs` is the sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
   the `/users/organisations` top bar and the auth header strip (22 px mark),

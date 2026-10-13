@@ -127,10 +127,11 @@ page and an Instance page, the one the person came from (Two levels, below).
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
   then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the product's
-  name on the instance (`Apiary.ProductName.name/0`: the name an instance admin set in
-  Instance settings › General, else the edition's, `c:ApiaryWeb.Edition.product_name/0`,
-  Qory Apiary in the core's), a name too long for the sidebar cut with an ellipsis and
-  whole on hover, no version, opening upward to what is about the product rather than the
+  name on the instance (`Apiary.ProductName.button_name/0`: the name an instance admin set
+  in Instance settings › General, else the edition's,
+  `c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), a name too long for
+  the sidebar cut with an ellipsis and whole on hover, no version, opening upward to what
+  is about the product rather than the
   person: first, only for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
@@ -305,10 +306,12 @@ replaces the navigation it is in.
   itself does. For the instance's admins the core's General comes first
   (`/instance/general`, `ApiaryWeb.InstanceLive.General`, its `<h1>` General): one field,
   Name, the product's name on the instance (`Apiary.ProductName`), its placeholder and its
-  hint's "Empty: …" the edition's name, and under Save, where the edition says "Powered by
-  Qory Apiary", the note of when it does. Saving reloads the page with the toast "Instance
-  renamed to …"; a name breaking an organisation's name's rules shows its error under the
-  field. Then the edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
+  hint's "Empty: …" the edition's name (`Apiary.ProductName.edition_name/0`), which the
+  menu's button shows where no name is set, while titles, log-in pages and emails show
+  Qory Apiary there; and under Save, where the edition says "Powered by Qory Apiary", the
+  note of when it does. Saving reloads the page with the toast "Instance renamed to …"; a
+  name breaking an organisation's name's rules shows its error under the field. Then the
+  edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
   core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
   recent sign-in, and Configuration (`/instance/configuration`,
   `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration), read only: what
@@ -1536,12 +1539,14 @@ per msgid, and markup inside a sentence goes through `ApiaryWeb.RichText`; the r
 in [lingo.md](lingo.md). A page says organisation and workspace as plain words, and names
 the product Qory Apiary. Where an instance admin set a name in Instance settings › General
 (`Apiary.ProductName`), it replaces Qory Apiary in the browser title, the Qory Apiary
-menu's button and names, the log-in, sign-up, set-up and welcome pages (`Layouts.auth`:
-the name beside the mark, the brand panel's name and line, the headings, and the sentences
-there that say "this Qory Apiary", which then name the instance), the button of the page
-`/docs` shows when the docs are not built, and every email's from-name, subject and body.
-Those places then also say "Powered by Qory Apiary": the sidebar's foot (The shell), under
-the form of every page with the brand panel (`#powered-by`), and each email's last line.
+menu's button and names (which, where no name is set, show the edition's name,
+`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), the log-in, sign-up,
+set-up and welcome pages (`Layouts.auth`: the name beside the mark, the brand panel's name
+and line, the headings, and the sentences there that say "this Qory Apiary", which then
+name the instance), the button of the page `/docs` shows when the docs are not built, and
+every email's from-name, subject and body. Those places then also say "Powered by Qory
+Apiary": the sidebar's foot (The shell), under the form of every page with the brand panel
+(`#powered-by`), and each email's last line.
 Everything else keeps Qory Apiary: the docs, the console's other sentences that say "this
 Qory Apiary", the sentences where Qory Apiary acts or is what a machine connects to, and
 the Activity page's.

@@ -1,10 +1,10 @@
 defmodule Apiary.ProductNameTest do
   @moduledoc """
   The product's name an instance admin sets (`Apiary.ProductName`): the name every page
-  and email shows, the edition's where none is set; the rules a name given keeps, an
-  organisation's name's; "Qory Apiary" typed in, which is no name; who may set it, and the
-  instance's trail; "Powered by Qory Apiary"; and each node's copy
-  (`Apiary.ProductName.Cache`).
+  and email shows, Qory Apiary where none is set, and the menu's button the edition's; the
+  rules a name given keeps, an organisation's name's; "Qory Apiary" typed in, which is no
+  name; who may set it, and the instance's trail; "Powered by Qory Apiary"; and each
+  node's copy (`Apiary.ProductName.Cache`).
   """
   # Not async: hiding the instance's organisation acts on the row every test shares, and
   # the cache's copy is the whole node's.
@@ -32,11 +32,21 @@ defmodule Apiary.ProductNameTest do
       )
 
   describe "with no name set" do
-    test "every page and email shows the edition's, Qory Apiary in the core's" do
+    test "pages and emails show Qory Apiary, and the menu's button the edition's name" do
       assert ProductName.get() == nil
-      assert ProductName.default() == ApiaryWeb.Edition.product_name()
-      assert ProductName.default() == "Qory Apiary"
+      assert ProductName.edition_name() == ApiaryWeb.Edition.product_name()
+      assert ProductName.edition_name() == "Qory Apiary"
       assert ProductName.name() == "Qory Apiary"
+      assert ProductName.button_name() == "Qory Apiary"
+      refute ProductName.powered_by?()
+    end
+
+    test "where the edition names the product otherwise, only the menu's button shows it" do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
+
+      assert ProductName.edition_name() == "Another Product"
+      assert ProductName.name() == "Qory Apiary"
+      assert ProductName.button_name() == "Another Product"
       refute ProductName.powered_by?()
     end
 
@@ -86,7 +96,15 @@ defmodule Apiary.ProductNameTest do
       refute ProductName.powered_by?()
     end
 
-    test "stores Qory Apiary as typed where the edition names the product otherwise, with no Powered by" do
+    test "stores Qory Apiary as typed where the edition names the product otherwise, with no Powered by",
+         %{scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
+
+      assert {:ok, "Qory Apiary"} = rename(scope, "Qory Apiary")
+      assert ProductName.get() == "Qory Apiary"
+      assert ProductName.button_name() == "Qory Apiary"
+      refute ProductName.powered_by?()
+
       changeset =
         ProductName.Row.changeset(
           %ProductName.Row{},
