@@ -16,6 +16,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
 
+### Changed
+
+- Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
+  force in this run” gives its reason in the past tense, such as “No rule matched.
+  Enforce mode denied it.”
+
 ## [0.1.0] - 2026-10-13
 
 The first release of the open core of Qory Apiary: Qory Apiary Community, complete for
