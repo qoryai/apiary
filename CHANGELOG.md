@@ -20,6 +20,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deleted and when an update replaced it. Without `--yes` it lists them and deletes
   nothing; it refuses a stack that is not deleted and anything a stack that is not
   deleted still uses, and says what is left after a delete.
+- The AWS template's Advanced group has Features (optional), `Features`, passed as
+  `QORY_FEATURES` only when set. An Update with a new value starts a new task with it, and
+  a name Qory Apiary does not know rolls the update back. As with every field but the
+  download key, with Version empty, changing it also looks up the newest release.
 
 ### Changed
 

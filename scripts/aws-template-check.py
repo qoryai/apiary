@@ -88,7 +88,10 @@ dynamic reference ({{resolve:...}}) that could resolve to it. RegistryCredential
 secret, is named only where it is needed: the resource's DownloadKeySecret, the role's
 grant, the task's RepositoryCredentials and the task's execution role, which pulls the
 image with it. And the task's image, without a test image, is the resource's Image: the
-image the lookup pinned by its digest.
+image the lookup pinned by its digest. Every parameter but ProDownloadKey and TestImage is
+one of the resource's properties, as its !Ref: CloudFormation sends the resource an update
+only when a property changes, so a value on the form that is not one would change without
+the newest release being looked up again.
 
 Needs cfn-lint installed (its template decoder reads CloudFormation's short forms, such as
 !Ref, as their long forms), except for release.
@@ -720,6 +723,7 @@ def check_copies(release_path, test_path):
 
 VERSION_TYPE = "Custom::Version"
 DOWNLOAD_KEY_PARAMETER = {"Ref": "ProDownloadKey"}
+NOT_LOOKED_UP = {"ProDownloadKey", "TestImage"}
 
 
 def normal(statement):
@@ -741,6 +745,11 @@ def check_version(paths):
             failures.append(f"{path}: {len(lookups)} {VERSION_TYPE} resources, not one, find the version to install")
             continue
         ((name, lookup),) = lookups.items()
+        given = list(lookup.get("Properties", {}).values())
+        for parameter in template.get("Parameters", {}):
+            if parameter not in NOT_LOOKED_UP and {"Ref": parameter} not in given:
+                failures.append(f"{path}: {name} is not given {parameter} as a property: changing it would not look up the newest release")
+
         function_name = get_att(lookup.get("Properties", {}).get("ServiceToken"))
         function = resources.get(function_name, {}) if function_name else {}
         if function.get("Type") != "AWS::Lambda::Function":
