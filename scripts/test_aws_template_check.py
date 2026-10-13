@@ -159,6 +159,14 @@ class VersionCheck(unittest.TestCase):
         )
         self.assert_refused(text, "VersionRole allows other than")
 
+    def test_a_parameter_that_is_not_a_property_is_refused(self):
+        for parameter in ("Features", "ErlangOptions"):
+            with self.subTest(parameter=parameter):
+                line = f"      {parameter}: !Ref {parameter}\n"
+                self.assertEqual(self.source.count(line), 1, line)
+                text = self.source.replace(line, "")
+                self.assert_refused(text, f"Version is not given {parameter} as a property")
+
     def test_the_key_as_a_property_is_refused(self):
         text = self.source.replace(VERSION_PROPERTIES, '      ErlangOptions: !Ref ErlangOptions\n      Key: !Ref ProDownloadKey\n\n')
         self.assert_refused(text, "Version is given ProDownloadKey")
