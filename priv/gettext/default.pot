@@ -5135,6 +5135,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Enforce mode denied it."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Enforce mode denies it."
 msgstr ""
 
@@ -6092,6 +6097,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Host"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Host allowed, no path rule matched."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -8120,6 +8130,11 @@ msgstr ""
 msgid "No rule is in force for this target yet."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "No rule matched."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -8761,6 +8776,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Observe %{target}?"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Observe mode let it through."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11982,6 +12002,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The policy changed; look at the row again."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The policy denied it."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

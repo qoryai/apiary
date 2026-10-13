@@ -286,6 +286,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     } do
       view = open(conn, scope)
       cdn = dst("files.cdn.example")
+      # no line after the row yet: its reason is in the present
+      refute has_element?(view, "##{cdn}-after")
+      assert text(view, "##{cdn} .q-why-l") == "No rule matches. Enforce mode denies it."
       view |> element("##{cdn}-allow") |> render_click()
       view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
       assert text(view, "#rule-panel-submit") == "Allow for the workspace"
@@ -301,6 +304,14 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert line =~
                "Allowed for the workspace in v#{configuration.version} · of the workspace's policy by you"
+
+      # the row's reason, in the cell, the fold and the title, is in the past tense
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "##{cdn} .q-why-l") == past
+      assert text(view, "##{cdn} .q-why-l b") == "No rule matched."
+      assert text(view, "##{cdn} .q-cx-fold") == past
+      assert has_element?(view, ~s(##{cdn} .q-why-l[title="#{past}"]))
+      refute text(view, "##{cdn}") =~ "No rule matches"
 
       refute line =~ "run"
 
@@ -620,6 +631,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # the row is the record and stays let through; the line after says what holds now
       assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
       assert text(view, "##{id}-after") =~ "Denied for the workspace in v"
+      past = "No rule matched. Observe mode let it through."
+      assert text(view, "##{id} .q-why-l") == past
+      assert has_element?(view, ~s(##{id} .q-why-l[title="#{past}"]))
 
       assert has_element?(
                view,
