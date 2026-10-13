@@ -39,6 +39,7 @@ defmodule ApiaryWeb.EditionTest do
     assert core.reader_sentence(:refused, nil) == nil
     assert core.who_may_sentence(:"node.create", nil) == nil
     assert core.settings_tabs(nil) == []
+    assert core.configuration_parts(nil) == []
     assert core.slot(:notices, %{}) == nil
     assert core.activity_describer() == nil
     assert core.activity_actor(%Apiary.Audit.Entry{}, %{}) == nil

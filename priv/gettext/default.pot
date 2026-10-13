@@ -2240,6 +2240,24 @@ msgstr ""
 msgid "587 for STARTTLS; 465 for TLS from the start."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies at once."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies at the next daily job, at 02:40 UTC. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies to what is deleted after it; what is already deleted keeps its purge date."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "A change that leaves the document's bytes the same is kept here and makes no new version."
@@ -5090,6 +5108,11 @@ msgstr ""
 msgid "Empty when the relay takes mail without logging in."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Empty: %{default}."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
@@ -6024,6 +6047,11 @@ msgstr ""
 msgid "Grace period"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Grace period saved."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -6424,6 +6452,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Invitations a day"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Invitations a day saved."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -10106,6 +10139,7 @@ msgstr ""
 msgid "Retention changed"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention saved."
@@ -10497,6 +10531,7 @@ msgstr ""
 msgid "SMTP relay"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -10547,6 +10582,7 @@ msgstr ""
 msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10779,7 +10815,7 @@ msgstr ""
 msgid "Set aside: locked above the workspace"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/configuration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set by %{variable}"
 msgstr ""
@@ -12227,6 +12263,11 @@ msgstr ""
 msgid "The security policy, which Qory Apiary serves to a workspace's runs once it has a rule or a mode set."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "The settings of the whole instance. A setting with a field is changed here; a value set in the server's environment wins, and shows here read only. The others are read when Qory Apiary starts, from the server's environment or the application's configuration, as each says."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "The sha256 of the exact bytes the gateway is served. Two runs with the same digest had the same policy."
@@ -12796,7 +12837,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "To change a value, whoever runs Qory Apiary changes the setting named beside it and starts it again."
+msgid "To change a value without a field, whoever runs Qory Apiary changes the setting named beside it and starts it again."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -13333,11 +13374,6 @@ msgstr ""
 msgid "What this rule does"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/configuration.ex
-#, elixir-autogen, elixir-format
-msgid "What whoever runs this Qory Apiary set for the whole instance, or the default, as Qory Apiary read it when it started. Nothing here changes it."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "What you run on %{node}"
@@ -13790,6 +13826,7 @@ msgid "You must log in to access this page."
 msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -14105,6 +14142,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "dark light appearance"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "days"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
