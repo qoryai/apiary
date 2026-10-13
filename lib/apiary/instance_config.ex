@@ -268,11 +268,12 @@ defmodule Apiary.InstanceConfig do
     `Apiary.Deletion.grace_max_days/0` days;
   - the invitations a day, from 1 to #{@invitations_max}.
 
-  The row is written only where a saved value changed, and never its `updated_by_id`,
-  which is the product's name's. A change of a value is an `instance.configure` entry in
-  the trail of the instance's organisation, by the admin, about the organisation, with
-  the values of the part before and after, as `value/1` reads them; a save that changes
-  no value, as one that saves the default's number in place of none, has none. Once
+  The row is made where there is none yet, empty; past that, it is written only where a
+  saved value changed, and never its `updated_by_id`, which is the product's name's. A
+  change of a value is an `instance.configure` entry in the trail of the instance's
+  organisation, by the admin, about the organisation, with the values of the part before
+  and after, as `value/1` reads them; a save that changes no value, as one that saves the
+  default's number in place of none, has none. Once
   committed, every node's cache reads the settings again.
 
   Returns `{:ok, values}`, the value of each key after the save (`values/1`);
