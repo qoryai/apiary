@@ -403,7 +403,7 @@ defmodule Apiary.AccessKeys do
   # which place, with the scope that records the change: for a row of an organisation,
   # `action` asked of `Apiary.Access`, at the row's workspace, or its organisation for a
   # row with none, recorded with the scope itself; for a row with no organisation, an
-  # adapter's, an instance admin on an instance with the feature adapters belong to
+  # adapter's, an instance admin shown the feature adapters belong to
   # (`Apiary.Adapters.authorize_instance/2`, which `opts` go to), at the instance,
   # recorded in the trail of the instance's organisation (`Apiary.Adapters.instance_scope/1`).
   # The place is the row's as the caller gave it: a node, a key or a code found there is
@@ -417,14 +417,17 @@ defmodule Apiary.AccessKeys do
     end
   end
 
+  # The membership is read again first (`Apiary.Access.reload/2`), and asked as it is now.
   defp ask(scope, action, %{workspace_id: workspace_id} = row, _opts) do
-    with :ok <- Access.authorize(scope, action, row), do: {:ok, workspace_id, scope}
+    with asking = Access.reload(scope),
+         :ok <- Access.check(asking, action, row),
+         do: {:ok, workspace_id, scope}
   end
 
   # The place `node`'s keys and codes are read at for the person of `scope`: its workspace,
   # or its organisation for a node with none, as the page that reads them asked; for a node
-  # with no organisation, an adapter's, the instance, only to an instance admin where the
-  # feature adapters belong to is on, and nowhere to anyone else.
+  # with no organisation, an adapter's, the instance, only to an instance admin shown the
+  # feature adapters belong to, and nowhere to anyone else.
   defp read_place(scope, %Node{organisation_id: nil}),
     do: if(Adapters.authorize_instance(scope) == :ok, do: :instance, else: :nowhere)
 
@@ -1051,8 +1054,9 @@ defmodule Apiary.AccessKeys do
   enrolment codes, inside the caller's transaction, which holds the node's row
   `FOR UPDATE` and has asked what it does of `Apiary.Access`: the deletion of the node
   (`Apiary.Nodes.delete_node/2`). Each key's public key becomes a tombstone for `reason`,
-  and each key leaves an entry of `access_key.revoke`. Returns the key ids revoked, or
-  `{:error, changeset}`.
+  and each key leaves an entry of `access_key.revoke`. Returns the key ids revoked,
+  `{:error, changeset}`, or the reason it is refused (`t:Apiary.Access.reason/0`),
+  `{:error, :not_found}` for a node the person is not shown, and nothing changes.
   """
   @spec revoke_node_keys(Scope.t(), Node.t(), PublicKey.reason()) ::
           {:ok, [String.t()]} | {:error, Ecto.Changeset.t() | Access.reason()}

@@ -45,16 +45,17 @@ defmodule Apiary.Adapters do
 
   @doc false
   # Whether the person of `scope` may change the instance's adapters, their keys and their
-  # codes: `:ok` for an instance admin (`Apiary.Access.instance_admin?/1`) on an instance
-  # with the feature `factory`; `{:error, :not_found}` where the feature is off, whoever
-  # asks; `{:error, :forbidden}` for anyone else. With `sudo: true`, an instance admin who
-  # did not sign in recently (`Apiary.Accounts.sudo_mode?/2`) is `{:error, :sudo}`, and
-  # signs in again first.
+  # codes: `:ok` for an instance admin (`Apiary.Access.instance_admin?/1`) shown the
+  # feature `factory` (`Apiary.Features.visible?/2`, of the scope read again with
+  # `Apiary.Access.reload/2`); `{:error, :not_found}` where the feature is off, or hidden
+  # from the person, whoever asks; `{:error, :forbidden}` for anyone else. With
+  # `sudo: true`, an instance admin who did not sign in recently
+  # (`Apiary.Accounts.sudo_mode?/2`) is `{:error, :sudo}`, and signs in again first.
   @spec authorize_instance(Scope.t() | nil, keyword) ::
           :ok | {:error, :not_found | :forbidden | :sudo}
   def authorize_instance(scope, opts \\ []) do
     cond do
-      not Features.on?(:factory) -> {:error, :not_found}
+      not Features.visible?(Access.reload(scope), :factory) -> {:error, :not_found}
       not Access.instance_admin?(scope) -> {:error, :forbidden}
       Keyword.get(opts, :sudo, false) and not signed_in_recently?(scope) -> {:error, :sudo}
       true -> :ok
@@ -108,7 +109,7 @@ defmodule Apiary.Adapters do
 
   # The instance's adapters are read by a person of an organisation who may read them
   # there (`adapter.read`, where they are shown the feature), and by an instance admin
-  # where the feature is on.
+  # shown it.
   defp readable?(scope),
     do:
       Access.can?(scope, :"adapter.read", scope.organisation) or

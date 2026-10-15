@@ -93,6 +93,46 @@ defmodule Apiary.AdaptersTest do
     {row, Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())}
   end
 
+  # A key and an outstanding code on each of a node, a pool, a workspace's gateway and an
+  # organisation's gateway.
+  defp keys_and_codes(scope) do
+    for node <- [
+          node_fixture(scope),
+          pool_fixture(scope),
+          gateway_fixture(scope),
+          organisation_gateway_fixture(scope)
+        ] do
+      %{access_key: key} = enrolled_key_fixture(scope, node)
+      {code, _plain} = issued(scope, node)
+      %{node: node, key: key, code: code}
+    end
+  end
+
+  # Each key revoked and each code cancelled by `scope`, then a second key and code of each
+  # by revoke_node_keys/3, as before.
+  defp revoke_and_cancel_each(scope, reloaded, items) do
+    for %{node: node, key: key, code: code} <- items do
+      assert {:ok, %AccessKey{revoked_at: %DateTime{}}} =
+               AccessKeys.revoke_access_key(scope, key)
+
+      assert {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} =
+               AccessKeys.cancel_code(scope, code)
+
+      %{access_key: second} = enrolled_key_fixture(scope, node)
+      {second_code, _plain} = issued(scope, node)
+
+      assert Repo.transact(fn ->
+               AccessKeys.revoke_node_keys(reloaded, node, :node_deleted)
+             end) == {:ok, [second.key_id]}
+
+      assert Repo.get!(EnrolmentCode, second_code.id).cancelled_at
+    end
+  end
+
+  # The entries of `node`'s edits.
+  defp edits_of(node),
+    do: Repo.all(from e in Entry, where: e.action == "node.edit" and e.subject_id == ^node.id)
+
   # A row of `nodes` like `node`'s with `changes`, for the schema's checks.
   defp row(node, changes) do
     Node.__schema__(:fields)
@@ -409,6 +449,31 @@ defmodule Apiary.AdaptersTest do
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
       assert AccessKeys.fetch_for_verification(key.key_id) == :error
+    end
+
+    test "an instance admin revokes its key and cancels its code, one by one or all at once",
+         %{admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      {code, _plain} = issued(admin, adapter)
+
+      assert {:ok, %AccessKey{revoked_at: %DateTime{}}} =
+               AccessKeys.revoke_access_key(admin, key)
+
+      assert {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} =
+               AccessKeys.cancel_code(admin, code)
+
+      %{key: second} = keyed(admin, adapter)
+      {second_code, _plain} = issued(admin, adapter)
+
+      assert {:ok, [key_id]} =
+               Repo.transact(fn ->
+                 AccessKeys.revoke_node_keys(Access.reload(admin), adapter, :node_deleted)
+               end)
+
+      assert key_id == second.key_id
+      assert Repo.get!(AccessKey, second.id).revoked_at
+      assert Repo.get!(EnrolmentCode, second_code.id).cancelled_at
     end
   end
 
@@ -902,6 +967,103 @@ defmodule Apiary.AdaptersTest do
       assert refused(fn ->
                Repo.delete_all(from(c in EnrolmentCode, where: c.id == ^code.id))
              end) == "access_keys_enrolment_code_fkey"
+    end
+  end
+
+  describe "where the person is not shown the feature" do
+    # Made while the person is shown it; then the edition hides it from them, an instance
+    # admin among them.
+    setup %{scope: scope, admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      {code, _plain} = issued(admin, adapter)
+      others = keys_and_codes(scope)
+
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:factory])
+      hidden = Access.reload(scope)
+      refute Apiary.Features.visible?(hidden, :factory)
+      refute Apiary.Features.visible?(Access.reload(admin), :factory)
+
+      %{adapter: adapter, key: key, code: code, others: others, hidden: hidden}
+    end
+
+    test "a pool names no adapter, and the rest of the edit saves", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      pool = pool_fixture(scope)
+
+      assert {:ok, %Node{name: "renamed", instance_limit: 3, served_by_id: nil}} =
+               Nodes.update_node(scope, pool, %{
+                 "name" => "renamed",
+                 "instance_limit" => "3",
+                 "served_by_id" => ""
+               })
+
+      refute Enum.any?(edits_of(pool), &Map.has_key?(&1.after, "served_by_id"))
+
+      # Naming an adapter is refused, as before, and changes nothing.
+      assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
+      assert "is invalid" in errors_on(changeset).served_by_id
+      assert reload(pool).served_by_id == nil
+    end
+
+    test "an adapter, its key and its code are not changed, even by an instance admin", %{
+      scope: scope,
+      admin: admin,
+      adapter: adapter,
+      key: key,
+      code: code
+    } do
+      # The entries of what is refused here, the adapter's creation among them.
+      entries = fn ->
+        Repo.all(
+          from e in Entry,
+            where:
+              e.action in [
+                "access_key.revoke",
+                "access_key.cancel_code",
+                "access_key.create_code",
+                "adapter.create",
+                "adapter.edit",
+                "adapter.delete"
+              ],
+            select: e.id
+        )
+      end
+
+      before = entries.()
+
+      for asker <- [admin, scope] do
+        assert AccessKeys.revoke_access_key(asker, key) == {:error, :not_found}
+        assert AccessKeys.cancel_code(asker, code) == {:error, :not_found}
+        assert AccessKeys.create_enrolment_code(asker, adapter, %{}) == {:error, :not_found}
+
+        assert Repo.transact(fn ->
+                 AccessKeys.revoke_node_keys(Access.reload(asker), adapter, :node_deleted)
+               end) == {:error, :not_found}
+
+        assert Adapters.create_adapter(asker, %{name: "Acme hidden"}) == {:error, :not_found}
+        assert Adapters.rename_adapter(asker, adapter, %{name: "renamed"}) == {:error, :not_found}
+        assert Adapters.delete_adapter(asker, adapter) == {:error, :not_found}
+        # A page's scope is read with what the person is shown as it is now.
+        assert Adapters.list_adapters(Access.reload(asker)) == []
+        assert AccessKeys.list_for_node(Access.reload(asker), adapter) == []
+      end
+
+      assert Repo.get!(AccessKey, key.id).revoked_at == nil
+      assert Repo.get!(EnrolmentCode, code.id).cancelled_at == nil
+      assert {:ok, _key} = AccessKeys.fetch_for_verification(key.key_id)
+      assert %Node{deleted_at: nil, name: name} = reload(adapter)
+      assert name == adapter.name
+
+      assert entries.() == before
+    end
+
+    test "a node's, a pool's and a gateway's keys and codes are revoked and cancelled as before",
+         %{scope: scope, others: others, hidden: hidden} do
+      revoke_and_cancel_each(scope, hidden, others)
     end
   end
 
