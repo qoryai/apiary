@@ -174,7 +174,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Beside the steps, the two ways explained, and no command: none is got yet.
       assert text(view, "#onboarding-panel") =~ @two_ways
       refute has_element?(view, "#onboarding-command")
-      refute text(view, "#onboarding") =~ "qec_"
+      refute text(view, "#onboarding") =~ ~r/qec[a-z]?_/
       refute text(view, "#onboarding") =~ "enrolment code"
 
       assert has_element?(view, "#onboarding", "Listening for the first post from a machine.")
@@ -288,7 +288,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       [row] = AccessKeys.list_enrolment_codes(scope, node)
       command = text(view, "#onboarding-command")
       ["qory", "access-key", "enrol", ^server, code] = String.split(command, " ")
-      assert code =~ ~r/\Aqec_[0-9A-Z]{26}\./
+
+      assert code =~
+               ~r/\A#{Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))}[0-9A-Z]{26}\./
 
       # The defaults, no question asked.
       refute row.allow_secrets
@@ -371,7 +373,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view |> element("#onboarding-enrol") |> render_click()
 
       assert text(view, "#onboarding-command") =~
-               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
+               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(ApiaryWeb.Endpoint.url())} #{Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))}/
     end
 
     test "for a node that goes direct, the command carries no --via and no gateway line", %{

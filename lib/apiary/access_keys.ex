@@ -344,8 +344,9 @@ defmodule Apiary.AccessKeys do
   stored-secrets flag, `allow_secrets`, off unless set, and a `label_hint`. The code
   expires after `code_ttl_minutes/0`.
 
-  Returns `{:ok, code_row, code}`, with the code in clear, `qec_` and 26 characters, this
-  once: it is never stored. Otherwise `{:error, changeset}`, `{:error, :forbidden}`, or
+  Returns `{:ok, code_row, code}`, with the code in clear, the prefix of the node's kind
+  and 26 characters (`Apiary.AccessKeys.EnrolmentCode.generate/1`), this once: it is never
+  stored. Otherwise `{:error, changeset}`, `{:error, :forbidden}`, or
   `{:error, :not_found}` for a node deleted or not the workspace's.
   """
   @spec create_enrolment_code(Scope.t(), Node.t(), map) ::
@@ -356,7 +357,7 @@ defmodule Apiary.AccessKeys do
       with :ok <- Access.authorize(scope, :"access_key.create_code", node),
            {:ok, node} <- lock_node(scope, node.id, node.workspace_id),
            :ok <- code_for_kind(scope, node) do
-        code = EnrolmentCode.generate()
+        code = EnrolmentCode.generate(node.kind)
         now = DateTime.utc_now()
 
         changeset =
@@ -577,7 +578,8 @@ defmodule Apiary.AccessKeys do
   marked for deletion, nor stopped by the edition); **its maker is still an owner or an
   admin** of its workspace: their account in use, their membership neither suspended nor
   removed nor lowered to member, so that they could make the code now
-  (`access_key.create_code`, `Apiary.Access`); its node is in use; its row matches its
+  (`access_key.create_code`, `Apiary.Access`); its node is in use, and of the kind whose
+  prefix the code carries (`Apiary.AccessKeys.EnrolmentCode.prefix/1`); its row matches its
   integrity code; and it is neither cancelled nor expired, and either not yet used or
   used by this very public key, whose key is still in use and intact (the repeat, below).
   The maker's membership is read `FOR SHARE`, in the lock order of docs/access.md, so a
@@ -723,6 +725,7 @@ defmodule Apiary.AccessKeys do
   defp redeem(%EnrolmentCode{} = found, request, now, origin, code_limit) do
     with :ok <- maker_may_enrol(found),
          {:ok, node} <- lock_enrolling_node(found),
+         :ok <- code_of_kind(request, node),
          :ok <- enrols_kind(node),
          {:ok, code} <- lock_code(found),
          true <- code.created_by_id == found.created_by_id || {:error, :unauthorized},
@@ -777,6 +780,12 @@ defmodule Apiary.AccessKeys do
       nil -> {:error, :unauthorized}
     end
   end
+
+  # A code is its node's only with the prefix of the node's kind, as it was made: one that
+  # carries another prefix is no code, as any other refusal at this step is, whatever row
+  # its hash finds.
+  defp code_of_kind(%Enrolment{code_head: head}, %Node{kind: kind}),
+    do: if(EnrolmentCode.of_kind?(head, kind), do: :ok, else: {:error, :unauthorized})
 
   # An adapter's code enrols nothing while the instance is without the feature adapters
   # belong to: it is no code, as any other refusal at this step is.

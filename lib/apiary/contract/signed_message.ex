@@ -14,7 +14,7 @@ defmodule Apiary.Contract.SignedMessage do
   the timestamp as sent in `X-Qory-Timestamp`, for a POST the raw body.
 
   **The proof of an enrolment** (`enrolment/4`): `qory-enrol-ed25519-v1`; the code as the
-  body carries it, `qec_`, its 26 characters and the server's fingerprints after it; the
+  body carries it, its prefix, its 26 characters and the server's fingerprints after it; the
   public key as the body carries it; the name; and the timestamp in decimal.
 
   **The answer string** (`answer/5`): `qory-answer-ed25519-v1`; the status, three decimal
@@ -101,8 +101,8 @@ defmodule Apiary.Contract.SignedMessage do
   `public_key` (base64url, exactly as the body carries it) and `name`, and its `timestamp`
   in decimal.
 
-      iex> Apiary.Contract.SignedMessage.enrolment("qec_X.fp", "pk", "build-01", 1700000000)
-      "qory-enrol-ed25519-v1\nqec_X.fp\npk\nbuild-01\n1700000000"
+      iex> Apiary.Contract.SignedMessage.enrolment("code.fp", "pk", "build-01", 1700000000)
+      "qory-enrol-ed25519-v1\ncode.fp\npk\nbuild-01\n1700000000"
   """
   @spec enrolment(String.t(), String.t(), String.t(), non_neg_integer) :: binary
   def enrolment(code, public_key, name, timestamp)

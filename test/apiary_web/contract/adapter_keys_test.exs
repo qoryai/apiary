@@ -23,7 +23,7 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, Repo, SigningKey}
-  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Nodes.Instance
 
@@ -58,6 +58,7 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
   test "an adapter enrols with a code: adapter and its na_ id in the answer, no stored secrets",
        %{scope: scope, adapter: adapter} do
     {:ok, _row, code} = AccessKeys.create_enrolment_code(scope, adapter, %{allow_secrets: true})
+    assert EnrolmentCode.of_kind?(code, :adapter)
     conn = enrol(code <> "." <> SigningKey.fingerprint(), ed25519_key_pair())
 
     assert %{

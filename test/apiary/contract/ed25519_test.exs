@@ -12,8 +12,9 @@ defmodule Apiary.Contract.Ed25519Test do
   # README names it among the keys every side refuses.
   @fixture_second_access_key "dSnEVtk40rj-kPpsz5FtNGdwpkvLt7UyO2h6zeIM0Aw"
 
-  # The contract's enrolment known answer: the proof, under the fixture access key, of the
-  # five lines of the example body.
+  # An Ed25519 known answer from the enrolment of Forager v0.7.0's contract, kept as a
+  # signature vector: the proof, under the fixture access key, of the five lines of that
+  # contract's example body.
   @enrol_lines Enum.join(
                  [
                    "qory-enrol-ed25519-v1",
@@ -258,7 +259,7 @@ defmodule Apiary.Contract.Ed25519Test do
       refute Ed25519.canonical_signature?(r)
     end
 
-    test "verifies the contract's enrolment proof" do
+    test "verifies the enrolment proof of Forager v0.7.0's contract" do
       {:ok, key} = Ed25519.decode(@fixture_access_key, 32)
       {:ok, proof} = Ed25519.decode(@enrol_proof, 64)
 

@@ -619,7 +619,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       # The code as the machine sends it, the server key's fingerprint after it, inside
       # the command alone.
-      assert code =~ ~r/\Aqec_[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\z/
+      prefix = Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))
+      assert code =~ ~r/\A#{prefix}[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\z/
 
       assert lv |> element("#code-issued-command") |> render() |> text() |> String.trim() ==
                "qory access-key enrol #{server} #{code}"

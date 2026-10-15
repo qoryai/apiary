@@ -2,9 +2,9 @@ defmodule Apiary.SecretLogFilter do
   @moduledoc """
   SecretLogFilter keeps an access key's secret, and an enrolment code, out of what a log
   handler writes: a primary filter of Erlang's `:logger`, installed at boot (`install/0`),
-  which replaces each run of `qak_` or `qec_` (in any case) and the base64url characters
-  after it with `[FILTERED]`, in a log event's message and in its metadata, before any
-  handler sees the event.
+  which replaces each run of `qak_` or of an enrolment code's prefix (in any case) and the
+  base64url characters after it with `[FILTERED]`, in a log event's message and in its
+  metadata, before any handler sees the event.
 
   Qory Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
@@ -15,12 +15,17 @@ defmodule Apiary.SecretLogFilter do
   Forager contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
   the page refuses by.
 
-  An enrolment code (`qec_` and 26 characters of Crockford base32, which a person may type
-  in groups split by `-`) is a credential too, for the 15 minutes it works: a machine that
-  sends it gets a key on the node. Qory Apiary shows it once, inside the command, and logs it
-  nowhere; the filter takes it as it takes a secret, should a client send it back in an
-  event's parameters, or a crash print it. The fingerprint after it in the command (`.`
-  and the server key's fingerprint) is public, and stays.
+  An enrolment code (the prefix of its node's kind,
+  `#{Apiary.AccessKeys.EnrolmentCode.prefix(:node)}` for a node,
+  `#{Apiary.AccessKeys.EnrolmentCode.prefix(:pool)}` for a node pool and
+  `#{Apiary.AccessKeys.EnrolmentCode.prefix(:gateway)}` for a gateway, then 26 characters of
+  Crockford base32, which a person may type in groups split by `-`) is a credential too,
+  for the 15 minutes it works: a machine that sends it gets a key on the node. Qory Apiary
+  shows it once, inside the command, and logs it nowhere; the filter takes it as it takes
+  a secret, should a client send it back in an event's parameters, or a crash print it. A
+  code's prefix is taken broadly, `qec`, a letter or none, and `_`, in any case, and with
+  its `_` URL-encoded as `%5F` too, so a prefix that is no kind's is taken as well. The fingerprint after it in the command (`.` and the
+  server key's fingerprint) is public, and stays.
 
   It runs before Elixir's `:logger_translator`, which turns a report (a crash report among
   them) into text and puts the crash in the `:crash_reason` metadata: `:logger` runs the
@@ -67,25 +72,43 @@ defmodule Apiary.SecretLogFilter do
 
   What it does not cover: a secret split across the parts of a term (two binaries, or an
   iolist's pieces inside a report or inside a message that cannot be read as text, each
-  holding part of `qak_` or `qec_`); a secret or a code in an atom, a
+  holding part of `qak_` or of a code's prefix); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). A public key whose base64url happens to hold `qak_`
-  or `qec_` is filtered from a log line as a secret would be. A link's token anywhere else
-  is not recognised: in another parameter of a query, or alone as a parameter's value,
+  or a code's prefix is filtered from a log line as a secret would be. A link's token
+  anywhere else is not recognised: in another parameter of a query, or alone as a parameter's value,
   which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
   another segment (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
   route's, and is left whole.
   """
 
+  alias Apiary.AccessKeys.EnrolmentCode
+
   @id :apiary_access_key_secrets
 
-  # `qak_` and `qec_` in any case: what `:binary.match/2` looks for, before the regex
-  # replaces.
-  @prefixes for q <- ~w(q Q),
-                {seconds, thirds} <- [{~w(a A), ~w(k K)}, {~w(e E), ~w(c C)}],
-                a <- seconds,
-                k <- thirds,
-                do: q <> a <> k <> "_"
+  # The prefixes taken: a secret's, `qak_`, and an enrolment code's, every kind's
+  # (`EnrolmentCode.prefixes/0`, an adapter's among them) and, more broadly, `qec`, a
+  # letter or none, and `_`. A code's `_` may be URL-encoded, `%5F`.
+  @code_stems EnrolmentCode.prefixes()
+              |> Map.values()
+              |> Enum.map(&String.trim_trailing(&1, "_"))
+  @prefix_source "(?i)(?:qak_|(?:qec[a-z]?|" <>
+                   Enum.map_join(@code_stems, "|", &Regex.escape/1) <>
+                   ")(?:_|%5F))[A-Za-z0-9_-]*"
+
+  # Each prefix's letters in any case, without what may follow: what `:binary.match/2`
+  # looks for before the regex is run, which then says whether a prefix is there.
+  @prefix_marks ["qak", "qec" | @code_stems]
+                |> Enum.flat_map(fn stem ->
+                  stem
+                  |> String.graphemes()
+                  |> Enum.reduce([""], fn char, marks ->
+                    for mark <- marks,
+                        variant <- Enum.uniq([String.downcase(char), String.upcase(char)]),
+                        do: mark <> variant
+                  end)
+                end)
+                |> Enum.uniq()
 
   # The routes that carry a bearer token, or the set-up code, in the path: their segments,
   # the token's named. The one list `redact_path/1`, the request log's, and the filter
@@ -294,11 +317,17 @@ defmodule Apiary.SecretLogFilter do
 
   defp printable(_list), do: :none
 
-  defp secret?(binary),
-    do: :binary.match(binary, @prefixes ++ @path_marks ++ @query_marks) != :nomatch
+  defp secret?(binary) do
+    (:binary.match(binary, @prefix_marks) != :nomatch and
+       Regex.match?(regex(:prefix, @prefix_source), binary)) or
+      :binary.match(binary, @path_marks ++ @query_marks) != :nomatch
+  end
 
   defp replace(binary) do
-    binary = Regex.replace(~r/q(ak|ec)_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
+    binary =
+      if :binary.match(binary, @prefix_marks) == :nomatch,
+        do: binary,
+        else: Regex.replace(regex(:prefix, @prefix_source), binary, "[FILTERED]")
 
     binary =
       if :binary.match(binary, @path_marks) == :nomatch,

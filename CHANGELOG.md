@@ -37,6 +37,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- An enrolment code starts with the prefix of its node's kind: `qecn_` for a node, `qecp_`
+  for a node pool and `qecg_` for a gateway, then its 26 characters as before. A code
+  enrols a key only on a node of the kind its prefix names; a code with another kind's
+  prefix is refused as an unknown code is. A code made before the upgrade, `qec_`, no
+  longer enrols: get a new command.
 - Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
