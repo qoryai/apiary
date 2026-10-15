@@ -618,6 +618,71 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "a comment's author" do
+    # Deleting a comment on a work item: an owner or an admin deletes any, and its author
+    # theirs, while they may still comment. Asked of the comment, a row of the workspace
+    # with its author.
+    @describetag needs: :factory
+
+    setup do
+      %{scope: owner} = sign_up_fixture()
+      author = member_fixture(owner, :member)
+      other = member_fixture(owner, :member)
+      admin = member_fixture(owner, :admin)
+      %{owner: owner, author: author, other: other, admin: admin}
+    end
+
+    defp comment(scope, author_id) do
+      %{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        author_id: author_id
+      }
+    end
+
+    test "deletes their comment, and nobody else's", ctx do
+      theirs = comment(ctx.owner, ctx.author.user.id)
+      others = comment(ctx.owner, ctx.other.user.id)
+
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", theirs) == :ok
+
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", others) ==
+               {:error, :forbidden}
+
+      # A member deletes no comment asked of the workspace alone: the role answers.
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", ctx.owner.workspace) ==
+               {:error, :forbidden}
+
+      for scope <- [ctx.owner, ctx.admin.scope] do
+        assert Access.authorize(scope, :"work_item.comment_delete", others) == :ok
+      end
+    end
+
+    test "deletes it no more once they may not comment", ctx do
+      theirs = comment(ctx.owner, ctx.author.user.id)
+      {:ok, _} = Apiary.Organisations.remove_member(ctx.owner, ctx.author.membership.id)
+
+      refute Access.authorize(ctx.author.scope, :"work_item.comment_delete", theirs) == :ok
+    end
+
+    test "a comment of another organisation is not found, even with their id on it", ctx do
+      %{scope: elsewhere} = sign_up_fixture()
+      theirs = comment(elsewhere, ctx.author.user.id)
+
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", theirs) ==
+               {:error, :not_found}
+    end
+
+    test "where the feature is hidden from them, it is not found", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
+      theirs = comment(ctx.owner, ctx.author.user.id)
+
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", theirs) ==
+               {:error, :not_found}
+    end
+  end
+
   # What an action is asked of in `place`, as the rows say: the organisation, the
   # workspace, or a new organisation.
   defp subject(place, action) do

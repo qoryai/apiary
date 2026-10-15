@@ -53,6 +53,37 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     "/docs/*path" => "a path under /docs that has no file"
   }
 
+  # The pages of the feature `factory`, not built yet: where the feature is on, each raises
+  # not found as it mounts, which the endpoint renders as a path that does not exist and
+  # a test's request raises again (`test/apiary_web/factory_shell_test.exs` holds them).
+  @not_built "the page is not built yet: it raises not found as it mounts"
+
+  @skipped Map.merge(
+             @skipped,
+             Map.new(
+               [
+                 "/:org/settings/integrations",
+                 "/:org/settings/integrations/new",
+                 "/:org/settings/integrations/:adapter_id",
+                 "/:org/settings/integrations/:adapter_id/assign",
+                 "/:org/settings/integrations/:adapter_id/node-pools",
+                 "/:org/settings/integrations/:adapter_id/access-key",
+                 "/:org/settings/integrations/:adapter_id/access-key/new-code",
+                 "/:org/settings/integrations/:adapter_id/access-key/keys/:key_id/revoke",
+                 "/:org/settings/integrations/:adapter_id/access-key/codes/:code_id/revoke",
+                 "/:org/settings/integrations/:adapter_id/settings",
+                 "/:org/settings/integrations/:adapter_id/settings/rename",
+                 "/:org/settings/integrations/:adapter_id/settings/remove",
+                 "/:org/:workspace/backlog",
+                 "/:org/:workspace/backlog/:item_id/take-in",
+                 "/:org/:workspace/work",
+                 "/:org/:workspace/work/:number",
+                 "/:org/:workspace/work/:number/thread"
+               ],
+               &{&1, @not_built}
+             )
+           )
+
   # The query a route's page needs to draw.
   @query %{"/dev/storybook/visual_tests" => "?start=a&end=z"}
 
@@ -404,6 +435,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
   defp value_of("n", _path, _p), do: 1
+  defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("release_id", _path, p), do: p.release_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
@@ -524,6 +556,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
     base
     |> Map.merge(security_params(scope))
+    |> Map.merge(factory_params(scope))
     |> Map.merge(secrets_params(scope, target))
   end
 
@@ -545,6 +578,14 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     end
   else
     defp stories, do: {[], []}
+  end
+
+  # The records of the `factory` feature: an adapter, or a placeholder where the instance
+  # has not got it, whose pages answer as paths that do not exist.
+  defp factory_params(scope) do
+    if Features.on?(:factory),
+      do: %{adapter_id: adapter_fixture(scope, %{name: "Acme tracker"}).public_id},
+      else: %{adapter_id: "na_x"}
   end
 
   # The records of the `security` feature; placeholders where the instance has not got

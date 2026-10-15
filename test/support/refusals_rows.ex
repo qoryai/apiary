@@ -407,7 +407,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`),
-  # or an adapter's changes (`test/apiary/adapters_test.exs`).
+  # or an adapter's changes (`test/apiary/adapters_test.exs`), or yet the changes of the
+  # work items and of what an adapter reports, whose pages are not built.
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
@@ -423,7 +424,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"node.read",
         :"secret.read",
         :"variable.read",
-        :"adapter.read"
+        :"adapter.read",
+        :"work_item.read"
       ],
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [
@@ -445,7 +447,13 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.create",
         :"adapter.edit",
         :"adapter.delete",
-        :"adapter.connect"
+        :"adapter.connect",
+        :"collection.assign",
+        :"work_item.take_in",
+        :"work_item.undo",
+        :"work_item.close",
+        :"work_item.comment",
+        :"work_item.comment_delete"
       ]
     }
   end

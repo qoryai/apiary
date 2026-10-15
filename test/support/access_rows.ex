@@ -120,6 +120,15 @@ defmodule Apiary.AccessRows do
       {:"adapter.edit", yes: @owners ++ [:admin], on: :adapter},
       {:"adapter.delete", yes: @owners ++ [:admin], on: :adapter},
       {:"adapter.connect", yes: @owners ++ [:admin], on: :adapter},
+      {:"collection.assign", yes: @owners ++ [:admin]},
+      {:"work_item.read", yes: @owners ++ [:member, :admin]},
+      {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
+      {:"work_item.undo", yes: @owners ++ [:member, :admin]},
+      {:"work_item.close", yes: @owners ++ [:member, :admin]},
+      {:"work_item.comment", yes: @owners ++ [:member, :admin]},
+      # Asked of the workspace, as a page asks whether to show the button at all: the role
+      # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).
+      {:"work_item.comment_delete", yes: @owners ++ [:admin]},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"dispatch.claim", yes: [:adapter_key, :hidden], on: :adapter}
