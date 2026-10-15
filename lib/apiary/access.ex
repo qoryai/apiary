@@ -253,7 +253,7 @@ defmodule Apiary.Access do
     # Stored secrets, the organisation's, and variables, the workspace's.
     Action.new(
       :"secret.read",
-      "read the stored secrets: their names, notes and value IDs, never a value",
+      "read the stored secrets of the organisation: their names, notes and value IDs, never a value",
       feature: :secrets,
       roles: @members,
       asked_of: :organisation,
@@ -261,14 +261,14 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"secret.write",
-      "create a stored secret, change its name, note and values, and delete it",
+      "create a stored secret of the organisation, change its name, note and values, and delete it",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation
     ),
     Action.new(
       :"secret.use",
-      "link a stored secret to what uses it",
+      "link a stored secret of the organisation to what uses it",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation,

@@ -71,7 +71,7 @@ defmodule Apiary.Secrets.Secret do
       message:
         dgettext_noop(
           "errors",
-          "is already the name of a secret in this workspace, compared without case"
+          "is already the name of a secret in this organisation, compared without case"
         )
     )
   end

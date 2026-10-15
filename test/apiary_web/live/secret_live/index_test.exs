@@ -301,7 +301,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> render_submit()
 
       refute_value(html)
-      assert html =~ "is already the name of a secret in this workspace"
+      assert html =~ "is already the name of a secret in this organisation"
 
       html =
         lv
@@ -512,7 +512,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> render_submit()
 
       refute_value(html)
-      assert html =~ "is already the name of a secret in this workspace"
+      assert html =~ "is already the name of a secret in this organisation"
       assert has_element?(lv, "#secret_values_2_value_id[value=billing]")
       refute has_element?(lv, "#secret_values_2_value_id-error")
       assert has_element?(lv, "#secret-form[data-refused-saves='3']")
@@ -728,7 +728,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> form("#secret-form", secret: %{name: "npm_token", note: ""})
         |> render_submit()
 
-      assert html =~ "is already the name of a secret in this workspace"
+      assert html =~ "is already the name of a secret in this organisation"
 
       lv
       |> form("#secret-form", secret: %{name: "GITLAB_TOKEN", note: "Opens merge requests"})
@@ -839,7 +839,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
     test "a dialog of a secret that is gone says so", %{conn: conn, scope: scope} do
       assert refused_at(conn, secrets_path(scope, "/sec_0000000000000000/delete")) ==
-               "That secret is no longer in this workspace."
+               "That secret is no longer in this organisation."
     end
 
     test "finds, filters and orders the secrets in the URL", %{conn: conn, scope: scope} do
@@ -942,7 +942,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       for path <- ["/#{secret.public_id}/delete", "/#{secret.public_id}/edit"] do
         assert refused_at(conn, secrets_path(other.scope, path)) ==
-                 "That secret is no longer in this workspace."
+                 "That secret is no longer in this organisation."
       end
 
       {:ok, lv, _html} = live(conn, secrets_path(other.scope))

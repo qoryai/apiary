@@ -11615,7 +11615,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "That secret is no longer in this workspace."
+msgid "That secret is no longer in this organisation."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -12401,7 +12401,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The values of this workspace cannot be read: the instance's encryption secret is not the one they were stored under."
+msgid "The values of this organisation cannot be read: the instance's encryption secret is not the one they were stored under."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex

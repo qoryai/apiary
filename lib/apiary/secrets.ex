@@ -904,7 +904,7 @@ defmodule Apiary.Secrets do
     else
       :error ->
         Logger.error(
-          "a workspace's data key cannot be unwrapped key_id=#{data_key.wrapping_key_id}: " <>
+          "an organisation's data key cannot be unwrapped key_id=#{data_key.wrapping_key_id}: " <>
             "APIARY_ENCRYPTION_SECRET is not the key it was wrapped under",
           LogMetadata.metadata(data_key.organisation_id, nil)
         )

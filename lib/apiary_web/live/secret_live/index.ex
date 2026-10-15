@@ -1934,7 +1934,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         unauthorized(socket, :"secret.write")
 
       {:error, _not_found} ->
-        back(socket, :error, gettext("That secret is no longer in this workspace."))
+        back(socket, :error, gettext("That secret is no longer in this organisation."))
     end
   end
 
@@ -2387,7 +2387,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         socket,
         :error,
         gettext(
-          "The values of this workspace cannot be read: the instance's encryption secret is not the one they were stored under."
+          "The values of this organisation cannot be read: the instance's encryption secret is not the one they were stored under."
         ),
         view
       )
@@ -2403,7 +2403,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           :error,
           if(view == :variables,
             do: gettext("That variable is no longer in this workspace."),
-            else: gettext("That secret is no longer in this workspace.")
+            else: gettext("That secret is no longer in this organisation.")
           ),
           view
         )

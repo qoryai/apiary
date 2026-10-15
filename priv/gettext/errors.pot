@@ -192,7 +192,7 @@ msgstr ""
 
 #: lib/apiary/secrets/secret.ex
 #, elixir-autogen, elixir-format
-msgid "is already the name of a secret in this workspace, compared without case"
+msgid "is already the name of a secret in this organisation, compared without case"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
