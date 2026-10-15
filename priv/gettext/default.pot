@@ -2167,6 +2167,7 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
+#: lib/apiary/sources/body.ex
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "(opens in a new tab)"
@@ -4983,6 +4984,12 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket task"
+msgid "Done"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Done:"
@@ -6253,6 +6260,18 @@ msgstr ""
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not create an account on %{name}, ignore this email."
+msgstr ""
+
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket image"
+msgid "Image"
+msgstr ""
+
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket image"
+msgid "Image: %{alt}"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -8558,6 +8577,12 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not deleted: %{reason}"
+msgstr ""
+
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket task"
+msgid "Not done"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -11013,6 +11038,16 @@ msgstr ""
 msgid "Show all runs"
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show as written"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show formatted"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Show it"
@@ -11072,6 +11107,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Showing those that override the mode."
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shown as written."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -11371,6 +11411,12 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "TLS"
+msgstr ""
+
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket table"
+msgid "Table in the ticket"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12311,6 +12357,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The targets this workspace's runs have changed."
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "The ticket has no description."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

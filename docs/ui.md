@@ -1274,6 +1274,14 @@ A component does not ask `Apiary.Features` what the instance serves or the reade
 shown: the page asks with its scope and passes the answer, as the connection row's `security` attribute does. What
 Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
+Untrusted Markdown that a page shows formatted is the one named exception:
+`SourceComponents.body/1` passes it to `raw/1` as HTML that is sanitised last, on the
+server, with an allowlist of tags, attributes and URL schemes, after every other change.
+Links are `https` only, and any other link is its words. An image is never shown: it
+becomes a link to it, and raw HTML is not rendered. Task boxes and tables get words for a
+screen reader. Show as written shows the exact text, interpolated, and plain text is
+only ever interpolated.
+
 ### Storybook
 
 In development the components have a storybook, at `/dev/storybook` of the dev server
