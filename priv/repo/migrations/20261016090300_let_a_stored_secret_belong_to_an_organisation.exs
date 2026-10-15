@@ -114,14 +114,25 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
 
     # A value without a workspace is of a secret without one; a value with one is of a
     # secret of that workspace by `secret_values_secret_id_fkey`.
+    #
+    # The check locks the secret's row FOR KEY SHARE, so a change of the secret's level and
+    # the value take turns: a change not yet committed makes the check wait, and then read
+    # the row as committed, which no longer matches; a change that comes after waits for
+    # the value, and `secret_scope_matches_values` then finds it. FOR KEY SHARE is enough
+    # because `secrets (id, workspace_id)` is a unique index, not partial, so a change of
+    # `workspace_id` is a change of a key and takes the row FOR UPDATE.
     execute """
     CREATE FUNCTION secret_value_scope_matches() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-      IF NEW.workspace_id IS NULL AND NOT EXISTS (
-        SELECT 1 FROM secrets WHERE id = NEW.secret_id AND workspace_id IS NULL
-      ) THEN
-        RAISE EXCEPTION 'a value without a workspace is of a secret without one'
-          USING ERRCODE = 'check_violation', CONSTRAINT = 'secret_value_scope_matches';
+      IF NEW.workspace_id IS NULL THEN
+        PERFORM 1 FROM secrets
+        WHERE id = NEW.secret_id AND workspace_id IS NULL
+        FOR KEY SHARE;
+
+        IF NOT FOUND THEN
+          RAISE EXCEPTION 'a value without a workspace is of a secret without one'
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'secret_value_scope_matches';
+        END IF;
       END IF;
       RETURN NEW;
     END

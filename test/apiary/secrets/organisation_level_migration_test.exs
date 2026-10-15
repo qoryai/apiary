@@ -1,6 +1,6 @@
 defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
   # The two migrations that let a stored secret belong to an organisation and validate
-  # their checks (`20261016085000`, `20261016085100`), run down and up again inside the
+  # their checks (`20261016090300`, `20261016090400`), run down and up again inside the
   # test's transaction, which rolls it all back. They change the schema of the secrets'
   # tables under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -11,9 +11,9 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
 
   alias Apiary.{Edition, EditionStubs, Secrets}
 
-  @level {20_261_016_085_000, Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation,
+  @level {20_261_016_090_300, Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation,
           "let_a_stored_secret_belong_to_an_organisation"}
-  @validate {20_261_016_085_100, Apiary.Repo.Migrations.ValidateAStoredSecretSLevelChecks,
+  @validate {20_261_016_090_400, Apiary.Repo.Migrations.ValidateAStoredSecretSLevelChecks,
              "validate_a_stored_secret_s_level_checks"}
 
   @options [log: false, migration_lock: false]
