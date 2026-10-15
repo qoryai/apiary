@@ -96,6 +96,28 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     assert Repo.get!(Node, adapter.id).deleted_at == nil
   end
 
+  # The instance's switch decides for an instance admin, whatever the organisation their
+  # scope carries shows them, and nobody passes it while it is off.
+  test "an instance admin is answered as anyone else, shown the feature or not", %{
+    scope: scope,
+    admin: admin,
+    adapter: adapter
+  } do
+    for hides <- [[], [:factory]] do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put(hides)
+
+      for asker <- [admin, scope] do
+        assert Adapters.authorize_instance(asker) == {:error, :not_found}
+        assert Adapters.authorize_instance(asker, sudo: true) == {:error, :not_found}
+        assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
+        assert AccessKeys.list_for_node(Access.reload(asker), adapter) == []
+        assert AccessKeys.list_enrolment_codes(Access.reload(asker), adapter) == []
+        assert Adapters.list_adapters(Access.reload(asker)) == []
+      end
+    end
+  end
+
   test "an adapter's code is neither made, cancelled nor redeemed, and its key not revoked",
        %{scope: scope, admin: admin, adapter: adapter, key: key, row: row, code: code} do
     assert AccessKeys.create_enrolment_code(admin, adapter, %{}) == {:error, :not_found}

@@ -207,6 +207,24 @@ defmodule ApiaryWeb.FeaturesAnyTest do
       assert ApiaryWeb.Features.gate(InstanceController) == :factory
     end
 
+    test "says it is one, and no other page does" do
+      assert ApiaryWeb.Features.instance?(InstanceController)
+      refute ApiaryWeb.Features.instance?(SecretsController)
+      refute ApiaryWeb.Features.instance?(EitherController)
+      refute ApiaryWeb.Features.instance?(Router)
+    end
+
+    @tag with_features: [:observability, :security, :factory]
+    test "with the feature, an open page stays there, whatever the scope hides" do
+      assert ApiaryWeb.Features.page_shown?(InstanceController, person([:factory]))
+      assert ApiaryWeb.Features.page_shown?(InstanceController, nil)
+
+      # A page of the organisation asks what the scope shows; a page of no feature is there.
+      refute ApiaryWeb.Features.page_shown?(EitherController, person([:factory]))
+      assert ApiaryWeb.Features.page_shown?(EitherController, person([]))
+      assert ApiaryWeb.Features.page_shown?(Router, person([:factory]))
+    end
+
     @tag with_features: [:observability, :security, :factory]
     test "with the feature, it is there to whoever opens it, whatever the scope hides" do
       assert answer("/instance") == {200, "instance"}
@@ -236,6 +254,9 @@ defmodule ApiaryWeb.FeaturesAnyTest do
 
       single = ApiaryWeb.Features.call(build_conn(:get, "/secrets"), :secrets)
       assert conn.resp_body == single.resp_body
+
+      refute ApiaryWeb.Features.page_shown?(InstanceController, person([]))
+      refute ApiaryWeb.Features.page_shown?(InstanceController, nil)
     end
   end
 
