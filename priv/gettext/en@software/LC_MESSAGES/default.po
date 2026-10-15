@@ -575,11 +575,6 @@ msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
-msgid "%{integration} didn't answer. Install it again in a moment."
-msgstr ""
-
-#: lib/apiary_web/controllers/adapter_redirect_controller.ex
-#, elixir-autogen, elixir-format
 msgid "%{integration} doesn't confirm that you administer that account. Ask an admin of the account to install it."
 msgstr ""
 
@@ -11900,6 +11895,11 @@ msgstr ""
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "The install took too long and expired. Install it again from Integrations."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "The installation couldn't be completed just now. Press Install to try again."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
