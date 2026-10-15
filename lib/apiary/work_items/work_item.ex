@@ -15,7 +15,7 @@ defmodule Apiary.WorkItems.WorkItem do
   #
   # `public_id` is its name outside the database: `wi_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`). The database holds every
-  # bound above.
+  # bound above, and counts characters as code points, as `take_in_changeset/2` does.
   #
   # Every module of the work items is left out of the documentation at `/docs`
   # (`@moduledoc false`): the feature they belong to is one the documentation does not
@@ -64,15 +64,16 @@ defmodule Apiary.WorkItems.WorkItem do
   @spec prefix() :: String.t()
   def prefix, do: @prefix
 
-  # max_instruction/0 is the most characters a first instruction has.
+  # max_instruction/0 is the most characters, code points, a first instruction has.
   @doc false
   @spec max_instruction() :: pos_integer
   def max_instruction, do: @max_instruction
 
   # take_in_changeset/2 is the changeset of a new work item's snapshot, its owner and its
-  # first instruction, each within the bounds above, with a fresh public id. The
-  # workspace, the number, the state and who took it in, and when, are the caller's to
-  # put.
+  # first instruction, each within the bounds above, counted in code points as the
+  # database counts them, with a fresh public id. A value the database refuses all the
+  # same is an error on its field. The workspace, the number, the state and who took it
+  # in, and when, are the caller's to put.
   @doc false
   @spec take_in_changeset(t, map) :: Ecto.Changeset.t()
   def take_in_changeset(%__MODULE__{} = work_item, attrs) do
@@ -81,13 +82,17 @@ defmodule Apiary.WorkItems.WorkItem do
       empty_values: [nil]
     )
     |> validate_required([:ref, :title, :collection_title, :owner_id])
-    |> validate_length(:ref, min: 1, max: @max_ref)
-    |> validate_length(:url, max: @max_url)
-    |> validate_length(:title, min: 1, max: @max_title)
-    |> validate_length(:collection_title, min: 1, max: @max_title)
-    |> validate_length(:first_instruction, max: @max_instruction)
+    |> validate_length(:ref, min: 1, max: @max_ref, count: :codepoints)
+    |> validate_length(:url, max: @max_url, count: :codepoints)
+    |> validate_length(:title, min: 1, max: @max_title, count: :codepoints)
+    |> validate_length(:collection_title, min: 1, max: @max_title, count: :codepoints)
+    |> validate_length(:first_instruction, max: @max_instruction, count: :codepoints)
     |> put_change(:public_id, Apiary.PublicId.generate(@prefix))
+    |> check_constraint(:ref, name: :work_items_ref_check)
     |> check_constraint(:url, name: :work_items_url_check)
+    |> check_constraint(:title, name: :work_items_title_check)
+    |> check_constraint(:collection_title, name: :work_items_collection_title_check)
+    |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
   end

@@ -21,6 +21,29 @@ defmodule Apiary.WorkItems.WorkItemTest do
     Repo.one!(from e in WorkItemEvent, where: e.work_item_id == ^work_item.id)
   end
 
+  # A snapshot within every bound, with `attrs` over it.
+  defp snapshot(attrs) do
+    Enum.into(attrs, %{
+      ref: "acme/shop#12",
+      title: "The checkout keeps the old price",
+      collection_title: "acme/shop",
+      owner_id: Ecto.UUID.generate()
+    })
+  end
+
+  # A work item of the scope's workspace before its snapshot, with a number no fixture
+  # takes.
+  defp new_work_item(scope) do
+    %WorkItem{
+      organisation_id: scope.workspace.organisation_id,
+      workspace_id: scope.workspace.id,
+      number: 99,
+      state: :exploring,
+      taken_in_by_id: scope.user.id,
+      taken_in_at: DateTime.utc_now()
+    }
+  end
+
   setup do
     %{scope: scope} = sign_up_fixture()
     %{scope: scope, work_item: work_item_fixture(scope)}
@@ -282,28 +305,52 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert get_field(changeset, :first_instruction) == ""
     end
 
-    test "an address the database refuses is an error on url", %{scope: scope} do
-      workspace = scope.workspace
+    test "counts code points, as the database does, not graphemes" do
+      # One grapheme each: e and a combining acute accent, two code points; a woman, a
+      # zero width joiner and a laptop, three.
+      combining = "e\u0301"
+      zwj = "\u{1F469}\u200D\u{1F4BB}"
+      assert {String.length(combining), String.length(zwj)} == {1, 1}
 
-      assert {:error, changeset} =
-               %WorkItem{
-                 organisation_id: workspace.organisation_id,
-                 workspace_id: workspace.id,
-                 number: 99,
-                 state: :exploring,
-                 taken_in_by_id: scope.user.id,
-                 taken_in_at: DateTime.utc_now()
-               }
-               |> WorkItem.take_in_changeset(%{
-                 ref: "acme/shop#12",
-                 url: "https://user@forge.example.com/acme/shop/issues/12",
-                 title: "The checkout keeps the old price",
-                 collection_title: "acme/shop",
-                 owner_id: scope.user.id
-               })
-               |> Repo.insert()
+      over = %{
+        ref: String.duplicate(combining, 128),
+        title: String.duplicate(zwj, 342),
+        collection_title: String.duplicate(combining, 513),
+        first_instruction: String.duplicate(zwj, 1334)
+      }
 
-      assert %{url: [_]} = errors_on(changeset)
+      changeset = WorkItem.take_in_changeset(%WorkItem{}, snapshot(over))
+
+      assert errors_on(changeset) |> Map.keys() |> Enum.sort() ==
+               [:collection_title, :first_instruction, :ref, :title]
+
+      at_most = %{
+        ref: String.duplicate(combining, 127) <> "r",
+        title: String.duplicate(zwj, 341) <> "t",
+        collection_title: String.duplicate(combining, 512),
+        first_instruction: String.duplicate(zwj, 1333) <> "f"
+      }
+
+      assert WorkItem.take_in_changeset(%WorkItem{}, snapshot(at_most)).valid?
+    end
+
+    test "a value the database refuses is an error on its field, not a raise", ctx do
+      for {field, value} <- [
+            ref: String.duplicate("r", 256),
+            url: "https://user@forge.example.com/acme/shop/issues/12",
+            title: String.duplicate("t", 1025),
+            collection_title: String.duplicate("c", 1025),
+            first_instruction: String.duplicate("\u{1F469}\u200D\u{1F4BB}", 1334)
+          ] do
+        # Past the changeset's own checks, as a value they count apart would be.
+        assert {:error, changeset} =
+                 new_work_item(ctx.scope)
+                 |> WorkItem.take_in_changeset(snapshot(%{owner_id: ctx.scope.user.id}))
+                 |> put_change(field, value)
+                 |> Repo.insert()
+
+        assert Map.keys(errors_on(changeset)) == [field]
+      end
     end
   end
 
