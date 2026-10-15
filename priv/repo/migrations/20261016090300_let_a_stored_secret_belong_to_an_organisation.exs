@@ -115,12 +115,16 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
     # A value without a workspace is of a secret without one; a value with one is of a
     # secret of that workspace by `secret_values_secret_id_fkey`.
     #
-    # The check locks the secret's row FOR KEY SHARE, so a change of the secret's level and
-    # the value take turns: a change not yet committed makes the check wait, and then read
-    # the row as committed, which no longer matches; a change that comes after waits for
-    # the value, and `secret_scope_matches_values` then finds it. FOR KEY SHARE is enough
+    # The check locks the secret's row FOR KEY SHARE, so where a change of the secret's
+    # level runs at READ COMMITTED, the app's level, the change and the value take turns: a
+    # change not yet committed makes the check wait, and then read the row as committed,
+    # which no longer matches; a change that comes after waits for the value, and
+    # `secret_scope_matches_values` then finds it. The lock conflicts with the change
     # because `secrets (id, workspace_id)` is a unique index, not partial, so a change of
-    # `workspace_id` is a change of a key and takes the row FOR UPDATE.
+    # `workspace_id` is a change of a key and takes the row FOR UPDATE. The app never
+    # changes a secret's level; a change run directly under REPEATABLE READ or
+    # SERIALIZABLE reads its snapshot and is not refused by these triggers, though such a
+    # value decrypts nowhere.
     execute """
     CREATE FUNCTION secret_value_scope_matches() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
