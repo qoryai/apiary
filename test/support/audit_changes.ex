@@ -41,6 +41,19 @@ defmodule Apiary.AuditChanges do
     "mail_from" => ""
   }
 
+  # The audited actions of the work items and of what an adapter reports, whose changes
+  # have no context function yet: each is made here as its function will make it, the
+  # same question of `Apiary.Access` and the one entry in one transaction
+  # (`stand_in/3`), until that function makes it instead.
+  @stand_ins [
+    :"collection.assign",
+    :"work_item.take_in",
+    :"work_item.undo",
+    :"work_item.close",
+    :"work_item.comment",
+    :"work_item.comment_delete"
+  ]
+
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
   def actions do
@@ -89,7 +102,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.edit",
       :"adapter.delete",
       :"adapter.connect"
-    ]
+    ] ++ @stand_ins
   end
 
   @doc """
@@ -402,6 +415,13 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", adapter.id}, secret: pass, before: before}
   end
 
+  def make(action, %{scope: scope} = ctx) when action in @stand_ins do
+    subject = prepare(action, ctx)
+    before = entries()
+    {:ok, _subject} = stand_in(scope, action, subject)
+    %{scope: scope, subject: subject_of(subject), before: before}
+  end
+
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
@@ -634,6 +654,11 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"adapter.edit", %{scope: scope}), do: adapter_fixture(scope)
   defp prepare(:"adapter.delete", %{scope: scope}), do: adapter_fixture(scope)
   defp prepare(:"adapter.connect", %{scope: scope}), do: adapter_fixture(scope)
+  defp prepare(:"collection.assign", %{scope: scope}), do: scope.organisation
+
+  defp prepare(action, %{scope: scope}) when action in @stand_ins,
+    do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -742,6 +767,9 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"adapter.connect", scope, adapter),
     do: Adapters.connect(scope, adapter, fn _adapter -> {:ok, "pass"} end)
 
+  defp attempt(action, scope, subject) when action in @stand_ins,
+    do: stand_in(scope, action, subject)
+
   defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
   defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)
 
@@ -843,4 +871,18 @@ defmodule Apiary.AuditChanges do
 
     workspace
   end
+
+  # A change of `@stand_ins`, as its context function will make it: asked of
+  # `Apiary.Access`, and its entry, in one transaction.
+  defp stand_in(scope, action, subject) do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, action, subject),
+           {:ok, _entry} <- Audit.record(Repo, scope, action, subject, %{}) do
+        {:ok, subject}
+      end
+    end)
+  end
+
+  defp subject_of(%Organisation{id: id}), do: {"organisation", id}
+  defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
 end

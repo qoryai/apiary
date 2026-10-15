@@ -59,18 +59,21 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
+  def label(:"work_item.comment"), do: gettext("Work item comment added")
+  def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(_action), do: nil
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
   # and integrations' only where the reader is shown them, and the nodes' and their access
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
-  # show, by their labels. The actions of the feature `factory` have no label yet, so the
-  # filter offers none of them; their entries show as any change.
+  # show, by their labels. Of the feature `factory`'s actions only the work item comments'
+  # have labels yet, so the filter offers those alone, where the reader is shown the
+  # feature (the page asks it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
-      :factory -> false
+      :factory -> action in [:"work_item.comment", :"work_item.comment_delete"]
       shown_as when shown_as in [:secrets, :nodes] -> Features.visible?(scope, shown_as)
       _shown_as -> true
     end

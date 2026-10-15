@@ -63,6 +63,24 @@ defmodule Apiary.Adapters do
   def get_adapter(%Scope{}, _public_id), do: nil
 
   @doc false
+  # The organisation of the adapter in use whose public id is `public_id`, whichever
+  # organisation it is; nil for none. Says nothing to a person by itself: the link that
+  # names an adapter alone (`ApiaryWeb.AdapterRedirectController`) resolves the person's
+  # scope there, and asks `adapter.read` and `get_adapter/2` of it, before it leads there.
+  @spec organisation_of(term) :: Organisation.t() | nil
+  def organisation_of(public_id) when is_binary(public_id) do
+    Repo.one(
+      from n in Node,
+        join: o in assoc(n, :organisation),
+        where: n.public_id == ^public_id and n.kind == :adapter,
+        where: is_nil(n.workspace_id) and is_nil(n.deleted_at),
+        select: o
+    )
+  end
+
+  def organisation_of(_public_id), do: nil
+
+  @doc false
   # The adapters a node pool of the scope's organisation may name as the one that serves
   # it: the organisation's adapters in use, by name.
   @spec serving_choices(Scope.t()) :: [Node.t()]
