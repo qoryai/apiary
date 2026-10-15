@@ -121,7 +121,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         measure="list"
       >
         <:subtitle>
-          {gettext("A custom API of this workspace")}
+          {gettext("A custom API of this organisation")}
           <span class="text-faint" aria-hidden="true">·</span>
           <span class="q-mono">{@definition.key}</span>
         </:subtitle>
@@ -214,7 +214,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             submit="delete"
           >
             <%= if @users == [] do %>
-              {gettext("It is removed from this workspace. This cannot be undone.")}
+              {gettext("It is removed from this organisation. This cannot be undone.")}
             <% else %>
               {gettext("APIs are set up from it: remove them first.")}
             <% end %>

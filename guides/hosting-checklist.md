@@ -47,7 +47,7 @@ being one. Every variable named here is described in [Install and configure](ins
   organisation's name does the same.
   [Install and configure](install.md#set-up-a-new-instance) has both.
 <!-- feature: secrets -->
-- **Where integrations come from.** A workspace adds an integration from a release on
+- **Where integrations come from.** An organisation adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
   `description.json`, which may be on any host; Qory Apiary fetches it from public addresses
   only. On an instance open to people you do not know, set

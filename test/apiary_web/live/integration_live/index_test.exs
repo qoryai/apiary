@@ -67,8 +67,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     test "starts empty, with a card to add each thing by name", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
 
-      assert has_element?(lv, "#set-up-part h2", "Set up in this workspace")
-      assert has_element?(lv, "#connections-empty", "Nothing is set up in this workspace yet.")
+      assert has_element?(lv, "#set-up-part h2", "Set up")
+      assert has_element?(lv, "#connections-empty", "Nothing is set up yet.")
       assert has_element?(lv, "#add-part h2", "Add an integration")
 
       assert has_element?(lv, "#add-card-runtime-claude h4", "Claude Code")
@@ -392,7 +392,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       refute has_element?(lv, "#connections-empty")
 
       row = "#connections #connection-#{runtime.public_id}"
-      assert has_element?(lv, row, "Every repository")
+      assert has_element?(lv, row, "Every workspace")
       assert has_element?(lv, "#{row} a", "Claude Code")
       assert has_element?(lv, "#{row} a .q-mono", "(claude)")
       assert has_element?(lv, row, "Agent")
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every repository or to the ones you choose."
+               "The agents, outside APIs and programs this organisation sets up, each with its settings. Not Qory Apiary's settings. Each applies to every workspace or to the ones you choose."
              )
 
       assert page_title(lv) =~
@@ -559,14 +559,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert html =~ "It would overlap with Claude Code (claude)"
     end
 
-    test "Set up an API sets one up from a built-in API, chosen targets at once",
+    test "Set up an API sets one up from a built-in API, chosen workspaces at once",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
 
       assert has_element?(
                lv,
                "#new-service-page",
-               "Choose an outside API: a built-in one, or a custom API of this workspace."
+               "Choose an outside API: a built-in one, or a custom API of this organisation."
              )
 
       assert has_element?(lv, "#new-service-form fieldset legend", "Applies to")

@@ -460,7 +460,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   defp value_of("target_id", path, p) do
     cond do
-      String.contains?(path, "/settings/integrations/") -> p.target_id
+      # A connection's list names a workspace, by its id.
+      String.contains?(path, "/settings/integrations/") -> p.workspace_id
       String.contains?(path, "/policy/targets/") -> p.target_id
       true -> nil
     end
@@ -552,6 +553,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       code_id: code.id,
       run_id: run.run_id,
       target_id: target.id,
+      workspace_id: scope.workspace.id,
       target_glob: target.path,
       invitation_token: invitation,
       login_token: login_token,
@@ -563,7 +565,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     base
     |> Map.merge(security_params(scope))
     |> Map.merge(factory_params(scope))
-    |> Map.merge(secrets_params(scope, target))
+    |> Map.merge(secrets_params(scope))
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is
@@ -606,7 +608,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # The records of the `secrets` feature, as `security_params/1` has the policy's.
-  defp secrets_params(scope, target) do
+  defp secrets_params(scope) do
     if Features.on?(:secrets) do
       {:ok, secret} =
         Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x", value_id: "main-app"})
@@ -635,7 +637,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
-      {:ok, runtime} = Connections.put_target(scope, runtime, target.id)
+      {:ok, runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
 
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})

@@ -179,16 +179,22 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              ) > 0
 
       kinds =
-        Repo.all(from c in Connection, where: c.workspace_id == ^main.id, select: c.kind)
+        Repo.all(
+          from c in Connection, where: c.organisation_id == ^main.organisation_id, select: c.kind
+        )
 
       assert Enum.frequencies(kinds) == %{"runtime" => 1, "service" => 2, "integration" => 2}
 
-      assert Repo.all(from r in Release, where: r.workspace_id == ^main.id, select: r.state)
+      assert Repo.all(
+               from r in Release,
+                 where: r.organisation_id == ^main.organisation_id,
+                 select: r.state
+             )
              |> Enum.sort() == ["failed", "ready", "ready"]
     else
       refute Repo.exists?(from s in Secret, where: s.workspace_id == ^main.id)
       refute Repo.exists?(from v in Variable, where: v.workspace_id == ^main.id)
-      refute Repo.exists?(from c in Connection, where: c.workspace_id == ^main.id)
+      refute Repo.exists?(from c in Connection, where: c.organisation_id == ^main.organisation_id)
     end
   end
 
@@ -206,8 +212,14 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     for workspace <- workspaces do
       refute Repo.exists?(from s in Secret, where: s.workspace_id == ^workspace.id)
       refute Repo.exists?(from v in Variable, where: v.workspace_id == ^workspace.id)
-      refute Repo.exists?(from c in Connection, where: c.workspace_id == ^workspace.id)
-      refute Repo.exists?(from r in Release, where: r.workspace_id == ^workspace.id)
+
+      refute Repo.exists?(
+               from c in Connection, where: c.organisation_id == ^workspace.organisation_id
+             )
+
+      refute Repo.exists?(
+               from r in Release, where: r.organisation_id == ^workspace.organisation_id
+             )
     end
   end
 

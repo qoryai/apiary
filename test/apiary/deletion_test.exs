@@ -599,9 +599,16 @@ defmodule Apiary.DeletionTest do
 
   # What a workspace holds, made the way the product makes it where it can: a key, an
   # invitation, a policy rule with its run configuration, a run delivered through the
-  # receiver with its events, log and connections, a retention run, and a work item with
-  # its event and the workspace's counter.
+  # receiver with its events, log and connections, a retention run, a work item with its
+  # event and the workspace's counter, and a runtime of the organisation that lists it.
   defp fill!(%Scope{} = scope) do
+    {:ok, _} =
+      Apiary.Connections.create_runtime(scope, %{
+        runtime: "claude",
+        applies_to: "selected",
+        workspace_ids: [scope.workspace.id]
+      })
+
     %{access_key: key} = access_key_fixture(scope)
     invitation_fixture(scope)
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})

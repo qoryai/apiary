@@ -1,6 +1,6 @@
 defmodule Apiary.Connections.ServiceDefinition do
   @moduledoc """
-  A service definition a workspace writes for itself, beside the built-in ones
+  A service definition an organisation writes, beside the built-in ones
   (`Apiary.Kinds.Services`): a public id (`svc_` and 16 lowercase Crockford base32
   characters), its `key` and `title`, the definition as canonical JSON (`definition`),
   checked by `Apiary.Kinds.ServiceDefinition`, and its SHA-256 (`digest`).
@@ -10,7 +10,7 @@ defmodule Apiary.Connections.ServiceDefinition do
   """
   use Ecto.Schema
 
-  @typedoc "A workspace's service definition."
+  @typedoc "An organisation's service definition."
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: false}
@@ -26,7 +26,6 @@ defmodule Apiary.Connections.ServiceDefinition do
     field :integrity_version, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
 
@@ -35,17 +34,18 @@ defmodule Apiary.Connections.ServiceDefinition do
 
   @doc false
   def integrity_kind, do: "service_definition"
+  # Version 2: a definition is the organisation's, and names no workspace. No row of
+  # version 1 is left (`Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation`).
   @doc false
-  def integrity_version, do: 1
+  def integrity_version, do: 2
   @doc false
-  def integrity_versions, do: [1]
+  def integrity_versions, do: [2]
 
   @doc false
-  def integrity_fields(%__MODULE__{} = definition, 1) do
+  def integrity_fields(%__MODULE__{} = definition, 2) do
     [
       id: definition.id,
       organisation_id: definition.organisation_id,
-      workspace_id: definition.workspace_id,
       public_id: definition.public_id,
       key: definition.key,
       definition: definition.definition,

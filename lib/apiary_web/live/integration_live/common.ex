@@ -100,10 +100,13 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def connection_path(scope, id, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/delete"
 
-  @doc "remove_target_path/3 is the confirmation, on its row, of taking a target from a connection."
-  def remove_target_path(scope, connection, target_id),
+  @doc """
+  remove_target_path/3 is the confirmation, on its row, of taking the workspace
+  `workspace_id` from a connection's list.
+  """
+  def remove_target_path(scope, connection, workspace_id),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{target_id}/remove"
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{workspace_id}/remove"
 
   @doc "definition_path/3 is the workspace's custom APIs (service definitions): new, one, its edit or its deletion."
   def definition_path(scope, definition, rest \\ nil)
@@ -125,9 +128,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc "settings_path/1 is the workspace's settings, the breadcrumb's step before the section."
   def settings_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings"
-
-  @doc "secrets_path/1 is Secrets and variables, where the workspace's secrets are stored."
-  def secrets_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets"
 
   ## The line every page says once
 
@@ -222,13 +222,14 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     """
   end
 
-  @doc "applies_word/2 is where a connection applies, in a few words: every target, or how many chosen."
-  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every target")
+  @doc "applies_word/2 is where a connection applies, in a few words: every workspace, or how many chosen."
+  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every workspace")
 
-  def applies_word(%Connection{applies_to: "selected", targets: targets}) when is_list(targets) do
-    case length(targets) do
-      0 -> gettext("No target yet")
-      n -> ngettext("%{count} chosen target", "%{count} chosen targets", n)
+  def applies_word(%Connection{applies_to: "selected", workspaces: workspaces})
+      when is_list(workspaces) do
+    case length(workspaces) do
+      0 -> gettext("No workspace yet")
+      n -> ngettext("%{count} chosen workspace", "%{count} chosen workspaces", n)
     end
   end
 
@@ -243,9 +244,9 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc "who/2 is the person `id` among `people`, or nil for none."
   def who(people, id), do: People.member(people, id)
 
-  @doc "may_write?/1 says whether the scope may change the workspace's integrations."
+  @doc "may_write?/1 says whether the scope may change the organisation's integrations."
   def may_write?(scope),
-    do: Apiary.Access.can?(scope, :"connection.write", scope.workspace)
+    do: Apiary.Access.can?(scope, :"connection.write", scope.organisation)
 
   @doc """
   only_admins/1 is the line a person who may not change the section reads: a reader
@@ -259,7 +260,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
         ApiaryWeb.Access.who_may(
           scope,
           :"connection.write",
-          gettext("Only owners and admins change the integrations of a workspace.")
+          gettext("Only owners and admins change the integrations of the organisation.")
         )
   end
 
@@ -365,7 +366,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc """
   refusal/3 is the sentence for a refusal of `Apiary.Connections` or
-  `Apiary.Integrations` to `scope`, the workspace's `connections` naming those an overlap
+  `Apiary.Integrations` to `scope`, the organisation's `connections` naming those an overlap
   is with.
   """
   def refusal(scope, reason, connections \\ [])
@@ -401,7 +402,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That runtime is not in Forager's catalogue.")
 
   defp sentence(:service_unknown, _),
-    do: gettext("That API is neither built in nor a custom API of this workspace.")
+    do: gettext("That API is neither built in nor a custom API of this organisation.")
 
   defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
@@ -414,7 +415,8 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   defp sentence({:integration_source_mismatch, _}, _),
     do: gettext("That release is from another source.")
 
-  defp sentence(:target_not_found, _), do: gettext("That target is not one of this workspace's.")
+  defp sentence(:workspace_not_found, _),
+    do: gettext("That workspace is not one of this organisation's.")
 
   defp sentence({:integration_settings_not_allowed, names}, _),
     do: gettext("It takes no such settings: %{names}.", names: Enum.join(List.wrap(names), ", "))

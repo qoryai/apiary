@@ -1,10 +1,10 @@
 defmodule Apiary.Connections.Connection do
   @moduledoc """
-  A runtime, an integration or a service set up in a workspace: what the contract calls a
-  connection, and the pages call an integration. It has a public id (`con_` and 16
-  lowercase Crockford base32 characters), a `kind`, a
-  `name`, and applies to every repository of the workspace (`applies_to` `all`) or to
-  those its targets name (`selected`).
+  A runtime, an integration or a service set up in an organisation: what the contract
+  calls a connection, and the pages call an integration. It has a public id (`con_` and
+  16 lowercase Crockford base32 characters), a `kind`, a `name`, and applies to every
+  workspace of the organisation, those made later included (`applies_to` `all`), or to
+  the workspaces it lists (`selected`, `Apiary.Connections.ConnectionWorkspace`).
 
     * **runtime**: `name` is the runtime's, from the catalogue (`Apiary.Kinds.Runtimes`).
     * **integration**: `name` is its description's; the row names the release it was added
@@ -12,7 +12,7 @@ defmodule Apiary.Connections.Connection do
       `description_sha256`. `settings` are its plain settings, as canonical JSON of an
       object, and `argument` its argument, if any.
     * **service**: `name` is shown; the row names its definition, built in
-      by key (`service_builtin`) or one of the workspace's (`service_definition_id`), and
+      by key (`service_builtin`) or one of the organisation's (`service_definition_id`), and
       never holds a host, a path or an auth itself.
 
   A connection's secrets are linked to stored secrets by the links that piece of the
@@ -22,7 +22,7 @@ defmodule Apiary.Connections.Connection do
   """
   use Ecto.Schema
 
-  @typedoc "A connection of a workspace."
+  @typedoc "A connection of an organisation."
   @type t :: %__MODULE__{}
 
   @kinds ~w(runtime integration service)
@@ -30,7 +30,7 @@ defmodule Apiary.Connections.Connection do
 
   @primary_key {:id, :binary_id, autogenerate: false}
   @foreign_key_type :binary_id
-  schema "workspace_connections" do
+  schema "organisation_connections" do
     field :public_id, :string
     field :kind, :string
     field :name, :string
@@ -48,12 +48,13 @@ defmodule Apiary.Connections.Connection do
     field :intact, :boolean, virtual: true
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :release, Apiary.Integrations.Release
     belongs_to :service_definition, Apiary.Connections.ServiceDefinition
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
-    has_many :targets, Apiary.Connections.Target, preload_order: [asc: :target_id]
+
+    has_many :workspaces, Apiary.Connections.ConnectionWorkspace,
+      preload_order: [asc: :workspace_id]
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -61,22 +62,23 @@ defmodule Apiary.Connections.Connection do
   @doc "The kinds of connection."
   def kinds, do: @kinds
 
-  @doc "What a connection applies to: `all` the repositories, or `selected` ones."
+  @doc "What a connection applies to: `all` the workspaces, or `selected` ones."
   def applies, do: @applies
 
   @doc false
   def integrity_kind, do: "connection"
+  # Version 2: a connection is the organisation's, and names no workspace. No row of
+  # version 1 is left (`Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation`).
   @doc false
-  def integrity_version, do: 1
+  def integrity_version, do: 2
   @doc false
-  def integrity_versions, do: [1]
+  def integrity_versions, do: [2]
 
   @doc false
-  def integrity_fields(%__MODULE__{} = connection, 1) do
+  def integrity_fields(%__MODULE__{} = connection, 2) do
     [
       id: connection.id,
       organisation_id: connection.organisation_id,
-      workspace_id: connection.workspace_id,
       public_id: connection.public_id,
       kind: connection.kind,
       name: connection.name,

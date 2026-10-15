@@ -1,6 +1,6 @@
 defmodule Apiary.Integrations.Release do
   @moduledoc """
-  A release of an integration a workspace asked for (`Apiary.Integrations`): its `source`
+  A release of an integration an organisation asked for (`Apiary.Integrations`): its `source`
   and `forge_kind` (`Apiary.Integrations.Source`), the version asked for (none for a URL
   source, whose one release is whatever its URL serves), and what the fetch found.
 
@@ -41,7 +41,6 @@ defmodule Apiary.Integrations.Release do
     field :integrity_version, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :requested_by, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)
@@ -55,37 +54,19 @@ defmodule Apiary.Integrations.Release do
 
   @doc false
   def integrity_kind, do: "integration_release"
-  # Version 2: the code no longer covers a publisher, which a release no longer records.
-  # A release of version 1 that recorded none, one that was not ready, still verifies.
+  # Version 3: a release is the organisation's, and names no workspace. Version 2 no
+  # longer covered a publisher, which a release no longer records. No row of an earlier
+  # version is left (`Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation`).
   @doc false
-  def integrity_version, do: 2
+  def integrity_version, do: 3
   @doc false
-  def integrity_versions, do: [1, 2]
+  def integrity_versions, do: [3]
 
   @doc false
-  def integrity_fields(%__MODULE__{} = release, 1) do
+  def integrity_fields(%__MODULE__{} = release, 3) do
     [
       id: release.id,
       organisation_id: release.organisation_id,
-      workspace_id: release.workspace_id,
-      source: release.source,
-      forge_kind: release.forge_kind,
-      requested_version: release.requested_version,
-      state: release.state,
-      failure: release.failure,
-      name: release.name,
-      version: release.version,
-      publisher_name: nil,
-      publisher_url: nil,
-      description_sha256: release.description_sha256
-    ]
-  end
-
-  def integrity_fields(%__MODULE__{} = release, 2) do
-    [
-      id: release.id,
-      organisation_id: release.organisation_id,
-      workspace_id: release.workspace_id,
       source: release.source,
       forge_kind: release.forge_kind,
       requested_version: release.requested_version,
