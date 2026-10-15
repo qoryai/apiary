@@ -48,12 +48,15 @@ defmodule Apiary.WorkItems.NumberRacesTest do
     assert Task.await(second.task) == {:ok, 3}
   end
 
+  # Twelve at most, and no more than the pool holds beside the test's connection: each
+  # side keeps its connection until all are let go.
   test "of many numbers taken at once in one workspace, each is taken once" do
     %{workspace: workspace} = sign_up()
+    count = sides(12)
 
-    answers = together(for _ <- 1..12, do: take(workspace))
+    answers = together(for _ <- 1..count, do: take(workspace))
 
-    assert Enum.sort(answers) == Enum.map(1..12, &{:ok, &1})
+    assert Enum.sort(answers) == Enum.map(1..count, &{:ok, &1})
   end
 
   # On a connection outside the sandbox, as every test here: there, a call outside a
