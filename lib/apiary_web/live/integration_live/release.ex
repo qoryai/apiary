@@ -285,8 +285,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             field={@form[:applies_to]}
             type="radio"
             label={Common.applies_label()}
-            options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
-            hint={gettext("You choose the targets on its page, once it is added.")}
+            options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
+            hint={gettext("You choose the workspaces on its page, once it is added.")}
           />
           <SettingsComponents.save
             id="add-release-save"

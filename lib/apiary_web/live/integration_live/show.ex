@@ -9,8 +9,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       program's), the API it is set up from, built in or a custom API (an API's), or its
       catalogue entry (an agent's), where it applies, who added and changed it, the
       secrets it declares and a program's plain settings;
-    * **Targets** (`…/targets`): where it applies, every workspace of the organisation or
-      the chosen ones, with Add target (`…/targets/add`, a page that chooses a workspace)
+    * **Workspaces** (`…/targets`): where it applies, every workspace of the organisation
+      or the chosen ones, with Add workspace (`…/targets/add`, a page that chooses one)
       and the removal of one, confirmed on its row (`…/targets/:target_id/remove`,
       `:target_id` the workspace's id);
     * **Settings** (`…/settings`): where it applies, a service's name, an integration's
@@ -56,22 +56,22 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
         {elem(@names, 0)}
       </:crumb>
-      <:crumb>{gettext("Add target")}</:crumb>
+      <:crumb>{gettext("Add workspace")}</:crumb>
 
       <.page_form
         id="add-target-page"
-        title={gettext("Add a target to %{name}", name: Common.label(@names))}
+        title={gettext("Add a workspace to %{name}", name: Common.label(@names))}
         cancel={Common.connection_path(@current_scope, @connection, :targets)}
       >
         <:description>
-          {gettext("Choose a target of this workspace for it to apply to.")}
+          {pgettext("plain", "Choose a workspace of this organisation for it to apply to.")}
         </:description>
         <Common.not_on_runs />
         <.form for={@find} id="find-target-form" phx-change="find" phx-submit="find" novalidate>
           <.input
             field={@find[:text]}
             type="search"
-            label={gettext("Find a target")}
+            label={gettext("Find a workspace")}
             placeholder="acme/shop"
             debounce="200"
             autocomplete="off"
@@ -80,12 +80,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         </.form>
         <p id="target-candidates-status" role="status" class="text-[13px]/5 text-muted">
           <span :if={@candidates == []} id="target-candidates-empty">
-            {gettext("No target found that it doesn't apply to already.")}
+            {pgettext("plain", "No workspace found that it doesn't apply to already.")}
           </span>
           <span :if={@candidates != [] and !@candidates_more} id="target-candidates-count">
-            {ngettext("%{number} target found.", "%{number} targets found.", length(@candidates),
-              number: Format.number(length(@candidates))
-            )}
+            {candidates_found(@candidates)}
           </span>
           <span :if={@candidates_more} id="target-candidates-more">
             {gettext("The first %{number} by name: type to find another.",
@@ -96,11 +94,11 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.table
           :if={@candidates != []}
           id="target-candidates"
-          label={gettext("Targets")}
+          label={gettext("Workspaces")}
           rows={@candidates}
           row_id={&"candidate-#{&1.id}"}
         >
-          <:col :let={workspace} label={gettext("Target")} kind="title">
+          <:col :let={workspace} label={gettext("Workspace")} kind="title">
             {workspace.name}
           </:col>
           <:action :let={workspace}>
@@ -110,7 +108,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
               phx-click="put_target"
               phx-value-id={workspace.id}
               phx-hook="FocusOn"
-              aria-label={gettext("Add %{target}", target: workspace.name)}
+              aria-label={gettext("Add %{workspace}", workspace: workspace.name)}
             >
               {gettext("Add")}
             </.button>
@@ -231,7 +229,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             patch={Common.connection_path(@current_scope, @connection, :targets)}
             count={if @connection.applies_to == "selected", do: length(@connection.workspaces)}
           >
-            {gettext("Targets")}
+            {gettext("Workspaces")}
           </:tab>
           <:tab
             key={:settings}
@@ -392,8 +390,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
         <.rich text={
           rich_gettext(
-            "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}.",
-            secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets and variables")}
+            "Qory Apiary links no stored secret to it. The organisation's secrets are in %{secrets}.",
+            secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets")}
           )
         } />
       </p>
@@ -433,14 +431,14 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     ~H"""
     <p id="connection-applies" class="text-[13px]/5">
       <%= if @connection.applies_to == "all" do %>
-        {gettext("It applies to every target of this workspace.")}
+        {pgettext("plain", "It applies to every workspace of this organisation.")}
       <% else %>
-        {gettext("It applies to the chosen targets below, and to no other.")}
+        {pgettext("plain", "It applies to the chosen workspaces below, and to no other.")}
       <% end %>
     </p>
     <p :if={@connection.applies_to == "all" and @may_write} class="text-[13px]/5 text-muted">
       <.rich text={
-        rich_gettext("To choose its targets, change where it applies under %{settings}.",
+        rich_pgettext("plain", "To choose its workspaces, change where it applies under %{settings}.",
           settings:
             {:link, Common.connection_path(@current_scope, @connection, :settings),
              gettext("Settings")}
@@ -451,12 +449,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     <.table
       :if={@target_rows != [] and @connection.applies_to == "selected"}
       id="connection-targets"
-      label={gettext("Targets")}
+      label={gettext("Workspaces")}
       rows={@target_rows}
       row_id={&"target-#{&1.id}"}
       confirming={@confirming && "target-#{@confirming}"}
     >
-      <:col :let={row} label={gettext("Target")} kind="title">
+      <:col :let={row} label={gettext("Workspace")} kind="title">
         <.link
           :if={row.workspace}
           navigate={~p"/#{@current_scope.organisation}/#{row.workspace}"}
@@ -472,7 +470,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           variant="link"
           patch={Common.remove_target_path(@current_scope, @connection, row.id)}
           phx-hook="FocusOn"
-          aria-label={gettext("Remove %{target}", target: row.workspace && row.workspace.name)}
+          aria-label={gettext("Remove %{workspace}", workspace: row.workspace && row.workspace.name)}
         >
           {gettext("Remove")}
         </.button>
@@ -481,14 +479,14 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.inline_confirm
           id={"target-#{row.id}-confirm"}
           question={
-            gettext("Remove %{target} from %{name}?",
-              target: row.workspace && row.workspace.name,
+            gettext("Remove %{workspace} from %{name}?",
+              workspace: row.workspace && row.workspace.name,
               name: Common.label(@names)
             )
           }
           cancel={Common.connection_path(@current_scope, @connection, :targets)}
         >
-          {gettext("It no longer applies to that target.")}
+          {pgettext("plain", "It no longer applies to that workspace.")}
           <:action>
             <.button
               id={"target-#{row.id}-remove"}
@@ -509,7 +507,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       id="connection-targets-empty"
       class="text-[13px]/5 text-muted"
     >
-      {gettext("No target is chosen yet, so it applies to none.")}
+      {pgettext("plain", "No workspace is chosen yet, so it applies to none.")}
     </p>
     <div :if={@may_write and @connection.applies_to == "selected"}>
       <.button
@@ -517,7 +515,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         navigate={Common.connection_path(@current_scope, @connection, :add_target)}
         phx-hook="FocusOn"
       >
-        <.icon name="hero-plus-micro" class="size-4" />{gettext("Add target")}
+        <.icon name="hero-plus-micro" class="size-4" />{gettext("Add workspace")}
       </.button>
     </div>
     """
@@ -545,8 +543,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           field={@form[:applies_to]}
           type="radio"
           label={Common.applies_label()}
-          options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
-          hint={gettext("Chosen targets are listed under Targets.")}
+          options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
+          hint={gettext("Chosen workspaces are listed under Workspaces.")}
         />
         <.input
           :if={@connection.kind == "service"}
@@ -639,7 +637,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         close_path={Common.connection_path(@current_scope, @connection, :settings)}
         question={gettext("Remove %{name}?", name: Common.label(@names))}
       >
-        {gettext("It is removed from this workspace. This cannot be undone.")}
+        {gettext("It is removed from this organisation. This cannot be undone.")}
       </.removal>
     </SettingsComponents.danger_zone>
     """
@@ -1035,9 +1033,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
          socket
          |> put_flash(
            :info,
-           pgettext("plain", "%{name} now applies to %{target}.",
+           pgettext("plain", "%{name} now applies to %{workspace}.",
              name: Common.label(socket.assigns.names),
-             target: row && row.workspace && row.workspace.name
+             workspace: row && row.workspace && row.workspace.name
            )
          )
          |> push_event("run:focus", %{id: focus})}
@@ -1058,7 +1056,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
          socket
          |> put_flash(
            :info,
-           gettext("The target is removed from %{name}.",
+           gettext("The workspace is removed from %{name}.",
              name: Common.label(socket.assigns.names)
            )
          )
@@ -1185,5 +1183,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       end
 
     Common.refusal(scope, reason, connections)
+  end
+
+  defp candidates_found(candidates) do
+    number = length(candidates)
+
+    ngettext("%{number} workspace found.", "%{number} workspaces found.", number,
+      number: Format.number(number)
+    )
   end
 end

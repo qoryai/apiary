@@ -226,13 +226,13 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   end
 
   @doc "applies_word/2 is where a connection applies, in a few words: every workspace, or how many chosen."
-  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every target")
+  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every workspace")
 
   def applies_word(%Connection{applies_to: "selected", workspaces: workspaces})
       when is_list(workspaces) do
     case length(workspaces) do
-      0 -> gettext("No target yet")
-      n -> ngettext("%{count} chosen target", "%{count} chosen targets", n)
+      0 -> gettext("No workspace yet")
+      n -> ngettext("%{count} chosen workspace", "%{count} chosen workspaces", n)
     end
   end
 
@@ -263,7 +263,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
         ApiaryWeb.Access.who_may(
           scope,
           :"connection.write",
-          gettext("Only owners and admins change the integrations of a workspace.")
+          gettext("Only owners and admins change the integrations of the organisation.")
         )
   end
 
@@ -405,7 +405,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That runtime is not in Forager's catalogue.")
 
   defp sentence(:service_unknown, _),
-    do: gettext("That API is neither built in nor a custom API of this workspace.")
+    do: gettext("That API is neither built in nor a custom API of this organisation.")
 
   defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That release is from another source.")
 
   defp sentence(:workspace_not_found, _),
-    do: gettext("That target is not one of this workspace's.")
+    do: gettext("That workspace is not one of this organisation's.")
 
   defp sentence({:integration_settings_not_allowed, names}, _),
     do: gettext("It takes no such settings: %{names}.", names: Enum.join(List.wrap(names), ", "))

@@ -286,7 +286,7 @@ defmodule Apiary.Access do
     # What a run is connected to: runtimes, integrations and services.
     Action.new(
       :"connection.read",
-      "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
+      "read the runtimes, integrations and services of the organisation, where each applies, the releases fetched and the organisation's service definitions",
       feature: :secrets,
       roles: @members,
       asked_of: :organisation,
@@ -294,7 +294,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
+      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the organisation's service definitions",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation

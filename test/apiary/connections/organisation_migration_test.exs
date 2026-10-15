@@ -75,4 +75,36 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
                workspace_ids: [scope.workspace.id]
              })
   end
+
+  test "down refuses while a table holds a row, and keeps it" do
+    %{scope: scope} = sign_up_fixture()
+    assert {:ok, _} = Connections.create_runtime(scope, %{runtime: "claude"})
+
+    error = assert_raise Postgrex.Error, fn -> down!() end
+    assert error.postgres.message =~ "Rolling back gives integrations back to the workspaces"
+    assert "organisation_id" in columns("organisation_connections")
+  end
+
+  test "up refuses while a table of the workspaces holds a row" do
+    %{scope: scope} = sign_up_fixture()
+    assert :ok = down!()
+
+    Repo.query!(
+      """
+      INSERT INTO integration_releases
+        (id, organisation_id, workspace_id, source, integrity_key_id, integrity_code,
+         integrity_version, inserted_at, updated_at)
+      VALUES ($1, $2, $3, 'example.com/acme/tool', 'k', '\\x00', 1, now(), now())
+      """,
+      [
+        Ecto.UUID.dump!(Ecto.UUID.generate()),
+        Ecto.UUID.dump!(scope.organisation.id),
+        Ecto.UUID.dump!(scope.workspace.id)
+      ]
+    )
+
+    error = assert_raise Postgrex.Error, fn -> up!() end
+    assert error.postgres.message =~ "Qory moves integrations from the workspaces"
+    assert "workspace_id" in columns("integration_releases")
+  end
 end

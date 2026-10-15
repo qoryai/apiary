@@ -179,7 +179,7 @@ msgstr ""
 
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
-msgid "is already the key of a service of this workspace"
+msgid "is already the key of a service of this organisation"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex

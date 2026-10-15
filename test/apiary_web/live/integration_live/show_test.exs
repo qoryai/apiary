@@ -91,7 +91,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert page_title(lv) =~ "Claude Code · Integrations · Workspace settings"
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
       assert has_element?(lv, "#connection-id", runtime.public_id)
-      assert has_element?(lv, "#connection-facts", "Every repository")
+      assert has_element?(lv, "#connection-facts", "Every workspace")
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
 
@@ -148,21 +148,20 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute lv |> element("#settings-section-integrations") |> render() =~ "ervice"
     end
 
-    test "Applies to leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
+    test "Applies to leads to Workspaces, its tab taking the focus", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime))
 
       assert lv
              |> element("#connection-applies-link[phx-click*='connection-tabs-targets']")
-             |> render_click() =~ "It applies to every repository of this workspace."
+             |> render_click() =~ "It applies to every workspace of this organisation."
 
       assert has_element?(lv, "#connection-tabs-targets[aria-current=page]")
     end
   end
 
-  # The tab Targets lists the workspaces of the organisation a connection applies to; until
-  # its words change, the software catalogue still calls each a repository.
-  describe "Targets" do
+  # The tab Workspaces lists the workspaces of the organisation a connection applies to.
+  describe "Workspaces" do
     test "a chosen workspace is added from a page, and removed on its row, confirmed",
          %{conn: conn, scope: scope} do
       shop = workspace!(scope, "Shop")
@@ -180,17 +179,17 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(
                lv,
                "#add-target-page-title",
-               "Add a repository to Claude Code (claude)"
+               "Add a workspace to Claude Code (claude)"
              )
 
       # Every workspace of the organisation: Main, Shop and Billing.
       assert has_element?(lv, "#candidate-#{shop.id}")
       assert has_element?(lv, "#candidate-#{scope.workspace.id}")
-      assert has_element?(lv, "#target-candidates-status[role=status]", "3 repositories found.")
+      assert has_element?(lv, "#target-candidates-status[role=status]", "3 workspaces found.")
       assert has_element?(lv, "#add-#{shop.id}[aria-label='Add Shop']", "Add")
 
       lv |> form("#find-target-form", find: %{text: "sho"}) |> render_change()
-      assert has_element?(lv, "#target-candidates-status", "1 repository found.")
+      assert has_element?(lv, "#target-candidates-status", "1 workspace found.")
       refute has_element?(lv, "#candidate-#{billing.id}")
 
       lv |> element("#add-#{shop.id}") |> render_click()
@@ -226,7 +225,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert_push_event(lv, "run:focus", %{id: ^focused})
       assert has_element?(lv, "#remove-target-#{shop.id}")
 
-      # Yes, remove: the row is gone, and Add target takes the focus.
+      # Yes, remove: the row is gone, and Add workspace takes the focus.
       lv |> element("#remove-target-#{shop.id}") |> render_click()
       lv |> element("#target-#{shop.id}-remove", "Yes, remove") |> render_click()
       assert_push_event(lv, "run:focus", %{id: "add-target"})
@@ -266,7 +265,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert_push_event(lv, "run:focus", %{id: ^focused})
     end
 
-    test "Add target lists the first 20 by name, and says there are more",
+    test "Add workspace lists the first 20 by name, and says there are more",
          %{conn: conn, scope: scope} do
       for n <- 1..21, do: workspace!(scope, "Area #{String.pad_leading("#{n}", 2, "0")}")
 
@@ -293,7 +292,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
 
-      assert has_element?(lv, "#connection-applies", "every repository")
+      assert has_element?(lv, "#connection-applies", "every workspace")
       refute has_element?(lv, "#add-target")
     end
 
@@ -364,7 +363,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(
                lv,
                "#delete-connection",
-               "It is removed from this workspace. This cannot be undone."
+               "It is removed from this organisation. This cannot be undone."
              )
 
       lv |> element("#delete-connection-button", "Remove runtime…") |> render_click()
@@ -563,7 +562,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute has_element?(lv, "#candidate-#{their_target.id}")
 
       assert render_hook(lv, "put_target", %{"id" => their_target.id}) =~
-               "That repository is not one of this workspace&#39;s."
+               "That workspace is not one of this organisation&#39;s."
 
       assert reload(scope, ours).workspaces == []
     end

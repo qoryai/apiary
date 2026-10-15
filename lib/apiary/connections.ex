@@ -908,7 +908,7 @@ defmodule Apiary.Connections do
     )
     |> unique_constraint(:key,
       name: :service_definitions_key_index,
-      message: dgettext_noop("errors", "is already the key of a service of this workspace")
+      message: dgettext_noop("errors", "is already the key of a service of this organisation")
     )
   end
 

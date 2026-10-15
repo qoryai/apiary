@@ -8,7 +8,8 @@ defmodule Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation do
   # (`selected`); the list of repositories it applied to goes.
   #
   # The tables start empty: the migration of 20261016090000 refuses to run while any of
-  # them holds a row, so nothing is moved and nothing of a workspace is kept.
+  # them holds a row, and this one checks its four again, so nothing is moved and nothing
+  # of a workspace is kept.
   #
   #   * `workspace_connections` is renamed `organisation_connections`, with its indexes and
   #     constraints, and loses `workspace_id`; its release and its definition are of its
@@ -22,6 +23,14 @@ defmodule Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation do
   # Every row of the three tables carries an integrity code over fields that named the
   # workspace; the code's new versions name none (`Apiary.Kinds.Coded`).
   def up do
+    refuse_rows!(
+      ~w(workspace_connections connection_targets integration_releases service_definitions),
+      "Qory moves integrations from the workspaces to the organisation and keeps none of " <>
+        "their rows, so this migration runs only while workspace_connections, " <>
+        "connection_targets, integration_releases and service_definitions are empty. " <>
+        "One of them holds rows."
+    )
+
     drop table(:connection_targets)
 
     drop constraint(:workspace_connections, :workspace_connections_release_id_fkey)
@@ -115,8 +124,17 @@ defmodule Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation do
   end
 
   # Rolling back gives each table its workspace again, and `connection_targets` back,
-  # empty: a row made since names no workspace, so none can be kept.
+  # empty: a row made since names no workspace, so none can be kept, and the rollback
+  # refuses while any of the tables holds one.
   def down do
+    refuse_rows!(
+      ~w(organisation_connections connection_workspaces integration_releases service_definitions),
+      "Rolling back gives integrations back to the workspaces, and a row made since names " <>
+        "no workspace, so it runs only while organisation_connections, " <>
+        "connection_workspaces, integration_releases and service_definitions are empty. " <>
+        "One of them holds rows."
+    )
+
     drop table(:connection_workspaces)
 
     drop index(:organisation_connections, [:organisation_id, :kind])
@@ -212,6 +230,22 @@ defmodule Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation do
 
     create index(:connection_targets, [:target_id])
     create index(:connection_targets, [:organisation_id, :workspace_id])
+  end
+
+  # Refuses, with `message`, while any of `tables` holds a row: the tables are locked
+  # first, so no row arrives between the check and the change.
+  defp refuse_rows!(tables, message) do
+    execute("LOCK TABLE #{Enum.join(tables, ", ")} IN ACCESS EXCLUSIVE MODE")
+
+    execute("""
+    DO $$
+    BEGIN
+      IF #{Enum.map_join(tables, " OR ", &"EXISTS (SELECT 1 FROM #{&1})")} THEN
+        RAISE EXCEPTION '#{message}';
+      END IF;
+    END
+    $$
+    """)
   end
 
   defp workspace_reference,
