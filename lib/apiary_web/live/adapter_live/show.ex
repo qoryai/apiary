@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.AdapterLive.Show do
   # An integration's page in Organisation settings › Integrations: its repositories and
-  # projects, assigning them to workspaces, its node pools and its settings
-  # (`:collections`, `:assign`, `:pools`, `:settings`, `:rename`, `:remove`).
+  # projects, assigning them to workspaces, and its node pools (`:collections`, `:assign`,
+  # `:pools`). Its settings and its access key are the instance admins'
+  # (`ApiaryWeb.InstanceLive.Integration`, `ApiaryWeb.AdapterLive.AccessKey`).
   #
   # It answers as a path that does not exist until its page is built here. The feature is
   # hidden from the documentation, so the module is too.

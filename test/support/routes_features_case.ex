@@ -19,7 +19,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
 
   and gets the tests: every route of the router is decided, no module listed as one every
   instance has declares a feature, the security policy's pages and endpoint belong to
-  `security`, and the stored secrets', variables' and integrations' pages to `secrets`. `routes/1` is the router's routes, for a test of the edition's own features.
+  `security`, the instance admins' integration pages to `factory`, and the stored secrets',
+  variables' and integrations' pages to `secrets`. `routes/1` is the router's routes, for a test of the edition's own features.
   """
 
   use ExUnit.CaseTemplate
@@ -107,6 +108,19 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         # it, belong with the run endpoint.
         assert ApiaryWeb.Contract.AttachController.__feature__() == :observability
         assert ApiaryWeb.Contract.OutcomeController.__feature__() == :observability
+      end
+
+      test "the instance admins' integration pages belong to factory" do
+        pages =
+          for {_verb, "/instance/integrations" <> _, module} <-
+                ApiaryWeb.RoutesFeaturesCase.routes(@router),
+              do: module
+
+        assert pages != []
+
+        for module <- pages do
+          assert module.__feature__() == :factory, inspect(module)
+        end
       end
 
       test "the stored secrets', variables' and integrations' pages belong to secrets" do
