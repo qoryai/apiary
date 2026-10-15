@@ -414,28 +414,38 @@ defmodule Apiary.Nodes do
 
   defp validate_gateway(changeset, _scope), do: changeset
 
-  # A pool's adapter, when it is set or changed: one of the adapters that may serve the
-  # scope's workspace (`Apiary.Adapters.serving_choices/1`), and only where the person is
-  # shown the feature it belongs to. Clearing it asks neither. The database refuses an
-  # adapter that is not in use, of the pool's organisation, all the same.
-  defp validate_served_by(%Ecto.Changeset{valid?: true} = changeset, scope) do
-    with true <- Ecto.Changeset.changed?(changeset, :served_by_id),
-         id when is_binary(id) <- Ecto.Changeset.get_field(changeset, :served_by_id) do
-      if Features.visible?(scope, :factory) and
-           Enum.any?(Adapters.serving_choices(scope), &(&1.id == id)),
-         do: changeset,
-         else:
-           Ecto.Changeset.add_error(
-             changeset,
-             :served_by_id,
-             dgettext_noop("errors", "is invalid")
-           )
-    else
-      _unchanged_or_cleared -> changeset
+  # A pool's adapter, when it is set, changed or cleared, and only where the person is
+  # shown the feature it belongs to. Where they are not, a clear is dropped from the
+  # changeset, so the pool keeps its adapter while the rest of the edit saves, and an
+  # adapter named is refused, as before. One named must be one of the adapters that may
+  # serve the scope's workspace (`Apiary.Adapters.serving_choices/1`). The database
+  # refuses an adapter that is not in use, of the pool's organisation, all the same.
+  defp validate_served_by(%Ecto.Changeset{valid?: valid?} = changeset, scope) do
+    shown? = Features.visible?(scope, :factory)
+
+    case Ecto.Changeset.fetch_change(changeset, :served_by_id) do
+      :error ->
+        changeset
+
+      {:ok, nil} ->
+        if shown?,
+          do: changeset,
+          else: Ecto.Changeset.delete_change(changeset, :served_by_id)
+
+      {:ok, _id} when not valid? ->
+        changeset
+
+      {:ok, id} ->
+        if shown? and Enum.any?(Adapters.serving_choices(scope), &(&1.id == id)),
+          do: changeset,
+          else:
+            Ecto.Changeset.add_error(
+              changeset,
+              :served_by_id,
+              dgettext_noop("errors", "is invalid")
+            )
     end
   end
-
-  defp validate_served_by(changeset, _scope), do: changeset
 
   @doc """
   update_node/3 renames `node`, and changes a gateway's `url` or a node's or a pool's
