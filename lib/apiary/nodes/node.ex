@@ -40,7 +40,11 @@ defmodule Apiary.Nodes.Node do
   @typedoc """
   A node's kind: one permanent machine, a pool of short-lived instances, or a gateway.
   """
-  @type kind :: :node | :pool | :gateway | :adapter
+  @type kind :: :node | :pool | :gateway | feature_kind()
+
+  # The kind a feature the documentation does not differ by adds (`docs: false`): an
+  # adapter. A private type, so the served docs show its name alone.
+  @typep feature_kind :: :adapter
 
   @typedoc """
   A node's or a pool's choice of gateway: direct, its workspace's default gateway, or the
