@@ -7,9 +7,8 @@ defmodule Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation do
   # those made later included (`applies_to` `all`), or to the workspaces it lists
   # (`selected`); the list of repositories it applied to goes.
   #
-  # The tables start empty: the migration of 20261016090000 refuses to run while any of
-  # them holds a row, and this one checks its four again, so nothing is moved and nothing
-  # of a workspace is kept.
+  # The tables start empty: this migration refuses to run while any of its four holds a
+  # row, so nothing is moved and nothing of a workspace is kept.
   #
   #   * `workspace_connections` is renamed `organisation_connections`, with its indexes and
   #     constraints, and loses `workspace_id`; its release and its definition are of its
