@@ -116,6 +116,31 @@ defmodule Apiary.Accounts.Scope do
     %__MODULE__{access_key: access_key, workspace: nil}
   end
 
+  @doc false
+  # for_connection/2 is the scope of an adapter's key (`for_access_key/1`) narrowed to the
+  # organisation of `connection`, a connection of that adapter, which carries its
+  # organisation loaded, and no workspace: what the key asks for that organisation is asked
+  # with it (`Apiary.Access`), so the edition answers for the organisation. Nothing else
+  # of the scope changes. The caller found the connection the adapter's
+  # (`Apiary.Adapters.Connections`).
+  @spec for_connection(t, struct()) :: t
+  def for_connection(
+        %__MODULE__{
+          access_key: %AccessKey{
+            node_id: adapter_id,
+            organisation_id: nil,
+            workspace_id: nil,
+            node: %Node{kind: :adapter}
+          }
+        } = scope,
+        %Apiary.Adapters.Connection{
+          adapter_id: adapter_id,
+          organisation: %Organisation{id: organisation_id} = organisation
+        }
+      )
+      when is_binary(adapter_id) and is_binary(organisation_id),
+      do: %{scope | organisation: organisation, workspace: nil}
+
   defp with_node(%AccessKey{node: %Node{}} = access_key), do: access_key
 
   defp with_node(%AccessKey{node_id: node_id} = access_key) when is_binary(node_id),

@@ -3,6 +3,7 @@ defmodule Apiary.Access do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Access.Action
+  alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.{Edition, Features}
   alias Apiary.Nodes.Node
@@ -1040,11 +1041,26 @@ defmodule Apiary.Access do
 
   # An adapter's key acts on that adapter alone, which has no organisation, as the key has
   # none: any other subject, another adapter, an organisation, or anything else, is not
-  # found to it.
-  defp key_subject(:adapter_key, %Scope{access_key: %AccessKey{node_id: id}}, subject) do
+  # found to it. Its scope narrowed to the organisation of a connection of that adapter
+  # (`Apiary.Accounts.Scope.for_connection/2`) acts on that organisation too, and on its
+  # connections to that adapter, and nothing else of it.
+  defp key_subject(:adapter_key, %Scope{access_key: %AccessKey{node_id: id}} = scope, subject) do
+    organisation_id =
+      case scope.organisation do
+        %Organisation{id: organisation_id} when is_binary(organisation_id) -> organisation_id
+        _none -> nil
+      end
+
     case subject do
       %Node{id: ^id, kind: :adapter, organisation_id: nil, workspace_id: nil}
       when is_binary(id) ->
+        :ok
+
+      %Organisation{id: ^organisation_id} when is_binary(organisation_id) ->
+        :ok
+
+      %Connection{adapter_id: ^id, organisation_id: ^organisation_id}
+      when is_binary(id) and is_binary(organisation_id) ->
         :ok
 
       _other ->
@@ -1610,6 +1626,19 @@ defmodule Apiary.Access do
   nowhere, such as an account. An access key's scope is its key's workspace.
   """
   @spec place(Scope.t() | subject | nil) :: {Ecto.UUID.t() | nil, Ecto.UUID.t() | nil} | nil
+  # The key of an adapter, which has none, is at the organisation its scope was narrowed
+  # to, through a connection of that adapter (`Apiary.Accounts.Scope.for_connection/2`).
+  def place(%Scope{
+        access_key: %AccessKey{
+          organisation_id: nil,
+          workspace_id: nil,
+          node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+        },
+        organisation: %Organisation{id: organisation_id}
+      })
+      when is_binary(organisation_id),
+      do: {organisation_id, nil}
+
   def place(%Scope{access_key: %AccessKey{} = key}),
     do: {key.organisation_id, key.workspace_id}
 

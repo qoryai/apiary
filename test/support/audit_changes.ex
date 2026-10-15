@@ -415,10 +415,10 @@ defmodule Apiary.AuditChanges do
   # An owner connects the instance's adapter to their organisation, whose trail holds the
   # entry, about the organisation.
   def make(:"adapter.connect", %{scope: scope}) do
-    adapter = adapter_fixture()
-    pass = "pass-" <> Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
+    %{adapter: adapter} = connectable_adapter_fixture()
     before = entries()
-    {:ok, ^pass} = Adapters.connect(scope, adapter, fn _adapter -> {:ok, pass} end)
+    {:ok, url, _session} = Adapters.connect(scope, adapter)
+    %{"state" => pass} = URI.decode_query(URI.parse(url).query)
 
     %{
       scope: scope,
@@ -778,7 +778,7 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"adapter.delete", scope, adapter), do: Adapters.delete_adapter(scope, adapter)
 
   defp attempt(:"adapter.connect", scope, adapter),
-    do: Adapters.connect(scope, adapter, fn _adapter -> {:ok, "pass"} end)
+    do: Adapters.connect(scope, adapter)
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)

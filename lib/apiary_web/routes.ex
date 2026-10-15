@@ -274,10 +274,11 @@ defmodule ApiaryWeb.Routes do
           pipe_through [:browser, :require_authenticated_user]
 
           get "/invitations/:token/continue", InvitationController, :continue
-          # A link that names an integration by its adapter's public id alone, with the
-          # `factory` feature: answered as a path that does not exist, as an adapter is the
-          # instance's and names no organisation to lead to.
-          get "/integrations/:adapter_id", AdapterRedirectController, :show
+          # A link that names an organisation's connection to an integration by its
+          # public id (`ac_…`), with the `factory` feature, as an adapter gives one: to the
+          # integration's page in the connection's organisation, after the return the
+          # adapter hands back, when the link carries one.
+          get "/integrations/:connection_id", AdapterRedirectController, :show
         end
 
         scope "/", ApiaryWeb do
