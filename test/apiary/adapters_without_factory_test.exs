@@ -15,6 +15,9 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Nodes.Node
 
+  # The adapters are made where the feature is on, before it is turned off.
+  @moduletag needs: :factory
+
   @without [:observability, :security]
 
   # Made with every feature, as an instance had them before it was launched without one.

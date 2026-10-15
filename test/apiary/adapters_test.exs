@@ -2,9 +2,8 @@ defmodule Apiary.AdaptersTest do
   # Adapters: nodes of kind `adapter` that live at their organisation, made, renamed,
   # connected and deleted through `Apiary.Adapters`; their access keys, enrolled with a code
   # and verified as any node's; the role their keys act in; a node pool's adapter
-  # (`served_by_id`); and the schema that keeps them. The suite runs with every feature,
-  # the one adapters belong to among them; `Apiary.AdaptersWithoutFactoryTest` runs
-  # without it.
+  # (`served_by_id`); and the schema that keeps them. It runs where the feature adapters
+  # belong to is on; `Apiary.AdaptersWithoutFactoryTest` turns it off.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -17,7 +16,9 @@ defmodule Apiary.AdaptersTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
-  alias Apiary.Nodes.Node
+  alias Apiary.Nodes.{Instance, Node}
+
+  @moduletag needs: :factory
 
   # The edition holds the organisations a test names suspended, as an edition that
   # suspends an organisation answers for it (`c:Apiary.Edition.check/3`): whatever a scope
@@ -46,6 +47,12 @@ defmodule Apiary.AdaptersTest do
   defp reload(node), do: Repo.get!(Node, node.id)
 
   # A key enrolled on `adapter`, as a verified request carries it.
+  # The constraint the database refused `fun` by.
+  defp refused(fun) do
+    %Postgrex.Error{postgres: %{constraint: constraint}} = assert_raise(Postgrex.Error, fun)
+    constraint
+  end
+
   defp keyed(scope, adapter) do
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, adapter)
     {:ok, verified} = AccessKeys.fetch_for_verification(key.key_id)
@@ -695,17 +702,51 @@ defmodule Apiary.AdaptersTest do
       end
     end
 
-    test "its keys, codes and instances are at its place", %{scope: scope} do
+    test "its keys, codes and instances are at its place, and none moves", %{scope: scope} do
       adapter = adapter_fixture(scope)
       %{key: key} = keyed(scope, adapter)
+      code = Repo.get_by!(EnrolmentCode, used_by_key_id: key.key_id)
+      now = DateTime.utc_now()
 
-      assert_raise Postgrex.Error,
-                   ~r/access_keys_node_id_fkey|node_place_matches|access_keys/,
-                   fn ->
-                     Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
-                       set: [workspace_id: scope.workspace.id]
-                     )
-                   end
+      instance =
+        Repo.insert!(%Instance{
+          organisation_id: adapter.organisation_id,
+          workspace_id: nil,
+          node_id: adapter.id,
+          access_key_id: key.id,
+          instance_id: "i_tracker-1",
+          first_seen_at: now,
+          last_seen_at: now
+        })
+
+      # Moved into a workspace, each names the adapter at a place it is not.
+      for {schema, id, constraint} <- [
+            {AccessKey, key.id, "access_keys_node_id_fkey"},
+            {EnrolmentCode, code.id, "access_key_enrolment_codes_node_id_fkey"},
+            {Instance, instance.id, "node_instances_node_id_fkey"}
+          ] do
+        assert refused(fn ->
+                 Repo.update_all(from(r in schema, where: r.id == ^id),
+                   set: [workspace_id: scope.workspace.id]
+                 )
+               end) == constraint
+      end
+
+      # The other way: a key of a workspace's node, moved out of its workspace.
+      %{access_key: node_key} = access_key_fixture(scope)
+
+      assert refused(fn ->
+               Repo.update_all(from(k in AccessKey, where: k.id == ^node_key.id),
+                 set: [workspace_id: nil]
+               )
+             end) == "node_place_matches"
+
+      # And the adapter itself does not move into a workspace.
+      assert refused(fn ->
+               Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                 set: [workspace_id: scope.workspace.id]
+               )
+             end) == "nodes_place_fixed"
     end
   end
 
