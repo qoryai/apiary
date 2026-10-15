@@ -112,6 +112,7 @@ defmodule Apiary.Audit do
   alias Apiary.Integrations.Release
   alias Apiary.Secrets.Secret
   alias Apiary.Variables.Variable
+  alias Apiary.WorkItems.WorkItem
 
   @subject_kinds %{
     Organisation => "organisation",
@@ -127,7 +128,8 @@ defmodule Apiary.Audit do
     Variable => "variable",
     Connection => "connection",
     ServiceDefinition => "service_definition",
-    Release => "integration_release"
+    Release => "integration_release",
+    WorkItem => "work_item"
   }
 
   @default_retention_days 90

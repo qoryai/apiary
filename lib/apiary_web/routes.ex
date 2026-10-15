@@ -274,6 +274,9 @@ defmodule ApiaryWeb.Routes do
           pipe_through [:browser, :require_authenticated_user]
 
           get "/invitations/:token/continue", InvitationController, :continue
+          # A link that names an integration by its adapter's public id alone, sent on to
+          # its page in its organisation's settings, with the `factory` feature.
+          get "/integrations/:adapter_id", AdapterRedirectController, :show
         end
 
         scope "/", ApiaryWeb do
@@ -494,6 +497,43 @@ defmodule ApiaryWeb.Routes do
               live "/gateways/:node_id/access-key/codes/:code_id/revoke",
                    NodeLive.AccessKey,
                    :revoke_code
+
+              # Organisation settings › Integrations, with the `factory` feature: the list,
+              # with Add an integration a separate page, and an integration's page, its
+              # tabs and its acts, by its adapter's public id (`na_…`). Its Access key tab
+              # has the acts of a node's that an adapter's key takes: no key made in the
+              # browser. The fixed path goes first, so that `:adapter_id` never takes it.
+              live "/settings/integrations", AdapterLive.Index, :index
+              live "/settings/integrations/new", AdapterLive.Index, :new
+              live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
+              live "/settings/integrations/:adapter_id/assign", AdapterLive.Show, :assign
+              live "/settings/integrations/:adapter_id/node-pools", AdapterLive.Show, :pools
+
+              live "/settings/integrations/:adapter_id/access-key",
+                   AdapterLive.AccessKey,
+                   :index
+
+              live "/settings/integrations/:adapter_id/access-key/new-code",
+                   AdapterLive.AccessKey,
+                   :new_code
+
+              live "/settings/integrations/:adapter_id/access-key/keys/:key_id/revoke",
+                   AdapterLive.AccessKey,
+                   :revoke
+
+              live "/settings/integrations/:adapter_id/access-key/codes/:code_id/revoke",
+                   AdapterLive.AccessKey,
+                   :revoke_code
+
+              live "/settings/integrations/:adapter_id/settings", AdapterLive.Show, :settings
+
+              live "/settings/integrations/:adapter_id/settings/rename",
+                   AdapterLive.Show,
+                   :rename
+
+              live "/settings/integrations/:adapter_id/settings/remove",
+                   AdapterLive.Show,
+                   :remove
             end
 
             unquote(@block)
@@ -504,6 +544,14 @@ defmodule ApiaryWeb.Routes do
               # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
+              # The work, with the `factory` feature: the work items, one by its number in
+              # the workspace, with its ticket and its thread; and the Backlog, the tickets
+              # it takes in from, with the Take in dialog over the list at a separate path.
+              live "/work", WorkItemLive.Index, :index
+              live "/work/:number", WorkItemLive.Show, :ticket
+              live "/work/:number/thread", WorkItemLive.Show, :thread
+              live "/backlog", BacklogLive.Index, :index
+              live "/backlog/:item_id/take-in", BacklogLive.Index, :take_in
               # The targets the workspace's runs changed, and one target's page: its
               # address is the glob, the target's path alone, its system before the path
               # only where two targets of the workspace share the path (question 9, answer

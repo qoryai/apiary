@@ -78,6 +78,17 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
           place: :organisation
+        },
+      # The organisation's integrations, with the `factory` feature, for whoever may read
+      # them; each change there asks its action again.
+      can?(scope, :"adapter.read") &&
+        %Entry{
+          section: :main,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/settings/integrations",
+          place: :organisation
         }
     ]
 

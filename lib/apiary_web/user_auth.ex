@@ -373,7 +373,19 @@ defmodule ApiaryWeb.UserAuth do
       instance: ApiaryWeb.Layouts.instance_sections(scope)
     }
     |> Map.merge(policy_mode(scope))
+    |> Map.merge(waiting_on(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
+  end
+
+  # How many work items wait on the reader, beside Work items, where they may read them;
+  # none at nought, as Runs shows none while no run is alive.
+  defp waiting_on(%Scope{} = scope) do
+    with true <- Apiary.Access.can?(scope, :"work_item.read", scope.workspace),
+         count when count > 0 <- Apiary.WorkItems.count_waiting_on(scope) do
+      %{waiting_on: count}
+    else
+      _none -> %{}
+    end
   end
 
   # The targets the person pinned in the workspace, the first seven in the order pinned:

@@ -30,6 +30,7 @@ defmodule ApiaryWeb.Layouts do
   # so is the name of the first group's navigation.
   @sections [
     home: nil,
+    work: gettext_noop("Work"),
     record: gettext_noop("Record"),
     guard: gettext_noop("Guard"),
     account: gettext_noop("Your settings")
@@ -37,6 +38,10 @@ defmodule ApiaryWeb.Layouts do
 
   # How many pinned targets the sidebar lists.
   @pins 7
+
+  # The entries of the sidebar the palette's Go to leaves out, by key: Work's, which the
+  # palette does not list yet.
+  @off_palette [:work_items, :backlog]
 
   @doc """
   nav_entries/1 is the navigation of `scope`'s pages, as `ApiaryWeb.Nav.Entry` values:
@@ -61,6 +66,26 @@ defmodule ApiaryWeb.Layouts do
         icon: "hero-squares-2x2",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}" end,
         action: :"run.read"
+      },
+      # Work, with the `factory` feature: the work items, with how many wait on the reader,
+      # and the Backlog they are taken in from. Not in the palette's Go to yet
+      # (`palette_entries/1`).
+      %Entry{
+        section: :work,
+        key: :work_items,
+        label: gettext("Work items"),
+        icon: "hero-rectangle-stack",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/work" end,
+        action: :"work_item.read",
+        count: :waiting_on
+      },
+      %Entry{
+        section: :work,
+        key: :backlog,
+        label: gettext("Backlog"),
+        icon: "hero-inbox-stack",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/backlog" end,
+        action: :"work_item.read"
       },
       %Entry{
         section: :record,
@@ -322,6 +347,14 @@ defmodule ApiaryWeb.Layouts do
   """
   @spec palette_entries(Apiary.Accounts.Scope.t()) :: [{Entry.t(), String.t()}]
   def palette_entries(scope) do
+    for {entry, _path} = found <- open_entries(scope),
+        entry.key not in @off_palette,
+        do: found
+  end
+
+  # Every entry of the navigation the reader may open in `scope`, with where it leads: the
+  # palette's, and the ones it leaves out, for where a switch of workspace lands.
+  defp open_entries(scope) do
     for %Entry{} = entry <- nav_entries(scope),
         shown?(entry, scope, nil),
         do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
@@ -2469,7 +2502,7 @@ defmodule ApiaryWeb.Layouts do
   @spec switch_target(Apiary.Accounts.Scope.t(), String.t(), String.t() | nil) :: String.t()
   def switch_target(scope, key, page \\ nil) do
     found =
-      Enum.find(palette_entries(scope), fn {entry, _path} ->
+      Enum.find(open_entries(scope), fn {entry, _path} ->
         entry.place == :workspace and Atom.to_string(entry.key) == key
       end)
 

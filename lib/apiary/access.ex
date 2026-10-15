@@ -335,6 +335,36 @@ defmodule Apiary.Access do
       roles: @admins,
       asked_of: :organisation
     ),
+    # What an adapter reports, each assigned to a workspace of the organisation.
+    Action.new(:"collection.assign", "assign what an adapter reports to a workspace",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # A workspace's work items, people's actions. A comment's author may delete it too,
+    # while they may still comment (`author?/3`).
+    Action.new(:"work_item.read", "read the workspace's work items",
+      feature: :factory,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(:"work_item.take_in", "take an item in as a work item of the workspace",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.undo", "undo the taking in of a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
+    Action.new(:"work_item.comment", "comment on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.comment_delete", "delete a comment on a work item",
+      feature: :factory,
+      roles: @admins
+    ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(:"source_item.post", "post the items of a source",
       feature: :factory,
@@ -400,6 +430,10 @@ defmodule Apiary.Access do
   # What anyone with a membership may take on their own, at any level: leaving the
   # organisation. The last-owner rule still holds (`Apiary.Organisations`).
   @own [:"member.remove"]
+
+  # What anyone may take on what they wrote, by the action they wrote it with, while their
+  # role still holds that one (`author?/3`): deleting their comment on a work item.
+  @authored %{"work_item.comment_delete": :"work_item.comment"}
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
@@ -992,6 +1026,7 @@ defmodule Apiary.Access do
          :ok <- key_subject(role, scope, subject) do
       cond do
         own?(scope, action, subject) -> :ok
+        author?(scope, action, subject) -> :ok
         not_own?(scope, action, subject) -> {:error, :forbidden}
         role not in action(action).roles -> {:error, :forbidden}
         not over?(role, action, subject) -> {:error, :forbidden}
@@ -1522,6 +1557,15 @@ defmodule Apiary.Access do
        do: true
 
   defp own?(_scope, _action, _subject), do: false
+
+  # An action of `@authored` on what the asker wrote, `author_id` theirs, while their role
+  # still holds the action they wrote it with: a comment's author deletes it while they may
+  # still comment. The place was asked already (`check_place/3`).
+  defp author?(%Scope{user: %User{id: user_id}} = scope, action, %{author_id: user_id})
+       when is_map_key(@authored, action) and is_binary(user_id),
+       do: role(scope) in action(Map.fetch!(@authored, action)).roles
+
+  defp author?(_scope, _action, _subject), do: false
 
   # An action of `@not_own` on the asker's own membership: nobody suspends or activates
   # themselves.

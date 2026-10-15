@@ -3569,6 +3569,11 @@ msgstr ""
 msgid "Background tasks"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Backlog"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Behind the policy in force"
@@ -13533,6 +13538,26 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrew an invitation that could not be delivered"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Work"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item comment added"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item comment deleted"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Work items"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
