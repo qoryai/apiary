@@ -250,9 +250,22 @@ defmodule Apiary.Races do
     """)
   end
 
-  @doc "Runs the changes, each on a connection of its own, let go at once: their answers, in order."
+  @doc """
+  Runs the changes, each on a separate connection, let go at once: their answers, in
+  order. Each change holds its connection until all are let go, so the changes and the
+  test's connection must fit in the pool together (`sides/1`); more fail the test at once,
+  where they would otherwise wait for a connection none gives back.
+  """
   def together(funs) do
     parent = self()
+    pool = pool_size()
+
+    if length(funs) >= pool do
+      flunk(
+        "together/1 holds a connection for each of #{length(funs)} changes beside the " <>
+          "test's, and the pool has #{pool}"
+      )
+    end
 
     tasks =
       Enum.map(funs, fn fun ->
@@ -270,4 +283,13 @@ defmodule Apiary.Races do
     for %Task{pid: pid} <- tasks, do: send(pid, :go)
     Task.await_many(tasks, @timeout)
   end
+
+  @doc """
+  The number of changes, `wanted` at most, that `together/1` can run at once: one less
+  than the pool, as the test holds one. The tests' pool is twice the schedulers.
+  """
+  @spec sides(pos_integer) :: pos_integer
+  def sides(wanted), do: max(min(wanted, pool_size() - 1), 1)
+
+  defp pool_size, do: Keyword.fetch!(Repo.config(), :pool_size)
 end
