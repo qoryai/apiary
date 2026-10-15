@@ -273,6 +273,16 @@ defmodule ApiaryWeb.FactoryShellTest do
           action not in [:"work_item.comment", :"work_item.comment_delete"],
           do: refute(action in offered, "#{action}")
     end
+
+    test "⌘K's Go to and Organisation settings list Integrations for an owner, and Go to leaves Work out",
+         %{conn: conn, scope: scope} do
+      hrefs = go_to_hrefs(conn, scope)
+      assert "/#{scope.organisation.slug}/settings/integrations" in hrefs
+      refute workspace_path(scope, "/work") in hrefs
+      refute workspace_path(scope, "/backlog") in hrefs
+
+      assert :integrations in section_keys(scope)
+    end
   end
 
   describe "hidden from the person, on an instance with it" do
@@ -304,6 +314,26 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert "workspace.rename" in values
       refute "work_item.comment" in values
       refute "work_item.comment_delete" in values
+    end
+
+    test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
+         %{conn: conn, user: user} do
+      scope = owner_scope(user)
+      hrefs = go_to_hrefs(conn, scope)
+
+      for href <- shell_hrefs(scope), do: refute(href in hrefs, href)
+
+      keys = for {entry, _path} <- Layouts.palette_entries(scope), do: entry.key
+      assert :overview in keys
+      refute :work_items in keys
+      refute :backlog in keys
+
+      overview = workspace_path(scope)
+      assert Layouts.switch_target(scope, "work_items") == overview
+      assert Layouts.switch_target(scope, "backlog") == overview
+
+      assert :people in section_keys(scope)
+      refute :integrations in section_keys(scope)
     end
   end
 
@@ -359,7 +389,62 @@ defmodule ApiaryWeb.FactoryShellTest do
       values = for {value, _words} <- action_options(conn, scope), do: value
       refute "work_item.comment" in values
     end
+
+    test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
+         %{conn: conn, user: user} do
+      scope = owner_scope(user)
+      hrefs = go_to_hrefs(conn, scope)
+
+      for href <- shell_hrefs(scope), do: refute(href in hrefs, href)
+
+      keys = for {entry, _path} <- Layouts.palette_entries(scope), do: entry.key
+      assert :overview in keys
+      refute :work_items in keys
+      refute :backlog in keys
+
+      overview = workspace_path(scope)
+      assert Layouts.switch_target(scope, "work_items") == overview
+      assert Layouts.switch_target(scope, "backlog") == overview
+
+      assert :people in section_keys(scope)
+      refute :integrations in section_keys(scope)
+    end
   end
+
+  # Where ⌘K's Go to leads, as `ApiaryWeb.JumpController` answers it from the
+  # organisation's path and from the workspace's, with nothing typed and with the words
+  # of the feature's entries.
+  defp go_to_hrefs(conn, scope) do
+    for path <- ["/#{scope.organisation.slug}/jump", workspace_path(scope, "/jump")],
+        q <- ["", "integrations", "Integrations", "Work", "Backlog"],
+        group <-
+          conn
+          |> put_req_header("accept", "application/json")
+          |> get(path, %{"q" => q})
+          |> json_response(200)
+          |> Map.fetch!("groups"),
+        group["label"] == "Go to",
+        item <- group["items"],
+        uniq: true,
+        do: item["href"]
+  end
+
+  # The paths of the feature's entries: Organisation settings › Integrations, Work items
+  # and Backlog.
+  defp shell_hrefs(scope) do
+    [
+      "/#{scope.organisation.slug}/settings/integrations",
+      workspace_path(scope, "/work"),
+      workspace_path(scope, "/backlog")
+    ]
+  end
+
+  defp section_keys(scope),
+    do: for(entry <- ApiaryWeb.SettingsComponents.sections(scope, :organisation), do: entry.key)
+
+  # The owner's scope read again, with what the edition hides from them now.
+  defp owner_scope(user),
+    do: Apiary.Organisations.load_scope(Apiary.Accounts.Scope.for_user(user))
 
   # The Action filter's options of the organisation's Activity page, as `{value, words}`.
   defp action_options(conn, scope) do

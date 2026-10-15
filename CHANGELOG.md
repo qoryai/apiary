@@ -40,6 +40,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
   force in this run” gives its reason in the past tense, such as “No rule matched.
   Enforce mode denied it.”
+- The organisation slug `integrations` is reserved as well: a slug made from a name skips
+  it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
+  the slug `integrations-2`.
 
 ### Migrations
 
