@@ -33,9 +33,19 @@ msgstr ""
 msgid "Enter an email address, such as dana@example.com."
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "Give it a name."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
+msgstr ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "This organisation already has an integration named %{name}."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex

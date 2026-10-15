@@ -54,7 +54,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Gateways, Nodes, Repo, Runs}
+  alias Apiary.{Access, Adapters, Features, Gateways, Nodes, Repo, Runs}
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Runs.{Filters, Run}
   alias ApiaryWeb.{NodeComponents, People, SettingsComponents, UserAuth}
@@ -123,19 +123,40 @@ defmodule ApiaryWeb.NodeLive.Show do
             NodeComponents.reached_workspaces(socket.assigns.memberships)
           )
 
-    assign(socket, gateways: [], default: nil, through: nil, using: using)
+    assign(socket,
+      gateways: [],
+      default: nil,
+      through: nil,
+      using: using,
+      serving: false,
+      adapters: []
+    )
   end
 
   defp assign_gateways(socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    assign(socket,
+    socket
+    |> assign_serving()
+    |> assign(
       gateways: scope |> Gateways.gateway_choices() |> Repo.preload(:organisation),
       default: scope.workspace |> Gateways.default_gateway_for() |> Repo.preload(:organisation),
       through: node |> Gateways.chosen() |> Repo.preload(:organisation),
       using: nil
     )
   end
+
+  # The integrations a pool's form chooses the one that serves it from, where the person is
+  # shown the feature they belong to; none for a node, which no integration serves.
+  defp assign_serving(%{assigns: %{node: %Node{kind: :pool}}} = socket) do
+    scope = socket.assigns.current_scope
+
+    if Features.visible?(scope, :factory),
+      do: assign(socket, serving: true, adapters: Adapters.serving_choices(scope)),
+      else: assign(socket, serving: false, adapters: [])
+  end
+
+  defp assign_serving(socket), do: assign(socket, serving: false, adapters: [])
 
   # What the node is doing now: the header's state and the Overview's instances.
   defp assign_activity(socket) do
@@ -646,6 +667,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           delete_refused={@delete_refused}
           gateways={@gateways}
           default={@default}
+          serving={@serving}
+          adapters={@adapters}
           paths={@paths}
         />
       </SettingsComponents.layout>
@@ -1130,10 +1153,16 @@ defmodule ApiaryWeb.NodeLive.Show do
 
   attr :gateways, :list, required: true
   attr :default, :any, required: true
+
+  attr :serving, :boolean,
+    required: true,
+    doc: "whether the form asks a pool's integration, Served by"
+
+  attr :adapters, :list, required: true, doc: "the integrations a pool may name"
   attr :paths, :map, required: true
 
   # Settings › General: the name, the kind as it is, a pool's limit, a gateway's URL or a
-  # node's choice of gateway, and the danger zone.
+  # node's choice of gateway, a pool's integration, and the danger zone.
   defp general(assigns) do
     ~H"""
     <div :if={!@may_edit and !@may_set_limit} id="node-settings-readonly">
@@ -1213,6 +1242,15 @@ defmodule ApiaryWeb.NodeLive.Show do
           gateways={@gateways}
           default={@default}
           offer_default={@default != nil or @node.gateway_choice == :default}
+          disabled={!@may_edit}
+        />
+        <.input
+          :if={@serving}
+          field={@form[:served_by_id]}
+          type="select"
+          label={gettext("Served by")}
+          options={[{gettext("No integration"), ""} | Enum.map(@adapters, &{&1.name, &1.id})]}
+          hint={gettext("The integration that starts this pool's queued runs.")}
           disabled={!@may_edit}
         />
         <SettingsComponents.save :if={@may_edit or @may_set_limit}>

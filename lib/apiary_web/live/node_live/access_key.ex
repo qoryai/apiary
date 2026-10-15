@@ -2378,14 +2378,25 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :hosts, :any, required: true
   attr :confirming, :any, required: true, doc: "the act asked of this key, or false"
 
+  attr :forager_file, :boolean,
+    default: true,
+    doc: "whether an active key's card leads to its Forager file"
+
+  attr :stored_secrets, :boolean,
+    default: true,
+    doc: "whether the card says if the key may fetch stored secrets"
+
+  @doc false
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
-  # An act asked of it is confirmed in place of the acts.
-  defp key_card(assigns) do
+  # An act asked of it is confirmed in place of the acts. An integration's Access key tab
+  # (`ApiaryWeb.AdapterLive.AccessKey`) lists its keys with it too, without a Forager file
+  # or stored secrets, which an adapter's key has neither of.
+  def key_card(assigns) do
     %{key: key, may: may} = assigns
 
     assigns =
       assign(assigns,
-        secrets: Apiary.Features.visible?(assigns.scope, :secrets),
+        secrets: assigns.stored_secrets and Apiary.Features.visible?(assigns.scope, :secrets),
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2511,8 +2522,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:action>
           </.inline_confirm>
         <% _none -> %>
-          <p :if={@state == :active} class="flex flex-wrap gap-3">
+          <p
+            :if={@state == :active and (@forager_file or :revoke in @acts)}
+            class="flex flex-wrap gap-3"
+          >
             <.button
+              :if={@forager_file}
               id={"#{@dom}-forager-file"}
               variant="link"
               patch={key_path(@paths, @key, "forager-file")}
