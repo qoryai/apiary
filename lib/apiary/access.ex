@@ -389,6 +389,14 @@ defmodule Apiary.Access do
       roles: [:adapter_key],
       asked_of: :organisation,
       audited: {:not, "a claim is kept with what it claims, not in the audit trail"}
+    ),
+    Action.new(:"adapter.disconnect", "end a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
     )
   ]
 

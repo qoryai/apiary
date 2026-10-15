@@ -132,7 +132,8 @@ defmodule Apiary.AccessRows do
       {:"work_item.comment_delete", yes: @owners ++ [:admin]},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
-      {:"dispatch.claim", yes: [:adapter_key, :hidden], on: :adapter}
+      {:"dispatch.claim", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter}
     ]
   end
 

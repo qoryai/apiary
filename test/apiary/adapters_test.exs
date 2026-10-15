@@ -22,6 +22,14 @@ defmodule Apiary.AdaptersTest do
 
   @moduletag needs: :factory
 
+  # The actions of an adapter's key at the server contract, which its role alone takes.
+  @adapter_key_actions [
+    :"source_item.post",
+    :"work_item.read_changes",
+    :"dispatch.claim",
+    :"adapter.disconnect"
+  ]
+
   # The edition holds the organisations a test names suspended, as an edition that
   # suspends an organisation answers for it (`c:Apiary.Edition.check/3`): whatever a scope
   # of one asks is refused, read from the organisation the scope carries.
@@ -562,7 +570,7 @@ defmodule Apiary.AdaptersTest do
       %{key: key} = keyed(admin, adapter)
       key_scope = Scope.for_access_key(key)
 
-      for action <- [:"source_item.post", :"work_item.read_changes", :"dispatch.claim"] do
+      for action <- @adapter_key_actions do
         assert Access.authorize(key_scope, action, adapter) == :ok
         assert Access.authorize(key_scope, action, other) == {:error, :not_found}
         assert Access.authorize(key_scope, action, scope.organisation) == {:error, :not_found}
@@ -597,7 +605,7 @@ defmodule Apiary.AdaptersTest do
             scope,
             Scope.for_instance(scope.organisation)
           ],
-          action <- [:"source_item.post", :"work_item.read_changes", :"dispatch.claim"] do
+          action <- @adapter_key_actions do
         assert Access.authorize(asker, action, adapter) == {:error, :not_found}
         assert Adapters.for_key(asker, action) == {:error, :not_found}
       end
@@ -609,12 +617,14 @@ defmodule Apiary.AdaptersTest do
 
     test "no person's role holds what an adapter's key does" do
       for {role, actions} <- Access.roles(), role != :adapter_key do
-        for action <- [:"source_item.post", :"work_item.read_changes", :"dispatch.claim"] do
+        for action <- @adapter_key_actions do
           refute action in actions, "#{role} holds #{action}"
         end
       end
 
-      assert Access.action(:"work_item.read_changes").roles == [:adapter_key]
+      for action <- @adapter_key_actions do
+        assert Access.action(action).roles == [:adapter_key]
+      end
 
       for action <- [:"adapter.create", :"adapter.edit", :"adapter.delete"] do
         assert Access.action(action).roles == []
@@ -1170,6 +1180,7 @@ defmodule Apiary.AdaptersTest do
 
     hidden = for action <- Access.actions(), Access.feature(action) in undocumented, do: action
     assert :"adapter.create" in hidden
+    assert :"adapter.disconnect" in hidden
 
     for action <- hidden do
       refute moduledoc =~ "`#{action}`", "the moduledoc names #{action}"

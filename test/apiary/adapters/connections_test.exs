@@ -835,6 +835,79 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(theirs) == theirs
     end
 
+    test "a disconnect the key's rights do not take is forbidden before any lookup, one answer whatever the id names",
+         %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
+      other = connectable_adapter_fixture()
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
+      {theirs, _nonce} = connection_fixture(scope, other.adapter, :connected)
+      {ended, _nonce} = connection_fixture(sign_up_fixture().scope, adapter, :listed)
+      {:ok, _} = Connections.end_connection(key_scope, ended.public_id)
+      pool = connected_pool(scope, adapter)
+
+      held = [connected, pending, theirs, ended] |> Enum.map(&reload/1)
+
+      # The edition narrows the key's rights: its role does not take `adapter.disconnect`.
+      :ok = Edition.put_test_stub(EditionStubs.NoDisconnect)
+
+      ids = [
+        connected.public_id,
+        "ac_0000000000000000",
+        "nope",
+        nil,
+        pending.public_id,
+        ended.public_id,
+        theirs.public_id
+      ]
+
+      for id <- ids do
+        assert Connections.end_connection(key_scope, id) == {:error, :forbidden}
+      end
+
+      # Another adapter's key, narrowed alike, is refused the same for a connection of
+      # its adapter and for ours.
+      for id <- [theirs.public_id, connected.public_id] do
+        assert Connections.end_connection(key_scope(other.access_key), id) ==
+                 {:error, :forbidden}
+      end
+
+      # Nothing changed, and the key's other actions are as they were.
+      assert Enum.map(held, &reload/1) == held
+      assert Repo.get!(Node, pool.id).served_by_id == adapter.id
+
+      assert {:ok, _, _} =
+               Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
+    end
+
+    test "end_connection/2's order: forbidden, then unknown, then ended",
+         %{adapter: adapter, connected: connected, key_scope: key_scope} do
+      other = connectable_adapter_fixture()
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
+      {:ok, _} = Connections.end_connection(key_scope, connected.public_id)
+
+      # The key's rights take the disconnect: an id it does not hold is unknown, and one
+      # that ended is ended.
+      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :unknown}
+
+      assert Connections.end_connection(key_scope(other.access_key), pending.public_id) ==
+               {:error, :unknown}
+
+      assert Connections.end_connection(key_scope, connected.public_id) == {:error, :ended}
+
+      # Its rights narrowed, each is forbidden first, and the pending one is not ended.
+      :ok = Edition.put_test_stub(EditionStubs.NoDisconnect)
+
+      for id <- ["ac_0000000000000000", connected.public_id, pending.public_id] do
+        assert Connections.end_connection(key_scope, id) == {:error, :forbidden}
+      end
+
+      assert Connections.end_connection(key_scope(other.access_key), pending.public_id) ==
+               {:error, :forbidden}
+
+      assert reload(pending) == pending
+    end
+
     test "the order: forbidden, then unknown, then ended, then suspended",
          %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
       Edition.put_test_stub(EditionStubs.OutOfUse)
