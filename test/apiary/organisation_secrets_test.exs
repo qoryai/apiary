@@ -421,6 +421,40 @@ defmodule Apiary.OrganisationSecretsTest do
       assert uses == %{at_organisation.id => [], at_workspace.id => []}
     end
 
+    test "an organisation's secrets' names are unique among them whatever their case",
+         %{scope: scope, owner: owner} do
+      create!(scope, %{name: "API_KEY"})
+
+      for name <- ["API_KEY", "api_key"] do
+        assert {:error, changeset} =
+                 Secrets.create_organisation_secret(scope, %{name: name, value: "x"})
+
+        assert {"is already the name of a secret in this organisation, compared without case", _} =
+                 changeset.errors[:name]
+      end
+
+      two = create!(scope, %{name: "TWO"})
+      assert {:error, changeset} = Secrets.update_secret(scope, two, %{name: "Api_Key"})
+      assert changeset.errors[:name]
+
+      # Another organisation's, and a workspace's, take the name all the same.
+      assert {:ok, _} =
+               Secrets.create_organisation_secret(sign_up_fixture().scope, %{
+                 name: "API_KEY",
+                 value: "x"
+               })
+
+      other = workspace_scope(owner.user, workspace_fixture(owner.organisation))
+      create_in_workspace!(scope, %{name: "API_KEY"})
+      create_in_workspace!(other, %{name: "API_KEY"})
+
+      # Within a workspace, as before.
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "api_key", value: "x"})
+
+      assert {"is already the name of a secret in this workspace, compared without case", _} =
+               changeset.errors[:name]
+    end
+
     test "a workspace's secret and the organisation's may have the same name", %{scope: scope} do
       at_organisation = create!(scope, %{name: "API_KEY"})
       at_workspace = create_in_workspace!(scope, %{name: "api_key"})
