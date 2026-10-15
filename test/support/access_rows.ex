@@ -9,7 +9,7 @@ defmodule Apiary.AccessRows do
       owner         an owner of the organisation
       other_owner   an owner of another organisation
       access_key    a gateway, with an access key of the workspace
-      adapter_key   an adapter of the organisation, with an access key enrolled on it,
+      adapter_key   an adapter of the instance, with an access key enrolled on it,
                     asked of that adapter
       instance      the instance itself, in a job no person enqueued
       feature_off   whoever the action is for, an owner, an access key or the instance, on
@@ -28,7 +28,8 @@ defmodule Apiary.AccessRows do
   `Apiary.Mail.save_settings/3` and `turn_on/2` ask, nor for setting the product's name,
   an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
   instance's settings, an instance admin's after a recent sign-in, as
-  `Apiary.InstanceConfig.save/3` asks. Creating an organisation
+  `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
+  the instance, an instance admin's, as `Apiary.Adapters` asks. Creating an organisation
   is a sign-up's, which asks nothing, in the core; an edition may let a signed-in person
   create one. Creating, deleting and restoring a workspace are asked of the organisation:
   an owner creates one, an owner or an admin deletes any workspace of it; purging is the
@@ -116,10 +117,10 @@ defmodule Apiary.AccessRows do
       {:"run.post_events", yes: [:access_key, :hidden]},
       {:"run_configuration.fetch", yes: [:access_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
-      {:"adapter.create", yes: @owners ++ [:admin]},
-      {:"adapter.edit", yes: @owners ++ [:admin], on: :adapter},
-      {:"adapter.delete", yes: @owners ++ [:admin], on: :adapter},
-      {:"adapter.connect", yes: @owners ++ [:admin], on: :adapter},
+      {:"adapter.create", yes: []},
+      {:"adapter.edit", yes: []},
+      {:"adapter.delete", yes: []},
+      {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},
       {:"work_item.read", yes: @owners ++ [:member, :admin]},
       {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
@@ -136,18 +137,19 @@ defmodule Apiary.AccessRows do
   end
 
   @doc """
-  setup/1 makes the core's place, `home`, an organisation with its workspace and an
-  adapter of the organisation (`adapter`), and the scopes of the core's actors in it. The
-  adapter's key, `adapter_key`, is a key enrolled on it, its scope that of the server
-  contract (`Apiary.Accounts.Scope.for_access_key/1`): its organisation, and no workspace.
+  setup/1 makes the core's place, `home`, an organisation with its workspace, beside an
+  adapter of the instance (`adapter`), and the scopes of the core's actors in it. The
+  adapter's key, `adapter_key`, is a key enrolled on it by an instance admin, its scope
+  that of the server contract (`Apiary.Accounts.Scope.for_access_key/1`): no organisation,
+  and no workspace.
   """
   @spec setup(map) :: %{places: map, scopes: map}
   def setup(_made) do
     home = sign_up_fixture()
     owner = home.scope
     %{access_key: key} = access_key_fixture(owner)
-    adapter = Apiary.NodesFixtures.adapter_fixture(owner)
-    %{access_key: adapter_key} = enrolled_key_fixture(owner, adapter)
+    adapter = Apiary.NodesFixtures.adapter_fixture()
+    %{access_key: adapter_key} = enrolled_key_fixture(instance_admin_scope(), adapter)
 
     %{
       places: %{home: Map.put(home, :adapter, adapter)},
@@ -170,8 +172,8 @@ defmodule Apiary.AccessRows do
   @doc """
   refusal/3 is why the core's answer is no where it is not the role: a feature that is off
   or hidden is not found, and so is a hidden part, anything of another organisation, an
-  organisation that does not exist yet, which is no place, and, to an adapter's key,
-  anything but that adapter.
+  organisation that does not exist yet, which is no place, an adapter, which is the
+  instance's, to anyone but its key, and, to an adapter's key, anything but that adapter.
   """
   @spec refusal(atom, atom, term) :: :not_found | nil
   def refusal(action, actor, subject) do
@@ -189,6 +191,10 @@ defmodule Apiary.AccessRows do
         :not_found
 
       actor == :adapter_key and not match?(%Apiary.Nodes.Node{kind: :adapter}, subject) ->
+        :not_found
+
+      actor != :adapter_key and
+          match?(%Apiary.Nodes.Node{kind: :adapter, organisation_id: nil}, subject) ->
         :not_found
 
       true ->

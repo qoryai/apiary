@@ -308,26 +308,29 @@ defmodule Apiary.Access do
       roles: [:access_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
-    # The organisation's adapters, people's actions.
-    Action.new(:"adapter.read", "read the organisation's adapters",
+    # The instance's adapters: an organisation's people read them and connect them; an
+    # instance admin makes, renames and deletes them, which no role takes: the context
+    # function asks `instance_admin?/1` (`Apiary.Adapters`).
+    Action.new(:"adapter.read", "read the instance's adapters",
       feature: :factory,
       roles: @members,
       asked_of: :organisation,
       audited: {:not, @read}
     ),
-    Action.new(:"adapter.create", "make an adapter of the organisation",
+    Action.new(
+      :"adapter.create",
+      "make an adapter of the instance: an instance admin after a recent sign-in, which no role takes",
       feature: :factory,
-      roles: @admins,
       asked_of: :organisation
     ),
-    Action.new(:"adapter.edit", "rename an adapter",
+    Action.new(:"adapter.edit", "rename an adapter: an instance admin, which no role takes",
       feature: :factory,
-      roles: @admins,
       asked_of: :organisation
     ),
-    Action.new(:"adapter.delete", "delete an adapter, which revokes its access keys",
+    Action.new(
+      :"adapter.delete",
+      "delete an adapter, which revokes its access keys: an instance admin, which no role takes",
       feature: :factory,
-      roles: @admins,
       asked_of: :organisation
     ),
     Action.new(:"adapter.connect", "connect an adapter to the system it reaches",
@@ -397,7 +400,7 @@ defmodule Apiary.Access do
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
     access_key: "a gateway, with a key of the workspace",
-    adapter_key: "an adapter, with a key of its organisation, on that adapter",
+    adapter_key: "an adapter of the instance, with a key enrolled on it, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
 
@@ -1035,12 +1038,17 @@ defmodule Apiary.Access do
     end
   end
 
-  # An adapter's key acts on that adapter alone: any other subject, another adapter of its
-  # organisation, the organisation, or anything else, is not found to it.
+  # An adapter's key acts on that adapter alone, which has no organisation, as the key has
+  # none: any other subject, another adapter, an organisation, or anything else, is not
+  # found to it.
   defp key_subject(:adapter_key, %Scope{access_key: %AccessKey{node_id: id}}, subject) do
     case subject do
-      %Node{id: ^id, kind: :adapter} when is_binary(id) -> :ok
-      _other -> {:error, :not_found}
+      %Node{id: ^id, kind: :adapter, organisation_id: nil, workspace_id: nil}
+      when is_binary(id) ->
+        :ok
+
+      _other ->
+        {:error, :not_found}
     end
   end
 
@@ -1058,7 +1066,7 @@ defmodule Apiary.Access do
     place = place(subject)
 
     cond do
-      not in_place?(place(scope), place) -> {:error, :not_found}
+      not same_place?(scope, place) -> {:error, :not_found}
       not reaches?(scope, place) -> {:error, :not_found}
       action not in @on_marked and marked?(scope, subject) -> {:error, :not_found}
       true -> :ok
@@ -1072,7 +1080,24 @@ defmodule Apiary.Access do
   place.
   """
   @spec within?(Scope.t() | nil, subject | nil) :: boolean
-  def within?(scope, subject), do: in_place?(place(scope), place(subject))
+  def within?(scope, subject), do: same_place?(scope, place(subject))
+
+  # The key of an adapter, which has no organisation and no workspace, is where its
+  # adapter is, and where nothing else of an organisation is: the instance, which no other
+  # scope is at. It reaches nothing else there: `key_subject/3` holds it to its adapter.
+  defp same_place?(
+         %Scope{
+           access_key: %AccessKey{
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         {nil, nil}
+       ),
+       do: true
+
+  defp same_place?(scope, place), do: in_place?(place(scope), place)
 
   defp in_place?({organisation_id, _workspace_id}, {organisation_id, nil})
        when is_binary(organisation_id),

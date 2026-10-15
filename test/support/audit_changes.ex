@@ -387,32 +387,45 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
-  def make(:"adapter.create", %{scope: scope}) do
+  # An adapter is the instance's: an instance admin, signed in just now, makes, renames and
+  # deletes one, in the trail of the instance's organisation.
+  def make(:"adapter.create", _ctx) do
+    admin = instance_admin_scope()
     before = entries()
-    {:ok, adapter} = Adapters.create_adapter(scope, %{name: "Acme tracker"})
-    %{scope: scope, subject: {"node", adapter.id}, before: before}
+    {:ok, adapter} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
   end
 
-  def make(:"adapter.edit", %{scope: scope}) do
-    adapter = adapter_fixture(scope)
+  def make(:"adapter.edit", _ctx) do
+    adapter = adapter_fixture()
+    admin = instance_admin_scope()
     before = entries()
-    {:ok, _} = Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
-    %{scope: scope, subject: {"node", adapter.id}, before: before}
+    {:ok, _} = Adapters.rename_adapter(admin, adapter, %{name: "Acme tracker"})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
   end
 
-  def make(:"adapter.delete", %{scope: scope}) do
-    adapter = adapter_fixture(scope)
+  def make(:"adapter.delete", _ctx) do
+    adapter = adapter_fixture()
+    admin = instance_admin_scope()
     before = entries()
-    {:ok, _} = Adapters.delete_adapter(scope, adapter)
-    %{scope: scope, subject: {"node", adapter.id}, before: before}
+    {:ok, _} = Adapters.delete_adapter(admin, adapter)
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
   end
 
+  # An owner connects the instance's adapter to their organisation, whose trail holds the
+  # entry, about the organisation.
   def make(:"adapter.connect", %{scope: scope}) do
-    adapter = adapter_fixture(scope)
+    adapter = adapter_fixture()
     pass = "pass-" <> Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
     before = entries()
     {:ok, ^pass} = Adapters.connect(scope, adapter, fn _adapter -> {:ok, pass} end)
-    %{scope: scope, subject: {"node", adapter.id}, secret: pass, before: before}
+
+    %{
+      scope: scope,
+      subject: {"organisation", scope.organisation.id},
+      secret: pass,
+      before: before
+    }
   end
 
   def make(action, %{scope: scope} = ctx) when action in @stand_ins do
@@ -651,9 +664,9 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
-  defp prepare(:"adapter.edit", %{scope: scope}), do: adapter_fixture(scope)
-  defp prepare(:"adapter.delete", %{scope: scope}), do: adapter_fixture(scope)
-  defp prepare(:"adapter.connect", %{scope: scope}), do: adapter_fixture(scope)
+  defp prepare(:"adapter.edit", _ctx), do: adapter_fixture()
+  defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
+  defp prepare(:"adapter.connect", _ctx), do: adapter_fixture()
   defp prepare(:"collection.assign", %{scope: scope}), do: scope.organisation
 
   defp prepare(action, %{scope: scope}) when action in @stand_ins,
@@ -815,6 +828,10 @@ defmodule Apiary.AuditChanges do
   # The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`).
   defp instance_organisation,
     do: Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+
+  # `scope`'s person in the instance's organisation, whose trail holds what they change of
+  # the instance.
+  defp in_instance(scope), do: Scope.in_organisation(scope, instance_organisation())
 
   # A fresh instance admin, by a release command: their scope.
   defp password_link_admin do

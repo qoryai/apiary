@@ -395,6 +395,11 @@ defmodule Apiary.Audit do
   defp actor(_scope),
     do: raise(ArgumentError, "an audit entry needs a person, an access key or the instance")
 
+  # A key without an organisation is an adapter's, which is the instance's: it acts in the
+  # trail of the instance's organisation, as its adapter's entries are.
+  defp organisation_id(%Scope{access_key: %AccessKey{organisation_id: nil}}),
+    do: Apiary.Edition.instance_organisation_id()
+
   defp organisation_id(%Scope{access_key: %AccessKey{organisation_id: id}}), do: id
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id
   defp organisation_id(_scope), do: nil
@@ -412,6 +417,12 @@ defmodule Apiary.Audit do
 
   defp place(%Organisation{id: id}), do: {id, nil}
   defp place(%Workspace{id: id, organisation_id: organisation_id}), do: {organisation_id, id}
+
+  # An adapter and its access keys have no organisation: they are the instance's, and
+  # their entries are in the trail of the instance's organisation, the one it is when the
+  # entry is written (`c:Apiary.Edition.instance_organisation_id/0`), and stay there.
+  defp place(%module{organisation_id: nil, workspace_id: nil}) when module in [Node, AccessKey],
+    do: {Apiary.Edition.instance_organisation_id(), nil}
 
   defp place(%{organisation_id: organisation_id, workspace_id: workspace_id}),
     do: {organisation_id, workspace_id}
@@ -528,7 +539,9 @@ defmodule Apiary.Audit do
   `system/path` of each target, and the run id of each run, and the name of each other organisation an entry names by id, under a key
   that ends in `_id` in its `details`, `before` or `after`: the other side of a change
   that concerns two organisations, which an edition records. Only what the scope's
-  organisation holds is looked up, people and those organisations aside. A person whose account is deleted, a key or a row
+  organisation holds is looked up, people and those organisations aside; in the instance's
+  organisation, the nodes and access keys of the instance, which no organisation holds,
+  too. A person whose account is deleted, a key or a row
   that is gone has no key: the page says so. A workspace marked for deletion is still
   named until it is purged.
   """
@@ -557,6 +570,10 @@ defmodule Apiary.Audit do
     targets = ids.(&[if(&1.subject_kind == "target", do: &1.subject_id)])
     runs = ids.(&[if(&1.subject_kind == "run", do: &1.subject_id)])
 
+    # The instance's nodes and keys, which have no organisation, have their entries in the
+    # trail of the instance's organisation, and are named there alone.
+    instance? = organisation_id == Apiary.Edition.instance_organisation_id()
+
     organisations =
       ids.(fn entry ->
         for field <- [:details, :before, :after],
@@ -571,14 +588,21 @@ defmodule Apiary.Audit do
         lookup(
           keys,
           from(k in AccessKey,
-            where: k.organisation_id == ^organisation_id,
+            where:
+              k.organisation_id == ^organisation_id or
+                (^instance? and is_nil(k.organisation_id)),
             select: {k.id, %{label: k.label, key_id: k.key_id}}
           )
         ),
       nodes:
         lookup(
           nodes,
-          from(n in Node, where: n.organisation_id == ^organisation_id, select: {n.id, n.name})
+          from(n in Node,
+            where:
+              n.organisation_id == ^organisation_id or
+                (^instance? and is_nil(n.organisation_id)),
+            select: {n.id, n.name}
+          )
         ),
       workspaces:
         lookup(

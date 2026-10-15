@@ -2,18 +2,33 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
   use Ecto.Migration
 
   # An adapter is a fourth kind of node: kind `adapter`, public id `na_` and sixteen
-  # lowercase Crockford base32 characters. It lives at its organisation alone, with no
-  # workspace (`nodes_place_check`), has no instance limit, chooses no gateway (`direct`),
-  # has no gateway address (`url`, held to gateways by `nodes_url_check`) and is never a
-  # default gateway (`nodes_default_gateway_check`). Its keys, codes and instances are at
-  # its place as a gateway's of an organisation are (`node_place_matches`), and its kind
-  # and place are fixed when it is made (`nodes_kind_fixed`, `nodes_place_fixed`).
+  # lowercase Crockford base32 characters. It is the instance's, with no organisation and
+  # no workspace: a node has no organisation exactly when it is an adapter
+  # (`nodes_place_check`). It has no instance limit, chooses no gateway (`direct`), has no
+  # gateway address (`url`, held to gateways by `nodes_url_check`) and is never a default
+  # gateway (`nodes_default_gateway_check`). Its kind and place are fixed when it is made
+  # (`nodes_kind_fixed`, `nodes_place_fixed`, and `nodes_place_check`, which keeps a node
+  # with an organisation from losing it).
   #
-  # Names: an organisation's gateways and its adapters each have names unique among
-  # themselves in use. `nodes_organisation_live_name_index`, which held every node without
-  # a workspace, holds gateways alone from now on, and
-  # `nodes_organisation_adapter_name_index` holds the adapters. An adapter's name is at most
-  # 64 characters (`nodes_adapter_name_check`), within the 80 every node has.
+  # Its access keys and enrolment codes are at its place, with no organisation and no
+  # workspace: `organisation_id` loses NOT NULL on `nodes`, `access_keys` and
+  # `access_key_enrolment_codes`, and a key or a code without an organisation has no
+  # workspace either (`access_keys_place_check`, `access_key_enrolment_codes_place_check`;
+  # a key without one names its node). The trigger `node_place_matches` refuses a row
+  # without a workspace whose organisation is not its node's, NULL for NULL, so a key or a
+  # code without an organisation is an adapter's, and an adapter's has none. It now fires
+  # on a change of `organisation_id` too. `node_instances` keeps its organisation NOT NULL:
+  # an adapter has no instances. The keys of these rows to their node and code are
+  # composite and `MATCH SIMPLE`, which hold nothing of a row without an organisation and
+  # a workspace, so each gains a plain key beside them: `access_keys_node_fkey`,
+  # `access_keys_enrolment_code_fkey` and `access_key_enrolment_codes_node_fkey`.
+  #
+  # Names: an organisation's gateways have names unique among its gateways in use, and the
+  # adapters names unique among the adapters in use on the instance.
+  # `nodes_organisation_live_name_index`, which held every node without a workspace, holds
+  # gateways alone from now on, and `nodes_adapter_name_index` holds the adapters. An
+  # adapter's name is at most 64 characters (`nodes_adapter_name_check`), within the 80
+  # every node has.
   #
   # Beside them, the columns only an adapter has, NULL on every other node
   # (`nodes_adapter_check`):
@@ -29,12 +44,13 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
   # Every interval is 60 to 86400 seconds. All are NULL until the adapter first declares
   # them.
   #
-  # The checks are re-created and added NOT VALID, so the change scans no row under a lock
-  # that blocks writes to `nodes`; a later migration validates them
+  # The checks and keys are re-created and added NOT VALID, so the change scans no row
+  # under a lock that blocks writes to the tables; a later migration validates them
   # (`20261015131200_validate_an_adapter_s_checks`).
   @public_id "^(nd|np|ng|na)_[0-9a-hjkmnp-tv-z]{16}$"
   @old_public_id "^(nd|np|ng)_[0-9a-hjkmnp-tv-z]{16}$"
   @interval "BETWEEN 60 AND 86400"
+  @rows ~w(access_keys access_key_enrolment_codes node_instances)
 
   def up do
     for name <- ~w(nodes_kind_check nodes_public_id_check nodes_instance_limit_check
@@ -73,12 +89,71 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
     ) NOT VALID
     """
 
+    for table <- ~w(nodes access_keys access_key_enrolment_codes) do
+      execute "ALTER TABLE #{table} ALTER COLUMN organisation_id DROP NOT NULL"
+    end
+
     execute """
     ALTER TABLE nodes ADD CONSTRAINT nodes_place_check CHECK (
       (workspace_id IS NOT NULL OR kind IN ('gateway', 'adapter')) AND
-      (kind <> 'adapter' OR workspace_id IS NULL)
+      (kind <> 'adapter' OR workspace_id IS NULL) AND
+      (organisation_id IS NULL) = (kind = 'adapter')
     ) NOT VALID
     """
+
+    execute """
+    ALTER TABLE access_keys ADD CONSTRAINT access_keys_place_check CHECK (
+      organisation_id IS NOT NULL OR (workspace_id IS NULL AND node_id IS NOT NULL)
+    ) NOT VALID
+    """
+
+    execute """
+    ALTER TABLE access_key_enrolment_codes ADD CONSTRAINT access_key_enrolment_codes_place_check
+      CHECK (organisation_id IS NOT NULL OR workspace_id IS NULL) NOT VALID
+    """
+
+    execute """
+    ALTER TABLE access_keys ADD CONSTRAINT access_keys_node_fkey
+      FOREIGN KEY (node_id) REFERENCES nodes (id) NOT VALID
+    """
+
+    execute """
+    ALTER TABLE access_keys ADD CONSTRAINT access_keys_enrolment_code_fkey
+      FOREIGN KEY (enrolment_code_id) REFERENCES access_key_enrolment_codes (id) NOT VALID
+    """
+
+    execute """
+    ALTER TABLE access_key_enrolment_codes ADD CONSTRAINT access_key_enrolment_codes_node_fkey
+      FOREIGN KEY (node_id) REFERENCES nodes (id) NOT VALID
+    """
+
+    # A row without a workspace names a node without one, of its organisation, or of none
+    # for a row without one.
+    execute """
+    CREATE OR REPLACE FUNCTION node_place_matches() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.workspace_id IS NULL AND NEW.node_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM nodes
+          WHERE id = NEW.node_id AND workspace_id IS NULL
+            AND organisation_id IS NOT DISTINCT FROM NEW.organisation_id
+      ) THEN
+        RAISE EXCEPTION 'a row without a workspace is of a node without one, of its organisation'
+          USING ERRCODE = 'check_violation', CONSTRAINT = 'node_place_matches';
+      END IF;
+      RETURN NEW;
+    END
+    $$
+    """
+
+    for table <- @rows do
+      execute "DROP TRIGGER #{table}_node_place_matches ON #{table}"
+
+      execute """
+      CREATE TRIGGER #{table}_node_place_matches
+      BEFORE INSERT OR UPDATE OF node_id, workspace_id, organisation_id ON #{table}
+      FOR EACH ROW EXECUTE FUNCTION node_place_matches()
+      """
+    end
 
     execute """
     ALTER TABLE nodes ADD CONSTRAINT nodes_adapter_name_check
@@ -92,9 +167,9 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
              name: :nodes_organisation_live_name_index
            )
 
-    create unique_index(:nodes, [:organisation_id, :name],
+    create unique_index(:nodes, [:name],
              where: "kind = 'adapter' AND deleted_at IS NULL",
-             name: :nodes_organisation_adapter_name_index
+             name: :nodes_adapter_name_index
            )
 
     alter table(:nodes) do
@@ -134,19 +209,58 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
     """
   end
 
-  # Rolled back, a node is a node, a node pool or a gateway again. An adapter's row could
-  # not stay, and its keys, codes and instances name it, so the rollback refuses while any
-  # adapter row is there, deleted ones included, rather than delete them.
+  # Rolled back, a node is a node, a node pool or a gateway again, and every row has its
+  # organisation. An adapter's row could not stay, and its keys and codes name it, so the
+  # rollback refuses while any adapter row is there, deleted ones included, or any key or
+  # code without an organisation, rather than delete them.
   def down do
     execute("""
     DO $$
     BEGIN
-      IF EXISTS (SELECT 1 FROM nodes WHERE kind = 'adapter') THEN
+      IF EXISTS (SELECT 1 FROM nodes WHERE kind = 'adapter' OR organisation_id IS NULL)
+         OR EXISTS (SELECT 1 FROM access_keys WHERE organisation_id IS NULL)
+         OR EXISTS (SELECT 1 FROM access_key_enrolment_codes WHERE organisation_id IS NULL) THEN
         RAISE EXCEPTION 'nodes holds adapters: delete their rows before rolling this back';
       END IF;
     END
     $$
     """)
+
+    execute """
+    CREATE OR REPLACE FUNCTION node_place_matches() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.workspace_id IS NULL AND NEW.node_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM nodes WHERE id = NEW.node_id AND workspace_id IS NULL
+      ) THEN
+        RAISE EXCEPTION 'a row without a workspace is of a node without one'
+          USING ERRCODE = 'check_violation', CONSTRAINT = 'node_place_matches';
+      END IF;
+      RETURN NEW;
+    END
+    $$
+    """
+
+    for table <- @rows do
+      execute "DROP TRIGGER #{table}_node_place_matches ON #{table}"
+
+      execute """
+      CREATE TRIGGER #{table}_node_place_matches
+      BEFORE INSERT OR UPDATE OF node_id, workspace_id ON #{table}
+      FOR EACH ROW EXECUTE FUNCTION node_place_matches()
+      """
+    end
+
+    execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_node_fkey"
+    execute "ALTER TABLE access_keys DROP CONSTRAINT access_keys_enrolment_code_fkey"
+    execute "ALTER TABLE access_keys DROP CONSTRAINT access_keys_node_fkey"
+
+    execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_place_check"
+
+    execute "ALTER TABLE access_keys DROP CONSTRAINT access_keys_place_check"
+
+    for table <- ~w(access_key_enrolment_codes access_keys nodes) do
+      execute "ALTER TABLE #{table} ALTER COLUMN organisation_id SET NOT NULL"
+    end
 
     for name <- ~w(nodes_sync_check nodes_connect_url_check nodes_adapter_check) do
       execute "ALTER TABLE nodes DROP CONSTRAINT #{name}"
@@ -160,7 +274,7 @@ defmodule Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode do
       remove :connect_url
     end
 
-    drop index(:nodes, [:organisation_id, :name], name: :nodes_organisation_adapter_name_index)
+    drop index(:nodes, [:name], name: :nodes_adapter_name_index)
     drop index(:nodes, [:organisation_id, :name], name: :nodes_organisation_live_name_index)
 
     create unique_index(:nodes, [:organisation_id, :name],

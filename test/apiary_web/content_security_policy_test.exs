@@ -44,7 +44,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   # Routes no request can load, each with the reason.
   @skipped %{
     "/dev/storybook/assets/*asset" =>
-      "the storybook's static files are served before it; the route raises for the rest"
+      "the storybook's static files are served before it; the route raises for the rest",
+    "/integrations/:adapter_id" =>
+      "an adapter is the instance's and names no organisation to lead to: the link raises " <>
+        "not found for anyone signed in (`test/apiary_web/factory_shell_test.exs` holds it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.
@@ -582,9 +585,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   # The records of the `factory` feature: an adapter, or a placeholder where the instance
   # has not got it, whose pages answer as paths that do not exist.
-  defp factory_params(scope) do
+  defp factory_params(_scope) do
     if Features.on?(:factory),
-      do: %{adapter_id: adapter_fixture(scope, %{name: "Acme tracker"}).public_id},
+      do: %{adapter_id: adapter_fixture(%{name: "Acme tracker"}).public_id},
       else: %{adapter_id: "na_x"}
   end
 

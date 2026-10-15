@@ -49,13 +49,16 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
-  An adapter of the scope's organisation, made by the scope's person, an owner or an admin,
-  on an instance with the feature adapters belong to: named `attrs`'s `name`, else a fresh
-  name.
+  An adapter of the instance, with no organisation, made by an instance admin
+  (`Apiary.OrganisationsFixtures.instance_admin_scope/0`) on an instance with the feature
+  adapters belong to: named `attrs`'s `name`, else a fresh name.
   """
-  def adapter_fixture(scope, attrs \\ %{}) do
+  def adapter_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{name: unique_node_name()})
-    {:ok, adapter} = Apiary.Adapters.create_adapter(scope, attrs)
+
+    {:ok, adapter} =
+      Apiary.Adapters.create_adapter(Apiary.OrganisationsFixtures.instance_admin_scope(), attrs)
+
     adapter
   end
 

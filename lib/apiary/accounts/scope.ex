@@ -102,14 +102,10 @@ defmodule Apiary.Accounts.Scope do
     of_key(access_key)
   end
 
-  # An adapter's key acts for its organisation, which the scope carries, with no
-  # workspace: what an edition asks of the organisation it asks of that one.
+  # An adapter's key is the instance's, as its adapter is: no organisation and no
+  # workspace, so nothing an edition asks of an organisation is asked of one for it.
   defp of_key(%AccessKey{node: %Node{kind: :adapter}, workspace_id: nil} = access_key) do
-    %__MODULE__{
-      access_key: access_key,
-      organisation: key_organisation(access_key),
-      workspace: nil
-    }
+    %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
   end
 
   defp of_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
@@ -127,20 +123,16 @@ defmodule Apiary.Accounts.Scope do
 
   defp with_node(%AccessKey{} = access_key), do: %{access_key | node: nil}
 
-  defp key_organisation(%AccessKey{organisation: %Organisation{} = organisation}),
-    do: organisation
-
-  defp key_organisation(%AccessKey{organisation_id: organisation_id}),
-    do: Apiary.Repo.get!(Organisation, organisation_id)
-
   @doc """
   key_place/1 is what the place of an access key's scope is asked as, a subject of
   `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
   the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
-  its id alone.
+  its id alone; nil for a key with neither, which is at no place of an organisation.
   """
-  @spec key_place(t) :: %Workspace{} | %Organisation{}
+  @spec key_place(t) :: %Workspace{} | %Organisation{} | nil
   def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: nil}}), do: nil
 
   def key_place(%__MODULE__{
         access_key: %AccessKey{organisation: %Organisation{} = organisation}

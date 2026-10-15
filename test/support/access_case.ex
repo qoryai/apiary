@@ -32,7 +32,8 @@ defmodule Apiary.AccessCase do
   - `actors/0`, its actors;
   - `rows/0`, `[{action, keyword}]`: `yes:`, the actors that may, and `on:`, what the
     action is asked of when it is not what `Apiary.Access.Action` says (`asked_of`), or
-    `:adapter`, the place's adapter, a node of kind `:adapter` (the place's `adapter`). A
+    `:adapter`, the adapter beside the place, a node of kind `:adapter` of the instance
+    (the place's `adapter`). A
     row of an action another module has too adds its `yes:` to the other's: an edition's
     row of a core action names the edition's actors that may;
   - `setup/1`, given what the modules before it made (`%{places: %{}, scopes: %{}}`),

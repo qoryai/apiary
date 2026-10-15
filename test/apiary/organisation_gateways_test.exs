@@ -805,7 +805,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       %{access_key: key} = node_key_fixture(scope, gateway)
 
       assert_raise Postgrex.Error,
-                   ~r/access_keys_node_organisation_fkey|access_keys_organisation_id_fkey/,
+                   ~r/node_place_matches|access_keys_node_organisation_fkey|access_keys_organisation_id_fkey/,
                    fn ->
                      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
                        set: [organisation_id: stranger.organisation.id]

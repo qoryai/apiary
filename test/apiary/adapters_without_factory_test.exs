@@ -1,8 +1,8 @@
 defmodule Apiary.AdaptersWithoutFactoryTest do
   # An instance without the feature adapters belong to: no adapter is made or changed,
-  # none of their keys is enrolled or revoked, none of their codes is cancelled, and no pool
-  # names one or lets one go. The adapters there already stay as they are. Not async: the
-  # features are the whole node's.
+  # none of their keys or codes is made, enrolled, revoked or cancelled, even by an instance
+  # admin, and no pool names one. The adapters there already stay as they are. Not async:
+  # the features are the whole node's.
   use Apiary.DataCase, async: false
 
   import Ecto.Query
@@ -24,10 +24,10 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   # Made with every feature, as an instance had them before it was launched without one.
   setup do
     %{scope: scope} = sign_up_fixture()
-    adapter = adapter_fixture(scope)
-    {:ok, code_row, code} = AccessKeys.create_enrolment_code(scope, adapter, %{})
-    %{access_key: key} = enrolled_key_fixture(scope, adapter)
-    served = pool_fixture(scope, %{served_by_id: adapter.id})
+    admin = instance_admin_scope()
+    adapter = adapter_fixture()
+    {:ok, row, code} = AccessKeys.create_enrolment_code(admin, adapter, %{})
+    %{access_key: key} = enrolled_key_fixture(admin, adapter)
     previous = Application.get_env(:apiary, :features)
     {:ok, features} = Apiary.Features.parse(Enum.map_join(@without, ",", &to_string/1))
     Application.put_env(:apiary, :features, features)
@@ -35,10 +35,10 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
 
     %{
       scope: scope,
+      admin: admin,
       adapter: adapter,
       key: key,
-      code_row: code_row,
-      served: served,
+      row: row,
       code: Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
     }
   end
@@ -64,25 +64,35 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     request
   end
 
-  test "no adapter is made, renamed, connected or deleted", %{scope: scope, adapter: adapter} do
+  test "no adapter is made, renamed, connected, deleted or read, even by an instance admin",
+       %{scope: scope, admin: admin, adapter: adapter} do
     refute Apiary.Features.on?(:factory)
 
-    assert Adapters.create_adapter(scope, %{name: "Acme tracker"}) == {:error, :not_found}
-    assert Adapters.rename_adapter(scope, adapter, %{name: "x"}) == {:error, :not_found}
-    assert Adapters.connect(scope, adapter, fn _ -> {:ok, "pass"} end) == {:error, :not_found}
-    assert Adapters.delete_adapter(scope, adapter) == {:error, :not_found}
+    for asker <- [admin, scope] do
+      assert Adapters.create_adapter(asker, %{name: "Acme tracker"}) == {:error, :not_found}
+      assert Adapters.rename_adapter(asker, adapter, %{name: "x"}) == {:error, :not_found}
+      assert Adapters.connect(asker, adapter, fn _ -> {:ok, "pass"} end) == {:error, :not_found}
+      assert Adapters.delete_adapter(asker, adapter) == {:error, :not_found}
+      assert Adapters.list_adapters(asker) == []
+      assert Adapters.get_adapter(asker, adapter.public_id) == nil
+    end
+
     assert Repo.get!(Node, adapter.id).deleted_at == nil
   end
 
-  test "an adapter's code is neither made nor redeemed", %{
-    scope: scope,
-    adapter: adapter,
-    code: code
-  } do
-    assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :not_found}
+  test "an adapter's code is neither made, cancelled nor redeemed, and its key not revoked",
+       %{scope: scope, admin: admin, adapter: adapter, key: key, row: row, code: code} do
+    assert AccessKeys.create_enrolment_code(admin, adapter, %{}) == {:error, :not_found}
+    assert AccessKeys.cancel_code(admin, row) == {:error, :not_found}
+    assert AccessKeys.revoke_access_key(admin, key) == {:error, :not_found}
+    assert AccessKeys.revoke_node_keys(admin, adapter, :node_deleted) == {:error, :not_found}
+    assert AccessKeys.list_for_node(admin, adapter) == []
     assert AccessKeys.enrol(enrol_request(code)) == {:error, :unauthorized}
 
-    assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^adapter.id), :count) == 1
+    assert Repo.aggregate(
+             from(k in AccessKey, where: k.node_id == ^adapter.id and is_nil(k.revoked_at)),
+             :count
+           ) == 1
 
     # A node's code still enrols.
     node = node_fixture(scope)
@@ -113,35 +123,21 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
              Nodes.create_node(scope, %{kind: "pool", name: "spot", served_by_id: adapter.id})
   end
 
-  test "a pool keeps its adapter, and the rest of the edit saves", %{
-    scope: scope,
-    adapter: adapter,
-    served: pool
-  } do
-    assert {:ok, %Node{name: "renamed", instance_limit: 3, served_by_id: id}} =
-             Nodes.update_node(scope, pool, %{
-               "name" => "renamed",
-               "instance_limit" => "3",
-               "served_by_id" => ""
-             })
-
-    assert id == adapter.id
-    assert {:ok, %Node{served_by_id: ^id}} = Nodes.update_node(scope, pool, %{served_by_id: nil})
-    assert Repo.get!(Node, pool.id).served_by_id == adapter.id
-  end
-
   test "an adapter's key is not revoked, nor its code cancelled", %{
     scope: scope,
+    admin: admin,
     adapter: adapter,
     key: key,
-    code_row: code
+    row: code
   } do
-    assert AccessKeys.revoke_access_key(scope, key) == {:error, :not_found}
-    assert AccessKeys.cancel_code(scope, code) == {:error, :not_found}
+    for asker <- [admin, scope] do
+      assert AccessKeys.revoke_access_key(asker, key) == {:error, :not_found}
+      assert AccessKeys.cancel_code(asker, code) == {:error, :not_found}
 
-    assert Repo.transact(fn ->
-             AccessKeys.revoke_node_keys(Access.reload(scope), adapter, :node_deleted)
-           end) == {:error, :not_found}
+      assert Repo.transact(fn ->
+               AccessKeys.revoke_node_keys(Access.reload(asker), adapter, :node_deleted)
+             end) == {:error, :not_found}
+    end
 
     assert Repo.get!(AccessKey, key.id).revoked_at == nil
     assert Repo.get!(EnrolmentCode, code.id).cancelled_at == nil
