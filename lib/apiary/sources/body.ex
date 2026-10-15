@@ -1,49 +1,52 @@
 defmodule Apiary.Sources.Body do
-  @moduledoc """
-  A ticket's text from a work source, as the console shows it. The text is kept as the
-  source wrote it, and that is what an agent reads; this only decides how a page shows it.
-
-  `render/2` takes the text and its format, `"markdown"` or `"text"`. Markdown comes back
-  as safe HTML, formatted. Any other format, nil included, comes back as
-  `{:as_written, text}`, the text unchanged, which a page interpolates, so HEEx escapes
-  it.
-
-  The HTML is the one place the console shows markup it did not write
-  (`ApiaryWeb.SourceComponents.body/1`, docs/ui.md). It is made so:
-
-    * The text is parsed as GitHub Flavored Markdown: tables, strikethrough, autolinks and
-      task lists. Raw HTML is not rendered, as markup or as text: its blocks and inline
-      tags are dropped from the parsed document, and the renderer leaves out any left.
-    * A link whose URL is not an absolute `https` one with a host and no user name or
-      password is its text, unlinked: `http`, `javascript:`, `data:`, `vbscript:`,
-      `mailto:`, a relative or `//` URL, or one that does not parse. By choice, so is
-      one with a port past 65535, or whose host is not a plain name or IPv4 address: a
-      host with `%`, outside ASCII or in punycode, an IPv6 address, or a number that is
-      no IPv4 address of four parts. That is stricter than the sanitiser's URL parser,
-      which refuses some of these, so a link that is kept always keeps its address. A
-      link's title is dropped.
-    * An image is a link to its URL, its alt text the words (the URL where it has none).
-      Where the URL is not one a link may have, it is its alt text alone; inside a link,
-      its words alone, so no link is inside another. No image is shown.
-    * Headings move down two levels, so a ticket's `#` never outranks the page's: `#` is
-      an `h3`, `##` an `h4`, `###` an `h5`, and `####` to `######` an `h6`.
-    * A task box is no form field: a mark a screen reader skips, then Done or Not done
-      for a screen reader alone.
-    * A link opens in a new tab, as every link out of the console does
-      (`ApiaryWeb.CoreComponents.external_link/1`), with
-      `rel="nofollow noopener noreferrer"` and, for a screen reader, that it opens a new
-      tab.
-    * A table's header cells are `th` with `scope="col"`.
-
-  The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
-  classes, with `https` the one URL scheme and no relative URL; nothing changes it after.
-  The work is bounded, and a text past a bound comes back as written, whole. Before it is
-  parsed: longer than `max_length/0` characters (Unicode code points), or able to ask for
-  more table cells than `max_cells/0`, as a table's rows are padded to its header's
-  cells. Before it is rendered and sanitised: nesting deeper than `max_depth/0`. A text
-  that is not valid UTF-8 comes back as written too, its invalid bytes replaced with
-  U+FFFD. Nothing is cached: every call renders.
-  """
+  # A ticket's text, as the console shows it. The text is kept as the integration sent
+  # it, and that is what an agent reads; this only decides how a page shows it. Kept out
+  # of the generated documentation, which every instance serves.
+  #
+  # `render/2` takes the text and its format, `"markdown"` or `"text"`. Markdown comes
+  # back as safe HTML, formatted. Any other format, nil included, comes back as
+  # `{:as_written, text}`, the text unchanged, which a page interpolates, so HEEx escapes
+  # it.
+  #
+  # The HTML is the one place the console shows markup it did not write
+  # (`ApiaryWeb.SourceComponents.body/1`, docs/ui.md). It is made so:
+  #
+  #   * The text is parsed as GitHub Flavored Markdown: tables, strikethrough, autolinks
+  #     and task lists. Raw HTML is not rendered, as markup or as text: its blocks and
+  #     inline tags are dropped from the parsed document, and the renderer leaves out any
+  #     left.
+  #   * A link whose URL is not an absolute `https` one with a host and no user name or
+  #     password is its text, unlinked: `http`, `javascript:`, `data:`, `vbscript:`,
+  #     `mailto:`, a relative or `//` URL, or one that does not parse. By choice, so is
+  #     one with a port past 65535, or whose host is not a plain name or IPv4 address: a
+  #     host with `%`, outside ASCII or in punycode, an IPv6 address, or a number that is
+  #     no IPv4 address of four parts. That is stricter than the sanitiser's URL parser,
+  #     which refuses some of these, so a link that is kept always keeps its address. A
+  #     link's title is dropped.
+  #   * An image is never shown. It is a link to its URL whose words are "Image: <alt>",
+  #     or "Image" where it has no alt text. Where the URL is not one a link may have, or
+  #     the image is inside a link, it is those words alone, unlinked, so no link is
+  #     inside another.
+  #   * Headings move down two levels, so a ticket's `#` never outranks the page's: `#`
+  #     is an `h3`, `##` an `h4`, `###` an `h5`, and `####` to `######` an `h6`.
+  #   * A task box is no form field: a mark a screen reader skips, then Done or Not done
+  #     for a screen reader alone.
+  #   * A link opens in a new tab, as every link out of the console does
+  #     (`ApiaryWeb.CoreComponents.external_link/1`), with
+  #     `rel="nofollow noopener noreferrer"`, the faint mark of a link out, hidden from a
+  #     screen reader, and, for a screen reader, that it opens a new tab.
+  #   * A table is named for a screen reader, "Table in the ticket", by an `aria-label`
+  #     the sanitiser sets; its header cells are `th` with `scope="col"`.
+  #
+  # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
+  # classes, with `https` the one URL scheme and no relative URL; nothing changes it
+  # after. The work is bounded, and a text past a bound comes back as written, whole.
+  # Before it is parsed: longer than `max_length/0` characters (Unicode code points), or
+  # able to ask for more table cells than `max_cells/0`, as a table's rows are padded to
+  # its header's cells. Before it is rendered and sanitised: nesting deeper than
+  # `max_depth/0`. A text that is not valid UTF-8 comes back as written too, its invalid
+  # bytes replaced with U+FFFD. Nothing is cached: every call renders.
+  @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
 
@@ -82,6 +85,8 @@ defmodule Apiary.Sources.Body do
       "th" => ~w(align)
     },
     tag_attribute_values: %{"span" => %{"aria-hidden" => ["true"]}},
+    # A table's `aria-label` is set here, at render, in the reader's language
+    # (`sanitize/0`); the ticket can write no attribute of a table.
     set_tag_attribute_values: %{
       "a" => %{"target" => "_blank"},
       "th" => %{"scope" => "col"}
@@ -97,30 +102,30 @@ defmodule Apiary.Sources.Body do
     strip_comments: true
   ]
 
-  @doc "The longest text, in characters (Unicode code points), that `render/2` formats."
+  # The longest text, in characters (Unicode code points), that `render/2` formats.
+  @doc false
   @spec max_length() :: pos_integer()
   def max_length, do: @max_length
 
-  @doc """
-  The most table cells a text that `render/2` formats may ask for, counted before it is
-  parsed: one more than the most `|` on one line, times its lines.
-  """
+  # The most table cells a text that `render/2` formats may ask for, counted before it is
+  # parsed: one more than the most `|` on one line, times its lines.
+  @doc false
   @spec max_cells() :: pos_integer()
   def max_cells, do: @max_cells
 
-  @doc "How deep the blocks and inlines of a text that `render/2` formats may nest."
+  # How deep the blocks and inlines of a text that `render/2` formats may nest.
+  @doc false
   @spec max_depth() :: pos_integer()
   def max_depth, do: @max_depth
 
-  @doc """
-  The ticket's text `body` in the format `format`: safe HTML for `"markdown"`, and
-  `{:as_written, text}` for any other format, nil included, and for a Markdown text
-  `render/2` does not format: longer than `max_length/0`, asking for more table cells than
-  `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or nil
-  text is `{:as_written, ""}`: there is nothing to format. The text as written is the
-  text unchanged where it is valid UTF-8; otherwise its invalid bytes are replaced with
-  U+FFFD, so a page can send it.
-  """
+  # The ticket's text `body` in the format `format`: safe HTML for `"markdown"`, and
+  # `{:as_written, text}` for any other format, nil included, and for a Markdown text
+  # `render/2` does not format: longer than `max_length/0`, asking for more table cells
+  # than `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or
+  # nil text is `{:as_written, ""}`: there is nothing to format. The text as written is
+  # the text unchanged where it is valid UTF-8; otherwise its invalid bytes are replaced
+  # with U+FFFD, so a page can send it.
+  @doc false
   @spec render(String.t() | nil, String.t() | nil) ::
           Phoenix.HTML.safe() | {:as_written, String.t()}
   def render(body, format)
@@ -190,9 +195,15 @@ defmodule Apiary.Sources.Body do
     |> String.replace(@box_open, box("☐", pgettext("ticket task", "Not done")))
     |> String.replace(@link_end, link_end())
     |> MDEx.safe_html(
-      sanitize: @sanitize,
+      sanitize: sanitize(),
       escape: [content: false, curly_braces_in_code: false]
     )
+  end
+
+  # The allowlist, with the name every table is given for a screen reader.
+  defp sanitize do
+    table = %{"aria-label" => pgettext("ticket table", "Table in the ticket")}
+    update_in(@sanitize[:set_tag_attribute_values], &Map.put(&1, "table", table))
   end
 
   defp box(mark, words) do
@@ -235,16 +246,19 @@ defmodule Apiary.Sources.Body do
 
   defp shown(%MDEx.Image{url: url} = image, in_link, _depth) do
     alt = plain_text(image.nodes)
-    https = https?(url)
-    words = if alt == "" and https, do: url, else: alt
+
+    # Text, which the renderer escapes, so the alt text is never markup.
+    words =
+      if alt == "",
+        do: pgettext("ticket image", "Image"),
+        else: pgettext("ticket image", "Image: %{alt}", alt: alt)
+
     at = image.sourcepos
     text = [%MDEx.Text{literal: words, sourcepos: at}]
 
-    cond do
-      words == "" -> []
-      https and not in_link -> [%MDEx.Link{url: url, nodes: text, sourcepos: at}]
-      true -> text
-    end
+    if https?(url) and not in_link,
+      do: [%MDEx.Link{url: url, nodes: text, sourcepos: at}],
+      else: text
   end
 
   defp shown(%{nodes: nodes} = node, in_link, depth) when is_list(nodes),

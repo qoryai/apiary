@@ -16,6 +16,7 @@ defmodule Apiary.Sources.BodyTest do
     "ol" => ~w(start),
     "td" => ~w(align),
     "th" => ~w(align scope),
+    "table" => ~w(aria-label),
     "span" => ~w(class aria-hidden)
   }
 
@@ -66,6 +67,10 @@ defmodule Apiary.Sources.BodyTest do
         allowed = Map.get(@attributes, tag, [])
         assert name in allowed, "#{tag}[#{name}] is not allowed: #{html}"
         refute value =~ ~r/javascript|vbscript|data:/i
+      end
+
+      if tag == "table" do
+        assert attributes == [{"aria-label", "Table in the ticket"}]
       end
 
       if tag == "a" do
@@ -126,6 +131,9 @@ defmodule Apiary.Sources.BodyTest do
       assert Enum.map(header, &LazyHTML.text/1) == ~w(Name Count)
       assert LazyHTML.attribute(header, "scope") == ["col", "col"]
       assert LazyHTML.attribute(header, "align") == ["left", "right"]
+
+      table = LazyHTML.query(doc, "table")
+      assert LazyHTML.attribute(table, "aria-label") == ["Table in the ticket"]
 
       cells = LazyHTML.query(doc, "table > tbody > tr > td")
       assert Enum.map(cells, &LazyHTML.text/1) == ~w(one 1 two 2)
@@ -262,22 +270,25 @@ defmodule Apiary.Sources.BodyTest do
   end
 
   describe "images" do
-    test "an https image is a link to it, its alt text the words" do
+    test "an https image is a link to it whose words are Image: and its alt text" do
       doc = doc(~s{![a diagram](https://example.com/d.png "Diagram")})
 
       [link] = doc |> LazyHTML.query("a") |> Enum.to_list()
       assert LazyHTML.attribute(link, "href") == ["https://example.com/d.png"]
-      assert words(link) == "a diagram (opens in a new tab)"
+      assert words(link) == "Image: a diagram (opens in a new tab)"
+
+      icon = LazyHTML.query(link, ".q-ticket-ext")
+      assert LazyHTML.attribute(icon, "aria-hidden") == ["true"]
     end
 
-    test "an https image with no alt text is a link whose words are its URL" do
+    test "an https image with no alt text is a link whose words are Image" do
       doc = doc("![](https://example.com/d.png)")
 
-      assert doc |> LazyHTML.query("a") |> words() ==
-               "https://example.com/d.png (opens in a new tab)"
+      assert doc |> LazyHTML.query("a") |> words() == "Image (opens in a new tab)"
+      refute words(doc) =~ "d.png"
     end
 
-    test "an image whose URL is not https is its alt text alone" do
+    test "an image whose URL is not https is the same words, unlinked" do
       for url <- [
             "http://example.com/d.png",
             "javascript:alert(1)",
@@ -288,10 +299,31 @@ defmodule Apiary.Sources.BodyTest do
         doc = doc("Before ![the alt](#{url}) after")
 
         assert doc |> LazyHTML.query("a") |> Enum.empty?(), url
-        assert words(doc) == "Before the alt after", url
-      end
+        assert words(doc) == "Before Image: the alt after", url
 
-      assert "![](http://example.com/d.png)" |> doc() |> words() == ""
+        assert "![](#{url})" |> doc() |> words() == "Image", url
+      end
+    end
+
+    test "an image's alt text is text: its markup and entities are escaped" do
+      html = html(~s{![a \\<b onclick="x"> "q" 'r' &amp;](https://example.com/d.png)})
+      doc = LazyHTML.from_fragment(html)
+
+      # In text, a quote needs no escape; < and & do.
+      assert html =~ ~s(>Image: a &lt;b onclick="x"&gt; "q" 'r' &amp;<span)
+
+      assert doc |> LazyHTML.query("a") |> words() ==
+               ~s[Image: a <b onclick="x"> "q" 'r' & (opens in a new tab)]
+
+      assert doc |> LazyHTML.query("b") |> Enum.empty?()
+    end
+
+    test "a script in an image's alt text is dropped, as raw HTML is; its text stays" do
+      doc = doc("![a <script>alert(1)</script>](https://example.com/d.png)")
+
+      assert doc |> LazyHTML.query("script") |> Enum.empty?()
+      words = doc |> LazyHTML.query("a") |> words()
+      assert words == "Image: a alert(1) (opens in a new tab)"
     end
 
     test "an image inside a link is the link's words, so no link is inside another" do
@@ -299,7 +331,21 @@ defmodule Apiary.Sources.BodyTest do
 
       [link] = doc |> LazyHTML.query("a") |> Enum.to_list()
       assert LazyHTML.attribute(link, "href") == ["https://example.org/home"]
-      assert words(link) == "logo (opens in a new tab)"
+      assert words(link) == "Image: logo (opens in a new tab)"
+    end
+  end
+
+  describe "the generated documentation" do
+    # Every instance serves the module reference at /docs, which leaves this module out.
+    test "leaves Apiary.Sources.Body out" do
+      assert {:docs_v1, _anno, :elixir, _format, :hidden, _meta, docs} =
+               Code.fetch_docs(Body)
+
+      assert docs != []
+
+      for {{kind, _name, _arity}, _anno, _signature, doc, _meta} <- docs,
+          kind != :type,
+          do: assert(doc == :hidden)
     end
   end
 

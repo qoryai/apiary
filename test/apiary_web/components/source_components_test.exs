@@ -108,4 +108,47 @@ defmodule ApiaryWeb.SourceComponentsTest do
       assert doc |> LazyHTML.query("button, #ticket-formatted") |> Enum.empty?()
     end
   end
+
+  test "a format neither markdown nor text, none included, says it is shown as written" do
+    for format <- ["html", "Markdown", nil] do
+      doc = render("*x*", format)
+
+      note = LazyHTML.query(doc, "#ticket-unformatted")
+      assert note |> LazyHTML.text() |> String.trim() == "Shown as written."
+      assert LazyHTML.attribute(note, "class") == ["q-ticket-note text-muted"]
+    end
+
+    long = String.duplicate("a", Apiary.Sources.Body.max_length() + 1)
+
+    for {body, format} <- [{"*x*", "text"}, {"*x*", "markdown"}, {long, "markdown"}] do
+      note = body |> render(format) |> LazyHTML.query("#ticket-unformatted")
+      assert Enum.empty?(note)
+    end
+  end
+
+  test "an empty or nil text says the ticket has no description, with no switch" do
+    for body <- [nil, ""], format <- ["markdown", "text", nil] do
+      doc = render(body, format)
+
+      empty = LazyHTML.query(doc, "#ticket-empty")
+      assert empty |> LazyHTML.text() |> String.trim() == "The ticket has no description."
+
+      others = "button, #ticket-formatted, #ticket-written, #ticket-unformatted"
+      assert doc |> LazyHTML.query(others) |> Enum.empty?()
+    end
+  end
+
+  describe "the generated documentation" do
+    # Every instance serves the module reference at /docs, which leaves this module out.
+    test "leaves ApiaryWeb.SourceComponents out" do
+      assert {:docs_v1, _anno, :elixir, _format, :hidden, _meta, docs} =
+               Code.fetch_docs(SourceComponents)
+
+      assert docs != []
+
+      for {{kind, _name, _arity}, _anno, _signature, doc, _meta} <- docs,
+          kind != :type,
+          do: assert(doc == :hidden)
+    end
+  end
 end

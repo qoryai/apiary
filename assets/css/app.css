@@ -10334,6 +10334,10 @@
     margin-bottom: 8px;
     font-size: 0.8125rem;
   }
+  .q-ticket-note {
+    margin-bottom: 8px;
+    font-size: 0.8125rem;
+  }
   .q-ticket-written {
     white-space: pre-wrap;
   }
