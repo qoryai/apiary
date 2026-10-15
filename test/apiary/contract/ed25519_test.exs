@@ -259,7 +259,7 @@ defmodule Apiary.Contract.Ed25519Test do
       refute Ed25519.canonical_signature?(r)
     end
 
-    test "verifies the contract's enrolment proof" do
+    test "verifies the enrolment proof of Forager v0.7.0's contract" do
       {:ok, key} = Ed25519.decode(@fixture_access_key, 32)
       {:ok, proof} = Ed25519.decode(@enrol_proof, 64)
 
