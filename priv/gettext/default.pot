@@ -126,8 +126,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "%{count} chosen target"
-msgid_plural "%{count} chosen targets"
+msgid "%{count} chosen workspace"
+msgid_plural "%{count} chosen workspaces"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -801,7 +801,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "%{name} now applies to %{target}."
+msgid "%{name} now applies to %{workspace}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1517,13 +1517,6 @@ msgid_plural "%{number} targets follow it."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target found."
-msgid_plural "%{number} targets found."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} target has a rule on this host; it then has nothing to override and is kept."
@@ -1669,6 +1662,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} workspace"
 msgid_plural "%{number} workspaces"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} workspace found."
+msgid_plural "%{number} workspaces found."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2286,7 +2286,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
-msgid "A custom API of this workspace"
+msgid "A custom API of this organisation"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -2803,14 +2803,14 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add %{target}"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add %{title}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2859,14 +2859,14 @@ msgstr ""
 msgid "Add a rule: the composer's host field"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add a target to %{name}"
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a value to %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add a workspace to %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -2926,11 +2926,6 @@ msgstr ""
 msgid "Add rule"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add target"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add target rule"
@@ -2954,6 +2949,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add value…"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add workspace"
 msgstr ""
 
 #: lib/apiary_web/controllers/page_html/home.html.heex
@@ -3951,12 +3951,13 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Choose a target of this workspace for it to apply to."
+msgctxt "plain"
+msgid "Choose a workspace of this organisation for it to apply to."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Choose an outside API: a built-in one, or a custom API of this workspace."
+msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -3983,12 +3984,12 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Chosen targets"
+msgid "Chosen workspaces"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Chosen targets are listed under Targets."
+msgid "Chosen workspaces are listed under Workspaces."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -5347,14 +5348,6 @@ msgstr ""
 msgid "Every state that ended well"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Every target"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Every target follows it."
@@ -5373,6 +5366,14 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every target of %{workspace}."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#: lib/apiary_web/live/integration_live/index.ex
+#: lib/apiary_web/live/integration_live/release.ex
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Every workspace"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5588,7 +5589,6 @@ msgid "Find a secret by name or value ID"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -5611,6 +5611,7 @@ msgid "Find a variable by name or value"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Find a workspace"
 msgstr ""
@@ -6501,12 +6502,14 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It applies to every target of this workspace."
+msgctxt "plain"
+msgid "It applies to every workspace of this organisation."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It applies to the chosen targets below, and to no other."
+msgctxt "plain"
+msgid "It applies to the chosen workspaces below, and to no other."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -6620,7 +6623,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It is removed from this workspace. This cannot be undone."
+msgid "It is removed from this organisation. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6686,7 +6689,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It no longer applies to that target."
+msgctxt "plain"
+msgid "It no longer applies to that workspace."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -8351,16 +8355,6 @@ msgstr ""
 msgid "No target active this week matches"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "No target found that it doesn't apply to already."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "No target is chosen yet, so it applies to none."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target matches"
@@ -8391,7 +8385,6 @@ msgstr ""
 msgid "No target that never ran matches"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target yet"
@@ -8422,6 +8415,18 @@ msgstr ""
 msgid "No version yet"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "No workspace found that it doesn't apply to already."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "No workspace is chosen yet, so it applies to none."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "No workspace matches."
@@ -8438,6 +8443,7 @@ msgid "No workspace or target rule can allow it."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
@@ -8769,7 +8775,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Nothing is set up in this workspace yet."
+msgid "Nothing is set up yet."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -9082,7 +9088,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Only owners and admins change the integrations of a workspace."
+msgid "Only owners and admins change the integrations of the organisation."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -9763,7 +9769,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}."
+msgid "Qory Apiary links no stored secret to it. The organisation's secrets are in %{secrets}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -9925,21 +9931,21 @@ msgstr ""
 msgid "Remove %{name}?"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove %{target}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove %{target} from %{name}?"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{token}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{workspace} from %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -10677,6 +10683,7 @@ msgid "Secret files"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10684,7 +10691,6 @@ msgid "Secrets"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secrets and variables"
@@ -10949,11 +10955,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Set up from"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Set up in this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -11431,7 +11432,6 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -11476,7 +11476,6 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -11528,7 +11527,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "That API is neither built in nor a custom API of this workspace."
+msgid "That API is neither built in nor a custom API of this organisation."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -11618,11 +11617,6 @@ msgstr ""
 msgid "That secret is no longer in this workspace."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "That target is not one of this workspace's."
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That value is no longer in %{name}."
@@ -11636,6 +11630,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "That workspace cannot be deleted here."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "That workspace is not one of this organisation's."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -11660,7 +11659,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every target or to the ones you choose."
+msgctxt "plain"
+msgid "The agents, outside APIs and programs this organisation sets up, each with its settings. Not Qory Apiary's settings. Each applies to every workspace or to the ones you choose."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -12339,11 +12339,6 @@ msgstr ""
 msgid "The size the runtime ran at"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The target is removed from %{name}."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The target's rule is kept and shown as held. Only an owner can unlock."
@@ -12452,6 +12447,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The workspace is removed from %{name}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -12903,7 +12903,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "To choose its targets, change where it applies under %{settings}."
+msgctxt "plain"
+msgid "To choose its workspaces, change where it applies under %{settings}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -13569,6 +13570,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace"
@@ -13642,6 +13644,7 @@ msgid "Workspace, locked"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -13867,12 +13870,12 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
-msgid "You choose the targets on its page, once it is added."
+msgid "You choose the workspaces on its page, once it is added."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "You choose the targets on its page, once it is set up."
+msgid "You choose the workspaces on its page, once it is set up."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

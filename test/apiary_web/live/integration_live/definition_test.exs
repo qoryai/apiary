@@ -96,7 +96,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
     assert has_element?(
              lv,
              "#settings-section-integrations",
-             "A custom API of this workspace"
+             "A custom API of this organisation"
            )
 
     assert has_element?(lv, "#definition-users h2", "Where it is set up")
