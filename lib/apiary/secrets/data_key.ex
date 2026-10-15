@@ -4,7 +4,8 @@ defmodule Apiary.Secrets.DataKey do
   wrapped: `wrapped_key` is the data key encrypted under the instance's values key
   (`Apiary.KeyDerivation`, purpose `:values`; `Apiary.Secrets.Cipher`), and
   `wrapping_key_id` that key's id. One per workspace, made with its first secret, and
-  read only inside `Apiary.Secrets`.
+  read only inside `Apiary.Secrets`. An organisation's secrets have the organisation's
+  data key (`Apiary.Secrets.OrganisationDataKey`).
   """
   use Ecto.Schema
 
