@@ -565,7 +565,7 @@ longer again does not bring it back.
 |---|---|---|
 | `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
 
-When a workspace adds an integration from a release, Qory Apiary reads the release's
+When an organisation adds an integration from a release, Qory Apiary reads the release's
 `description.json` and `checksums.txt` from the forge or the address it names. A release
 is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
 the version at the download address that forge gives it (on GitLab, the API's download
