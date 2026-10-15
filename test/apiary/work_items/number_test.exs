@@ -5,6 +5,9 @@ defmodule Apiary.WorkItems.NumberTest do
 
   alias Apiary.WorkItems.Number
 
+  # The next number, taken inside a transaction as a take in takes it.
+  defp next(workspace), do: Repo.transact(fn -> {:ok, Number.next(workspace)} end) |> elem(1)
+
   defp counter(workspace) do
     %{rows: rows} =
       Repo.query!(
@@ -19,7 +22,7 @@ defmodule Apiary.WorkItems.NumberTest do
     %{workspace: workspace} = sign_up_fixture()
 
     assert counter(workspace) == []
-    assert Enum.map(1..3, fn _ -> Number.next(workspace) end) == [1, 2, 3]
+    assert Enum.map(1..3, fn _ -> next(workspace) end) == [1, 2, 3]
     assert [[organisation_id, 3]] = counter(workspace)
     assert Ecto.UUID.load!(organisation_id) == workspace.organisation_id
   end
@@ -29,23 +32,23 @@ defmodule Apiary.WorkItems.NumberTest do
     second = workspace_fixture(organisation)
     %{workspace: elsewhere} = sign_up_fixture()
 
-    assert Number.next(workspace) == 1
-    assert Number.next(workspace) == 2
-    assert Number.next(second) == 1
-    assert Number.next(elsewhere) == 1
-    assert Number.next(workspace) == 3
+    assert next(workspace) == 1
+    assert next(workspace) == 2
+    assert next(second) == 1
+    assert next(elsewhere) == 1
+    assert next(workspace) == 3
   end
 
   test "a number taken in a transaction that rolls back is given back" do
     %{workspace: workspace} = sign_up_fixture()
-    assert Number.next(workspace) == 1
+    assert next(workspace) == 1
 
     assert {:error, :rolled_back} =
              Repo.transaction(fn ->
-               assert Number.next(workspace) == 2
+               assert next(workspace) == 2
                Repo.rollback(:rolled_back)
              end)
 
-    assert Number.next(workspace) == 2
+    assert next(workspace) == 2
   end
 end

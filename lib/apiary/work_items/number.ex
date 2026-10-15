@@ -15,10 +15,17 @@ defmodule Apiary.WorkItems.Number do
   alias Apiary.Repo
 
   # next/1 is the next number of `workspace`'s work items, taken inside the caller's
-  # transaction.
+  # transaction. Raises `ArgumentError` outside one: a number taken there would be
+  # committed at once, and lost should the work item not be written.
   @doc false
   @spec next(%Workspace{}) :: pos_integer
   def next(%Workspace{id: id, organisation_id: organisation_id}) do
+    unless Repo.in_transaction?() do
+      raise ArgumentError,
+            "Apiary.WorkItems.Number.next/1 takes a number inside the transaction " <>
+              "that writes the work item"
+    end
+
     row = %{
       workspace_id: Ecto.UUID.dump!(id),
       organisation_id: Ecto.UUID.dump!(organisation_id),

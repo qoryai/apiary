@@ -55,4 +55,13 @@ defmodule Apiary.WorkItems.NumberRacesTest do
 
     assert Enum.sort(answers) == Enum.map(1..12, &{:ok, &1})
   end
+
+  # On a connection outside the sandbox, as every test here: there, a call outside a
+  # transaction is one, which the sandbox's transaction would hide.
+  test "a number is refused outside a transaction, and none is taken" do
+    %{workspace: workspace} = sign_up()
+
+    assert_raise ArgumentError, ~r/inside the transaction/, fn -> Number.next(workspace) end
+    assert {:ok, 1} = take(workspace).()
+  end
 end
