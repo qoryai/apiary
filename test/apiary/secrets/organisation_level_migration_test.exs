@@ -191,7 +191,9 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
     down!(@validate)
 
     error = assert_raise Postgrex.Error, fn -> down!(@level) end
-    assert error.postgres.message =~ "secrets holds secrets of organisations"
+
+    assert error.postgres.message ==
+             "organisation secrets, their values or organisation_data_keys rows remain: delete them before rolling this back"
 
     up!(@validate)
     assert shape() == now
@@ -209,7 +211,9 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
     down!(@validate)
 
     error = assert_raise Postgrex.Error, fn -> down!(@level) end
-    assert error.postgres.message =~ "organisation_data_keys"
+
+    assert error.postgres.message ==
+             "organisation secrets, their values or organisation_data_keys rows remain: delete them before rolling this back"
 
     up!(@validate)
   end

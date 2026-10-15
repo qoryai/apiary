@@ -136,7 +136,7 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
         FOR KEY SHARE;
 
         IF NOT FOUND THEN
-          RAISE EXCEPTION 'a value without a workspace is of a secret without one'
+          RAISE EXCEPTION 'a value without a workspace must belong to a secret without a workspace'
             USING ERRCODE = 'check_violation', CONSTRAINT = 'secret_value_scope_matches';
         END IF;
       END IF;
@@ -160,7 +160,7 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
         SELECT 1 FROM secret_values
         WHERE secret_id = NEW.id AND workspace_id IS DISTINCT FROM NEW.workspace_id
       ) THEN
-        RAISE EXCEPTION 'a secret with values keeps their level'
+        RAISE EXCEPTION 'a secret''s level cannot change while it has values'
           USING ERRCODE = 'check_violation', CONSTRAINT = 'secret_value_scope_matches';
       END IF;
       RETURN NEW;
@@ -182,7 +182,7 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
       IF EXISTS (SELECT 1 FROM secrets WHERE workspace_id IS NULL)
          OR EXISTS (SELECT 1 FROM secret_values WHERE workspace_id IS NULL)
          OR EXISTS (SELECT 1 FROM organisation_data_keys) THEN
-        RAISE EXCEPTION 'secrets holds secrets of organisations: delete them and organisation_data_keys before rolling this back';
+        RAISE EXCEPTION 'organisation secrets, their values or organisation_data_keys rows remain: delete them before rolling this back';
       END IF;
     END
     $$

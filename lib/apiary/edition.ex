@@ -143,7 +143,7 @@ defmodule Apiary.Edition do
   `{:error, reason}`, which `Apiary.Secrets` hands back as it is.
 
   Asked by `Apiary.Secrets` once it has read the membership again (`Apiary.Access.reload/2`),
-  and on a write again under the write's locks, before anything else of an organisation's
+  and, on a write, under the write's locks, before anything else of an organisation's
   secrets is read or written. The core keeps no secret at an organisation and answers
   `{:error, :not_found}` for every verb, `:seal` included.
   """

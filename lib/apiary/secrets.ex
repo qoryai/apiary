@@ -1,7 +1,8 @@
 defmodule Apiary.Secrets do
   @moduledoc """
-  A workspace's stored secrets: values kept by name, encrypted at rest, and never shown
-  again once saved. A run receives none of them: it receives only its security policy.
+  Stored secrets, of a workspace or of an organisation: values kept by name, encrypted at
+  rest, and never shown again once saved. A run receives none of them: it receives only its
+  security policy.
 
   A secret (`Apiary.Secrets.Secret`) has a name, unique in the workspace whatever its
   case, a public id (`sec_…`), a note on what it is used for, and either one value or
@@ -18,13 +19,14 @@ defmodule Apiary.Secrets do
 
   ## At rest
 
-  Each value is encrypted with AES-256-GCM under its workspace's **data key**, with a
-  fresh nonce, and with associated data that binds it to its workspace, its secret's
-  public id and its value id (`Apiary.Secrets.Cipher`). The data key, 32 random bytes,
-  is kept only wrapped under the instance's values key, which is derived from
-  `APIARY_ENCRYPTION_SECRET` (`Apiary.KeyDerivation`), with the values key's id beside
-  it (`Apiary.Secrets.DataKey`). Renaming a value id encrypts the value again under the
-  new id. Losing `APIARY_ENCRYPTION_SECRET` loses every stored value.
+  Each value is encrypted with AES-256-GCM under the **data key** of its workspace, or of
+  its organisation for an organisation's secret, with a fresh nonce, and with associated
+  data that binds it to that workspace or organisation, its secret's public id and its value
+  id (`Apiary.Secrets.Cipher`). The data key, 32 random bytes, is kept only wrapped under
+  the instance's values key, which is derived from `APIARY_ENCRYPTION_SECRET`
+  (`Apiary.KeyDerivation`), with the values key's id beside it (`Apiary.Secrets.DataKey`).
+  Renaming a value id encrypts the value again under the new id. Losing
+  `APIARY_ENCRYPTION_SECRET` loses every stored value.
 
   ## Who, and the trail
 
@@ -482,8 +484,9 @@ defmodule Apiary.Secrets do
   end
 
   @doc """
-  update_secret/3 changes a secret's name or note (`secret.write`): `{:ok, secret}`, or
-  `{:error, refusal}`. A change that changes nothing leaves no entry.
+  update_secret/3 changes a secret's name or note (`secret.write`; for an organisation's
+  secret, the edition's `:write`): `{:ok, secret}`, or `{:error, refusal}`. A change that
+  changes nothing leaves no entry.
   """
   @spec update_secret(Scope.t(), Secret.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
   def update_secret(%Scope{} = scope, %Secret{} = secret, attrs) do
@@ -523,10 +526,10 @@ defmodule Apiary.Secrets do
   end
 
   @doc """
-  set_value/4 replaces a value of a secret (`secret.write`): the one named `value_id`, or
-  the secret's one value without a value id when `value_id` is nil. `{:ok, secret}`, or
-  `{:error, refusal}`: `:not_found` for a value id the secret does not have, a changeset
-  whose error is on `value`.
+  set_value/4 replaces a value of a secret (`secret.write`; for an organisation's secret,
+  the edition's `:write`): the one named `value_id`, or the secret's one value without a
+  value id when `value_id` is nil. `{:ok, secret}`, or `{:error, refusal}`: `:not_found` for
+  a value id the secret does not have, a changeset whose error is on `value`.
   """
   @spec set_value(Scope.t(), Secret.t(), String.t() | nil, String.t()) ::
           {:ok, Secret.t()} | {:error, refusal}
@@ -555,11 +558,11 @@ defmodule Apiary.Secrets do
   end
 
   @doc """
-  add_value/3 adds a value with its value id to a secret (`secret.write`): `attrs` has
-  `value_id` and `value`, and, when the secret's one value has no value id yet,
-  `first_value_id`, the value id that value takes. `{:ok, secret}`, or
-  `{:error, refusal}`: a changeset whose errors are on `value`, `value_id` or
-  `first_value_id`; `:too_many_values` past `max_values/0`.
+  add_value/3 adds a value with its value id to a secret (`secret.write`; for an
+  organisation's secret, the edition's `:write`): `attrs` has `value_id` and `value`, and,
+  when the secret's one value has no value id yet, `first_value_id`, the value id that value
+  takes. `{:ok, secret}`, or `{:error, refusal}`: a changeset whose errors are on `value`,
+  `value_id` or `first_value_id`; `:too_many_values` past `max_values/0`.
   """
   @spec add_value(Scope.t(), Secret.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
   def add_value(%Scope{} = scope, %Secret{} = secret, attrs) do
@@ -633,10 +636,10 @@ defmodule Apiary.Secrets do
   end
 
   @doc """
-  rename_value/4 gives a secret's value another value id (`secret.write`), and encrypts it
-  again under the new one, which its associated data binds. `{:ok, secret}`, or
-  `{:error, refusal}`: `:not_found` for a value id the secret does not have, a changeset
-  whose error is on `value_id`.
+  rename_value/4 gives a secret's value another value id (`secret.write`; for an
+  organisation's secret, the edition's `:write`), and encrypts it again under the new one,
+  which its associated data binds. `{:ok, secret}`, or `{:error, refusal}`: `:not_found` for
+  a value id the secret does not have, a changeset whose error is on `value_id`.
   """
   @spec rename_value(Scope.t(), Secret.t(), String.t() | nil, String.t()) ::
           {:ok, Secret.t()} | {:error, refusal}
@@ -675,10 +678,10 @@ defmodule Apiary.Secrets do
   end
 
   @doc """
-  delete_value/3 deletes a secret's value (`secret.write`). `{:ok, secret}`, or
-  `{:error, refusal}`: `:not_found` for a value id the secret does not have,
-  `:last_value` for its only value, which goes only with the secret, `{:in_use, uses}`
-  for a value something uses.
+  delete_value/3 deletes a secret's value (`secret.write`; for an organisation's secret, the
+  edition's `:write`). `{:ok, secret}`, or `{:error, refusal}`: `:not_found` for a value id
+  the secret does not have, `:last_value` for its only value, which goes only with the
+  secret, `{:in_use, uses}` for a value something uses.
   """
   @spec delete_value(Scope.t(), Secret.t(), String.t() | nil) ::
           {:ok, Secret.t()} | {:error, refusal}
@@ -709,9 +712,10 @@ defmodule Apiary.Secrets do
   defp not_last(%Secret{}), do: :ok
 
   @doc """
-  delete_secret/2 deletes a secret with its values (`secret.write`). `{:ok, secret}`, the
-  secret as it was, or `{:error, refusal}`: `{:in_use, uses}` for a secret something
-  uses (`Apiary.Secrets.Usage`).
+  delete_secret/2 deletes a secret with its values (`secret.write`; for an organisation's
+  secret, the edition's `:write`). `{:ok, secret}`, the secret as it was, or
+  `{:error, refusal}`: `{:in_use, uses}` for a secret something uses
+  (`Apiary.Secrets.Usage`).
   """
   @spec delete_secret(Scope.t(), Secret.t()) :: {:ok, Secret.t()} | {:error, refusal}
   def delete_secret(%Scope{} = scope, %Secret{} = secret) do
