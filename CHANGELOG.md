@@ -55,8 +55,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `audit_retention_days`, `audit_address_retention_days`, `deletion_grace_days` and
   `invitations_per_day`, all NULL, with checks on their ranges that hold in every edition:
   at least 30, at least 1, 1 to 90, and at least 1. It changes no existing row.
+<!-- feature: secrets -->
 - A stored secret can now belong to an organisation instead of a workspace, with a data
   key for each organisation.
+<!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
 
