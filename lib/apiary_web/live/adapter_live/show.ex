@@ -50,7 +50,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         {:ok,
          socket
          |> assign(sections: SettingsComponents.sections(scope, :organisation))
-         |> assign(form: nil, pools: [], confirming: false)
+         |> assign(form: nil, pools: [], serves_any: false, confirming: false)
          |> assign_adapter(adapter)
          |> assign_may()
          |> UserAuth.on_membership_change(&(&1 |> assign_may() |> pools_again()))
@@ -119,19 +119,21 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The pools it serves in the workspaces the reader reaches
-  # (`ApiaryWeb.NodeComponents.reached_workspaces/1`), each with its workspace.
+  # (`ApiaryWeb.NodeComponents.reached_workspaces/1`), each with its workspace, and
+  # whether it serves any pool at all: the tab says it serves none only when it doesn't.
   defp assign_pools(socket) do
     %{current_scope: scope, adapter: adapter, memberships: places} = socket.assigns
     reached = NodeComponents.reached_workspaces(places)
     workspaces = Map.new(Organisations.list_workspaces(scope), &{&1.id, &1})
+    served = Adapters.served_pools(scope, adapter)
 
     pools =
-      for pool <- Adapters.served_pools(scope, adapter),
+      for pool <- served,
           MapSet.member?(reached, pool.workspace_id),
           %Workspace{} = workspace <- [workspaces[pool.workspace_id]],
           do: %{workspace: workspace, pool: pool}
 
-    assign(socket, :pools, pools)
+    assign(socket, pools: pools, serves_any: served != [])
   end
 
   # The membership changed while Node pools is open: what the reader reaches is read
@@ -348,7 +350,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
           live={:show}
         />
 
-        <.pools :if={@live_action == :pools} pools={@pools} scope={@current_scope} />
+        <.pools
+          :if={@live_action == :pools}
+          pools={@pools}
+          serves_any={@serves_any}
+          scope={@current_scope}
+        />
         <.settings
           :if={@live_action in [:settings, :remove]}
           adapter={@adapter}
@@ -366,9 +373,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp tab(action), do: action
 
   attr :pools, :list, required: true
+  attr :serves_any, :boolean, required: true
   attr :scope, :any, required: true
 
-  # Node pools: the pools the integration serves, each with its workspace.
+  # Node pools: the pools the integration serves, each with its workspace. Where it serves
+  # pools, but none the reader reaches, the tab shows its sub line alone.
   defp pools(assigns) do
     ~H"""
     <section id="adapter-pools" class="grid gap-4">
@@ -377,7 +386,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
           "Node pools whose runs this integration starts. Set on each pool's settings page, under Served by."
         )}
       </p>
-      <p :if={@pools == []} id="adapter-pools-empty" class="text-[13px]/5 text-muted">
+      <p :if={!@serves_any} id="adapter-pools-empty" class="text-[13px]/5 text-muted">
         {gettext("It serves no node pool.")}
       </p>
       <.table

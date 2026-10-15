@@ -173,13 +173,24 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       assert has_element?(lv, "#pool-#{deploy.public_id}", "Platform")
     end
 
-    test "with none served where they reach, it says it serves none",
+    test "with pools served, but none where they reach, it shows the sub line alone",
          %{scope: scope, adapter: adapter} do
       {:ok, lv, html} = live(member_conn(scope), adapter_path(scope, adapter, "/node-pools"))
 
-      assert words(lv, "#adapter-pools-empty") == "It serves no node pool."
+      assert html =~ "Node pools whose runs this integration starts."
+      refute has_element?(lv, "#adapter-pools-empty")
       refute has_element?(lv, "#adapter-pools-table")
       refute html =~ "deploy"
+    end
+
+    test "with no pool served at all, it says it serves none",
+         %{scope: scope, user: user, adapter: adapter, platform: platform, deploy: deploy} do
+      platform_scope = workspace_scope(user, platform)
+      {:ok, _deploy} = Nodes.update_node(platform_scope, deploy, %{served_by_id: nil})
+      {:ok, lv, _html} = live(member_conn(scope), adapter_path(scope, adapter, "/node-pools"))
+
+      assert words(lv, "#adapter-pools-empty") == "It serves no node pool."
+      refute has_element?(lv, "#adapter-pools-table")
     end
   end
 
