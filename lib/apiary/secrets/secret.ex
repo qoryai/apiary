@@ -1,6 +1,7 @@
 defmodule Apiary.Secrets.Secret do
   @moduledoc """
-  A stored secret of a workspace: a name, unique in the workspace whatever its case, a
+  A stored secret of a workspace, or of an organisation, without a workspace: a name,
+  unique whatever its case among the workspace's secrets or among the organisation's, a
   public id (`sec_` and 16 lowercase Crockford base32 characters, `Apiary.PublicId`),
   a note on what it is used for, and its values (`Apiary.Secrets.Value`): one without a
   value id, or several, each with a value id.
@@ -12,7 +13,7 @@ defmodule Apiary.Secrets.Secret do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
-  @typedoc "A stored secret of a workspace."
+  @typedoc "A stored secret of a workspace or of an organisation."
   @type t :: %__MODULE__{}
 
   @name ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
@@ -73,6 +74,14 @@ defmodule Apiary.Secrets.Secret do
         dgettext_noop(
           "errors",
           "is already the name of a secret in this workspace, compared without case"
+        )
+    )
+    |> unique_constraint(:name,
+      name: :secrets_organisation_name_index,
+      message:
+        dgettext_noop(
+          "errors",
+          "is already the name of a secret in this organisation, compared without case"
         )
     )
   end
