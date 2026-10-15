@@ -379,6 +379,43 @@ defmodule ApiaryWeb.Routes do
             live "/instance/mail", InstanceLive.Mail, :show
             # Instance › Configuration: the instance's settings, some saved there.
             live "/instance/configuration", InstanceLive.Configuration, :show
+
+            # Instance settings › Integrations, with the `factory` feature, for the
+            # instance's admins: the instance's integrations, with Add an integration a
+            # separate page, and an integration's tabs and its acts, by its adapter's public
+            # id (`na_…`). Its Access key tab has the acts of a node's that an adapter's key
+            # takes: no key made in the browser.
+            live "/instance/integrations", InstanceLive.Integrations, :index
+            live "/instance/integrations/new", InstanceLive.Integrations, :new
+
+            live "/instance/integrations/:adapter_id/access-key",
+                 AdapterLive.AccessKey,
+                 :index
+
+            live "/instance/integrations/:adapter_id/access-key/new-code",
+                 AdapterLive.AccessKey,
+                 :new_code
+
+            live "/instance/integrations/:adapter_id/access-key/keys/:key_id/revoke",
+                 AdapterLive.AccessKey,
+                 :revoke
+
+            live "/instance/integrations/:adapter_id/access-key/codes/:code_id/revoke",
+                 AdapterLive.AccessKey,
+                 :revoke_code
+
+            live "/instance/integrations/:adapter_id/settings",
+                 InstanceLive.Integration,
+                 :settings
+
+            live "/instance/integrations/:adapter_id/settings/rename",
+                 InstanceLive.Integration,
+                 :rename
+
+            live "/instance/integrations/:adapter_id/settings/remove",
+                 InstanceLive.Integration,
+                 :remove
+
             unquote(@block)
           end
         end
@@ -500,42 +537,18 @@ defmodule ApiaryWeb.Routes do
                    NodeLive.AccessKey,
                    :revoke_code
 
-              # Organisation settings › Integrations, with the `factory` feature: the list,
-              # with Add an integration a separate page, and an integration's page, its
-              # tabs and its acts, by its adapter's public id (`na_…`). Its Access key tab
-              # has the acts of a node's that an adapter's key takes: no key made in the
-              # browser. The fixed path goes first, so that `:adapter_id` never takes it.
+              # Organisation settings › Integrations, with the `factory` feature: the list of
+              # the instance's integrations, with Add an integration a separate page, where
+              # an owner or an admin connects the organisation to one (Install), and an
+              # integration's page in the organisation, its tabs and its acts, by its
+              # adapter's public id (`na_…`). Making, renaming, removing an integration and its
+              # access key are the instance admins', at `/instance/integrations`. The fixed
+              # path goes first, so that `:adapter_id` never takes it.
               live "/settings/integrations", AdapterLive.Index, :index
               live "/settings/integrations/new", AdapterLive.Index, :new
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
               live "/settings/integrations/:adapter_id/assign", AdapterLive.Show, :assign
               live "/settings/integrations/:adapter_id/node-pools", AdapterLive.Show, :pools
-
-              live "/settings/integrations/:adapter_id/access-key",
-                   AdapterLive.AccessKey,
-                   :index
-
-              live "/settings/integrations/:adapter_id/access-key/new-code",
-                   AdapterLive.AccessKey,
-                   :new_code
-
-              live "/settings/integrations/:adapter_id/access-key/keys/:key_id/revoke",
-                   AdapterLive.AccessKey,
-                   :revoke
-
-              live "/settings/integrations/:adapter_id/access-key/codes/:code_id/revoke",
-                   AdapterLive.AccessKey,
-                   :revoke_code
-
-              live "/settings/integrations/:adapter_id/settings", AdapterLive.Show, :settings
-
-              live "/settings/integrations/:adapter_id/settings/rename",
-                   AdapterLive.Show,
-                   :rename
-
-              live "/settings/integrations/:adapter_id/settings/remove",
-                   AdapterLive.Show,
-                   :remove
             end
 
             unquote(@block)

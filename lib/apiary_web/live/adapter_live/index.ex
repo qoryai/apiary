@@ -1,6 +1,8 @@
 defmodule ApiaryWeb.AdapterLive.Index do
-  # Organisation settings › Integrations: the list of the organisation's integrations, and
-  # adding one (`:index`, `:new`).
+  # Organisation settings › Integrations: the list of the instance's integrations, as the
+  # organisation's people read them, and Add an integration, where an owner or an admin
+  # connects the organisation to one (`:index`, `:new`). Making one is the instance
+  # admins' (`ApiaryWeb.InstanceLive.Integrations`).
   #
   # It answers as a path that does not exist until its page is built here. The feature is
   # hidden from the documentation, so the module is too.

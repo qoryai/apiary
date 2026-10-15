@@ -1,5 +1,6 @@
 # The fixtures of `ApiaryWeb.FeaturesAnyTest`: pages of `secrets` or `factory`, of
-# `secrets` alone, and of a feature there is not, with their routers.
+# `secrets` alone, of `factory` at the Instance level, and of a feature there is not, with
+# their routers.
 
 defmodule ApiaryWeb.FeaturesAnyTest.EitherController do
   @moduledoc false
@@ -15,6 +16,14 @@ defmodule ApiaryWeb.FeaturesAnyTest.SecretsController do
   use ApiaryWeb.Features, :secrets
 
   def index(conn, _params), do: Plug.Conn.send_resp(conn, 200, "secrets")
+end
+
+defmodule ApiaryWeb.FeaturesAnyTest.InstanceController do
+  @moduledoc false
+  use Phoenix.Controller, formats: [:html]
+  use ApiaryWeb.Features, instance: :factory
+
+  def index(conn, _params), do: Plug.Conn.send_resp(conn, 200, "instance")
 end
 
 defmodule ApiaryWeb.FeaturesAnyTest.EitherLive do
@@ -35,6 +44,7 @@ defmodule ApiaryWeb.FeaturesAnyTest.Router do
   use Phoenix.Router
   get "/either", ApiaryWeb.FeaturesAnyTest.EitherController, :index
   get "/secrets", ApiaryWeb.FeaturesAnyTest.SecretsController, :index
+  get "/instance", ApiaryWeb.FeaturesAnyTest.InstanceController, :index
 end
 
 defmodule ApiaryWeb.FeaturesAnyTest.UnknownFeatureController do
@@ -67,6 +77,7 @@ defmodule ApiaryWeb.FeaturesAnyTest do
   alias ApiaryWeb.FeaturesAnyTest.{
     EitherController,
     EitherLive,
+    InstanceController,
     Router,
     SecretsController,
     UnknownFeatureRouter
@@ -190,7 +201,55 @@ defmodule ApiaryWeb.FeaturesAnyTest do
     end
   end
 
+  describe "a page of the Instance level, `instance:`" do
+    test "names its feature as a page of the organisation does" do
+      assert InstanceController.__feature__() == :factory
+      assert ApiaryWeb.Features.gate(InstanceController) == :factory
+    end
+
+    @tag with_features: [:observability, :security, :factory]
+    test "with the feature, it is there to whoever opens it, whatever the scope hides" do
+      assert answer("/instance") == {200, "instance"}
+      assert answer("/instance", person([:factory])) == {200, "instance"}
+
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, current_scope: person([:factory])}
+      }
+
+      assert {:cont, _socket} =
+               ApiaryWeb.Features.on_mount({:instance, :factory}, %{}, %{}, socket)
+    end
+
+    @tag with_features: @neither
+    test "without it, it answers as a path the router does not know, and its gates as a hidden page's" do
+      assert answer("/instance") == answer("/no-such-page")
+      assert answer("/instance", person([])) == answer("/no-such-page", person([]))
+
+      assert_raise ApiaryWeb.Features.NotFound, fn ->
+        ApiaryWeb.Features.on_mount({:instance, :factory}, %{}, %{}, socket())
+      end
+
+      gate = ApiaryWeb.Features.init({:instance, :factory})
+      conn = ApiaryWeb.Features.call(build_conn(:get, "/instance"), gate)
+      assert conn.halted
+      assert conn.status == 404
+
+      single = ApiaryWeb.Features.call(build_conn(:get, "/secrets"), :secrets)
+      assert conn.resp_body == single.resp_body
+    end
+  end
+
   describe "what use is given, checked when the page compiles" do
+    test "instance: takes what the page of the organisation takes" do
+      assert_raise ArgumentError, ~r/takes the name of a feature, got: nil/, fn ->
+        compile_page(quote(do: use(ApiaryWeb.Features, instance: nil)))
+      end
+
+      assert_raise ArgumentError, ~r/any: takes two or more names/, fn ->
+        compile_page(quote(do: use(ApiaryWeb.Features, instance: [any: [:secrets]])))
+      end
+    end
+
     test "any: takes two or more names of features, each once" do
       for features <- [[], [:secrets], [:secrets, :secrets], [:secrets, nil], :secrets, "x"] do
         error =

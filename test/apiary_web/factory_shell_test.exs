@@ -3,7 +3,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # that does not exist where the feature is off and, where it is on, by its page, which
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
-  # sidebar's Work group; Organisation settings' Integrations; and the Activity filter's
+  # sidebar's Work group; Organisation settings' Integrations; Instance settings'
+  # Integrations; and the Activity filter's
   # words for the work item comments.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
@@ -14,7 +15,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Adapters, Audit}
+  alias Apiary.Audit
   alias ApiaryWeb.Layouts
 
   # The adapter is made where the feature is on; the tests without it turn it off after.
@@ -25,6 +26,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterLive.Index,
     ApiaryWeb.AdapterLive.Show,
     ApiaryWeb.AdapterLive.AccessKey,
+    ApiaryWeb.InstanceLive.Integrations,
+    ApiaryWeb.InstanceLive.Integration,
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
@@ -105,23 +108,29 @@ defmodule ApiaryWeb.FactoryShellTest do
     routes = factory_routes(scope, adapter)
     org = "/#{scope.organisation.slug}"
     integration = "#{org}/settings/integrations/#{adapter.public_id}"
+    managed = "/instance/integrations/#{adapter.public_id}"
 
     assert Enum.sort(for {verb, path, _module} <- routes, do: {verb, path}) ==
              Enum.sort(
                [
                  {:get, "/integrations/ac_0000000000000000"},
+                 # The organisation's: the list, Add an integration (connecting one), and
+                 # an integration's page in the organisation.
                  {:get, "#{org}/settings/integrations"},
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
                  {:get, integration <> "/assign"},
                  {:get, integration <> "/node-pools"},
-                 {:get, integration <> "/access-key"},
-                 {:get, integration <> "/access-key/new-code"},
-                 {:get, integration <> "/access-key/keys/x1/revoke"},
-                 {:get, integration <> "/access-key/codes/x1/revoke"},
-                 {:get, integration <> "/settings"},
-                 {:get, integration <> "/settings/rename"},
-                 {:get, integration <> "/settings/remove"}
+                 # The instance admins': making one, its access key and its settings.
+                 {:get, "/instance/integrations"},
+                 {:get, "/instance/integrations/new"},
+                 {:get, managed <> "/access-key"},
+                 {:get, managed <> "/access-key/new-code"},
+                 {:get, managed <> "/access-key/keys/x1/revoke"},
+                 {:get, managed <> "/access-key/codes/x1/revoke"},
+                 {:get, managed <> "/settings"},
+                 {:get, managed <> "/settings/rename"},
+                 {:get, managed <> "/settings/remove"}
                ] ++
                  for(
                    rest <- ~w(/backlog /backlog/x1/take-in /work /work/1 /work/1/thread),
@@ -151,7 +160,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
           module != ApiaryWeb.AdapterRedirectController do
-        {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+        {:ok, view, _html} = navigable(conn, scope, path)
 
         assert {%{status: 404, reason: "reload"}, _call} =
                  catch_exit(live_redirect(view, to: path)),
@@ -278,6 +287,120 @@ defmodule ApiaryWeb.FactoryShellTest do
     end
   end
 
+  describe "the instance admins' pages" do
+    # The feature's pages under `/instance`, with their parameters filled in.
+    defp instance_routes(scope, adapter) do
+      for {:get, "/instance/" <> _ = path, module} <- factory_routes(scope, adapter),
+          do: {path, module}
+    end
+
+    test "an instance admin passes the feature's gates and meets the page, not found until it is built",
+         %{scope: scope, adapter: adapter} do
+      admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
+      routes = instance_routes(scope, adapter)
+      assert length(routes) == 9
+
+      for {path, module} <- routes do
+        # The answer of the page as it mounts: not the door's, nor the gate's.
+        assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+        assert ApiaryWeb.Features.gate(module) == :factory
+      end
+    end
+
+    test "they ask the instance, whatever the person is shown in the organisation the scope carries",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      hide_factory(%{})
+      admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
+
+      for {path, _module} <- instance_routes(scope, adapter) do
+        assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+      end
+
+      # An organisation's page of the feature asks what the person is shown there.
+      assert_raise ApiaryWeb.Features.NotFound, fn ->
+        live(conn, ~p"/#{scope.organisation}/settings/integrations")
+      end
+
+      hidden = owner_scope(scope.user)
+      refute Apiary.Features.visible?(hidden, :factory)
+      socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, current_scope: hidden}}
+
+      assert {:cont, _socket} =
+               ApiaryWeb.Features.on_mount({:instance, :factory}, %{}, %{}, socket)
+
+      assert_raise ApiaryWeb.Features.NotFound, fn ->
+        ApiaryWeb.Features.on_mount(:factory, %{}, %{}, socket)
+      end
+    end
+
+    test "anyone but an instance admin is answered as on the Instance's other pages", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter
+    } do
+      refute Apiary.Access.instance_admin?(scope)
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/instance/general") end
+
+      for {path, _module} <- instance_routes(scope, adapter) do
+        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+
+        assert answer(fn -> get(conn, path) end) ==
+                 answer(fn -> get(conn, "/instance/general") end)
+      end
+    end
+
+    test "Instance settings list Integrations for an instance admin, before Mail, and for no one else",
+         %{scope: scope} do
+      admin = instance_admin_scope()
+      keys = for entry <- Layouts.instance_sections(admin), do: entry.key
+      assert [:integrations, :mail, :configuration] = Enum.take(keys, -3)
+
+      assert %{label: "Integrations", path: "/instance/integrations", place: :instance} =
+               Enum.find(Layouts.instance_sections(admin), &(&1.key == :integrations))
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
+
+      assert has_element?(
+               view,
+               "#instance-tabs a#instance-tab-integrations[href='/instance/integrations']",
+               "Integrations"
+             )
+
+      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key == :integrations))
+    end
+
+    test "the entry asks the instance, whatever the person is shown in the organisation the scope carries" do
+      hide_factory(%{})
+      admin = instance_admin_scope()
+      refute Apiary.Features.visible?(owner_scope(admin.user), :factory)
+      assert Enum.any?(Layouts.instance_sections(admin), &(&1.key == :integrations))
+    end
+
+    test "the organisation has no path that makes, renames, removes an integration or holds its key",
+         %{scope: scope, adapter: adapter} do
+      integration = "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}"
+
+      for rest <-
+            ~w(/access-key /access-key/new-code /access-key/keys/x1/revoke
+               /access-key/codes/x1/revoke /settings /settings/rename /settings/remove) do
+        path = integration <> rest
+
+        assert Phoenix.Router.route_info(ApiaryWeb.Router, "GET", path, "localhost") == :error,
+               path
+      end
+
+      # Add an integration stays the organisation's: there an owner or an admin connects one.
+      assert %{phoenix_live_view: {ApiaryWeb.AdapterLive.Index, :new, _, _}} =
+               Phoenix.Router.route_info(
+                 ApiaryWeb.Router,
+                 "GET",
+                 "/#{scope.organisation.slug}/settings/integrations/new",
+                 "localhost"
+               )
+    end
+  end
+
   describe "hidden from the person, on an instance with it" do
     setup :hide_factory
 
@@ -361,7 +484,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
           module != ApiaryWeb.AdapterRedirectController do
-        {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+        {:ok, view, _html} = navigable(conn, scope, path)
 
         assert {%{status: 404, reason: "reload"}, _call} =
                  catch_exit(live_redirect(view, to: path)),
@@ -402,7 +525,28 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert :people in section_keys(scope)
       refute :integrations in section_keys(scope)
     end
+
+    test "Instance settings leave Integrations out, for an instance admin too" do
+      admin = instance_admin_scope()
+      keys = for entry <- Layouts.instance_sections(admin), do: entry.key
+      assert :configuration in keys
+      refute :integrations in keys
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
+
+      refute has_element?(view, "#instance-tab-integrations")
+    end
   end
+
+  # A page a live navigation to `path` starts from, in the same live session: an Instance
+  # page, opened by an instance admin, for a page of the Instance level, else a page of
+  # the workspace.
+  defp navigable(_conn, _scope, "/instance/" <> _),
+    do: live(log_in_user(build_conn(), instance_admin_scope().user), ~p"/instance/general")
+
+  defp navigable(conn, scope, _path),
+    do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
   # Where ⌘K's Go to leads, as `ApiaryWeb.JumpController` answers it from the
   # organisation's path and from the workspace's, with nothing typed and with the words

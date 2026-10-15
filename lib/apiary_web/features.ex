@@ -20,6 +20,14 @@ defmodule ApiaryWeb.Features do
   `{:any, features}`, a `t:gate/0` as `gate/1` reads it; `on?/1` and `visible?/2` answer
   for either form.
 
+  A page of the Instance level names its feature with `instance:`,
+  `use ApiaryWeb.Features, instance: :security`, or `instance: [any: [...]]`. Such a page
+  has no organisation: the scope it is opened in carries the organisation the
+  person opened last, whose `hidden` says nothing of the instance. Its gate asks the
+  instance, `on?/1`, whoever opens it, and whether the person may open the page is the
+  page's to answer. `__feature__/0` is the feature, or `{:any, features}`, as without
+  `instance:`.
+
   The features are the core's and the edition's (`Apiary.Features.all/0`), and the
   edition's are known only once it runs: whether a page names a feature there is is
   checked at boot, over the routes of the router the instance serves (`boot!/0`), not when
@@ -43,17 +51,17 @@ defmodule ApiaryWeb.Features do
   @type gate :: Features.feature() | {:any, [Features.feature(), ...]}
 
   defmacro __using__(opts) do
-    named = gate!(opts)
+    {hook, named} = hook!(opts)
 
     # Which gate the caller can take is known from its imports, which are lexical and so
     # settled when this expands: a LiveView imports `on_mount/1`, a controller `plug/2`.
     gate =
       cond do
         Macro.Env.lookup_import(__CALLER__, {:on_mount, 1}) != [] ->
-          quote do: on_mount({ApiaryWeb.Features, unquote(named)})
+          quote do: on_mount({ApiaryWeb.Features, unquote(hook)})
 
         Macro.Env.lookup_import(__CALLER__, {:plug, 2}) != [] ->
-          quote do: plug(ApiaryWeb.Features, unquote(named))
+          quote do: plug(ApiaryWeb.Features, unquote(hook))
 
         true ->
           raise ArgumentError, "use ApiaryWeb.Features belongs in a LiveView or a controller"
@@ -65,6 +73,18 @@ defmodule ApiaryWeb.Features do
       @doc false
       def __feature__, do: unquote(named)
     end
+  end
+
+  # What the gate asks, `{:instance, gate}` for a page of the Instance level, and the gate
+  # `use` is given.
+  defp hook!(instance: opts) do
+    named = gate!(opts)
+    {{:instance, named}, named}
+  end
+
+  defp hook!(opts) do
+    named = gate!(opts)
+    {named, named}
   end
 
   # The gate `use` is given, or an `ArgumentError`: a feature's name, or `any:` and two or
@@ -169,6 +189,11 @@ defmodule ApiaryWeb.Features do
   defp route_module(%{plug: plug}), do: plug
 
   @doc false
+  # A page of the Instance level asks the instance, whoever opens it.
+  def on_mount({:instance, gate}, _params, _session, socket) do
+    if on?(gate), do: {:cont, socket}, else: raise(NotFound)
+  end
+
   def on_mount(gate, _params, _session, socket) do
     if visible?(socket.assigns[:current_scope], gate) do
       {:cont, socket}
@@ -180,8 +205,13 @@ defmodule ApiaryWeb.Features do
   @impl Plug
   def init(feature) when is_atom(feature), do: feature
   def init({:any, features} = gate) when is_list(features), do: gate
+  def init({:instance, gate}), do: {:instance, init(gate)}
 
   @impl Plug
+  def call(conn, {:instance, gate}) do
+    if on?(gate), do: conn, else: absent(conn)
+  end
+
   def call(conn, gate) do
     if shown?(conn, gate), do: conn, else: absent(conn)
   end

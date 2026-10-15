@@ -470,6 +470,45 @@ defmodule Apiary.AdaptersTest do
       assert Repo.get!(AccessKey, second.id).revoked_at
       assert Repo.get!(EnrolmentCode, second_code.id).cancelled_at
     end
+
+    test "an instance admin follows its keys and codes on the instance's topic, from a scope in another organisation",
+         %{scope: scope, admin: admin} do
+      adapter = adapter_fixture()
+      other = adapter_fixture()
+      {_row, code} = issued(admin, adapter)
+      {other_code, _plain} = issued(admin, other)
+
+      # The admin's scope in another organisation, as an Instance page's carries the one
+      # they opened last.
+      elsewhere = Scope.in_organisation(admin, scope.organisation)
+
+      assert AccessKeys.subscribe(elsewhere, adapter) == :ok
+
+      assert AccessKeys.topic(AccessKeys.place_id(adapter), adapter.id) ==
+               "access_keys:instance:#{adapter.id}"
+
+      assert {:ok, key} = AccessKeys.enrol(enrol_request(code, ed25519_key_pair()))
+      assert_receive {:key_enrolled, %{key_id: key_id, node_id: node_id}}
+      assert {key_id, node_id} == {key.key_id, adapter.id}
+
+      {code_row, _plain} = issued(admin, adapter)
+      assert {:ok, _} = AccessKeys.cancel_code(admin, code_row)
+      assert_receive {:code_cancelled, %{code_id: code_id, node_id: ^node_id}}
+      assert code_id == code_row.id
+
+      # Another adapter's code says nothing here.
+      assert {:ok, _} = AccessKeys.cancel_code(admin, other_code)
+      refute_receive {:code_cancelled, %{node_id: _}}, 100
+    end
+
+    test "anyone else is refused its topic, as reading its keys", %{scope: scope} do
+      adapter = adapter_fixture()
+      %{scope: member} = member_fixture(scope, :member)
+
+      for asker <- [scope, member] do
+        assert AccessKeys.subscribe(asker, adapter) == {:error, :forbidden}
+      end
+    end
   end
 
   describe "the scope and role of its key" do
@@ -1042,6 +1081,7 @@ defmodule Apiary.AdaptersTest do
                end) == {:error, :not_found}
 
         assert Adapters.create_adapter(asker, %{name: "Acme hidden"}) == {:error, :not_found}
+        assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
         assert Adapters.rename_adapter(asker, adapter, %{name: "renamed"}) == {:error, :not_found}
         assert Adapters.delete_adapter(asker, adapter) == {:error, :not_found}
         # A page's scope is read with what the person is shown as it is now.

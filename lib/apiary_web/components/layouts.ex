@@ -362,9 +362,9 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   instance_sections/1 is the Instance level's sections the scope's person may open, as
-  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, then
-  the edition's (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail and
-  Configuration; the core's for an instance admin (`Apiary.Access.instance_admin?/1`). It
+  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, the
+  edition's (`c:ApiaryWeb.Edition.instance_sections/1`) after it, and the core's Mail and
+  Configuration last; the core's for an instance admin (`Apiary.Access.instance_admin?/1`). It
   reads the database, so it is read once with the navigation's counts
   (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`), not on every render: the Qory
   Apiary menu's Instance settings leads to the first, and with two or more the Instance's
@@ -396,6 +396,20 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The instance's integrations, with the `factory` feature, which the instance has
+    # or not: an Instance page has no organisation whose people it could be hidden from
+    # (`use ApiaryWeb.Features, instance: :factory`). After the edition's, before Mail.
+    integrations =
+      admin? && Apiary.Features.on?(:factory) &&
+        %Entry{
+          section: :instance,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/instance/integrations",
+          place: :instance
+        }
+
     configuration =
       admin? &&
         %Entry{
@@ -408,7 +422,8 @@ defmodule ApiaryWeb.Layouts do
         }
 
     for %Entry{} = entry <-
-          [general] ++ ApiaryWeb.Edition.instance_sections(scope) ++ [mail, configuration],
+          [general] ++
+            ApiaryWeb.Edition.instance_sections(scope) ++ [integrations, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

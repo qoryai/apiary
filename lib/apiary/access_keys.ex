@@ -725,9 +725,21 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace
-  or a gateway of its organisation.
+  or a gateway of its organisation, or, for an instance admin, a node of the instance, with
+  no organisation, where the scope shows what such a node belongs to. Anyone else asking
+  for a node of the instance is refused as reading its keys is.
   """
   @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
+  # A node of the instance, an adapter's, is read by an instance admin shown the feature
+  # adapters belong to (`read_place/2`), and so is its topic.
+  def subscribe(
+        %Scope{} = scope,
+        %Node{id: node_id, organisation_id: nil, workspace_id: nil} = node
+      ) do
+    with :ok <- Adapters.authorize_instance(scope),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(place_id(node), node_id))
+  end
+
   def subscribe(%Scope{organisation: %Organisation{id: organisation_id}}, %Node{
         id: node_id,
         organisation_id: organisation_id,
