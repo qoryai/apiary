@@ -1,26 +1,26 @@
 defmodule Apiary.Adapters.Connections do
   # An organisation's connections to the instance's adapters (`Apiary.Adapters.Connection`,
-  # `ac_…`): how a connection is started, activated by the return the person brings back
-  # from the adapter, found for the adapter's key at the server contract, marked
-  # connected, and ended.
+  # `ac_…`): how a connection is started, connected by the return the person brings back
+  # from the adapter, found for the adapter's key at the server contract, marked listed,
+  # and ended.
   #
   # Starting one is `Apiary.Adapters.connect/2`'s: an owner or an admin of the organisation
   # (`adapter.connect`) makes the pending connection, or takes the one pending, with a
   # new connect pass whose nonce it keeps. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
-  # any change; a return that says the adapter linked activates the connection, which
-  # stays pending until the adapter's first listing names it (`mark_connected/1`). An
-  # activated connection takes no new pass: its pass, the person who started it and its
-  # activation stay as they are. Until that first listing, a new press of Install ends it
-  # (`replaced`) and starts a new connection in its place, which needs a return under the
-  # new pass; once connected, a press is refused.
+  # any change; a return that says the adapter linked makes the connection connected.
+  # The adapter's first listing that names it is recorded as it is accepted
+  # (`mark_listed/1`, `listed_at`). A connected connection takes no new pass: its pass,
+  # the person who started it and the time it connected stay as they are. Until that first
+  # listing, a new press of Install ends it (`replaced`) and starts a new connection in
+  # its place, which needs a return under the new pass; once listed, a press is refused.
   #
   # At the server contract an adapter's key acts for an organisation only through a
   # connection of its adapter (`connection_for_key/3`), with its scope narrowed to that
   # organisation (`Apiary.Accounts.Scope.for_connection/2`).
   #
   # A connection ends for good: when the adapter says it is gone (`end_connection/2`),
-  # when a press of Install replaces it while activated and not yet listed (`start/3`),
+  # when a press of Install replaces it while connected and not yet listed (`start/3`),
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
@@ -45,7 +45,7 @@ defmodule Apiary.Adapters.Connections do
   #     connection `FOR SHARE` in the trigger `nodes_served_by_is_an_adapter` as it is
   #     inserted. Both take the locks of `Apiary.Gateways.lock/1` first, which none of
   #     the others here takes.
-  #   * The return (`complete_return/4`) and `mark_connected/1` hold the connection
+  #   * The return (`complete_return/4`) and `mark_listed/1` hold the connection
   #     `FOR UPDATE`, and nothing else. An end (`end_connection/2`,
   #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
   #     then clears the pools.
@@ -127,13 +127,14 @@ defmodule Apiary.Adapters.Connections do
   @doc false
   # Inside `Apiary.Adapters.connect/2`'s transaction, which asked `adapter.connect` and
   # holds `adapter`'s row `FOR SHARE`: the pending connection of the scope's organisation
-  # to `adapter`, made, or the one pending and not activated taken, `FOR UPDATE`, now with
-  # `nonce` as the nonce of its latest pass, unused, and the scope's person as the one who
-  # started it. One pending and activated (`complete_return/4`), which no listing has
-  # named yet, is ended (`replaced`), as `end_connection/2` ends one, with its pass, its
-  # person and its activation as they were, and a new pending connection is made in its
-  # place, as above. `{:ok, connection}`, or `{:error, :connected}` while the organisation
-  # is connected to it, which changes nothing.
+  # to `adapter`, made, or the one pending taken, `FOR UPDATE`, now with `nonce` as the
+  # nonce of its latest pass, unused, and the scope's person as the one who started it.
+  # One connected (`complete_return/4`), which no listing has named yet
+  # (`mark_listed/1`), is ended (`replaced`), as `end_connection/2` ends one, with its
+  # pass, its person and the time it connected as they were, and the pools it served
+  # cleared, and a new pending connection is made in its place, as above.
+  # `{:ok, connection}`, or `{:error, :connected}` while the organisation is connected to
+  # it and a listing named the connection, which changes nothing.
   #
   # Two at once make one connection: the second's insert waits for the first's and does
   # nothing, and it then takes the first's row, with the new nonce in it. Should the live
@@ -165,7 +166,7 @@ defmodule Apiary.Adapters.Connections do
       nil ->
         take_live(organisation_id, adapter_id, user_id, nonce, now)
 
-      %Connection{state: :pending, activated_at: nil} = pending ->
+      %Connection{state: :pending} = pending ->
         pending
         |> Ecto.Changeset.change(
           pass_nonce: nonce,
@@ -175,10 +176,10 @@ defmodule Apiary.Adapters.Connections do
         )
         |> Repo.update()
 
-      # Activated, and no listing has named it: it takes no new pass, so it ends with its
-      # activation, its nonce and the person who started it as they are, and a new one
-      # takes its place.
-      %Connection{state: :pending} = unlisted ->
+      # Connected, and no listing has named it: it takes no new pass, so it ends with its
+      # nonce, the person who started it and the time it connected as they are, and a new
+      # one takes its place.
+      %Connection{state: :connected, listed_at: nil} = unlisted ->
         with {:ok, _ended} <- end_live(unlisted, :replaced, now) do
           Connection
           |> struct!(new_pending(organisation_id, adapter_id, user_id, nonce, now))
@@ -226,8 +227,7 @@ defmodule Apiary.Adapters.Connections do
   #      of the access keys in use of the adapter of the connection the link names, an
   #      adapter in use;
   #   2. its `connection_id` is the link's;
-  #   3. the connection is pending and not activated (it is the adapter's: its keys
-  #      signed);
+  #   3. the connection is pending (it is the adapter's: its keys signed);
   #   4. its nonce is the connection's latest pass's;
   #   5. no return under that nonce came back yet;
   #   6. it has not expired (`Apiary.Adapters.ReturnToken.good_at?/2`);
@@ -236,11 +236,11 @@ defmodule Apiary.Adapters.Connections do
   #   8. they may still connect an adapter to the connection's organisation
   #      (`adapter.connect`).
   #
-  # Then a return that says `linked` activates the connection, which stays pending until
-  # the adapter's first listing names it; `refused` and `cancelled` change nothing but the
-  # nonce, which is used either way. `{:ok, :linked}`, `{:ok, {:refused, reason}}`,
-  # `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7; `{:error, :not_found}` for every
-  # other refusal, one answer for a token that is bad, expired or used.
+  # Then a return that says `linked` makes the connection connected, now; `refused` and
+  # `cancelled` change nothing but the nonce, which is used either way. `{:ok, :linked}`,
+  # `{:ok, {:refused, reason}}`, `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
+  # `{:error, :not_found}` for every other refusal, one answer for a token that is bad,
+  # expired or used.
   @spec complete_return(Scope.t() | nil, term, term, term) ::
           {:ok, :linked | :cancelled | {:refused, ReturnToken.reason()}}
           | {:error, :wrong_person | :not_found}
@@ -253,7 +253,7 @@ defmodule Apiary.Adapters.Connections do
            %Node{} = adapter <- live_adapter(connection.adapter_id),
            {:ok, return} <- ReturnToken.verify(token, public_keys(adapter)),
            true <- return.connection_id == connection.public_id,
-           true <- connection.state == :pending and is_nil(connection.activated_at),
+           true <- connection.state == :pending,
            true <- Plug.Crypto.secure_compare(return.nonce, connection.pass_nonce),
            true <- is_nil(connection.pass_nonce_used_at),
            true <- ReturnToken.good_at?(return, now),
@@ -324,10 +324,11 @@ defmodule Apiary.Adapters.Connections do
   end
 
   defp returned(connection, %{outcome: :linked}, now) do
-    with {:ok, _activated} <-
+    with {:ok, _connected} <-
            connection
            |> Ecto.Changeset.change(
-             activated_at: now,
+             state: :connected,
+             connected_at: now,
              pass_nonce_used_at: now,
              updated_at: now
            )
@@ -356,9 +357,9 @@ defmodule Apiary.Adapters.Connections do
   # (`Apiary.Accounts.Scope.for_connection/2`), in this order:
   #
   #   * `{:error, :forbidden}` for a scope of no adapter's key, an id that names no
-  #     connection, a connection of another adapter, one that was never activated
-  #     (`complete_return/4`), where the feature is off, and for an action the key's role
-  #     does not take on its adapter: one answer for all;
+  #     connection, a connection of another adapter, one that was never connected
+  #     (`complete_return/4`), pending or ended so, where the feature is off, and for an
+  #     action the key's role does not take on its adapter: one answer for all;
   #   * `{:error, :ended}` for one that ended;
   #   * `{:error, :suspended}` while its organisation is out of use: marked for deletion
   #     or held out of use (`Apiary.AccessKeys.organisation_in_use?/1`), or refused by
@@ -369,7 +370,7 @@ defmodule Apiary.Adapters.Connections do
   @spec connection_for_key(Scope.t() | nil, term, Access.action()) ::
           {:ok, Connection.t(), Scope.t()} | {:error, :forbidden | :ended | :suspended}
   def connection_for_key(key_scope, public_id, action) do
-    with {:ok, connection} <- key_connection(key_scope, public_id, false),
+    with {:ok, connection} <- key_connection(key_scope, public_id, :find),
          :ok <- key_may(key_scope, action),
          :ok <- not_ended(connection),
          scope = Scope.for_connection(key_scope, connection),
@@ -378,9 +379,9 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
-  # The activated connection `public_id` of the adapter whose key `key_scope` carries,
-  # with its organisation, `FOR UPDATE` when `lock?`; `{:error, :forbidden}` for anything
-  # else.
+  # The connection `public_id` of the adapter whose key `key_scope` carries, with its
+  # organisation: for `:find`, one that was connected (connected now, or ended since); for
+  # `:end`, one in any state, held `FOR UPDATE`. `{:error, :forbidden}` for anything else.
   defp key_connection(
          %Scope{
            access_key: %AccessKey{
@@ -391,28 +392,30 @@ defmodule Apiary.Adapters.Connections do
            }
          },
          public_id,
-         lock?
+         mode
        )
        when is_binary(adapter_id) do
     with true <- Features.on?(:factory),
          true <- Connection.public_id?(public_id),
-         %Connection{} = connection <- Repo.one(key_query(public_id, adapter_id, lock?)) do
+         %Connection{} = connection <- Repo.one(key_query(public_id, adapter_id, mode)) do
       {:ok, connection}
     else
       _ -> {:error, :forbidden}
     end
   end
 
-  defp key_connection(_scope, _public_id, _lock?), do: {:error, :forbidden}
+  defp key_connection(_scope, _public_id, _mode), do: {:error, :forbidden}
 
-  defp key_query(public_id, adapter_id, lock?) do
+  defp key_query(public_id, adapter_id, mode) do
     query =
       from c in Connection,
         where: c.public_id == ^public_id and c.adapter_id == ^adapter_id,
-        where: not is_nil(c.activated_at),
         preload: :organisation
 
-    if lock?, do: lock(query, "FOR UPDATE"), else: query
+    case mode do
+      :find -> where(query, [c], not is_nil(c.connected_at))
+      :end -> lock(query, "FOR UPDATE")
+    end
   end
 
   # The key's role holds `action` on its adapter (`Apiary.Access.check/3`, asked of the
@@ -438,24 +441,25 @@ defmodule Apiary.Adapters.Connections do
   end
 
   @doc false
-  # mark_connected/1 makes `connection`, activated and pending, connected now: for the
-  # adapter's first listing that names it, once `connection_for_key/3` found it. One
-  # connected already stays as it is. `{:ok, connection}`; `{:error, :ended}` for one that
-  # ended meanwhile; `{:error, :forbidden}` for one not activated or not there.
-  @spec mark_connected(Connection.t()) ::
+  # mark_listed/1 records the adapter's first listing that names `connection`, connected,
+  # once `connection_for_key/3` found it: `listed_at`, now. From then on a press of
+  # Install is refused (`start/3`). One listed already stays as it is. `{:ok, connection}`;
+  # `{:error, :ended}` for one that ended meanwhile; `{:error, :forbidden}` for one
+  # pending or not there.
+  @spec mark_listed(Connection.t()) ::
           {:ok, Connection.t()} | {:error, :ended | :forbidden}
-  def mark_connected(%Connection{id: id}) do
+  def mark_listed(%Connection{id: id}) do
     Repo.transact(fn ->
       case Repo.one(from c in Connection, where: c.id == ^id, lock: "FOR UPDATE") do
-        %Connection{state: :pending, activated_at: %DateTime{}} = pending ->
+        %Connection{state: :connected, listed_at: nil} = unlisted ->
           now = DateTime.utc_now()
 
-          pending
-          |> Ecto.Changeset.change(state: :connected, connected_at: now, updated_at: now)
+          unlisted
+          |> Ecto.Changeset.change(listed_at: now, updated_at: now)
           |> Repo.update()
 
-        %Connection{state: :connected} = connected ->
-          {:ok, connected}
+        %Connection{state: :connected} = listed ->
+          {:ok, listed}
 
         %Connection{state: :ended} ->
           {:error, :ended}
@@ -470,16 +474,18 @@ defmodule Apiary.Adapters.Connections do
 
   @doc false
   # end_connection/2 ends the connection `public_id` (`ac_…`) of the adapter whose key
-  # `key_scope` carries, as the adapter reports it gone (`adapter_reported`), whatever
-  # its organisation's state, and clears the pools of that organisation the adapter
-  # served, in one transaction, the connection's row first. `{:ok, connection}`, ended;
-  # `{:error, :forbidden}` as `connection_for_key/3` answers it; `{:error, :ended}` for
-  # one ended already.
+  # `key_scope` carries, pending or connected, as the adapter reports it gone
+  # (`adapter_reported`), whatever its organisation's state, and clears the pools of that
+  # organisation the adapter served, in one transaction, the connection's row first. A
+  # return for a pending one it ended is not found after (`complete_return/4`).
+  # `{:ok, connection}`, ended; `{:error, :forbidden}` for a scope of no adapter's key,
+  # an id that names no connection, a connection of another adapter, or where the
+  # feature is off; `{:error, :ended}` for one ended already, connected before or not.
   @spec end_connection(Scope.t() | nil, term) ::
           {:ok, Connection.t()} | {:error, :forbidden | :ended}
   def end_connection(key_scope, public_id) do
     Repo.transact(fn ->
-      with {:ok, connection} <- key_connection(key_scope, public_id, true),
+      with {:ok, connection} <- key_connection(key_scope, public_id, :end),
            :ok <- not_ended(connection) do
         end_live(connection, :adapter_reported, DateTime.utc_now())
       end

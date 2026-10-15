@@ -89,8 +89,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
                created_by_id: user_id,
                pass_nonce: ^bytes,
                pass_nonce_used_at: nil,
-               activated_at: nil,
                connected_at: nil,
+               listed_at: nil,
                ended_at: nil
              } = Repo.get_by!(Connection, public_id: public_id)
 
@@ -114,11 +114,11 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Repo.aggregate(Connection, :count) == 1
     end
 
-    test "a connected organisation is told so, and changes nothing", %{
+    test "an organisation connected, and listed, is told so, and changes nothing", %{
       scope: scope,
       adapter: adapter
     } do
-      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+      {connection, _nonce} = connection_fixture(scope, adapter, :listed)
       assert Adapters.connect(scope, adapter) == {:error, :connected}
       assert reload(connection) == connection
     end
@@ -128,7 +128,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       adapter: adapter,
       key: key
     } do
-      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+      {connection, _nonce} = connection_fixture(scope, adapter, :listed)
       {:ok, _ended} = Connections.end_connection(key_scope(key), connection.public_id)
 
       {:ok, _url, {public_id, _nonce}} = Adapters.connect(scope, adapter)
@@ -180,22 +180,37 @@ defmodule Apiary.Adapters.ConnectionsTest do
       %{connection: Repo.get_by!(Connection, public_id: public_id), nonce: nonce}
     end
 
-    test "linked activates the connection, which stays pending; the nonce is used", %{
-      scope: scope,
-      pair: pair,
-      connection: connection,
-      nonce: nonce
-    } do
+    test "linked connects the connection, not yet listed, which the key then reaches; the nonce is used",
+         %{scope: scope, pair: pair, key: key, connection: connection, nonce: nonce} do
       token = return_token(pair.secret, connection.public_id, nonce)
+
+      # Before the return, the key and a listing get the 403 answer.
+      assert Connections.connection_for_key(
+               key_scope(key),
+               connection.public_id,
+               :"source_item.post"
+             ) == {:error, :forbidden}
+
+      assert Connections.mark_listed(connection) == {:error, :forbidden}
 
       assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
                {:ok, :linked}
 
       assert %Connection{
-               state: :pending,
-               activated_at: %DateTime{},
+               state: :connected,
+               connected_at: %DateTime{},
+               listed_at: nil,
                pass_nonce_used_at: %DateTime{}
              } = reload(connection)
+
+      assert {:ok, %Connection{id: id}, _scope} =
+               Connections.connection_for_key(
+                 key_scope(key),
+                 connection.public_id,
+                 :"source_item.post"
+               )
+
+      assert id == connection.id
 
       # Once: the same return again is not found.
       assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
@@ -220,7 +235,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
         assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
                  {:ok, {:refused, reason}}
 
-        assert %Connection{state: :pending, activated_at: nil, pass_nonce_used_at: %DateTime{}} =
+        assert %Connection{state: :pending, connected_at: nil, pass_nonce_used_at: %DateTime{}} =
                  reload(connection)
       end
 
@@ -230,10 +245,10 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
                {:ok, :cancelled}
 
-      assert %Connection{activated_at: nil} = reload(connection)
+      assert %Connection{state: :pending, connected_at: nil} = reload(connection)
     end
 
-    test "once activated and not yet listed, a press ends it as replaced, and starts a new one",
+    test "connected and not yet listed, a press ends it as replaced, clears its pools, starts anew",
          %{
            scope: scope,
            adapter: adapter,
@@ -244,8 +259,15 @@ defmodule Apiary.Adapters.ConnectionsTest do
          } do
       token = return_token(pair.secret, connection.public_id, nonce)
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, token, nonce)
-      activated = reload(connection)
+      connected = reload(connection)
       %{scope: admin, user: other} = member_fixture(scope, :admin)
+
+      # A pool may name the adapter as soon as the return connected it; one served by
+      # another adapter is kept.
+      pool = connected_pool(scope, adapter)
+      second_adapter = connectable_adapter_fixture()
+      {_ours, _} = connection_fixture(scope, second_adapter.adapter, :connected)
+      kept = connected_pool(scope, second_adapter.adapter)
 
       assert {:ok, url, {public_id, second}} = Adapters.connect(admin, adapter)
       refute public_id == connection.public_id
@@ -259,18 +281,21 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       assert Ed25519.encode(bytes) == second
 
-      # The activated one ended, with its pass, its person and its activation as they were.
+      # The connected one ended, with its pass, its person and the time it connected as they
+      # were, and the pool it served is served by none.
       assert %Connection{state: :ended, ended_at: %DateTime{}, ended_reason: :replaced} =
                ended = reload(connection)
 
-      fields = [:activated_at, :pass_nonce, :pass_nonce_used_at, :created_by_id, :connected_at]
-      assert Map.take(ended, fields) == Map.take(activated, fields)
+      fields = [:pass_nonce, :pass_nonce_used_at, :created_by_id, :connected_at, :listed_at]
+      assert Map.take(ended, fields) == Map.take(connected, fields)
       assert {ended.pass_nonce, ended.created_by_id} == {nonce_bytes(nonce), scope.user.id}
+      assert Repo.get!(Node, pool.id).served_by_id == nil
+      assert Repo.get!(Node, kept.id).served_by_id == second_adapter.adapter.id
 
-      # The new one is pending, not activated, started by the admin with the new pass.
+      # The new one is pending, started by the admin with the new pass.
       assert %Connection{
                state: :pending,
-               activated_at: nil,
+               connected_at: nil,
                pass_nonce_used_at: nil,
                created_by_id: by,
                pass_nonce: ^bytes
@@ -290,12 +315,12 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
                {:error, :ended}
 
-      assert Connections.mark_connected(activated) == {:error, :ended}
+      assert Connections.mark_listed(connected) == {:error, :ended}
 
       assert Connections.connection_for_key(key_scope, public_id, :"source_item.post") ==
                {:error, :forbidden}
 
-      assert Connections.mark_connected(fresh) == {:error, :forbidden}
+      assert Connections.mark_listed(fresh) == {:error, :forbidden}
 
       # A return for the old one, or under the old pass, is not found; so is the new pass's
       # return brought by someone else than the admin, or for the old connection.
@@ -317,7 +342,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(connection) == ended
       assert reload(fresh) == fresh
 
-      # The new one is activated by the return under its pass, then listed, and a press is
+      # The new one is connected by the return under its pass, then listed, and a press is
       # refused.
       assert Connections.complete_return(admin, public_id, linked, second) == {:ok, :linked}
 
@@ -325,15 +350,20 @@ defmodule Apiary.Adapters.ConnectionsTest do
                Connections.connection_for_key(key_scope, public_id, :"source_item.post")
 
       assert id == fresh.id
-      assert {:ok, %Connection{state: :connected}} = Connections.mark_connected(fresh)
+
+      assert {:ok, %Connection{state: :connected, listed_at: %DateTime{}}} =
+               Connections.mark_listed(fresh)
+
       assert Adapters.connect(scope, adapter) == {:error, :connected}
 
-      # Each press left its entry, naming its connection; the end left none. In the order
-      # written: the two entries can share a time, and the ids are monotonic.
+      # Each press of this adapter left its entry, naming its connection; the end left
+      # none. In the order written: the two entries can share a time, and the ids are
+      # monotonic.
       assert Repo.all(
                from e in Entry,
                  where: e.subject_id == ^scope.organisation.id,
                  where: like(e.action, "adapter.%"),
+                 where: e.details["public_id"] == ^adapter.public_id,
                  order_by: [asc: e.id],
                  select: {e.action, e.details["connection_id"]}
              ) == [
@@ -342,7 +372,55 @@ defmodule Apiary.Adapters.ConnectionsTest do
              ]
     end
 
-    test "a used, refused or stale return changes no activated connection", %{
+    test "the adapter's disconnect ends a pending connection, and its return is not found after",
+         %{
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           key: key,
+           connection: connection,
+           nonce: nonce
+         } do
+      key_scope = key_scope(key)
+      other = connectable_adapter_fixture()
+
+      # Another adapter's key, and an id that names none, are refused first.
+      assert Connections.end_connection(key_scope(other.access_key), connection.public_id) ==
+               {:error, :forbidden}
+
+      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :forbidden}
+      assert reload(connection) == connection
+
+      assert {:ok,
+              %Connection{
+                state: :ended,
+                ended_reason: :adapter_reported,
+                ended_at: %DateTime{},
+                connected_at: nil
+              }} = Connections.end_connection(key_scope, connection.public_id)
+
+      ended = reload(connection)
+
+      assert Connections.complete_return(
+               scope,
+               connection.public_id,
+               return_token(pair.secret, connection.public_id, nonce),
+               nonce
+             ) == {:error, :not_found}
+
+      assert reload(connection) == ended
+      assert Connections.end_connection(key_scope, connection.public_id) == {:error, :ended}
+
+      # Never connected, so the key finds nothing to act through.
+      assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
+               {:error, :forbidden}
+
+      # A press after it starts a new connection.
+      assert {:ok, _url, {public_id, _nonce}} = Adapters.connect(scope, adapter)
+      refute public_id == connection.public_id
+    end
+
+    test "a used, refused or stale return changes no connected connection", %{
       scope: scope,
       adapter: adapter,
       pair: pair,
@@ -352,14 +430,14 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {:ok, _url, {_id, nonce}} = Adapters.connect(scope, adapter)
       linked = return_token(pair.secret, connection.public_id, nonce)
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, linked, nonce)
-      activated = reload(connection)
+      connected = reload(connection)
 
       for {token, session} <- [
             {linked, nonce},
             {return_token(pair.secret, connection.public_id, nonce, outcome: :cancelled), nonce},
             {return_token(pair.secret, connection.public_id, nonce,
                outcome: :refused,
-               reason: :not_admin
+               reason: :person_not_permitted
              ), nonce},
             {return_token(pair.secret, connection.public_id, first), first}
           ] do
@@ -367,9 +445,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
                  {:error, :not_found}
       end
 
-      assert reload(connection) == activated
+      assert reload(connection) == connected
 
-      # Even with its nonce unused, an activated connection takes no return.
+      # Even with its nonce unused, a connected connection takes no return.
       Repo.update_all(from(c in Connection, where: c.id == ^connection.id),
         set: [pass_nonce_used_at: nil]
       )
@@ -377,7 +455,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.complete_return(scope, connection.public_id, linked, nonce) ==
                {:error, :not_found}
 
-      assert reload(connection) == %{activated | pass_nonce_used_at: nil}
+      assert reload(connection) == %{connected | pass_nonce_used_at: nil}
     end
 
     test "a later press makes the earlier pass's return not found", %{
@@ -479,7 +557,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
           nonce
         )
 
-      {:ok, connected} = Connections.mark_connected(reload(connection))
+      {:ok, connected} = Connections.mark_listed(reload(connection))
       assert Adapters.connect(scope, adapter) == {:error, :connected}
 
       # A connected one keeps its nonce; a return under it is refused, used or not.
@@ -534,7 +612,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       assert Connections.complete_return(admin, public_id, token, nonce) == {:error, :not_found}
 
-      assert %Connection{activated_at: nil, pass_nonce_used_at: nil} =
+      assert %Connection{state: :pending, pass_nonce_used_at: nil} =
                Repo.get_by!(Connection, public_id: public_id)
 
       # An organisation marked for deletion takes none either.
@@ -555,16 +633,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
   describe "at the server contract" do
     setup %{scope: scope, adapter: adapter, key: key} do
-      {activated, _nonce} = connection_fixture(scope, adapter, :activated)
-      %{activated: activated, key_scope: key_scope(key)}
+      {connected, _nonce} = connection_fixture(scope, adapter, :connected)
+      %{connected: connected, key_scope: key_scope(key)}
     end
 
-    test "an activated connection is found, with the key's scope narrowed to its organisation",
-         %{scope: scope, activated: activated, key_scope: key_scope} do
+    test "a connected connection is found, with the key's scope narrowed to its organisation",
+         %{scope: scope, connected: connected, key_scope: key_scope} do
       assert {:ok, %Connection{id: id} = connection, narrowed} =
-               Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post")
+               Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
 
-      assert id == activated.id
+      assert id == connected.id
       assert narrowed.organisation.id == scope.organisation.id
       assert narrowed.workspace == nil
       assert narrowed.access_key == key_scope.access_key
@@ -572,12 +650,12 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Access.place(narrowed) == {scope.organisation.id, nil}
     end
 
-    test "403: none, another adapter's, one never activated, an action the key does not take",
-         %{scope: scope, adapter: adapter, activated: activated, key_scope: key_scope} do
+    test "403: none, another adapter's, one pending, an action the key does not take",
+         %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
       other = connectable_adapter_fixture()
       %{scope: second} = sign_up_fixture()
       {pending, _nonce} = connection_fixture(second, adapter, :pending)
-      {theirs, _nonce} = connection_fixture(scope, other.adapter, :activated)
+      {theirs, _nonce} = connection_fixture(scope, other.adapter, :connected)
 
       for id <- ["ac_0000000000000000", "nope", nil, pending.public_id, theirs.public_id] do
         assert Connections.connection_for_key(key_scope, id, :"source_item.post") ==
@@ -587,7 +665,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       # Another adapter's key, a node's key, and no key at all.
       assert Connections.connection_for_key(
                key_scope(other.access_key),
-               activated.public_id,
+               connected.public_id,
                :"source_item.post"
              ) == {:error, :forbidden}
 
@@ -596,16 +674,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
       for not_adapter <- [Scope.for_access_key(node_key), scope, nil] do
         assert Connections.connection_for_key(
                  not_adapter,
-                 activated.public_id,
+                 connected.public_id,
                  :"source_item.post"
                ) ==
                  {:error, :forbidden}
       end
 
-      assert Connections.connection_for_key(key_scope, activated.public_id, :"adapter.read") ==
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"adapter.read") ==
                {:error, :forbidden}
 
-      # Ended and never activated: 403 comes first.
+      # Ended and never connected: 403 comes first.
       Repo.update_all(from(c in Connection, where: c.id == ^pending.id),
         set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
       )
@@ -616,37 +694,37 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
     test "409 ended, then 409 suspended, in that order", %{
       scope: scope,
-      activated: activated,
+      connected: connected,
       key_scope: key_scope
     } do
       Edition.put_test_stub(EditionStubs.OutOfUse)
       Process.put(:out_of_use, [scope.organisation.id])
 
-      assert Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post") ==
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
                {:error, :suspended}
 
-      {:ok, _} = Connections.end_connection(key_scope, activated.public_id)
+      {:ok, _} = Connections.end_connection(key_scope, connected.public_id)
 
-      assert Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post") ==
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
                {:error, :ended}
     end
 
     test "suspended while its organisation is marked, or the edition refuses it, and back after",
-         %{scope: scope, activated: activated, key_scope: key_scope} do
+         %{scope: scope, connected: connected, key_scope: key_scope} do
       {:ok, _} = Deletion.delete_organisation(scope, scope.organisation.slug)
 
-      assert Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post") ==
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
                {:error, :suspended}
 
       {:ok, _} = Deletion.restore_organisation(scope, scope.organisation.id)
 
       assert {:ok, _, _} =
-               Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post")
+               Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
 
       Edition.put_test_stub(Suspends)
       Suspends.put([scope.organisation.id])
 
-      assert Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post") ==
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
                {:error, :suspended}
 
       # The scope of the key carries no organisation, which the edition does not refuse.
@@ -654,22 +732,22 @@ defmodule Apiary.Adapters.ConnectionsTest do
       Suspends.put([])
 
       assert {:ok, _, _} =
-               Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post")
+               Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
     end
 
     test "the narrowed scope acts on its organisation and that connection, nothing else", %{
       scope: scope,
       adapter: adapter,
-      activated: activated,
+      connected: connected,
       key_scope: key_scope
     } do
       {:ok, connection, narrowed} =
-        Connections.connection_for_key(key_scope, activated.public_id, :"source_item.post")
+        Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
 
       %{scope: other} = sign_up_fixture()
-      {theirs, _nonce} = connection_fixture(other, adapter, :activated)
+      {theirs, _nonce} = connection_fixture(other, adapter, :connected)
       second = connectable_adapter_fixture()
-      {of_another, _nonce} = connection_fixture(scope, second.adapter, :activated)
+      {of_another, _nonce} = connection_fixture(scope, second.adapter, :connected)
 
       assert Access.check(narrowed, :"source_item.post", scope.organisation) == :ok
       assert Access.check(narrowed, :"source_item.post", connection) == :ok
@@ -687,32 +765,44 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Access.check(narrowed, :"adapter.read", scope.organisation) == {:error, :forbidden}
     end
 
-    test "mark_connected/1 connects an activated one, once", %{
+    test "mark_listed/1 records the first listing of a connected one, once", %{
       adapter: adapter,
-      activated: activated,
+      connected: connected,
       key_scope: key_scope
     } do
-      assert {:ok, %Connection{state: :connected, connected_at: %DateTime{}} = connected} =
-               Connections.mark_connected(activated)
+      assert {:ok, %Connection{state: :connected, listed_at: %DateTime{} = at} = listed} =
+               Connections.mark_listed(connected)
 
-      assert Connections.mark_connected(activated) == {:ok, connected}
+      assert DateTime.compare(at, connected.connected_at) != :lt
+
+      assert Map.delete(listed, :listed_at) |> Map.delete(:updated_at) ==
+               reload(connected) |> Map.delete(:listed_at) |> Map.delete(:updated_at)
+
+      # Listed already: nothing changes.
+      assert Connections.mark_listed(connected) == {:ok, listed}
+      assert reload(connected) == listed
 
       %{scope: other} = sign_up_fixture()
       {pending, _nonce} = connection_fixture(other, adapter, :pending)
-      assert Connections.mark_connected(pending) == {:error, :forbidden}
-      assert reload(pending).state == :pending
+      assert Connections.mark_listed(pending) == {:error, :forbidden}
+      assert reload(pending) == pending
 
-      {:ok, _} = Connections.end_connection(key_scope, activated.public_id)
-      assert Connections.mark_connected(activated) == {:error, :ended}
+      assert Connections.mark_listed(%Connection{id: Ecto.UUID.generate()}) ==
+               {:error, :forbidden}
+
+      {:ok, _} = Connections.end_connection(key_scope, connected.public_id)
+      ended = reload(connected)
+      assert Connections.mark_listed(connected) == {:error, :ended}
+      assert reload(connected) == ended
     end
 
     test "end_connection/2 ends it whatever its organisation's state, and clears its pools there",
-         %{scope: scope, adapter: adapter, activated: activated, key_scope: key_scope} do
-      {:ok, connection} = Connections.mark_connected(activated)
+         %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
+      {:ok, connection} = Connections.mark_listed(connected)
       %{scope: other} = sign_up_fixture()
-      {theirs, _} = connection_fixture(other, adapter, :connected)
+      {theirs, _} = connection_fixture(other, adapter, :listed)
       second = connectable_adapter_fixture()
-      {_ours, _} = connection_fixture(scope, second.adapter, :connected)
+      {_ours, _} = connection_fixture(scope, second.adapter, :listed)
 
       pool = connected_pool(scope, adapter)
       kept = connected_pool(scope, second.adapter)
@@ -748,7 +838,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       admin: admin,
       adapter: adapter
     } do
-      {connected, _} = connection_fixture(scope, adapter, :connected)
+      {connected, _} = connection_fixture(scope, adapter, :listed)
       %{scope: other} = sign_up_fixture()
       {pending, _} = connection_fixture(other, adapter, :pending)
       pool = connected_pool(scope, adapter)
@@ -774,9 +864,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
       scope: scope,
       adapter: adapter
     } do
-      {connection, _} = connection_fixture(scope, adapter, :connected)
+      {connection, _} = connection_fixture(scope, adapter, :listed)
       %{scope: other} = sign_up_fixture()
-      {theirs, _} = connection_fixture(other, adapter, :connected)
+      {theirs, _} = connection_fixture(other, adapter, :listed)
       pool = connected_pool(scope, adapter)
 
       assert Connections.end_for_organisation(scope.organisation.id) == 1
@@ -807,12 +897,10 @@ defmodule Apiary.Adapters.ConnectionsTest do
   end
 
   describe "a pool's adapter" do
-    test "is one the organisation is connected to: pending does not count", %{
-      scope: scope,
-      adapter: adapter
-    } do
+    test "is one the organisation is connected to, from the linked return: pending does not count",
+         %{scope: scope, adapter: adapter, pair: pair} do
       pool = pool_fixture(scope)
-      {connection, _nonce} = connection_fixture(scope, adapter, :pending)
+      {connection, nonce} = connection_fixture(scope, adapter, :pending)
 
       assert Adapters.serving_choices(scope) == []
       assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
@@ -822,10 +910,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
         Repo.update_all(from(n in Node, where: n.id == ^pool.id), set: [served_by_id: adapter.id])
       end
 
-      {:ok, _} =
-        Connections.mark_connected(
-          Repo.update!(Ecto.Changeset.change(connection, activated_at: DateTime.utc_now()))
+      # Connected by the linked return, before any listing.
+      {:ok, :linked} =
+        Connections.complete_return(
+          scope,
+          connection.public_id,
+          return_token(pair.secret, connection.public_id, nonce),
+          nonce
         )
+
+      assert %Connection{state: :connected, listed_at: nil} = reload(connection)
 
       assert [%Node{id: id}] = Adapters.serving_choices(scope)
       assert id == adapter.id
@@ -881,7 +975,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       pair: pair
     } do
       {connection, nonce} = connection_fixture(scope, adapter, :pending)
-      {_connected, _} = connection_fixture(sign_up_fixture().scope, adapter, :connected)
+      {_connected, _} = connection_fixture(sign_up_fixture().scope, adapter, :listed)
 
       :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
       :ok = EditionStubs.HidesNamed.put([:factory])
@@ -985,8 +1079,13 @@ defmodule Apiary.Adapters.ConnectionsTest do
             {%{state: :connected, ended_at: now, ended_reason: :adapter_reported},
              "adapter_connections_state_check"},
             {%{state: :ended, ended_at: now}, "adapter_connections_ended_reason_check"},
-            {%{state: :ended, ended_at: now, ended_reason: :adapter_reported, connected_at: now},
-             "adapter_connections_connected_check"}
+            {%{state: :ended, ended_at: now, ended_reason: :adapter_reported, listed_at: now},
+             "adapter_connections_listed_check"},
+            {%{
+               state: :connected,
+               connected_at: now,
+               listed_at: DateTime.add(now, -1, :second)
+             }, "adapter_connections_listed_check"}
           ] do
         assert refused(fn -> insert(Map.merge(base, attrs)) end) == constraint
       end
@@ -994,7 +1093,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
       for set <- [
             [state: :connected],
             [connected_at: now],
-            [state: :connected, connected_at: now],
+            [listed_at: now],
+            [state: :connected, listed_at: now],
             [ended_at: now],
             [ended_reason: :adapter_reported]
           ] do

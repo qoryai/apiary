@@ -13,12 +13,17 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # no connection they reach, and a return that is bad, expired or used, as a path that
   # does not exist, whoever asks, so the link does not tell whether one exists. Behind
   # sign-in: an anonymous visitor is sent to log in first. `return` is kept out of the
-  # logs (`:filter_parameters`).
+  # logs (`:filter_parameters`), and every answer of this controller, the redirect after
+  # a return, the 403 and the 404 alike, says `Referrer-Policy: no-referrer`, so no page
+  # it leads to sends the link, with its `return`, on as a referrer.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
   use ApiaryWeb, :controller
+
+  plug :no_referrer
+
   use ApiaryWeb.Features, :factory
 
   alias Apiary.Adapters.Connections
@@ -63,6 +68,8 @@ defmodule ApiaryWeb.AdapterRedirectController do
         raise ApiaryWeb.NotFound
     end
   end
+
+  defp no_referrer(conn, _opts), do: put_resp_header(conn, "referrer-policy", "no-referrer")
 
   # How the install ended: the integration's page does not say it.
   defp told(conn, _outcome, _name), do: conn

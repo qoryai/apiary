@@ -61,7 +61,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
   end
 
   describe "with a return" do
-    test "linked: in the browser that started it, the connection is activated and the page follows",
+    test "linked: in the browser that started it, the connection is connected and the page follows",
          %{
            conn: conn,
            scope: scope,
@@ -81,7 +81,9 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       assert redirected_to(conn) == page(scope, adapter)
       assert conn.assigns.flash == %{}
       assert get_session(conn, "connect_passes") == nil
-      assert %Connection{state: :pending, activated_at: %DateTime{}} = reload(connection)
+
+      assert %Connection{state: :connected, connected_at: %DateTime{}, listed_at: nil} =
+               reload(connection)
 
       # Used: the same link again is not found.
       not_found(fn ->
@@ -99,7 +101,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       pair: pair,
       connection: connection
     } do
-      for opts <- [[outcome: :refused, reason: :not_admin], [outcome: :cancelled]] do
+      for opts <- [[outcome: :refused, reason: :person_not_permitted], [outcome: :cancelled]] do
         {:ok, _url, {_id, nonce} = session} = Adapters.connect(scope, adapter)
         token = return_token(pair.secret, connection.public_id, nonce, opts)
 
@@ -111,7 +113,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         assert redirected_to(answered) == page(scope, adapter)
         assert answered.assigns.flash == %{}
 
-        assert %Connection{activated_at: nil, pass_nonce_used_at: %DateTime{}} =
+        assert %Connection{state: :pending, pass_nonce_used_at: %DateTime{}} =
                  reload(connection)
       end
     end
@@ -175,6 +177,48 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       end)
 
       assert reload(connection) == connection
+    end
+  end
+
+  describe "the referrer" do
+    test "every answer says no-referrer: the redirect, after a return or not, the 403 and the 404",
+         %{
+           conn: conn,
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           connection: connection,
+           nonce: nonce,
+           session: session
+         } do
+      no_referrer = ["no-referrer"]
+
+      led = get(conn, ~p"/integrations/#{connection}")
+      assert redirected_to(led) == page(scope, adapter)
+      assert get_resp_header(led, "referrer-policy") == no_referrer
+
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      refused = get(conn, ~p"/integrations/#{connection}?return=#{token}")
+      assert refused.status == 403
+      assert get_resp_header(refused, "referrer-policy") == no_referrer
+
+      returned =
+        conn
+        |> ConnectSession.put(session)
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(returned) == page(scope, adapter)
+      assert get_resp_header(returned, "referrer-policy") == no_referrer
+
+      {404, headers, _body} =
+        assert_error_sent(:not_found, fn ->
+          conn
+          |> ConnectSession.put(session)
+          |> get(~p"/integrations/#{connection}?return=#{token}")
+        end)
+
+      assert {"referrer-policy", "no-referrer"} in headers
     end
   end
 

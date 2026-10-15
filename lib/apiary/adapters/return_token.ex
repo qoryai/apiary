@@ -38,21 +38,21 @@ defmodule Apiary.Adapters.ReturnToken do
   @validity 300
   @nonce_size 16
   @outcomes %{"linked" => :linked, "refused" => :refused, "cancelled" => :cancelled}
-  @reasons ~w(not_admin installation_taken installation_not_confirmed installation_suspended
-              permission_missing pass_expired github_unavailable)a
+  @reasons ~w(person_not_permitted grant_taken grant_not_confirmed grant_suspended
+              permission_missing pass_expired source_unavailable)a
   @required ~w(version connection_id nonce outcome expires_at)
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "Why the adapter refused to link, as a return names it."
   @type reason ::
-          :not_admin
-          | :installation_taken
-          | :installation_not_confirmed
-          | :installation_suspended
+          :person_not_permitted
+          | :grant_taken
+          | :grant_not_confirmed
+          | :grant_suspended
           | :permission_missing
           | :pass_expired
-          | :github_unavailable
+          | :source_unavailable
 
   # What a return says, as `verify/2` reads it: the connection's public id, the nonce's 16
   # raw bytes, how it ended and why, for `:refused` alone, and when it stops being good.
