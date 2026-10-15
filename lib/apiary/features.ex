@@ -79,7 +79,7 @@ defmodule Apiary.Features do
   # no doc names it.
   #
   # `factory` is the work items of a workspace and what they are taken in from, opt-in
-  # while they are built, and served the same documentation on or off (`docs: false`).
+  # until it is announced, and served the same documentation on or off (`docs: false`).
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
