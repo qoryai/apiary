@@ -194,6 +194,24 @@ defmodule ApiaryWeb.FormatTest do
       assert Format.ago(2, :day) == "2 days ago"
     end
 
+    test "a timestamp as people say it, to start a sentence and inside one" do
+      start = &Format.time_ago(&1, @now)
+      inline = &Format.time_ago(&1, @now, case: :inline)
+
+      for {at, starting, following} <- [
+            {~U[2026-09-20 14:03:30Z], "Just now", "just now"},
+            {~U[2026-09-20 14:02:00Z], "2 minutes ago", "2 minutes ago"},
+            {~U[2026-09-20 11:00:00Z], "3 hours ago", "3 hours ago"},
+            {~U[2026-09-19 17:20:03Z], "Yesterday, 17:20", "yesterday, 17:20"},
+            {~U[2026-09-17 10:00:00Z], "3 days ago", "3 days ago"},
+            {~U[2026-09-01 10:00:00Z], "1 Sept 2026", "1 Sept 2026"}
+          ] do
+        assert start.(at) == starting
+        assert Format.time_ago(at, @now, case: :start) == starting
+        assert inline.(at) == following
+      end
+    end
+
     test "a time across runs" do
       assert Format.relative(~U[2026-09-20 14:03:58Z], @now) == "Just now"
       assert Format.relative(~U[2026-09-20 14:03:20Z], @now) == "40 seconds ago"

@@ -210,6 +210,29 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert doc |> query("button") |> Enum.empty?()
     end
 
+    test "the time follows the words in lower case, and a time beside an event does not" do
+      today = DateTime.utc_now()
+      yesterday = DateTime.new!(Date.add(DateTime.to_date(today), -1), ~T[17:20:00], "Etc/UTC")
+      just_now = DateTime.add(today, -5, :second)
+
+      assert comment(at: yesterday) |> query("#comment-7-head") |> text() ==
+               "Ada Lovelace commented yesterday, 17:20"
+
+      assert comment(at: just_now) |> query("#comment-7-head") |> text() ==
+               "Ada Lovelace commented just now"
+
+      assert comment(at: yesterday, deleted: true) |> query("#comment-7-deleted") |> text() ==
+               "A comment by Ada Lovelace was deleted · yesterday, 17:20"
+
+      ticket = %{ref: "TCK-12", integration: "Tracker", url: nil, updated_at: yesterday}
+
+      assert details(ticket: ticket) |> query("#work-item-details-ticket .q-rail-sub") |> text() ==
+               "updated yesterday, 17:20"
+
+      event = doc(&WorkItemComponents.thread_event/1, kind: :closed, who: "Ada", at: yesterday)
+      assert event |> query("time") |> text() == "Yesterday, 17:20"
+    end
+
     test "a deleted comment is one muted line, with no text and no Delete" do
       doc = comment(deleted: true, body: "gone", can_delete: true)
 

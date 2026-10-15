@@ -110,7 +110,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               </.external_link>
               <span class="q-rail-sub">
                 <.rich text={rich_gettext("updated %{ago}", ago: {:part, :ago})}>
-                  <:part name={:ago}><.time_ago at={@ticket.updated_at} /></:part>
+                  <:part name={:ago}><.time_ago at={@ticket.updated_at} case={:inline} /></:part>
                 </.rich>
               </span>
             <% else %>
@@ -189,7 +189,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.rich text={
           rich_gettext("A comment by %{who} was deleted · %{ago}", who: @who, ago: {:part, :ago})
         }>
-          <:part name={:ago}><.time_ago at={@at} /></:part>
+          <:part name={:ago}><.time_ago at={@at} case={:inline} /></:part>
         </.rich>
       </p>
     </div>
@@ -201,7 +201,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     <div id={@id} class={["q-comment", @class]}>
       <p id={"#{@id}-head"} class="q-comment-head">
         <.rich text={rich_gettext("%{who} commented %{ago}", who: {:b, @who}, ago: {:part, :ago})}>
-          <:part name={:ago}><.time_ago at={@at} class="q-faint" /></:part>
+          <:part name={:ago}><.time_ago at={@at} case={:inline} class="q-faint" /></:part>
         </.rich>
       </p>
       <div id={"#{@id}-body"} class="q-comment-body whitespace-pre-wrap" phx-no-format>{@body}</div>
