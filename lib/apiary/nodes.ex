@@ -292,8 +292,8 @@ defmodule Apiary.Nodes do
     end)
   end
 
-  # A node, a node pool or a gateway is made here; an adapter, which lives at its
-  # organisation, is made through `Apiary.Adapters` alone.
+  # A node, a node pool or a gateway is made here; an adapter, which is the instance's, is
+  # made through `Apiary.Adapters` alone.
   defp made_here(changeset),
     do: Ecto.Changeset.validate_inclusion(changeset, :kind, Node.all_kinds())
 

@@ -31,7 +31,7 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, adapter: adapter_fixture(scope, name: "Acme tracker")}
+    %{scope: scope, admin: instance_admin_scope(), adapter: adapter_fixture(name: "Acme tracker")}
   end
 
   defp enrol(code, pair) do
@@ -56,8 +56,8 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
   end
 
   test "an adapter enrols with a code: adapter and its na_ id in the answer, no stored secrets",
-       %{scope: scope, adapter: adapter} do
-    {:ok, _row, code} = AccessKeys.create_enrolment_code(scope, adapter, %{allow_secrets: true})
+       %{admin: admin, adapter: adapter} do
+    {:ok, _row, code} = AccessKeys.create_enrolment_code(admin, adapter, %{allow_secrets: true})
     assert EnrolmentCode.of_kind?(code, :adapter)
     conn = enrol(code <> "." <> SigningKey.fingerprint(), ed25519_key_pair())
 
@@ -72,8 +72,8 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
   end
 
   test "a request signed under an adapter's key is refused at every endpoint of a node's",
-       %{scope: scope, adapter: adapter} do
-    %{access_key: key, pair: pair} = enrolled_key_fixture(scope, adapter)
+       %{scope: scope, admin: admin, adapter: adapter} do
+    %{access_key: key, pair: pair} = enrolled_key_fixture(admin, adapter)
     assert {:ok, _verified} = AccessKeys.fetch_for_verification(key.key_id)
 
     run_id = Ecto.UUID.generate()
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
     assert Repo.get!(AccessKey, key.id).last_used_at == nil
     assert Repo.aggregate(from(i in Instance, where: i.node_id == ^adapter.id), :count) == 0
 
-    # A key enrolled the same way on a node of the same organisation is answered.
+    # A key enrolled the same way on a node of an organisation is answered.
     node = node_fixture(scope)
     %{access_key: node_key, pair: node_pair} = enrolled_key_fixture(scope, node)
 

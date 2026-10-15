@@ -54,9 +54,8 @@ defmodule Apiary.Nodes.Node do
 
   @kinds [:node, :pool]
   @all_kinds [:node, :pool, :gateway]
-  # The kinds the schema reads and writes: those of `all_kinds/0`, and an adapter, which
-  # lives at its organisation and is made through `Apiary.Adapters` alone
-  # (`adapter_changeset/2`).
+  # The kinds the schema reads and writes: those of `all_kinds/0`, and an adapter, which is
+  # the instance's and is made through `Apiary.Adapters` alone (`adapter_changeset/2`).
   @schema_kinds @all_kinds ++ [:adapter]
   @choices [:direct, :default, :named]
   @max_limit 10_000
@@ -177,16 +176,17 @@ defmodule Apiary.Nodes.Node do
     |> served_by_constraints()
   end
 
-  # An adapter is no node a run runs on, nor a gateway: it lives at its organisation, is
-  # made, renamed and deleted through `Apiary.Adapters`, and its changesets are these
-  # three. Its documentation stays out of the module reference.
+  # An adapter is no node a run runs on, nor a gateway: it is the instance's, with no
+  # organisation and no workspace, is made, renamed and deleted through `Apiary.Adapters`,
+  # and its changesets are these three. Its documentation stays out of the module
+  # reference.
 
   @doc false
   # The changeset of an adapter's name, as it is made or renamed: 1 to 64 characters
-  # without control characters, unique among the organisation's adapters in use. A new one
-  # (no public id yet) is given its kind's public id, `na_`; its place, the organisation
-  # with no workspace, is the caller's to set, and nothing here casts it, its kind, its
-  # limit, its choice of gateway or its address.
+  # without control characters, unique among the instance's adapters in use. A new one
+  # (no public id yet) is given its kind's public id, `na_`; its place, no organisation and
+  # no workspace, is the caller's to set, and nothing here casts it, its kind, its limit,
+  # its choice of gateway or its address.
   @spec adapter_changeset(t, map) :: Ecto.Changeset.t()
   def adapter_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
@@ -196,8 +196,8 @@ defmodule Apiary.Nodes.Node do
     |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
     )
-    |> unique_constraint([:organisation_id, :name],
-      name: :nodes_organisation_adapter_name_index,
+    |> unique_constraint(:name,
+      name: :nodes_adapter_name_index,
       error_key: :name,
       message: dgettext_noop("errors", "has already been taken")
     )

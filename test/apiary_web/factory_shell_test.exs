@@ -32,8 +32,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   setup :register_and_log_in_user
 
-  setup %{scope: scope} do
-    %{adapter: adapter_fixture(scope, %{name: "Acme tracker"})}
+  setup do
+    %{adapter: adapter_fixture(%{name: "Acme tracker"})}
   end
 
   # Every route of the core's router whose page or controller belongs to `factory`, as
@@ -156,39 +156,27 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    test "the link to an integration leads to its page, for a member too", %{
-      conn: conn,
-      scope: scope,
-      adapter: adapter
-    } do
-      page = ~p"/#{scope.organisation}/settings/integrations/#{adapter}"
-      assert conn |> get(~p"/integrations/#{adapter}") |> redirected_to() == page
-
+    # An adapter is the instance's: the link names no organisation to lead to, so it is
+    # not found, to every person, whatever it names, and answers the same for each.
+    test "the link to an integration is not found, the same whatever it names",
+         %{conn: conn, scope: scope, adapter: adapter} do
       %{user: member} = member_fixture(scope, :member)
       member_conn = log_in_user(build_conn(), member)
-      assert member_conn |> get(~p"/integrations/#{adapter}") |> redirected_to() == page
-    end
+      admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
+      deleted = adapter_fixture()
+      {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), deleted)
 
-    test "the link to an integration is not found to anyone who may not read it, nor when it is not there",
-         %{conn: conn, scope: scope, adapter: adapter} do
-      other = sign_up_fixture()
-      other_conn = log_in_user(build_conn(), other.user)
-      theirs = adapter_fixture(other.scope)
-
-      refusals = [
-        {"another organisation's", other_conn, adapter.public_id},
-        {"theirs, to us", conn, theirs.public_id},
-        {"none", conn, "na_doesnotexist"},
-        {"not an adapter", conn, scope.workspace.slug}
-      ]
-
-      for {who, asker, id} <- refusals do
+      for {who, asker, id} <- [
+            {"an owner", conn, adapter.public_id},
+            {"a member", member_conn, adapter.public_id},
+            {"an instance admin", admin_conn, adapter.public_id},
+            {"a deleted one", conn, deleted.public_id},
+            {"none", conn, "na_doesnotexist"},
+            {"not an adapter", conn, scope.workspace.slug}
+          ] do
         assert {404, _body, _headers} = answer(fn -> get(asker, "/integrations/#{id}") end),
                who
       end
-
-      {:ok, _deleted} = Adapters.delete_adapter(scope, adapter)
-      assert {404, _body, _headers} = answer(fn -> get(conn, ~p"/integrations/#{adapter}") end)
     end
 
     test "the link to an integration sends an anonymous visitor to log in", %{adapter: adapter} do
