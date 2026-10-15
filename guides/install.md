@@ -223,9 +223,8 @@ value set in the environment always wins. A variable left blank counts as not se
 | `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
-`APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
-derived from it: it must never change once one exists, and losing it loses every stored
-value, for good.
+`APIARY_ENCRYPTION_SECRET` also encrypts the stored secret values, under keys derived from
+it: it must never change once one exists, and losing it loses every stored value, for good.
 <!-- /feature -->
 
 ```text
