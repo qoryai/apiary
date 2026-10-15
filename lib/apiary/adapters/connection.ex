@@ -2,7 +2,8 @@ defmodule Apiary.Adapters.Connection do
   # An organisation's connection to an adapter of the instance (a node of kind `adapter`,
   # `na_…`), made when an owner or an admin of the organisation starts connecting it
   # (`Apiary.Adapters.connect/2`). The table and its rules are
-  # `20261015131100_let_a_pool_be_served_by_an_adapter`'s.
+  # `20261015131100_let_a_pool_be_served_by_an_adapter`'s, with `pass_expires_at` from
+  # `20261016090500_keep_when_a_connection_s_latest_pass_expires`.
   #
   # `state` is where it stands: `:pending` from the start, `:connected` since
   # `connected_at`, once the person who started it came back with a return that says it
@@ -11,9 +12,14 @@ defmodule Apiary.Adapters.Connection do
   # and made a new connection in its place. `listed_at` is when the adapter's first
   # listing that names it was accepted. `pass_nonce` is the 16 bytes of the nonce of the
   # latest connect pass made for it, and `pass_nonce_used_at` when a return under that
-  # nonce came back. `created_by_id` is the person who pressed Install for that latest
-  # pass. Once connected, a connection takes no new pass: `pass_nonce`, `created_by_id`
-  # and `connected_at` stay as they are; only `listed_at` and the end may change.
+  # nonce came back. `pass_expires_at` is when that latest pass expires, to the second, as
+  # the pass says (`Apiary.Adapters.ConnectPass`), or `nil` for a connection made before
+  # it was kept; each new pass of the connection expires strictly later than it
+  # (`Apiary.Adapters.Connections.start/3`), so the adapter can always tell the newer
+  # pass. `created_by_id` is the person who pressed Install for that latest pass. Once
+  # connected, a connection takes no new pass: `pass_nonce`, `pass_expires_at`,
+  # `created_by_id` and `connected_at` stay as they are; only `listed_at` and the end may
+  # change.
   #
   # `public_id` is its name outside the database: `ac_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -46,6 +52,7 @@ defmodule Apiary.Adapters.Connection do
     field :state, Ecto.Enum, values: [:pending, :connected, :ended]
     field :pass_nonce, :binary, redact: true
     field :pass_nonce_used_at, :utc_datetime_usec
+    field :pass_expires_at, :utc_datetime
     field :connected_at, :utc_datetime_usec
     field :listed_at, :utc_datetime_usec
     field :ended_at, :utc_datetime_usec

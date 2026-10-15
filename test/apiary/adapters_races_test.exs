@@ -84,6 +84,15 @@ defmodule Apiary.AdaptersRacesTest do
     made
   end
 
+  # When the pass in a connect address expires, as its payload says.
+  defp expiry(url) do
+    [_address, pass] = String.split(url, "state=")
+    [payload, _signature] = String.split(pass, ".")
+    %{"expires_at" => at} = payload |> Base.url_decode64!(padding: false) |> Jason.decode!()
+    {:ok, time, 0} = DateTime.from_iso8601(at)
+    time
+  end
+
   defp key_scope(key) do
     {:ok, verified} = AccessKeys.fetch_for_verification(key.key_id)
     Scope.for_access_key(verified)
@@ -102,14 +111,26 @@ defmodule Apiary.AdaptersRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, _url, {^public_id, second_nonce}} = Task.await(second.task)
+      assert {:ok, second_url, {^public_id, second_nonce}} = Task.await(second.task)
       refute first_nonce == second_nonce
 
-      assert [%Connection{public_id: ^public_id, created_by_id: by, pass_nonce: kept}] =
-               Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
+      assert [
+               %Connection{
+                 public_id: ^public_id,
+                 created_by_id: by,
+                 pass_nonce: kept,
+                 pass_expires_at: kept_expiry
+               }
+             ] = Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
 
       assert by == other.id
       assert Apiary.Contract.Ed25519.encode(kept) == second_nonce
+
+      # The second read the first's expiry under the row's lock, after the first committed:
+      # its pass expires strictly later, and the connection keeps it.
+      {:ok, first_url, _session} = first.result
+      assert DateTime.compare(expiry(second_url), expiry(first_url)) == :gt
+      assert kept_expiry == expiry(second_url)
     end
 
     test "many at once make one connection" do
@@ -122,8 +143,14 @@ defmodule Apiary.AdaptersRacesTest do
       assert Enum.all?(results, &match?({:ok, _url, {_id, _nonce}}, &1))
       assert [_one] = results |> Enum.map(fn {:ok, _, {id, _}} -> id end) |> Enum.uniq()
 
-      assert Repo.aggregate(from(c in Connection, where: c.adapter_id == ^adapter.id), :count) ==
-               1
+      assert [%Connection{pass_expires_at: kept_expiry}] =
+               Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
+
+      # One after another under the row's lock, each pass expires strictly later than the
+      # one before it, and the connection keeps the last.
+      expiries = Enum.map(results, fn {:ok, url, _session} -> expiry(url) end)
+      assert length(Enum.uniq(expiries)) == n
+      assert kept_expiry == Enum.max(expiries, DateTime)
     end
   end
 
