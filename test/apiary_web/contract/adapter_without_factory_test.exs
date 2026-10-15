@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Contract.AdapterWithoutFactoryTest do
   # An instance without the feature adapters belong to: an adapter's request that
-  # verifies is answered a signed 404, one that does not is told 401, and one with no
-  # signature at all is answered as a path the router does not know. Not async: the
-  # features are the whole node's.
+  # verifies is answered a signed 404, `{"error":"not_found"}`, the integration contract's
+  # refusal, one that does not is told 401, and one with no signature at all is answered
+  # as a path the router does not know. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.AccessKeysFixtures
@@ -36,19 +36,33 @@ defmodule ApiaryWeb.Contract.AdapterWithoutFactoryTest do
     })
   end
 
-  test "a request that verifies is answered a signed 404, and changes nothing", ctx do
-    conn =
-      IntegrationsContract.adapter_post(
-        build_conn(),
-        ctx.key.key_id,
-        ctx.seed,
-        "/v1/adapter",
-        body()
-      )
+  defp verified(ctx) do
+    IntegrationsContract.adapter_post(
+      build_conn(),
+      ctx.key.key_id,
+      ctx.seed,
+      "/v1/adapter",
+      body()
+    )
+  end
 
+  test "a request that verifies is answered a signed 404 not_found in JSON, and changes nothing",
+       ctx do
+    conn = verified(ctx)
     assert conn.status == 404
+    assert conn.resp_body == ~s({"error":"not_found"})
+    assert [type] = get_resp_header(conn, "content-type")
+    assert type =~ ~r{\Aapplication/json}
     assert signed_answer?(conn)
     assert Repo.get!(Node, ctx.adapter.id).connect_url == nil
+  end
+
+  @tag :integrations_contract
+  test "the 404 is the contract's refusal, as its fixture has it", ctx do
+    body = Jason.decode!(verified(ctx).resp_body)
+    schema = IntegrationsContract.schema!("refusal.schema.json")
+    assert IntegrationsContract.validate(schema, body) == :ok
+    assert body == IntegrationsContract.fixture!("adapter/refusal/not-found.json")
   end
 
   test "a request that does not verify is told 401, unsigned", ctx do
