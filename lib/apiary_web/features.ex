@@ -14,10 +14,17 @@ defmodule ApiaryWeb.Features do
   access key of a signed request of the server contract is asked `Apiary.Features.on?/1`,
   the instance's switch, so a node is served whatever a level below the instance shows.
 
+  A page that belongs to more than one feature names them with `any:`,
+  `use ApiaryWeb.Features, any: [:security, :secrets]`: it is there when at least one of
+  them is, and absent, as above, when none is. `__feature__/0` is then
+  `{:any, features}`, a `t:gate/0` as `gate/1` reads it; `on?/1` and `visible?/2` answer
+  for either form.
+
   The features are the core's and the edition's (`Apiary.Features.all/0`), and the
   edition's are known only once it runs: whether a page names a feature there is is
   checked at boot, over the routes of the router the instance serves (`boot!/0`), not when
-  the page compiles.
+  the page compiles. What `use` is given is checked when the page compiles: a feature's
+  name, or `any:` and two or more names, each once.
   """
 
   @behaviour Plug
@@ -29,21 +36,24 @@ defmodule ApiaryWeb.Features do
     defexception message: "not found", plug_status: 404
   end
 
-  defmacro __using__(feature) do
-    unless is_atom(feature) and not is_nil(feature) do
-      raise ArgumentError,
-            "use ApiaryWeb.Features takes the name of a feature, got: #{inspect(feature)}"
-    end
+  @typedoc """
+  What a page names with `use ApiaryWeb.Features`: a feature, or `{:any, features}` for
+  a page that is there when at least one of them is.
+  """
+  @type gate :: Features.feature() | {:any, [Features.feature(), ...]}
+
+  defmacro __using__(opts) do
+    named = gate!(opts)
 
     # Which gate the caller can take is known from its imports, which are lexical and so
     # settled when this expands: a LiveView imports `on_mount/1`, a controller `plug/2`.
     gate =
       cond do
         Macro.Env.lookup_import(__CALLER__, {:on_mount, 1}) != [] ->
-          quote do: on_mount({ApiaryWeb.Features, unquote(feature)})
+          quote do: on_mount({ApiaryWeb.Features, unquote(named)})
 
         Macro.Env.lookup_import(__CALLER__, {:plug, 2}) != [] ->
-          quote do: plug(ApiaryWeb.Features, unquote(feature))
+          quote do: plug(ApiaryWeb.Features, unquote(named))
 
         true ->
           raise ArgumentError, "use ApiaryWeb.Features belongs in a LiveView or a controller"
@@ -53,9 +63,63 @@ defmodule ApiaryWeb.Features do
       unquote(gate)
 
       @doc false
-      def __feature__, do: unquote(feature)
+      def __feature__, do: unquote(named)
     end
   end
+
+  # The gate `use` is given, or an `ArgumentError`: a feature's name, or `any:` and two or
+  # more names, each once. Whether each names a feature there is is `boot!/0`'s to check.
+  defp gate!(any: features) do
+    unless is_list(features) and length(features) >= 2 and Enum.all?(features, &name?/1) and
+             Enum.uniq(features) == features do
+      raise ArgumentError,
+            "use ApiaryWeb.Features, any: takes two or more names of features, each once, " <>
+              "got: #{inspect(features)}"
+    end
+
+    {:any, features}
+  end
+
+  defp gate!(feature) do
+    unless name?(feature) do
+      raise ArgumentError,
+            "use ApiaryWeb.Features takes the name of a feature, got: #{inspect(feature)}"
+    end
+
+    feature
+  end
+
+  defp name?(feature), do: is_atom(feature) and not is_nil(feature)
+
+  @doc """
+  gate/1 is what `module` names with `use ApiaryWeb.Features` (`t:gate/0`), or nil for a
+  module that names no feature: a page every instance has, or no page.
+  """
+  @spec gate(module) :: gate | nil
+  def gate(module) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :__feature__, 0),
+      do: module.__feature__()
+  end
+
+  @doc "features/1 is the features `gate` names, in the order it names them."
+  @spec features(gate) :: [Features.feature()]
+  def features({:any, features}) when is_list(features), do: features
+  def features(feature) when is_atom(feature), do: [feature]
+
+  @doc """
+  on?/1 is whether the instance has the feature `gate` names, or one of the features
+  (`Apiary.Features.on?/1`).
+  """
+  @spec on?(gate) :: boolean
+  def on?(gate), do: Enum.any?(features(gate), &Features.on?/1)
+
+  @doc """
+  visible?/2 is whether the feature `gate` names, or one of the features, is shown where
+  `scope` is (`Apiary.Features.visible?/2`).
+  """
+  @spec visible?(Apiary.Accounts.Scope.t() | Apiary.AccessKeys.AccessKey.t() | nil, gate) ::
+          boolean
+  def visible?(scope, gate), do: Enum.any?(features(gate), &Features.visible?(scope, &1))
 
   @doc """
   boot!/0 checks that every route of the router the instance serves, whose LiveView or
@@ -67,8 +131,8 @@ defmodule ApiaryWeb.Features do
 
   @doc """
   check_routes!/1 is `boot!/0`'s check over the routes of `router`: `:ok`, or an
-  `ArgumentError` that names the first module whose feature is none of
-  `Apiary.Features.all/0`.
+  `ArgumentError` that names the first module that names a feature, alone or with `any:`,
+  that is none of `Apiary.Features.all/0`.
   """
   @spec check_routes!(module) :: :ok
   def check_routes!(router) when is_atom(router) do
@@ -77,19 +141,25 @@ defmodule ApiaryWeb.Features do
     unknown =
       for route <- Phoenix.Router.routes(router),
           module = route_module(route),
-          declares_feature?(module),
-          module.__feature__() not in all,
+          gate = gate(module),
+          Enum.any?(features(gate), &(&1 not in all)),
           uniq: true,
-          do: module
+          do: {module, gate}
 
     case unknown do
       [] ->
         :ok
 
-      [module | _] ->
+      [{module, feature} | _] when is_atom(feature) ->
         raise ArgumentError,
-              "#{inspect(module)} uses ApiaryWeb.Features with #{inspect(module.__feature__())}, " <>
+              "#{inspect(module)} uses ApiaryWeb.Features with #{inspect(feature)}, " <>
                 "which is not one of #{inspect(all)}"
+
+      [{module, {:any, features}} | _] ->
+        raise ArgumentError,
+              "#{inspect(module)} uses ApiaryWeb.Features with any: #{inspect(features)}, " <>
+                "and #{Enum.map_join(features -- all, ", ", &inspect/1)} is not one of " <>
+                inspect(all)
     end
   end
 
@@ -98,12 +168,9 @@ defmodule ApiaryWeb.Features do
 
   defp route_module(%{plug: plug}), do: plug
 
-  defp declares_feature?(module),
-    do: Code.ensure_loaded?(module) and function_exported?(module, :__feature__, 0)
-
   @doc false
-  def on_mount(feature, _params, _session, socket) do
-    if Features.visible?(socket.assigns[:current_scope], feature) do
+  def on_mount(gate, _params, _session, socket) do
+    if visible?(socket.assigns[:current_scope], gate) do
       {:cont, socket}
     else
       raise NotFound
@@ -112,18 +179,19 @@ defmodule ApiaryWeb.Features do
 
   @impl Plug
   def init(feature) when is_atom(feature), do: feature
+  def init({:any, features} = gate) when is_list(features), do: gate
 
   @impl Plug
-  def call(conn, feature) do
-    if shown?(conn, feature), do: conn, else: absent(conn)
+  def call(conn, gate) do
+    if shown?(conn, gate), do: conn, else: absent(conn)
   end
 
   # A person's scope asks what the person is shown; a signed request of the server contract,
   # which carries an access key and no person's scope, asks the instance.
-  defp shown?(%{assigns: %{current_scope: %Apiary.Accounts.Scope{} = scope}}, feature),
-    do: Features.visible?(scope, feature)
+  defp shown?(%{assigns: %{current_scope: %Apiary.Accounts.Scope{} = scope}}, gate),
+    do: visible?(scope, gate)
 
-  defp shown?(_conn, feature), do: Features.on?(feature)
+  defp shown?(_conn, gate), do: on?(gate)
 
   # For a feature the instance has and a person is not shown, and for a signed request
   # of the server contract to a feature the instance does not have:

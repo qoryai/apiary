@@ -12,8 +12,9 @@ defmodule ApiaryWeb.Features.Routes do
   gives an unknown path.
 
   The route is found with `Phoenix.Router.route_info/4` and its feature read from the
-  LiveView or controller that declares one (`use ApiaryWeb.Features`). Below the instance,
-  where a person may be shown less than the instance has, the gates of
+  LiveView or controller that declares one (`use ApiaryWeb.Features`); a route whose
+  module names several, with `any:`, passes when the instance has one of them. Below the
+  instance, where a person may be shown less than the instance has, the gates of
   `ApiaryWeb.Features` still decide per scope, and they alone see a live navigation, which
   never reaches here. To a signed request of the server contract the gates answer as the
   instance: its access key follows the instance's features alone.
@@ -26,8 +27,6 @@ defmodule ApiaryWeb.Features.Routes do
   is told `401`, as on any route of the contract.
   """
   @behaviour Plug
-
-  alias Apiary.Features
 
   # The pipelines of `ApiaryWeb.Routes` that verify a signed request of the server contract.
   @signed_pipelines [:contract, :contract_events, :contract_registration]
@@ -46,19 +45,22 @@ defmodule ApiaryWeb.Features.Routes do
       nil ->
         conn
 
-      feature ->
+      gate ->
         cond do
-          Features.on?(feature) -> conn
+          ApiaryWeb.Features.on?(gate) -> conn
           signed?(route, conn) -> conn
           true -> raise(Phoenix.Router.NoRouteError, conn: conn, router: router)
         end
     end
   end
 
-  # The feature the matched route's module declares, or nil for a route every instance has
-  # and for a path the router does not know, which it answers itself.
-  defp feature(%{phoenix_live_view: {live_view, _action, _opts, _extra}}), do: declared(live_view)
-  defp feature(%{plug: plug}), do: declared(plug)
+  # The feature the matched route's module declares, or the features with `any:`
+  # (`ApiaryWeb.Features.gate/1`), or nil for a route every instance has and for a path the
+  # router does not know, which it answers itself.
+  defp feature(%{phoenix_live_view: {live_view, _action, _opts, _extra}}),
+    do: ApiaryWeb.Features.gate(live_view)
+
+  defp feature(%{plug: plug}), do: ApiaryWeb.Features.gate(plug)
   defp feature(_route), do: nil
 
   # A signed request of the server contract goes on to be verified: the contract signs
@@ -71,9 +73,4 @@ defmodule ApiaryWeb.Features.Routes do
   end
 
   defp signed?(_route, _conn), do: false
-
-  defp declared(module) do
-    if Code.ensure_loaded?(module) and function_exported?(module, :__feature__, 0),
-      do: module.__feature__()
-  end
 end
