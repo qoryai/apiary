@@ -101,6 +101,8 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "Qory Apiary links no stored secret to it."
              )
 
+      refute has_element?(lv, "#connection-secrets-unlinked a")
+
       section = lv |> element("#settings-section-integrations") |> render()
       # Qory Apiary is named only in the line of the secrets it declares.
       refute String.replace(section, "Qory Apiary links no stored secret", "") =~ "Qory"

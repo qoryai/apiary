@@ -129,9 +129,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc "settings_path/1 is the workspace's settings, the breadcrumb's step before the section."
   def settings_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings"
 
-  @doc "secrets_path/1 is Secrets and variables, where the workspace's secrets are stored."
-  def secrets_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets"
-
   ## The line every page says once
 
   @doc """

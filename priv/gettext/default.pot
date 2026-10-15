@@ -9763,13 +9763,9 @@ msgid "Qory Apiary doesn't let a *. suffix with paths cover another allowed host
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary links no stored secret to it."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary links no stored secret to it. The organisation's secrets are in %{secrets}."
+msgid "Qory Apiary links no stored secret to it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -10683,7 +10679,6 @@ msgid "Secret files"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format

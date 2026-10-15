@@ -388,12 +388,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         {gettext("It declares no secret.")}
       </p>
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
-        <.rich text={
-          rich_gettext(
-            "Qory Apiary links no stored secret to it. The organisation's secrets are in %{secrets}.",
-            secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets")}
-          )
-        } />
+        {gettext("Qory Apiary links no stored secret to it.")}
       </p>
     </SettingsComponents.part>
 
