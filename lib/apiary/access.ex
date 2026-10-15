@@ -5,6 +5,7 @@ defmodule Apiary.Access do
   alias Apiary.Access.Action
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.{Edition, Features}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
 
@@ -306,8 +307,58 @@ defmodule Apiary.Access do
       feature: :security,
       roles: [:access_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
+    ),
+    # The organisation's adapters, people's actions.
+    Action.new(:"adapter.read", "read the organisation's adapters",
+      feature: :factory,
+      roles: @members,
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
+    Action.new(:"adapter.create", "make an adapter of the organisation",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.edit", "rename an adapter",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.delete", "delete an adapter, which revokes its access keys",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.connect", "connect an adapter to the system it reaches",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # An adapter's key at the server contract, asked of the adapter itself.
+    Action.new(:"source_item.post", "post the items of a source",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, "the items an adapter posts are kept as they are, not in the audit trail"}
+    ),
+    Action.new(:"work_item.read_changes", "read what changed of the work items",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
+    Action.new(:"dispatch.claim", "claim what is dispatched to an adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, "a claim is kept with what it claims, not in the audit trail"}
     )
   ]
+
+  # The features whose actions the tables of this documentation leave out: those the
+  # documentation does not differ by (`docs: false`), which no doc names.
+  @undocumented Features.core_undocumented()
 
   # The core's roles, with who holds each: a membership's level, the gateway's access key, or
   # the instance itself. An edition adds its own (`c:Apiary.Edition.roles/0`).
@@ -316,6 +367,7 @@ defmodule Apiary.Access do
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
     access_key: "a gateway, with a key of the workspace",
+    adapter_key: "an adapter, with a key of its organisation, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
 
@@ -441,7 +493,7 @@ defmodule Apiary.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
+  #{@actions |> Enum.reject(&(&1.feature in @undocumented)) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
       action.part && action.feature -> "`#{action.feature}`, its part `#{action.part}`"
       action.part -> "every instance, the part `#{action.part}`"
       action.feature -> "`#{action.feature}`"
@@ -452,7 +504,7 @@ defmodule Apiary.Access do
 
   | Role | Who | Actions |
   |---|---|---|
-  #{Enum.map_join(@roles, "\n", fn {role, who} -> "| `#{role}` | #{who} | #{@actions |> Enum.filter(&(role in &1.roles)) |> Enum.map_join(", ", &"`#{&1.name}`")} |" end)}
+  #{@roles |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
 
   Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
   Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
@@ -936,7 +988,8 @@ defmodule Apiary.Access do
   defp check_in_place(scope, action, subject) do
     role = role(scope)
 
-    with :ok <- check_place(scope, action, subject) do
+    with :ok <- check_place(scope, action, subject),
+         :ok <- key_subject(role, scope, subject) do
       cond do
         own?(scope, action, subject) -> :ok
         not_own?(scope, action, subject) -> {:error, :forbidden}
@@ -946,6 +999,17 @@ defmodule Apiary.Access do
       end
     end
   end
+
+  # An adapter's key acts on that adapter alone: any other subject, another adapter of its
+  # organisation, the organisation, or anything else, is not found to it.
+  defp key_subject(:adapter_key, %Scope{access_key: %AccessKey{node_id: id}}, subject) do
+    case subject do
+      %Node{id: ^id, kind: :adapter} when is_binary(id) -> :ok
+      _other -> {:error, :not_found}
+    end
+  end
+
+  defp key_subject(_role, _scope, _subject), do: :ok
 
   @doc """
   check_place/3 is the place's part of the answer, steps 3 to 5 of the moduledoc: `:ok`
@@ -991,10 +1055,21 @@ defmodule Apiary.Access do
   role the edition gives them (`c:Apiary.Edition.role/1`); nil for anyone else.
   """
   @spec role(Scope.t() | nil) :: role | nil
-  def role(%Scope{access_key: %AccessKey{}}), do: :access_key
+  def role(%Scope{access_key: %AccessKey{} = key}), do: key_role(key)
   def role(%Scope{instance: true, user: nil, membership: nil}), do: :instance
   def role(%Scope{} = scope), do: own_level(scope) || Edition.role(scope)
   def role(_scope), do: nil
+
+  # A key's role follows its node's kind, as the key carries it
+  # (`Apiary.Accounts.Scope.for_access_key/1` loads it): `adapter_key` for an adapter's,
+  # asked before any other kind; `access_key` for a node's, a node pool's or a gateway's;
+  # none for a key whose node is not loaded or of a kind not known here, which may nothing.
+  defp key_role(%AccessKey{node: %Node{kind: :adapter}}), do: :adapter_key
+
+  defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :pool, :gateway],
+    do: :access_key
+
+  defp key_role(%AccessKey{}), do: nil
 
   ## Reading again
 

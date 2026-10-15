@@ -188,11 +188,12 @@ defmodule Apiary.Contract.Enrolment do
   @spec answer_body(%{
           access_key_id: String.t(),
           node_id: String.t(),
-          node_kind: :node | :pool | :gateway,
+          node_kind: :node | :pool | :gateway | :adapter,
           stored_secrets: boolean,
           apiary_public_key: [map, ...]
         }) :: binary
-  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway] do
+  # An adapter's key enrols as any node's: `node_kind` `adapter`, for an `na_` id.
+  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway, :adapter] do
     Jason.encode!(
       Jason.OrderedObject.new([
         {"version", 1},
