@@ -384,8 +384,7 @@ defmodule ApiaryWeb.Routes do
             # instance's admins: the instance's integrations, with Add an integration a
             # separate page, and an integration's tabs and its acts, by its adapter's public
             # id (`na_…`). Its Access key tab has the acts of a node's that an adapter's key
-            # takes: no key made in the browser. The fixed path goes first, so that
-            # `:adapter_id` never takes it.
+            # takes: no key made in the browser.
             live "/instance/integrations", InstanceLive.Integrations, :index
             live "/instance/integrations/new", InstanceLive.Integrations, :new
 

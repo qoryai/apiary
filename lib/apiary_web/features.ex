@@ -22,7 +22,7 @@ defmodule ApiaryWeb.Features do
 
   A page of the Instance level names its feature with `instance:`,
   `use ApiaryWeb.Features, instance: :security`, or `instance: [any: [...]]`. Such a page
-  has no organisation of its own: the scope it is opened in carries the organisation the
+  has no organisation: the scope it is opened in carries the organisation the
   person opened last, whose `hidden` says nothing of the instance. Its gate asks the
   instance, `on?/1`, whoever opens it, and whether the person may open the page is the
   page's to answer. `__feature__/0` is the feature, or `{:any, features}`, as without

@@ -301,7 +301,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert length(routes) == 9
 
       for {path, module} <- routes do
-        # The page's own answer, as it mounts: not the door's, nor the gate's.
+        # The answer of the page as it mounts: not the door's, nor the gate's.
         assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
         assert ApiaryWeb.Features.gate(module) == :factory
       end

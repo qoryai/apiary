@@ -471,7 +471,7 @@ defmodule Apiary.AdaptersTest do
       assert Repo.get!(EnrolmentCode, second_code.id).cancelled_at
     end
 
-    test "an instance admin follows its keys and codes on the instance's topic, whatever organisation the scope carries",
+    test "an instance admin follows its keys and codes on the instance's topic, from a scope in another organisation",
          %{scope: scope, admin: admin} do
       adapter = adapter_fixture()
       other = adapter_fixture()

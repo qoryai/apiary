@@ -726,8 +726,8 @@ defmodule Apiary.AccessKeys do
   @doc """
   subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace
   or a gateway of its organisation, or, for an instance admin, a node of the instance, with
-  no organisation, whatever organisation the scope carries. Anyone else asking for a node
-  of the instance is refused as reading its keys is.
+  no organisation, where the scope shows what such a node belongs to. Anyone else asking
+  for a node of the instance is refused as reading its keys is.
   """
   @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
   # A node of the instance, an adapter's, is read by an instance admin shown the feature
