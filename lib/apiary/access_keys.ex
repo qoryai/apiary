@@ -424,8 +424,9 @@ defmodule Apiary.AccessKeys do
   # which place, with the scope that records the change: for a row of an organisation,
   # `action` asked of `Apiary.Access`, at the row's workspace, or its organisation for a
   # row with none, recorded with the scope itself; for a row with no organisation, an
-  # adapter's, an instance admin shown the feature adapters belong to
-  # (`Apiary.Adapters.authorize_instance/2`, which `opts` go to), at the instance,
+  # adapter's, an instance admin on an instance with the feature adapters belong to,
+  # whatever organisation the scope carries (`Apiary.Adapters.authorize_instance/2`, which
+  # `opts` go to), at the instance,
   # recorded in the trail of the instance's organisation (`Apiary.Adapters.instance_scope/1`).
   # The place is the row's as the caller gave it: a node, a key or a code found there is
   # one of the place, or none, so a row given with another organisation finds nothing.
@@ -447,8 +448,9 @@ defmodule Apiary.AccessKeys do
 
   # The place `node`'s keys and codes are read at for the person of `scope`: its workspace,
   # or its organisation for a node with none, as the page that reads them asked; for a node
-  # with no organisation, an adapter's, the instance, only to an instance admin shown the
-  # feature adapters belong to, and nowhere to anyone else.
+  # with no organisation, an adapter's, the instance, only to an instance admin on an
+  # instance with the feature adapters belong to, whatever organisation the scope carries
+  # (`Apiary.Adapters.authorize_instance/2`), and nowhere to anyone else.
   defp read_place(scope, %Node{organisation_id: nil}),
     do: if(Adapters.authorize_instance(scope) == :ok, do: :instance, else: :nowhere)
 
@@ -725,13 +727,14 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace
-  or a gateway of its organisation, or, for an instance admin, a node of the instance, with
-  no organisation, where the scope shows what such a node belongs to. Anyone else asking
-  for a node of the instance is refused as reading its keys is.
+  or a gateway of its organisation, or, for an instance admin, whatever organisation the
+  scope carries, a node of the instance, with no organisation, where the instance has what
+  such a node belongs to. Anyone else asking for a node of the instance, and anyone at all
+  where the instance does not have it, is refused as reading its keys is.
   """
   @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
-  # A node of the instance, an adapter's, is read by an instance admin shown the feature
-  # adapters belong to (`read_place/2`), and so is its topic.
+  # A node of the instance, an adapter's, is read by an instance admin on an instance with
+  # the feature adapters belong to (`read_place/2`), and so is its topic.
   def subscribe(
         %Scope{} = scope,
         %Node{id: node_id, organisation_id: nil, workspace_id: nil} = node

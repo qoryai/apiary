@@ -34,6 +34,13 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterRedirectController
   ]
 
+  # The modules of the feature's pages of the Instance level.
+  @instance_modules [
+    ApiaryWeb.InstanceLive.Integrations,
+    ApiaryWeb.InstanceLive.Integration,
+    ApiaryWeb.AdapterLive.AccessKey
+  ]
+
   setup :register_and_log_in_user
 
   setup do
@@ -333,6 +340,31 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
+    test "an open page stays open, whatever the person is shown in the organisation the scope carries" do
+      hide_factory(%{})
+      admin = instance_admin_scope()
+      refute Apiary.Features.visible?(admin, :factory)
+
+      for module <- @instance_modules do
+        assert ApiaryWeb.Features.instance?(module), inspect(module)
+        assert ApiaryWeb.Features.page_shown?(module, admin), inspect(module)
+
+        # As a change of the person's memberships has the page read the scope again.
+        socket = ApiaryWeb.UserAuth.reload_scope(open_socket(module, admin))
+        refute socket.redirected, inspect(module)
+      end
+
+      # A page of the organisation asks what the person is shown there, and leaves.
+      for module <- [ApiaryWeb.AdapterLive.Index, ApiaryWeb.AdapterLive.Show] do
+        refute ApiaryWeb.Features.instance?(module), inspect(module)
+        refute ApiaryWeb.Features.page_shown?(module, admin), inspect(module)
+
+        socket = ApiaryWeb.UserAuth.reload_scope(open_socket(module, admin))
+        assert {:redirect, %{to: to}} = socket.redirected
+        assert to == "/#{admin.organisation.slug}"
+      end
+    end
+
     test "anyone but an instance admin is answered as on the Instance's other pages", %{
       conn: conn,
       scope: scope,
@@ -526,6 +558,14 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute :integrations in section_keys(scope)
     end
 
+    test "an open page of the Instance level is not there, for an instance admin too" do
+      admin = instance_admin_scope()
+
+      for module <- @instance_modules do
+        refute ApiaryWeb.Features.page_shown?(module, admin), inspect(module)
+      end
+    end
+
     test "Instance settings leave Integrations out, for an instance admin too" do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
@@ -537,6 +577,14 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       refute has_element?(view, "#instance-tab-integrations")
     end
+  end
+
+  # An open page of `module`, as a LiveView holds it once mounted with `scope`.
+  defp open_socket(module, scope) do
+    %Phoenix.LiveView.Socket{
+      view: module,
+      assigns: %{__changed__: %{}, current_scope: scope, flash: %{}}
+    }
   end
 
   # A page a live navigation to `path` starts from, in the same live session: an Instance

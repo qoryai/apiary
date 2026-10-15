@@ -1045,13 +1045,59 @@ defmodule Apiary.AdaptersTest do
       assert reload(pool).served_by_id == nil
     end
 
-    test "an adapter, its key and its code are not changed, even by an instance admin", %{
-      scope: scope,
+    # An adapter is the instance's: an instance admin reaches it where the instance has the
+    # feature, whatever the organisation their scope carries shows them.
+    test "an instance admin reads and changes an adapter, its key and its code all the same", %{
       admin: admin,
       adapter: adapter,
       key: key,
       code: code
     } do
+      hidden_admin = Access.reload(admin)
+      refute Apiary.Features.visible?(hidden_admin, :factory)
+      assert Apiary.Features.on?(:factory)
+
+      assert Adapters.authorize_instance(admin) == :ok
+      assert Adapters.authorize_instance(admin, sudo: true) == :ok
+
+      # The reads: the adapter, and its keys and codes at the instance (`read_place/2`).
+      assert adapter.id in Enum.map(Adapters.list_adapters(hidden_admin), & &1.id)
+      assert %Node{id: id} = Adapters.get_adapter(hidden_admin, adapter.public_id)
+      assert id == adapter.id
+      assert key.id in Enum.map(AccessKeys.list_for_node(hidden_admin, adapter), & &1.id)
+      assert code.id in Enum.map(AccessKeys.list_enrolment_codes(hidden_admin, adapter), & &1.id)
+
+      # The topic of its keys, which hears a code cancelled.
+      assert AccessKeys.subscribe(hidden_admin, adapter) == :ok
+      code_id = code.id
+
+      assert {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} =
+               AccessKeys.cancel_code(admin, code)
+
+      assert_receive {:code_cancelled, %{code_id: ^code_id}}
+
+      # The changes.
+      assert {:ok, %AccessKey{revoked_at: %DateTime{}}} = AccessKeys.revoke_access_key(admin, key)
+
+      assert {:ok, %EnrolmentCode{}, _code} =
+               AccessKeys.create_enrolment_code(admin, adapter, %{})
+
+      assert {:ok, %Node{name: "Acme renamed"}} =
+               Adapters.rename_adapter(admin, adapter, %{name: "Acme renamed"})
+
+      assert {:ok, %Node{kind: :adapter}} = Adapters.create_adapter(admin, %{name: "Acme hidden"})
+      assert {:ok, %Node{}} = Adapters.delete_adapter(admin, adapter)
+      assert %Node{deleted_at: %DateTime{}} = reload(adapter)
+    end
+
+    test "anyone else is refused, and nothing changes", %{
+      scope: scope,
+      adapter: adapter,
+      key: key,
+      code: code
+    } do
+      refute Access.instance_admin?(scope)
+
       # The entries of what is refused here, the adapter's creation among them.
       entries = fn ->
         Repo.all(
@@ -1071,23 +1117,24 @@ defmodule Apiary.AdaptersTest do
 
       before = entries.()
 
-      for asker <- [admin, scope] do
-        assert AccessKeys.revoke_access_key(asker, key) == {:error, :not_found}
-        assert AccessKeys.cancel_code(asker, code) == {:error, :not_found}
-        assert AccessKeys.create_enrolment_code(asker, adapter, %{}) == {:error, :not_found}
+      assert Adapters.authorize_instance(scope) == {:error, :forbidden}
+      assert AccessKeys.revoke_access_key(scope, key) == {:error, :forbidden}
+      assert AccessKeys.cancel_code(scope, code) == {:error, :forbidden}
+      assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :forbidden}
 
-        assert Repo.transact(fn ->
-                 AccessKeys.revoke_node_keys(Access.reload(asker), adapter, :node_deleted)
-               end) == {:error, :not_found}
+      assert Repo.transact(fn ->
+               AccessKeys.revoke_node_keys(Access.reload(scope), adapter, :node_deleted)
+             end) == {:error, :forbidden}
 
-        assert Adapters.create_adapter(asker, %{name: "Acme hidden"}) == {:error, :not_found}
-        assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
-        assert Adapters.rename_adapter(asker, adapter, %{name: "renamed"}) == {:error, :not_found}
-        assert Adapters.delete_adapter(asker, adapter) == {:error, :not_found}
-        # A page's scope is read with what the person is shown as it is now.
-        assert Adapters.list_adapters(Access.reload(asker)) == []
-        assert AccessKeys.list_for_node(Access.reload(asker), adapter) == []
-      end
+      assert Adapters.create_adapter(scope, %{name: "Acme hidden"}) == {:error, :forbidden}
+      assert AccessKeys.subscribe(scope, adapter) == {:error, :forbidden}
+      assert Adapters.rename_adapter(scope, adapter, %{name: "renamed"}) == {:error, :forbidden}
+      assert Adapters.delete_adapter(scope, adapter) == {:error, :forbidden}
+      # A page's scope is read with what the person is shown as it is now.
+      assert Adapters.list_adapters(Access.reload(scope)) == []
+      assert Adapters.get_adapter(Access.reload(scope), adapter.public_id) == nil
+      assert AccessKeys.list_for_node(Access.reload(scope), adapter) == []
+      assert AccessKeys.list_enrolment_codes(Access.reload(scope), adapter) == []
 
       assert Repo.get!(AccessKey, key.id).revoked_at == nil
       assert Repo.get!(EnrolmentCode, code.id).cancelled_at == nil
@@ -1096,6 +1143,19 @@ defmodule Apiary.AdaptersTest do
       assert name == adapter.name
 
       assert entries.() == before
+    end
+
+    # The organisation's side asks what the person is shown there, an instance admin too.
+    test "the organisation's side still follows what the organisation shows", %{
+      scope: scope,
+      admin: admin,
+      adapter: adapter
+    } do
+      for asker <- [scope, admin] do
+        assert Adapters.connect(asker, adapter) == {:error, :not_found}
+        assert Adapters.serving_choices(Access.reload(asker)) == []
+        refute Access.can?(Access.reload(asker), :"adapter.read", asker.organisation)
+      end
     end
 
     test "a node's, a pool's and a gateway's keys and codes are revoked and cancelled as before",

@@ -13,6 +13,7 @@ defmodule ApiaryWeb.Features do
   person's scope is asked `Apiary.Features.visible?/2`, what the person is shown; the
   access key of a signed request of the server contract is asked `Apiary.Features.on?/1`,
   the instance's switch, so a node is served whatever a level below the instance shows.
+  `page_shown?/2` asks a page's gate as the hook does, for a page that is already open.
 
   A page that belongs to more than one feature names them with `any:`,
   `use ApiaryWeb.Features, any: [:security, :secrets]`: it is there when at least one of
@@ -24,9 +25,10 @@ defmodule ApiaryWeb.Features do
   `use ApiaryWeb.Features, instance: :security`, or `instance: [any: [...]]`. Such a page
   has no organisation: the scope it is opened in carries the organisation the
   person opened last, whose `hidden` says nothing of the instance. Its gate asks the
-  instance, `on?/1`, whoever opens it, and whether the person may open the page is the
-  page's to answer. `__feature__/0` is the feature, or `{:any, features}`, as without
-  `instance:`.
+  instance, `on?/1`, whoever opens it, and so does `page_shown?/2` once the page is open;
+  whether the person may open the page is the page's to answer. `__feature__/0` is the
+  feature, or `{:any, features}`, as without `instance:`, and `instance?/1` says the page
+  is one of the Instance level.
 
   The features are the core's and the edition's (`Apiary.Features.all/0`), and the
   edition's are known only once it runs: whether a page names a feature there is is
@@ -67,11 +69,16 @@ defmodule ApiaryWeb.Features do
           raise ArgumentError, "use ApiaryWeb.Features belongs in a LiveView or a controller"
       end
 
+    instance? = match?({:instance, _gate}, hook)
+
     quote do
       unquote(gate)
 
       @doc false
       def __feature__, do: unquote(named)
+
+      @doc false
+      def __instance_feature__?, do: unquote(instance?)
     end
   end
 
@@ -119,6 +126,32 @@ defmodule ApiaryWeb.Features do
   def gate(module) when is_atom(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :__feature__, 0),
       do: module.__feature__()
+  end
+
+  @doc """
+  instance?/1 is whether `module` is a page of the Instance level, which names its feature
+  with `instance:`: its gate asks the instance, `on?/1`, whoever opens it. False for a
+  module that names its feature without `instance:`, and for one that names none.
+  """
+  @spec instance?(module) :: boolean
+  def instance?(module) when is_atom(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__instance_feature__?, 0) and
+      module.__instance_feature__?()
+  end
+
+  @doc """
+  page_shown?/2 is whether the page of the LiveView or controller `module` is still there
+  for `scope`, as its gate answers: true for a module that names no feature; for a page of
+  the Instance level (`instance?/1`), whether the instance has the feature, whatever
+  organisation `scope` carries (`on?/1`); for any other, whether it is shown where `scope`
+  is (`visible?/2`).
+  """
+  @spec page_shown?(module, Apiary.Accounts.Scope.t() | nil) :: boolean
+  def page_shown?(module, scope) when is_atom(module) do
+    case gate(module) do
+      nil -> true
+      gate -> if instance?(module), do: on?(gate), else: visible?(scope, gate)
+    end
   end
 
   @doc "features/1 is the features `gate` names, in the order it names them."
