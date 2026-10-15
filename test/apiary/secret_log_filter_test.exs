@@ -1,16 +1,16 @@
 defmodule Apiary.SecretLogFilterTest do
   use ExUnit.Case, async: true
 
+  alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.SecretLogFilter
 
   # The fixture secret of Forager's contract (keys.json), and one in capitals.
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
-  # An enrolment code as Apiary makes it, as the command carries it (the server key's
-  # fingerprint after it), and as a person may type it.
-  @code "qec_7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
-  @issued @code <> ".SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"
-  @typed "QEC_7k3m-9p2q-4r6s-8t0v-1w5x-3y9z-2a"
+  # An enrolment code's 26 characters, and the server key's fingerprint the command
+  # carries after a code.
+  @code_body "7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
+  @fingerprint ".SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"
 
   defp event(msg), do: %{level: :debug, msg: msg, meta: %{}}
 
@@ -127,63 +127,130 @@ defmodule Apiary.SecretLogFilterTest do
   end
 
   describe "an enrolment code" do
-    test "is replaced in a message, in any case and as typed, the fingerprint after it kept" do
-      for {code, after_} <- [{@code, ""}, {String.downcase(@code), ""}, {@typed, ""}] do
+    # A code of each kind as Qory Apiary makes it, as the command carries it (the server
+    # key's fingerprint after it), as a person may type it, and with its `_` URL-encoded.
+    defp codes do
+      for {kind, prefix} <- EnrolmentCode.prefixes() do
+        code = prefix <> @code_body
+        stem = String.trim_trailing(prefix, "_")
+
+        %{
+          kind: kind,
+          code: code,
+          issued: code <> @fingerprint,
+          typed: String.upcase(prefix) <> "7k3m-9p2q-4r6s-8t0v-1w5x-3y9z-2a",
+          encoded: stem <> "%5F" <> @code_body,
+          encoded_lower: String.upcase(stem) <> "%5f" <> @code_body
+        }
+      end
+    end
+
+    test "every kind's prefix is taken, and one of the contract's shape that is no kind's" do
+      kinds = EnrolmentCode.prefixes()
+      assert Enum.sort(Enum.map(codes(), & &1.kind)) == Enum.sort(Map.keys(kinds))
+
+      letter =
+        Enum.find_value(?a..?z, &if(("qec" <> <<&1>> <> "_") not in Map.values(kinds), do: &1))
+
+      %{msg: {:string, text}} =
+        SecretLogFilter.filter(event({:string, "got qec#{<<letter>>}_#{@code_body}"}), nil)
+
+      assert text == "got [FILTERED]"
+    end
+
+    test "is replaced in a message, in any case, as typed and URL-encoded, the fingerprint after it kept" do
+      for c <- codes(),
+          code <- [c.code, String.downcase(c.code), c.typed, c.encoded, c.encoded_lower] do
         %{msg: {:string, text}} =
           SecretLogFilter.filter(
             event({:string, ["Parameters: ", inspect(%{"code" => code})]}),
             nil
           )
 
-        assert text == ~s(Parameters: %{"code" => "[FILTERED]#{after_}"})
+        assert text == ~s(Parameters: %{"code" => "[FILTERED]"}), inspect({c.kind, code})
       end
 
-      %{msg: {:string, text}} =
-        SecretLogFilter.filter(event({~c"run ~s", ["qory access-key enrol #{@issued}"]}), nil)
+      for c <- codes() do
+        %{msg: {:string, text}} =
+          SecretLogFilter.filter(event({~c"run ~s", ["qory access-key enrol #{c.issued}"]}), nil)
 
-      assert text == "run qory access-key enrol [FILTERED].SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"
+        assert text == "run qory access-key enrol [FILTERED]" <> @fingerprint, inspect(c.kind)
+      end
+    end
+
+    test "is replaced inside a path and a URL, bare and URL-encoded" do
+      for c <- codes(), code <- [c.code, c.typed, c.encoded] do
+        %{msg: {:string, text}} =
+          SecretLogFilter.filter(event({:string, "GET /x/#{code}/y?z=1"}), nil)
+
+        assert text == "GET /x/[FILTERED]/y?z=1", inspect({c.kind, code})
+
+        %{msg: {:string, text}} =
+          SecretLogFilter.filter(
+            event({:string, ~s(join %{"url" => "https://qory.example.com/x?code=#{code}"})}),
+            nil
+          )
+
+        assert text == ~s(join %{"url" => "https://qory.example.com/x?code=[FILTERED]"}),
+               inspect({c.kind, code})
+      end
     end
 
     test "is replaced in a report's terms and in the metadata" do
-      report = %{last_message: {:value, @issued}, state: %{"code" => [~c"x #{@code}"]}}
-      %{msg: {:report, scrubbed}} = SecretLogFilter.filter(event({:report, report}), nil)
+      for c <- codes() do
+        report = %{last_message: {:value, c.issued}, state: %{"code" => [~c"x #{c.code}"]}}
+        %{msg: {:report, scrubbed}} = SecretLogFilter.filter(event({:report, report}), nil)
 
-      assert scrubbed == %{
-               last_message: {:value, "[FILTERED].SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"},
-               state: %{"code" => [~c"x [FILTERED]"]}
-             }
+        assert scrubbed == %{
+                 last_message: {:value, "[FILTERED]" <> @fingerprint},
+                 state: %{"code" => [~c"x [FILTERED]"]}
+               },
+               inspect(c.kind)
 
-      meta = %{
-        crash_reason: {%FunctionClauseError{module: Acme, args: [@code]}, []},
-        request_path: "/x/" <> @typed
-      }
+        meta = %{
+          crash_reason: {%FunctionClauseError{module: Acme, args: [c.code]}, []},
+          request_path: "/x/" <> c.typed,
+          query_string: "code=" <> c.encoded
+        }
 
-      %{meta: scrubbed} = SecretLogFilter.filter(%{event({:string, "x"}) | meta: meta}, nil)
+        %{meta: scrubbed} = SecretLogFilter.filter(%{event({:string, "x"}) | meta: meta}, nil)
 
-      assert scrubbed == %{
-               crash_reason: {%FunctionClauseError{module: Acme, args: ["[FILTERED]"]}, []},
-               request_path: "/x/[FILTERED]"
-             }
+        assert scrubbed == %{
+                 crash_reason: {%FunctionClauseError{module: Acme, args: ["[FILTERED]"]}, []},
+                 request_path: "/x/[FILTERED]",
+                 query_string: "code=[FILTERED]"
+               },
+               inspect(c.kind)
 
-      refute inspect(scrubbed) =~ ~r/qec_/i
+        refute inspect(scrubbed) =~ ~r/qec[a-z]?(_|%5F)/i
+      end
     end
 
     test "is kept out of a GenServer's crash report and a line Logger writes" do
-      log =
-        ExUnit.CaptureLog.capture_log([level: :warning], fn ->
-          {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Crashing, nil)
-          ref = Process.monitor(pid)
-          send(pid, {:value, @code})
-          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+      for c <- codes() do
+        log =
+          ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+            {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Crashing, nil)
+            ref = Process.monitor(pid)
+            send(pid, {:value, c.code})
+            assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
 
-          require Logger
-          Logger.warning("a command: qory access-key enrol #{@issued}.")
-        end)
+            require Logger
+            Logger.warning("a command: qory access-key enrol #{c.issued}.")
+          end)
 
-      assert log =~ "Last message: {:value, \"[FILTERED]\"}"
-      assert log =~ "a command: qory access-key enrol [FILTERED].SHA256:"
-      refute log =~ ~r/qec_/i
-      refute log =~ "7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
+        assert log =~ "Last message: {:value, \"[FILTERED]\"}", inspect(c.kind)
+        assert log =~ "a command: qory access-key enrol [FILTERED].SHA256:", inspect(c.kind)
+        refute log =~ ~r/qec[a-z]?(_|%5F)/i
+        refute log =~ @code_body
+      end
+    end
+
+    test "leaves a word that merely starts like a prefix as it is" do
+      for text <- ["qecho is no code", "the qec module", "QEC-1 is a part number"] do
+        event = event({:string, text})
+        assert SecretLogFilter.filter(event, nil) == event
+      end
     end
   end
 

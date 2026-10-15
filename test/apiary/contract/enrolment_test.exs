@@ -1,13 +1,15 @@
 defmodule Apiary.Contract.EnrolmentTest do
   use ExUnit.Case, async: true
 
+  alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
 
   # The contract's fixtures are replayed in test/contract/enrolment_fixtures_test.exs;
   # these hold without Forager's contract directory.
 
   @fingerprint "uoES-kuj1vk0sq0qoGlmAg"
-  @code "qec_F1XT0RE0000000000000000000." <> @fingerprint
+  @body "F1XT0RE0000000000000000000"
+  @code EnrolmentCode.prefix(:node) <> @body <> "." <> @fingerprint
 
   defp request(fields \\ %{}) do
     {public_key, secret} = :crypto.generate_key(:eddsa, :ed25519)
@@ -34,7 +36,7 @@ defmodule Apiary.Contract.EnrolmentTest do
       {body, public_key} = request()
       assert {:ok, request} = Enrolment.decode(Jason.encode!(body))
       assert request.code == @code
-      assert request.code_head == "qec_F1XT0RE0000000000000000000"
+      assert request.code_head == EnrolmentCode.prefix(:node) <> @body
       assert request.fingerprints == [@fingerprint]
       assert Enrolment.proof_verifies?(request, public_key)
     end
@@ -49,11 +51,40 @@ defmodule Apiary.Contract.EnrolmentTest do
       json = Jason.encode!(body)
 
       twice =
-        String.replace(json, "{", ~s({"code":"qec_00000000000000000000000000.#{@fingerprint}",),
+        String.replace(
+          json,
+          "{",
+          ~s({"code":"#{EnrolmentCode.prefix(:node)}00000000000000000000000000.#{@fingerprint}",),
           global: false
         )
 
       assert Enrolment.decode(twice) == {:error, ["code"]}
+    end
+
+    test "a code reads with every kind's prefix, and with any prefix of the contract's shape" do
+      unknown = "qec" <> unknown_letter() <> "_"
+
+      for prefix <- Map.values(EnrolmentCode.prefixes()) ++ [unknown] do
+        {body, _public_key} = request(%{"code" => prefix <> @body <> "." <> @fingerprint})
+        assert {:ok, request} = Enrolment.decode(Jason.encode!(body)), prefix
+        assert request.code_head == prefix <> @body
+      end
+    end
+
+    test "a code outside the contract's shape is refused, for its code" do
+      prefix = EnrolmentCode.prefix(:node)
+
+      for code <- [
+            String.upcase(prefix) <> @body,
+            "qecnn_" <> @body,
+            "qec1_" <> @body,
+            "qe_" <> @body,
+            String.trim_trailing(prefix, "_") <> "-" <> @body,
+            prefix <> String.downcase(@body)
+          ] do
+        {body, _public_key} = request(%{"code" => code <> "." <> @fingerprint})
+        assert Enrolment.decode(Jason.encode!(body)) == {:error, ["code"]}, code
+      end
     end
 
     test "a proof or a key not in strict base64url is refused" do
@@ -128,5 +159,18 @@ defmodule Apiary.Contract.EnrolmentTest do
 
     {:ok, request} = Enrolment.decode(Jason.encode!(body))
     assert Enrolment.issued_under?(request, @fingerprint)
+
+    for prefix <- Map.values(EnrolmentCode.prefixes()),
+        do: assert(Enrolment.issued_code(prefix <> @body, @fingerprint) =~ prefix)
+
+    assert_raise ArgumentError, fn ->
+      Enrolment.issued_code("qec" <> unknown_letter() <> "_" <> @body, @fingerprint)
+    end
+  end
+
+  # A letter no kind's prefix carries after `qec`.
+  defp unknown_letter do
+    prefixes = Map.values(EnrolmentCode.prefixes())
+    Enum.find_value(?a..?z, &if(("qec" <> <<&1>> <> "_") not in prefixes, do: <<&1>>))
   end
 end

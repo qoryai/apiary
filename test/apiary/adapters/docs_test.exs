@@ -47,6 +47,36 @@ defmodule Apiary.Adapters.DocsTest do
     end
   end
 
+  test "no doc the module reference or the guides show names an adapter's code prefix" do
+    prefix = Apiary.AccessKeys.EnrolmentCode.prefix(:adapter)
+    pattern = ~r/#{Regex.escape(prefix)}/i
+
+    shown =
+      for {:docs_v1, _anno, :elixir, _format, moduledoc, _meta, docs} <-
+            Enum.map(all_modules(), &Code.fetch_docs/1),
+          moduledoc != :hidden,
+          %{} = doc <- [moduledoc | Enum.map(docs, &elem(&1, 3))],
+          text <- Map.values(doc),
+          do: text
+
+    # The module reference holds the codes' prefixes (`Apiary.AccessKeys.EnrolmentCode`),
+    # so the check reads what it should.
+    assert Enum.any?(shown, &(&1 =~ Apiary.AccessKeys.EnrolmentCode.prefix(:node)))
+    for text <- shown, do: refute(text =~ pattern)
+
+    root = Path.dirname(Mix.Project.project_file())
+    extras = Keyword.fetch!(Mix.Project.config()[:docs], :extras)
+    assert "guides/contract.md" in extras
+
+    for extra <- extras,
+        do: refute(File.read!(Path.join(root, extra)) =~ pattern, extra)
+  end
+
+  defp all_modules do
+    {:ok, modules} = :application.get_key(:apiary, :modules)
+    modules
+  end
+
   test "a node's kind and an enrolment's answer still admit the adapter kind" do
     {:ok, types} = Code.Typespec.fetch_types(Apiary.Nodes.Node)
 

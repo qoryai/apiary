@@ -8,7 +8,7 @@ defmodule ApiaryWeb.NodeComponentsTest do
   alias ApiaryWeb.NodeComponents
 
   @server "https://apiary.example.com"
-  @code "qec_0123456789ABCDEFGHJKMNPQRS.fingerprint"
+  @code Apiary.AccessKeys.EnrolmentCode.prefix(:node) <> "0123456789ABCDEFGHJKMNPQRS.fingerprint"
 
   describe "enrol_command/3" do
     test "is qory's enrol, the server's address and the code, without a gateway" do

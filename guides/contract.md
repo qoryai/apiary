@@ -607,9 +607,11 @@ authenticate it. Its body, by the contract's `enrolment.schema.json`, holds the 
 name for the key, the new public key, a timestamp and `proof`, the new key's signature over
 the code, the public key, the name and the timestamp.
 
-The code is `qec_`, 26 characters, then `.` and the fingerprint of the server's key, so
-the machine knows which key's answer to trust before it has pinned any. It works once, for
-15 minutes. Nothing is signed until the code is accepted, the key passes the key checks and
+The code is the prefix of its node's kind, `qecn_` for a node, `qecp_` for a node pool and
+`qecg_` for a gateway, then 26 characters, then `.` and the fingerprint of the server's
+key, so the machine knows which key's answer to trust before it has pinned any. It works
+once, for 15 minutes, and only for a node of the kind its prefix names: a code with another
+prefix is an unknown code. Nothing is signed until the code is accepted, the key passes the key checks and
 the proof verifies under it. The answers, in order:
 
 | Status | Signed | When |

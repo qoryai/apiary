@@ -155,7 +155,7 @@ Apiary keeps only its public half.
 3. On the machine, run the command:
 
    ```sh
-   qory access-key enrol http://localhost:4100 qec_…
+   qory access-key enrol http://localhost:4100 qecn_…
    ```
 
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable

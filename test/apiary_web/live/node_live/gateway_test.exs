@@ -571,7 +571,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert ["qory", "access-key", "enrol", "--via", "https://edge.example.com", ^server, code] =
                String.split(command, " ")
 
-      assert code =~ ~r/\Aqec_/
+      assert String.starts_with?(code, Apiary.AccessKeys.EnrolmentCode.prefix(:node))
 
       assert text(lv, "#code-issued-header-description") ==
                "The command connects build-01 by itself, through the gateway edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
@@ -714,7 +714,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {lv, command} = command(conn, scope, node)
 
       assert command =~
-               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(server)} qec_/
+               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(server)} #{Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))}/
 
       assert has_element?(lv, ~s{#code-issued-command-copy[data-copy="#{command}"]})
     end
