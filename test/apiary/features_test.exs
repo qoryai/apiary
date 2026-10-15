@@ -113,8 +113,14 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse("observability,security,factory") ==
                {:ok, [:observability, :security, :factory]}
 
+      assert Features.parse("factory,path_rules,secrets,security,observability") ==
+               {:ok, [:observability, :security, :secrets, :path_rules, :factory]}
+
       assert Features.parse("observability,factory") ==
                {:error, "factory needs security, which is left out"}
+
+      assert Features.parse("security,factory") ==
+               {:error, "security needs observability, which is left out"}
     end
 
     test "an opt-in feature named without the features it needs is refused" do
@@ -328,6 +334,9 @@ defmodule Apiary.FeaturesTest do
 
       assert Features.hidden_of([:path_rules]) ==
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
+
+      assert Features.hidden_of([:factory]) ==
+               Enum.filter(Features.enabled(), &(&1 == :factory))
 
       assert Features.hidden_of([:security]) ==
                Enum.filter(
@@ -715,6 +724,18 @@ defmodule Apiary.FeaturesBootTest do
     Application.put_env(:apiary, :features_setting, "observability,security,path_rules")
     assert Features.boot!() == [:observability, :security, :path_rules]
     assert Features.on?(:path_rules)
+  end
+
+  test "boot!/0 leaves factory off unless QORY_FEATURES names it" do
+    for value <- [nil, "", "all", "all-secrets", "observability,security"] do
+      Application.put_env(:apiary, :features_setting, value)
+      refute :factory in Features.boot!(), inspect(value)
+      refute Features.on?(:factory)
+    end
+
+    Application.put_env(:apiary, :features_setting, "observability,security,factory")
+    assert Features.boot!() == [:observability, :security, :factory]
+    assert Features.on?(:factory)
   end
 
   test "boot!/0 boots where QORY_FEATURES still names instance_mail, as if it did not" do
