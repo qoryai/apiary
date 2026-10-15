@@ -282,6 +282,7 @@ jobs:
           repository: qoryai/integrations
           path: tmp/integrations
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check out the pinned ref of the integration contract
         run: git -C tmp/integrations checkout --detach "$(grep -v '^#' .integrations-contract-ref | head -n 1 | tr -d '[:space:]')"
