@@ -252,7 +252,9 @@ defmodule Apiary.Adapters do
   # held `FOR SHARE`: the organisation's pending connection to it, made or taken
   # (`Apiary.Adapters.Connections.start/3`, which ends a connected one no listing has
   # named yet and makes a new one in its place), with a new connect pass for it
-  # (`Apiary.Adapters.ConnectPass`), whose nonce the connection keeps as its latest pass's.
+  # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
+  # expiry the connection keeps as its latest pass's; each new pass of a connection
+  # expires strictly later than the one before it.
   # `{:ok, url, session}`: `url`, the address the adapter declared (`connect_url`) with
   # the pass as its query parameter `state`, where the page sends the person; `session`,
   # `{connection_public_id, nonce}`, the nonce in base64url, which the person's session
@@ -278,9 +280,7 @@ defmodule Apiary.Adapters do
                  {:error, :not_found},
              :ok <- connectable(current),
              nonce = ConnectPass.new_nonce(),
-             {:ok, connection} <- Connections.start(scope, current, nonce),
-             {:ok, pass} <-
-               ConnectPass.issue(current.public_id, connection.public_id, nonce: nonce),
+             {:ok, connection, pass} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"adapter.connect", scope.organisation, %{
                  details:

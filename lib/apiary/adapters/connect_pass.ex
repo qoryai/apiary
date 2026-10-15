@@ -23,7 +23,10 @@ defmodule Apiary.Adapters.ConnectPass do
   #   * `connection_id`, the connection it is made for, by its public id (`ac_`);
   #   * `nonce`, 16 random bytes in base64url without padding, 22 characters;
   #   * `expires_at`, when the pass stops being good, in UTC to the second, as
-  #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made.
+  #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made, or later when the
+  #     connection's previous pass expires at that time or after it (`issue/3`). Each new
+  #     pass of a connection expires strictly later than the one before it, which is how
+  #     the adapter tells the newer pass.
   #
   # `issue/3` makes one; `verify/3` reads one back: the length, both parts decoded
   # strictly, the signature over the message under the public key given, the payload
@@ -62,8 +65,8 @@ defmodule Apiary.Adapters.ConnectPass do
   def validity, do: @validity
 
   # A fresh nonce for a pass: 16 random bytes. The connection keeps the nonce of its latest
-  # pass (`Apiary.Adapters.connect/2`), which makes it with this and hands it to
-  # `issue/3`.
+  # pass: `Apiary.Adapters.connect/2` makes it with this, and
+  # `Apiary.Adapters.Connections.start/3` hands it to `issue/3`.
   @doc false
   @spec new_nonce() :: <<_::128>>
   def new_nonce, do: :crypto.strong_rand_bytes(@nonce_size)
@@ -71,16 +74,23 @@ defmodule Apiary.Adapters.ConnectPass do
   # issue/3 makes the connect pass of the adapter `adapter_id` (`na_`) for the connection
   # `connection_id` (`ac_`): `{:ok, pass}`, the string, or `{:error, :invalid}` when
   # `adapter_id` is not an adapter's public id, `connection_id` not a connection's, when
-  # `opts[:nonce]` is not 16 bytes, or when `opts[:now]` is not a `DateTime`; and
-  # `{:error, :too_long}` when the pass would be longer than `max_length/0`. No pass is
-  # made on an error.
+  # `opts[:nonce]` is not 16 bytes, when `opts[:now]` is not a `DateTime`, or when
+  # `opts[:not_before]` is given and not a `DateTime`; and `{:error, :too_long}` when the
+  # pass would be longer than `max_length/0`. No pass is made on an error.
   #
-  # It expires `validity/0` seconds after now, to the second, signed under the instance's
-  # signing key, with `opts[:nonce]` as its nonce, 16 bytes, which the caller that keeps
-  # it makes with `new_nonce/0`, else 16 fresh random bytes. `:key`, a
-  # `t:Apiary.SigningKey.t/0`, and `:now`, a `DateTime`, are for a known answer in tests
-  # and the shared fixture only: a production caller passes neither, and a pass then has
-  # the current time and the instance's signing key.
+  # It expires at `expires_at/2` of now and `opts[:not_before]`: `validity/0` seconds
+  # after now, to the second, or `:not_before` when that is later. The caller that keeps a
+  # connection's passes (`Apiary.Adapters.Connections.start/3`) gives `:not_before` as one
+  # second after the connection's previous pass expires, so each new pass of a connection
+  # expires strictly later than the one before it, even for two passes made in the same
+  # second or after the clock stepped back; it gives none for a connection's first pass.
+  # It is signed under the instance's signing key, with `opts[:nonce]` as its nonce, 16
+  # bytes, which the caller that keeps it makes with `new_nonce/0`, else 16 fresh random
+  # bytes. `:now`, a `DateTime`, is the time the pass is made, the current time unless
+  # given: that caller gives the time it keeps with the pass, and tests and the shared
+  # fixture give one for a known answer. `:key`, a `t:Apiary.SigningKey.t/0`, is for a
+  # known answer in tests and the shared fixture only: a production caller passes none,
+  # and a pass then has the instance's signing key.
   @doc false
   @spec issue(String.t(), String.t(), keyword) ::
           {:ok, String.t()} | {:error, :invalid | :too_long}
@@ -88,16 +98,14 @@ defmodule Apiary.Adapters.ConnectPass do
     key = Keyword.get_lazy(opts, :key, &SigningKey.current/0)
     nonce = Keyword.get_lazy(opts, :nonce, &new_nonce/0)
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    not_before = Keyword.get(opts, :not_before)
 
     with true <- PublicId.valid?("na", adapter_id),
          true <- PublicId.valid?("ac", connection_id),
          true <- is_binary(nonce) and byte_size(nonce) == @nonce_size,
-         %DateTime{} <- now do
-      expires_at =
-        now
-        |> DateTime.shift_zone!("Etc/UTC")
-        |> DateTime.truncate(:second)
-        |> DateTime.add(@validity, :second)
+         %DateTime{} <- now,
+         true <- is_nil(not_before) or is_struct(not_before, DateTime) do
+      expires_at = expires_at(now, not_before)
 
       payload = payload(adapter_id, connection_id, nonce, expires_at)
 
@@ -109,6 +117,31 @@ defmodule Apiary.Adapters.ConnectPass do
     else
       _ -> {:error, :invalid}
     end
+  end
+
+  # When a pass made at `now` expires, in UTC to the second: `validity/0` seconds after
+  # `now`, truncated to the second, or `not_before`, rounded up to the second, when that is
+  # later; `not_before` is `nil` for none. `issue/3` signs it, and the caller that keeps a
+  # connection's passes keeps it with the pass, so the two are the same time.
+  @doc false
+  @spec expires_at(DateTime.t(), DateTime.t() | nil) :: DateTime.t()
+  def expires_at(%DateTime{} = now, not_before) do
+    after_now =
+      now
+      |> DateTime.shift_zone!("Etc/UTC")
+      |> DateTime.truncate(:second)
+      |> DateTime.add(@validity, :second)
+
+    case not_before do
+      nil -> after_now
+      %DateTime{} -> Enum.max([after_now, whole_second_up(not_before)], DateTime)
+    end
+  end
+
+  defp whole_second_up(time) do
+    time = DateTime.shift_zone!(time, "Etc/UTC")
+    whole = DateTime.truncate(time, :second)
+    if DateTime.compare(whole, time) == :eq, do: whole, else: DateTime.add(whole, 1, :second)
   end
 
   # verify/3 reads `pass` under `public_key`, the 32 raw bytes of the key that signed it:

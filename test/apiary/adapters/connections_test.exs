@@ -174,6 +174,126 @@ defmodule Apiary.Adapters.ConnectionsTest do
     end
   end
 
+  describe "the expiry of each new pass" do
+    @at ~U[2026-10-16 12:00:00.250000Z]
+
+    # A press at `now`, as `Apiary.Adapters.connect/2` makes it: the connection, the
+    # `expires_at` the pass says, read from its payload, and the pass.
+    defp press(scope, adapter, now) do
+      assert {:ok, {connection, pass}} =
+               Repo.transact(fn ->
+                 with {:ok, connection, pass} <-
+                        Connections.start(scope, adapter, ConnectPass.new_nonce(), now: now),
+                      do: {:ok, {connection, pass}}
+               end)
+
+      {connection, signed_expiry(pass), pass}
+    end
+
+    defp signed_expiry(pass) do
+      [payload, _signature] = String.split(pass, ".")
+      %{"expires_at" => at} = payload |> Base.url_decode64!(padding: false) |> Jason.decode!()
+      {:ok, time, 0} = DateTime.from_iso8601(at)
+      time
+    end
+
+    test "two presses in the same second: the second expires one second after the first", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      {first, first_at, _} = press(scope, adapter, @at)
+      assert first_at == ~U[2026-10-16 12:15:00Z]
+      assert reload(first).pass_expires_at == first_at
+
+      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, 500, :millisecond))
+      assert second.id == first.id
+      assert second_at == ~U[2026-10-16 12:15:01Z]
+      assert reload(second).pass_expires_at == second_at
+    end
+
+    test "a clock that stepped back: the next pass still expires one second after the last", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      {_first, first_at, _} = press(scope, adapter, @at)
+      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, -60, :second))
+
+      assert second_at == DateTime.add(first_at, 1, :second)
+      assert reload(second).pass_expires_at == second_at
+    end
+
+    test "a press later on: the pass expires validity/0 seconds after it", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      {_first, _first_at, _} = press(scope, adapter, @at)
+      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, 120, :second))
+
+      assert second_at == ~U[2026-10-16 12:17:00Z]
+      assert reload(second).pass_expires_at == second_at
+    end
+
+    test "many quick presses: each expires one second after the last, past validity/0", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      times = for _ <- 1..3, do: scope |> press(adapter, @at) |> elem(1)
+
+      assert times ==
+               [~U[2026-10-16 12:15:00Z], ~U[2026-10-16 12:15:01Z], ~U[2026-10-16 12:15:02Z]]
+    end
+
+    test "a connection made before its pass expiry was kept: the next pass expires as a first",
+         %{scope: scope, adapter: adapter} do
+      {first, _first_at, _} = press(scope, adapter, @at)
+
+      Repo.update_all(from(c in Connection, where: c.id == ^first.id),
+        set: [pass_expires_at: nil]
+      )
+
+      {second, second_at, _} = press(scope, adapter, @at)
+      assert second_at == ~U[2026-10-16 12:15:00Z]
+      assert reload(second).pass_expires_at == second_at
+    end
+
+    test "a new connection in place of a replaced one: its pass expires as a first", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      {first, first_at, _} = press(scope, adapter, @at)
+      now = DateTime.utc_now()
+
+      first
+      |> Ecto.Changeset.change(state: :connected, connected_at: now, pass_nonce_used_at: now)
+      |> Repo.update!()
+
+      {second, second_at, _} = press(scope, adapter, @at)
+      refute second.id == first.id
+      assert second_at == first_at
+      assert reload(second).pass_expires_at == second_at
+
+      assert %Connection{state: :ended, ended_reason: :replaced, pass_expires_at: ^first_at} =
+               reload(first)
+    end
+
+    test "the expiry kept is the signed one, for each press of Install", %{
+      scope: scope,
+      adapter: adapter
+    } do
+      for _ <- 1..2 do
+        {:ok, url, {public_id, _nonce}} = Adapters.connect(scope, adapter)
+        "https://tracker.example.com/connect?state=" <> pass = url
+
+        assert {:ok, %{expires_at: expires_at}} =
+                 ConnectPass.verify(pass, Apiary.SigningKey.public_key(),
+                   now: DateTime.add(signed_expiry(pass), -1, :second)
+                 )
+
+        assert Repo.get_by!(Connection, public_id: public_id).pass_expires_at == expires_at
+      end
+    end
+  end
+
   describe "the return" do
     setup %{scope: scope, adapter: adapter} do
       {:ok, _url, {public_id, nonce}} = Adapters.connect(scope, adapter)

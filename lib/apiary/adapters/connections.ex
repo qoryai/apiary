@@ -6,7 +6,8 @@ defmodule Apiary.Adapters.Connections do
   #
   # Starting one is `Apiary.Adapters.connect/2`'s: an owner or an admin of the organisation
   # (`adapter.connect`) makes the pending connection, or takes the one pending, with a
-  # new connect pass whose nonce it keeps. The person comes back with a return
+  # new connect pass whose nonce and expiry it keeps (`start/3`), each pass expiring
+  # strictly later than the one before it. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
   # any change; a return that says the adapter linked makes the connection connected.
   # The adapter's first listing that names it is recorded as it is accepted
@@ -67,7 +68,7 @@ defmodule Apiary.Adapters.Connections do
   alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{Connection, ReturnToken}
+  alias Apiary.Adapters.{ConnectPass, Connection, ReturnToken}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -127,14 +128,27 @@ defmodule Apiary.Adapters.Connections do
   @doc false
   # Inside `Apiary.Adapters.connect/2`'s transaction, which asked `adapter.connect` and
   # holds `adapter`'s row `FOR SHARE`: the pending connection of the scope's organisation
-  # to `adapter`, made, or the one pending taken, `FOR UPDATE`, now with `nonce` as the
-  # nonce of its latest pass, unused, and the scope's person as the one who started it.
-  # One connected (`complete_return/4`), which no listing has named yet
-  # (`mark_listed/1`), is ended (`replaced`), as `end_connection/2` ends one, with its
-  # pass, its person and the time it connected as they were, and the pools it served
-  # cleared, and a new pending connection is made in its place, as above.
-  # `{:ok, connection}`, or `{:error, :connected}` while the organisation is connected to
-  # it and a listing named the connection, which changes nothing.
+  # to `adapter`, made, or the one pending taken, `FOR UPDATE`, with a new connect pass
+  # for it (`Apiary.Adapters.ConnectPass.issue/3`), made under that lock, now with
+  # `nonce` as the nonce of its latest pass, unused, the pass's expiry as
+  # `pass_expires_at`, and the scope's person as the one who started it. One connected
+  # (`complete_return/4`), which no listing has named yet (`mark_listed/1`), is ended
+  # (`replaced`), as `end_connection/2` ends one, with its pass, its person and the time
+  # it connected as they were, and the pools it served cleared, and a new pending
+  # connection is made in its place, as above. `{:ok, connection, pass}`;
+  # `{:error, :connected}` while the organisation is connected to it and a listing named
+  # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
+  # cannot be made, which the caller's transaction rolls back.
+  #
+  # The pass expires `Apiary.Adapters.ConnectPass.validity/0` seconds after now, to the
+  # second, or one second after the pass the connection had before, when that is later:
+  # read, and the new time written with the new nonce in the same update, under the
+  # connection's row held `FOR UPDATE`, so two presses never read the same previous time,
+  # and each new pass of a connection expires strictly later than the one before it, even
+  # for two presses in the same second or after the clock stepped back. A new connection,
+  # the first press's or one made in place of a replaced one, has no previous pass: its
+  # pass expires `validity/0` seconds after now. `opts[:now]`, the current time unless
+  # given, is for tests only.
   #
   # Two at once make one connection: the second's insert waits for the first's and does
   # nothing, and it then takes the first's row, with the new nonce in it. Should the live
@@ -142,17 +156,19 @@ defmodule Apiary.Adapters.Connections do
   # adapter), the lock finds no live row, and it tries again: its insert now makes a
   # connection, or finds the one that replaced it. Each try after the first follows a
   # commit of another transaction that ended the live row.
-  @spec start(Scope.t(), Node.t(), <<_::128>>) ::
-          {:ok, Connection.t()} | {:error, :connected}
+  @spec start(Scope.t(), Node.t(), <<_::128>>, keyword) ::
+          {:ok, Connection.t(), String.t()} | {:error, :connected | :invalid | :too_long}
   def start(
         %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}},
-        %Node{kind: :adapter, id: adapter_id},
-        <<_::128>> = nonce
+        %Node{kind: :adapter} = adapter,
+        <<_::128>> = nonce,
+        opts \\ []
       ) do
-    take_live(organisation_id, adapter_id, user_id, nonce, DateTime.utc_now())
+    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    take_live(organisation_id, adapter, user_id, nonce, now)
   end
 
-  defp take_live(organisation_id, adapter_id, user_id, nonce, now) do
+  defp take_live(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
     {_count, _rows} =
       Repo.insert_all(
         Connection,
@@ -164,26 +180,39 @@ defmodule Apiary.Adapters.Connections do
     case lock_live(organisation_id, adapter_id) do
       # The live row it waited on ended meanwhile.
       nil ->
-        take_live(organisation_id, adapter_id, user_id, nonce, now)
+        take_live(organisation_id, adapter, user_id, nonce, now)
 
+      # Its pass is made here, under the row's lock: the previous pass's expiry is read and
+      # the new one written in the same update.
       %Connection{state: :pending} = pending ->
-        pending
-        |> Ecto.Changeset.change(
-          pass_nonce: nonce,
-          pass_nonce_used_at: nil,
-          created_by_id: user_id,
-          updated_at: now
-        )
-        |> Repo.update()
+        with {:ok, pass, expires_at} <-
+               issue(adapter, pending.public_id, nonce, now, pending.pass_expires_at),
+             {:ok, connection} <-
+               pending
+               |> Ecto.Changeset.change(
+                 pass_nonce: nonce,
+                 pass_nonce_used_at: nil,
+                 pass_expires_at: expires_at,
+                 created_by_id: user_id,
+                 updated_at: now
+               )
+               |> Repo.update() do
+          {:ok, connection, pass}
+        end
 
       # Connected, and no listing has named it: it takes no new pass, so it ends with its
       # nonce, the person who started it and the time it connected as they are, and a new
-      # one takes its place.
+      # one takes its place, whose pass is its first.
       %Connection{state: :connected, listed_at: nil} = unlisted ->
-        with {:ok, _ended} <- end_live(unlisted, :replaced, now) do
-          Connection
-          |> struct!(new_pending(organisation_id, adapter_id, user_id, nonce, now))
-          |> Repo.insert()
+        fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
+
+        with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
+             {:ok, _ended} <- end_live(unlisted, :replaced, now),
+             {:ok, connection} <-
+               Connection
+               |> struct!(%{fields | pass_expires_at: expires_at})
+               |> Repo.insert() do
+          {:ok, connection, pass}
         end
 
       %Connection{state: :connected} ->
@@ -191,6 +220,25 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
+  # The connect pass of `adapter` for the connection `public_id`, made at `now`, and when
+  # it expires: one second after `previous`, the expiry of the connection's previous pass,
+  # when that is later than `validity/0` seconds after now; `nil` for a connection's first.
+  defp issue(%Node{public_id: adapter_public_id}, public_id, nonce, now, previous) do
+    not_before = if previous, do: DateTime.add(previous, 1, :second)
+
+    with {:ok, pass} <-
+           ConnectPass.issue(adapter_public_id, public_id,
+             nonce: nonce,
+             now: now,
+             not_before: not_before
+           ) do
+      {:ok, pass, ConnectPass.expires_at(now, not_before)}
+    end
+  end
+
+  # A pending connection, as it is made. A connection made by the insert that does
+  # nothing on a conflict has no pass expiry yet: its pass is made, and its expiry
+  # written, once its row is locked.
   defp new_pending(organisation_id, adapter_id, user_id, nonce, now) do
     %{
       id: Ecto.UUID.generate(),
@@ -200,6 +248,7 @@ defmodule Apiary.Adapters.Connections do
       created_by_id: user_id,
       state: :pending,
       pass_nonce: nonce,
+      pass_expires_at: nil,
       inserted_at: now,
       updated_at: now
     }

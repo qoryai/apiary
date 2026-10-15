@@ -164,6 +164,39 @@ defmodule Apiary.Adapters.ConnectPassTest do
     end
   end
 
+  describe "issue/3 after a previous pass" do
+    test "expires validity/0 seconds after now while :not_before is not later" do
+      for not_before <- [nil, ~U[2026-10-15 12:14:59Z], ~U[2026-10-15 12:15:00Z]] do
+        payload = Jason.decode!(payload!(pass!(not_before: not_before)))
+        assert payload["expires_at"] == "2026-10-15T12:15:00Z", inspect(not_before)
+      end
+    end
+
+    test "expires at :not_before when that is later, rounded up to the second" do
+      assert Jason.decode!(payload!(pass!(not_before: ~U[2026-10-15 12:15:01Z])))[
+               "expires_at"
+             ] == "2026-10-15T12:15:01Z"
+
+      assert Jason.decode!(payload!(pass!(not_before: ~U[2026-10-15 12:20:00.000001Z])))[
+               "expires_at"
+             ] == "2026-10-15T12:20:01Z"
+
+      assert ConnectPass.expires_at(@now, ~U[2026-10-15 12:20:00.000001Z]) ==
+               ~U[2026-10-15 12:20:01Z]
+
+      assert ConnectPass.expires_at(~U[2026-10-15 12:00:00.999999Z], nil) ==
+               ~U[2026-10-15 12:15:00Z]
+    end
+
+    test "refuses a :not_before that is not a DateTime" do
+      assert ConnectPass.issue(@adapter, @connection,
+               key: @key,
+               now: @now,
+               not_before: "2026-10-15T12:20:00Z"
+             ) == {:error, :invalid}
+    end
+  end
+
   describe "verify/3" do
     test "reads a pass back under the key that signed it, and no other" do
       pass = pass!()
