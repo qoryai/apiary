@@ -568,6 +568,26 @@ msgid_plural "%{instance} is cleared: its %{count} open runs are marked lost."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} couldn't confirm that installation for you. Install it again from Integrations."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} didn't answer. Install it again in a moment."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} doesn't confirm that you administer that account. Ask an admin of the account to install it."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} is connected. Its repositories and projects appear here as it sends them."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -3370,6 +3390,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An invitation expires after seven days."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "An owner of the account must approve the updated permissions on %{integration}, then install it again."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -9141,6 +9166,11 @@ msgstr ""
 msgid "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
 msgstr ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Only the person who started this install can finish it, in the browser they started it in. To install it yourself, start again from Integrations."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only the result, read from the runtime's output, is shown."
@@ -11536,6 +11566,11 @@ msgstr ""
 msgid "That account cannot log in at the moment, so it gets no password link."
 msgstr ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "That account is already connected to another organisation."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command no longer works: it was run, cancelled or expired."
@@ -11554,6 +11589,11 @@ msgstr ""
 #: lib/apiary_web/controllers/user_session_controller.ex
 #, elixir-autogen, elixir-format
 msgid "That email and password do not match."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "That installation is suspended on %{integration}. Lift the suspension there, then install it again."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -11859,6 +11899,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The hosts this workspace's runs may reach, and those they may not."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "The install took too long and expired. Install it again from Integrations."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -13858,6 +13903,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You can't change the kind later."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "You cancelled the install on %{integration}. Nothing has changed."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
