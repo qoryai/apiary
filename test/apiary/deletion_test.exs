@@ -8,6 +8,7 @@ defmodule Apiary.DeletionTest do
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Deletion, Features, Organisations, Policy, Retention}
   alias Apiary.Accounts.Scope
@@ -598,7 +599,8 @@ defmodule Apiary.DeletionTest do
 
   # What a workspace holds, made the way the product makes it where it can: a key, an
   # invitation, a policy rule with its run configuration, a run delivered through the
-  # receiver with its events, log and connections, and a retention run.
+  # receiver with its events, log and connections, a retention run, and a work item with
+  # its event and the workspace's counter.
   defp fill!(%Scope{} = scope) do
     %{access_key: key} = access_key_fixture(scope)
     invitation_fixture(scope)
@@ -619,6 +621,7 @@ defmodule Apiary.DeletionTest do
 
     {:ok, workspace} = Retention.update_retention(scope, %{events_retention_days: 3650})
     Retention.prune_workspace(workspace)
+    _work_item = work_item_fixture(scope)
     :ok = Apiary.Organisations.remember_workspace(scope)
   end
 

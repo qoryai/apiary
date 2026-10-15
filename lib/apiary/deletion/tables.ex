@@ -35,9 +35,12 @@ defmodule Apiary.Deletion.Tables do
   # before the access keys they name; the run configurations and the policy's rules before
   # the targets, and so are the pins; a node's instances before the access keys they name;
   # the access keys before the enrolment codes they arrived by, and the keys, the codes,
-  # the runs and the instances before the nodes they name; everything of a workspace
-  # before the workspace.
+  # the runs and the instances before the nodes they name; a work item's events before
+  # the work item; everything of a workspace before the workspace.
   @tables [
+    {"work_item_events", :workspace},
+    {"work_items", :workspace},
+    {"work_item_counters", :workspace},
     {"log_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},
