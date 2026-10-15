@@ -1,0 +1,74 @@
+defmodule Apiary.Adapters.FeedRacesTest do
+  # An adapter's feed entries written at the same time, and the same request accepted at
+  # the same time on two connections, as two nodes of a cluster would. Each side runs on a
+  # connection of its own, outside the SQL sandbox, so each commits and each waits on the
+  # other's locks as it would in production. Not async: what these tests commit is
+  # visible to every other test while they run, and they delete it again before they end.
+  #
+  # The rules under test: the upsert that numbers an entry (`Apiary.Adapters.Feed.append/2`)
+  # locks the adapter's counter until its transaction ends, so a second entry waits for
+  # the first and takes the number after it, and entries commit in the order of their
+  # numbers; and a request's signature is accepted once (`Apiary.Adapters.SeenRequests`),
+  # whichever connection asks first.
+  use ExUnit.Case, async: false
+
+  import Apiary.Races
+
+  alias Apiary.{AccessKeys, Adapters, Repo}
+  alias Apiary.Adapters.{Feed, SeenRequests}
+
+  @moduletag needs: :factory
+
+  setup_all :clean_up_leftovers
+  setup :setup_races
+
+  defp adapter do
+    %{scope: scope} = sign_up()
+    {:ok, adapter} = Adapters.create_adapter(scope, %{name: "Acme tracker"})
+    %{scope: scope, adapter: adapter}
+  end
+
+  defp append(adapter, interval),
+    do: fn ->
+      Repo.transact(fn -> Feed.append(adapter, %{kind: "sync", interval: interval}) end)
+    end
+
+  test "the second entry of an adapter waits for the first, and takes the next number" do
+    %{adapter: adapter} = adapter()
+
+    {first, first_pid} = hold(fn -> Feed.append(adapter, %{kind: "sync", interval: nil}) end)
+    assert first.result == {:ok, 1}
+
+    second = start(append(adapter, 900))
+    await_blocked(second.backend, first_pid)
+    commit(first)
+
+    assert Task.await(second.task) == {:ok, 2}
+  end
+
+  test "of many entries appended at once, each number is taken once" do
+    %{adapter: adapter} = adapter()
+    answers = together(for _ <- 1..12, do: append(adapter, 3600))
+    assert Enum.sort(answers) == Enum.map(1..12, &{:ok, &1})
+  end
+
+  test "an entry is refused outside a transaction" do
+    %{adapter: adapter} = adapter()
+
+    assert_raise ArgumentError, ~r/inside the transaction/, fn ->
+      Feed.append(adapter, %{kind: "sync", interval: nil})
+    end
+  end
+
+  test "of the same request accepted at once on several connections, one is accepted" do
+    %{scope: scope, adapter: adapter} = adapter()
+    {:ok, _row, _code} = AccessKeys.create_enrolment_code(scope, adapter, %{})
+    %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, adapter)
+    signature = :crypto.strong_rand_bytes(64)
+    now = System.os_time(:second)
+
+    answers = together(for _ <- 1..8, do: fn -> SeenRequests.record(key, signature, now, now) end)
+
+    assert Enum.frequencies(answers) == %{ok: 1, seen: 7}
+  end
+end
