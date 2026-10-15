@@ -49,6 +49,17 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  An adapter of the scope's organisation, made by the scope's person, an owner or an admin,
+  on an instance with the feature adapters belong to: named `attrs`'s `name`, else a fresh
+  name.
+  """
+  def adapter_fixture(scope, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{name: unique_node_name()})
+    {:ok, adapter} = Apiary.Adapters.create_adapter(scope, attrs)
+    adapter
+  end
+
+  @doc """
   An instance of `node` as `Apiary.Nodes.seen/3` leaves it, written straight into the
   table: `instance_id` (a fresh one unless given), `name`, and seen first and last at
   `seen_at` (now unless given), or at `first_seen_at` and `last_seen_at`.
