@@ -283,26 +283,21 @@ defmodule Apiary.AdaptersTest do
 
     test "an owner or an admin connects one to their organisation, which holds the entry, and keeps none of the pass",
          %{scope: scope} do
-      adapter = adapter_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
       %{scope: member} = member_fixture(scope, :member)
 
-      assert Adapters.connect(member, adapter, fn _ -> {:ok, "pass"} end) == {:error, :forbidden}
+      assert Adapters.connect(member, adapter) == {:error, :forbidden}
 
-      assert {:ok, "pass-123"} =
-               Adapters.connect(scope, adapter, fn current ->
-                 assert current.id == adapter.id
-                 {:ok, "pass-123"}
-               end)
-
-      assert Adapters.connect(scope, adapter, fn _ -> {:error, :unavailable} end) ==
-               {:error, :unavailable}
+      assert {:ok, "https://tracker.example.com/connect?state=" <> pass, {connection_id, _nonce}} =
+               Adapters.connect(scope, adapter)
 
       assert [%Entry{organisation_id: trail, subject_kind: "organisation", details: details}] =
                Repo.all(from e in Entry, where: e.action == "adapter.connect")
 
       assert trail == scope.organisation.id
       assert details["public_id"] == adapter.public_id
-      refute inspect(details) =~ "pass-123"
+      assert details["connection_id"] == connection_id
+      refute inspect(details) =~ pass
     end
   end
 
@@ -621,6 +616,7 @@ defmodule Apiary.AdaptersTest do
 
       assert trail == instance_id()
       assert details["unserved_pool_ids"] == []
+      assert details["ended_connection_ids"] == []
       assert details["revoked_key_ids"] == [key.key_id]
 
       assert [%Entry{organisation_id: ^trail}] =
@@ -639,7 +635,7 @@ defmodule Apiary.AdaptersTest do
   end
 
   describe "a pool's adapter" do
-    test "no pool names one: an adapter has no organisation", %{scope: scope} do
+    test "a pool names none its organisation is not connected to", %{scope: scope} do
       adapter = adapter_fixture()
       pool = pool_fixture(scope)
       gateway = organisation_gateway_fixture(scope)
@@ -647,7 +643,7 @@ defmodule Apiary.AdaptersTest do
       assert Adapters.serving_choices(scope) == []
       assert Adapters.served_pools(scope, adapter) == []
 
-      for id <- [adapter.id, gateway.id, pool.id, Ecto.UUID.generate()] do
+      for id <- [adapter.id, gateway.id, pool.id, Ecto.UUID.generate(), "not-a-uuid"] do
         assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: id})
         assert "is invalid" in errors_on(changeset).served_by_id
       end
@@ -866,7 +862,8 @@ defmodule Apiary.AdaptersTest do
       end
     end
 
-    test "a pool is served by an adapter of its organisation, which none is", %{scope: scope} do
+    test "a pool is served by an adapter its organisation is connected to, which none is",
+         %{scope: scope} do
       adapter = adapter_fixture()
       pool = pool_fixture(scope)
       node = node_fixture(scope)

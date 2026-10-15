@@ -2,9 +2,11 @@ defmodule Apiary.Adapters.ConnectPass do
   @moduledoc false
 
   # A connect pass: the grant this server makes when a person connects an adapter (a node
-  # of kind `adapter`, `na_`), carried to the adapter as the `state` of the connect step,
-  # which the adapter checks under the instance's public key before it acts on it. The
-  # module is hidden from the generated documentation, which every instance serves.
+  # of kind `adapter`, `na_`) to their organisation, for the organisation's connection to
+  # it (`ac_`, `Apiary.Adapters.Connection`), carried to the adapter as the `state` of the
+  # connect step, which the adapter checks under the instance's public key before it acts
+  # on it. The module is hidden from the generated documentation, which every instance
+  # serves.
   #
   # Its form. One string, the payload in base64url without padding, `.`, and the
   # signature in base64url without padding, at most `max_length/0` characters. The payload
@@ -18,13 +20,14 @@ defmodule Apiary.Adapters.ConnectPass do
   #
   #   * `version`, 1;
   #   * `adapter_id`, the adapter, by its public id (`na_`);
+  #   * `connection_id`, the connection it is made for, by its public id (`ac_`);
   #   * `nonce`, 16 random bytes in base64url without padding, 22 characters;
   #   * `expires_at`, when the pass stops being good, in UTC to the second, as
   #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made.
   #
-  # `issue/2` makes one; `verify/3` reads one back: the length, both parts decoded
+  # `issue/3` makes one; `verify/3` reads one back: the length, both parts decoded
   # strictly, the signature over the message under the public key given, the payload
-  # against the rules above and byte for byte as `issue/2` writes it, and last its time.
+  # against the rules above and byte for byte as `issue/3` writes it, and last its time.
   # Any failure is `:error`, whatever the cause. Nothing here touches the database, logs,
   # or puts a pass in an error.
 
@@ -35,14 +38,15 @@ defmodule Apiary.Adapters.ConnectPass do
   @version 1
   @validity 900
   @nonce_size 16
-  @members ~w(version adapter_id nonce expires_at)
+  @members ~w(version adapter_id connection_id nonce expires_at)
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   # What a connect pass grants, as `verify/3` gives it back: the adapter's public id, the
-  # nonce's 16 raw bytes, and when it stops being good, to the second.
+  # connection's, the nonce's 16 raw bytes, and when it stops being good, to the second.
   @type pass :: %{
           adapter_id: String.t(),
+          connection_id: String.t(),
           nonce: <<_::128>>,
           expires_at: DateTime.t()
         }
@@ -57,26 +61,36 @@ defmodule Apiary.Adapters.ConnectPass do
   @spec validity() :: pos_integer
   def validity, do: @validity
 
-  # issue/2 makes the connect pass of the adapter `adapter_id` (`na_`): `{:ok, pass}`, the
-  # string, or `{:error, :invalid}` when `adapter_id` is not an adapter's public id, when
+  # A fresh nonce for a pass: 16 random bytes. The connection keeps the nonce of its latest
+  # pass (`Apiary.Adapters.connect/2`), which makes it with this and hands it to
+  # `issue/3`.
+  @doc false
+  @spec new_nonce() :: <<_::128>>
+  def new_nonce, do: :crypto.strong_rand_bytes(@nonce_size)
+
+  # issue/3 makes the connect pass of the adapter `adapter_id` (`na_`) for the connection
+  # `connection_id` (`ac_`): `{:ok, pass}`, the string, or `{:error, :invalid}` when
+  # `adapter_id` is not an adapter's public id, `connection_id` not a connection's, when
   # `opts[:nonce]` is not 16 bytes, or when `opts[:now]` is not a `DateTime`; and
   # `{:error, :too_long}` when the pass would be longer than `max_length/0`. No pass is
   # made on an error.
   #
-  # Its nonce is 16 fresh random bytes, and it expires `validity/0` seconds after now, to
-  # the second, signed under the instance's signing key. `opts` set each of them, for a
-  # known answer in tests and the shared fixture only: `:key`, a `t:Apiary.SigningKey.t/0`;
-  # `:now`, a `DateTime`; and `:nonce`, 16 bytes. A production caller passes none of
-  # `:key`, `:nonce` or `:now`: a pass then has a fresh random nonce, the current time and
-  # the instance's signing key.
+  # It expires `validity/0` seconds after now, to the second, signed under the instance's
+  # signing key, with `opts[:nonce]` as its nonce, 16 bytes, which the caller that keeps
+  # it makes with `new_nonce/0`, else 16 fresh random bytes. `:key`, a
+  # `t:Apiary.SigningKey.t/0`, and `:now`, a `DateTime`, are for a known answer in tests
+  # and the shared fixture only: a production caller passes neither, and a pass then has
+  # the current time and the instance's signing key.
   @doc false
-  @spec issue(String.t(), keyword) :: {:ok, String.t()} | {:error, :invalid | :too_long}
-  def issue(adapter_id, opts \\ []) do
+  @spec issue(String.t(), String.t(), keyword) ::
+          {:ok, String.t()} | {:error, :invalid | :too_long}
+  def issue(adapter_id, connection_id, opts \\ []) do
     key = Keyword.get_lazy(opts, :key, &SigningKey.current/0)
-    nonce = Keyword.get_lazy(opts, :nonce, fn -> :crypto.strong_rand_bytes(@nonce_size) end)
+    nonce = Keyword.get_lazy(opts, :nonce, &new_nonce/0)
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
 
     with true <- PublicId.valid?("na", adapter_id),
+         true <- PublicId.valid?("ac", connection_id),
          true <- is_binary(nonce) and byte_size(nonce) == @nonce_size,
          %DateTime{} <- now do
       expires_at =
@@ -85,7 +99,7 @@ defmodule Apiary.Adapters.ConnectPass do
         |> DateTime.truncate(:second)
         |> DateTime.add(@validity, :second)
 
-      payload = payload(adapter_id, nonce, expires_at)
+      payload = payload(adapter_id, connection_id, nonce, expires_at)
 
       pass =
         Ed25519.encode(payload) <>
@@ -124,11 +138,12 @@ defmodule Apiary.Adapters.ConnectPass do
 
   def verify(_pass, _public_key, _opts), do: :error
 
-  defp payload(adapter_id, nonce, expires_at) do
+  defp payload(adapter_id, connection_id, nonce, expires_at) do
     Jason.encode!(
       Jason.OrderedObject.new(
         version: @version,
         adapter_id: adapter_id,
+        connection_id: connection_id,
         nonce: Ed25519.encode(nonce),
         expires_at: DateTime.to_iso8601(expires_at)
       )
@@ -146,16 +161,23 @@ defmodule Apiary.Adapters.ConnectPass do
   end
 
   # The payload against its rules, every member required and no other, and its bytes
-  # exactly those `issue/2` writes: the members in their order, no whitespace.
+  # exactly those `issue/3` writes: the members in their order, no whitespace.
   defp read(payload) do
     with {:ok, %{} = map} <- Jason.decode(payload),
          true <- Enum.sort(Map.keys(map)) == Enum.sort(@members),
          true <- map["version"] === @version,
          true <- PublicId.valid?("na", map["adapter_id"]),
+         true <- PublicId.valid?("ac", map["connection_id"]),
          {:ok, nonce} <- Ed25519.decode(map["nonce"], @nonce_size),
          {:ok, expires_at} <- read_time(map["expires_at"]),
-         true <- payload(map["adapter_id"], nonce, expires_at) == payload do
-      {:ok, %{adapter_id: map["adapter_id"], nonce: nonce, expires_at: expires_at}}
+         true <- payload(map["adapter_id"], map["connection_id"], nonce, expires_at) == payload do
+      {:ok,
+       %{
+         adapter_id: map["adapter_id"],
+         connection_id: map["connection_id"],
+         nonce: nonce,
+         expires_at: expires_at
+       }}
     else
       _ -> :error
     end

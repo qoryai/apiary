@@ -11,15 +11,18 @@ defmodule Apiary.Adapters.ConnectPassTest do
   @seed :binary.list_to_bin(Enum.to_list(65..96))
   @fixture SigningKey.new(@seed)
   @adapter "na_0123456789abcdef"
+  @connection "ac_0123456789abcdef"
   @nonce :binary.list_to_bin(Enum.to_list(0..15))
   @now ~U[2026-10-15 12:00:00Z]
 
   @known_public_key "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"
   @known_payload ~s({"version":1,"adapter_id":"na_0123456789abcdef",) <>
+                   ~s("connection_id":"ac_0123456789abcdef",) <>
                    ~s("nonce":"AAECAwQFBgcICQoLDA0ODw","expires_at":"2026-10-15T12:15:00Z"})
-  @known_pass "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfMDEyMzQ1Njc4OWFiY2RlZiIsIm5vbmNlIjoi" <>
-                "QUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsImV4cGlyZXNfYXQiOiIyMDI2LTEwLTE1VDEyOjE1OjAwWiJ9" <>
-                ".5BTGXY-IV8t2FmJxbJLf93Xat_IQM7CKR3ipuoZ_0bqE4G7bsPPgh57h-_ZAXAG3B2ShnvUyVpNAYW78dIyABw"
+  @known_pass "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfMDEyMzQ1Njc4OWFiY2RlZiIsImNvbm5lY3Rp" <>
+                "b25faWQiOiJhY18wMTIzNDU2Nzg5YWJjZGVmIiwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3" <>
+                "IiwiZXhwaXJlc19hdCI6IjIwMjYtMTAtMTVUMTI6MTU6MDBaIn0" <>
+                "._zN3imcjoyz7tTF-PWMzVgDfs79WQxLeeGxLpFJeV47OX5nFpFT5dJ_sjeZKc0fMw9DxkVeL6Aq07GMML9cKBQ"
 
   @key SigningKey.new(:crypto.strong_rand_bytes(32))
   @other SigningKey.new(:crypto.strong_rand_bytes(32))
@@ -31,7 +34,9 @@ defmodule Apiary.Adapters.ConnectPassTest do
     do: Ed25519.encode(payload) <> "." <> Ed25519.encode(SigningKey.sign(key, message))
 
   defp pass!(opts \\ []) do
-    {:ok, pass} = ConnectPass.issue(@adapter, Keyword.merge([key: @key, now: @now], opts))
+    {:ok, pass} =
+      ConnectPass.issue(@adapter, @connection, Keyword.merge([key: @key, now: @now], opts))
+
     pass
   end
 
@@ -49,9 +54,10 @@ defmodule Apiary.Adapters.ConnectPassTest do
                "4142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60"
 
       assert {:ok, @known_pass} =
-               ConnectPass.issue(@adapter, key: @fixture, now: @now, nonce: @nonce)
+               ConnectPass.issue(@adapter, @connection, key: @fixture, now: @now, nonce: @nonce)
 
       assert payload!(@known_pass) == @known_payload
+      assert String.length(@known_pass) == 294
 
       assert SignedMessage.connect_pass(@known_payload) ==
                "qory-connect-ed25519-v1\n" <> @known_payload
@@ -59,12 +65,18 @@ defmodule Apiary.Adapters.ConnectPassTest do
       {:ok, public_key} = Ed25519.decode(@known_public_key, 32)
 
       assert ConnectPass.verify(@known_pass, public_key, now: @now) ==
-               {:ok, %{adapter_id: @adapter, nonce: @nonce, expires_at: ~U[2026-10-15 12:15:00Z]}}
+               {:ok,
+                %{
+                  adapter_id: @adapter,
+                  connection_id: @connection,
+                  nonce: @nonce,
+                  expires_at: ~U[2026-10-15 12:15:00Z]
+                }}
     end
 
     test "the time is taken to the second" do
       assert {:ok, @known_pass} =
-               ConnectPass.issue(@adapter,
+               ConnectPass.issue(@adapter, @connection,
                  key: @fixture,
                  now: ~U[2026-10-15 12:00:00.999999Z],
                  nonce: @nonce
@@ -79,7 +91,9 @@ defmodule Apiary.Adapters.ConnectPassTest do
       assert %Jason.OrderedObject{values: values} =
                Jason.decode!(payload, objects: :ordered_objects)
 
-      assert Enum.map(values, &elem(&1, 0)) == ~w(version adapter_id nonce expires_at)
+      assert Enum.map(values, &elem(&1, 0)) ==
+               ~w(version adapter_id connection_id nonce expires_at)
+
       refute payload =~ ~r/\s/
       assert Jason.encode!(Jason.decode!(payload, objects: :ordered_objects)) == payload
     end
@@ -106,12 +120,17 @@ defmodule Apiary.Adapters.ConnectPassTest do
       assert ConnectPass.max_length() == 1024
     end
 
-    test "signs under the instance's key unless given one" do
-      {:ok, pass} = ConnectPass.issue(@adapter)
-      assert {:ok, %{adapter_id: @adapter}} = ConnectPass.verify(pass, SigningKey.public_key())
+    test "signs under the instance's key unless given one, with the nonce given" do
+      nonce = ConnectPass.new_nonce()
+      assert byte_size(nonce) == 16
+      refute nonce == ConnectPass.new_nonce()
+      {:ok, pass} = ConnectPass.issue(@adapter, @connection, nonce: nonce)
+
+      assert {:ok, %{adapter_id: @adapter, connection_id: @connection, nonce: ^nonce}} =
+               ConnectPass.verify(pass, SigningKey.public_key())
     end
 
-    test "refuses anything but an adapter's public id, and a nonce that is not 16 bytes" do
+    test "refuses anything but an adapter's and a connection's public ids, and a nonce that is not 16 bytes" do
       for id <- [
             nil,
             "",
@@ -121,14 +140,26 @@ defmodule Apiary.Adapters.ConnectPassTest do
             "na_0123456789abcde",
             ~s(na_0123456789abc"e)
           ] do
-        assert ConnectPass.issue(id, key: @key) == {:error, :invalid}, inspect(id)
+        assert ConnectPass.issue(id, @connection, key: @key) == {:error, :invalid}, inspect(id)
+      end
+
+      for id <- [
+            nil,
+            "",
+            @adapter,
+            "ac_0123456789ABCDEF",
+            "ac_0123456789abcde",
+            "wi_0123456789abcdef"
+          ] do
+        assert ConnectPass.issue(@adapter, id, key: @key) == {:error, :invalid}, inspect(id)
       end
 
       for nonce <- [<<>>, <<0::120>>, <<0::136>>, nil] do
-        assert ConnectPass.issue(@adapter, key: @key, nonce: nonce) == {:error, :invalid}
+        assert ConnectPass.issue(@adapter, @connection, key: @key, nonce: nonce) ==
+                 {:error, :invalid}
       end
 
-      assert ConnectPass.issue(@adapter, key: @key, now: "2026-10-15T12:00:00Z") ==
+      assert ConnectPass.issue(@adapter, @connection, key: @key, now: "2026-10-15T12:00:00Z") ==
                {:error, :invalid}
     end
   end
@@ -190,6 +221,8 @@ defmodule Apiary.Adapters.ConnectPassTest do
         Jason.encode!(Map.put(map, "version", 2)),
         Jason.encode!(Map.put(map, "version", "1")),
         Jason.encode!(Map.put(map, "adapter_id", "nd_0123456789abcdef")),
+        Jason.encode!(Map.put(map, "connection_id", "na_0123456789abcdef")),
+        Jason.encode!(Map.delete(map, "connection_id")),
         Jason.encode!(Map.put(map, "nonce", Ed25519.encode(<<0::120>>))),
         Jason.encode!(Map.put(map, "nonce", Ed25519.encode(<<0::128>>) <> "==")),
         Jason.encode!(Map.put(map, "expires_at", "2026-10-15T12:15:00.5Z")),
@@ -197,7 +230,8 @@ defmodule Apiary.Adapters.ConnectPassTest do
         Jason.encode!(Map.put(map, "expires_at", 1_791_634_500)),
         # The members out of their order, or with whitespace: the bytes are not those
         # issue/2 writes.
-        ~s({"adapter_id":"#{map["adapter_id"]}","version":1,"nonce":"#{map["nonce"]}",) <>
+        ~s({"adapter_id":"#{map["adapter_id"]}","version":1,) <>
+          ~s("connection_id":"#{map["connection_id"]}","nonce":"#{map["nonce"]}",) <>
           ~s("expires_at":"#{map["expires_at"]}"}),
         String.replace(payload, ",", ", "),
         payload <> "\n",
@@ -264,6 +298,7 @@ defmodule Apiary.Adapters.ConnectPassTest do
             SignedMessage.answer(200, "", payload, nil, nil),
             SignedMessage.enrolment_answer(200, "", payload),
             SignedMessage.request("ak_0000000000000000", nil, "POST", "/", payload),
+            SignedMessage.connect_return(payload),
             "qory-connect-ed25519-v2\n" <> payload,
             "qory-connect-ed25519-v1" <> payload
           ] do
@@ -283,7 +318,8 @@ defmodule Apiary.Adapters.ConnectPassTest do
             payload,
             SignedMessage.run_key(payload),
             SignedMessage.answer(200, "", payload, nil, nil),
-            SignedMessage.enrolment_answer(200, "", payload)
+            SignedMessage.enrolment_answer(200, "", payload),
+            SignedMessage.connect_return(payload)
           ] do
         refute Ed25519.verify(message, signature, public_key())
       end
@@ -323,7 +359,8 @@ defmodule Apiary.Adapters.ConnectPassTest do
             SignedMessage.answer(200, "", "", nil, nil),
             SignedMessage.enrolment_answer(200, "", ""),
             SignedMessage.enrolment("", "", "", 0),
-            SignedMessage.request("", nil, "GET", "", "")
+            SignedMessage.request("", nil, "GET", "", ""),
+            SignedMessage.connect_return("")
           ] do
         refute String.starts_with?(other, tag)
         [other_tag | _] = String.split(other, "\n")

@@ -13,6 +13,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   alias Apiary.{Access, AccessKeys, Adapters, Nodes}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Connection, Connections}
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Nodes.Node
 
@@ -28,6 +29,19 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     adapter = adapter_fixture()
     {:ok, row, code} = AccessKeys.create_enrolment_code(admin, adapter, %{})
     %{access_key: key} = enrolled_key_fixture(admin, adapter)
+
+    # An adapter the organisation connected to, before the feature went: one connection
+    # each, from three organisations.
+    connectable = connectable_adapter_fixture()
+    %{scope: second} = sign_up_fixture()
+    %{scope: third} = sign_up_fixture()
+
+    connections = %{
+      pending: connection_fixture(scope, connectable.adapter, :pending),
+      activated: elem(connection_fixture(second, connectable.adapter, :activated), 0),
+      connected: elem(connection_fixture(third, connectable.adapter, :connected), 0)
+    }
+
     previous = Application.get_env(:apiary, :features)
     {:ok, features} = Apiary.Features.parse(Enum.map_join(@without, ",", &to_string/1))
     Application.put_env(:apiary, :features, features)
@@ -39,7 +53,9 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
       adapter: adapter,
       key: key,
       row: row,
-      code: Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+      code: Enrolment.issued_code(code, Apiary.SigningKey.fingerprint()),
+      connectable: connectable,
+      connections: connections
     }
   end
 
@@ -71,7 +87,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     for asker <- [admin, scope] do
       assert Adapters.create_adapter(asker, %{name: "Acme tracker"}) == {:error, :not_found}
       assert Adapters.rename_adapter(asker, adapter, %{name: "x"}) == {:error, :not_found}
-      assert Adapters.connect(asker, adapter, fn _ -> {:ok, "pass"} end) == {:error, :not_found}
+      assert Adapters.connect(asker, adapter) == {:error, :not_found}
       assert Adapters.delete_adapter(asker, adapter) == {:error, :not_found}
       assert Adapters.list_adapters(asker) == []
       assert Adapters.get_adapter(asker, adapter.public_id) == nil
@@ -102,6 +118,37 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
              AccessKeys.enrol(
                enrol_request(Enrolment.issued_code(node_code, Apiary.SigningKey.fingerprint()))
              )
+  end
+
+  test "no connection is started, taken back, found, connected or ended", %{
+    scope: scope,
+    connectable: %{adapter: adapter, pair: pair, access_key: key},
+    connections: %{pending: {pending, nonce}, activated: activated, connected: connected}
+  } do
+    assert Adapters.connect(scope, adapter) == {:error, :not_found}
+
+    token = return_token(pair.secret, pending.public_id, nonce)
+
+    assert Connections.complete_return(scope, pending.public_id, token, nonce) ==
+             {:error, :not_found}
+
+    assert Connections.locate(scope, pending.public_id) == :error
+    assert Connections.live_by_adapter(scope) == %{}
+    assert Adapters.serving_choices(scope) == []
+
+    key_scope = Scope.for_access_key(key)
+
+    for connection <- [activated, connected] do
+      assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
+               {:error, :forbidden}
+
+      assert Connections.end_connection(key_scope, connection.public_id) == {:error, :forbidden}
+    end
+
+    assert %Connection{state: :pending, activated_at: nil, pass_nonce_used_at: nil} =
+             Repo.get!(Connection, pending.id)
+
+    assert Repo.get!(Connection, connected.id).state == :connected
   end
 
   test "an adapter's key takes none of its actions", %{adapter: adapter, key: key} do

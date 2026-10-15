@@ -1,6 +1,8 @@
 defmodule Apiary.NodesFixtures do
   @moduledoc "Test helpers for nodes and node pools, their instances and their runs."
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.Nodes
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Repo
@@ -60,6 +62,114 @@ defmodule Apiary.NodesFixtures do
       Apiary.Adapters.create_adapter(Apiary.OrganisationsFixtures.instance_admin_scope(), attrs)
 
     adapter
+  end
+
+  @connect_url "https://tracker.example.com/connect"
+
+  @doc """
+  An adapter of the instance an organisation may connect (`adapter_fixture/1`): with a
+  connect address, #{@connect_url}, and a key enrolled on it by an instance admin. Returns
+  `%{adapter: adapter, access_key: key, pair: key pair}`, the pair's secret to sign with
+  as the adapter.
+  """
+  def connectable_adapter_fixture(attrs \\ %{}) do
+    adapter = adapter_fixture(attrs)
+
+    %{access_key: key, pair: pair} =
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(
+        Apiary.OrganisationsFixtures.instance_admin_scope(),
+        adapter
+      )
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+        set: [connect_url: @connect_url]
+      )
+
+    %{adapter: Repo.get!(Node, adapter.id), access_key: key, pair: pair}
+  end
+
+  @doc """
+  The connection of the scope's organisation to `adapter`, connectable
+  (`connectable_adapter_fixture/1`), started by the scope's person, an owner or an admin
+  (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:activated`,
+  pending and activated, as a return that says it is linked leaves it; `:connected`, as
+  the adapter's first listing leaves it. Returns `{connection, session_nonce}`, the
+  nonce of its pass in base64url, as the person's session keeps it.
+  """
+  def connection_fixture(scope, %Node{} = adapter, state \\ :connected) do
+    alias Apiary.Adapters.Connection
+
+    {:ok, _url, {public_id, nonce}} = Apiary.Adapters.connect(scope, adapter)
+    connection = Repo.get_by!(Connection, public_id: public_id)
+    now = DateTime.utc_now()
+
+    connection =
+      case state do
+        :pending ->
+          connection
+
+        :activated ->
+          connection
+          |> Ecto.Changeset.change(activated_at: now, pass_nonce_used_at: now)
+          |> Repo.update!()
+
+        :connected ->
+          connection
+          |> Ecto.Changeset.change(
+            activated_at: now,
+            pass_nonce_used_at: now,
+            state: :connected,
+            connected_at: now
+          )
+          |> Repo.update!()
+      end
+
+    {connection, nonce}
+  end
+
+  @doc """
+  A return as an adapter hands one back (`Apiary.Adapters.ReturnToken`), signed with
+  `secret`, the adapter's key's: for the connection `connection_id` and the pass's
+  `nonce` (16 bytes, or base64url), `linked` unless `opts[:outcome]` says otherwise, with
+  `opts[:reason]` for `refused`, expiring `opts[:expires_at]`, else 300 s from now. `opts`
+  may give the whole payload as `:payload`, a map or the bytes.
+  """
+  def return_token(secret, connection_id, nonce, opts \\ []) do
+    alias Apiary.Contract.{Ed25519, SignedMessage}
+
+    nonce = if byte_size(nonce) == 16, do: Ed25519.encode(nonce), else: nonce
+
+    expires_at =
+      Keyword.get_lazy(opts, :expires_at, fn ->
+        DateTime.utc_now() |> DateTime.add(300, :second) |> DateTime.truncate(:second)
+      end)
+
+    members =
+      %{
+        "version" => 1,
+        "connection_id" => connection_id,
+        "nonce" => nonce,
+        "outcome" => Atom.to_string(Keyword.get(opts, :outcome, :linked)),
+        "expires_at" => DateTime.to_iso8601(expires_at)
+      }
+      |> then(fn members ->
+        case Keyword.get(opts, :reason) do
+          nil -> members
+          reason -> Map.put(members, "reason", Atom.to_string(reason))
+        end
+      end)
+
+    payload =
+      case Keyword.get(opts, :payload, members) do
+        bytes when is_binary(bytes) -> bytes
+        map -> Jason.encode!(map)
+      end
+
+    signature =
+      :crypto.sign(:eddsa, :none, SignedMessage.connect_return(payload), [secret, :ed25519])
+
+    Ed25519.encode(payload) <> "." <> Ed25519.encode(signature)
   end
 
   @doc """

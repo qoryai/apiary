@@ -701,6 +701,7 @@ msgstr ""
 msgid "%{name} is changed."
 msgstr ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is connected."

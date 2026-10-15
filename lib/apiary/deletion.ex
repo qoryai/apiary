@@ -430,6 +430,9 @@ defmodule Apiary.Deletion do
          :ok <- refuse(:purge, organisation),
          :claimed <- claim(Organisation, id) do
       _retired = AccessKeys.retire_public_keys(id, nil)
+      # Its connections to the instance's adapters end once its deletion can no longer be
+      # cancelled; while it is marked they are only out of use.
+      _ended = Apiary.Adapters.Connections.end_for_organisation(id)
       deleted = delete_rows(Tables.tables(), id, nil)
 
       Repo.transact(fn ->

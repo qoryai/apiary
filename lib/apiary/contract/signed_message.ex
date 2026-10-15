@@ -50,6 +50,12 @@ defmodule Apiary.Contract.SignedMessage do
   # an answer's, and the reverse. Left out of the module's documentation, which every
   # instance serves.
   @connect_pass_tag "qory-connect-ed25519-v1"
+  # The return's message (`connect_return/1`, `Apiary.Adapters.ReturnToken`), which an
+  # adapter signs under its key: `qory-connect-return-ed25519-v1`, then the payload's
+  # bytes, on the next line and to the end. Its domain line keeps a return's signature
+  # from ever verifying as a request's, a connect pass's or a run key's, and the reverse.
+  # Left out of the module's documentation too.
+  @connect_return_tag "qory-connect-return-ed25519-v1"
 
   @doc ~S"""
   run_key/1 is the message a run key's signature covers (`Apiary.Runs.RunKey`): its domain
@@ -67,6 +73,14 @@ defmodule Apiary.Contract.SignedMessage do
   @doc false
   @spec connect_pass(binary) :: binary
   def connect_pass(payload) when is_binary(payload), do: @connect_pass_tag <> "\n" <> payload
+
+  # connect_return/1 is the message a return's signature covers
+  # (`Apiary.Adapters.ReturnToken`): its domain line, `qory-connect-return-ed25519-v1`, a
+  # line feed, then the payload's exact bytes.
+  @doc false
+  @spec connect_return(binary) :: binary
+  def connect_return(payload) when is_binary(payload),
+    do: @connect_return_tag <> "\n" <> payload
 
   @doc ~S"""
   request/5 is the request string of a request under `access_key_id` from `instance_id`
