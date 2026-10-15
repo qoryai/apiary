@@ -8,12 +8,12 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # integration's page in that organisation. With `return`, what the adapter hands back
   # when the person comes back from it, it first takes the return
   # (`Apiary.Adapters.Connections.complete_return/4`) with the nonce the person's session
-  # kept when they pressed Install (`ApiaryWeb.ConnectSession`), then leads there. A
-  # return the person did not start in this browser is refused (403); a link that names
-  # no connection they reach, and a return that is bad, expired or used, as a path that
-  # does not exist, whoever asks, so the link does not tell whether one exists. Behind
-  # sign-in: an anonymous visitor is sent to log in first. `return` is kept out of the
-  # logs (`:filter_parameters`).
+  # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
+  # ended there. A return the person did not start in this browser is answered with a
+  # page that says so; a link that names no connection they reach, and a return that is
+  # bad, expired or used, as a path that does not exist, whoever asks, so the link does
+  # not tell whether one exists. Behind sign-in: an anonymous visitor is sent to log in
+  # first. `return` is kept out of the logs (`:filter_parameters`).
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -64,10 +64,71 @@ defmodule ApiaryWeb.AdapterRedirectController do
     end
   end
 
-  # How the install ended: the integration's page does not say it.
-  defp told(conn, _outcome, _name), do: conn
+  # How the install ended, said on the integration's page.
+  defp told(conn, :linked, name) do
+    put_flash(
+      conn,
+      :info,
+      gettext(
+        "%{integration} is connected. Its repositories and projects appear here as it sends them.",
+        integration: name
+      )
+    )
+  end
 
-  # The answer to a return the person did not start in this browser: the status, in plain
-  # text.
-  defp wrong_person, do: Phoenix.Controller.status_message_from_template("403.html")
+  defp told(conn, :cancelled, name) do
+    put_flash(
+      conn,
+      :info,
+      gettext("You cancelled the install on %{integration}. Nothing has changed.",
+        integration: name
+      )
+    )
+  end
+
+  defp told(conn, {:refused, reason}, name), do: put_flash(conn, :error, refused(reason, name))
+
+  defp refused(:not_admin, name) do
+    gettext(
+      "%{integration} doesn't confirm that you administer that account. Ask an admin of the account to install it.",
+      integration: name
+    )
+  end
+
+  defp refused(:installation_taken, _name),
+    do: gettext("That account is already connected to another organisation.")
+
+  defp refused(:installation_not_confirmed, name) do
+    gettext(
+      "%{integration} couldn't confirm that installation for you. Install it again from Integrations.",
+      integration: name
+    )
+  end
+
+  defp refused(:installation_suspended, name) do
+    gettext(
+      "That installation is suspended on %{integration}. Lift the suspension there, then install it again.",
+      integration: name
+    )
+  end
+
+  defp refused(:permission_missing, name) do
+    gettext(
+      "An owner of the account must approve the updated permissions on %{integration}, then install it again.",
+      integration: name
+    )
+  end
+
+  defp refused(:pass_expired, _name),
+    do: gettext("The install took too long and expired. Install it again from Integrations.")
+
+  defp refused(:github_unavailable, name),
+    do: gettext("%{integration} didn't answer. Install it again in a moment.", integration: name)
+
+  # The page for a return the person did not start in this browser.
+  defp wrong_person do
+    gettext(
+      "Only the person who started this install can finish it, in the browser they started it in. To install it yourself, start again from Integrations."
+    )
+  end
 end
