@@ -21,6 +21,30 @@ exclude =
       [:contract]
   end
 
+# The tests tagged :integrations_contract read the integration contract, which lives in
+# the repository qoryai/integrations at the commit in .integrations-contract-ref
+# (`Apiary.IntegrationsContract.contract_dir/0`), the same way: excluded with one line
+# when it is not there, a failure when CONTRACT_FIXTURES_REQUIRED=1.
+exclude =
+  cond do
+    Apiary.IntegrationsContract.contract_dir() ->
+      exclude
+
+    System.get_env("CONTRACT_FIXTURES_REQUIRED") == "1" ->
+      raise "CONTRACT_FIXTURES_REQUIRED=1 and the integration contract's directory is not " <>
+              "there: set INTEGRATIONS_CONTRACT_DIR to contracts/integration/v1 of a " <>
+              "qoryai/integrations checkout"
+
+    true ->
+      IO.puts(
+        "Excluding the :integrations_contract tests: no integration contract directory " <>
+          "(set INTEGRATIONS_CONTRACT_DIR to contracts/integration/v1 of a " <>
+          "qoryai/integrations checkout)"
+      )
+
+      [:integrations_contract | exclude]
+  end
+
 # The features, the tags left out beside these, ExUnit, the instance and the sandbox:
 # `Apiary.TestSetup.start!/1` says what each is.
 Apiary.TestSetup.start!(exclude: exclude)

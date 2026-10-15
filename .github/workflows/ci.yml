@@ -273,6 +273,19 @@ jobs:
       - name: Check out the pinned ref of Forager's contract
         run: git -C tmp/forager checkout --detach "$(grep -v '^#' .forager-contract-ref | head -n 1 | tr -d '[:space:]')"
 
+      # The integration contract lives in the repository qoryai/integrations, which is
+      # public; the tests tagged :integrations_contract read it at the ref pinned in
+      # .integrations-contract-ref.
+      - name: Fetch the integrations repository
+        uses: actions/checkout@v7
+        with:
+          repository: qoryai/integrations
+          path: tmp/integrations
+          fetch-depth: 0
+
+      - name: Check out the pinned ref of the integration contract
+        run: git -C tmp/integrations checkout --detach "$(grep -v '^#' .integrations-contract-ref | head -n 1 | tr -d '[:space:]')"
+
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
 
@@ -307,6 +320,7 @@ jobs:
         env:
           MIX_ENV: test
           FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
+          INTEGRATIONS_CONTRACT_DIR: ${{ github.workspace }}/tmp/integrations/contracts/integration/v1
           CONTRACT_FIXTURES_REQUIRED: "1"
           QORY_FEATURES: ${{ matrix.features }}
         run: mix test
