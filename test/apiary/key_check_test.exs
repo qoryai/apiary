@@ -492,6 +492,13 @@ defmodule Apiary.KeyCheckTest do
       node = node_fixture(scope)
       enrolled_key_fixture(scope, node)
       {:ok, _secret} = Secrets.create_secret(scope, %{name: "API_KEY", value: "example"})
+
+      # An organisation's secret, and its data key, where an edition grants them.
+      Apiary.Edition.put_test_stub(Apiary.EditionStubs.GrantsOrganisationSecrets)
+
+      {:ok, _secret} =
+        Secrets.create_organisation_secret(scope, %{name: "API_KEY", value: "example"})
+
       ready_release!(scope, github_description())
       {:ok, _connection} = Connections.create_runtime(scope, %{runtime: "claude"})
 
