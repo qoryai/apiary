@@ -52,10 +52,13 @@ defmodule Apiary.Adapters.FeedRacesTest do
     assert Task.await(second.task) == {:ok, 2}
   end
 
+  # Twelve at most, and no more than the pool holds beside the test's connection: each
+  # side keeps its connection until all are let go.
   test "of many entries appended at once, each number is taken once" do
     %{adapter: adapter} = adapter()
-    answers = together(for _ <- 1..12, do: append(adapter, 3600))
-    assert Enum.sort(answers) == Enum.map(1..12, &{:ok, &1})
+    count = sides(12)
+    answers = together(for _ <- 1..count, do: append(adapter, 3600))
+    assert Enum.sort(answers) == Enum.map(1..count, &{:ok, &1})
   end
 
   test "an entry is refused outside a transaction" do
@@ -73,9 +76,12 @@ defmodule Apiary.Adapters.FeedRacesTest do
     signature = :crypto.strong_rand_bytes(64)
     now = System.os_time(:second)
 
-    answers = together(for _ <- 1..8, do: fn -> SeenRequests.record(key, signature, now, now) end)
+    count = sides(8)
 
-    assert Enum.frequencies(answers) == %{ok: 1, seen: 7}
+    answers =
+      together(for _ <- 1..count, do: fn -> SeenRequests.record(key, signature, now, now) end)
+
+    assert Enum.sort(answers) == [:ok | List.duplicate(:seen, count - 1)]
   end
 
   test "a declaration that waits on the adapter's deletion is refused as for a deleted adapter" do

@@ -1,56 +1,71 @@
 defmodule Apiary.Adapters.DocsTest do
-  # The adapters belong to `factory`, a feature the documentation does not differ by
-  # (`docs: false`): every instance is served the same `/docs`, the module reference
-  # included, with it on or off, so no module of theirs is in it, nor the endpoint and the
-  # plug of their requests. ExDoc leaves out a module whose docs are hidden
-  # (`@moduledoc false`), and every function with it.
+  # An adapter belongs to `factory`, a feature the documentation does not differ by
+  # (`docs: false`): every instance is served the same `/docs`, with it on or off, so no
+  # type or spec the module reference shows names the adapter kind. ExDoc shows the
+  # definition of every type whose docs are not hidden, and the specs of every function
+  # whose docs are not hidden, of every module whose docs are not hidden. A private type
+  # (`@typep`) is shown by its name alone.
   use ExUnit.Case, async: true
 
-  # The functions `use Apiary.Job` defines in a job's module, documented for every job.
-  @job_functions [new: 2, for_scope: 1, for_scope: 2, for_scope: 3]
-
-  defp adapters_modules do
+  defp shown_modules do
     {:ok, modules} = :application.get_key(:apiary, :modules)
 
-    Enum.filter(modules, fn module ->
-      name = Atom.to_string(module)
-      name == "Elixir.Apiary.Adapters" or String.starts_with?(name, "Elixir.Apiary.Adapters.")
+    for module <- modules,
+        {:docs_v1, _anno, :elixir, _format, moduledoc, _meta, docs} <- [Code.fetch_docs(module)],
+        moduledoc != :hidden,
+        do: {module, docs}
+  end
+
+  defp shown?(docs, kind, name, arity) do
+    Enum.any?(docs, fn {{k, n, a}, _anno, _signature, doc, _meta} ->
+      k == kind and n == name and a == arity and doc != :hidden
     end)
   end
 
-  test "the docs of every adapters module and of their requests' endpoint are hidden, and of each of their functions" do
-    modules = adapters_modules()
+  defp adapter?(quoted), do: Macro.to_string(quoted) =~ ":adapter"
 
-    assert Enum.sort(modules) ==
-             Enum.sort([
-               Apiary.Adapters,
-               Apiary.Adapters.ConnectPass,
-               Apiary.Adapters.Feed,
-               Apiary.Adapters.SeenRequests,
-               Apiary.Adapters.SeenRequestsPurge,
-               Apiary.Adapters.Wire
-             ])
+  test "no type or spec the module reference shows names the adapter kind" do
+    modules = shown_modules()
+    assert Enum.any?(modules, fn {module, _docs} -> module == Apiary.Nodes.Node end)
 
-    for module <-
-          modules ++ [ApiaryWeb.Contract.AdapterRequest, ApiaryWeb.Contract.AdapterController] do
-      assert {:docs_v1, _anno, :elixir, _format, :hidden, _meta, docs} =
-               Code.fetch_docs(module),
-             inspect(module)
+    for {module, docs} <- modules do
+      {:ok, types} = Code.Typespec.fetch_types(module)
 
-      for {{kind, name, arity}, _anno, _signature, doc, _meta} <- docs,
-          kind in [:function, :macro],
-          not (module == Apiary.Adapters.SeenRequestsPurge and {name, arity} in @job_functions) do
-        assert doc in [:hidden, :none], inspect({module, name, arity})
+      for {:type, {name, _, args} = type} <- types,
+          shown?(docs, :type, name, length(args)) do
+        refute adapter?(Code.Typespec.type_to_quoted(type)), inspect({module, name})
+      end
+
+      {:ok, specs} = Code.Typespec.fetch_specs(module)
+
+      for {{name, arity}, clauses} <- specs,
+          shown?(docs, :function, name, arity) or shown?(docs, :macro, name, arity),
+          clause <- clauses do
+        refute adapter?(Code.Typespec.spec_to_quoted(name, clause)),
+               inspect({module, name, arity})
       end
     end
   end
 
-  test "the pipeline of their requests is hidden in the router's docs, which list the others" do
-    {:docs_v1, _anno, :elixir, _format, _moduledoc, _meta, docs} =
-      Code.fetch_docs(ApiaryWeb.Router)
+  test "a node's kind and an enrolment's answer still admit the adapter kind" do
+    {:ok, types} = Code.Typespec.fetch_types(Apiary.Nodes.Node)
 
-    pipelines = for {{:function, name, 2}, _, _, doc, _} <- docs, do: {name, doc}
-    assert {:contract_adapter, :hidden} in pipelines
-    assert {:contract, :none} in pipelines
+    assert Enum.any?(types, fn
+             {:typep, {:feature_kind, _, []} = type} ->
+               adapter?(Code.Typespec.type_to_quoted(type))
+
+             _ ->
+               false
+           end)
+
+    {:ok, types} = Code.Typespec.fetch_types(Apiary.Contract.Enrolment)
+
+    assert Enum.any?(types, fn
+             {:typep, {:node_kind, _, []} = type} ->
+               adapter?(Code.Typespec.type_to_quoted(type))
+
+             _ ->
+               false
+           end)
   end
 end

@@ -149,6 +149,11 @@ config :apiary, Oban,
   pruner: [max_age: {7, :days}],
   lifeline: [rescue_after: {30, :minutes}]
 
+# mdex's NIF (Apiary.Sources.Body) on x86_64 Linux: the build without AVX and FMA, which
+# a host may lack where the build machine has them. Read at compile time. x86_64 Windows
+# and FreeBSD take their legacy build too; arm64, macOS and musl are unchanged.
+config :mdex_native, use_legacy_artifacts: true
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
