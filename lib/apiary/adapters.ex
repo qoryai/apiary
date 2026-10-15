@@ -19,6 +19,12 @@ defmodule Apiary.Adapters do
   # every pool it served, in one transaction, under the organisation's lock that a change
   # of a pool takes too (`Apiary.Gateways.lock/1`), with the adapter's row `FOR UPDATE`.
   #
+  # A person connects an adapter with `connect/2`: the address the adapter declared, with a
+  # connect pass (`Apiary.Adapters.ConnectPass`) as its `state`. How often the adapter
+  # checks the source is `sync/1`: what it declared, and the interval a person chose among
+  # `sync/1`'s `choices` (`update_sync/3`, `adapter.edit`), which the adapter learns from
+  # its change feed (`Apiary.Adapters.Feed`).
+  #
   # At the server contract an adapter's key acts as the role `adapter_key`
   # (`Apiary.Access.role/1`), with a scope of its organisation and no workspace
   # (`Apiary.Accounts.Scope.for_access_key/1`): `for_key/2` is the adapter such a scope
@@ -32,6 +38,7 @@ defmodule Apiary.Adapters do
   alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Adapters.{ConnectPass, Feed}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
 
@@ -165,6 +172,52 @@ defmodule Apiary.Adapters do
   end
 
   @doc false
+  # Starts the connection of `adapter` (`adapter.connect`, owners and admins): `{:ok, url}`,
+  # the address the adapter declared (`connect_url`) with a fresh connect pass as its query
+  # parameter `state`, where the page sends the person; the pass is in no entry and is
+  # stored nowhere. `{:error, :no_connect_url}` while the adapter has declared none,
+  # `{:error, :no_key}` while it holds no active access key, `{:error, :forbidden}`, or
+  # `{:error, :not_found}`; none of them leaves an entry.
+  @spec connect(Scope.t(), Node.t()) ::
+          {:ok, String.t()}
+          | {:error, :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+  def connect(%Scope{} = scope, %Node{} = adapter) do
+    connect(scope, adapter, fn current ->
+      cond do
+        is_nil(current.connect_url) ->
+          {:error, :no_connect_url}
+
+        not AccessKeys.active_key?(current) ->
+          {:error, :no_key}
+
+        true ->
+          with {:ok, pass} <- ConnectPass.issue(current.public_id),
+               do: {:ok, with_state(current.connect_url, pass)}
+      end
+    end)
+  end
+
+  # The connect address with the pass as the query parameter `state`, before any fragment:
+  # `?state=` when the address has no query, `&state=` after one. A pass is base64url and
+  # a dot, which a query carries as they are.
+  defp with_state(url, pass) do
+    {base, fragment} =
+      case String.split(url, "#", parts: 2) do
+        [base, fragment] -> {base, "#" <> fragment}
+        [base] -> {base, ""}
+      end
+
+    separator =
+      cond do
+        not String.contains?(base, "?") -> "?"
+        String.ends_with?(base, ["?", "&"]) -> ""
+        true -> "&"
+      end
+
+    base <> separator <> "state=" <> pass <> fragment
+  end
+
+  @doc false
   # Starts the connection of `adapter` (`adapter.connect`, owners and admins): `issue`,
   # given the adapter as it is now, makes what the person is sent to the adapter with,
   # `{:ok, pass}`, which the entry never holds. `{:ok, pass}`, `{:error, :forbidden}`,
@@ -181,6 +234,175 @@ defmodule Apiary.Adapters do
         {:ok, pass}
       end
     end)
+  end
+
+  ## How often an adapter checks the source
+
+  # The intervals a person may choose, in seconds, before the adapter's minimum is applied:
+  # an adapter that sends the source's changes as they happen checks only for what it
+  # missed, from a quarter of an hour to a day; one that learns of changes only by checking,
+  # from a minute to an hour.
+  @sync_choices %{true: [900, 3600, 21_600, 86_400], false: [60, 300, 900, 3600]}
+
+  @doc false
+  # How `adapter` checks the source: what it declared (`sends_changes`, `default`,
+  # `minimum`, each nil until it first declares), the interval a person set (`interval`,
+  # nil for the adapter's default), and the intervals a person may choose (`choices`):
+  # those of its kind of checking at or above its minimum, none before it declares.
+  @spec sync(Node.t()) :: %{
+          sends_changes: boolean | nil,
+          interval: pos_integer | nil,
+          default: pos_integer | nil,
+          minimum: pos_integer | nil,
+          choices: [pos_integer]
+        }
+  def sync(%Node{kind: :adapter} = adapter) do
+    %{
+      sends_changes: adapter.sync_sends_changes,
+      interval: adapter.sync_interval,
+      default: adapter.sync_default_interval,
+      minimum: adapter.sync_minimum_interval,
+      choices: sync_choices(adapter)
+    }
+  end
+
+  defp sync_choices(%Node{sync_sends_changes: sends_changes, sync_minimum_interval: minimum})
+       when is_boolean(sends_changes) do
+    choices = Map.fetch!(@sync_choices, sends_changes)
+    if is_integer(minimum), do: Enum.filter(choices, &(&1 >= minimum)), else: choices
+  end
+
+  defp sync_choices(%Node{}), do: []
+
+  @doc false
+  # The changeset of the interval a person sets for `adapter`, from `attrs`'s `interval`:
+  # one of `sync/1`'s `choices`, or empty for the adapter's default.
+  @spec change_sync(Node.t(), map) :: Ecto.Changeset.t()
+  def change_sync(%Node{kind: :adapter} = adapter, attrs \\ %{}) do
+    Node.sync_interval_changeset(adapter, sync_attrs(attrs), sync_choices(adapter))
+  end
+
+  @doc false
+  # Sets the interval of `adapter`'s check (`adapter.edit`, owners and admins), from
+  # `attrs`'s `interval`, in seconds, one of `sync/1`'s `choices`, or `""` for the
+  # adapter's default. A change appends `{kind: "sync", interval}` to the adapter's feed
+  # (nil for the default) and leaves its entry, in one transaction; the same interval
+  # changes nothing. `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
+  # `{:error, :not_found}`.
+  @spec update_sync(Scope.t(), Node.t(), map) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def update_sync(%Scope{} = scope, %Node{} = adapter, attrs) do
+    mutate(scope, :"adapter.edit", adapter, fn current ->
+      changeset =
+        Node.sync_interval_changeset(current, sync_attrs(attrs), sync_choices(current))
+
+      with {:ok, updated} <- Repo.update(changeset) do
+        case Audit.changed(current, updated, [:sync_interval]) do
+          nil ->
+            {:ok, updated}
+
+          changes ->
+            with {:ok, _entry} <- Audit.record(Repo, scope, :"adapter.edit", updated, changes),
+                 {:ok, _seq} <-
+                   Feed.append(updated, %{kind: "sync", interval: updated.sync_interval}) do
+              {:ok, updated}
+            end
+        end
+      end
+    end)
+  end
+
+  # The interval as a page sends it: `interval`, or the changeset's field, `sync_interval`.
+  defp sync_attrs(attrs) do
+    case Map.new(attrs, fn {key, value} -> {to_string(key), value} end) do
+      %{"interval" => interval} -> %{"sync_interval" => interval}
+      %{"sync_interval" => interval} -> %{"sync_interval" => interval}
+      _other -> %{}
+    end
+  end
+
+  ## What an adapter declares
+
+  @doc false
+  # Stores what the adapter of `scope`, an adapter's key (`Apiary.Accounts.Scope.for_access_key/1`),
+  # declared as it started (`Apiary.Adapters.Wire.declaration/1`): its connect address and
+  # how it checks the source (`adapter.declare`). A declaration that changes something
+  # leaves an entry whose actor is the key; one that changes nothing leaves none. The
+  # adapter's first declaration appends `{kind: "sync", interval: nil}` to its feed, its
+  # default; so does a later one that leaves the interval a person set out of `sync/1`'s
+  # `choices` (above its minimum, or of the other kind of checking), which goes back to
+  # the default. One transaction, with the adapter's row locked. `{:ok,
+  # adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
+  @spec declare(Scope.t(), map) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def declare(%Scope{} = scope, %{} = declaration) do
+    Repo.transact(fn ->
+      with {:ok, %Node{id: id}} <- for_key(scope, :"adapter.declare"),
+           %Node{} = current <-
+             Repo.one(from(n in Node, where: n.id == ^id, lock: "FOR UPDATE")) ||
+               {:error, :not_found},
+           {:ok, declared} <- current |> declaration_changeset(declaration) |> Repo.update(),
+           :ok <- record_declaration(scope, current, declared),
+           :ok <- tell_default(current, declared) do
+        {:ok, declared}
+      end
+    end)
+  end
+
+  defp declaration_changeset(current, declaration) do
+    changeset =
+      Node.declaration_changeset(current, %{
+        connect_url: declaration.connect_url,
+        sync_default_interval: declaration.default_interval,
+        sync_minimum_interval: declaration.minimum_interval,
+        sync_sends_changes: declaration.sends_changes
+      })
+
+    # The interval a person set stays while it is one of the choices the declaration
+    # leaves, and goes back to the default when it is not.
+    choices = sync_choices(Ecto.Changeset.apply_changes(changeset))
+
+    case current.sync_interval do
+      interval when is_integer(interval) ->
+        if interval in choices,
+          do: changeset,
+          else: Ecto.Changeset.put_change(changeset, :sync_interval, nil)
+
+      nil ->
+        changeset
+    end
+  end
+
+  @declared [
+    :connect_url,
+    :sync_default_interval,
+    :sync_minimum_interval,
+    :sync_sends_changes,
+    :sync_interval
+  ]
+
+  defp record_declaration(scope, current, declared) do
+    case Audit.changed(current, declared, @declared) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, scope, :"adapter.declare", declared, changes),
+             do: :ok
+    end
+  end
+
+  # The adapter's interval is its default from its first declaration on, and again when a
+  # person's interval is no longer a choice: the feed says so.
+  defp tell_default(current, declared) do
+    first? = is_nil(current.sync_sends_changes)
+    cleared? = is_integer(current.sync_interval) and is_nil(declared.sync_interval)
+
+    if first? or cleared? do
+      with {:ok, _seq} <- Feed.append(declared, %{kind: "sync", interval: nil}), do: :ok
+    else
+      :ok
+    end
   end
 
   @doc false

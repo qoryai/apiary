@@ -336,6 +336,11 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     # An adapter's key at the server contract, asked of the adapter itself.
+    Action.new(:"adapter.declare", "say where a person connects the adapter and how it checks",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
     Action.new(:"source_item.post", "post the items of a source",
       feature: :factory,
       roles: [:adapter_key],

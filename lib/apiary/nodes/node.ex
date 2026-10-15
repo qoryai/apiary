@@ -58,6 +58,9 @@ defmodule Apiary.Nodes.Node do
   @max_limit 10_000
   @max_url 2048
   @max_adapter_name 64
+  # An adapter's intervals, in seconds: a minute to a day.
+  @min_interval 60
+  @max_interval 86_400
   @prefixes %{node: "nd", pool: "np", gateway: "ng", adapter: "na"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -230,6 +233,58 @@ defmodule Apiary.Nodes.Node do
     end)
     |> check_constraint(:connect_url, name: :nodes_connect_url_check)
     |> check_constraint(:connect_url, name: :nodes_adapter_check)
+  end
+
+  @doc false
+  # The changeset of what an adapter declares each time it starts: its connect address
+  # (`connect_url_changeset/2`) and how it pulls changes, `sync_default_interval` and
+  # `sync_minimum_interval`, whole seconds from 60 to 86,400, the minimum at most the
+  # default, and `sync_sends_changes`. Each is required. The database holds them to the
+  # same (`nodes_sync_check`).
+  @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
+  def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> connect_url_changeset(attrs)
+    |> cast(attrs, [:sync_default_interval, :sync_minimum_interval, :sync_sends_changes])
+    |> validate_required([
+      :connect_url,
+      :sync_default_interval,
+      :sync_minimum_interval,
+      :sync_sends_changes
+    ])
+    |> validate_number(:sync_default_interval,
+      greater_than_or_equal_to: @min_interval,
+      less_than_or_equal_to: @max_interval
+    )
+    |> validate_number(:sync_minimum_interval,
+      greater_than_or_equal_to: @min_interval,
+      less_than_or_equal_to: @max_interval
+    )
+    |> validate_minimum_interval()
+    |> check_constraint(:sync_default_interval, name: :nodes_sync_check)
+  end
+
+  defp validate_minimum_interval(changeset) do
+    case get_field(changeset, :sync_default_interval) do
+      default when is_integer(default) ->
+        validate_number(changeset, :sync_minimum_interval, less_than_or_equal_to: default)
+
+      _none ->
+        changeset
+    end
+  end
+
+  @doc false
+  # The changeset of the interval a person sets for an adapter's periodic check,
+  # `sync_interval`, in seconds: one of `choices`, or nil (an empty value) for the
+  # adapter's default.
+  @spec sync_interval_changeset(t, map, [pos_integer]) :: Ecto.Changeset.t()
+  def sync_interval_changeset(%__MODULE__{kind: :adapter} = adapter, attrs, choices)
+      when is_list(choices) do
+    adapter
+    |> cast(attrs, [:sync_interval], empty_values: [""])
+    |> validate_inclusion(:sync_interval, choices)
+    |> check_constraint(:sync_interval, name: :nodes_sync_check)
   end
 
   # A pool's adapter, which a node, a gateway and an adapter never have. Whether the

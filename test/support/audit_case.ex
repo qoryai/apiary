@@ -165,8 +165,14 @@ defmodule Apiary.AuditCase do
     assert %DateTime{} = entry.inserted_at
 
     case made do
-      %{actor: :instance} -> assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
-      _person -> assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
+      %{actor: :instance} ->
+        assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
+
+      %{actor: {:access_key, id}} ->
+        assert {entry.actor_kind, entry.actor_id} == {:access_key, id}
+
+      _person ->
+        assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
     end
 
     refute_personal(entry, made[:secret])

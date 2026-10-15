@@ -88,7 +88,8 @@ defmodule Apiary.AuditChanges do
       :"adapter.create",
       :"adapter.edit",
       :"adapter.delete",
-      :"adapter.connect"
+      :"adapter.connect",
+      :"adapter.declare"
     ]
   end
 
@@ -402,6 +403,23 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", adapter.id}, secret: pass, before: before}
   end
 
+  # An adapter's key declares, and the entry's actor is the key.
+  def make(:"adapter.declare", %{scope: scope}) do
+    adapter = adapter_fixture(scope)
+    %{access_key: key} = enrolled_key_fixture(scope, adapter)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    key_scope = Scope.for_access_key(key)
+    before = entries()
+    {:ok, _declared} = Adapters.declare(key_scope, declaration())
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
@@ -595,6 +613,15 @@ defmodule Apiary.AuditChanges do
     {before, Audit.prune(scope)}
   end
 
+  # A node's key declares no adapter.
+  def refuse(:"adapter.declare", %{scope: scope}) do
+    adapter_fixture(scope)
+    %{access_key: key} = node_key_fixture(scope, node_fixture(scope))
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    before = entries()
+    {before, Adapters.declare(Scope.for_access_key(key), declaration())}
+  end
+
   # Anyone but the instance, here an owner, may not purge.
   def refuse(:"workspace.purge", %{scope: scope}) do
     workspace = due_workspace(scope)
@@ -606,6 +633,17 @@ defmodule Apiary.AuditChanges do
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
+
+  # What an adapter declares as it starts (`Apiary.Adapters.Wire.declaration/1`).
+  defp declaration do
+    %{
+      time: DateTime.utc_now(:second),
+      connect_url: "https://tracker-adapter.acme.example/connect",
+      default_interval: 900,
+      minimum_interval: 300,
+      sends_changes: false
+    }
+  end
 
   defp prepare(:"member.change_level", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"member.remove", %{scope: scope}), do: member_fixture(scope).membership

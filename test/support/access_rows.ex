@@ -120,6 +120,7 @@ defmodule Apiary.AccessRows do
       {:"adapter.edit", yes: @owners ++ [:admin], on: :adapter},
       {:"adapter.delete", yes: @owners ++ [:admin], on: :adapter},
       {:"adapter.connect", yes: @owners ++ [:admin], on: :adapter},
+      {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"dispatch.claim", yes: [:adapter_key, :hidden], on: :adapter}
