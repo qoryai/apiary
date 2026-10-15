@@ -171,6 +171,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
       refute has_element?(lv, "#key-#{key.key_id}-secret")
       refute has_element?(lv, "#key-#{key.key_id}-stored-secrets")
+      # Its use is not recorded yet, so it has no Last used.
+      refute has_element?(lv, "#key-#{key.key_id}-used")
+      refute has_element?(lv, "#key-#{key.key_id} dt", "Last used")
       refute render(lv) =~ "Forager"
 
       assert has_element?(

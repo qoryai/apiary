@@ -2403,6 +2403,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     assigns =
       assign(assigns,
         secrets: !assigns.adapter and Apiary.Features.visible?(assigns.scope, :secrets),
+        # Whether the key's use is recorded: an adapter's isn't yet, so its card has no
+        # Last used, which would say Not yet for ever.
+        use_recorded: !assigns.adapter,
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2459,8 +2462,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dd :if={!@adapter} id={"#{@dom}-secret"}>{secret_words(@key, @node)}</dd>
         <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
         <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
-        <dt class="text-faint">{gettext("Last used")}</dt>
-        <dd id={"#{@dom}-used"}>
+        <dt :if={@use_recorded} class="text-faint">{gettext("Last used")}</dt>
+        <dd :if={@use_recorded} id={"#{@dom}-used"}>
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
             <span :if={@key.last_forager_version && !@adapter} class="text-muted">
