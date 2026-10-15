@@ -160,11 +160,13 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
 
     key_scope = Scope.for_access_key(key)
 
-    for connection <- [connected, listed] do
-      assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
+    # The feature off, the key has no rights: forbidden, before any lookup, for a
+    # connection pending or connected and for an id that names none alike.
+    for id <- [pending.public_id, connected.public_id, listed.public_id, "ac_0000000000000000"] do
+      assert Connections.connection_for_key(key_scope, id, :"source_item.post") ==
                {:error, :forbidden}
 
-      assert Connections.end_connection(key_scope, connection.public_id) == {:error, :forbidden}
+      assert Connections.end_connection(key_scope, id) == {:error, :forbidden}
     end
 
     assert %Connection{state: :pending, connected_at: nil, pass_nonce_used_at: nil} =
