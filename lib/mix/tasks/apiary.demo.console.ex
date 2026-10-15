@@ -528,8 +528,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       Connections.create_service(scope, %{
         "service" => "sentry",
         "applies_to" => "selected",
-        "target_ids" =>
-          target_ids(scope, [{"github.com", "acme/shop"}, {"github.com", "acme/web"}])
+        "workspace_ids" => [scope.workspace.id]
       })
 
     [github, tracker] =
@@ -543,12 +542,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         "settings" => %{"url" => "https://tracker.example.com"},
         "argument" => "SHOP",
         "applies_to" => "selected",
-        "target_ids" =>
-          target_ids(scope, [
-            {"github.com", "acme/shop"},
-            {"gitlab.com", "acme/shop"},
-            {"codeberg.org", "acme/shop"}
-          ])
+        "workspace_ids" => [scope.workspace.id]
       })
 
     {source, version} = @missing
@@ -557,13 +551,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     Mix.shell().info(
       "Connections: the claude runtime, npm and Sentry, two integrations; one release failed"
     )
-  end
-
-  defp target_ids(scope, pairs) do
-    for {system, path} <- pairs,
-        target = Targets.get(scope, system, path),
-        target != nil,
-        do: target.id
   end
 
   defp release!(scope, source, version) do

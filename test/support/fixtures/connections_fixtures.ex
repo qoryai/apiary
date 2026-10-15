@@ -1,6 +1,6 @@
 defmodule Apiary.ConnectionsFixtures do
   @moduledoc """
-  Releases, repositories and connections for the tests: a release is found as the
+  Releases, workspaces, repositories and connections for the tests: a release is found as the
   product finds it, its files served by the `Req.Test` stub of
   `Apiary.Integrations.Fetch`.
   """
@@ -37,6 +37,10 @@ defmodule Apiary.ConnectionsFixtures do
     {:ok, %{state: "ready"} = release} = Integrations.fetch_release(scope, release.id)
     release
   end
+
+  @doc "workspace!/2 is another workspace of the scope's organisation, named `name`."
+  def workspace!(scope, name),
+    do: Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation, name)
 
   @doc "target!/2 is a repository of the scope's workspace at `path`."
   def target!(scope, path) do

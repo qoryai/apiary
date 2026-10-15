@@ -118,6 +118,29 @@ defmodule Apiary.IntegrationsTest do
       assert Repo.all(Release) == []
     end
 
+    test "is the organisation's: its fetch and its entry name no workspace, and every workspace reads it",
+         %{scope: scope} do
+      {:ok, release} = Integrations.request_release(scope, @github)
+
+      assert_enqueued(
+        worker: FetchJob,
+        args: %{"release_id" => release.id, "workspace_id" => nil}
+      )
+
+      assert [%Entry{workspace_id: nil}] =
+               Repo.all(from e in Entry, where: e.subject_id == ^release.id)
+
+      other = workspace_scope(scope.user, workspace_fixture(scope.organisation))
+      assert {:ok, %Release{}} = Integrations.get_release(other, release.id)
+      assert {:ok, %Release{}} = Integrations.get_release(%{scope | workspace: nil}, release.id)
+
+      # The same source and version, asked for from another workspace, is the release found.
+      serve_release(github_description())
+      ready = fetch!(scope, release)
+      assert {:ok, %Release{id: id}} = Integrations.request_release(other, @github)
+      assert id == ready.id
+    end
+
     test "is a member's no more than a change is", %{scope: scope} do
       %{scope: member} = member_fixture(scope)
       assert Integrations.request_release(member, @github) == {:error, :forbidden}
@@ -354,37 +377,13 @@ defmodule Apiary.IntegrationsTest do
   end
 
   describe "a release's integrity code" do
-    test "is of version 2, over no publisher", %{scope: scope} do
+    test "is of version 3, over no publisher and no workspace", %{scope: scope} do
       serve_release(github_description())
       {:ok, release} = Integrations.request_release(scope, @github)
       release = fetch!(scope, release)
 
-      assert release.integrity_version == 2
+      assert release.integrity_version == 3
       assert Release.intact?(release)
-    end
-
-    test "of version 1 verifies when it covered no publisher, and not when it covered one",
-         %{scope: scope} do
-      {:ok, release} = Integrations.request_release(scope, @github)
-
-      code_v1 = fn fields ->
-        {key_id, code} = Apiary.Integrity.code(Release.integrity_kind(), 1, fields)
-
-        Repo.update_all(from(r in Release, where: r.id == ^release.id),
-          set: [integrity_key_id: key_id, integrity_code: code, integrity_version: 1]
-        )
-
-        Repo.get!(Release, release.id)
-      end
-
-      assert release |> Release.integrity_fields(1) |> code_v1.() |> Release.intact?()
-
-      with_publisher =
-        release
-        |> Release.integrity_fields(1)
-        |> Keyword.put(:publisher_name, "Acme")
-
-      refute with_publisher |> code_v1.() |> Release.intact?()
     end
   end
 

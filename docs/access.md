@@ -457,7 +457,10 @@ for each other and never on each other at once:
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
-5. **Everything else**: invitations, access keys, nodes, then runs.
+5. **Everything else**: the organisation's integrations lock, a transaction-level advisory
+   lock that every write to its runtimes, integrations and services takes
+   (`Apiary.Connections.lock/1`), then the rows it changes; invitations, access keys,
+   nodes, then runs.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the

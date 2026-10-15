@@ -1,13 +1,13 @@
 defmodule Apiary.Connections.Overlap do
   @moduledoc """
-  Overlap finds the connections of a workspace that one would collide with where both
-  apply: the same runtime, the same integration by name, or a host in common, one host
-  pattern covering another (`Apiary.Kinds.Hosts.overlap?/2`), since a host gets its value
-  from one connection only.
+  Overlap finds the connections of an organisation that one would collide with in a
+  workspace where both apply: the same runtime, the same integration by name, or a host
+  in common, one host pattern covering another (`Apiary.Kinds.Hosts.overlap?/2`), since a
+  host gets its value from one connection only.
 
-  Where a connection applies is its **reach**: every repository (`applies_to` `all`), or
-  the repositories its targets name (`selected`), none of them when it names none. Two
-  connections overlap where their reaches meet.
+  Where a connection applies is its **reach**: every workspace of the organisation, those
+  made later included (`applies_to` `all`), or the workspaces it lists (`selected`), none
+  of them when it lists none. Two connections overlap where their reaches meet.
   """
 
   alias Apiary.Kinds.Hosts

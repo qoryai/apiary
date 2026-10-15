@@ -1,6 +1,6 @@
 defmodule Apiary.Integrations do
   @moduledoc """
-  Integrations finds an integration's release for a workspace: it records the request,
+  Integrations finds an integration's release for an organisation: it records the request,
   fetches the release's `description.json` in a job, and checks what it found, so that a
   page can show the integration before anyone adds it (`Apiary.Connections`).
 
@@ -9,7 +9,7 @@ defmodule Apiary.Integrations do
   `request_release/2` takes a `source` (`Apiary.Integrations.Source`): a forge path, on
   `github.com`, `gitlab.com` or `codeberg.org`, and an exact `version`, its `forge_kind`
   always the host's; or, while `INTEGRATION_URL_SOURCES` is on, an https URL of a
-  `description.json` and no version. A forge release already found in the workspace,
+  `description.json` and no version. A forge release already found in the organisation,
   intact, is given back as it is: a release's files do not change under its version.
   Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and enqueues
   `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write` entry in
@@ -30,15 +30,15 @@ defmodule Apiary.Integrations do
     * `integration_source_mismatch`, when what came is not what the source vouches for:
       `checksums.txt` lists no `description.json`, or another digest; the description's
       `program_version` is not the version asked for; or a release of the same source and
-      version this workspace found before had another description;
+      version this organisation found before had another description;
     * `description_invalid`, from `Apiary.Integrations.Description.parse/1`.
 
   Nothing of the release runs on Qory Apiary: it is only read.
 
   ## Who
 
-  Reading the releases is `connection.read`; asking for one is `connection.write`, and
-  the job asks it again of the person who asked.
+  Reading the releases is `connection.read`; asking for one is `connection.write`, both
+  asked of the organisation, and the job asks it again of the person who asked.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -51,7 +51,7 @@ defmodule Apiary.Integrations do
   alias Apiary.Accounts.Scope
   alias Apiary.Integrations.{Description, Fetch, FetchJob, Release, Source}
   alias Apiary.Kinds.{CanonicalJSON, Coded}
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Organisations.Organisation
 
   @description_max 262_144
   @checksums_max 65_536
@@ -62,17 +62,18 @@ defmodule Apiary.Integrations do
   ## Reading
 
   @doc """
-  get_release/2 is the scope's workspace's release with the id `id`: `{:ok, release}`,
+  get_release/2 is the scope's organisation's release with the id `id`: `{:ok, release}`,
   for a reader who may `connection.read`; else `{:error, reason}`, `:not_found` for one
-  the workspace does not have, or one whose row is not as it was written, which is
+  the organisation does not have, or one whose row is not as it was written, which is
   logged.
   """
   @spec get_release(Scope.t(), term) :: {:ok, Release.t()} | {:error, Access.reason()}
   def get_release(%Scope{} = scope, id) do
-    with {:ok, workspace} <- workspace(scope),
-         :ok <- Access.authorize(scope, :"connection.read", workspace),
+    with {:ok, organisation} <- organisation(scope),
+         :ok <- Access.authorize(scope, :"connection.read", organisation),
          {:ok, uuid} <- Ecto.UUID.cast(id),
-         %Release{} = release <- Repo.one(from r in releases(scope), where: r.id == ^uuid),
+         %Release{} = release <-
+           Repo.one(from r in releases(organisation), where: r.id == ^uuid),
          true <- intact(release) do
       {:ok, release}
     else
@@ -106,18 +107,19 @@ defmodule Apiary.Integrations do
     else
       Logger.error(
         "an integration release fails its integrity code release_id=#{release.id}",
-        LogMetadata.metadata(release.organisation_id, release.workspace_id)
+        LogMetadata.metadata(release.organisation_id, nil)
       )
 
       false
     end
   end
 
-  defp releases(%Scope{organisation: %Organisation{id: org}, workspace: %Workspace{id: ws}}),
-    do: from(r in Release, where: r.organisation_id == ^org and r.workspace_id == ^ws)
+  defp releases(%Organisation{id: id}), do: from(r in Release, where: r.organisation_id == ^id)
 
-  defp workspace(%Scope{workspace: %Workspace{} = workspace}), do: {:ok, workspace}
-  defp workspace(_scope), do: {:error, :not_found}
+  defp organisation(%Scope{organisation: %Organisation{} = organisation}),
+    do: {:ok, organisation}
+
+  defp organisation(_scope), do: {:error, :not_found}
 
   ## Asking
 
@@ -129,14 +131,14 @@ defmodule Apiary.Integrations do
   """
   @spec request_release(Scope.t(), map) :: {:ok, Release.t()} | {:error, refusal}
   def request_release(%Scope{} = scope, attrs) do
-    with {:ok, workspace} <- workspace(scope),
-         :ok <- Access.authorize(scope, :"connection.write", workspace),
+    with {:ok, organisation} <- organisation(scope),
+         :ok <- Access.authorize(scope, :"connection.write", organisation),
          {:ok, %{source: source} = request} <- request_changeset(attrs) do
       version = Map.get(request, :version)
 
-      case found(scope, source, version) do
+      case found(organisation, source, version) do
         %Release{} = release -> {:ok, release}
-        nil -> insert_request(scope, workspace, source, version)
+        nil -> insert_request(scope, organisation, source, version)
       end
     end
   end
@@ -244,10 +246,10 @@ defmodule Apiary.Integrations do
 
   # A forge release found before, intact; a URL is fetched again each time, since its
   # files may be replaced.
-  defp found(_scope, %Source{form: :url}, _version), do: nil
+  defp found(_organisation, %Source{form: :url}, _version), do: nil
 
-  defp found(scope, %Source{source: source}, version) do
-    from(r in releases(scope),
+  defp found(organisation, %Source{source: source}, version) do
+    from(r in releases(organisation),
       where: r.source == ^source and r.requested_version == ^version and r.state == "ready",
       order_by: [desc: r.inserted_at],
       limit: 1
@@ -259,13 +261,12 @@ defmodule Apiary.Integrations do
     end
   end
 
-  defp insert_request(scope, workspace, %Source{} = source, version) do
+  defp insert_request(scope, organisation, %Source{} = source, version) do
     Repo.transact(fn ->
       changeset =
         %Release{
           id: Ecto.UUID.generate(),
-          organisation_id: workspace.organisation_id,
-          workspace_id: workspace.id,
+          organisation_id: organisation.id,
           requested_by_id: scope.user && scope.user.id
         }
         |> Ecto.Changeset.change(
@@ -297,24 +298,26 @@ defmodule Apiary.Integrations do
 
   @doc """
   fetch_release/2 fetches the pending release with the id `release_id` of the scope's
-  workspace (`connection.write`) and records what was found (see the module's
+  organisation (`connection.write`) and records what was found (see the module's
   documentation): `{:ok, release}`, ready or failed, or as it was when it is no longer
   pending; `{:error, reason}` from `Apiary.Access`, or `:not_found`.
   """
   @spec fetch_release(Scope.t(), term) :: {:ok, Release.t()} | {:error, Access.reason()}
   def fetch_release(%Scope{} = scope, release_id) do
-    with {:ok, workspace} <- workspace(scope),
-         :ok <- Access.authorize(scope, :"connection.write", workspace),
-         %Release{} = release <- Repo.one(from r in releases(scope), where: r.id == ^release_id) do
+    with {:ok, organisation} <- organisation(scope),
+         :ok <- Access.authorize(scope, :"connection.write", organisation),
+         {:ok, uuid} <- Ecto.UUID.cast(release_id),
+         %Release{} = release <-
+           Repo.one(from r in releases(organisation), where: r.id == ^uuid) do
       if release.state == "pending" and intact(release) do
-        outcome = outcome(scope, release)
-        record(scope, release, outcome)
+        outcome = outcome(organisation, release)
+        record(organisation, release, outcome)
       else
         {:ok, release}
       end
     else
       {:error, reason} -> {:error, reason}
-      nil -> {:error, :not_found}
+      _ -> {:error, :not_found}
     end
   end
 
@@ -333,21 +336,21 @@ defmodule Apiary.Integrations do
         Logger.warning(
           "an integration release's source is no longer accepted release_id=#{release.id} " <>
             "source=#{release.source} reason=#{reason}",
-          LogMetadata.metadata(release.organisation_id, release.workspace_id)
+          LogMetadata.metadata(release.organisation_id, nil)
         )
 
         {:error, reason}
     end
   end
 
-  defp outcome(scope, %Release{} = release) do
+  defp outcome(organisation, %Release{} = release) do
     case accepted_source(release) do
-      {:ok, source} -> fetched(scope, release, source)
+      {:ok, source} -> fetched(organisation, release, source)
       {:error, _reason} -> {:failed, "integration_source_refused"}
     end
   end
 
-  defp fetched(scope, release, source) do
+  defp fetched(organisation, release, source) do
     get = fn file, max ->
       Fetch.get(Source.download_url(source, release.requested_version, file), max_bytes: max)
     end
@@ -358,7 +361,7 @@ defmodule Apiary.Integrations do
          :ok <- listed(checksums, sha, release),
          {:ok, description} <- parse(bytes, release),
          :ok <- version(description, release),
-         :ok <- same_as_before(scope, release, description, sha) do
+         :ok <- same_as_before(organisation, release, description, sha) do
       {:ready, bytes, sha, description}
     else
       {:error, :fetch_failed} -> {:failed, "fetch_failed"}
@@ -397,7 +400,7 @@ defmodule Apiary.Integrations do
         Logger.warning(
           "an integration release's description is refused release_id=#{release.id} " <>
             "code=#{code} details=#{inspect(details)}",
-          LogMetadata.metadata(release.organisation_id, release.workspace_id)
+          LogMetadata.metadata(release.organisation_id, nil)
         )
 
         {:failed, Atom.to_string(code)}
@@ -418,9 +421,9 @@ defmodule Apiary.Integrations do
 
   # A release of this source and version found before with another description: the
   # files under a version were replaced.
-  defp same_as_before(scope, release, description, sha) do
+  defp same_as_before(organisation, release, description, sha) do
     other =
-      from(r in releases(scope),
+      from(r in releases(organisation),
         where:
           r.source == ^release.source and r.version == ^description.program_version and
             r.state == "ready" and r.description_sha256 != ^sha,
@@ -438,15 +441,15 @@ defmodule Apiary.Integrations do
     Logger.warning(
       "an integration release does not match its source release_id=#{release.id} " <>
         "source=#{release.source}: #{why}",
-      LogMetadata.metadata(release.organisation_id, release.workspace_id)
+      LogMetadata.metadata(release.organisation_id, nil)
     )
 
     {:failed, "integration_source_mismatch"}
   end
 
-  defp record(scope, %Release{id: id}, outcome) do
+  defp record(organisation, %Release{id: id}, outcome) do
     Repo.transact(fn ->
-      case Repo.one(from r in releases(scope), where: r.id == ^id, lock: "FOR UPDATE") do
+      case Repo.one(from r in releases(organisation), where: r.id == ^id, lock: "FOR UPDATE") do
         %Release{state: "pending"} = release ->
           changes =
             case outcome do

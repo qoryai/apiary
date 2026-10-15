@@ -160,11 +160,13 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     end
   end
 
+  # The tab Targets lists the workspaces of the organisation a connection applies to; until
+  # its words change, the software catalogue still calls each a repository.
   describe "Targets" do
-    test "a chosen target is added from a page, and removed on its row, confirmed",
+    test "a chosen workspace is added from a page, and removed on its row, confirmed",
          %{conn: conn, scope: scope} do
-      shop = target!(scope, "acme/shop")
-      billing = target!(scope, "acme/billing")
+      shop = workspace!(scope, "Shop")
+      billing = workspace!(scope, "Billing")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
@@ -181,11 +183,13 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "Add a repository to Claude Code (claude)"
              )
 
+      # Every workspace of the organisation: Main, Shop and Billing.
       assert has_element?(lv, "#candidate-#{shop.id}")
-      assert has_element?(lv, "#target-candidates-status[role=status]", "2 repositories found.")
-      assert has_element?(lv, "#add-#{shop.id}[aria-label='Add acme/shop']", "Add")
+      assert has_element?(lv, "#candidate-#{scope.workspace.id}")
+      assert has_element?(lv, "#target-candidates-status[role=status]", "3 repositories found.")
+      assert has_element?(lv, "#add-#{shop.id}[aria-label='Add Shop']", "Add")
 
-      lv |> form("#find-target-form", find: %{text: "shop"}) |> render_change()
+      lv |> form("#find-target-form", find: %{text: "sho"}) |> render_change()
       assert has_element?(lv, "#target-candidates-status", "1 repository found.")
       refute has_element?(lv, "#candidate-#{billing.id}")
 
@@ -193,14 +197,20 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       # The row leaves the list; the focus goes to the search field, nothing else being left.
       assert_push_event(lv, "run:focus", %{id: "find_text"})
 
-      assert [%{target_id: target_id}] = reload(scope, runtime).targets
-      assert target_id == shop.id
+      assert [%{workspace_id: workspace_id}] = reload(scope, runtime).workspaces
+      assert workspace_id == shop.id
       refute has_element?(lv, "#candidate-#{shop.id}")
       assert has_element?(lv, "#target-candidates-empty")
 
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
-      assert has_element?(lv, "#target-#{shop.id}", "acme/shop")
-      assert has_element?(lv, "#remove-target-#{shop.id}[aria-label='Remove acme/shop']")
+      assert has_element?(lv, "#target-#{shop.id}", "Shop")
+
+      assert has_element?(
+               lv,
+               "#target-#{shop.id} a[href='/#{scope.organisation.slug}/#{shop.slug}']"
+             )
+
+      assert has_element?(lv, "#remove-target-#{shop.id}[aria-label='Remove Shop']")
 
       # Cancel gives the focus back to the row's Remove.
       lv |> element("#remove-target-#{shop.id}") |> render_click()
@@ -208,7 +218,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(
                lv,
                "#target-#{shop.id}-confirm",
-               "Remove acme/shop from Claude Code (claude)?"
+               "Remove Shop from Claude Code (claude)?"
              )
 
       render_patch(lv, ipath(scope, runtime, "/targets"))
@@ -220,45 +230,26 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       lv |> element("#remove-target-#{shop.id}") |> render_click()
       lv |> element("#target-#{shop.id}-remove", "Yes, remove") |> render_click()
       assert_push_event(lv, "run:focus", %{id: "add-target"})
-      assert reload(scope, runtime).targets == []
+      assert reload(scope, runtime).workspaces == []
       refute has_element?(lv, "#target-#{shop.id}")
     end
 
-    test "a chosen target links to its page at its address, its system there where its path is shared",
-         %{conn: conn, scope: scope} do
-      shop = target!(scope, "acme/shop")
-      billing = target!(scope, "acme/billing")
-
-      Apiary.Repo.insert!(%Apiary.Runs.Target{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        system: "gitlab.example",
-        path: "acme/shop",
-        first_seen_at: DateTime.utc_now()
-      })
+    test "a workspace marked for deletion is not offered", %{conn: conn, scope: scope} do
+      marked = workspace!(scope, "Marked")
+      {:ok, _} = Apiary.Deletion.delete_workspace(scope, marked.id, marked.slug)
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
-      {:ok, runtime} = Connections.put_target(scope, runtime, shop.id)
-      {:ok, runtime} = Connections.put_target(scope, runtime, billing.id)
-      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
-
-      assert has_element?(
-               lv,
-               "#target-#{shop.id} a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
-             )
-
-      assert has_element?(
-               lv,
-               "#target-#{billing.id} a[href='#{workspace_path(scope, "/targets/acme/billing")}']"
-             )
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets/add"))
+      assert has_element?(lv, "#candidate-#{scope.workspace.id}")
+      refute has_element?(lv, "#candidate-#{marked.id}")
     end
 
     test "after an Add, the next row's Add takes the focus", %{conn: conn, scope: scope} do
-      billing = target!(scope, "acme/billing")
-      docs = target!(scope, "acme/docs")
-      shop = target!(scope, "acme/shop")
+      billing = workspace!(scope, "Billing")
+      docs = workspace!(scope, "Docs")
+      shop = workspace!(scope, "Shop")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
@@ -269,14 +260,15 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       focused = "add-#{docs.id}"
       assert_push_event(lv, "run:focus", %{id: ^focused})
 
+      # Shop was the last row: the one before it, Main, takes the focus.
       lv |> element("#add-#{shop.id}") |> render_click()
-      focused = "add-#{docs.id}"
+      focused = "add-#{scope.workspace.id}"
       assert_push_event(lv, "run:focus", %{id: ^focused})
     end
 
     test "Add target lists the first 20 by name, and says there are more",
          %{conn: conn, scope: scope} do
-      for n <- 1..21, do: target!(scope, "acme/shop-#{String.pad_leading("#{n}", 2, "0")}")
+      for n <- 1..21, do: workspace!(scope, "Area #{String.pad_leading("#{n}", 2, "0")}")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
@@ -289,15 +281,15 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "The first 20 by name: type to find another."
              )
 
-      assert has_element?(lv, "#target-candidates tr", "acme/shop-20")
-      refute has_element?(lv, "#target-candidates tr", "acme/shop-21")
+      assert has_element?(lv, "#target-candidates tr", "Area 20")
+      refute has_element?(lv, "#target-candidates tr", "Area 21")
 
-      lv |> form("#find-target-form", find: %{text: "shop-21"}) |> render_change()
-      assert has_element?(lv, "#target-candidates tr", "acme/shop-21")
+      lv |> form("#find-target-form", find: %{text: "Area 21"}) |> render_change()
+      assert has_element?(lv, "#target-candidates tr", "Area 21")
       refute has_element?(lv, "#target-candidates-more")
     end
 
-    test "a connection for every target offers no target to add", %{conn: conn, scope: scope} do
+    test "a connection for every workspace offers none to add", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
 
@@ -305,14 +297,14 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute has_element?(lv, "#add-target")
     end
 
-    test "for every target, the chosen ones it keeps are not listed to remove",
+    test "for every workspace, the chosen ones it keeps are not listed to remove",
          %{conn: conn, scope: scope} do
-      shop = target!(scope, "acme/shop")
+      shop = workspace!(scope, "Shop")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
-      {:ok, runtime} = Connections.put_target(scope, runtime, shop.id)
+      {:ok, runtime} = Connections.put_workspace(scope, runtime, shop.id)
       {:ok, _runtime} = Connections.update_connection(scope, runtime, %{"applies_to" => "all"})
 
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
@@ -485,14 +477,14 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     end
 
     test "a member's writes, sent as events, are refused and change nothing", %{scope: scope} do
-      shop = target!(scope, "acme/shop")
-      billing = target!(scope, "acme/billing")
+      shop = workspace!(scope, "Shop")
+      billing = workspace!(scope, "Billing")
       release = ready_release!(scope, github_description())
 
       {:ok, integration} =
         Connections.create_integration(scope, release.id, %{applies_to: "selected"})
 
-      {:ok, integration} = Connections.put_target(scope, integration, shop.id)
+      {:ok, integration} = Connections.put_workspace(scope, integration, shop.id)
       conn = member_conn(scope, :member)
       {:ok, lv, _html} = live(conn, ipath(scope, integration, "/targets"))
 
@@ -509,13 +501,13 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       after_all = reload(scope, integration)
       assert after_all.applies_to == "selected"
       assert after_all.argument == integration.argument
-      assert [%{target_id: target_id}] = after_all.targets
-      assert target_id == shop.id
+      assert [%{workspace_id: workspace_id}] = after_all.workspaces
+      assert workspace_id == shop.id
       assert Apiary.Repo.all(Release) |> length() == 1
     end
 
     test "an admin changes it", %{scope: scope} do
-      shop = target!(scope, "acme/shop")
+      shop = workspace!(scope, "Shop")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
@@ -523,8 +515,8 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       conn = member_conn(scope, :admin)
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets/add"))
       lv |> element("#add-#{shop.id}") |> render_click()
-      assert [%{target_id: target_id}] = reload(scope, runtime).targets
-      assert target_id == shop.id
+      assert [%{workspace_id: workspace_id}] = reload(scope, runtime).workspaces
+      assert workspace_id == shop.id
 
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
       lv |> form("#connection-form", connection: %{applies_to: "all"}) |> render_submit()
@@ -544,17 +536,20 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert Apiary.Repo.all(Release) == []
     end
 
-    test "a connection the workspace does not have is not found", %{conn: conn, scope: scope} do
+    test "a connection the organisation does not have is not found", %{
+      conn: conn,
+      scope: scope
+    } do
       assert_raise ApiaryWeb.NotFound, fn ->
         live(conn, ipath(scope, %{public_id: "con_0123456789abcdef"}))
       end
     end
 
-    test "another workspace's connection and targets are not this one's",
+    test "another organisation's connection and workspaces are not this one's",
          %{conn: conn, scope: scope} do
       other = sign_up_fixture().scope
       {:ok, theirs} = Connections.create_runtime(other, %{runtime: "claude"})
-      their_target = target!(other, "acme/shop")
+      their_target = other.workspace
 
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, ipath(scope, theirs)) end
 
@@ -570,7 +565,23 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert render_hook(lv, "put_target", %{"id" => their_target.id}) =~
                "That repository is not one of this workspace&#39;s."
 
-      assert reload(scope, ours).targets == []
+      assert reload(scope, ours).workspaces == []
+    end
+
+    test "is the organisation's: another workspace of it shows the same connection",
+         %{conn: conn, scope: scope, user: user} do
+      site = workspace!(scope, "Site")
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [scope.workspace.id]
+        })
+
+      at_site = workspace_scope(user, site)
+      {:ok, lv, _html} = live(conn, ipath(at_site, runtime, "/targets"))
+      assert has_element?(lv, "#target-#{scope.workspace.id}", "Main")
     end
   end
 end

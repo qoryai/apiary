@@ -289,13 +289,15 @@ defmodule Apiary.Access do
       "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
       feature: :secrets,
       roles: @members,
+      asked_of: :organisation,
       audited: {:not, @read}
     ),
     Action.new(
       :"connection.write",
       "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
       feature: :secrets,
-      roles: @admins
+      roles: @admins,
+      asked_of: :organisation
     ),
     # The server contract.
     Action.new(:"run.post_events", "open a run and post its events",
