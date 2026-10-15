@@ -77,11 +77,15 @@ defmodule Apiary.Features do
   # Every instance is served the same documentation with it on or off (`docs: false`): the
   # module reference is served where it is off, so the table above has no row for it and
   # no doc names it.
+  #
+  # `factory` is the work items of a workspace and what they are taken in from, opt-in
+  # while they are built, and served the same documentation on or off (`docs: false`).
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
     secrets: [needs: [:security], built: true, default: false],
-    path_rules: [needs: [:security], built: true, default: false, docs: false]
+    path_rules: [needs: [:security], built: true, default: false, docs: false],
+    factory: [needs: [:observability, :security], built: true, default: false, docs: false]
   ]
 
   # The parts that belong to no feature, after the features' parts in `parts/0`: the
