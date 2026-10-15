@@ -101,6 +101,22 @@ defmodule Apiary.FeaturesTest do
                {:error, "path_rules needs security, which is left out"}
     end
 
+    test "factory is opt-in and needs observability and security: off unless a list names it" do
+      assert :factory in Features.opt_in()
+      assert Features.needs(:factory) == [:observability, :security]
+
+      for value <- [nil, "", "  ", "all", all_but_a_leaf(), "observability,security"] do
+        assert {:ok, features} = Features.parse(value)
+        refute :factory in features, inspect(value)
+      end
+
+      assert Features.parse("observability,security,factory") ==
+               {:ok, [:observability, :security, :factory]}
+
+      assert Features.parse("observability,factory") ==
+               {:error, "factory needs security, which is left out"}
+    end
+
     test "an opt-in feature named without the features it needs is refused" do
       assert Features.parse("observability,secrets") ==
                {:error, "secrets needs security, which is left out"}
@@ -271,8 +287,9 @@ defmodule Apiary.FeaturesTest do
       for {named, hidden} <- [
             {[:secrets], [:secrets]},
             {[:path_rules], [:path_rules]},
-            {[:security], [:security, :secrets, :path_rules]},
-            {[:observability], [:observability, :security, :secrets, :path_rules]}
+            {[:factory], [:factory]},
+            {[:security], [:security, :secrets, :path_rules, :factory]},
+            {[:observability], [:observability, :security, :secrets, :path_rules, :factory]}
           ] do
         scope = %{ctx.person | hidden: Features.hidden_of(named)}
 
@@ -294,7 +311,10 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of(Enum.reverse(Features.all())) == Features.enabled()
 
       assert Features.hidden_of([:secrets, :security, :secrets]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets, :path_rules]))
+               Enum.filter(
+                 Features.enabled(),
+                 &(&1 in [:security, :secrets, :path_rules, :factory])
+               )
     end
 
     test "adds every feature that needs a hidden one, directly or through another" do
@@ -310,12 +330,15 @@ defmodule Apiary.FeaturesTest do
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
 
       assert Features.hidden_of([:security]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:security, :secrets, :path_rules]))
+               Enum.filter(
+                 Features.enabled(),
+                 &(&1 in [:security, :secrets, :path_rules, :factory])
+               )
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
                )
     end
 
@@ -332,14 +355,14 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([part, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
                ) ++
                  [part]
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
                )
     end
 
@@ -352,7 +375,7 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:nodes, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
                ) ++
                  [:nodes]
     end
@@ -374,10 +397,10 @@ defmodule Apiary.FeaturesTest do
 
   describe "the core's features and the edition's" do
     test "the core's come first, the edition's after, each built or not" do
-      core = [:observability, :security, :secrets, :path_rules]
+      core = [:observability, :security, :secrets, :path_rules, :factory]
       edition = Enum.map(Apiary.Edition.features(), &elem(&1, 0))
 
-      assert Enum.take(Features.all(), 4) == core
+      assert Enum.take(Features.all(), 5) == core
       assert Enum.take(Features.all(), -length(edition)) == edition
 
       # An opt-in feature is never offered for an organisation's switch.
@@ -393,6 +416,8 @@ defmodule Apiary.FeaturesTest do
       refute :secrets in Features.built()
       assert :path_rules in Features.opt_in()
       refute :path_rules in Features.built()
+      assert :factory in Features.opt_in()
+      refute :factory in Features.built()
     end
 
     test "registry/1 takes each name once, with needs it has and built or not" do
@@ -418,8 +443,8 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "documented/0 is every feature but path_rules, which the documentation does not differ by" do
-      assert Features.documented() == Features.all() -- [:path_rules]
+    test "documented/0 is every feature but path_rules and factory, which the documentation does not differ by" do
+      assert Features.documented() == Features.all() -- [:path_rules, :factory]
     end
 
     test "registry/1 takes docs: false for a feature the documentation does not differ by" do

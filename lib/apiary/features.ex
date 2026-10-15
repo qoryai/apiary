@@ -81,7 +81,8 @@ defmodule Apiary.Features do
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
     secrets: [needs: [:security], built: true, default: false],
-    path_rules: [needs: [:security], built: true, default: false, docs: false]
+    path_rules: [needs: [:security], built: true, default: false, docs: false],
+    factory: [needs: [:observability, :security], built: true, default: false, docs: false]
   ]
 
   # The parts that belong to no feature, after the features' parts in `parts/0`: the
@@ -149,6 +150,14 @@ defmodule Apiary.Features do
   """
   @spec documented() :: [feature]
   def documented, do: registry().documented
+
+  @doc false
+  # The core's features listed with `docs: false`, read from the list itself rather than
+  # the registry, so a module's documentation may leave out what belongs to them as it
+  # is compiled (`Apiary.Access`'s tables).
+  @spec core_undocumented() :: [feature]
+  def core_undocumented,
+    do: for({name, opts} <- @core, Keyword.get(opts, :docs, true) == false, do: name)
 
   @doc """
   parts/0 is every part: the parts of the features, `:"<feature>.<part>"`, in the order of
