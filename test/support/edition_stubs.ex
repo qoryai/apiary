@@ -810,4 +810,38 @@ defmodule Apiary.EditionStubs do
     """
     def hidden(_scope), do: [:secrets]
   end
+
+  defmodule GrantsOrganisationSecrets do
+    @moduledoc """
+    Grants the stored secrets of an organisation (`c:Apiary.Edition.organisation_secrets/2`),
+    as an edition that grants organisation secrets would: every member of the organisation
+    reads them, its owners and admins change and link them, a person without a membership
+    is not shown them, and `:seal`, asked with a nil scope, is answered `:ok`. It reads
+    nothing.
+    """
+    alias Apiary.Accounts.Scope
+    alias Apiary.Organisations.Membership
+
+    def organisation_secrets(nil, :seal), do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{}}, :read), do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{level: level}}, verb)
+        when verb in [:write, :use] and level in [:owner, :admin],
+        do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{}}, _verb), do: {:error, :forbidden}
+    def organisation_secrets(_scope, _verb), do: {:error, :not_found}
+  end
+
+  defmodule GrantsOrganisationSecretsWithoutSealing do
+    @moduledoc """
+    Grants the stored secrets of an organisation as `GrantsOrganisationSecrets` does, but
+    refuses `:seal`.
+    """
+    def organisation_secrets(nil, :seal), do: {:error, :not_found}
+
+    def organisation_secrets(scope, verb),
+      do: GrantsOrganisationSecrets.organisation_secrets(scope, verb)
+  end
 end

@@ -28,6 +28,8 @@ defmodule Apiary.Edition do
     `audit_retention_max_days/0`, `attribution?/0`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
+  - **Stored secrets** (`Apiary.Secrets`): `organisation_secrets/2`, whether an
+    organisation's stored secrets may be read, changed, linked or sealed.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
     `reload/2`, `places_to_lock/1`, `lock_rows/1`, `every_workspace_levels/0`,
     `reaches_workspace?/3`, `reached_workspaces/2`.
@@ -132,6 +134,21 @@ defmodule Apiary.Edition do
   (`Apiary.Features.on?/1`), never from what a level below is shown.
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
+
+  @doc """
+  Whether the stored secrets of an organisation, those without a workspace
+  (`Apiary.Secrets`), may be read (`:read`), changed (`:write`) or linked to what uses
+  them (`:use`) by the scope's person, in the scope's organisation; or, asked with a nil
+  scope, whether an organisation's stored secrets may be sealed (`:seal`). `:ok`, or
+  `{:error, reason}`, which `Apiary.Secrets` hands back as it is.
+
+  Asked by `Apiary.Secrets` once it has read the membership again (`Apiary.Access.reload/2`),
+  and on a write again under the write's locks, before anything else of an organisation's
+  secrets is read or written. The core keeps no secret at an organisation and answers
+  `{:error, :not_found}` for every verb, `:seal` included.
+  """
+  @callback organisation_secrets(Scope.t() | nil, :read | :write | :use | :seal) ::
+              :ok | {:error, Apiary.Access.reason()}
 
   @doc """
   The most days the audit trail keeps an entry, by `AUDIT_RETENTION_DAYS` or Instance
@@ -515,6 +532,7 @@ defmodule Apiary.Edition do
     instance_organisation_id: 0,
     first_sign_up_line: 0,
     above_workspace: 1,
+    organisation_secrets: 2,
     audit_retention_max_days: 0,
     attribution?: 0,
     actions: 0,

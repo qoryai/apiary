@@ -58,6 +58,7 @@ defmodule Apiary.Deletion.Tables do
     {"secret_values", :workspace},
     {"secrets", :workspace},
     {"workspace_data_keys", :workspace},
+    {"organisation_data_keys", :organisation},
     {"target_pins", :workspace},
     {"targets", :workspace},
     {"node_instances", :workspace},
