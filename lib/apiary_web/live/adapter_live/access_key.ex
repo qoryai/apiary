@@ -473,8 +473,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             level={:h2}
           >
             <%= if @live_action == :new_code and @issued do %>
-              <%!-- The code, shown once, takes the focus as it shows, read with what it is
-                   for. --%>
+              <%!-- The code, shown once, takes the focus as it shows, read with what it
+                   is for. --%>
               <div
                 id="adapter-code"
                 class="grid max-w-[46rem] gap-4 text-[13px]/5 outline-none"
