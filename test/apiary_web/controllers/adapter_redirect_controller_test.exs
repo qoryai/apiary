@@ -121,7 +121,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         {[outcome: :refused, reason: :pass_expired], :error,
          "The install took too long and expired. Install it again from Integrations."},
         {[outcome: :refused, reason: :source_unavailable], :error,
-         "Acme tracker didn't answer. Install it again in a moment."}
+         "The installation couldn't be completed just now. Press Install to try again."}
       ]
 
       # Every reason the contract names is said.

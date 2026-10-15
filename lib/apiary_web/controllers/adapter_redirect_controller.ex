@@ -130,8 +130,8 @@ defmodule ApiaryWeb.AdapterRedirectController do
   defp refused(:pass_expired, _name),
     do: gettext("The install took too long and expired. Install it again from Integrations.")
 
-  defp refused(:source_unavailable, name),
-    do: gettext("%{integration} didn't answer. Install it again in a moment.", integration: name)
+  defp refused(:source_unavailable, _name),
+    do: gettext("The installation couldn't be completed just now. Press Install to try again.")
 
   # The page for a return the person did not start in this browser.
   defp wrong_person do
