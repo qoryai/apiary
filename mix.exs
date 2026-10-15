@@ -215,7 +215,7 @@ defmodule Apiary.MixProject do
       ],
       # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
       # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
-      # being listed; a passage of a guide is marked in the guide,
+      # being listed (with `any:`, one of its features); a passage of a guide is marked in the guide,
       # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature the
       # documentation differs by (`Apiary.Features.documented/0`): the module reference
       # names them all.

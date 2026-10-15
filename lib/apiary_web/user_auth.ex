@@ -672,10 +672,10 @@ defmodule ApiaryWeb.UserAuth do
     view = socket.view
     action = socket.private[:access_action]
     shown_as = action && Apiary.Access.shown_as(action)
+    gate = ApiaryWeb.Features.gate(view)
 
     cond do
-      function_exported?(view, :__feature__, 0) and
-          not Apiary.Features.visible?(reloaded, view.__feature__()) ->
+      gate && not ApiaryWeb.Features.visible?(reloaded, gate) ->
         {:hidden, reloaded}
 
       shown_as && not Apiary.Features.visible?(reloaded, shown_as) ->

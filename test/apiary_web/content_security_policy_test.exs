@@ -258,8 +258,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp feature_on?(%{plug: plug}), do: module_on?(plug)
 
   defp module_on?(module) do
-    not function_exported?(Code.ensure_loaded!(module), :__feature__, 0) or
-      Features.on?(module.__feature__())
+    gate = ApiaryWeb.Features.gate(module)
+    is_nil(gate) or ApiaryWeb.Features.on?(gate)
   end
 
   # The policy as it must read, written out here so that a change to it is a change to

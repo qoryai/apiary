@@ -29,7 +29,7 @@ defmodule Mix.Tasks.Docs.All do
     marker reaches. An extra listed under no feature, such as the release notes, is in
     every tree.
   - **A module that declares its feature** with `use ApiaryWeb.Features`, without anything
-    in `mix.exs`.
+    in `mix.exs`; one that declares several with `any:` is in a tree that has one of them.
   - **A passage of a guide**, between marker lines that stand alone:
 
         <!-- feature: security -->
@@ -167,9 +167,13 @@ defmodule Mix.Tasks.Docs.All do
     end
   end
 
-  # The modules that say which feature they belong to (`ApiaryWeb.Features`).
+  # The modules that say which feature they belong to (`ApiaryWeb.Features`). A module of
+  # several, with `any:`, differs by each of them.
   defp declared_needs(apps) do
-    for module <- app_modules(apps), feature <- [declared(module)], feature, do: [feature]
+    for module <- app_modules(apps),
+        gate = ApiaryWeb.Features.gate(module),
+        feature <- ApiaryWeb.Features.features(gate),
+        do: [feature]
   end
 
   # The modules of the project's application and of the `:source_apps` it documents too.
@@ -193,18 +197,15 @@ defmodule Mix.Tasks.Docs.All do
     end
   end
 
-  defp declared(module) do
-    Code.ensure_loaded?(module) and function_exported?(module, :__feature__, 0) and
-      module.__feature__()
-  end
-
+  # What a module needs: every feature `mix.exs` lists it under, and the one it declares
+  # (`ApiaryWeb.Features`) or, for one that declares several with `any:`, `{:any, features}`.
   defp needs_of_module(module, module_needs) do
     owned =
       for {pattern, needs} <- module_needs, matches?(pattern, module), need <- needs, do: need
 
-    case declared(module) do
-      false -> owned
-      feature -> [feature | owned]
+    case ApiaryWeb.Features.gate(module) do
+      nil -> owned
+      gate -> [gate | owned]
     end
   end
 
@@ -259,7 +260,10 @@ defmodule Mix.Tasks.Docs.All do
     end
   end
 
-  defp covered?(needs, tree), do: Enum.all?(needs, &(&1 in tree))
+  defp covered?(needs, tree), do: Enum.all?(needs, &covers?(tree, &1))
+
+  defp covers?(tree, {:any, features}), do: Enum.any?(features, &(&1 in tree))
+  defp covers?(tree, feature), do: feature in tree
 
   # A tree that keeps no module has no module reference page either, rather than an empty one.
   defp any_module?(apps, module_needs, tree),
