@@ -10,13 +10,17 @@ defmodule Apiary.Adapters.Connections do
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
   # any change; a return that says the adapter linked activates the connection, which
   # stays pending until the adapter's first listing names it (`mark_connected/1`). An
-  # activated connection takes no new pass: it keeps the person who started it.
+  # activated connection takes no new pass: its pass, the person who started it and its
+  # activation stay as they are. Until that first listing, a new press of Install ends it
+  # (`replaced`) and starts a new connection in its place, which needs a return of its
+  # own pass; once connected, a press is refused.
   #
   # At the server contract an adapter's key acts for an organisation only through a
   # connection of its adapter (`connection_for_key/3`), with its scope narrowed to that
   # organisation (`Apiary.Accounts.Scope.for_connection/2`).
   #
   # A connection ends for good: when the adapter says it is gone (`end_connection/2`),
+  # when a press of Install replaces it while activated and not yet listed (`start/3`),
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
@@ -28,9 +32,10 @@ defmodule Apiary.Adapters.Connections do
   #   * A deletion of the adapter (`Apiary.Adapters.delete_adapter/2`) holds its row
   #     `FOR NO KEY UPDATE`, ends its connections, then clears the pools.
   #   * A connect (`Apiary.Adapters.connect/2`) holds the adapter's row `FOR SHARE`, then
-  #     takes its connection `FOR UPDATE`; a connection it makes takes the adapter's row
-  #     `FOR SHARE` again (the trigger `adapter_connections_adapter_check`) and
-  #     `FOR KEY SHARE` (its reference), which it holds already.
+  #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do,
+  #     then clears the pools; a connection it makes takes the adapter's row `FOR SHARE`
+  #     again (the trigger `adapter_connections_adapter_check`) and `FOR KEY SHARE` (its
+  #     reference), which it holds already, and nobody else sees it until it commits.
   #   * A change of a pool (`Apiary.Nodes.update_node/3`) that names the adapter that
   #     serves it holds that connection `FOR SHARE` (`lock_serving/2`) before it locks the
   #     pool's row; a pool made with one (`Apiary.Nodes.create_node/2`) takes the
@@ -119,13 +124,20 @@ defmodule Apiary.Adapters.Connections do
   @doc false
   # Inside `Apiary.Adapters.connect/2`'s transaction, which asked `adapter.connect` and
   # holds `adapter`'s row `FOR SHARE`: the pending connection of the scope's organisation
-  # to `adapter`, made, or the one pending taken, `FOR UPDATE`, now with `nonce` as the
-  # nonce of its latest pass, unused, and the scope's person as the one who started it.
-  # `{:ok, connection}`, or `{:error, :connected}` while the organisation is connected to
-  # it, or its pending connection is activated already (`complete_return/4`), which
-  # changes nothing. Two at once make one connection: the second's insert waits for the
-  # first's and does nothing, and it then takes the first's row, with the new nonce in
-  # it.
+  # to `adapter`, made, or the one pending and not activated taken, `FOR UPDATE`, now with
+  # `nonce` as the nonce of its latest pass, unused, and the scope's person as the one who
+  # started it. One pending and activated (`complete_return/4`), which no listing has
+  # named yet, is ended (`replaced`), as `end_connection/2` ends one, with its pass, its
+  # person and its activation as they were, and a new pending connection is made in its
+  # place, as above. `{:ok, connection}`, or `{:error, :connected}` while the organisation
+  # is connected to it, which changes nothing.
+  #
+  # Two at once make one connection: the second's insert waits for the first's and does
+  # nothing, and it then takes the first's row, with the new nonce in it. Should the live
+  # row its lock waited on end meanwhile (replaced by another press, or ended by the
+  # adapter), the lock finds no live row, and it tries again: its insert now makes a
+  # connection, or finds the one that replaced it. Each try after the first follows a
+  # commit of another transaction that ended the live row.
   @spec start(Scope.t(), Node.t(), <<_::128>>) ::
           {:ok, Connection.t()} | {:error, :connected}
   def start(
@@ -133,29 +145,23 @@ defmodule Apiary.Adapters.Connections do
         %Node{kind: :adapter, id: adapter_id},
         <<_::128>> = nonce
       ) do
-    now = DateTime.utc_now()
+    take_live(organisation_id, adapter_id, user_id, nonce, DateTime.utc_now())
+  end
 
+  defp take_live(organisation_id, adapter_id, user_id, nonce, now) do
     {_count, _rows} =
       Repo.insert_all(
         Connection,
-        [
-          %{
-            id: Ecto.UUID.generate(),
-            public_id: PublicId.generate(Connection.prefix()),
-            organisation_id: organisation_id,
-            adapter_id: adapter_id,
-            created_by_id: user_id,
-            state: :pending,
-            pass_nonce: nonce,
-            inserted_at: now,
-            updated_at: now
-          }
-        ],
+        [new_pending(organisation_id, adapter_id, user_id, nonce, now)],
         on_conflict: :nothing,
         conflict_target: {:unsafe_fragment, @live_index}
       )
 
     case lock_live(organisation_id, adapter_id) do
+      # The live row it waited on ended meanwhile.
+      nil ->
+        take_live(organisation_id, adapter_id, user_id, nonce, now)
+
       %Connection{state: :pending, activated_at: nil} = pending ->
         pending
         |> Ecto.Changeset.change(
@@ -166,11 +172,33 @@ defmodule Apiary.Adapters.Connections do
         )
         |> Repo.update()
 
-      # Activated, or connected: it takes no new pass, so its activation, its nonce and
-      # the person who started it stay as they are.
-      %Connection{} ->
+      # Activated, and no listing has named it: it takes no new pass, so it ends with its
+      # activation, its nonce and the person who started it as they are, and a new one
+      # takes its place.
+      %Connection{state: :pending} = unlisted ->
+        with {:ok, _ended} <- end_live(unlisted, :replaced, now) do
+          Connection
+          |> struct!(new_pending(organisation_id, adapter_id, user_id, nonce, now))
+          |> Repo.insert()
+        end
+
+      %Connection{state: :connected} ->
         {:error, :connected}
     end
+  end
+
+  defp new_pending(organisation_id, adapter_id, user_id, nonce, now) do
+    %{
+      id: Ecto.UUID.generate(),
+      public_id: PublicId.generate(Connection.prefix()),
+      organisation_id: organisation_id,
+      adapter_id: adapter_id,
+      created_by_id: user_id,
+      state: :pending,
+      pass_nonce: nonce,
+      inserted_at: now,
+      updated_at: now
+    }
   end
 
   defp lock_live(organisation_id, adapter_id) do
@@ -450,22 +478,27 @@ defmodule Apiary.Adapters.Connections do
     Repo.transact(fn ->
       with {:ok, connection} <- key_connection(key_scope, public_id, true),
            :ok <- not_ended(connection) do
-        now = DateTime.utc_now()
-
-        with {:ok, ended} <-
-               connection
-               |> Ecto.Changeset.change(
-                 state: :ended,
-                 ended_at: now,
-                 ended_reason: :adapter_reported,
-                 updated_at: now
-               )
-               |> Repo.update() do
-          _pools = unserve(connection.organisation_id, connection.adapter_id, now)
-          {:ok, ended}
-        end
+        end_live(connection, :adapter_reported, DateTime.utc_now())
       end
     end)
+  end
+
+  # Ends `connection`, held `FOR UPDATE` and live, for `reason`, and then clears the pools
+  # of its organisation its adapter served: the connection's row first, then the pools.
+  # `{:ok, connection}`, ended.
+  defp end_live(%Connection{} = connection, reason, now) do
+    with {:ok, ended} <-
+           connection
+           |> Ecto.Changeset.change(
+             state: :ended,
+             ended_at: now,
+             ended_reason: reason,
+             updated_at: now
+           )
+           |> Repo.update() do
+      _pools = unserve(connection.organisation_id, connection.adapter_id, now)
+      {:ok, ended}
+    end
   end
 
   @doc false

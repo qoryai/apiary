@@ -233,29 +233,111 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert %Connection{activated_at: nil} = reload(connection)
     end
 
-    test "once activated, a press of Install is refused as for a connected one, and changes nothing",
-         %{scope: scope, adapter: adapter, pair: pair, connection: connection, nonce: nonce} do
+    test "once activated and not yet listed, a press ends it as replaced, and starts a new one",
+         %{
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           key: key,
+           connection: connection,
+           nonce: nonce
+         } do
       token = return_token(pair.secret, connection.public_id, nonce)
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, token, nonce)
       activated = reload(connection)
-      %{scope: admin} = member_fixture(scope, :admin)
+      %{scope: admin, user: other} = member_fixture(scope, :admin)
 
-      for presser <- [scope, admin] do
-        assert Adapters.connect(presser, adapter) == {:error, :connected}
-      end
+      assert {:ok, url, {public_id, second}} = Adapters.connect(admin, adapter)
+      refute public_id == connection.public_id
+      refute second == nonce
 
-      assert reload(connection) == activated
+      # The pass names the new connection, with its nonce.
+      "https://tracker.example.com/connect?state=" <> pass = url
 
+      assert {:ok, %{connection_id: ^public_id, nonce: bytes}} =
+               ConnectPass.verify(pass, Apiary.SigningKey.public_key())
+
+      assert Ed25519.encode(bytes) == second
+
+      # The activated one ended, with its pass, its person and its activation as they were.
+      assert %Connection{state: :ended, ended_at: %DateTime{}, ended_reason: :replaced} =
+               ended = reload(connection)
+
+      fields = [:activated_at, :pass_nonce, :pass_nonce_used_at, :created_by_id, :connected_at]
+      assert Map.take(ended, fields) == Map.take(activated, fields)
+      assert {ended.pass_nonce, ended.created_by_id} == {nonce_bytes(nonce), scope.user.id}
+
+      # The new one is pending, not activated, started by the admin with the new pass.
       assert %Connection{
                state: :pending,
-               activated_at: %DateTime{},
-               pass_nonce_used_at: %DateTime{}
-             } = activated
+               activated_at: nil,
+               pass_nonce_used_at: nil,
+               created_by_id: by,
+               pass_nonce: ^bytes
+             } = fresh = Repo.get_by!(Connection, public_id: public_id)
 
-      assert {activated.pass_nonce, activated.created_by_id} ==
-               {nonce_bytes(nonce), scope.user.id}
+      assert by == other.id
 
-      assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.connect"), :count) == 1
+      assert Repo.all(
+               from c in Connection,
+                 where: c.adapter_id == ^adapter.id and is_nil(c.ended_at),
+                 select: c.public_id
+             ) == [public_id]
+
+      # The adapter's key reaches the old one no more, and the new one not yet.
+      key_scope = key_scope(key)
+
+      assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
+               {:error, :ended}
+
+      assert Connections.mark_connected(activated) == {:error, :ended}
+
+      assert Connections.connection_for_key(key_scope, public_id, :"source_item.post") ==
+               {:error, :forbidden}
+
+      assert Connections.mark_connected(fresh) == {:error, :forbidden}
+
+      # A return for the old one, or under the old pass, is not found; so is the new pass's
+      # return brought by someone else than the admin, or for the old connection.
+      for {id, token, session, presser} <- [
+            {connection.public_id, token, nonce, scope},
+            {connection.public_id, return_token(pair.secret, connection.public_id, second),
+             second, admin},
+            {public_id, return_token(pair.secret, public_id, nonce), nonce, scope},
+            {public_id, return_token(pair.secret, public_id, nonce), second, admin}
+          ] do
+        assert Connections.complete_return(presser, id, token, session) == {:error, :not_found}
+      end
+
+      linked = return_token(pair.secret, public_id, second)
+
+      assert Connections.complete_return(scope, public_id, linked, second) ==
+               {:error, :wrong_person}
+
+      assert reload(connection) == ended
+      assert reload(fresh) == fresh
+
+      # The new one is activated by its own return, then listed, and a press is refused.
+      assert Connections.complete_return(admin, public_id, linked, second) == {:ok, :linked}
+
+      assert {:ok, %Connection{id: id}, _scope} =
+               Connections.connection_for_key(key_scope, public_id, :"source_item.post")
+
+      assert id == fresh.id
+      assert {:ok, %Connection{state: :connected}} = Connections.mark_connected(fresh)
+      assert Adapters.connect(scope, adapter) == {:error, :connected}
+
+      # Each press left its entry, naming its connection; the end left none.
+      assert Repo.all(
+               from e in Entry,
+                 where: e.subject_id == ^scope.organisation.id,
+                 where: like(e.action, "adapter.%"),
+                 order_by: [asc: e.inserted_at],
+                 select: {e.action, e.details["connection_id"]}
+             ) == [
+               {"adapter.connect", connection.public_id},
+               {"adapter.connect", public_id}
+             ]
     end
 
     test "a used, refused or stale return changes no activated connection", %{

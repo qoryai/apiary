@@ -1,7 +1,9 @@
 defmodule Apiary.AdaptersRacesTest do
   # The connections of an organisation to the instance's adapters, racing: two presses of
-  # Install, a return against the adapter's disconnect, and an adapter's deletion against
-  # a pool naming it, before, after and between the pool's locks. Each side runs on a separate connection, outside the SQL sandbox, so
+  # Install, a return against the adapter's disconnect, a linked return against a press,
+  # a press on an activated connection against the first listing, a return, the
+  # disconnect, the deletion and another press, and an adapter's deletion against a pool naming it, before, after and between the
+  # pool's locks. Each side runs on a separate connection, outside the SQL sandbox, so
   # each commits and each waits on the other's locks as it would in production. Not async:
   # what these tests commit is visible to every other test while they run, and they delete
   # it again before they end. The adapters, which are the instance's, are named as the
@@ -9,8 +11,9 @@ defmodule Apiary.AdaptersRacesTest do
   # in the trail of the instance's organisation.
   #
   # The rules under test (`Apiary.Adapters.Connections`): one connection that has not
-  # ended per organisation and adapter, the second insert waiting on the first's; and the
-  # lock order, the adapter's row, then its connections, then the pools.
+  # ended per organisation and adapter, the second insert waiting on the first's; a press
+  # on an activated connection, not yet listed, replacing it; and the lock order, the
+  # adapter's row, then its connections, then the pools.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -188,6 +191,332 @@ defmodule Apiary.AdaptersRacesTest do
                  :pass_nonce_used_at,
                  :created_by_id
                ])
+    end
+  end
+
+  describe "a linked return and a press of Install" do
+    test "the return first: the press waits, then replaces the connection it activated" do
+      %{scope: scope} = sign_up()
+      %{scope: admin} = member(scope, :admin)
+      %{adapter: adapter, pair: pair} = adapter()
+      {connection, nonce} = connection_fixture(scope, adapter, :pending)
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      {first, first_pid} =
+        hold(fn -> Connections.complete_return(scope, connection.public_id, token, nonce) end)
+
+      assert first.result == {:ok, :linked}
+
+      second = start(fn -> Adapters.connect(admin, adapter) end)
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, _url, {public_id, _nonce}} = Task.await(second.task)
+      refute public_id == connection.public_id
+
+      assert %Connection{state: :ended, ended_reason: :replaced, activated_at: %DateTime{}} =
+               Repo.get!(Connection, connection.id)
+
+      assert %Connection{state: :pending, activated_at: nil} =
+               Repo.get_by!(Connection, public_id: public_id)
+    end
+
+    test "the press first: the return waits, then is not found, under the earlier pass" do
+      %{scope: scope} = sign_up()
+      %{scope: admin} = member(scope, :admin)
+      %{adapter: adapter, pair: pair} = adapter()
+      {connection, nonce} = connection_fixture(scope, adapter, :pending)
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      {first, first_pid} = hold(fn -> Adapters.connect(admin, adapter) end)
+      assert {:ok, _url, {public_id, _nonce}} = first.result
+      assert public_id == connection.public_id
+
+      second =
+        start(fn -> Connections.complete_return(scope, connection.public_id, token, nonce) end)
+
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :not_found}
+
+      assert %Connection{state: :pending, activated_at: nil, pass_nonce_used_at: nil} =
+               Repo.get!(Connection, connection.id)
+    end
+  end
+
+  describe "a press of Install on an activated connection" do
+    # A pending connection that a linked return activated, which no listing has named yet:
+    # a press ends it (`replaced`) and makes a new one in its place, in one transaction,
+    # under the adapter's row held `FOR SHARE` and the connection's `FOR UPDATE`.
+    setup do
+      %{scope: scope} = sign_up()
+      %{scope: admin, user: other} = member(scope, :admin)
+      %{adapter: adapter, pair: pair, access_key: key} = adapter()
+      {connection, nonce} = connection_fixture(scope, adapter, :activated)
+
+      %{
+        scope: scope,
+        admin: admin,
+        other: other,
+        adapter: adapter,
+        pair: pair,
+        key: key,
+        connection: connection,
+        nonce: nonce
+      }
+    end
+
+    defp press(ctx, presser \\ :admin),
+      do: fn -> Adapters.connect(Map.fetch!(ctx, presser), ctx.adapter) end
+
+    # The adapter's first listing that names the connection: found for its key, then
+    # marked connected.
+    defp listing(ctx) do
+      fn ->
+        with {:ok, connection, _scope} <-
+               Connections.connection_for_key(
+                 key_scope(ctx.key),
+                 ctx.connection.public_id,
+                 :"source_item.post"
+               ),
+             do: Connections.mark_connected(connection)
+      end
+    end
+
+    defp live(ctx) do
+      Repo.all(
+        from c in Connection,
+          where: c.adapter_id == ^ctx.adapter.id and is_nil(c.ended_at),
+          select: c.public_id
+      )
+    end
+
+    defp all(ctx),
+      do: Repo.aggregate(from(c in Connection, where: c.adapter_id == ^ctx.adapter.id), :count)
+
+    # The old connection ended for `reason`, with its pass, its person and its activation
+    # as they were; the adapter's key, unless the adapter was deleted with its keys,
+    # reaches it no more.
+    defp ended_as(ctx, reason, deleted? \\ false) do
+      assert %Connection{state: :ended, ended_reason: ^reason} =
+               ended = Repo.get!(Connection, ctx.connection.id)
+
+      fields = [:activated_at, :pass_nonce, :pass_nonce_used_at, :created_by_id]
+      assert Map.take(ended, fields) == Map.take(ctx.connection, fields)
+
+      if not deleted? do
+        assert Connections.connection_for_key(
+                 key_scope(ctx.key),
+                 ctx.connection.public_id,
+                 :"source_item.post"
+               ) == {:error, :ended}
+      end
+    end
+
+    # The connection `public_id` is the one live, pending and not activated, started by
+    # the admin with the pass `nonce`.
+    defp replaced_by(ctx, public_id, nonce) do
+      assert live(ctx) == [public_id]
+
+      assert %Connection{
+               state: :pending,
+               activated_at: nil,
+               pass_nonce_used_at: nil,
+               created_by_id: by,
+               pass_nonce: kept
+             } = Repo.get_by!(Connection, public_id: public_id)
+
+      assert by == ctx.other.id
+      assert Apiary.Contract.Ed25519.encode(kept) == nonce
+    end
+
+    test "the first listing first: the press waits, then is refused, and nothing changes",
+         ctx do
+      {first, first_pid} = hold(listing(ctx))
+      assert {:ok, %Connection{state: :connected}} = first.result
+
+      second = start(press(ctx))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :connected}
+      assert live(ctx) == [ctx.connection.public_id]
+      assert Repo.get!(Connection, ctx.connection.id).state == :connected
+    end
+
+    test "the press first: the listing waits, then finds it ended, and nothing connects",
+         ctx do
+      {first, first_pid} = hold(press(ctx))
+      assert {:ok, _url, {public_id, nonce}} = first.result
+
+      # Found before the press commits, then waiting on the row to mark it connected.
+      second = start(listing(ctx))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :ended}
+      ended_as(ctx, :replaced)
+      replaced_by(ctx, public_id, nonce)
+
+      assert Repo.aggregate(
+               from(c in Connection,
+                 where: c.adapter_id == ^ctx.adapter.id and c.state == :connected
+               ),
+               :count
+             ) == 0
+    end
+
+    test "the press first: a return for the old connection waits, then changes nothing",
+         ctx do
+      {first, first_pid} = hold(press(ctx))
+      assert {:ok, _url, {public_id, nonce}} = first.result
+
+      token = return_token(ctx.pair.secret, ctx.connection.public_id, ctx.nonce)
+
+      second =
+        start(fn ->
+          Connections.complete_return(ctx.scope, ctx.connection.public_id, token, ctx.nonce)
+        end)
+
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :not_found}
+      ended_as(ctx, :replaced)
+      replaced_by(ctx, public_id, nonce)
+    end
+
+    test "the adapter's disconnect first: the press waits, then starts a new one", ctx do
+      {first, first_pid} =
+        hold(fn -> Connections.end_connection(key_scope(ctx.key), ctx.connection.public_id) end)
+
+      assert {:ok, %Connection{state: :ended}} = first.result
+
+      second = start(press(ctx))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
+      refute public_id == ctx.connection.public_id
+      ended_as(ctx, :adapter_reported)
+      replaced_by(ctx, public_id, nonce)
+    end
+
+    test "the disconnect's lock before the press's insert, its end after: the press tries again",
+         ctx do
+      # The two halves of `Connections.end_connection/2`: the row locked, then ended. The
+      # press's insert finds the row live and does nothing; its lock waits on the row, and
+      # finds it ended, so no live row; it tries again, and makes a new one.
+      {first, first_pid} =
+        hold(fn ->
+          Repo.one!(from c in Connection, where: c.id == ^ctx.connection.id, lock: "FOR UPDATE")
+        end)
+
+      second = start(press(ctx))
+      await_blocked(second.backend, first_pid)
+
+      assert {1, _} =
+               continue(first, fn ->
+                 Repo.update_all(from(c in Connection, where: c.id == ^ctx.connection.id),
+                   set: [
+                     state: :ended,
+                     ended_at: DateTime.utc_now(),
+                     ended_reason: :adapter_reported
+                   ]
+                 )
+               end)
+
+      commit(first)
+
+      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
+      refute public_id == ctx.connection.public_id
+      ended_as(ctx, :adapter_reported)
+      replaced_by(ctx, public_id, nonce)
+    end
+
+    test "the press first: the adapter's disconnect waits, then finds it ended", ctx do
+      {first, first_pid} = hold(press(ctx))
+      assert {:ok, _url, {public_id, nonce}} = first.result
+
+      second =
+        start(fn -> Connections.end_connection(key_scope(ctx.key), ctx.connection.public_id) end)
+
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :ended}
+      ended_as(ctx, :replaced)
+      replaced_by(ctx, public_id, nonce)
+    end
+
+    test "the adapter's deletion first: the press waits, then finds no adapter", ctx do
+      instance_admin = Apiary.OrganisationsFixtures.instance_admin_scope()
+      {first, first_pid} = hold(fn -> Adapters.delete_adapter(instance_admin, ctx.adapter) end)
+      assert {:ok, %Node{}} = first.result
+
+      second = start(press(ctx))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :not_found}
+      ended_as(ctx, :integration_deleted, true)
+      assert live(ctx) == []
+    end
+
+    test "the press first: the adapter's deletion waits, then ends the new one", ctx do
+      instance_admin = Apiary.OrganisationsFixtures.instance_admin_scope()
+      {first, first_pid} = hold(press(ctx))
+      assert {:ok, _url, {public_id, _nonce}} = first.result
+
+      second = start(fn -> Adapters.delete_adapter(instance_admin, ctx.adapter) end)
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, %Node{deleted_at: %DateTime{}}} = Task.await(second.task)
+      ended_as(ctx, :replaced, true)
+      assert live(ctx) == []
+
+      assert %Connection{state: :ended, ended_reason: :integration_deleted} =
+               Repo.get_by!(Connection, public_id: public_id)
+
+      assert %Entry{details: details} =
+               Repo.one!(
+                 from e in Entry,
+                   where: e.action == "adapter.delete" and e.subject_id == ^ctx.adapter.id
+               )
+
+      assert details["ended_connection_ids"] == [public_id]
+    end
+
+    test "two presses: the second waits, then takes the first's new connection", ctx do
+      {first, first_pid} = hold(press(ctx, :scope))
+      assert {:ok, _url, {public_id, first_nonce}} = first.result
+      refute public_id == ctx.connection.public_id
+
+      second = start(press(ctx))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, _url, {^public_id, second_nonce}} = Task.await(second.task)
+      refute first_nonce == second_nonce
+      ended_as(ctx, :replaced)
+      replaced_by(ctx, public_id, second_nonce)
+
+      assert all(ctx) == 2
+    end
+
+    test "many at once make one new connection", ctx do
+      n = sides(6)
+      results = together(for _ <- 1..n, do: press(ctx))
+
+      assert Enum.all?(results, &match?({:ok, _url, {_id, _nonce}}, &1))
+      assert [public_id] = results |> Enum.map(fn {:ok, _, {id, _}} -> id end) |> Enum.uniq()
+      refute public_id == ctx.connection.public_id
+      ended_as(ctx, :replaced)
+      assert live(ctx) == [public_id]
+
+      assert all(ctx) == 2
     end
   end
 

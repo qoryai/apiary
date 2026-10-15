@@ -7,9 +7,13 @@ defmodule Apiary.Adapters.Connection do
   # `state` is where it stands: `:pending` from the start, `:connected` once the adapter's
   # first listing names it after it was activated (`activated_at`, the person who started
   # it came back with a return that says it is linked), `:ended` from either, for
-  # `ended_reason`, which is final. `pass_nonce` is the 16 bytes of the nonce of the
-  # latest connect pass made for it, and `pass_nonce_used_at` when a return under that
-  # nonce came back. `created_by_id` is the person who pressed Install last.
+  # `ended_reason`, which is final: `:replaced` when a press of Install ended it while it
+  # was activated and no listing had named it yet, and made a new connection in its
+  # place. `pass_nonce` is the 16 bytes of the nonce of the latest connect pass made for
+  # it, and `pass_nonce_used_at` when a return under that nonce came back.
+  # `created_by_id` is the person who pressed Install for that latest pass. Once
+  # activated, a connection takes no new pass: `pass_nonce`, `created_by_id` and
+  # `activated_at` stay as they are.
   #
   # `public_id` is its name outside the database: `ac_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -29,7 +33,8 @@ defmodule Apiary.Adapters.Connection do
   @type state :: :pending | :connected | :ended
 
   @typedoc "Why a connection ended."
-  @type ended_reason :: :adapter_reported | :organisation_deleted | :integration_deleted
+  @type ended_reason ::
+          :adapter_reported | :organisation_deleted | :integration_deleted | :replaced
 
   @prefix "ac"
 
@@ -46,7 +51,7 @@ defmodule Apiary.Adapters.Connection do
     field :ended_at, :utc_datetime_usec
 
     field :ended_reason, Ecto.Enum,
-      values: [:adapter_reported, :organisation_deleted, :integration_deleted]
+      values: [:adapter_reported, :organisation_deleted, :integration_deleted, :replaced]
 
     belongs_to :organisation, Organisation
     belongs_to :adapter, Node

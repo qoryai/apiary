@@ -249,7 +249,8 @@ defmodule Apiary.Adapters do
   # Starts the connection of `adapter` to the scope's organisation (`adapter.connect`,
   # owners and admins, asked of the organisation), with `adapter` as it is now, in use and
   # held `FOR SHARE`: the organisation's pending connection to it, made or taken
-  # (`Apiary.Adapters.Connections.start/3`), with a new connect pass for it
+  # (`Apiary.Adapters.Connections.start/3`, which ends a pending one already activated
+  # and makes a new one in its place), with a new connect pass for it
   # (`Apiary.Adapters.ConnectPass`), whose nonce the connection keeps as its latest pass's.
   # `{:ok, url, session}`: `url`, the address the adapter declared (`connect_url`) with
   # the pass as its query parameter `state`, where the page sends the person; `session`,
@@ -258,8 +259,7 @@ defmodule Apiary.Adapters do
   # entry is the organisation's, about the organisation, naming the adapter and the
   # connection, never the pass or its nonce.
   #
-  # `{:error, :connected}` while the organisation is connected to it, or its pending
-  # connection to it is activated already;
+  # `{:error, :connected}` while the organisation is connected to it;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
   # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
   # none of them changes anything or leaves an entry.

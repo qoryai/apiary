@@ -15,7 +15,10 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
   #   adapter with a return saying it is linked. Once activated it takes no new pass, so
   #   `pass_nonce`, `created_by_id` and `activated_at` stay as they were;
   # - `connected`: since `connected_at`, once activated;
-  # - `ended`: since `ended_at`, for `ended_reason`, from either state. Final.
+  # - `ended`: since `ended_at`, for `ended_reason`, from either state. Final. The
+  #   reasons: `adapter_reported`, `organisation_deleted`, `integration_deleted`, and
+  #   `replaced`, when a press of Install ended a pending connection that was activated,
+  #   and made a new one in its place.
   #
   # One connection that has not ended per organisation and adapter (the unique partial
   # index). The trigger `adapter_connections_adapter_check` refuses a connection to a row
@@ -102,7 +105,7 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
              check:
                "(ended_at IS NULL) = (ended_reason IS NULL) AND (ended_reason IS NULL OR " <>
                  "ended_reason IN ('adapter_reported', 'organisation_deleted', " <>
-                 "'integration_deleted'))"
+                 "'integration_deleted', 'replaced'))"
            )
 
     execute """
