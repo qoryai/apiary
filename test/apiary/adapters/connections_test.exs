@@ -1,10 +1,9 @@
 defmodule Apiary.Adapters.ConnectionsTest do
-  # An organisation's connections to the instance's adapters: starting one, connecting it by
-  # the return the person brings back, what the adapter's key finds through one, recording
-  # its first listing, ending it, the pools it lets an adapter serve, and the table that
-  # keeps them. It runs
-  # where the feature adapters belong to is on; `Apiary.AdaptersWithoutFactoryTest` turns
-  # it off.
+  # An organisation's connections to the instance's adapters: starting one,
+  # connecting it by the return the person brings back, what the adapter's key
+  # finds through one, recording its first listing, ending it, the pools it lets
+  # an adapter serve, and the table that keeps them. It runs where the feature
+  # adapters belong to is on; `Apiary.AdaptersWithoutFactoryTest` turns it off.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -683,6 +682,12 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       assert Connections.connection_for_key(key_scope, connected.public_id, :"adapter.read") ==
                {:error, :forbidden}
+    end
+
+    test "409 ended for one that ended before it connected",
+         %{adapter: adapter, key_scope: key_scope} do
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
 
       # Ended and never connected: 409 ended, as for one ended after it connected.
       Repo.update_all(from(c in Connection, where: c.id == ^pending.id),
@@ -702,7 +707,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
                {:error, :forbidden}
 
-      # The purge's first step (`Apiary.Deletion.purge_organisation/1`).
+      # The purge's step that ends the organisation's connections
+      # (`Apiary.Deletion.purge_organisation/1`).
       assert Connections.end_for_organisation(second.organisation.id) == 1
 
       assert %Connection{state: :ended, ended_reason: :organisation_deleted, connected_at: nil} =
