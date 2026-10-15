@@ -19,8 +19,10 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   # refuses an adapter's; this plug refuses every other kind, with the same `401` as an
   # unknown key, verified under a fixed public key so it costs what a known one does.
   #
-  # The order of refusals is the Forager contract's, which the integration contract's
-  # requests are signed and refused as (the `413` of a body over 1 MiB comes first, in
+  # The codes, and which refusals may go out unsigned, are the integration contract's
+  # (`refusal.schema.json`). The order of the checks is the core's: the integration
+  # contract fixes none, so the order is borrowed from the Forager contract, whose requests
+  # these are signed as (the `413` of a body over 1 MiB comes first, in
   # `ApiaryWeb.Contract.RawBody`):
   #
   #   1. `415` `unsupported_media_type`, unsigned, for a POST that is not
@@ -46,7 +48,10 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   # A POST's endpoint then reads its body, a `400` `invalid_request` for one the contract
   # refuses, and asks `accept/2` with the body's `time`: `401` for a time more than 300
   # seconds from the clock, then `401` for a signature accepted before. Every endpoint of
-  # the pipeline is a POST that calls `accept/2` before it acts, or a GET.
+  # the pipeline is a POST that calls `accept/2` before it acts, or a GET. A verified POST
+  # whose endpoint answers `2xx` without `accept/2` having marked the conn is answered
+  # `500` instead (`internal_error`), so an endpoint that forgets the check acts on no
+  # replay unseen: the log names the module and the path, nothing of the request.
   #
   # From the moment the request verifies, its answer is signed
   # (`ApiaryWeb.Contract.SignedAnswer.register/2`), but a `401`. A refusal is
@@ -55,6 +60,8 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   # `contract_version`. Nothing here logs a header value, a signature or a key.
 
   import Plug.Conn
+
+  require Logger
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -66,6 +73,7 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   alias ApiaryWeb.Contract.{SignedAnswer, SignedRequest}
 
   @window_seconds 300
+  @json_type {"content-type", "application/json; charset=utf-8"}
   @revisions [1]
   @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @instance_id_format ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
@@ -102,6 +110,7 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
       |> assign(:request_signature, signature)
       |> put_private(:adapter_request_signature, raw_signature)
       |> SignedAnswer.register(signature)
+      |> require_accept()
       |> after_verification(access_key)
     else
       {:refuse, status, code} -> refuse(conn, status, code)
@@ -132,22 +141,52 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
     end
   end
 
+  # Registered after the signing callback, so it runs before it and the signature covers
+  # the `500` it may put in place of a `2xx`. Callbacks run in the reverse of the order
+  # they are registered in.
+  defp require_accept(%Plug.Conn{method: "POST"} = conn) do
+    register_before_send(conn, fn
+      %Plug.Conn{status: status, private: private} = conn when status in 200..299 ->
+        if private[:adapter_request_accepted] == true, do: conn, else: unaccepted(conn)
+
+      conn ->
+        conn
+    end)
+  end
+
+  defp require_accept(conn), do: conn
+
+  defp unaccepted(conn) do
+    Logger.error(
+      "an adapter's POST was answered 2xx without AdapterRequest.accept/2: " <>
+        "#{inspect(conn.private[:phoenix_controller])} #{conn.request_path}"
+    )
+
+    %{
+      conn
+      | status: 500,
+        resp_body: ~s({"error":"internal_error"}),
+        resp_headers: List.keystore(conn.resp_headers, "content-type", 0, @json_type)
+    }
+  end
+
   @doc false
   # accept/2 is a POST's check of its body's `time`, once its endpoint has read the body:
-  # `:ok` when `time` is within 300 seconds of the contract's clock
-  # (`ApiaryWeb.Contract.SignedRequest.now/0`), either way, and the request's signature
-  # was not accepted before, which it then records as accepted; `:unauthorized`
-  # otherwise, which the endpoint answers `401`.
-  @spec accept(Plug.Conn.t(), DateTime.t()) :: :ok | :unauthorized
+  # `{:ok, conn}`, the conn marked as accepted, which a `2xx` answer needs, when `time` is
+  # within 300 seconds of the contract's clock (`ApiaryWeb.Contract.SignedRequest.now/0`),
+  # either way, and the request's signature was not accepted before, which it then
+  # records as accepted; `:unauthorized` otherwise, which the endpoint answers `401`.
+  @spec accept(Plug.Conn.t(), DateTime.t()) :: {:ok, Plug.Conn.t()} | :unauthorized
   def accept(
         %Plug.Conn{
           method: "POST",
           assigns: %{access_key: %AccessKey{} = access_key},
           private: %{adapter_request_signature: <<_::binary-size(64)>> = signature}
-        },
+        } = conn,
         %DateTime{} = time
       ) do
-    unseen(access_key, signature, DateTime.to_unix(time))
+    with :ok <- unseen(access_key, signature, DateTime.to_unix(time)),
+         do: {:ok, put_private(conn, :adapter_request_accepted, true)}
   end
 
   def accept(_conn, _time), do: :unauthorized

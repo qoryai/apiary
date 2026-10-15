@@ -31,7 +31,7 @@ defmodule ApiaryWeb.Contract.AdapterController do
   def create(conn, _params) do
     with {:ok, body} <- Wire.decode(conn.assigns.raw_body),
          {:ok, declaration} <- Wire.declaration(body),
-         :ok <- AdapterRequest.accept(conn, declaration.time),
+         {:ok, conn} <- AdapterRequest.accept(conn, declaration.time),
          scope = Scope.for_access_key(conn.assigns.access_key),
          {:ok, _adapter} <- Adapters.declare(scope, declaration) do
       send_resp(conn, 204, "")

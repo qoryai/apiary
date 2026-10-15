@@ -1,3 +1,33 @@
+# Endpoints of the pipeline `:contract_adapter` for `ApiaryWeb.Contract.AdapterRequestTest`
+# alone: one answers 204 without `AdapterRequest.accept/2`, the other after it.
+defmodule ApiaryWeb.Contract.AdapterRequestTest.Endpoints do
+  @moduledoc false
+  def init(action), do: action
+
+  def call(conn, :forgets), do: Plug.Conn.send_resp(conn, 204, "")
+
+  def call(conn, :accepts) do
+    time = DateTime.from_unix!(ApiaryWeb.Contract.SignedRequest.now())
+    {:ok, conn} = ApiaryWeb.Contract.AdapterRequest.accept(conn, time)
+    Plug.Conn.send_resp(conn, 204, "")
+  end
+end
+
+defmodule ApiaryWeb.Contract.AdapterRequestTest.Router do
+  @moduledoc false
+  use ApiaryWeb, :router
+  import ApiaryWeb.Routes
+
+  pipelines()
+
+  scope "/v1" do
+    pipe_through :contract_adapter
+
+    post "/forgets", ApiaryWeb.Contract.AdapterRequestTest.Endpoints, :forgets
+    post "/accepts", ApiaryWeb.Contract.AdapterRequestTest.Endpoints, :accepts
+  end
+end
+
 defmodule ApiaryWeb.Contract.AdapterRequestTest do
   # An adapter's signed requests (`ApiaryWeb.Contract.AdapterRequest`), through its
   # declaration, `POST /v1/adapter` (`ApiaryWeb.Contract.AdapterController`): verified
@@ -238,6 +268,50 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
     end
   end
 
+  describe "a POST whose endpoint does not ask accept/2" do
+    # A signed POST of `{}` to `target`, its raw body kept as `ApiaryWeb.Contract.RawBody`
+    # keeps an adapter's, through the router above.
+    defp post_to(ctx, target) do
+      body = "{}"
+      signature = sign_request(ctx.seed, ctx.key.key_id, @instance_id, "POST", target, body)
+
+      [
+        {"x-qory-access-key-id", ctx.key.key_id},
+        {"x-qory-instance-id", @instance_id},
+        {"x-qory-contract-version", "1"},
+        {"x-qory-signature-ed25519", signature},
+        {"content-type", "application/json"}
+      ]
+      |> Enum.reduce(Plug.Test.conn(:post, target, body), fn {name, value}, conn ->
+        put_req_header(conn, name, value)
+      end)
+      |> assign(:raw_body, body)
+      |> ApiaryWeb.Contract.AdapterRequestTest.Router.call([])
+    end
+
+    test "cannot answer 2xx: it is answered 500, signed, naming nothing of the request", ctx do
+      {conn, log} =
+        ExUnit.CaptureLog.with_log(fn -> post_to(ctx, "/v1/forgets") end)
+
+      assert conn.status == 500
+      assert refusal(conn) == %{"error" => "internal_error"}
+      assert [type] = get_resp_header(conn, "content-type")
+      assert type =~ ~r{\Aapplication/json}
+      assert signed_answer?(conn)
+
+      assert log =~ "/v1/forgets"
+      refute log =~ ctx.key.key_id
+      refute log =~ @instance_id
+    end
+
+    test "one that asks it answers 2xx as it chose", ctx do
+      conn = post_to(ctx, "/v1/accepts")
+      assert conn.status == 204
+      assert conn.resp_body == ""
+      assert signed_answer?(conn)
+    end
+  end
+
   describe "a GET" do
     defp get_conn(ctx, opts \\ []) do
       target = Keyword.get(opts, :target, "/v1/anything?after=c_1")
@@ -291,11 +365,29 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
         declare(ctx, "not json").resp_body,
         declare(ctx, declaration(ctx), contract_version: "2").resp_body,
         declare(ctx, declaration(ctx), signature: nil).resp_body,
-        declare(ctx, declaration(ctx), content_type: "text/plain").resp_body
+        declare(ctx, declaration(ctx), content_type: "text/plain").resp_body,
+        declare(ctx, declaration(ctx), instance_id: nil).resp_body,
+        declare(ctx, String.duplicate(" ", RawBody.max_bytes(:adapter) + 1)).resp_body
       ]
 
       for body <- bodies do
         assert IntegrationsContract.validate(schema, Jason.decode!(body)) == :ok, body
+      end
+    end
+
+    test "the refusals the contract has fixtures for are answered as its fixtures", ctx do
+      twice = [{"x-qory-instance-id", @instance_id}]
+      over = String.duplicate(" ", RawBody.max_bytes(:adapter) + 1)
+
+      for {fixture, conn} <- [
+            {"bad-request", declare(ctx, declaration(ctx), headers: twice)},
+            {"bad-request", declare(ctx, declaration(ctx), instance_id: nil)},
+            {"payload-too-large", declare(ctx, over)},
+            {"unsupported-media-type", declare(ctx, declaration(ctx), content_type: "text/plain")}
+          ] do
+        assert refusal(conn) ==
+                 IntegrationsContract.fixture!("adapter/refusal/#{fixture}.json"),
+               fixture
       end
     end
 
