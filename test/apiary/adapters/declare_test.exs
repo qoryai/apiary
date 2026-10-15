@@ -86,39 +86,44 @@ defmodule Apiary.Adapters.DeclareTest do
       assert length(feed(ctx.adapter)) == 1
     end
 
-    test "an interval a declaration leaves out of the choices goes back to the default, and the feed says so",
+    test "a later declaration leaves the interval a person set, and tells the feed nothing",
          ctx do
       {:ok, _} = Adapters.declare(ctx.key_scope, @declaration)
       {:ok, _} = Adapters.update_sync(ctx.scope, reload(ctx.adapter), %{"interval" => "300"})
+      feed = feed(ctx.adapter)
+      assert Enum.map(feed, &elem(&1, 2)) == [%{"interval" => nil}, %{"interval" => 300}]
+
+      # A higher minimum: the interval stays, below it, and the adapter raises it.
+      {:ok, declared} =
+        Adapters.declare(ctx.key_scope, %{@declaration | minimum_interval: 900})
+
+      assert declared.sync_interval == 300
       assert reload(ctx.adapter).sync_interval == 300
 
-      # A minimum the person's interval still meets keeps it.
-      {:ok, _} = Adapters.declare(ctx.key_scope, %{@declaration | default_interval: 600})
-      assert reload(ctx.adapter).sync_interval == 300
+      assert Adapters.sync(declared) == %{
+               sends_changes: false,
+               interval: 300,
+               default: 900,
+               minimum: 900,
+               choices: [900, 3600]
+             }
 
-      {:ok, _} = Adapters.declare(ctx.key_scope, %{@declaration | minimum_interval: 900})
-      assert reload(ctx.adapter).sync_interval == nil
-
-      # An interval of the other kind of checking goes back to the default too.
-      {:ok, _} = Adapters.declare(ctx.key_scope, @declaration)
-      {:ok, _} = Adapters.update_sync(ctx.scope, reload(ctx.adapter), %{"interval" => "300"})
-
-      {:ok, _} =
+      # The other kind of checking: the interval stays too.
+      {:ok, declared} =
         Adapters.declare(ctx.key_scope, %{
           @declaration
           | sends_changes: true,
-            minimum_interval: 60
+            minimum_interval: 900
         })
 
-      assert reload(ctx.adapter).sync_interval == nil
+      assert declared.sync_interval == 300
+      assert Adapters.sync(declared).choices == [900, 3600, 21_600, 86_400]
 
-      assert Enum.map(feed(ctx.adapter), &elem(&1, 2)) == [
-               %{"interval" => nil},
-               %{"interval" => 300},
-               %{"interval" => nil},
-               %{"interval" => 300},
-               %{"interval" => nil}
-             ]
+      assert feed(ctx.adapter) == feed
+
+      for entry <- entries(ctx.adapter, "adapter.declare") do
+        refute Map.has_key?(entry.after, "sync_interval")
+      end
     end
 
     test "a declaration the changeset refuses stores nothing", ctx do
@@ -129,8 +134,7 @@ defmodule Apiary.Adapters.DeclareTest do
       assert feed(ctx.adapter) == []
     end
 
-    test "is refused to a node's key, a person, a revoked key's adapter and a deleted adapter",
-         ctx do
+    test "is refused to a node's key, a person, and a deleted adapter's key", ctx do
       %{access_key: node_key} = access_key_fixture(ctx.scope)
 
       assert Adapters.declare(Scope.for_access_key(node_key), @declaration) ==

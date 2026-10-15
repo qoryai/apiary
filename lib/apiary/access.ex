@@ -320,7 +320,7 @@ defmodule Apiary.Access do
       roles: @admins,
       asked_of: :organisation
     ),
-    Action.new(:"adapter.edit", "rename an adapter",
+    Action.new(:"adapter.edit", "rename an adapter and set how often it checks",
       feature: :factory,
       roles: @admins,
       asked_of: :organisation

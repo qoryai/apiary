@@ -1,21 +1,27 @@
 defmodule Apiary.Adapters.FeedRacesTest do
-  # An adapter's feed entries written at the same time, and the same request accepted at
-  # the same time on two connections, as two nodes of a cluster would. Each side runs on a
-  # connection of its own, outside the SQL sandbox, so each commits and each waits on the
+  # An adapter's feed entries written at the same time, the same request accepted at the
+  # same time on two connections, as two nodes of a cluster would, and a declaration that
+  # waits on the adapter's deletion. Each side runs on a
+  # separate connection, outside the SQL sandbox, so each commits and each waits on the
   # other's locks as it would in production. Not async: what these tests commit is
   # visible to every other test while they run, and they delete it again before they end.
   #
   # The rules under test: the upsert that numbers an entry (`Apiary.Adapters.Feed.append/2`)
   # locks the adapter's counter until its transaction ends, so a second entry waits for
   # the first and takes the number after it, and entries commit in the order of their
-  # numbers; and a request's signature is accepted once (`Apiary.Adapters.SeenRequests`),
-  # whichever connection asks first.
+  # numbers; a request's signature is accepted once (`Apiary.Adapters.SeenRequests`),
+  # whichever connection asks first; and a declaration (`Apiary.Adapters.declare/2`) that
+  # waits on the adapter's row while the adapter is deleted is refused as for a deleted
+  # adapter, and stores nothing.
   use ExUnit.Case, async: false
 
+  import Ecto.Query
   import Apiary.Races
 
   alias Apiary.{AccessKeys, Adapters, Repo}
+  alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Feed, SeenRequests}
+  alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
 
@@ -70,5 +76,33 @@ defmodule Apiary.Adapters.FeedRacesTest do
     answers = together(for _ <- 1..8, do: fn -> SeenRequests.record(key, signature, now, now) end)
 
     assert Enum.frequencies(answers) == %{ok: 1, seen: 7}
+  end
+
+  test "a declaration that waits on the adapter's deletion is refused as for a deleted adapter" do
+    %{scope: scope, adapter: adapter} = adapter()
+    {:ok, _row, _code} = AccessKeys.create_enrolment_code(scope, adapter, %{})
+    %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, adapter)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    declaration = %{
+      time: DateTime.utc_now(:second),
+      connect_url: "https://tracker-adapter.acme.example/connect",
+      default_interval: 900,
+      minimum_interval: 300,
+      sends_changes: false
+    }
+
+    {deleting, deleting_pid} = hold(fn -> Adapters.delete_adapter(scope, adapter) end)
+    assert {:ok, _} = deleting.result
+
+    declaring = start(fn -> Adapters.declare(Scope.for_access_key(key), declaration) end)
+    await_blocked(declaring.backend, deleting_pid)
+    commit(deleting)
+
+    assert Task.await(declaring.task) == {:error, :not_found}
+    assert %Node{connect_url: nil, deleted_at: %DateTime{}} = Repo.get!(Node, adapter.id)
+
+    feed = from f in "adapter_feed", where: f.adapter_id == type(^adapter.id, :binary_id)
+    assert Repo.aggregate(feed, :count) == 0
   end
 end

@@ -249,6 +249,9 @@ defmodule Apiary.Adapters do
   # `minimum`, each nil until it first declares), the interval a person set (`interval`,
   # nil for the adapter's default), and the intervals a person may choose (`choices`):
   # those of its kind of checking at or above its minimum, none before it declares.
+  # `interval` is the stored one as it is, even when a later declaration leaves it out of
+  # `choices` (below the minimum, or of the other kind of checking); the adapter raises one
+  # below its minimum to that minimum.
   @spec sync(Node.t()) :: %{
           sends_changes: boolean | nil,
           interval: pos_integer | nil,
@@ -329,56 +332,46 @@ defmodule Apiary.Adapters do
   # how it checks the source (`adapter.declare`). A declaration that changes something
   # leaves an entry whose actor is the key; one that changes nothing leaves none. The
   # adapter's first declaration appends `{kind: "sync", interval: nil}` to its feed, its
-  # default; so does a later one that leaves the interval a person set out of `sync/1`'s
-  # `choices` (above its minimum, or of the other kind of checking), which goes back to
-  # the default. One transaction, with the adapter's row locked. `{:ok,
-  # adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
+  # default, and no later one appends anything: as the integration contract has it, the
+  # feed carries an interval at the first declaration and when a person changes it. The
+  # interval a person set stays as it is whatever a later declaration says; the adapter
+  # raises one below its minimum to that minimum. One transaction, with the adapter's row
+  # locked, and an adapter deleted meanwhile is `{:error, :not_found}`. `{:ok, adapter}`,
+  # `{:error, changeset}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
   @spec declare(Scope.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
   def declare(%Scope{} = scope, %{} = declaration) do
     Repo.transact(fn ->
       with {:ok, %Node{id: id}} <- for_key(scope, :"adapter.declare"),
            %Node{} = current <-
-             Repo.one(from(n in Node, where: n.id == ^id, lock: "FOR UPDATE")) ||
-               {:error, :not_found},
+             Repo.one(
+               from(n in Node,
+                 where: n.id == ^id and is_nil(n.deleted_at),
+                 lock: "FOR UPDATE"
+               )
+             ) || {:error, :not_found},
            {:ok, declared} <- current |> declaration_changeset(declaration) |> Repo.update(),
            :ok <- record_declaration(scope, current, declared),
-           :ok <- tell_default(current, declared) do
+           :ok <- tell_first(current, declared) do
         {:ok, declared}
       end
     end)
   end
 
   defp declaration_changeset(current, declaration) do
-    changeset =
-      Node.declaration_changeset(current, %{
-        connect_url: declaration.connect_url,
-        sync_default_interval: declaration.default_interval,
-        sync_minimum_interval: declaration.minimum_interval,
-        sync_sends_changes: declaration.sends_changes
-      })
-
-    # The interval a person set stays while it is one of the choices the declaration
-    # leaves, and goes back to the default when it is not.
-    choices = sync_choices(Ecto.Changeset.apply_changes(changeset))
-
-    case current.sync_interval do
-      interval when is_integer(interval) ->
-        if interval in choices,
-          do: changeset,
-          else: Ecto.Changeset.put_change(changeset, :sync_interval, nil)
-
-      nil ->
-        changeset
-    end
+    Node.declaration_changeset(current, %{
+      connect_url: declaration.connect_url,
+      sync_default_interval: declaration.default_interval,
+      sync_minimum_interval: declaration.minimum_interval,
+      sync_sends_changes: declaration.sends_changes
+    })
   end
 
   @declared [
     :connect_url,
     :sync_default_interval,
     :sync_minimum_interval,
-    :sync_sends_changes,
-    :sync_interval
+    :sync_sends_changes
   ]
 
   defp record_declaration(scope, current, declared) do
@@ -392,18 +385,13 @@ defmodule Apiary.Adapters do
     end
   end
 
-  # The adapter's interval is its default from its first declaration on, and again when a
-  # person's interval is no longer a choice: the feed says so.
-  defp tell_default(current, declared) do
-    first? = is_nil(current.sync_sends_changes)
-    cleared? = is_integer(current.sync_interval) and is_nil(declared.sync_interval)
-
-    if first? or cleared? do
-      with {:ok, _seq} <- Feed.append(declared, %{kind: "sync", interval: nil}), do: :ok
-    else
-      :ok
-    end
+  # The adapter's interval is its default from its first declaration on: the feed says so
+  # once.
+  defp tell_first(%Node{sync_sends_changes: nil}, declared) do
+    with {:ok, _seq} <- Feed.append(declared, %{kind: "sync", interval: nil}), do: :ok
   end
+
+  defp tell_first(%Node{}, _declared), do: :ok
 
   @doc false
   # Deletes `adapter` (`adapter.delete`, owners and admins): it leaves every page, its name
