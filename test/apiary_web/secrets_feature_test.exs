@@ -333,7 +333,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     # EDITIONS.md beside it, with the markers resolved as `mix docs.all` resolves them.
     test "say nothing that gives it away, in any guide, the release notes or the READMEs" do
       giveaways =
-        ~r/stored.secret|stored value|allow_secrets|secret_values|workspace_data_keys|INTEGRATION_URL_SOURCES|Apiary\.Secrets|Apiary\.Connections|Secrets and variables/i
+        ~r/stored.secret|stored value|allow_secrets|secret_values|workspace_data_keys|organisation_data_keys|INTEGRATION_URL_SOURCES|Apiary\.Secrets|Apiary\.Connections|Secrets and variables/i
 
       guides =
         for path <- Path.wildcard(Path.join(@root, "guides/*.md")),

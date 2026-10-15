@@ -1,9 +1,9 @@
 defmodule Apiary.Secrets.Secret do
   @moduledoc """
   A stored secret of an organisation: a name, unique in the organisation whatever its
-  case, a public id (`sec_` and 16 lowercase Crockford base32 characters, `Apiary.PublicId`),
-  a note on what it is used for, and its values (`Apiary.Secrets.Value`): one without a
-  value id, or several, each with a value id.
+  case, a public id (`sec_` and 16 lowercase Crockford base32 characters,
+  `Apiary.PublicId`), a note on what it is used for, and its values
+  (`Apiary.Secrets.Value`): one without a value id, or several, each with a value id.
 
   The row holds no value, and the values a listing loads hold no ciphertext. Changed only
   through `Apiary.Secrets`.

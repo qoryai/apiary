@@ -630,9 +630,10 @@ defmodule Apiary.SecretsTest do
       mine = create!(scope, %{name: "API_KEY"})
       theirs = create!(other_scope, %{name: "API_KEY"})
       a = row!(mine, nil)
+      theirs_key = Repo.get_by!(DataKey, organisation_id: other_scope.organisation.id)
 
       # Their data key replaced with mine: the other organisation's id is in the data
-      # key's associated data.
+      # key's associated data, so it does not unwrap there.
       Repo.query!(
         """
         UPDATE organisation_data_keys
@@ -642,17 +643,27 @@ defmodule Apiary.SecretsTest do
         [Ecto.UUID.dump!(scope.organisation.id), Ecto.UUID.dump!(other_scope.organisation.id)]
       )
 
-      capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
+      log = capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
+      assert log =~ "cannot be unwrapped"
 
-      # And their value with mine, under the same key now: the organisation's id is in
-      # the value's associated data too.
+      # Their data key back, and their value replaced with mine: the key unwraps, and the
+      # organisation's id in the value's associated data is what refuses it.
+      Repo.query!("UPDATE organisation_data_keys SET wrapped_key = $1 WHERE id = $2", [
+        theirs_key.wrapped_key,
+        Ecto.UUID.dump!(theirs_key.id)
+      ])
+
+      assert reveal(other_scope, theirs) == {:ok, @value}
+
       Repo.query!("UPDATE secret_values SET nonce = $1, ciphertext = $2 WHERE secret_id = $3", [
         a.nonce,
         a.ciphertext,
         Ecto.UUID.dump!(theirs.id)
       ])
 
-      capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
+      log = capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
+      assert log =~ "cannot be decrypted"
+      refute log =~ "cannot be unwrapped"
       # Mine still reads.
       assert reveal(scope, mine) == {:ok, @value}
     end
@@ -690,9 +701,17 @@ defmodule Apiary.SecretsTest do
       put_value!(row, nonce, ciphertext)
 
       log = capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
+      assert log =~ "cannot be decrypted"
       assert log =~ "secret_id=#{secret.public_id}"
+      refute log =~ "cannot be unwrapped"
 
-      # The same key, wrapped the first way: it does not unwrap.
+      # A value bound the current way again, and the same key wrapped the first way: the
+      # key does not unwrap.
+      aad = Cipher.value_aad(organisation.id, secret.public_id, nil)
+      {nonce, ciphertext} = Cipher.encrypt(key, aad, @value)
+      put_value!(row, nonce, ciphertext)
+      assert reveal(scope, secret) == {:ok, @value}
+
       {_key_id, values_key} = KeyDerivation.key(:values)
 
       v1_data_key_aad =
@@ -705,7 +724,8 @@ defmodule Apiary.SecretsTest do
       ])
 
       log = capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
-      assert log =~ "APIARY_ENCRYPTION_SECRET"
+      assert log =~ "cannot be unwrapped"
+      refute log =~ "cannot be decrypted"
     end
 
     test "the associated data is each part, length-prefixed", %{organisation: organisation} do

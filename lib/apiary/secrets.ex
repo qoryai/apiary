@@ -13,9 +13,9 @@ defmodule Apiary.Secrets do
 
   ## Write-only
 
-  No function of this module returns a value, but `reveal_for_sealing/3`, which the
-  secrets endpoint calls to seal a value to the gateway, and only that. A listing loads the
-  values without their ciphertext. Nothing logs a value, and an audit entry names a
+  No function of this module returns a value, but `reveal_for_sealing/3`, which is there
+  for sealing a value to a gateway, and only for that. A listing loads the values without
+  their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
 
   ## At rest
@@ -26,7 +26,8 @@ defmodule Apiary.Secrets do
   one per organisation, made with its first secret, is kept only wrapped under the
   instance's values key, which is derived from `APIARY_ENCRYPTION_SECRET`
   (`Apiary.KeyDerivation`), with the values key's id beside it (`Apiary.Secrets.DataKey`).
-  Renaming a value id encrypts the value again under the new id. Losing `APIARY_ENCRYPTION_SECRET` loses every stored value.
+  Renaming a value id encrypts the value again under the new id. Losing
+  `APIARY_ENCRYPTION_SECRET` loses every stored value.
 
   ## Who, and the trail
 
@@ -82,8 +83,8 @@ defmodule Apiary.Secrets do
   ## Reading
 
   @doc """
-  list_secrets/1 is the scope's organisation's secrets, by name whatever its case, each with
-  its values, their value ids and when they were set, never their ciphertext:
+  list_secrets/1 is the scope's organisation's secrets, by name whatever its case, each
+  with its values, their value ids and when they were set, never their ciphertext:
   `{:ok, secrets}`, for a reader who may `secret.read`; else `{:error, reason}`,
   `:not_found` where the `secrets` feature is off.
   """
@@ -168,8 +169,8 @@ defmodule Apiary.Secrets do
   ## Writing
 
   @doc """
-  create_secret/2 stores a new secret of the scope's organisation (`secret.write`) with its
-  values, in one transaction. `attrs` has `name`, `note` (optional), and either
+  create_secret/2 stores a new secret of the scope's organisation (`secret.write`) with
+  its values, in one transaction. `attrs` has `name`, `note` (optional), and either
 
   - `value`, and `value_id`, optional: a secret of one value; or
   - `values`, a list of maps, each with `value_id`, required, and `value`, or a map of
@@ -585,9 +586,9 @@ defmodule Apiary.Secrets do
   ## Sealing
 
   @doc """
-  reveal_for_sealing/3 is the plaintext of a stored value, for the secrets endpoint to seal
-  to the gateway's key, and for nothing else: the one function that returns a value. The
-  value is `organisation`'s secret with the public id `secret_id`, and its value with
+  reveal_for_sealing/3 is the plaintext of a stored value, for sealing it to a gateway's
+  key, and for nothing else: the one function that returns a value. The value is
+  `organisation`'s secret with the public id `secret_id`, and its value with
   `value_id`, nil for a secret's one value without one.
 
   `{:ok, plaintext}`; `{:error, :not_found}` for a secret or a value the organisation does
@@ -597,15 +598,14 @@ defmodule Apiary.Secrets do
   the log that names the secret and the value id, never the value.
 
   It asks nothing of `Apiary.Access`, and is the one function of this module that does
-  not: it is the server's sealing path, called by the secrets endpoint once it has
-  verified the gateway's signed request and decided what that gateway may receive, with no
-  person's scope to ask about. The plaintext goes into the seal and nowhere else: not
-  into a log, an assign, a process's state or an error.
+  not: it is a server's sealing path, with no person's scope to ask about. Its caller
+  verifies the gateway's request and decides what that gateway may receive before it
+  calls it. The plaintext goes into the seal and nowhere else: not into a log, an assign,
+  a process's state or an error.
   """
-  # Nothing in lib calls it yet. When the sealing endpoint lands, it must check, before it
-  # calls this, that the secret belongs to a connection that applies to the asking
-  # gateway's workspace: a secret is the organisation's, so this function alone lets any
-  # workspace of the organisation reach every secret of it.
+  # It answers for the organisation alone: any secret of `organisation`, whichever of its
+  # workspaces asks. It does not check which workspace asks, nor that the secret belongs
+  # to a connection that applies there; that check is its caller's.
   @spec reveal_for_sealing(%Organisation{}, String.t(), String.t() | nil) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
   def reveal_for_sealing(%Organisation{id: organisation_id}, secret_id, value_id)
@@ -682,7 +682,8 @@ defmodule Apiary.Secrets do
 
   # The organisation's advisory transaction lock for its integrations, held until the
   # transaction ends. It locks no row: it is taken after every row lock of the lock order
-  # but the written rows' own, and only by the writes of the organisation's integrations.
+  # but those of the rows the write changes, and only by the writes of the organisation's
+  # integrations.
   defp lock_integrations(organisation_id) do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
       "apiary:integrations:" <> organisation_id
