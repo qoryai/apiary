@@ -26,11 +26,6 @@ defmodule Apiary.Contract.SignedMessage do
   **The run key's message** (`run_key/1`): `qory-run-key-ed25519-v1`, then the payload's
   bytes, on the next line and to the end.
 
-  **The connect pass's message** (`connect_pass/1`, `Apiary.Adapters.ConnectPass`):
-  `qory-connect-ed25519-v1`, then the payload's bytes, on the next line and to the end.
-  Its domain line keeps a connect pass's signature from ever verifying as a run key's or
-  an answer's, and the reverse.
-
   **The answer string of an enrolment** (`enrolment_answer/3`) has a different first line,
   `qory-enrol-answer-ed25519-v1`, and the request's `proof` as line 3; the rest is as
   `answer/5`'s, lines 5 and 6 empty, since an enrolment answer carries neither digest
@@ -49,6 +44,11 @@ defmodule Apiary.Contract.SignedMessage do
   @answer_tag "qory-answer-ed25519-v1"
   @enrolment_answer_tag "qory-enrol-answer-ed25519-v1"
   @run_key_tag "qory-run-key-ed25519-v1"
+  # The connect pass's message (`connect_pass/1`, `Apiary.Adapters.ConnectPass`):
+  # `qory-connect-ed25519-v1`, then the payload's bytes, on the next line and to the end.
+  # Its domain line keeps a connect pass's signature from ever verifying as a run key's or
+  # an answer's, and the reverse. Left out of the module's documentation, which every
+  # instance serves.
   @connect_pass_tag "qory-connect-ed25519-v1"
 
   @doc ~S"""
@@ -61,14 +61,10 @@ defmodule Apiary.Contract.SignedMessage do
   @spec run_key(binary) :: binary
   def run_key(payload) when is_binary(payload), do: @run_key_tag <> "\n" <> payload
 
-  @doc ~S"""
-  connect_pass/1 is the message a connect pass's signature covers
-  (`Apiary.Adapters.ConnectPass`): its domain line, `qory-connect-ed25519-v1`, a line feed,
-  then the payload's exact bytes.
-
-      iex> Apiary.Contract.SignedMessage.connect_pass(~s({"version":1}))
-      "qory-connect-ed25519-v1\n{\"version\":1}"
-  """
+  # connect_pass/1 is the message a connect pass's signature covers
+  # (`Apiary.Adapters.ConnectPass`): its domain line, `qory-connect-ed25519-v1`, a line
+  # feed, then the payload's exact bytes.
+  @doc false
   @spec connect_pass(binary) :: binary
   def connect_pass(payload) when is_binary(payload), do: @connect_pass_tag <> "\n" <> payload
 
