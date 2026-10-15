@@ -3,7 +3,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # that does not exist where the feature is off and, where it is on, by its page, which
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
-  # sidebar's Work group; Organisation settings' Integrations; and the Activity filter's
+  # sidebar's Work group; Organisation settings' Integrations; Instance settings'
+  # Integrations; and the Activity filter's
   # words for the work item comments.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
@@ -348,6 +349,34 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
+    test "Instance settings list Integrations for an instance admin, before Mail, and for no one else",
+         %{scope: scope} do
+      admin = instance_admin_scope()
+      keys = for entry <- Layouts.instance_sections(admin), do: entry.key
+      assert [:integrations, :mail, :configuration] = Enum.take(keys, -3)
+
+      assert %{label: "Integrations", path: "/instance/integrations", place: :instance} =
+               Enum.find(Layouts.instance_sections(admin), &(&1.key == :integrations))
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
+
+      assert has_element?(
+               view,
+               "#instance-tabs a#instance-tab-integrations[href='/instance/integrations']",
+               "Integrations"
+             )
+
+      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key == :integrations))
+    end
+
+    test "the entry asks the instance, whatever the person is shown in the organisation the scope carries" do
+      hide_factory(%{})
+      admin = instance_admin_scope()
+      refute Apiary.Features.visible?(owner_scope(admin.user), :factory)
+      assert Enum.any?(Layouts.instance_sections(admin), &(&1.key == :integrations))
+    end
+
     test "the organisation has no path that makes, renames, removes an integration or holds its key",
          %{scope: scope, adapter: adapter} do
       integration = "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}"
@@ -495,6 +524,18 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert :people in section_keys(scope)
       refute :integrations in section_keys(scope)
+    end
+
+    test "Instance settings leave Integrations out, for an instance admin too" do
+      admin = instance_admin_scope()
+      keys = for entry <- Layouts.instance_sections(admin), do: entry.key
+      assert :configuration in keys
+      refute :integrations in keys
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
+
+      refute has_element?(view, "#instance-tab-integrations")
     end
   end
 

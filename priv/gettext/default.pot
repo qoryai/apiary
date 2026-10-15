@@ -6413,6 +6413,7 @@ msgstr ""
 msgid "Integration changed"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/integration_live/definition.ex
