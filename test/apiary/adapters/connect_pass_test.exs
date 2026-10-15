@@ -224,6 +224,36 @@ defmodule Apiary.Adapters.ConnectPassTest do
     end
   end
 
+  # What the documentation would say of the connect pass, were it to name it.
+  @undocumented ~r/connect[ _-]pass|qory-connect|adapter/i
+
+  describe "the generated documentation" do
+    # Every instance serves the module reference at /docs, so neither module documents the
+    # connect pass there.
+    test "leaves the connect pass out" do
+      assert {:docs_v1, _anno, :elixir, _format, :hidden, _meta, docs} =
+               Code.fetch_docs(ConnectPass)
+
+      for {{kind, _name, _arity}, _anno, _signature, doc, _meta} <- docs,
+          kind != :type,
+          do: assert(doc == :hidden)
+
+      assert {:docs_v1, _anno, :elixir, _format, %{"en" => moduledoc}, _meta, docs} =
+               Code.fetch_docs(SignedMessage)
+
+      refute moduledoc =~ @undocumented
+
+      assert [{_key, _anno, _signature, :hidden, _meta}] =
+               for(
+                 {{:function, :connect_pass, 1}, _, _, _, _} = entry <- docs,
+                 do: entry
+               )
+
+      for {{_kind, _name, _arity}, _anno, _signature, %{"en" => doc}, _meta} <- docs,
+          do: refute(doc =~ @undocumented)
+    end
+  end
+
   describe "domain separation" do
     test "a signature over any other message of the contract is no connect pass" do
       payload = payload!(pass!())

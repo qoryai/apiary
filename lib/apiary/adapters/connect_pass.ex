@@ -1,31 +1,32 @@
 defmodule Apiary.Adapters.ConnectPass do
-  @moduledoc ~S"""
-  A connect pass: the grant this server makes when a person connects an adapter (a node of
-  kind `adapter`, `na_`), carried to the adapter as the `state` of the connect step, which
-  the adapter checks under the instance's public key before it acts on it.
+  @moduledoc false
 
-  **Its form.** One string, the payload in base64url without padding, `.`, and the
-  signature in base64url without padding, at most `max_length/0` characters. The payload
-  is the JSON bytes the server signed, never serialised again; the signature is 64 bytes
-  of Ed25519 under the instance's signing key (`Apiary.SigningKey`) over the connect
-  pass's message (`Apiary.Contract.SignedMessage.connect_pass/1`):
-  `qory-connect-ed25519-v1`, a line feed, then the payload's bytes.
-
-  **The payload**, its members in this order, each required and no other, with no
-  whitespace:
-
-    * `version`, 1;
-    * `adapter_id`, the adapter, by its public id (`na_`);
-    * `nonce`, 16 random bytes in base64url without padding, 22 characters;
-    * `expires_at`, when the pass stops being good, in UTC to the second, as
-      `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made.
-
-  `issue/2` makes one; `verify/3` reads one back: the length, both parts decoded strictly,
-  the signature over the message under the public key given, the payload against the
-  rules above and byte for byte as `issue/2` writes it, and last its time. Any failure is
-  `:error`, whatever the cause. Nothing here touches the database, logs, or puts a pass
-  in an error.
-  """
+  # A connect pass: the grant this server makes when a person connects an adapter (a node
+  # of kind `adapter`, `na_`), carried to the adapter as the `state` of the connect step,
+  # which the adapter checks under the instance's public key before it acts on it. The
+  # module is hidden from the generated documentation, which every instance serves.
+  #
+  # Its form. One string, the payload in base64url without padding, `.`, and the
+  # signature in base64url without padding, at most `max_length/0` characters. The payload
+  # is the JSON bytes the server signed, never serialised again; the signature is 64 bytes
+  # of Ed25519 under the instance's signing key (`Apiary.SigningKey`) over the connect
+  # pass's message (`Apiary.Contract.SignedMessage.connect_pass/1`):
+  # `qory-connect-ed25519-v1`, a line feed, then the payload's bytes.
+  #
+  # The payload, its members in this order, each required and no other, with no
+  # whitespace:
+  #
+  #   * `version`, 1;
+  #   * `adapter_id`, the adapter, by its public id (`na_`);
+  #   * `nonce`, 16 random bytes in base64url without padding, 22 characters;
+  #   * `expires_at`, when the pass stops being good, in UTC to the second, as
+  #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made.
+  #
+  # `issue/2` makes one; `verify/3` reads one back: the length, both parts decoded
+  # strictly, the signature over the message under the public key given, the payload
+  # against the rules above and byte for byte as `issue/2` writes it, and last its time.
+  # Any failure is `:error`, whatever the cause. Nothing here touches the database, logs,
+  # or puts a pass in an error.
 
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.{PublicId, SigningKey}
@@ -38,35 +39,37 @@ defmodule Apiary.Adapters.ConnectPass do
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
-  @typedoc """
-  What a connect pass grants, as `verify/3` gives it back: the adapter's public id, the
-  nonce's 16 raw bytes, and when it stops being good, to the second.
-  """
+  # What a connect pass grants, as `verify/3` gives it back: the adapter's public id, the
+  # nonce's 16 raw bytes, and when it stops being good, to the second.
   @type pass :: %{
           adapter_id: String.t(),
           nonce: <<_::128>>,
           expires_at: DateTime.t()
         }
 
-  @doc "The longest a connect pass may be, in characters."
+  # The longest a connect pass may be, in characters.
+  @doc false
   @spec max_length() :: pos_integer
   def max_length, do: @max_length
 
-  @doc "How long a connect pass is good for after it is made, in seconds."
+  # How long a connect pass is good for after it is made, in seconds.
+  @doc false
   @spec validity() :: pos_integer
   def validity, do: @validity
 
-  @doc """
-  issue/2 makes the connect pass of the adapter `adapter_id` (`na_`): `{:ok, pass}`, the
-  string, or `{:error, :invalid}` when `adapter_id` is not an adapter's public id, and
-  `{:error, :too_long}` when the pass would be longer than `max_length/0`: no pass is made
-  then.
-
-  Its nonce is 16 fresh random bytes, and it expires `validity/0` seconds after now, to
-  the second, signed under the instance's signing key. `opts` set each of them, for a
-  known answer: `:key`, a `t:Apiary.SigningKey.t/0`; `:now`, a `DateTime`; and `:nonce`,
-  16 bytes.
-  """
+  # issue/2 makes the connect pass of the adapter `adapter_id` (`na_`): `{:ok, pass}`, the
+  # string, or `{:error, :invalid}` when `adapter_id` is not an adapter's public id, when
+  # `opts[:nonce]` is not 16 bytes, or when `opts[:now]` is not a `DateTime`; and
+  # `{:error, :too_long}` when the pass would be longer than `max_length/0`. No pass is
+  # made on an error.
+  #
+  # Its nonce is 16 fresh random bytes, and it expires `validity/0` seconds after now, to
+  # the second, signed under the instance's signing key. `opts` set each of them, for a
+  # known answer in tests and the shared fixture only: `:key`, a `t:Apiary.SigningKey.t/0`;
+  # `:now`, a `DateTime`; and `:nonce`, 16 bytes. A production caller passes none of
+  # `:key`, `:nonce` or `:now`: a pass then has a fresh random nonce, the current time and
+  # the instance's signing key.
+  @doc false
   @spec issue(String.t(), keyword) :: {:ok, String.t()} | {:error, :invalid | :too_long}
   def issue(adapter_id, opts \\ []) do
     key = Keyword.get_lazy(opts, :key, &SigningKey.current/0)
@@ -94,12 +97,12 @@ defmodule Apiary.Adapters.ConnectPass do
     end
   end
 
-  @doc """
-  verify/3 reads `pass` under `public_key`, the 32 raw bytes of the key that signed it:
-  `{:ok, pass}` (`t:pass/0`), or `:error` for anything that is not a connect pass that key
-  signed, or one that is not good at `now` (`opts[:now]`, the current time unless given):
-  at or after its `expires_at`, or expiring more than `validity/0` seconds after `now`.
-  """
+  # verify/3 reads `pass` under `public_key`, the 32 raw bytes of the key that signed it:
+  # `{:ok, pass}` (`t:pass/0`), or `:error` for anything that is not a connect pass that
+  # key signed, or one that is not good at `now` (`opts[:now]`, the current time unless
+  # given): at or after its `expires_at`, or expiring more than `validity/0` seconds after
+  # `now`.
+  @doc false
   @spec verify(term, term, keyword) :: {:ok, pass} | :error
   def verify(pass, public_key, opts \\ [])
 
