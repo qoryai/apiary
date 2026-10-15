@@ -118,6 +118,11 @@ defmodule Apiary.Secrets.OrganisationScopeMigrationTest do
     error = assert_raise RuntimeError, fn -> down() end
     assert error.message =~ "secret_values"
     assert error.message =~ "organisation_data_keys"
+
+    assert error.message ==
+             "secret_values, secrets, organisation_data_keys hold rows: " <>
+               "delete them before rolling this back"
+
     assert shape(@now) == now
   end
 

@@ -21,7 +21,7 @@ defmodule Apiary.Repo.Migrations.KeepStoredSecretsAtTheOrganisation do
   def up do
     execute lock(@tables)
     flush()
-    refuse_rows!(repo(), @tables)
+    refuse_rows!(repo(), @tables, &refusal/1)
 
     drop constraint(:secret_values, :secret_values_secret_id_fkey)
     drop constraint(:secret_values, :secret_values_data_key_id_fkey)
@@ -64,7 +64,7 @@ defmodule Apiary.Repo.Migrations.KeepStoredSecretsAtTheOrganisation do
   def down do
     execute lock(@tables_now)
     flush()
-    refuse_rows!(repo(), @tables_now)
+    refuse_rows!(repo(), @tables_now, &rollback_refusal/1)
 
     drop index(:secret_values, [:organisation_id])
     drop constraint(:secret_values, :secret_values_data_key_id_fkey)
@@ -143,7 +143,7 @@ defmodule Apiary.Repo.Migrations.KeepStoredSecretsAtTheOrganisation do
   defp lock(tables),
     do: "LOCK TABLE #{Enum.join(tables, ", ")} IN ACCESS EXCLUSIVE MODE"
 
-  defp refuse_rows!(repo, tables) do
+  defp refuse_rows!(repo, tables, refusal) do
     holding =
       Enum.filter(tables, fn table ->
         %{rows: [[count]]} = repo.query!("SELECT count(*) FROM #{table}", [], log: false)
@@ -152,7 +152,28 @@ defmodule Apiary.Repo.Migrations.KeepStoredSecretsAtTheOrganisation do
 
     case holding do
       [] -> :ok
-      holding -> raise "holding rows: " <> Enum.join(holding, ", ")
+      holding -> raise refusal.(holding)
     end
+  end
+
+  # Read in an operator's boot log, as the guard's (`20261016090000`): the same words.
+  defp refusal(holding) do
+    "Qory now keeps the integrations and the stored secrets of an organisation, not of a " <>
+      "workspace. This change expects their tables empty, but #{tables_holding(holding)}. " <>
+      "The migration changed nothing."
+  end
+
+  # Read by whoever rolls it back, in the words of the other migrations' rollbacks.
+  defp rollback_refusal([table]),
+    do: "#{table} holds rows: delete them before rolling this back"
+
+  defp rollback_refusal(tables),
+    do: "#{Enum.join(tables, ", ")} hold rows: delete them before rolling this back"
+
+  defp tables_holding([table]), do: "the table #{table} holds rows"
+
+  defp tables_holding(tables) do
+    {last, before} = List.pop_at(tables, -1)
+    "the tables #{Enum.join(before, ", ")} and #{last} hold rows"
   end
 end

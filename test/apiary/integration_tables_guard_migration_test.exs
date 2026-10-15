@@ -65,7 +65,11 @@ defmodule Apiary.IntegrationTablesGuardMigrationTest do
     error in RuntimeError -> {:refused, error.message}
   end
 
-  defp named?(message, table), do: message =~ ~r/(^|[^a-z_])#{table}([^a-z_]|$)/
+  # The tables a refusal names as holding rows.
+  defp named?(message, table) do
+    [_, names] = Regex.run(~r/but the tables? (.+) holds? rows/, message)
+    table in String.split(names, [", ", " and "])
+  end
 
   test "the guard's tables are the integrations' and the stored secrets'" do
     assert guard(:tables) ==
@@ -114,6 +118,19 @@ defmodule Apiary.IntegrationTablesGuardMigrationTest do
 
     Repo.query!("DELETE FROM #{last}")
     assert guard!() == :ok
+  end
+
+  test "its refusal says what stopped the migrations, naming the tables that hold rows" do
+    assert guard(:refusal, [["secrets"]]) ==
+             "Qory now keeps the integrations and the stored secrets of an organisation, " <>
+               "not of a workspace. This change expects their tables empty, but the table " <>
+               "secrets holds rows. The migration changed nothing."
+
+    assert guard(:refusal, [["secrets", "secret_values", "workspace_data_keys"]]) ==
+             "Qory now keeps the integrations and the stored secrets of an organisation, " <>
+               "not of a workspace. This change expects their tables empty, but the tables " <>
+               "secrets, secret_values and workspace_data_keys hold rows. The migration " <>
+               "changed nothing."
   end
 
   test "it takes its tables ACCESS EXCLUSIVE in the transaction it runs in" do

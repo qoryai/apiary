@@ -50,5 +50,18 @@ defmodule Apiary.Repo.Migrations.ExpectTheIntegrationTablesEmpty do
   end
 
   @doc false
-  def refusal(holding), do: "holding rows: " <> Enum.join(holding, ", ")
+  # Read in an operator's boot log: what stopped the migrations, and which tables hold
+  # rows.
+  def refusal(holding) do
+    "Qory now keeps the integrations and the stored secrets of an organisation, not of a " <>
+      "workspace. This change expects their tables empty, but #{tables_holding(holding)}. " <>
+      "The migration changed nothing."
+  end
+
+  defp tables_holding([table]), do: "the table #{table} holds rows"
+
+  defp tables_holding(tables) do
+    {last, before} = List.pop_at(tables, -1)
+    "the tables #{Enum.join(before, ", ")} and #{last} hold rows"
+  end
 end
