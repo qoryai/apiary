@@ -598,10 +598,10 @@ defmodule Apiary.Secrets do
   the log that names the secret and the value id, never the value.
 
   It asks nothing of `Apiary.Access`, and is the one function of this module that does
-  not: it is a server's sealing path, with no person's scope to ask about. Its caller
-  verifies the gateway's request and decides what that gateway may receive before it
-  calls it. The plaintext goes into the seal and nowhere else: not into a log, an assign,
-  a process's state or an error.
+  not: it is a server's sealing path, with no person's scope to ask about. It does not
+  check which workspace or which gateway asks, nor what that gateway may receive: that is
+  its caller's job. The plaintext goes into the seal and nowhere else: not into a log, an
+  assign, a process's state or an error.
   """
   # It answers for the organisation alone: any secret of `organisation`, whichever of its
   # workspaces asks. It does not check which workspace asks, nor that the secret belongs

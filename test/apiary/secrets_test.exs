@@ -646,8 +646,9 @@ defmodule Apiary.SecretsTest do
       log = capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
       assert log =~ "cannot be unwrapped"
 
-      # Their data key back, and their value replaced with mine: the key unwraps, and the
-      # organisation's id in the value's associated data is what refuses it.
+      # Their data key back, and their value replaced with mine: their key unwraps, and my
+      # value, encrypted under my data key, does not decrypt under theirs. The binding to
+      # the organisation in a value's associated data is the next test's.
       Repo.query!("UPDATE organisation_data_keys SET wrapped_key = $1 WHERE id = $2", [
         theirs_key.wrapped_key,
         Ecto.UUID.dump!(theirs_key.id)
