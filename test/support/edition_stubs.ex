@@ -694,6 +694,15 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule NoDisconnect do
+    @moduledoc """
+    No adapter's key ends a connection (`adapter.disconnect`), as an edition that narrows
+    the rights of an adapter's key may.
+    """
+    def check(_scope, :"adapter.disconnect", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule WithoutRecordOrPolicy do
     @moduledoc """
     Every person is shown the instance's features but `observability` and `security`, and

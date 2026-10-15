@@ -500,8 +500,11 @@ defmodule Apiary.Adapters.Connections do
   # return for a pending one it ended is not found after (`complete_return/4`). The
   # answers, in this order:
   #
-  #   * `{:error, :forbidden}` for a scope of no adapter's key, and where the feature is
-  #     off, before any connection is looked up;
+  #   * `{:error, :forbidden}` for a request outside the key's rights: a scope of no
+  #     adapter's key, where the feature is off, and a key whose role does not take
+  #     `adapter.disconnect` on its adapter. It is decided from the key and that action
+  #     alone, before any connection is looked up, so it is the same answer whatever
+  #     `public_id` names, as `connection_for_key/3` decides it;
   #   * `{:error, :unknown}` (`connection_unknown` in the contract) for an id that names
   #     no connection, and a connection of another adapter: one answer for both;
   #   * `{:error, :ended}` for one ended already, connected before or not;
@@ -511,6 +514,7 @@ defmodule Apiary.Adapters.Connections do
   def end_connection(key_scope, public_id) do
     Repo.transact(fn ->
       with {:ok, adapter_id} <- key_adapter(key_scope),
+           :ok <- key_may(key_scope, :"adapter.disconnect"),
            {:ok, connection} <- key_connection(adapter_id, public_id, :end),
            :ok <- not_ended(connection) do
         end_live(connection, :adapter_reported, DateTime.utc_now())

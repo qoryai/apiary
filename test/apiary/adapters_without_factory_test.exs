@@ -181,7 +181,12 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   test "an adapter's key takes none of its actions", %{adapter: adapter, key: key} do
     key_scope = Scope.for_access_key(key)
 
-    for action <- [:"source_item.post", :"work_item.read_changes", :"dispatch.claim"] do
+    for action <- [
+          :"source_item.post",
+          :"work_item.read_changes",
+          :"dispatch.claim",
+          :"adapter.disconnect"
+        ] do
       assert Access.authorize(key_scope, action, adapter) == {:error, :not_found}
       assert Adapters.for_key(key_scope, action) == {:error, :not_found}
     end
