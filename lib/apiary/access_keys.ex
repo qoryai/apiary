@@ -51,7 +51,7 @@ defmodule Apiary.AccessKeys do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Repo}
+  alias Apiary.{Access, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Contract.{Ed25519, Enrolment}
@@ -354,7 +354,8 @@ defmodule Apiary.AccessKeys do
   def create_enrolment_code(%Scope{user: user} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.create_code", node),
-           {:ok, node} <- lock_node(scope, node.id, node.workspace_id) do
+           {:ok, node} <- lock_node(scope, node.id, node.workspace_id),
+           :ok <- code_for_kind(scope, node) do
         code = EnrolmentCode.generate()
         now = DateTime.utc_now()
 
@@ -369,6 +370,7 @@ defmodule Apiary.AccessKeys do
             expires_at: DateTime.add(now, code_ttl_minutes(), :minute)
           }
           |> EnrolmentCode.settings_changeset(attrs)
+          |> without_secrets(node)
           |> EnrolmentCode.put_integrity()
 
         with {:ok, row} <- Repo.insert(changeset),
@@ -390,6 +392,20 @@ defmodule Apiary.AccessKeys do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # An adapter's code is made only where its person is shown the feature adapters belong
+  # to; a code of any other node, whatever the person is shown.
+  defp code_for_kind(scope, %Node{kind: :adapter}),
+    do: if(Features.visible?(scope, :factory), do: :ok, else: {:error, :not_found})
+
+  defp code_for_kind(_scope, %Node{}), do: :ok
+
+  # An adapter's key never has stored secrets, whatever the code was asked for: the code,
+  # and the key it brings, are made with the flag off.
+  defp without_secrets(changeset, %Node{kind: :adapter}),
+    do: Ecto.Changeset.put_change(changeset, :allow_secrets, false)
+
+  defp without_secrets(changeset, %Node{}), do: changeset
 
   @doc """
   cancel_code/2 cancels an outstanding enrolment code (`access_key.cancel_code`, owners
@@ -474,6 +490,7 @@ defmodule Apiary.AccessKeys do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.add", node),
            {:ok, node} <- lock_node(scope, node.id, node.workspace_id),
+           :ok <- made_in_browser(node),
            :ok <- within_limit(node) do
         now = DateTime.utc_now()
 
@@ -514,6 +531,10 @@ defmodule Apiary.AccessKeys do
       end
     end)
   end
+
+  # An adapter's key is enrolled with a code alone, never made in a browser.
+  defp made_in_browser(%Node{kind: :adapter}), do: {:error, :forbidden}
+  defp made_in_browser(%Node{}), do: :ok
 
   # The public key a browser sent, checked: any refusal, a key the checks or the ledger
   # refuse, is one error on the changeset, whatever the reason.
@@ -702,6 +723,7 @@ defmodule Apiary.AccessKeys do
   defp redeem(%EnrolmentCode{} = found, request, now, origin, code_limit) do
     with :ok <- maker_may_enrol(found),
          {:ok, node} <- lock_enrolling_node(found),
+         :ok <- enrols_kind(node),
          {:ok, code} <- lock_code(found),
          true <- code.created_by_id == found.created_by_id || {:error, :unauthorized},
          {:ok, state} <- code_state(code, node, request, now),
@@ -755,6 +777,13 @@ defmodule Apiary.AccessKeys do
       nil -> {:error, :unauthorized}
     end
   end
+
+  # An adapter's code enrols nothing while the instance is without the feature adapters
+  # belong to: it is no code, as any other refusal at this step is.
+  defp enrols_kind(%Node{kind: :adapter}),
+    do: if(Features.on?(:factory), do: :ok, else: {:error, :unauthorized})
+
+  defp enrols_kind(%Node{}), do: :ok
 
   defp same_workspace(nil), do: dynamic([n], is_nil(n.workspace_id))
   defp same_workspace(workspace_id), do: dynamic([n], n.workspace_id == ^workspace_id)
@@ -861,7 +890,7 @@ defmodule Apiary.AccessKeys do
       changeset =
         key
         |> AccessKey.insert_changeset(%{
-          allow_secrets: code.allow_secrets,
+          allow_secrets: code.allow_secrets and node.kind != :adapter,
           label: enrolled_label(node, code.label_hint || request.name)
         })
         |> AccessKey.put_integrity()

@@ -17,6 +17,7 @@ defmodule Apiary.AuditChanges do
     Access,
     AccessKeys,
     Accounts,
+    Adapters,
     Audit,
     Deletion,
     Nodes,
@@ -83,7 +84,11 @@ defmodule Apiary.AuditChanges do
       :"security_policy.set_mode",
       :"secret.write",
       :"variable.edit",
-      :"connection.write"
+      :"connection.write",
+      :"adapter.create",
+      :"adapter.edit",
+      :"adapter.delete",
+      :"adapter.connect"
     ]
   end
 
@@ -369,6 +374,34 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
+  def make(:"adapter.create", %{scope: scope}) do
+    before = entries()
+    {:ok, adapter} = Adapters.create_adapter(scope, %{name: "Acme tracker"})
+    %{scope: scope, subject: {"node", adapter.id}, before: before}
+  end
+
+  def make(:"adapter.edit", %{scope: scope}) do
+    adapter = adapter_fixture(scope)
+    before = entries()
+    {:ok, _} = Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
+    %{scope: scope, subject: {"node", adapter.id}, before: before}
+  end
+
+  def make(:"adapter.delete", %{scope: scope}) do
+    adapter = adapter_fixture(scope)
+    before = entries()
+    {:ok, _} = Adapters.delete_adapter(scope, adapter)
+    %{scope: scope, subject: {"node", adapter.id}, before: before}
+  end
+
+  def make(:"adapter.connect", %{scope: scope}) do
+    adapter = adapter_fixture(scope)
+    pass = "pass-" <> Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
+    before = entries()
+    {:ok, ^pass} = Adapters.connect(scope, adapter, fn _adapter -> {:ok, pass} end)
+    %{scope: scope, subject: {"node", adapter.id}, secret: pass, before: before}
+  end
+
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
@@ -598,6 +631,9 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
+  defp prepare(:"adapter.edit", %{scope: scope}), do: adapter_fixture(scope)
+  defp prepare(:"adapter.delete", %{scope: scope}), do: adapter_fixture(scope)
+  defp prepare(:"adapter.connect", %{scope: scope}), do: adapter_fixture(scope)
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -694,6 +730,17 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"node.create", scope, _),
     do: Nodes.create_node(scope, %{kind: "node", name: "build-01"})
+
+  defp attempt(:"adapter.create", scope, _),
+    do: Adapters.create_adapter(scope, %{name: "Acme tracker"})
+
+  defp attempt(:"adapter.edit", scope, adapter),
+    do: Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
+
+  defp attempt(:"adapter.delete", scope, adapter), do: Adapters.delete_adapter(scope, adapter)
+
+  defp attempt(:"adapter.connect", scope, adapter),
+    do: Adapters.connect(scope, adapter, fn _adapter -> {:ok, "pass"} end)
 
   defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
   defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)

@@ -60,6 +60,11 @@ defmodule Apiary.Contract.Enrolment do
           proof: String.t()
         }
 
+  # A node's kind as an answer names it, an adapter's among them; a private type, so the
+  # served docs show its name alone, as an adapter belongs to a feature the documentation
+  # does not differ by (`docs: false`).
+  @typep node_kind :: :node | :pool | :gateway | :adapter
+
   @members ~w(version code name public_key timestamp proof)
   @code ~r/\Aqec_[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
@@ -188,11 +193,12 @@ defmodule Apiary.Contract.Enrolment do
   @spec answer_body(%{
           access_key_id: String.t(),
           node_id: String.t(),
-          node_kind: :node | :pool | :gateway,
+          node_kind: node_kind(),
           stored_secrets: boolean,
           apiary_public_key: [map, ...]
         }) :: binary
-  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway] do
+  # An adapter's key enrols as any node's: `node_kind` `adapter`, for an `na_` id.
+  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway, :adapter] do
     Jason.encode!(
       Jason.OrderedObject.new([
         {"version", 1},

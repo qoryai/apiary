@@ -63,7 +63,7 @@ defmodule Apiary.Nodes do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Adapters, Audit, Features, Gateways, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes.{Instance, Node, Throttle}
@@ -278,8 +278,10 @@ defmodule Apiary.Nodes do
                created_by_id: user.id
              }
              |> Node.create_changeset(attrs)
+             |> made_here()
              |> put_first_choice(attrs, workspace)
-             |> validate_gateway(scope),
+             |> validate_gateway(scope)
+             |> validate_served_by(asking),
            {:ok, changeset} <- limit_set(asking, changeset, workspace),
            {:ok, node} <- Repo.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
@@ -289,6 +291,11 @@ defmodule Apiary.Nodes do
       end
     end)
   end
+
+  # A node, a node pool or a gateway is made here; an adapter, which lives at its
+  # organisation, is made through `Apiary.Adapters` alone.
+  defp made_here(changeset),
+    do: Ecto.Changeset.validate_inclusion(changeset, :kind, Node.all_kinds())
 
   # A new node or pool given no choice: the default when one resolves, else direct.
   defp put_first_choice(changeset, attrs, workspace) do
@@ -304,11 +311,12 @@ defmodule Apiary.Nodes do
   defp created(%Node{kind: :gateway} = node),
     do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :url, :default_gateway])
 
-  defp created(%Node{gateway_choice: :named} = node),
-    do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :gateway_choice, :gateway_id])
-
-  defp created(%Node{} = node),
-    do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :gateway_choice])
+  defp created(%Node{} = node) do
+    fields = [:name, :kind, :public_id, :instance_limit, :gateway_choice]
+    fields = if node.gateway_choice == :named, do: fields ++ [:gateway_id], else: fields
+    fields = if node.served_by_id, do: fields ++ [:served_by_id], else: fields
+    Map.take(node, fields)
+  end
 
   # A new gateway is its level's default when no default resolves for it at its level or
   # after it (`Apiary.Gateways.default_resolves?/1`).
@@ -406,6 +414,29 @@ defmodule Apiary.Nodes do
 
   defp validate_gateway(changeset, _scope), do: changeset
 
+  # A pool's adapter, when it is set or changed: one of the adapters that may serve the
+  # scope's workspace (`Apiary.Adapters.serving_choices/1`), and only where the person is
+  # shown the feature it belongs to. Clearing it asks neither. The database refuses an
+  # adapter that is not in use, of the pool's organisation, all the same.
+  defp validate_served_by(%Ecto.Changeset{valid?: true} = changeset, scope) do
+    with true <- Ecto.Changeset.changed?(changeset, :served_by_id),
+         id when is_binary(id) <- Ecto.Changeset.get_field(changeset, :served_by_id) do
+      if Features.visible?(scope, :factory) and
+           Enum.any?(Adapters.serving_choices(scope), &(&1.id == id)),
+         do: changeset,
+         else:
+           Ecto.Changeset.add_error(
+             changeset,
+             :served_by_id,
+             dgettext_noop("errors", "is invalid")
+           )
+    else
+      _unchanged_or_cleared -> changeset
+    end
+  end
+
+  defp validate_served_by(changeset, _scope), do: changeset
+
   @doc """
   update_node/3 renames `node`, and changes a gateway's `url` or a node's or a pool's
   choice of gateway (`node.edit`), and a pool's instance limit (`node.set_limit`), from
@@ -416,13 +447,22 @@ defmodule Apiary.Nodes do
   """
   @spec update_node(Scope.t(), Node.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def update_node(scope, node, attrs)
+
+  # An adapter is changed through `Apiary.Adapters` alone.
+  def update_node(%Scope{}, %Node{kind: :adapter}, _attrs), do: {:error, :not_found}
+
   def update_node(%Scope{} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Gateways.lock_for(scope, node),
            asking = Access.reload(scope),
            :ok <- may_change(asking, node),
            %Node{} = current <- lock_node(scope, node) || {:error, :not_found},
-           changeset = current |> Node.changeset(attrs) |> validate_gateway(scope),
+           changeset =
+             current
+             |> Node.changeset(attrs)
+             |> validate_gateway(scope)
+             |> validate_served_by(asking),
            :ok <- check_each(asking, edit_actions(changeset), current),
            {:ok, updated} <- Repo.update(changeset),
            :ok <- record_edit(scope, current, updated) do
@@ -443,6 +483,10 @@ defmodule Apiary.Nodes do
   """
   @spec make_default_gateway(Scope.t(), Node.t()) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def make_default_gateway(scope, gateway)
+
+  def make_default_gateway(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_found}
+
   def make_default_gateway(%Scope{} = scope, %Node{} = gateway) do
     gateway_mutate(scope, :"node.edit", gateway, fn
       %Node{kind: :gateway, default_gateway: true} = current ->
@@ -496,6 +540,11 @@ defmodule Apiary.Nodes do
           {:ok, Node.t()}
           | {:error,
              Ecto.Changeset.t() | Access.reason() | {:gateway_in_use, Gateways.blockers()}}
+  def delete_node(scope, node)
+
+  # An adapter is deleted through `Apiary.Adapters` alone.
+  def delete_node(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_found}
+
   def delete_node(%Scope{user: user} = scope, %Node{} = node) do
     gateway_mutate(scope, :"node.delete", node, fn current ->
       with :ok <- unblocked(current),
@@ -646,7 +695,8 @@ defmodule Apiary.Nodes do
            :url,
            :gateway_choice,
            :gateway_id,
-           :default_gateway
+           :default_gateway,
+           :served_by_id
          ]) do
       nil ->
         :ok

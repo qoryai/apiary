@@ -154,6 +154,14 @@ defmodule Apiary.Features do
   @spec documented() :: [feature]
   def documented, do: registry().documented
 
+  @doc false
+  # The core's features listed with `docs: false`, read from the list itself rather than
+  # the registry, so a module's documentation may leave out what belongs to them as it
+  # is compiled (`Apiary.Access`'s tables).
+  @spec core_undocumented() :: [feature]
+  def core_undocumented,
+    do: for({name, opts} <- @core, Keyword.get(opts, :docs, true) == false, do: name)
+
   @doc """
   parts/0 is every part: the parts of the features, `:"<feature>.<part>"`, in the order of
   `all/0` and, for one feature, in the order its entry lists them; then the parts of no

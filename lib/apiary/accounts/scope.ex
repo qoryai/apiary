@@ -44,6 +44,7 @@ defmodule Apiary.Accounts.Scope do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Preferences, User}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
 
   @typedoc "Who is asking, and in which organisation and workspace."
@@ -94,13 +95,43 @@ defmodule Apiary.Accounts.Scope do
   `Apiary.Policy.Serving.managed?/1` do).
   """
   @spec for_access_key(AccessKey.t()) :: t
-  def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
+  def for_access_key(%AccessKey{} = access_key) do
+    # The key's node says the role it acts in (`Apiary.Access.role/1`): it is loaded here
+    # when the key does not carry it, and a key whose node cannot be read acts in none.
+    access_key = with_node(access_key)
+    of_key(access_key)
+  end
+
+  # An adapter's key acts for its organisation, which the scope carries, with no
+  # workspace: what an edition asks of the organisation it asks of that one.
+  defp of_key(%AccessKey{node: %Node{kind: :adapter}, workspace_id: nil} = access_key) do
+    %__MODULE__{
+      access_key: access_key,
+      organisation: key_organisation(access_key),
+      workspace: nil
+    }
+  end
+
+  defp of_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: access_key, workspace: workspace}
   end
 
-  def for_access_key(%AccessKey{workspace_id: nil, workspace: nil} = access_key) do
+  defp of_key(%AccessKey{workspace_id: nil} = access_key) do
     %__MODULE__{access_key: access_key, workspace: nil}
   end
+
+  defp with_node(%AccessKey{node: %Node{}} = access_key), do: access_key
+
+  defp with_node(%AccessKey{node_id: node_id} = access_key) when is_binary(node_id),
+    do: %{access_key | node: Apiary.Repo.get(Node, node_id)}
+
+  defp with_node(%AccessKey{} = access_key), do: %{access_key | node: nil}
+
+  defp key_organisation(%AccessKey{organisation: %Organisation{} = organisation}),
+    do: organisation
+
+  defp key_organisation(%AccessKey{organisation_id: organisation_id}),
+    do: Apiary.Repo.get!(Organisation, organisation_id)
 
   @doc """
   key_place/1 is what the place of an access key's scope is asked as, a subject of
