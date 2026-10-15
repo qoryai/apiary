@@ -360,12 +360,19 @@ defmodule Apiary.Adapters.Connections do
   # organisation, with the key's scope narrowed to that organisation
   # (`Apiary.Accounts.Scope.for_connection/2`), in this order:
   #
-  #   * `{:error, :forbidden}` for a scope of no adapter's key, an id that names no
-  #     connection, a connection of another adapter, one pending (no linked return has
-  #     connected it yet, `complete_return/4`), where the feature is off, and for an
-  #     action the key's role does not take on its adapter: one answer for all;
-  #   * `{:error, :ended}` for one that ended, connected before or not, and for nothing
-  #     else: no narrowed scope is made for it, and its organisation is not asked about;
+  #   * `{:error, :forbidden}` for a request outside the key's rights: a scope of no
+  #     adapter's key, where the feature is off, and an action the key's role does not
+  #     take on its adapter. It is decided from the key and `action` alone, before any
+  #     connection is looked up, so it is the same answer whatever `public_id` names: a
+  #     key whose rights do not hold `action` cannot tell an id that names a connection
+  #     from one that names none;
+  #   * `{:error, :unknown}` (`connection_unknown` in the contract) for a connection the
+  #     core does not hold for the key's adapter: an id that names no connection, a
+  #     connection of another adapter, and one pending (no linked return has connected
+  #     it yet, `complete_return/4`): one answer for all;
+  #   * `{:error, :ended}` for one of the adapter that ended, connected before or not, and
+  #     for nothing else: no narrowed scope is made for it, and its organisation is not
+  #     asked about;
   #   * `{:error, :suspended}` while its organisation is out of use: marked for deletion
   #     or held out of use (`Apiary.AccessKeys.organisation_in_use?/1`), or refused by
   #     the edition, which `Apiary.Access.check/3` asks on the narrowed scope of `action`
@@ -373,10 +380,12 @@ defmodule Apiary.Adapters.Connections do
   #   * `{:ok, connection, scope}`, the connection with its organisation, and the narrowed
   #     scope.
   @spec connection_for_key(Scope.t() | nil, term, Access.action()) ::
-          {:ok, Connection.t(), Scope.t()} | {:error, :forbidden | :ended | :suspended}
+          {:ok, Connection.t(), Scope.t()}
+          | {:error, :forbidden | :unknown | :ended | :suspended}
   def connection_for_key(key_scope, public_id, action) do
-    with {:ok, connection} <- key_connection(key_scope, public_id, :find),
+    with {:ok, adapter_id} <- key_adapter(key_scope),
          :ok <- key_may(key_scope, action),
+         {:ok, connection} <- key_connection(adapter_id, public_id, :find),
          :ok <- not_ended(connection),
          scope = Scope.for_connection(key_scope, connection),
          :ok <- in_use(scope, connection, action) do
@@ -384,33 +393,36 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
-  # The connection `public_id` of the adapter whose key `key_scope` carries, with its
-  # organisation: for `:find`, one that is not pending (connected, or ended from either
-  # state, which `connection_for_key/3` answers `{:error, :ended}`); for `:end`, one in
-  # any state, held `FOR UPDATE`. `{:error, :forbidden}` for anything else.
-  defp key_connection(
-         %Scope{
-           access_key: %AccessKey{
-             node_id: adapter_id,
-             organisation_id: nil,
-             workspace_id: nil,
-             node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
-           }
-         },
-         public_id,
-         mode
-       )
+  # The id of the adapter whose key `key_scope` carries, where the feature is on:
+  # `{:ok, adapter_id}`. `{:error, :forbidden}` for a scope of no adapter's key, and where
+  # the feature is off. It looks up no connection.
+  defp key_adapter(%Scope{
+         access_key: %AccessKey{
+           node_id: adapter_id,
+           organisation_id: nil,
+           workspace_id: nil,
+           node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+         }
+       })
        when is_binary(adapter_id) do
-    with true <- Features.on?(:factory),
-         true <- Connection.public_id?(public_id),
+    if Features.on?(:factory), do: {:ok, adapter_id}, else: {:error, :forbidden}
+  end
+
+  defp key_adapter(_scope), do: {:error, :forbidden}
+
+  # The connection `public_id` of the adapter `adapter_id`, with its organisation: for
+  # `:find`, one that is not pending (connected, or ended from either state, which
+  # `connection_for_key/3` answers `{:error, :ended}`); for `:end`, one in any state, held
+  # `FOR UPDATE`. `{:error, :unknown}` for anything else: an id that names no connection,
+  # a connection of another adapter, and, for `:find`, one pending.
+  defp key_connection(adapter_id, public_id, mode) do
+    with true <- Connection.public_id?(public_id),
          %Connection{} = connection <- Repo.one(key_query(public_id, adapter_id, mode)) do
       {:ok, connection}
     else
-      _ -> {:error, :forbidden}
+      _ -> {:error, :unknown}
     end
   end
-
-  defp key_connection(_scope, _public_id, _mode), do: {:error, :forbidden}
 
   defp key_query(public_id, adapter_id, mode) do
     query =
@@ -425,7 +437,8 @@ defmodule Apiary.Adapters.Connections do
   end
 
   # The key's role holds `action` on its adapter (`Apiary.Access.check/3`, asked of the
-  # adapter as `Apiary.Adapters.for_key/2` asks it).
+  # adapter as `Apiary.Adapters.for_key/2` asks it), from the key and `action` alone,
+  # before any connection is looked up.
   defp key_may(%Scope{access_key: %AccessKey{node: %Node{} = adapter}} = key_scope, action) do
     case Access.check(key_scope, action, adapter) do
       :ok -> :ok
@@ -450,10 +463,11 @@ defmodule Apiary.Adapters.Connections do
   # mark_listed/1 records the adapter's first listing that names `connection`, connected,
   # once `connection_for_key/3` found it: `listed_at`, now. From then on a press of
   # Install is refused (`start/3`). One listed already stays as it is. `{:ok, connection}`;
-  # `{:error, :ended}` for one that ended meanwhile; `{:error, :forbidden}` for one
-  # pending or not there.
+  # `{:error, :ended}` for one that ended meanwhile; `{:error, :unknown}` for one pending
+  # or not there, as `connection_for_key/3` answers for them (`connection_unknown` in the
+  # contract: a listing of a pending connection is refused so).
   @spec mark_listed(Connection.t()) ::
-          {:ok, Connection.t()} | {:error, :ended | :forbidden}
+          {:ok, Connection.t()} | {:error, :ended | :unknown}
   def mark_listed(%Connection{id: id}) do
     Repo.transact(fn ->
       case Repo.one(from c in Connection, where: c.id == ^id, lock: "FOR UPDATE") do
@@ -471,7 +485,7 @@ defmodule Apiary.Adapters.Connections do
           {:error, :ended}
 
         _other ->
-          {:error, :forbidden}
+          {:error, :unknown}
       end
     end)
   end
@@ -483,15 +497,21 @@ defmodule Apiary.Adapters.Connections do
   # `key_scope` carries, pending or connected, as the adapter reports it gone
   # (`adapter_reported`), whatever its organisation's state, and clears the pools of that
   # organisation the adapter served, in one transaction, the connection's row first. A
-  # return for a pending one it ended is not found after (`complete_return/4`).
-  # `{:ok, connection}`, ended; `{:error, :forbidden}` for a scope of no adapter's key,
-  # an id that names no connection, a connection of another adapter, or where the
-  # feature is off; `{:error, :ended}` for one ended already, connected before or not.
+  # return for a pending one it ended is not found after (`complete_return/4`). The
+  # answers, in this order:
+  #
+  #   * `{:error, :forbidden}` for a scope of no adapter's key, and where the feature is
+  #     off, before any connection is looked up;
+  #   * `{:error, :unknown}` (`connection_unknown` in the contract) for an id that names
+  #     no connection, and a connection of another adapter: one answer for both;
+  #   * `{:error, :ended}` for one ended already, connected before or not;
+  #   * `{:ok, connection}`, ended, for one pending or connected.
   @spec end_connection(Scope.t() | nil, term) ::
-          {:ok, Connection.t()} | {:error, :forbidden | :ended}
+          {:ok, Connection.t()} | {:error, :forbidden | :unknown | :ended}
   def end_connection(key_scope, public_id) do
     Repo.transact(fn ->
-      with {:ok, connection} <- key_connection(key_scope, public_id, :end),
+      with {:ok, adapter_id} <- key_adapter(key_scope),
+           {:ok, connection} <- key_connection(adapter_id, public_id, :end),
            :ok <- not_ended(connection) do
         end_live(connection, :adapter_reported, DateTime.utc_now())
       end

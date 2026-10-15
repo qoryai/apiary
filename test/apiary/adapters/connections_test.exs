@@ -184,14 +184,14 @@ defmodule Apiary.Adapters.ConnectionsTest do
          %{scope: scope, pair: pair, key: key, connection: connection, nonce: nonce} do
       token = return_token(pair.secret, connection.public_id, nonce)
 
-      # Before the return, the key and a listing get the 403 answer.
+      # Before the return, the key and a listing find it unknown (`connection_unknown`).
       assert Connections.connection_for_key(
                key_scope(key),
                connection.public_id,
                :"source_item.post"
-             ) == {:error, :forbidden}
+             ) == {:error, :unknown}
 
-      assert Connections.mark_listed(connection) == {:error, :forbidden}
+      assert Connections.mark_listed(connection) == {:error, :unknown}
 
       assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
                {:ok, :linked}
@@ -318,9 +318,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.mark_listed(connected) == {:error, :ended}
 
       assert Connections.connection_for_key(key_scope, public_id, :"source_item.post") ==
-               {:error, :forbidden}
+               {:error, :unknown}
 
-      assert Connections.mark_listed(fresh) == {:error, :forbidden}
+      assert Connections.mark_listed(fresh) == {:error, :unknown}
 
       # A return for the old one, or under the old pass, is not found; so is the new pass's
       # return brought by someone else than the admin, or for the old connection.
@@ -384,11 +384,11 @@ defmodule Apiary.Adapters.ConnectionsTest do
       key_scope = key_scope(key)
       other = connectable_adapter_fixture()
 
-      # Another adapter's key, and an id that names none, are refused first.
+      # To another adapter's key it is unknown, as an id that names none is.
       assert Connections.end_connection(key_scope(other.access_key), connection.public_id) ==
-               {:error, :forbidden}
+               {:error, :unknown}
 
-      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :forbidden}
+      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :unknown}
       assert reload(connection) == connection
 
       assert {:ok,
@@ -650,7 +650,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Access.place(narrowed) == {scope.organisation.id, nil}
     end
 
-    test "403: none, another adapter's, one pending, an action the key does not take",
+    test "unknown: none, another adapter's, one pending, and ours to another adapter's key",
          %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
       other = connectable_adapter_fixture()
       %{scope: second} = sign_up_fixture()
@@ -659,29 +659,105 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       for id <- ["ac_0000000000000000", "nope", nil, pending.public_id, theirs.public_id] do
         assert Connections.connection_for_key(key_scope, id, :"source_item.post") ==
-                 {:error, :forbidden}
+                 {:error, :unknown}
       end
 
-      # Another adapter's key, a node's key, and no key at all.
+      # Another adapter's key, whose rights hold the action: the connection is not its
+      # adapter's, so it is unknown to it.
       assert Connections.connection_for_key(
                key_scope(other.access_key),
                connected.public_id,
                :"source_item.post"
-             ) == {:error, :forbidden}
+             ) == {:error, :unknown}
 
-      %{access_key: node_key} = Apiary.AccessKeysFixtures.access_key_fixture(scope)
+      assert reload(pending) == pending
+      assert reload(connected) == connected
+    end
 
-      for not_adapter <- [Scope.for_access_key(node_key), scope, nil] do
-        assert Connections.connection_for_key(
-                 not_adapter,
-                 connected.public_id,
-                 :"source_item.post"
-               ) ==
+    test "forbidden: rights are decided before any lookup, one answer whatever the id names",
+         %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
+      other = connectable_adapter_fixture()
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
+      {theirs, _nonce} = connection_fixture(scope, other.adapter, :connected)
+      {ended, _nonce} = connection_fixture(sign_up_fixture().scope, adapter, :listed)
+      {:ok, _} = Connections.end_connection(key_scope, ended.public_id)
+
+      ids = [
+        connected.public_id,
+        "ac_0000000000000000",
+        "nope",
+        nil,
+        pending.public_id,
+        theirs.public_id,
+        ended.public_id
+      ]
+
+      # An action the key's role does not take: the same answer for a connection it holds
+      # and for an id that names none, so the key cannot tell them apart.
+      for id <- ids do
+        assert Connections.connection_for_key(key_scope, id, :"adapter.read") ==
                  {:error, :forbidden}
       end
 
+      # A node's key, a person's scope, and no scope at all have no rights here.
+      %{access_key: node_key} = Apiary.AccessKeysFixtures.access_key_fixture(scope)
+
+      for not_adapter <- [Scope.for_access_key(node_key), scope, nil], id <- ids do
+        assert Connections.connection_for_key(not_adapter, id, :"source_item.post") ==
+                 {:error, :forbidden}
+
+        assert Connections.end_connection(not_adapter, id) == {:error, :forbidden}
+      end
+
+      assert reload(connected) == connected
+      assert reload(pending) == pending
+      assert reload(theirs) == theirs
+    end
+
+    test "the order: forbidden, then unknown, then ended, then suspended",
+         %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
+      Edition.put_test_stub(EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [scope.organisation.id])
+
+      # Suspended, and refused for rights first.
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
+               {:error, :suspended}
+
       assert Connections.connection_for_key(key_scope, connected.public_id, :"adapter.read") ==
                {:error, :forbidden}
+
+      # Pending in an organisation out of use: unknown, not suspended; forbidden first.
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
+      Process.put(:out_of_use, [scope.organisation.id, second.organisation.id])
+
+      assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
+               {:error, :unknown}
+
+      assert Connections.connection_for_key(key_scope, pending.public_id, :"adapter.read") ==
+               {:error, :forbidden}
+
+      # Ended in an organisation out of use: ended, not suspended; forbidden first.
+      {:ok, _} = Connections.end_connection(key_scope, connected.public_id)
+
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
+               {:error, :ended}
+
+      assert Connections.connection_for_key(key_scope, connected.public_id, :"adapter.read") ==
+               {:error, :forbidden}
+
+      # Another adapter's key gets no 409 for it: the connection is unknown to it.
+      other = connectable_adapter_fixture()
+
+      assert Connections.connection_for_key(
+               key_scope(other.access_key),
+               connected.public_id,
+               :"source_item.post"
+             ) == {:error, :unknown}
+
+      assert Connections.end_connection(key_scope(other.access_key), connected.public_id) ==
+               {:error, :unknown}
     end
 
     test "409 ended for one that ended before it connected",
@@ -698,14 +774,14 @@ defmodule Apiary.Adapters.ConnectionsTest do
                {:error, :ended}
     end
 
-    test "409 ended for a pending one the organisation's purge ended; 403 for another adapter's key",
+    test "409 ended for a pending one the organisation's purge ended; unknown to another adapter's key",
          %{adapter: adapter, key_scope: key_scope} do
       %{scope: second} = sign_up_fixture()
       {pending, _nonce} = connection_fixture(second, adapter, :pending)
       other = connectable_adapter_fixture()
 
       assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
-               {:error, :forbidden}
+               {:error, :unknown}
 
       # The purge's step that ends the organisation's connections
       # (`Apiary.Deletion.purge_organisation/1`).
@@ -720,12 +796,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.end_connection(key_scope, pending.public_id) == {:error, :ended}
       assert Connections.mark_listed(pending) == {:error, :ended}
 
-      # Another adapter's key, and an action the key does not take, get 403 first.
+      # Another adapter's key finds it unknown, and an action the key does not take is
+      # forbidden first: a 409 goes to the connection's adapter alone.
       assert Connections.connection_for_key(
                key_scope(other.access_key),
                pending.public_id,
                :"source_item.post"
-             ) == {:error, :forbidden}
+             ) == {:error, :unknown}
+
+      assert Connections.end_connection(key_scope(other.access_key), pending.public_id) ==
+               {:error, :unknown}
 
       assert Connections.connection_for_key(key_scope, pending.public_id, :"adapter.read") ==
                {:error, :forbidden}
@@ -825,11 +905,11 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       %{scope: other} = sign_up_fixture()
       {pending, _nonce} = connection_fixture(other, adapter, :pending)
-      assert Connections.mark_listed(pending) == {:error, :forbidden}
+      assert Connections.mark_listed(pending) == {:error, :unknown}
       assert reload(pending) == pending
 
       assert Connections.mark_listed(%Connection{id: Ecto.UUID.generate()}) ==
-               {:error, :forbidden}
+               {:error, :unknown}
 
       {:ok, _} = Connections.end_connection(key_scope, connected.public_id)
       ended = reload(connected)
@@ -867,9 +947,10 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.end_connection(key_scope, connection.public_id) == {:error, :ended}
 
       assert Connections.end_connection(key_scope(second.access_key), theirs.public_id) ==
-               {:error, :forbidden}
+               {:error, :unknown}
 
-      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :forbidden}
+      assert Connections.end_connection(key_scope, "ac_0000000000000000") == {:error, :unknown}
+      assert reload(theirs).state == :connected
     end
   end
 
