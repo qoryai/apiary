@@ -530,6 +530,13 @@ The modes keep a row that only names another out of it:
   `FOR SHARE` (`Apiary.Access.lock_places/1`),
   then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
   under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns.
+- A write of an organisation's stored secrets (`Apiary.Secrets`) holds the organisation
+  `FOR SHARE` (`Apiary.Access.lock_places/1`), reads the membership again under
+  `FOR SHARE` (`reload/2` with `lock: :share`), then takes the organisation's advisory
+  transaction lock for its integrations (`pg_advisory_xact_lock`), which locks no row and
+  which only these writes take, after every row lock above; then a change to a secret
+  locks the secret's row `FOR UPDATE`. The writes of one organisation's secrets take
+  turns, and its first secret makes its data key alone.
 - A marking for deletion locks the organisation's row `FOR NO KEY UPDATE`, and a
   workspace's marking locks every workspace of the organisation in use: they wait for a
   write in flight, and one asked after them waits and then sees them. What an edition

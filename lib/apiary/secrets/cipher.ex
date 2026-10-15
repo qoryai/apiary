@@ -4,23 +4,26 @@ defmodule Apiary.Secrets.Cipher do
   AES-256-GCM with `:crypto`, a random 96-bit nonce for each encryption, and a 128-bit
   tag stored after the ciphertext.
 
-  **A value** is encrypted under its workspace's data key, with associated data that
+  **A value** is encrypted under its organisation's data key, with associated data that
   binds it to where it belongs:
 
-      lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
+      lp("qory-secret-v2") ‖ lp(organisation id) ‖ lp(secret id) ‖ lp(value id, or "")
 
-  The workspace id is the workspace's UUID in its canonical string form, the secret id
-  its public `sec_` id, and the value id the value's, or the empty string for a
-  secret's one value without one. A value copied to another workspace, another secret or
-  another value id does not decrypt there, so the database alone cannot move a value.
+  The organisation id is the organisation's UUID in its canonical string form, the
+  secret id its public `sec_` id, and the value id the value's, or the empty string for a
+  secret's one value without one. A value copied to another organisation, another secret
+  or another value id does not decrypt there, so the database alone cannot move a value.
 
-  **A data key**, 32 random bytes per workspace, is encrypted (wrapped) under the
+  **A data key**, 32 random bytes per organisation, is encrypted (wrapped) under the
   instance's values key (`Apiary.KeyDerivation`, purpose `:values`), with the associated
   data
 
-      lp("apiary-data-key-v1") ‖ lp(organisation id) ‖ lp(workspace id)
+      lp("apiary-data-key-v2") ‖ lp(organisation id)
 
-  so a wrapped key copied to another workspace does not unwrap there.
+  so a wrapped key copied to another organisation does not unwrap there.
+
+  The labels name the version of the binding. A value or a data key bound by an earlier
+  version does not decrypt under this one: nothing reads the earlier ones.
 
   `lp(x)` is `x`'s byte length as an unsigned 16-bit big-endian integer, then `x`.
 
@@ -30,25 +33,29 @@ defmodule Apiary.Secrets.Cipher do
   @nonce_bytes 12
   @tag_bytes 16
   @key_bytes 32
-  @value_label "qory-secret-v1"
-  @data_key_label "apiary-data-key-v1"
+  @value_label "qory-secret-v2"
+  @data_key_label "apiary-data-key-v2"
 
   @typedoc "A 32-byte AES-256 key."
   @type key :: <<_::256>>
 
   @doc "value_aad/3 is the associated data of a value: see the module's documentation."
   @spec value_aad(Ecto.UUID.t(), String.t(), String.t() | nil) :: binary
-  def value_aad(workspace_id, secret_id, value_id)
-      when is_binary(workspace_id) and is_binary(secret_id) and
+  def value_aad(organisation_id, secret_id, value_id)
+      when is_binary(organisation_id) and is_binary(secret_id) and
              (is_binary(value_id) or is_nil(value_id)) do
-    IO.iodata_to_binary([lp(@value_label), lp(workspace_id), lp(secret_id), lp(value_id || "")])
+    IO.iodata_to_binary([
+      lp(@value_label),
+      lp(organisation_id),
+      lp(secret_id),
+      lp(value_id || "")
+    ])
   end
 
-  @doc "data_key_aad/2 is the associated data of a wrapped data key."
-  @spec data_key_aad(Ecto.UUID.t(), Ecto.UUID.t()) :: binary
-  def data_key_aad(organisation_id, workspace_id)
-      when is_binary(organisation_id) and is_binary(workspace_id) do
-    IO.iodata_to_binary([lp(@data_key_label), lp(organisation_id), lp(workspace_id)])
+  @doc "data_key_aad/1 is the associated data of a wrapped data key."
+  @spec data_key_aad(Ecto.UUID.t()) :: binary
+  def data_key_aad(organisation_id) when is_binary(organisation_id) do
+    IO.iodata_to_binary([lp(@data_key_label), lp(organisation_id)])
   end
 
   @doc """

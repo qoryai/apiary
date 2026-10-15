@@ -72,7 +72,7 @@ defmodule Apiary.SecretsInUseTest do
 
     log =
       capture_log(fn ->
-        assert Secrets.reveal_for_sealing(scope.workspace, secret.public_id, nil) ==
+        assert Secrets.reveal_for_sealing(scope.organisation, secret.public_id, nil) ==
                  {:error, :unavailable}
 
         assert Secrets.set_value(scope, secret, nil, "new value") == {:error, :key_unavailable}
@@ -83,7 +83,7 @@ defmodule Apiary.SecretsInUseTest do
 
     Application.put_env(:apiary, KeyDerivation, previous)
 
-    assert Secrets.reveal_for_sealing(scope.workspace, secret.public_id, nil) ==
+    assert Secrets.reveal_for_sealing(scope.organisation, secret.public_id, nil) ==
              {:ok, "the value"}
   end
 end

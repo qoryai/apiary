@@ -89,7 +89,7 @@ defmodule Apiary.KeyCheck do
     {"integration_releases", :integrity_key_id, :integrity},
     {"service_definitions", :integrity_key_id, :integrity},
     {"workspace_connections", :integrity_key_id, :integrity},
-    {"workspace_data_keys", :wrapping_key_id, :values},
+    {"organisation_data_keys", :wrapping_key_id, :values},
     {"instance_settings", :mail_key_id, :mail}
   ]
 

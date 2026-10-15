@@ -2,7 +2,7 @@ defmodule Apiary.Secrets.Value do
   @moduledoc """
   One value of a stored secret: its value id, a lowercase slug unique in the secret, or
   none for a secret's one value, and the value itself, only ever stored encrypted
-  (`Apiary.Secrets.Cipher`): `nonce` and `ciphertext`, under the workspace's data key
+  (`Apiary.Secrets.Cipher`): `nonce` and `ciphertext`, under the organisation's data key
   (`data_key_id`).
 
   The value is write-only. The virtual `value` carries a plaintext only into a changeset,
@@ -30,7 +30,6 @@ defmodule Apiary.Secrets.Value do
     field :ciphertext, :binary, redact: true
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :secret, Apiary.Secrets.Secret
     belongs_to :data_key, Apiary.Secrets.DataKey
     belongs_to :created_by, Apiary.Accounts.User

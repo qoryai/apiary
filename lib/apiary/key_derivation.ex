@@ -6,7 +6,7 @@ defmodule Apiary.KeyDerivation do
 
   | Purpose | Info | What the key does |
   |---|---|---|
-  | `:values` | `"apiary values v1"` | wraps each workspace's data key, which encrypts the workspace's stored secret values (`Apiary.Secrets`) |
+  | `:values` | `"apiary values v1"` | wraps each organisation's data key, which encrypts the organisation's stored secret values (`Apiary.Secrets`) |
   | `:integrity` | `"apiary integrity v1"` | keys the integrity codes of stored rows (`Apiary.Integrity`) |
   | `:check` | `"apiary check v1"` | keys the check value of the secret the instance records at its first boot and compares at every boot (`Apiary.KeyCheck`) |
   | `:mail` | `"apiary mail v1"` | encrypts the SMTP password an instance admin saves in Instance settings › Mail (`Apiary.Mail.Password`) |

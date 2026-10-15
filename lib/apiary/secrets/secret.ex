@@ -1,7 +1,7 @@
 defmodule Apiary.Secrets.Secret do
   @moduledoc """
-  A stored secret of a workspace: a name, unique in the workspace whatever its case, a
-  public id (`sec_` and 16 lowercase Crockford base32 characters, `Apiary.PublicId`),
+  A stored secret of an organisation: a name, unique in the organisation whatever its
+  case, a public id (`sec_` and 16 lowercase Crockford base32 characters, `Apiary.PublicId`),
   a note on what it is used for, and its values (`Apiary.Secrets.Value`): one without a
   value id, or several, each with a value id.
 
@@ -12,7 +12,7 @@ defmodule Apiary.Secrets.Secret do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
-  @typedoc "A stored secret of a workspace."
+  @typedoc "A stored secret of an organisation."
   @type t :: %__MODULE__{}
 
   @name ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
@@ -27,7 +27,6 @@ defmodule Apiary.Secrets.Secret do
     field :note, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
     has_many :values, Apiary.Secrets.Value, preload_order: [asc: :value_id]

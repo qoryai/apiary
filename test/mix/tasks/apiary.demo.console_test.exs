@@ -171,7 +171,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     # Secrets, variables and integrations are the secrets feature's.
     if Apiary.Features.on?(:secrets) do
-      assert count(from s in Secret, where: s.workspace_id == ^main.id) == 4
+      assert count(from s in Secret, where: s.organisation_id == ^main.organisation_id) == 4
       assert count(from v in Variable, where: v.workspace_id == ^main.id and v.locked) == 2
 
       assert count(
@@ -186,7 +186,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
       assert Repo.all(from r in Release, where: r.workspace_id == ^main.id, select: r.state)
              |> Enum.sort() == ["failed", "ready", "ready"]
     else
-      refute Repo.exists?(from s in Secret, where: s.workspace_id == ^main.id)
+      refute Repo.exists?(from s in Secret, where: s.organisation_id == ^main.organisation_id)
       refute Repo.exists?(from v in Variable, where: v.workspace_id == ^main.id)
       refute Repo.exists?(from c in Connection, where: c.workspace_id == ^main.id)
     end
@@ -204,7 +204,10 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert workspaces != []
 
     for workspace <- workspaces do
-      refute Repo.exists?(from s in Secret, where: s.workspace_id == ^workspace.id)
+      refute Repo.exists?(
+               from s in Secret, where: s.organisation_id == ^workspace.organisation_id
+             )
+
       refute Repo.exists?(from v in Variable, where: v.workspace_id == ^workspace.id)
       refute Repo.exists?(from c in Connection, where: c.workspace_id == ^workspace.id)
       refute Repo.exists?(from r in Release, where: r.workspace_id == ^workspace.id)

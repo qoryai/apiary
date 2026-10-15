@@ -47,7 +47,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   end
 
   defp reveal(scope, secret, value_id \\ nil),
-    do: Secrets.reveal_for_sealing(scope.workspace, secret.public_id, value_id)
+    do: Secrets.reveal_for_sealing(scope.organisation, secret.public_id, value_id)
 
   defp secrets(scope) do
     {:ok, secrets} = Secrets.list_secrets(scope)

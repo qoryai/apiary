@@ -14,7 +14,13 @@ defmodule Apiary.SecretsTest do
 
   setup do
     owner = sign_up_fixture()
-    %{owner: owner, scope: owner.scope, workspace: owner.scope.workspace}
+
+    %{
+      owner: owner,
+      scope: owner.scope,
+      workspace: owner.scope.workspace,
+      organisation: owner.scope.organisation
+    }
   end
 
   defp create!(scope, attrs) do
@@ -23,7 +29,11 @@ defmodule Apiary.SecretsTest do
   end
 
   defp reveal(scope, secret, value_id \\ nil),
-    do: Secrets.reveal_for_sealing(scope.workspace, secret.public_id, value_id)
+    do: Secrets.reveal_for_sealing(scope.organisation, secret.public_id, value_id)
+
+  # A scope of the owner in another workspace of the organisation.
+  defp other_workspace(owner),
+    do: workspace_scope(owner.user, workspace_fixture(owner.organisation))
 
   defp row!(secret, value_id) do
     query = from v in Value, where: v.secret_id == ^secret.id
@@ -43,6 +53,29 @@ defmodule Apiary.SecretsTest do
           where: e.subject_id == ^secret.id,
           order_by: [asc: e.inserted_at, asc: e.id]
       )
+
+  # The data key `row` is encrypted under, unwrapped.
+  defp data_key!(row) do
+    data_key = Repo.get!(DataKey, row.data_key_id)
+    {:ok, values_key} = KeyDerivation.key(:values, data_key.wrapping_key_id)
+
+    {:ok, key} =
+      Cipher.unwrap(
+        values_key,
+        data_key.wrapped_key,
+        Cipher.data_key_aad(data_key.organisation_id)
+      )
+
+    key
+  end
+
+  defp put_value!(row, nonce, ciphertext) do
+    Repo.query!("UPDATE secret_values SET nonce = $1, ciphertext = $2 WHERE id = $3", [
+      nonce,
+      ciphertext,
+      Ecto.UUID.dump!(row.id)
+    ])
+  end
 
   describe "storing a value" do
     test "a value round-trips, and only reveal_for_sealing/3 gives it back", %{scope: scope} do
@@ -77,18 +110,17 @@ defmodule Apiary.SecretsTest do
     end
 
     test "the value is the documented AES-256-GCM over the documented associated data",
-         %{scope: scope, workspace: workspace} do
+         %{scope: scope, organisation: organisation} do
       secret = create!(scope, %{name: "API_KEY"})
       row = row!(secret, nil)
       data_key = Repo.get!(DataKey, row.data_key_id)
+      assert data_key.organisation_id == organisation.id
 
       {key_id, values_key} = KeyDerivation.key(:values)
       assert data_key.wrapping_key_id == key_id
       assert byte_size(data_key.wrapped_key) == 60
 
-      data_key_aad =
-        <<18::16, "apiary-data-key-v1", 36::16, workspace.organisation_id::binary, 36::16,
-          workspace.id::binary>>
+      data_key_aad = <<18::16, "apiary-data-key-v2", 36::16, organisation.id::binary>>
 
       <<wrap_nonce::binary-12, wrapped::binary-32, wrap_tag::binary-16>> = data_key.wrapped_key
 
@@ -106,7 +138,7 @@ defmodule Apiary.SecretsTest do
       assert byte_size(key) == 32
 
       aad =
-        <<14::16, "qory-secret-v1", 36::16, workspace.id::binary, 20::16,
+        <<14::16, "qory-secret-v2", 36::16, organisation.id::binary, 20::16,
           secret.public_id::binary, 0::16>>
 
       size = byte_size(row.ciphertext) - 16
@@ -116,18 +148,22 @@ defmodule Apiary.SecretsTest do
                @value
     end
 
-    test "a workspace has one data key, made with its first secret", %{
-      scope: scope,
-      workspace: workspace
-    } do
-      assert Repo.aggregate(from(k in DataKey, where: k.workspace_id == ^workspace.id), :count) ==
-               0
+    test "an organisation has one data key, made with its first secret, for every workspace",
+         %{owner: owner, scope: scope, organisation: organisation} do
+      keys = fn ->
+        Repo.aggregate(from(k in DataKey, where: k.organisation_id == ^organisation.id), :count)
+      end
 
-      create!(scope, %{name: "ONE"})
-      create!(scope, %{name: "TWO", value_id: "main-app"})
+      assert keys.() == 0
 
-      assert Repo.aggregate(from(k in DataKey, where: k.workspace_id == ^workspace.id), :count) ==
-               1
+      one = create!(scope, %{name: "ONE"})
+      two = create!(scope, %{name: "TWO", value_id: "main-app"})
+      three = create!(other_workspace(owner), %{name: "THREE"})
+
+      assert keys.() == 1
+
+      rows = [row!(one, nil), row!(two, "main-app"), row!(three, nil)]
+      assert rows |> Enum.map(& &1.data_key_id) |> Enum.uniq() |> length() == 1
     end
 
     test "inspect, JSON and the changeset never show a value", %{scope: scope} do
@@ -192,7 +228,8 @@ defmodule Apiary.SecretsTest do
       end
     end
 
-    test "names are unique in the workspace whatever their case", %{scope: scope, owner: owner} do
+    test "names are unique in the organisation whatever their case, in every workspace",
+         %{scope: scope, owner: owner} do
       create!(scope, %{name: "GITHUB_APP_PRIVATE_KEY"})
 
       for name <- ["GITHUB_APP_PRIVATE_KEY", "github_app_private_key", "GitHub_App_Private_Key"] do
@@ -201,12 +238,21 @@ defmodule Apiary.SecretsTest do
         assert message =~ "compared without case"
       end
 
-      # Another workspace has its own names.
-      other = workspace_fixture(owner.organisation)
-      other_scope = workspace_scope(owner.user, other)
+      # Another workspace of the organisation has the same names.
+      assert {:error, changeset} =
+               Secrets.create_secret(other_workspace(owner), %{
+                 name: "github_app_private_key",
+                 value: @value
+               })
 
+      assert changeset.errors[:name]
+
+      # Another organisation may take the name.
       assert {:ok, _} =
-               Secrets.create_secret(other_scope, %{name: "github_app_private_key", value: @value})
+               Secrets.create_secret(sign_up_fixture().scope, %{
+                 name: "github_app_private_key",
+                 value: @value
+               })
     end
 
     test "renaming to another secret's name, in any case, is refused", %{scope: scope} do
@@ -579,27 +625,27 @@ defmodule Apiary.SecretsTest do
       end)
     end
 
-    test "a value moved to another workspace does not decrypt there", %{
-      scope: scope,
-      owner: owner
-    } do
-      other_scope = workspace_scope(owner.user, workspace_fixture(owner.organisation))
+    test "a value moved to another organisation does not decrypt there", %{scope: scope} do
+      other_scope = sign_up_fixture().scope
       mine = create!(scope, %{name: "API_KEY"})
       theirs = create!(other_scope, %{name: "API_KEY"})
       a = row!(mine, nil)
 
-      # Their data key replaced with mine, and their value with mine: the other
-      # workspace's id is in both associated data.
+      # Their data key replaced with mine: the other organisation's id is in the data
+      # key's associated data.
       Repo.query!(
         """
-        UPDATE workspace_data_keys SET wrapped_key = (SELECT wrapped_key FROM workspace_data_keys WHERE workspace_id = $1)
-        WHERE workspace_id = $2
+        UPDATE organisation_data_keys
+        SET wrapped_key = (SELECT wrapped_key FROM organisation_data_keys WHERE organisation_id = $1)
+        WHERE organisation_id = $2
         """,
-        [Ecto.UUID.dump!(scope.workspace.id), Ecto.UUID.dump!(other_scope.workspace.id)]
+        [Ecto.UUID.dump!(scope.organisation.id), Ecto.UUID.dump!(other_scope.organisation.id)]
       )
 
       capture_log(fn -> assert reveal(other_scope, theirs) == {:error, :unavailable} end)
 
+      # And their value with mine, under the same key now: the organisation's id is in
+      # the value's associated data too.
       Repo.query!("UPDATE secret_values SET nonce = $1, ciphertext = $2 WHERE secret_id = $3", [
         a.nonce,
         a.ciphertext,
@@ -611,25 +657,76 @@ defmodule Apiary.SecretsTest do
       assert reveal(scope, mine) == {:ok, @value}
     end
 
-    test "the associated data is each part, length-prefixed", %{workspace: workspace} do
+    test "a value under the same data key and secret id, bound to another organisation, does not decrypt",
+         %{scope: scope, organisation: organisation} do
+      secret = create!(scope, %{name: "API_KEY"})
+      row = row!(secret, nil)
+      key = data_key!(row)
+
+      # The value as another organisation's row with the same secret id would bind it.
+      aad = Cipher.value_aad(Ecto.UUID.generate(), secret.public_id, nil)
+      {nonce, ciphertext} = Cipher.encrypt(key, aad, @value)
+      put_value!(row, nonce, ciphertext)
+      capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
+
+      # Bound to this one, it reads.
+      aad = Cipher.value_aad(organisation.id, secret.public_id, nil)
+      {nonce, ciphertext} = Cipher.encrypt(key, aad, @value)
+      put_value!(row, nonce, ciphertext)
+      assert reveal(scope, secret) == {:ok, @value}
+    end
+
+    test "a value or a data key bound the first way, by the workspace, does not decrypt",
+         %{scope: scope, workspace: workspace, organisation: organisation} do
+      secret = create!(scope, %{name: "API_KEY"})
+      row = row!(secret, nil)
+      key = data_key!(row)
+
+      v1_value_aad =
+        <<14::16, "qory-secret-v1", 36::16, workspace.id::binary, 20::16,
+          secret.public_id::binary, 0::16>>
+
+      {nonce, ciphertext} = Cipher.encrypt(key, v1_value_aad, @value)
+      put_value!(row, nonce, ciphertext)
+
+      log = capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
+      assert log =~ "secret_id=#{secret.public_id}"
+
+      # The same key, wrapped the first way: it does not unwrap.
+      {_key_id, values_key} = KeyDerivation.key(:values)
+
+      v1_data_key_aad =
+        <<18::16, "apiary-data-key-v1", 36::16, organisation.id::binary, 36::16,
+          workspace.id::binary>>
+
+      Repo.query!("UPDATE organisation_data_keys SET wrapped_key = $1 WHERE id = $2", [
+        Cipher.wrap(values_key, key, v1_data_key_aad),
+        Ecto.UUID.dump!(row.data_key_id)
+      ])
+
+      log = capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
+      assert log =~ "APIARY_ENCRYPTION_SECRET"
+    end
+
+    test "the associated data is each part, length-prefixed", %{organisation: organisation} do
       key = Cipher.new_data_key()
-      aad = Cipher.value_aad(workspace.id, "sec_0123456789abcdef", "main")
+      aad = Cipher.value_aad(organisation.id, "sec_0123456789abcdef", "main")
       {nonce, ciphertext} = Cipher.encrypt(key, aad, "plain")
 
       assert Cipher.decrypt(key, aad, nonce, ciphertext) == {:ok, "plain"}
 
       for other <- [
             Cipher.value_aad(Ecto.UUID.generate(), "sec_0123456789abcdef", "main"),
-            Cipher.value_aad(workspace.id, "sec_0123456789abcdeg", "main"),
-            Cipher.value_aad(workspace.id, "sec_0123456789abcdef", nil),
-            Cipher.value_aad(workspace.id, "sec_0123456789abcdef", "main2")
+            Cipher.value_aad(organisation.id, "sec_0123456789abcdeg", "main"),
+            Cipher.value_aad(organisation.id, "sec_0123456789abcdef", nil),
+            Cipher.value_aad(organisation.id, "sec_0123456789abcdef", "main2")
           ] do
         assert Cipher.decrypt(key, other, nonce, ciphertext) == :error
       end
 
       # A value id with no value id is "", not absent: lp("") is two zero bytes.
-      assert Cipher.value_aad(workspace.id, "sec_0123456789abcdef", nil) ==
-               Cipher.value_aad(workspace.id, "sec_0123456789abcdef", "")
+      assert Cipher.value_aad(organisation.id, "sec_0123456789abcdef", nil) ==
+               Cipher.value_aad(organisation.id, "sec_0123456789abcdef", "")
 
       assert Cipher.decrypt(Cipher.new_data_key(), aad, nonce, ciphertext) == :error
       <<first, rest::binary>> = ciphertext
@@ -637,12 +734,69 @@ defmodule Apiary.SecretsTest do
       assert Cipher.decrypt(key, aad, nonce, "short") == :error
     end
 
-    test "a tampered wrapped data key unwraps to nothing", %{scope: scope, workspace: workspace} do
+    # Known answers, from fixed inputs: an organisation id, a secret id, a value id, a data
+    # key, a values key and the two nonces. The associated data, a value's ciphertext and
+    # tag, and a wrapped data key, each as the scheme of `Apiary.Secrets.Cipher` makes it.
+    @organisation_id "11111111-2222-4333-8444-555555555555"
+    @secret_id "sec_0123456789abcdef"
+    @data_key :binary.list_to_bin(Enum.to_list(0..31))
+    @values_key :binary.list_to_bin(Enum.to_list(32..63))
+    @value_nonce :binary.list_to_bin(Enum.to_list(64..75))
+    @wrap_nonce :binary.list_to_bin(Enum.to_list(80..91))
+
+    @value_aad "000e716f72792d7365637265742d7632002431313131313131312d323232322d343333332d383434342d35353535353535353535353500147365635f3031323334353637383961626364656600086d61696e2d617070"
+    @data_key_aad "00126170696172792d646174612d6b65792d7632002431313131313131312d323232322d343333332d383434342d353535353535353535353535"
+    @ciphertext "85d1de7c4344e66ebda87262f40f76352fa73e29d2053e1144737bd3a02bd4ca2b8a16716d37db5932810dfb922996"
+    @wrapped "505152535455565758595a5bb1a1aa11352a710a3c06001161048da0ccfd5d2c6ce36f17bae5c241ac173e26c9581a4baa94a9ce88baabf2300bd831"
+
+    test "the pinned vectors" do
+      hex = &Base.decode16!(&1, case: :lower)
+      value_aad = Cipher.value_aad(@organisation_id, @secret_id, "main-app")
+      data_key_aad = Cipher.data_key_aad(@organisation_id)
+
+      assert value_aad == hex.(@value_aad)
+      assert data_key_aad == hex.(@data_key_aad)
+
+      {body, tag} =
+        :crypto.crypto_one_time_aead(
+          :aes_256_gcm,
+          @data_key,
+          @value_nonce,
+          @value,
+          value_aad,
+          16,
+          true
+        )
+
+      assert body <> tag == hex.(@ciphertext)
+
+      assert Cipher.decrypt(@data_key, value_aad, @value_nonce, hex.(@ciphertext)) ==
+               {:ok, @value}
+
+      {body, tag} =
+        :crypto.crypto_one_time_aead(
+          :aes_256_gcm,
+          @values_key,
+          @wrap_nonce,
+          @data_key,
+          data_key_aad,
+          16,
+          true
+        )
+
+      assert @wrap_nonce <> body <> tag == hex.(@wrapped)
+      assert Cipher.unwrap(@values_key, hex.(@wrapped), data_key_aad) == {:ok, @data_key}
+    end
+
+    test "a tampered wrapped data key unwraps to nothing", %{
+      scope: scope,
+      organisation: organisation
+    } do
       secret = create!(scope, %{name: "API_KEY"})
 
       Repo.query!(
-        "UPDATE workspace_data_keys SET wrapped_key = set_byte(wrapped_key, 19, get_byte(wrapped_key, 19) # 255) WHERE workspace_id = $1",
-        [Ecto.UUID.dump!(workspace.id)]
+        "UPDATE organisation_data_keys SET wrapped_key = set_byte(wrapped_key, 19, get_byte(wrapped_key, 19) # 255) WHERE organisation_id = $1",
+        [Ecto.UUID.dump!(organisation.id)]
       )
 
       log = capture_log(fn -> assert reveal(scope, secret) == {:error, :unavailable} end)
@@ -742,6 +896,34 @@ defmodule Apiary.SecretsTest do
       assert {:ok, _} = Secrets.delete_secret(admin, secret)
     end
 
+    test "every workspace of the organisation reads and changes the same secrets", %{
+      owner: owner,
+      scope: scope
+    } do
+      secret = create!(scope, %{name: "API_KEY"})
+      id = secret.id
+      other = other_workspace(owner)
+
+      assert {:ok, [%Secret{id: ^id}]} = Secrets.list_secrets(other)
+      assert {:ok, %Secret{id: ^id}} = Secrets.get_secret(other, secret.public_id)
+      assert {:ok, %{^id => []}} = Secrets.list_uses(other, [secret])
+
+      assert {:ok, _} = Secrets.set_value(other, secret, nil, "rotated value")
+      assert reveal(scope, secret) == {:ok, "rotated value"}
+
+      # A member reads them from any workspace, and changes none.
+      %{scope: member} = member_fixture(scope)
+      member_elsewhere = workspace_scope(member.user, other.workspace)
+      assert {:ok, [%Secret{id: ^id}]} = Secrets.list_secrets(member_elsewhere)
+      assert Secrets.set_value(member_elsewhere, secret, nil, "x") == {:error, :forbidden}
+
+      # The entries are the organisation's, with no workspace.
+      assert [_created, %Entry{workspace_id: nil, organisation_id: organisation_id}] =
+               trail(secret)
+
+      assert organisation_id == scope.organisation.id
+    end
+
     test "another organisation's secret is out of reach", %{scope: scope} do
       theirs = create!(scope, %{name: "THEIRS"})
       other = sign_up_fixture().scope
@@ -752,7 +934,7 @@ defmodule Apiary.SecretsTest do
       assert Secrets.delete_secret(other, theirs) == {:error, :not_found}
       assert Secrets.set_value(other, theirs, nil, "x") == {:error, :not_found}
 
-      assert Secrets.reveal_for_sealing(other.workspace, theirs.public_id, nil) ==
+      assert Secrets.reveal_for_sealing(other.organisation, theirs.public_id, nil) ==
                {:error, :not_found}
 
       assert reveal(scope, theirs) == {:ok, @value}

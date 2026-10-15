@@ -1706,7 +1706,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     %{current_scope: scope} = socket.assigns
 
     assign(socket,
-      may_write: Access.can?(scope, :"secret.write", scope.workspace),
+      may_write: Access.can?(scope, :"secret.write", scope.organisation),
       may_edit: Access.can?(scope, :"variable.edit", scope.workspace)
     )
   end
