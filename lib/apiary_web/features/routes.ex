@@ -30,7 +30,8 @@ defmodule ApiaryWeb.Features.Routes do
   alias Apiary.Features
 
   # The pipelines of `ApiaryWeb.Routes` that verify a signed request of the server contract.
-  @signed_pipelines [:contract, :contract_events, :contract_registration]
+  # `:contract_adapter` verifies an adapter's (`ApiaryWeb.Contract.AdapterRequest`).
+  @signed_pipelines [:contract, :contract_events, :contract_registration, :contract_adapter]
 
   @impl Plug
   def init(router) when is_atom(router), do: router

@@ -27,6 +27,10 @@ defmodule ApiaryWeb.Contract.RawBody do
   @registration_max_bytes 64 * 1024
   @outcome_max_bytes 4 * 1024
   @enrolment_max_bytes 8 * 1024
+  # An adapter's request: the integration contract's limit, 1 MiB. Its endpoints are not
+  # named in this documentation.
+  @adapter_max_bytes 1024 * 1024
+  @adapter_paths [["v1", "adapter"]]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -42,6 +46,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:attach), do: @registration_max_bytes
   def max_bytes(:outcome), do: @outcome_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
+  def max_bytes(:adapter), do: @adapter_max_bytes
 
   def init(opts), do: opts
 
@@ -61,6 +66,7 @@ defmodule ApiaryWeb.Contract.RawBody do
       @events_path -> :events
       @registration_path -> :registration
       @enrolment_path -> :enrolment
+      path when path in @adapter_paths -> :adapter
       _other -> nil
     end
   end

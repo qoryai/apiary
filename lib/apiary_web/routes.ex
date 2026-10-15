@@ -135,6 +135,15 @@ defmodule ApiaryWeb.Routes do
           content_type: "application/json"
       end
 
+      # A request of an adapter, signed with the adapter's access key, as the integration
+      # contract has it (`ApiaryWeb.Contract.AdapterRequest`), which spends the key's bucket
+      # for adapters. Hidden from the documentation, which names no adapter.
+      @doc false
+      pipeline :contract_adapter do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.AdapterRequest
+      end
+
       # First for the organisation's and the workspace's pages: a segment in the place of
       # a slug that can never be one answers as a path the router does not know.
       pipeline :path_scope do
@@ -195,6 +204,13 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id", RegistrationController, :show
         post "/runs/:run_id/attach", AttachController, :create
         post "/runs/:run_id/outcome", OutcomeController, :create
+      end
+
+      # An adapter's requests: its declaration as it starts.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/adapter", AdapterController, :create
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
