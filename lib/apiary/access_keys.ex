@@ -174,6 +174,27 @@ defmodule Apiary.AccessKeys do
     |> Repo.exists?()
   end
 
+  @doc false
+  # organisation_in_use?/1 says whether the organisation `organisation_id` is in use: there,
+  # not marked for deletion, and not out of use (`c:Apiary.Edition.active_organisations/2`),
+  # the check `place_in_use?/2` makes of a run's organisation. An adapter's key, which has
+  # none, acts for an organisation through its connection while it is.
+  @spec organisation_in_use?(term) :: boolean
+  def organisation_in_use?(organisation_id) do
+    case Ecto.UUID.cast(organisation_id) do
+      {:ok, id} ->
+        from(o in Organisation,
+          as: :organisation,
+          where: o.id == ^id and is_nil(o.deletion_marked_at)
+        )
+        |> Apiary.Edition.active_organisations(:organisation)
+        |> Repo.exists?()
+
+      :error ->
+        false
+    end
+  end
+
   # The keys a request could be verified under, with their workspace and node: not
   # revoked, of a node in use, of a workspace and an organisation neither marked for
   # deletion nor, but for an organisation's gateway, out of use. The key of a gateway of an

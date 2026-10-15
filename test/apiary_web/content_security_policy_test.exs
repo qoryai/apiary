@@ -45,9 +45,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   @skipped %{
     "/dev/storybook/assets/*asset" =>
       "the storybook's static files are served before it; the route raises for the rest",
-    "/integrations/:adapter_id" =>
-      "an adapter is the instance's and names no organisation to lead to: the link raises " <>
-        "not found for anyone signed in (`test/apiary_web/factory_shell_test.exs` holds it)"
+    "/integrations/:connection_id" =>
+      "a redirect or a line of text, never a page: it leads a person of the connection's " <>
+        "organisation to the integration's page, and raises not found for anyone else " <>
+        "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.

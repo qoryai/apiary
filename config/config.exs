@@ -99,14 +99,16 @@ config :logger, :default_formatter,
 # set-up link's code (`Apiary.Setup`); `token` a link's token, which the path of an
 # invitation, a log-in link, an email change, a password link and Instance settings ›
 # Mail's test link carry; `invitation` an invitation's token, which the sign-up page's
-# query carries (`/users/register?invitation=…`).
+# query carries (`/users/register?invitation=…`); `return` what an integration hands back
+# on the link it sends a person to after an install (`/integrations/…?return=…`).
 config :phoenix, :filter_parameters, [
   "password",
   "secret",
   "value",
   "code",
   "token",
-  "invitation"
+  "invitation",
+  "return"
 ]
 
 # Use Jason for JSON parsing in Phoenix

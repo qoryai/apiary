@@ -419,7 +419,7 @@ defmodule Apiary.Nodes do
   # changeset, so the pool keeps its adapter while the rest of the edit saves, and an
   # adapter named is refused, as before. One named must be one of the adapters that may
   # serve the scope's workspace (`Apiary.Adapters.serving_choices/1`). The database
-  # refuses an adapter that is not in use, of the pool's organisation, all the same.
+  # refuses an adapter the pool's organisation is not connected to all the same.
   defp validate_served_by(%Ecto.Changeset{valid?: valid?} = changeset, scope) do
     shown? = Features.visible?(scope, :factory)
 
@@ -467,6 +467,9 @@ defmodule Apiary.Nodes do
       with :ok <- Gateways.lock_for(scope, node),
            asking = Access.reload(scope),
            :ok <- may_change(asking, node),
+           # The connection to the adapter the edit names before the pool's row, in the
+           # lock order of `Apiary.Adapters`.
+           :ok <- Adapters.lock_serving(scope, attrs),
            %Node{} = current <- lock_node(scope, node) || {:error, :not_found},
            changeset =
              current

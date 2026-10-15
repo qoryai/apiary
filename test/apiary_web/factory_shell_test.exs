@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.FactoryShellTest do
   # The shell of the pages of the feature `factory`: their routes, each answered as a path
   # that does not exist where the feature is off and, where it is on, by its page, which
-  # is not found until it is built; the link that names an integration alone; the
+  # is not found until it is built; the link that names a connection to an integration
+  # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; and the Activity filter's
   # words for the work item comments.
   #
@@ -38,7 +39,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   # Every route of the core's router whose page or controller belongs to `factory`, as
   # `{verb, path, module}` with its parameters filled in: the scope's organisation and
-  # workspace, the adapter, a work item's number, and a made-up id for the rest.
+  # workspace, the adapter, a connection's id that names none, a work item's number, and
+  # a made-up id for the rest.
   defp factory_routes(scope, adapter) do
     for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(ApiaryWeb.Router),
         function_exported?(Code.ensure_loaded!(module), :__feature__, 0),
@@ -54,6 +56,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       ":org" -> scope.organisation.slug
       ":workspace" -> scope.workspace.slug
       ":adapter_id" -> adapter.public_id
+      ":connection_id" -> "ac_0000000000000000"
       ":number" -> "1"
       ":" <> _param -> "x1"
       segment -> segment
@@ -106,7 +109,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     assert Enum.sort(for {verb, path, _module} <- routes, do: {verb, path}) ==
              Enum.sort(
                [
-                 {:get, "/integrations/#{adapter.public_id}"},
+                 {:get, "/integrations/ac_0000000000000000"},
                  {:get, "#{org}/settings/integrations"},
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
@@ -156,31 +159,33 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    # An adapter is the instance's: the link names no organisation to lead to, so it is
-    # not found, to every person, whatever it names, and answers the same for each.
-    test "the link to an integration is not found, the same whatever it names",
+    # The link leads only a person of the connection's organisation, so it is not found
+    # to anyone else, whatever it names, and answers the same for each.
+    test "the link to a connection the person does not reach is not found, the same whatever it names",
          %{conn: conn, scope: scope, adapter: adapter} do
-      %{user: member} = member_fixture(scope, :member)
-      member_conn = log_in_user(build_conn(), member)
+      %{adapter: connectable} = connectable_adapter_fixture()
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, connectable, :pending)
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
-      deleted = adapter_fixture()
-      {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), deleted)
 
       for {who, asker, id} <- [
-            {"an owner", conn, adapter.public_id},
-            {"a member", member_conn, adapter.public_id},
-            {"an instance admin", admin_conn, adapter.public_id},
-            {"a deleted one", conn, deleted.public_id},
-            {"none", conn, "na_doesnotexist"},
-            {"not an adapter", conn, scope.workspace.slug}
+            {"another organisation's", conn, theirs.public_id},
+            {"another organisation's, to an instance admin", admin_conn, theirs.public_id},
+            {"none", conn, "ac_0000000000000000"},
+            {"an adapter's id", conn, adapter.public_id},
+            {"not an id", conn, scope.workspace.slug}
           ] do
         assert {404, _body, _headers} = answer(fn -> get(asker, "/integrations/#{id}") end),
+               who
+
+        assert {404, _body, _headers} =
+                 answer(fn -> get(asker, "/integrations/#{id}?return=x.y") end),
                who
       end
     end
 
-    test "the link to an integration sends an anonymous visitor to log in", %{adapter: adapter} do
-      assert build_conn() |> get(~p"/integrations/#{adapter}") |> redirected_to() ==
+    test "the link to a connection sends an anonymous visitor to log in" do
+      assert build_conn() |> get("/integrations/ac_0000000000000000") |> redirected_to() ==
                ~p"/users/log-in"
     end
 

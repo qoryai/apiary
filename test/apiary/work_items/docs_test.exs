@@ -6,7 +6,8 @@ defmodule Apiary.WorkItems.DocsTest do
   use ExUnit.Case, async: true
 
   # The pages of the feature, which answer as a path that does not exist until they are
-  # built, and the link to an integration, are hidden the same way.
+  # built, the link to an integration, and the session's nonces of its installs, are
+  # hidden the same way.
   @pages [
     ApiaryWeb.AdapterLive.Index,
     ApiaryWeb.AdapterLive.Show,
@@ -14,7 +15,8 @@ defmodule Apiary.WorkItems.DocsTest do
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
-    ApiaryWeb.AdapterRedirectController
+    ApiaryWeb.AdapterRedirectController,
+    ApiaryWeb.ConnectSession
   ]
 
   defp work_items_modules do
