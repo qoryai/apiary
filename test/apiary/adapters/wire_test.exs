@@ -62,13 +62,16 @@ defmodule Apiary.Adapters.WireTest do
             "https://tracker-adapter.acme.example/connect",
             "https://tracker-adapter.acme.example",
             "https://tracker-adapter.acme.example:8443/connect?team=acme#start",
-            "https://203.0.113.10/connect"
+            "https://203.0.113.10/connect",
+            "https://203.0.113.10:443/connect",
+            "https://[2001:db8::1]:8443/connect",
+            "https://[2001:db8::1]/connect"
           ] do
         assert Wire.url?(url), url
       end
     end
 
-    test "refuses another scheme, user information, no host, white space, controls and non-ASCII" do
+    test "refuses another scheme, user information, no host, white space, controls, non-ASCII, a backslash and a port not of digits" do
       for url <- [
             "http://tracker-adapter.acme.example/connect",
             "HTTPS://tracker-adapter.acme.example/connect",
@@ -84,6 +87,18 @@ defmodule Apiary.Adapters.WireTest do
             "https://tracker-adapter.acme.example/\u00E9",
             "https://tracker-adapter.acme.example/\u202E",
             "https://tracker-adapter.acme.example/" <> String.duplicate("a", 2048),
+            "https://tracker-adapter.acme.example\\@other.example/connect",
+            "https://tracker-adapter.acme.example\\connect",
+            "https://tracker-adapter.acme.example/con\\nect",
+            "https://tracker-adapter.acme.example/connect?next=\\",
+            "https://tracker-adapter.acme.example:abc/connect",
+            "https://tracker-adapter.acme.example:/connect",
+            "https://tracker-adapter.acme.example:/",
+            "https://tracker-adapter.acme.example:443:443/connect",
+            "https://tracker-adapter.acme.example:123456/connect",
+            "https://[2001:db8::1]:/connect",
+            "https://[2001:db8::1]x/connect",
+            "https://2001:db8::1/connect",
             nil,
             1
           ] do

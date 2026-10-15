@@ -11,8 +11,9 @@ defmodule Apiary.Adapters.Wire do
   # reads a time as the contract writes it: RFC 3339 in UTC with whole seconds,
   # `2026-10-15T12:00:00Z`, and nothing else. `url?/1` holds a URL to the contract's
   # `url` and to what the instance stores and sends a person to: `https://`, at most
-  # 2,048 characters, printable ASCII alone (so no whitespace and no control character),
-  # a host, and no user information.
+  # 2,048 characters, printable ASCII alone (so no whitespace and no control character)
+  # with no backslash, a host, a port of digits when there is a `:` after the host, and no
+  # user information.
   #
   # `declaration/1` reads the body of `POST /v1/adapter` (`adapter.schema.json`): exactly
   # `version` (1), `time`, `connect_url` and `sync`, which holds exactly
@@ -22,6 +23,8 @@ defmodule Apiary.Adapters.Wire do
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
   # Printable ASCII, from `!` to `~`: no space, no control character, nothing past ASCII.
   @printable_ascii ~r/\A[\x21-\x7e]+\z/
+  # The host and the port of an authority with no user information.
+  @authority ~r/\A(?:\[[0-9A-Fa-f:.]+\]|[^:@\[\]]+)(?::[0-9]{1,5})?\z/
   @max_url 2048
   @min_interval 60
   @max_interval 86_400
@@ -96,17 +99,19 @@ defmodule Apiary.Adapters.Wire do
   @spec url?(term) :: boolean
   def url?(value) when is_binary(value) do
     byte_size(value) <= @max_url and String.starts_with?(value, "https://") and
-      Regex.match?(@printable_ascii, value) and authority?(value)
+      Regex.match?(@printable_ascii, value) and not String.contains?(value, "\\") and
+      authority?(value)
   end
 
   def url?(_value), do: false
 
-  # A host, and no user information: the authority, up to the first `/`, `?` or `#`, holds
-  # no `@` and is not empty, and the URL parses with that host.
+  # A host, and no user information: the authority, up to the first `/`, `?` or `#`, is a
+  # host (a name or an address, or an address in brackets) and, after a `:`, a port of one
+  # to five digits; and the URL parses with that host.
   defp authority?("https://" <> rest) do
     authority = rest |> String.split(["/", "?", "#"], parts: 2) |> hd()
 
-    authority != "" and not String.contains?(authority, "@") and
+    Regex.match?(@authority, authority) and
       match?(
         %URI{scheme: "https", host: host, userinfo: nil} when host not in [nil, ""],
         URI.parse("https://" <> rest)
