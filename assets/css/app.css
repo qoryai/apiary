@@ -7,6 +7,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/apiary_web";
+@source "../../lib/apiary/sources";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/apiary/*/";
 
@@ -10315,5 +10316,120 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+}
+
+/* ==== A ticket's text (`SourceComponents.body/1`) ======================================
+   The formatted view is HTML the sanitiser let through (`Apiary.Sources.Body`), with no
+   class but on its marks, so it is styled by tag here. Every line wraps, a long word or
+   URL and a code block's included, so neither a table nor code widens the page. */
+@layer qory {
+  .q-ticket-body {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .q-ticket-switch {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    font-size: 0.8125rem;
+  }
+  .q-ticket-written {
+    white-space: pre-wrap;
+  }
+  .q-ticket-source {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .q-ticket-formatted > * + * {
+    margin-top: 12px;
+  }
+  .q-ticket-formatted :where(h3, h4, h5, h6) {
+    font-weight: 600;
+  }
+  .q-ticket-formatted h3 {
+    font-size: 1.0625rem;
+  }
+  .q-ticket-formatted h4 {
+    font-size: 1rem;
+  }
+  .q-ticket-formatted :where(h5, h6) {
+    font-size: 0.875rem;
+  }
+  .q-ticket-formatted :where(ul, ol) {
+    padding-left: 24px;
+  }
+  .q-ticket-formatted ul {
+    list-style: disc;
+  }
+  .q-ticket-formatted ol {
+    list-style: decimal;
+  }
+  .q-ticket-formatted li:has(> .q-task-mark) {
+    list-style: none;
+  }
+  .q-ticket-formatted li:has(> .q-task-mark) > p:first-of-type {
+    display: inline;
+  }
+  .q-ticket-formatted .q-task-mark {
+    margin-right: 4px;
+    margin-left: -20px;
+  }
+  .q-ticket-formatted a {
+    color: var(--color-accent);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .q-ticket-formatted .q-ticket-ext {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 3px;
+    color: var(--q-faint);
+    vertical-align: -1px;
+  }
+  .q-ticket-formatted code {
+    border-radius: var(--radius-selector);
+    background-color: var(--q-code-bg);
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .q-ticket-formatted pre {
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--q-code-bg);
+    padding: 8px 12px;
+    white-space: pre-wrap;
+  }
+  .q-ticket-formatted pre code {
+    padding: 0;
+    background: none;
+  }
+  .q-ticket-formatted blockquote {
+    border-left: 3px solid var(--q-border-strong);
+    padding-left: 12px;
+    color: var(--q-muted);
+  }
+  .q-ticket-formatted hr {
+    border-color: var(--q-border-subtle);
+  }
+  .q-ticket-formatted table {
+    border-collapse: collapse;
+  }
+  .q-ticket-formatted :where(th, td) {
+    border: 1px solid var(--q-border-subtle);
+    padding: 4px 8px;
+    text-align: left;
+  }
+  .q-ticket-formatted th {
+    font-weight: 600;
+  }
+  .q-ticket-formatted :where(th, td)[align="center"] {
+    text-align: center;
+  }
+  .q-ticket-formatted :where(th, td)[align="right"] {
+    text-align: right;
   }
 }

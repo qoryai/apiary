@@ -2167,6 +2167,7 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
+#: lib/apiary/sources/body.ex
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "(opens in a new tab)"
@@ -4980,6 +4981,12 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
+msgid "Done"
+msgstr ""
+
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket task"
 msgid "Done"
 msgstr ""
 
@@ -8560,6 +8567,12 @@ msgstr ""
 msgid "Not deleted: %{reason}"
 msgstr ""
 
+#: lib/apiary/sources/body.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket task"
+msgid "Not done"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not finished"
@@ -11011,6 +11024,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Show all runs"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show as written"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show formatted"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
