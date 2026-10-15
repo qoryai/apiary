@@ -6,7 +6,9 @@ defmodule Apiary.Adapters.ReturnTokenTest do
   alias Apiary.Runs.RunKey
   alias Apiary.SigningKey
 
-  # The known answer: the contract's fixture seed, bytes 65 to 96, as the adapter's key.
+  # The known answer: the seed of the server key in the contract's fixture keys, bytes 65
+  # to 96, standing in as an adapter's key. The contract's vector, signed under the
+  # access key of those keys, is checked by `Apiary.Adapters.ContractFixturesTest`.
   @seed :binary.list_to_bin(Enum.to_list(65..96))
   @connection "ac_0123456789abcdef"
   @nonce :binary.list_to_bin(Enum.to_list(0..15))
@@ -22,11 +24,11 @@ defmodule Apiary.Adapters.ReturnTokenTest do
                   ".kdXYwr1uileSg5wExwONzGk4aeCe7fHpTcbO17kcDGm8zxtY4-1cNrTGF9UU0gqiU_7JBGfjXQq2g3zR0I9FCQ"
   @known_refused_payload ~s({"version":1,"connection_id":"ac_0123456789abcdef",) <>
                            ~s("nonce":"AAECAwQFBgcICQoLDA0ODw","outcome":"refused",) <>
-                           ~s("reason":"installation_taken","expires_at":"2026-10-15T12:05:00Z"})
+                           ~s("reason":"grant_taken","expires_at":"2026-10-15T12:05:00Z"})
   @known_refused "eyJ2ZXJzaW9uIjoxLCJjb25uZWN0aW9uX2lkIjoiYWNfMDEyMzQ1Njc4OWFiY2RlZiIsIm5vbmNl" <>
                    "IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsIm91dGNvbWUiOiJyZWZ1c2VkIiwicmVhc29uIjoi" <>
-                   "aW5zdGFsbGF0aW9uX3Rha2VuIiwiZXhwaXJlc19hdCI6IjIwMjYtMTAtMTVUMTI6MDU6MDBaIn0" <>
-                   ".MIXHgFQ7y45i4_xiu1FSun-3Uhu8JC8MiCMbcAV025wQUpzw7AQR-D8yts5D5bUxU31uQjxAEXBNmvqIQTEoCQ"
+                   "Z3JhbnRfdGFrZW4iLCJleHBpcmVzX2F0IjoiMjAyNi0xMC0xNVQxMjowNTowMFoifQ" <>
+                   ".Fyds_wMZWaHn2LFz35y8CFnBdnAmCBZ-EwM-KkRJwvQG0Nyf3CqkD7lNDTgB-_B8Wnf79JILNUtlqIltWJtaBQ"
 
   defp pair do
     {public, secret} = :crypto.generate_key(:eddsa, :ed25519)
@@ -76,11 +78,11 @@ defmodule Apiary.Adapters.ReturnTokenTest do
                   expires_at: ~U[2026-10-15 12:05:00Z]
                 }}
 
-      assert {:ok, %{outcome: :refused, reason: :installation_taken}} =
+      assert {:ok, %{outcome: :refused, reason: :grant_taken}} =
                ReturnToken.verify(@known_refused, [public_key])
 
       assert String.length(@known_linked) == 273
-      assert String.length(@known_refused) == 314
+      assert String.length(@known_refused) == 305
     end
   end
 
@@ -111,8 +113,8 @@ defmodule Apiary.Adapters.ReturnTokenTest do
       assert {:ok, %{outcome: :cancelled}} = ReturnToken.verify(token(reversed, secret), [public])
 
       assert ReturnToken.reasons() ==
-               ~w(not_admin installation_taken installation_not_confirmed
-                  installation_suspended permission_missing pass_expired github_unavailable)a
+               ~w(person_not_permitted grant_taken grant_not_confirmed
+                  grant_suspended permission_missing pass_expired source_unavailable)a
     end
 
     test "a return under a key not given, or no key, is refused" do
@@ -181,11 +183,13 @@ defmodule Apiary.Adapters.ReturnTokenTest do
         Jason.encode!(Map.put(map, "outcome", "LINKED")),
         # A reason with an outcome that takes none, a refusal without one, or with one
         # not on the list.
-        Jason.encode!(Map.put(map, "reason", "not_admin")),
+        Jason.encode!(Map.put(map, "reason", "person_not_permitted")),
         Jason.encode!(Map.put(map, "outcome", "refused")),
         Jason.encode!(Map.merge(map, %{"outcome" => "refused", "reason" => "source_gone"})),
         Jason.encode!(Map.merge(map, %{"outcome" => "refused", "reason" => nil})),
-        Jason.encode!(Map.merge(map, %{"outcome" => "refused", "reason" => ["not_admin"]})),
+        Jason.encode!(
+          Map.merge(map, %{"outcome" => "refused", "reason" => ["person_not_permitted"]})
+        ),
         Jason.encode!(Map.put(map, "expires_at", "2026-10-15T12:05:00.5Z")),
         Jason.encode!(Map.put(map, "expires_at", "2026-10-15T12:05:00+00:00")),
         Jason.encode!(Map.put(map, "expires_at", 1_791_634_500)),

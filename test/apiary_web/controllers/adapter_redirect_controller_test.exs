@@ -61,7 +61,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
   end
 
   describe "with a return" do
-    test "linked: in the browser that started it, the connection is activated and the page follows",
+    test "linked: in the browser that started it, the connection is connected and the page says so",
          %{
            conn: conn,
            scope: scope,
@@ -79,9 +79,14 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         |> get(~p"/integrations/#{connection}?return=#{token}")
 
       assert redirected_to(conn) == page(scope, adapter)
-      assert conn.assigns.flash == %{}
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Acme tracker is connected. Its repositories and projects appear here as it sends them."
+
       assert get_session(conn, "connect_passes") == nil
-      assert %Connection{state: :pending, activated_at: %DateTime{}} = reload(connection)
+
+      assert %Connection{state: :connected, connected_at: %DateTime{}, listed_at: nil} =
+               reload(connection)
 
       # Used: the same link again is not found.
       not_found(fn ->
@@ -92,14 +97,40 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       end)
     end
 
-    test "refused and cancelled lead to the page, and change nothing but the nonce", %{
-      conn: conn,
-      scope: scope,
-      adapter: adapter,
-      pair: pair,
-      connection: connection
-    } do
-      for opts <- [[outcome: :refused, reason: :not_admin], [outcome: :cancelled]] do
+    test "refused and cancelled lead to the page, say why, and change nothing but the nonce",
+         %{
+           conn: conn,
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           connection: connection
+         } do
+      told = [
+        {[outcome: :cancelled], :info,
+         "You cancelled the install on Acme tracker. Nothing has changed."},
+        {[outcome: :refused, reason: :person_not_permitted], :error,
+         "Acme tracker doesn't confirm that you administer that account. Ask an admin of the account to install it."},
+        {[outcome: :refused, reason: :grant_taken], :error,
+         "That account is already connected to another organisation."},
+        {[outcome: :refused, reason: :grant_not_confirmed], :error,
+         "Acme tracker couldn't confirm that installation for you. Install it again from Integrations."},
+        {[outcome: :refused, reason: :grant_suspended], :error,
+         "That installation is suspended on Acme tracker. Lift the suspension there, then install it again."},
+        {[outcome: :refused, reason: :permission_missing], :error,
+         "An owner of the account must approve the updated permissions on Acme tracker, then install it again."},
+        {[outcome: :refused, reason: :pass_expired], :error,
+         "The install took too long and expired. Install it again from Integrations."},
+        {[outcome: :refused, reason: :source_unavailable], :error,
+         "Acme tracker didn't answer. Install it again in a moment."}
+      ]
+
+      # Every reason the contract names is said.
+      assert Enum.sort(Apiary.Adapters.ReturnToken.reasons()) ==
+               told
+               |> Enum.flat_map(fn {opts, _, _} -> List.wrap(opts[:reason]) end)
+               |> Enum.sort()
+
+      for {opts, kind, message} <- told do
         {:ok, _url, {_id, nonce} = session} = Adapters.connect(scope, adapter)
         token = return_token(pair.secret, connection.public_id, nonce, opts)
 
@@ -109,9 +140,9 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
           |> get(~p"/integrations/#{connection}?return=#{token}")
 
         assert redirected_to(answered) == page(scope, adapter)
-        assert answered.assigns.flash == %{}
+        assert Phoenix.Flash.get(answered.assigns.flash, kind) == message
 
-        assert %Connection{activated_at: nil, pass_nonce_used_at: %DateTime{}} =
+        assert %Connection{state: :pending, pass_nonce_used_at: %DateTime{}} =
                  reload(connection)
       end
     end
@@ -137,7 +168,9 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
         answered = get(asker, ~p"/integrations/#{connection}?return=#{token}")
         assert answered.status == 403
         assert ["text/plain" <> _] = get_resp_header(answered, "content-type")
-        assert answered.resp_body == "Forbidden"
+
+        assert answered.resp_body ==
+                 "Only the person who started this install can finish it, in the browser they started it in. To install it yourself, start again from Integrations."
       end
 
       assert reload(connection) == connection
@@ -175,6 +208,48 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       end)
 
       assert reload(connection) == connection
+    end
+  end
+
+  describe "the referrer" do
+    test "every answer says no-referrer: the redirect, after a return or not, the 403 and the 404",
+         %{
+           conn: conn,
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           connection: connection,
+           nonce: nonce,
+           session: session
+         } do
+      no_referrer = ["no-referrer"]
+
+      led = get(conn, ~p"/integrations/#{connection}")
+      assert redirected_to(led) == page(scope, adapter)
+      assert get_resp_header(led, "referrer-policy") == no_referrer
+
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      refused = get(conn, ~p"/integrations/#{connection}?return=#{token}")
+      assert refused.status == 403
+      assert get_resp_header(refused, "referrer-policy") == no_referrer
+
+      returned =
+        conn
+        |> ConnectSession.put(session)
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(returned) == page(scope, adapter)
+      assert get_resp_header(returned, "referrer-policy") == no_referrer
+
+      {404, headers, _body} =
+        assert_error_sent(:not_found, fn ->
+          conn
+          |> ConnectSession.put(session)
+          |> get(~p"/integrations/#{connection}?return=#{token}")
+        end)
+
+      assert {"referrer-policy", "no-referrer"} in headers
     end
   end
 

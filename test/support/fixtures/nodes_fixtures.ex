@@ -92,36 +92,31 @@ defmodule Apiary.NodesFixtures do
   @doc """
   The connection of the scope's organisation to `adapter`, connectable
   (`connectable_adapter_fixture/1`), started by the scope's person, an owner or an admin
-  (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:activated`,
-  pending and activated, as a return that says it is linked leaves it; `:connected`, as
-  the adapter's first listing leaves it. Returns `{connection, session_nonce}`, the
-  nonce of its pass in base64url, as the person's session keeps it.
+  (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:connected`,
+  as a return that says it is linked leaves it; `:listed`, connected, and named by the
+  adapter's first listing. Returns `{connection, session_nonce}`, the nonce of its pass
+  in base64url, as the person's session keeps it.
   """
-  def connection_fixture(scope, %Node{} = adapter, state \\ :connected) do
+  def connection_fixture(scope, %Node{} = adapter, state \\ :listed) do
     alias Apiary.Adapters.Connection
 
     {:ok, _url, {public_id, nonce}} = Apiary.Adapters.connect(scope, adapter)
     connection = Repo.get_by!(Connection, public_id: public_id)
     now = DateTime.utc_now()
 
+    connected = [state: :connected, connected_at: now, pass_nonce_used_at: now]
+
     connection =
       case state do
         :pending ->
           connection
 
-        :activated ->
-          connection
-          |> Ecto.Changeset.change(activated_at: now, pass_nonce_used_at: now)
-          |> Repo.update!()
-
         :connected ->
+          connection |> Ecto.Changeset.change(connected) |> Repo.update!()
+
+        :listed ->
           connection
-          |> Ecto.Changeset.change(
-            activated_at: now,
-            pass_nonce_used_at: now,
-            state: :connected,
-            connected_at: now
-          )
+          |> Ecto.Changeset.change([listed_at: now] ++ connected)
           |> Repo.update!()
       end
 

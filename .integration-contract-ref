@@ -1,5 +1,7 @@
 # The commit of qoryai/integrations whose contracts/integration/v1/description.schema.json
-# is vendored under priv/contract/integration/, and whose fixtures are under
-# test/fixtures/integration-contract/: a commit on the integrations' `main` branch, pinned by
-# its id.
-f62ae4612e1875664017904129dc3f28577705e6
+# is vendored under priv/contract/integration/, whose fixtures are under
+# test/fixtures/integration-contract/ (its description fixtures, and under adapter/ the
+# signed connect pass and return with their keys and payloads), and whose
+# connect-return.schema.json is under test/fixtures/integration-contract/schema/: a
+# commit of the integrations, pinned by its id.
+6f182adf71ae4bae78af8de8bbfce1514e647feb

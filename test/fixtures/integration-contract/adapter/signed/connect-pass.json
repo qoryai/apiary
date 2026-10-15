@@ -1,0 +1,6 @@
+{
+  "payload": "{\"version\":1,\"adapter_id\":\"na_f1xt0re000000000\",\"connection_id\":\"ac_f1xt0re000000000\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODw\",\"expires_at\":\"2026-10-15T12:15:00Z\"}",
+  "pass": "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfZjF4dDByZTAwMDAwMDAwMCIsImNvbm5lY3Rpb25faWQiOiJhY19mMXh0MHJlMDAwMDAwMDAwIiwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwiZXhwaXJlc19hdCI6IjIwMjYtMTAtMTVUMTI6MTU6MDBaIn0.m-ouWQFVy8UR80kyh5dN8cecU-S_4jFX1gg3OJb394W7BABLGpzr4Pow1xnBUYr5XqdS5bEjfqHo4HKz2yJJBA",
+  "tampered": "eyJ2ZXJzaW9uIjoxLCJhZGFwdGVyX2lkIjoibmFfZjF4dDByZTAwMDAwMDAwMCIsImNvbm5lY3Rpb25faWQiOiJhY19mMXh0MHJlMDAwMDAwMDAxIiwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwiZXhwaXJlc19hdCI6IjIwMjYtMTAtMTVUMTI6MTU6MDBaIn0.m-ouWQFVy8UR80kyh5dN8cecU-S_4jFX1gg3OJb394W7BABLGpzr4Pow1xnBUYr5XqdS5bEjfqHo4HKz2yJJBA",
+  "note": "pass is the payload of connect-pass/payload.json, compact, signed under the server key of keys.json over qory-connect-ed25519-v1, a line feed and the payload bytes. tampered is the same pass with one payload byte changed after signing, the connection_id's last character 0 becomes 1: its signature does not verify, and an adapter refuses it."
+}

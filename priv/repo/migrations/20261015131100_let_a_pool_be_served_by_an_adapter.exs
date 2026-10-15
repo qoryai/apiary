@@ -10,12 +10,15 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
   # and sixteen lowercase Crockford base32 characters. Its states:
   #
   # - `pending`: made, not connected yet. `pass_nonce` is the nonce of the latest connect
-  #   pass made for it, `pass_nonce_used_at` when a return under that nonce came back, and
-  #   `activated_at` when the person who started it (`created_by_id`) came back from the
-  #   adapter with a return saying it is linked. Once activated it takes no new pass, so
-  #   `pass_nonce`, `created_by_id` and `activated_at` stay as they were;
-  # - `connected`: since `connected_at`, once activated;
-  # - `ended`: since `ended_at`, for `ended_reason`, from either state. Final.
+  #   pass made for it, and `pass_nonce_used_at` when a return under that nonce came back;
+  # - `connected`: since `connected_at`, when the person who started it (`created_by_id`)
+  #   came back from the adapter with a return saying it is linked. It takes no new pass,
+  #   so `pass_nonce`, `created_by_id` and `connected_at` stay as they were. `listed_at` is
+  #   when the adapter's first listing that names it was accepted;
+  # - `ended`: since `ended_at`, for `ended_reason`, from either state. Final. The
+  #   reasons: `adapter_reported`, `organisation_deleted`, `integration_deleted`, and
+  #   `replaced`, when a press of Install ended a connected connection no listing had
+  #   named yet, and made a new one in its place.
   #
   # One connection that has not ended per organisation and adapter (the unique partial
   # index). The trigger `adapter_connections_adapter_check` refuses a connection to a row
@@ -58,8 +61,8 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
       add :state, :text, null: false
       add :pass_nonce, :binary, null: false
       add :pass_nonce_used_at, :utc_datetime_usec
-      add :activated_at, :utc_datetime_usec
       add :connected_at, :utc_datetime_usec
+      add :listed_at, :utc_datetime_usec
       add :ended_at, :utc_datetime_usec
       add :ended_reason, :text
 
@@ -92,17 +95,17 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
                  "(state = 'ended' AND ended_at IS NOT NULL)"
            )
 
-    create constraint(:adapter_connections, :adapter_connections_connected_check,
+    create constraint(:adapter_connections, :adapter_connections_listed_check,
              check:
-               "connected_at IS NULL OR " <>
-                 "(activated_at IS NOT NULL AND connected_at >= activated_at)"
+               "listed_at IS NULL OR " <>
+                 "(connected_at IS NOT NULL AND listed_at >= connected_at)"
            )
 
     create constraint(:adapter_connections, :adapter_connections_ended_reason_check,
              check:
                "(ended_at IS NULL) = (ended_reason IS NULL) AND (ended_reason IS NULL OR " <>
                  "ended_reason IN ('adapter_reported', 'organisation_deleted', " <>
-                 "'integration_deleted'))"
+                 "'integration_deleted', 'replaced'))"
            )
 
     execute """

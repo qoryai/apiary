@@ -1,0 +1,6 @@
+{
+  "payload": "{\"version\":1,\"connection_id\":\"ac_f1xt0re000000000\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODw\",\"outcome\":\"linked\",\"expires_at\":\"2026-10-15T12:05:00Z\"}",
+  "token": "eyJ2ZXJzaW9uIjoxLCJjb25uZWN0aW9uX2lkIjoiYWNfZjF4dDByZTAwMDAwMDAwMCIsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsIm91dGNvbWUiOiJsaW5rZWQiLCJleHBpcmVzX2F0IjoiMjAyNi0xMC0xNVQxMjowNTowMFoifQ.QEcv0IZvnO-lWJGxSoJfIJPDAPmiTA6XUAvL-xeS6ybsoZvBiFZ7dXmh4PGz0dZ_W9Y0FZ-BN4SSa9_RNFcxBA",
+  "tampered": "eyJ2ZXJzaW9uIjoxLCJjb25uZWN0aW9uX2lkIjoiYWNfZjF4dDByZTAwMDAwMDAwMSIsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsIm91dGNvbWUiOiJsaW5rZWQiLCJleHBpcmVzX2F0IjoiMjAyNi0xMC0xNVQxMjowNTowMFoifQ.QEcv0IZvnO-lWJGxSoJfIJPDAPmiTA6XUAvL-xeS6ybsoZvBiFZ7dXmh4PGz0dZ_W9Y0FZ-BN4SSa9_RNFcxBA",
+  "note": "The member token holds the connect return of connect-return/linked.json: the payload, compact, signed under the access key of keys.json, the adapter's key, over qory-connect-return-ed25519-v1, a line feed and the payload bytes. The member tampered holds the same return with one payload byte changed after signing, the connection_id's last character 0 becomes 1: its signature does not verify, and the control plane refuses it."
+}

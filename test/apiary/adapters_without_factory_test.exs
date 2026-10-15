@@ -38,8 +38,8 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
 
     connections = %{
       pending: connection_fixture(scope, connectable.adapter, :pending),
-      activated: elem(connection_fixture(second, connectable.adapter, :activated), 0),
-      connected: elem(connection_fixture(third, connectable.adapter, :connected), 0)
+      connected: elem(connection_fixture(second, connectable.adapter, :connected), 0),
+      listed: elem(connection_fixture(third, connectable.adapter, :listed), 0)
     }
 
     previous = Application.get_env(:apiary, :features)
@@ -145,7 +145,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   test "no connection is started, taken back, found, connected or ended", %{
     scope: scope,
     connectable: %{adapter: adapter, pair: pair, access_key: key},
-    connections: %{pending: {pending, nonce}, activated: activated, connected: connected}
+    connections: %{pending: {pending, nonce}, connected: connected, listed: listed}
   } do
     assert Adapters.connect(scope, adapter) == {:error, :not_found}
 
@@ -160,17 +160,20 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
 
     key_scope = Scope.for_access_key(key)
 
-    for connection <- [activated, connected] do
+    for connection <- [connected, listed] do
       assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
                {:error, :forbidden}
 
       assert Connections.end_connection(key_scope, connection.public_id) == {:error, :forbidden}
     end
 
-    assert %Connection{state: :pending, activated_at: nil, pass_nonce_used_at: nil} =
+    assert %Connection{state: :pending, connected_at: nil, pass_nonce_used_at: nil} =
              Repo.get!(Connection, pending.id)
 
-    assert Repo.get!(Connection, connected.id).state == :connected
+    assert %Connection{state: :connected, listed_at: nil} = Repo.get!(Connection, connected.id)
+
+    assert %Connection{state: :connected, listed_at: %DateTime{}} =
+             Repo.get!(Connection, listed.id)
   end
 
   test "an adapter's key takes none of its actions", %{adapter: adapter, key: key} do
