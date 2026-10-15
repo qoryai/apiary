@@ -40,6 +40,49 @@ defmodule Apiary.OrganisationSecretsRacesTest do
   defp create(scope, name, value),
     do: Secrets.create_organisation_secret(scope, %{name: name, value: value})
 
+  defp dump(id), do: Ecto.UUID.dump!(id)
+
+  # An organisation's secret left without values, and its value as the database held it,
+  # to insert again.
+  defp secret_without_values(scope) do
+    {:ok, secret} = create(scope, "ONE", "one value")
+    value = Repo.one!(from v in Value, where: v.secret_id == ^secret.id)
+    Repo.delete_all(from v in Value, where: v.secret_id == ^secret.id)
+    {secret, value}
+  end
+
+  defp insert_without_workspace(secret, value),
+    do:
+      Repo.query(
+        """
+        INSERT INTO secret_values
+          (id, organisation_id, workspace_id, secret_id, value_id, organisation_data_key_id,
+           nonce, ciphertext, inserted_at, updated_at)
+        VALUES ($1, $2, NULL, $3, NULL, $4, $5, $6, now(), now())
+        """,
+        [
+          dump(Ecto.UUID.generate()),
+          dump(secret.organisation_id),
+          dump(secret.id),
+          dump(value.organisation_data_key_id),
+          value.nonce,
+          value.ciphertext
+        ]
+      )
+
+  defp give_workspace(secret, workspace),
+    do:
+      Repo.query("UPDATE secrets SET workspace_id = $1 WHERE id = $2", [
+        dump(workspace.id),
+        dump(secret.id)
+      ])
+
+  defp values_of(secret),
+    do: Repo.all(from v in Value, where: v.secret_id == ^secret.id, select: v.workspace_id)
+
+  defp workspace_of(secret),
+    do: Repo.one!(from s in "secrets", where: s.id == ^dump(secret.id), select: s.workspace_id)
+
   test "two first secrets: the second waits, and finds the first's key" do
     owner = sign_up()
     admin = member(owner.scope, :admin)
@@ -135,5 +178,46 @@ defmodule Apiary.OrganisationSecretsRacesTest do
 
     assert Secrets.reveal_for_sealing(organisation, secret.public_id, nil) ==
              {:ok, "one value"}
+  end
+
+  # The scope match (`secret_value_scope_matches`) against a change of a secret's level,
+  # each in SQL, as the app makes neither: a value without a workspace locks its secret's
+  # row, so the two take turns, and the second finds what the first committed.
+  test "a value without a workspace, inserted while its secret gets one: refused" do
+    owner = sign_up()
+    {secret, value} = secret_without_values(owner.scope)
+
+    {first, first_pid} = hold(fn -> give_workspace(secret, owner.workspace) end)
+    assert {:ok, %{num_rows: 1}} = first.result
+
+    second = start(fn -> insert_without_workspace(secret, value) end)
+
+    await_blocked(second.backend, first_pid)
+    commit(first)
+
+    assert {:error, %Postgrex.Error{postgres: %{constraint: "secret_value_scope_matches"}}} =
+             Task.await(second.task)
+
+    assert values_of(secret) == []
+    assert workspace_of(secret) == dump(owner.workspace.id)
+  end
+
+  test "a secret given a workspace while a value without one is inserted: refused" do
+    owner = sign_up()
+    {secret, value} = secret_without_values(owner.scope)
+
+    {first, first_pid} = hold(fn -> insert_without_workspace(secret, value) end)
+    assert {:ok, %{num_rows: 1}} = first.result
+
+    second = start(fn -> give_workspace(secret, owner.workspace) end)
+
+    await_blocked(second.backend, first_pid)
+    commit(first)
+
+    assert {:error, %Postgrex.Error{postgres: %{constraint: "secret_value_scope_matches"}}} =
+             Task.await(second.task)
+
+    assert values_of(secret) == [nil]
+    assert workspace_of(secret) == nil
   end
 end
