@@ -56,7 +56,9 @@ defmodule Apiary.Secrets do
   Who may read, change or link them the edition answers
   (`c:Apiary.Edition.organisation_secrets/2`), asked once the membership is read again,
   before anything of them is read or written; whether they may be sealed it answers for
-  `:seal`, asked with a nil scope. Its refusal is handed back as it is.
+  `:seal`, asked with a nil scope. Its refusal is handed back as it is. Without an edition that
+  grants organisation secrets, an organisation's secrets cannot be listed, read, changed
+  or sealed.
 
   Their values are encrypted under the organisation's data key
   (`Apiary.Secrets.OrganisationDataKey`), one per organisation, made with its first

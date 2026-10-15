@@ -76,6 +76,14 @@ defmodule Apiary.Secrets.Secret do
           "is already the name of a secret in this workspace, compared without case"
         )
     )
+    |> unique_constraint(:name,
+      name: :secrets_organisation_name_index,
+      message:
+        dgettext_noop(
+          "errors",
+          "is already the name of a secret in this organisation, compared without case"
+        )
+    )
   end
 
   defp trim(value) when is_binary(value), do: String.trim(value)
