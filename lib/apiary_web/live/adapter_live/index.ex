@@ -1,18 +1,18 @@
 defmodule ApiaryWeb.AdapterLive.Index do
   # Organisation settings › Integrations, `/:org/settings/integrations`: the systems the
   # organisation works with, each an adapter of `Apiary.Adapters`, on the list pattern
-  # (`docs/ui.md`, Lists). A row an integration: its name, a link to its page; how many
-  # repositories or projects it has connected; its state, connected, not connected or no
-  # access key yet, with how many of its repositories or projects have no workspace; and
-  # when it last sent a change (`ApiaryWeb.AdapterComponents.summary/1`). Under the list,
-  # that one integration connects one account.
+  # (`docs/ui.md`, Lists). Each row is an integration: its name, a link to its page; how
+  # many repositories or projects it has connected; its state, connected, not connected
+  # or no access key yet, with how many of its repositories or projects have no
+  # workspace; and when it last sent a change (`ApiaryWeb.AdapterComponents.summary/1`).
+  # Under the list, that one integration connects one account.
   #
   # Owners and admins add one (`adapter.create`, asked of the organisation) on a page of
-  # its own, `/settings/integrations/new` (`docs/ui.md`, A form is a page): its name alone.
-  # Adding one opens its page on its Access key tab, where its adapter's key is enrolled.
-  # Everyone in the organisation reads the list (`adapter.read`); a member sees it without
-  # the button, with the line that says who changes integrations, and the form's path
-  # refuses them. `Apiary.Adapters.create_adapter/2` asks again.
+  # its own, `/settings/integrations/new` (`docs/ui.md`, A form is a page): its name
+  # alone. Adding one opens its page on its Access key tab, where its adapter's key is
+  # enrolled. Everyone in the organisation reads the list (`adapter.read`); a member
+  # sees it without the button, with the line that says who changes integrations, and
+  # the form's path refuses them. `Apiary.Adapters.create_adapter/2` asks again.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -33,7 +33,8 @@ defmodule ApiaryWeb.AdapterLive.Index do
      |> assign(sections: SettingsComponents.sections(scope, :organisation), form: nil)
      |> assign_may()
      |> load()
-     |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
+     |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))
+     |> AdapterComponents.leave_when_hidden(["create"])}
   end
 
   defp assign_may(socket) do

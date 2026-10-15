@@ -7,14 +7,17 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #
   # - **Repositories and projects** (the integration's own path, `:collections`): what it
   #   reports, each assigned to a workspace. It is the frame alone for now.
-  # - **Node pools** (`…/node-pools`, `:pools`): the node pools it serves, each with its
-  #   workspace (`Apiary.Adapters.served_pools/2`); a pool names the integration on its
-  #   settings page, under Served by.
+  # - **Node pools** (`…/node-pools`, `:pools`): the node pools it serves in the
+  #   workspaces the reader reaches, each with its workspace
+  #   (`Apiary.Adapters.served_pools/2`); a pool of a workspace they don't reach is left
+  #   out, its page not theirs. A pool names the integration on its settings page, under
+  #   Served by.
   # - **Access key** (`…/access-key`): `ApiaryWeb.AdapterLive.AccessKey`'s.
-  # - **Settings** (`…/settings`, `:settings`), last and set apart: its name, with Rename,
-  #   a page of its own (`…/settings/rename`, `:rename`); and Remove this integration,
-  #   asked in place (`…/settings/remove`, `:remove`), which revokes its access keys and
-  #   leaves every pool it served served by none (`Apiary.Adapters.delete_adapter/2`).
+  # - **Settings** (`…/settings`, `:settings`), last and set apart: its name, with
+  #   Rename, a page of its own (`…/settings/rename`, `:rename`); and Remove this
+  #   integration, asked in place (`…/settings/remove`, `:remove`), which revokes its
+  #   access keys and leaves every pool it served served by none
+  #   (`Apiary.Adapters.delete_adapter/2`).
   #
   # Everyone in the organisation reads the page (`adapter.read`); owners and admins rename
   # it (`adapter.edit`) and remove it (`adapter.delete`). A member reads Settings without
@@ -30,7 +33,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   alias Apiary.{Access, AccessKeys, Adapters, Organisations}
   alias Apiary.Nodes.Node
-  alias ApiaryWeb.{AdapterComponents, SettingsComponents, UserAuth}
+  alias Apiary.Organisations.Workspace
+  alias ApiaryWeb.{AdapterComponents, NodeComponents, SettingsComponents, UserAuth}
 
   # The acts of the page, and the action each asks.
   @acts %{rename: :"adapter.edit", remove: :"adapter.delete"}
@@ -49,7 +53,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
          |> assign(form: nil, pools: [], confirming: false)
          |> assign_adapter(adapter)
          |> assign_may()
-         |> UserAuth.on_membership_change(&assign_may/1)}
+         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> pools_again()))
+         |> AdapterComponents.leave_when_hidden(~w(rename remove))}
 
       nil ->
         raise ApiaryWeb.NotFound
@@ -97,17 +102,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp apply_action(socket, :collections), do: socket
 
-  defp apply_action(socket, :pools) do
-    %{current_scope: scope, adapter: adapter} = socket.assigns
-    workspaces = Map.new(Organisations.list_workspaces(scope), &{&1.id, &1})
-
-    pools =
-      for pool <- Adapters.served_pools(scope, adapter),
-          workspace = workspaces[pool.workspace_id],
-          do: %{workspace: workspace, pool: pool}
-
-    assign(socket, :pools, pools)
-  end
+  defp apply_action(socket, :pools), do: assign_pools(socket)
 
   defp apply_action(socket, :settings), do: socket
 
@@ -122,6 +117,27 @@ defmodule ApiaryWeb.AdapterLive.Show do
       do: assign(socket, :confirming, true),
       else: refused(socket, :remove)
   end
+
+  # The pools it serves in the workspaces the reader reaches
+  # (`ApiaryWeb.NodeComponents.reached_workspaces/1`), each with its workspace.
+  defp assign_pools(socket) do
+    %{current_scope: scope, adapter: adapter, memberships: places} = socket.assigns
+    reached = NodeComponents.reached_workspaces(places)
+    workspaces = Map.new(Organisations.list_workspaces(scope), &{&1.id, &1})
+
+    pools =
+      for pool <- Adapters.served_pools(scope, adapter),
+          MapSet.member?(reached, pool.workspace_id),
+          %Workspace{} = workspace <- [workspaces[pool.workspace_id]],
+          do: %{workspace: workspace, pool: pool}
+
+    assign(socket, :pools, pools)
+  end
+
+  # The membership changed while Node pools is open: what the reader reaches is read
+  # again.
+  defp pools_again(%{assigns: %{live_action: :pools}} = socket), do: assign_pools(socket)
+  defp pools_again(socket), do: socket
 
   # The window's title: the page's act where it has one, then the integration's name.
   defp titled(%{assigns: %{live_action: :rename, form: %{}} = assigns} = socket) do

@@ -17,10 +17,11 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # path, flash or title carries it, and nothing logs it. A page opened again starts
   # without it.
   #
-  # A code made and not yet used, cancelled or expired is listed under Enrol its key with
-  # the node tab's pieces (`ApiaryWeb.NodeLive.AccessKey.waiting/1`): who got it and when,
-  # until when it works, and Cancel the command…, confirmed in place at a path of its own
-  # (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code).
+  # A code made and not yet used, cancelled or expired is listed under Enrol its key
+  # with the node tab's pieces (`ApiaryWeb.NodeLive.AccessKey.waiting/1`): who got it
+  # and when, until when it works, and Cancel the command…, confirmed in place at a path
+  # of its own (`…/access-key/codes/:code_id/revoke`, the code's row id, never the
+  # code).
   #
   # The keys are the node's tab's cards (`ApiaryWeb.NodeLive.AccessKey.key_card/1`),
   # those in use first, without a Forager file or stored secrets. Owners and admins revoke
@@ -76,7 +77,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
          |> assign(issued: nil, carry: false, key: nil, code: nil, expiry_timer: nil)
          |> assign_may()
          |> load()
-         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
+         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))
+         |> AdapterComponents.leave_when_hidden(~w(create_code revoke revoke_code))}
 
       nil ->
         raise ApiaryWeb.NotFound
@@ -114,8 +116,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   end
 
   # The code shown, once it no longer works: the adapter used it, or it was cancelled or
-  # expired. The page lets go of it and shows the tab, where the key it brought, if any, is
-  # listed.
+  # expired. The page lets go of it and shows the tab, where the key it brought, if any,
+  # is listed.
   defp let_go_of_spent(%{assigns: %{issued: %{row: %{id: id}}}} = socket) do
     if Enum.any?(socket.assigns.codes, &(&1.id == id)),
       do: socket,
@@ -273,8 +275,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     else
       case AccessKeys.create_enrolment_code(scope, adapter, %{}) do
         {:ok, row, code} ->
-          # The code as the adapter sends it, in a function: shown by the code's page once,
-          # and printed by nothing else.
+          # The code as the adapter sends it, in a function: shown by the code's page
+          # once, and printed by nothing else.
           code = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
 
           {:noreply,

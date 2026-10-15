@@ -10,7 +10,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Adapters, Nodes}
+  alias Apiary.{Adapters, Edition, EditionStubs, Nodes}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Repo
   alias ApiaryWeb.AdapterRoutes
@@ -137,6 +137,49 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
                ~s{#pool-#{other.public_id} a[href="/#{scope.organisation.slug}/#{platform.slug}/nodes/#{other.public_id}"]},
                "deploy"
              )
+    end
+  end
+
+  describe "Node pools, to one who reaches some workspaces" do
+    # An edition where a member reaches only the workspaces the test names
+    # (`Apiary.EditionStubs.MembersReachNamed`).
+    setup %{scope: scope, user: user, adapter: adapter} do
+      Edition.put_test_stub(EditionStubs.MembersReachNamed)
+      EditionStubs.MembersReachNamed.put([scope.workspace.id])
+
+      platform = workspace_fixture(scope.organisation, "Platform")
+      platform_scope = workspace_scope(user, platform)
+      deploy = pool_fixture(platform_scope, name: "deploy")
+      {:ok, _deploy} = Nodes.update_node(platform_scope, deploy, %{served_by_id: adapter.id})
+
+      %{platform: platform, deploy: deploy}
+    end
+
+    test "lists only the pools of the workspaces they reach",
+         %{conn: conn, scope: scope, adapter: adapter, deploy: deploy} do
+      build = pool_fixture(scope, name: "build")
+      {:ok, _build} = Nodes.update_node(scope, build, %{served_by_id: adapter.id})
+
+      {:ok, lv, html} = live(member_conn(scope), adapter_path(scope, adapter, "/node-pools"))
+
+      assert has_element?(lv, "#pool-#{build.public_id}", "build")
+      refute has_element?(lv, "#pool-#{deploy.public_id}")
+      refute html =~ "Platform"
+      refute html =~ "deploy"
+
+      # The owner reaches both.
+      {:ok, lv, _html} = live(conn, adapter_path(scope, adapter, "/node-pools"))
+      assert has_element?(lv, "#pool-#{build.public_id}")
+      assert has_element?(lv, "#pool-#{deploy.public_id}", "Platform")
+    end
+
+    test "with none served where they reach, it says it serves none",
+         %{scope: scope, adapter: adapter} do
+      {:ok, lv, html} = live(member_conn(scope), adapter_path(scope, adapter, "/node-pools"))
+
+      assert words(lv, "#adapter-pools-empty") == "It serves no node pool."
+      refute has_element?(lv, "#adapter-pools-table")
+      refute html =~ "deploy"
     end
   end
 

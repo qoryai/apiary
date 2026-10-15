@@ -5,7 +5,10 @@ defmodule ApiaryWeb.AdapterLive.WithoutFactoryTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
+
+  alias Apiary.AccessKeys
 
   alias ApiaryWeb.AdapterRoutes
 
@@ -22,15 +25,17 @@ defmodule ApiaryWeb.AdapterLive.WithoutFactoryTest do
     AdapterRoutes.start!()
     adapter = adapter_fixture(scope, name: "GitHub")
     pool = pool_fixture(scope)
+    %{access_key: key} = enrolled_key_fixture(scope, adapter)
+    {:ok, code, _secret} = AccessKeys.create_enrolment_code(scope, adapter, %{})
     previous = Application.get_env(:apiary, :features)
     {:ok, features} = Apiary.Features.parse(Enum.map_join(@without, ",", &to_string/1))
     Application.put_env(:apiary, :features, features)
     on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
-    %{adapter: adapter, pool: pool}
+    %{adapter: adapter, pool: pool, key: key, code: code}
   end
 
-  test "the integrations' pages are not found",
-       %{conn: conn, scope: scope, adapter: adapter} do
+  test "the integrations' pages and the paths of their acts are not found",
+       %{conn: conn, scope: scope, adapter: adapter, key: key, code: code} do
     list = "/#{scope.organisation.slug}/settings/integrations"
     page = list <> "/#{adapter.public_id}"
 
@@ -40,7 +45,12 @@ defmodule ApiaryWeb.AdapterLive.WithoutFactoryTest do
           page,
           page <> "/node-pools",
           page <> "/access-key",
-          page <> "/settings"
+          page <> "/access-key/new-code",
+          page <> "/access-key/keys/#{key.key_id}/revoke",
+          page <> "/access-key/codes/#{code.id}/revoke",
+          page <> "/settings",
+          page <> "/settings/rename",
+          page <> "/settings/remove"
         ] do
       assert get(conn, path).status == 404
     end

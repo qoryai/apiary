@@ -146,8 +146,8 @@ defmodule ApiaryWeb.NodeLive.Show do
     )
   end
 
-  # The integrations a pool's form chooses the one that serves it from, where the person is
-  # shown the feature they belong to; none for a node, which no integration serves.
+  # The integrations a pool's form chooses the one that serves it from, where the person
+  # is shown the feature they belong to; none for a node, which no integration serves.
   defp assign_serving(%{assigns: %{node: %Node{kind: :pool}}} = socket) do
     scope = socket.assigns.current_scope
 

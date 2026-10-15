@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.AdapterComponents do
-  # The pieces the pages of an organisation's integrations share: Organisation settings ›
-  # Integrations (`ApiaryWeb.AdapterLive.Index`), an integration's page and its tabs
+  # The pieces the pages of an organisation's integrations share: Organisation settings
+  # › Integrations (`ApiaryWeb.AdapterLive.Index`), an integration's page and its tabs
   # (`ApiaryWeb.AdapterLive.Show`, `ApiaryWeb.AdapterLive.AccessKey`). In code an
   # integration is an adapter, a node of kind `:adapter` at its organisation
   # (`Apiary.Adapters`); on the page it is an integration.
@@ -92,6 +92,29 @@ defmodule ApiaryWeb.AdapterComponents do
       remove: base <> "/settings/remove"
     }
   end
+
+  ## Hidden
+
+  @doc false
+  # The pages' gate of their acts, `acts`, the names of the events that change something:
+  # an act asked once the integrations are hidden from the reader changes nothing, and the
+  # page leaves (`ApiaryWeb.UserAuth.reload_scope/1`), as a node's page does
+  # (`ApiaryWeb.NodeComponents.leave_when_hidden/2`).
+  @spec leave_when_hidden(Phoenix.LiveView.Socket.t(), [String.t()]) ::
+          Phoenix.LiveView.Socket.t()
+  def leave_when_hidden(socket, acts) do
+    Phoenix.LiveView.attach_hook(socket, :integrations_hidden, :handle_event, fn
+      event, _params, socket ->
+        if event in acts and hidden_now?(socket.assigns.current_scope),
+          do: {:halt, ApiaryWeb.UserAuth.reload_scope(socket)},
+          else: {:cont, socket}
+    end)
+  end
+
+  # Whether the integrations are hidden from the person of `scope` as the database has it
+  # now (`Apiary.Access.reload/2`).
+  defp hidden_now?(scope),
+    do: not Apiary.Features.visible?(Apiary.Access.reload(scope), :factory)
 
   ## Words
 

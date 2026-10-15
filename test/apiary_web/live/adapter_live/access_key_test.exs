@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
   # An integration's Access key tab (`ApiaryWeb.AdapterLive.AccessKey`): Enrol its key,
   # Make an enrolment code and the server and code it shows once, each with its Copy; a
-  # code still waiting, with its cancelling confirmed in place; the keys, as a node's tab
-  # lists them, without what only Forager's keys have, and Revoke at a node key's path; and
-  # what a member reads and is refused.
+  # code still waiting, with its cancelling confirmed in place; the keys, as a node's
+  # tab lists them, without what only Forager's keys have, and Revoke at a node key's
+  # path; and what a member reads and is refused.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest

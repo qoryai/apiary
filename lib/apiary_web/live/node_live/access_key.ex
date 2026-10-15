@@ -2153,7 +2153,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   attr :adapter, :boolean,
     default: false,
-    doc: "whether the codes are an integration's, whose command runs on its adapter's host"
+    doc: "whether the codes are an integration's, run on its adapter's host"
 
   @doc false
   # The commands got and not yet run, neither cancelled nor expired: who got each and

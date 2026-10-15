@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.NodeLive.ServedByTest do
-  # Served by, on a node pool's settings (`ApiaryWeb.NodeLive.Show`): the integration that
-  # starts the pool's queued runs, chosen from the organisation's, or none; asked of a pool
-  # alone; and a choice that is not the organisation's refused.
+  # Served by, on a node pool's settings (`ApiaryWeb.NodeLive.Show`): the integration
+  # that starts the pool's queued runs, chosen from the organisation's, or none; asked
+  # of a pool alone; and a choice that is none of the organisation's integrations
+  # refused: another organisation's integration, a gateway, or another pool.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -65,5 +66,23 @@ defmodule ApiaryWeb.NodeLive.ServedByTest do
 
     assert html =~ "is invalid"
     assert Repo.reload!(pool).served_by_id == nil
+  end
+
+  test "a node that is no integration is refused: a gateway, or another pool",
+       %{conn: conn, scope: scope} do
+    adapter_fixture(scope)
+    pool = pool_fixture(scope)
+
+    {:ok, lv, _html} = live(conn, settings_path(scope, pool))
+
+    for other <- [gateway_fixture(scope), pool_fixture(scope)] do
+      html =
+        lv
+        |> element("#node-form")
+        |> render_submit(%{"node" => %{"served_by_id" => other.id}})
+
+      assert html =~ "is invalid"
+      assert Repo.reload!(pool).served_by_id == nil
+    end
   end
 end
