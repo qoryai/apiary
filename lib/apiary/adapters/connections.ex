@@ -233,6 +233,8 @@ defmodule Apiary.Adapters.Connections do
   #   6. it has not expired (`Apiary.Adapters.ReturnToken.good_at?/2`);
   #   7. the person is the one who started the connection, in the browser they started it
   #      in: the session's nonce is the return's;
+  #      Adapters rely on this check: an adapter cannot tell whose pass it holds, so a
+  #      return brought through a browser the starter did not use must never connect.
   #   8. they may still connect an adapter to the connection's organisation
   #      (`adapter.connect`).
   #
@@ -295,6 +297,8 @@ defmodule Apiary.Adapters.Connections do
 
   # The person is the one who started the connection, and their session kept the nonce of
   # the return, so they come back in the browser they started in.
+  # Adapters rely on this check: an adapter cannot tell whose pass it holds, so a return
+  # brought through a browser the starter did not use must never connect.
   defp same_person(
          %Scope{user: %User{id: user_id}},
          %Connection{created_by_id: user_id},
