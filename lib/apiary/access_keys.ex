@@ -564,6 +564,15 @@ defmodule Apiary.AccessKeys do
     end
   end
 
+  # Between steps 2 and 3 of `enrol/2`, kept out of the served docs while the feature it
+  # serves is: a request whose `accepts` leaves out the kind of the code's node is
+  # `{:error, {:kind_not_accepted, kind}}`, that kind. It is checked once the key is
+  # proven, so the caller signs it, and before the code's limit, which it does not count:
+  # nothing is enrolled, and the code stays as it was, usable by a request that accepts
+  # its kind.
+  @typedoc false
+  @type refused_kind :: {:kind_not_accepted, Enrolment.kind()}
+
   @doc """
   enrol/2 redeems an enrolment code for the key a machine enrols with it, the Forager
   contract's enrolment (`Apiary.Contract.Enrolment`, `ApiaryWeb.Contract.EnrolmentController`):
@@ -624,6 +633,7 @@ defmodule Apiary.AccessKeys do
           | {:error,
              :unauthorized
              | :key_unproven
+             | refused_kind()
              | {:rate_limited, pos_integer}
              | :key_invalid
              | :key_limit}
@@ -728,6 +738,7 @@ defmodule Apiary.AccessKeys do
          true <- code.created_by_id == found.created_by_id || {:error, :unauthorized},
          {:ok, state} <- code_state(code, node, request, now),
          {:ok, public_key} <- proven(request),
+         :ok <- accepted_kind(request, node),
          :ok <- within_code_limit(code, code_limit) do
       case state do
         :outstanding ->
@@ -858,8 +869,14 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  # The code's own limit, counted only for a request that came this far: a code accepted,
-  # a key proven.
+  # The kind of the code's node, among those the request accepts; refused once the key is
+  # proven, so the refusal is signed, and before the code's limit, which it does not count.
+  defp accepted_kind(request, %Node{kind: kind}) do
+    if Enrolment.accepts?(request, kind), do: :ok, else: {:error, {:kind_not_accepted, kind}}
+  end
+
+  # The code's limit, counted only for a request that came this far: a code accepted, a
+  # key proven, its kind accepted.
   defp within_code_limit(%EnrolmentCode{id: id}, code_limit) do
     case RateLimit.check({:enrolment_code, id}, code_limit) do
       :ok -> :ok

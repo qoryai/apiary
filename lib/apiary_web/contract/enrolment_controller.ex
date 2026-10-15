@@ -90,6 +90,13 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
           |> put_status(409)
           |> json(%{error: "key_invalid"})
 
+        # Between 8 and 9 above, kept out of the served docs while the feature it serves
+        # is: `409` `kind_not_accepted`, signed, naming the kind of the code's node, for a
+        # request whose `accepts` leaves that kind out. Nothing is enrolled, and the code
+        # stays usable.
+        {:error, {:kind_not_accepted, kind}} ->
+          signed(conn, request, 409, Enrolment.kind_refusal_body(kind, apiary_public_key()))
+
         {:error, {:rate_limited, seconds}} ->
           conn
           |> put_resp_header("retry-after", Integer.to_string(seconds))
@@ -189,7 +196,9 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     })
   end
 
-  defp refusal(error), do: Enrolment.refusal_body(error, SigningKey.apiary_public_key())
+  defp refusal(error), do: Enrolment.refusal_body(error, apiary_public_key())
+
+  defp apiary_public_key, do: SigningKey.apiary_public_key()
 
   # Under the enrolment answers' own domain line; line 3 of the answer string is the
   # request's proof, exactly as sent.

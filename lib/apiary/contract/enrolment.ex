@@ -8,7 +8,7 @@ defmodule Apiary.Contract.Enrolment do
   nothing here holds a key. Redeeming the code is `Apiary.AccessKeys.enrol/2`'s; the
   endpoint is `ApiaryWeb.Contract.EnrolmentController`.
 
-  **The request** is a JSON object with exactly the members `version`, `code`, `name`,
+  **The request** is a JSON object with the members `version`, `code`, `name`,
   `public_key`, `timestamp` and `proof`, each once:
 
     * `version` is `1`;
@@ -40,9 +40,9 @@ defmodule Apiary.Contract.Enrolment do
 
   alias Apiary.Contract.{Ed25519, SignedMessage}
 
-  @derive {Inspect, only: [:name, :fingerprints, :timestamp]}
+  @derive {Inspect, only: [:name, :fingerprints, :timestamp, :accepts]}
   @enforce_keys [:code, :code_head, :fingerprints, :name, :public_key, :timestamp, :proof]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [accepts: nil]
 
   @typedoc """
   An enrolment request, read: `code` as sent, `code_head` the `qec_` and 26 characters
@@ -60,7 +60,18 @@ defmodule Apiary.Contract.Enrolment do
           proof: String.t()
         }
 
-  @members ~w(version code name public_key timestamp proof)
+  # The request's optional member `accepts`, the node kinds the machine enrols as: a
+  # non-empty array of kind words, each once, which the proof does not cover. Absent, any
+  # kind is accepted; read, the struct's field `accepts` holds the kinds, or nil. A code
+  # whose node's kind it leaves out is refused, once the proof verifies, with the signed
+  # `409` `kind_not_accepted`, whose `names` is that kind (`kind_refusal_body/2`). Kept
+  # out of the served docs, and out of the type above, while the feature it serves is.
+  @typedoc false
+  @type kind :: :node | :pool | :gateway | :adapter
+
+  @required ~w(version code name public_key timestamp proof)
+  @members @required ++ ~w(accepts)
+  @kinds %{"node" => :node, "pool" => :pool, "gateway" => :gateway, "adapter" => :adapter}
   @code ~r/\Aqec_[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/
@@ -100,7 +111,12 @@ defmodule Apiary.Contract.Enrolment do
 
       true ->
         fields = Map.new(values)
-        wrong = Enum.reject(@members, &valid?(&1, Map.get(fields, &1)))
+
+        wrong =
+          Enum.reject(@members, fn
+            "accepts" -> not Map.has_key?(fields, "accepts") or valid?("accepts", fields["accepts"])
+            member -> valid?(member, Map.get(fields, member))
+          end)
 
         if wrong == [], do: {:ok, request(fields)}, else: {:error, wrong}
     end
@@ -119,6 +135,12 @@ defmodule Apiary.Contract.Enrolment do
   defp valid?("proof", value),
     do: is_binary(value) and value =~ @proof and Ed25519.decode(value, 64) != :error
 
+  # A non-empty array of kind words, each once.
+  defp valid?("accepts", [_ | _] = value),
+    do: Enum.all?(value, &Map.has_key?(@kinds, &1)) and Enum.uniq(value) == value
+
+  defp valid?("accepts", _value), do: false
+
   defp request(fields) do
     [head | fingerprints] = String.split(fields["code"], ".")
 
@@ -129,9 +151,20 @@ defmodule Apiary.Contract.Enrolment do
       name: fields["name"],
       public_key: fields["public_key"],
       timestamp: fields["timestamp"],
-      proof: fields["proof"]
+      proof: fields["proof"],
+      accepts: accepts(fields["accepts"])
     }
   end
+
+  defp accepts(nil), do: nil
+  defp accepts(words), do: Enum.map(words, &Map.fetch!(@kinds, &1))
+
+  # accepts?/2 says whether the request accepts a code whose node is of `kind`: any kind
+  # when it carries no `accepts`, else a kind it names.
+  @doc false
+  @spec accepts?(t, kind) :: boolean
+  def accepts?(%__MODULE__{accepts: nil}, _kind), do: true
+  def accepts?(%__MODULE__{accepts: kinds}, kind), do: kind in kinds
 
   @doc """
   issued_under?/2 says whether the request's code carries exactly `fingerprint`, the
@@ -202,6 +235,22 @@ defmodule Apiary.Contract.Enrolment do
         {"node_kind", Atom.to_string(kind)},
         {"stored_secrets", answer.stored_secrets},
         {"apiary_public_key", keys(answer.apiary_public_key)}
+      ])
+    )
+  end
+
+  # kind_refusal_body/2 is the body of the signed `409` `kind_not_accepted`, in the form
+  # of `refusal_body/2`'s with `names` between: exactly one kind word, `kind`, that of the
+  # code's node.
+  @doc false
+  @spec kind_refusal_body(kind, [map, ...]) :: binary
+  def kind_refusal_body(kind, [_ | _] = apiary_public_key)
+      when kind in [:node, :pool, :gateway, :adapter] do
+    Jason.encode!(
+      Jason.OrderedObject.new([
+        {"error", "kind_not_accepted"},
+        {"names", [Atom.to_string(kind)]},
+        {"apiary_public_key", keys(apiary_public_key)}
       ])
     )
   end

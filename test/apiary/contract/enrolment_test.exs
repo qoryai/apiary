@@ -82,6 +82,68 @@ defmodule Apiary.Contract.EnrolmentTest do
       end
     end
 
+    test "accepts, when present, reads as the kinds it names; absent, as nil" do
+      {body, _public_key} = request()
+      assert {:ok, %Enrolment{accepts: nil}} = Enrolment.decode(Jason.encode!(body))
+
+      for {words, kinds} <- [
+            {["node"], [:node]},
+            {["pool"], [:pool]},
+            {["gateway"], [:gateway]},
+            {["adapter"], [:adapter]},
+            {["gateway", "node", "adapter", "pool"], [:gateway, :node, :adapter, :pool]}
+          ] do
+        {body, public_key} = request(%{"accepts" => words})
+        assert {:ok, request} = Enrolment.decode(Jason.encode!(body))
+        assert request.accepts == kinds
+        # The proof does not cover accepts.
+        assert Enrolment.proof_verifies?(request, public_key)
+      end
+    end
+
+    test "accepts empty, with a repeat, with an unknown kind, or not an array is refused" do
+      for accepts <- [
+            [],
+            ["node", "node"],
+            ["pool", "gateway", "pool"],
+            ["robot"],
+            ["NODE"],
+            ["node", nil],
+            [1],
+            [["node"]],
+            nil,
+            "node",
+            true,
+            %{"node" => true}
+          ] do
+        {body, _public_key} = request(%{"accepts" => accepts})
+        assert Enrolment.decode(Jason.encode!(body)) == {:error, ["accepts"]}, inspect(accepts)
+      end
+
+      {body, _public_key} = request(%{"accepts" => [], "name" => "-x"})
+      assert Enrolment.decode(Jason.encode!(body)) == {:error, ["name", "accepts"]}
+    end
+
+    test "accepts twice is refused, as any member twice" do
+      {body, _public_key} = request(%{"accepts" => ["node"]})
+      json = Jason.encode!(body)
+      twice = String.replace(json, "{", ~s({"accepts":["pool"],), global: false)
+      assert Enrolment.decode(twice) == {:error, ["accepts"]}
+    end
+
+    test "accepts?/2: any kind without accepts, else a kind it names" do
+      {body, _public_key} = request()
+      {:ok, any} = Enrolment.decode(Jason.encode!(body))
+      for kind <- [:node, :pool, :gateway, :adapter], do: assert(Enrolment.accepts?(any, kind))
+
+      {body, _public_key} = request(%{"accepts" => ["pool", "adapter"]})
+      {:ok, some} = Enrolment.decode(Jason.encode!(body))
+      assert Enrolment.accepts?(some, :pool)
+      assert Enrolment.accepts?(some, :adapter)
+      refute Enrolment.accepts?(some, :node)
+      refute Enrolment.accepts?(some, :gateway)
+    end
+
     test "inspect shows neither the code nor the proof" do
       {body, _public_key} = request()
       {:ok, request} = Enrolment.decode(Jason.encode!(body))
@@ -116,6 +178,12 @@ defmodule Apiary.Contract.EnrolmentTest do
 
     assert Enrolment.refusal_body(:key_limit, keys) ==
              ~s({"error":"key_limit","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
+
+    for kind <- [:node, :pool, :gateway, :adapter] do
+      assert Enrolment.kind_refusal_body(kind, keys) ==
+               ~s({"error":"kind_not_accepted","names":["#{kind}"],) <>
+                 ~s("apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
+    end
 
     assert Enrolment.refusal_body(:rate_limited, keys) ==
              ~s({"error":"rate_limited","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
