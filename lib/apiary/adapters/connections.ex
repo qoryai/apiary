@@ -12,8 +12,8 @@ defmodule Apiary.Adapters.Connections do
   # stays pending until the adapter's first listing names it (`mark_connected/1`). An
   # activated connection takes no new pass: its pass, the person who started it and its
   # activation stay as they are. Until that first listing, a new press of Install ends it
-  # (`replaced`) and starts a new connection in its place, which needs a return of its
-  # own pass; once connected, a press is refused.
+  # (`replaced`) and starts a new connection in its place, which needs a return under the
+  # new pass; once connected, a press is refused.
   #
   # At the server contract an adapter's key acts for an organisation only through a
   # connection of its adapter (`connection_for_key/3`), with its scope narrowed to that
@@ -35,7 +35,10 @@ defmodule Apiary.Adapters.Connections do
   #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do,
   #     then clears the pools; a connection it makes takes the adapter's row `FOR SHARE`
   #     again (the trigger `adapter_connections_adapter_check`) and `FOR KEY SHARE` (its
-  #     reference), which it holds already, and nobody else sees it until it commits.
+  #     reference), which it holds already, and nobody else sees it until it commits. It
+  #     also takes the organisation's and the person's rows `FOR KEY SHARE` (its
+  #     references); `Apiary.Access.authorize/3` locks neither, and only a deletion of
+  #     either row, or a change of its key, waits on that lock or keeps it waiting.
   #   * A change of a pool (`Apiary.Nodes.update_node/3`) that names the adapter that
   #     serves it holds that connection `FOR SHARE` (`lock_serving/2`) before it locks the
   #     pool's row; a pool made with one (`Apiary.Nodes.create_node/2`) takes the

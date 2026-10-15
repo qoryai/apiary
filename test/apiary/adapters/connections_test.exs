@@ -317,7 +317,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(connection) == ended
       assert reload(fresh) == fresh
 
-      # The new one is activated by its own return, then listed, and a press is refused.
+      # The new one is activated by the return under its pass, then listed, and a press is
+      # refused.
       assert Connections.complete_return(admin, public_id, linked, second) == {:ok, :linked}
 
       assert {:ok, %Connection{id: id}, _scope} =
@@ -327,12 +328,13 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert {:ok, %Connection{state: :connected}} = Connections.mark_connected(fresh)
       assert Adapters.connect(scope, adapter) == {:error, :connected}
 
-      # Each press left its entry, naming its connection; the end left none.
+      # Each press left its entry, naming its connection; the end left none. In the order
+      # written: the two entries can share a time, and the ids are monotonic.
       assert Repo.all(
                from e in Entry,
                  where: e.subject_id == ^scope.organisation.id,
                  where: like(e.action, "adapter.%"),
-                 order_by: [asc: e.inserted_at],
+                 order_by: [asc: e.id],
                  select: {e.action, e.details["connection_id"]}
              ) == [
                {"adapter.connect", connection.public_id},

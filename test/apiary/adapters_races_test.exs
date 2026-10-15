@@ -2,13 +2,14 @@ defmodule Apiary.AdaptersRacesTest do
   # The connections of an organisation to the instance's adapters, racing: two presses of
   # Install, a return against the adapter's disconnect, a linked return against a press,
   # a press on an activated connection against the first listing, a return, the
-  # disconnect, the deletion and another press, and an adapter's deletion against a pool naming it, before, after and between the
-  # pool's locks. Each side runs on a separate connection, outside the SQL sandbox, so
-  # each commits and each waits on the other's locks as it would in production. Not async:
-  # what these tests commit is visible to every other test while they run, and they delete
-  # it again before they end. The adapters, which are the instance's, are named as the
-  # races' organisations are, and deleted with what names them, and the entries they left
-  # in the trail of the instance's organisation.
+  # disconnect, the deletion and another press, and an adapter's deletion against a pool
+  # naming it, before, after and between the pool's locks. Each side runs on a separate
+  # connection, outside the SQL sandbox, so each commits and each waits on the other's
+  # locks as it would in production. Not async: what these tests commit is visible to
+  # every other test while they run, and they delete it again before they end. The
+  # adapters, which are the instance's, are named as the races' organisations are, and
+  # deleted with what names them, and the entries they left in the trail of the
+  # instance's organisation.
   #
   # The rules under test (`Apiary.Adapters.Connections`): one connection that has not
   # ended per organisation and adapter, the second insert waiting on the first's; a press
