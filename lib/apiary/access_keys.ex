@@ -354,9 +354,10 @@ defmodule Apiary.AccessKeys do
           | {:error, Ecto.Changeset.t() | Access.reason()}
   def create_enrolment_code(%Scope{user: user} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, :"access_key.create_code", node),
+      with asking = Access.reload(scope),
+           :ok <- Access.check(asking, :"access_key.create_code", node),
            {:ok, node} <- lock_node(scope, node.id, node.workspace_id),
-           :ok <- code_for_kind(scope, node) do
+           :ok <- shown_for_kind(asking, node) do
         code = EnrolmentCode.generate(node.kind)
         now = DateTime.utc_now()
 
@@ -394,12 +395,13 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  # An adapter's code is made only where its person is shown the feature adapters belong
-  # to; a code of any other node, whatever the person is shown.
-  defp code_for_kind(scope, %Node{kind: :adapter}),
+  # An adapter's keys and codes are made, revoked and cancelled only where the person is
+  # shown the feature adapters belong to, and are not found elsewhere; those of any other
+  # node, whatever the person is shown.
+  defp shown_for_kind(scope, %Node{kind: :adapter}),
     do: if(Features.visible?(scope, :factory), do: :ok, else: {:error, :not_found})
 
-  defp code_for_kind(_scope, %Node{}), do: :ok
+  defp shown_for_kind(_scope, %Node{}), do: :ok
 
   # An adapter's key never has stored secrets, whatever the code was asked for: the code,
   # and the key it brings, are made with the flag off.
@@ -428,8 +430,10 @@ defmodule Apiary.AccessKeys do
   # The cancel, in one transaction: whether it cancelled the code now, and the code.
   defp cancel_now(scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
     Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, :"access_key.cancel_code", code),
+      with asking = Access.reload(scope),
+           :ok <- Access.check(asking, :"access_key.cancel_code", code),
            {:ok, node} <- lock_node(scope, node_id, code.workspace_id),
+           :ok <- shown_for_kind(asking, node),
            %EnrolmentCode{node_id: ^node_id} = current <-
              Repo.one(
                from c in in_place(EnrolmentCode, scope, code.workspace_id),
@@ -986,23 +990,28 @@ defmodule Apiary.AccessKeys do
   enrolment codes, inside the caller's transaction, which holds the node's row
   `FOR UPDATE` and has asked what it does of `Apiary.Access`: the deletion of the node
   (`Apiary.Nodes.delete_node/2`). Each key's public key becomes a tombstone for `reason`,
-  and each key leaves an entry of `access_key.revoke`. Returns the key ids revoked, or
-  `{:error, changeset}`.
+  and each key leaves an entry of `access_key.revoke`. Returns the key ids revoked,
+  `{:error, changeset}`, or `{:error, :not_found}` for a node the person is not shown,
+  and nothing changes.
   """
   @spec revoke_node_keys(Scope.t(), Node.t(), PublicKey.reason()) ::
-          {:ok, [String.t()]} | {:error, Ecto.Changeset.t()}
+          {:ok, [String.t()]} | {:error, Ecto.Changeset.t() | :not_found}
   def revoke_node_keys(%Scope{} = scope, %Node{id: node_id} = node, reason) do
-    keys =
-      Repo.all(
-        from k in in_place(AccessKey, scope, node.workspace_id),
-          where: k.node_id == ^node_id and is_nil(k.revoked_at),
-          order_by: [asc: k.id],
-          lock: "FOR UPDATE"
-      )
+    # An adapter's keys and codes stay as they are where the person is not shown adapters
+    # (`shown_for_kind/2`).
+    with :ok <- shown_for_kind(scope, node) do
+      keys =
+        Repo.all(
+          from k in in_place(AccessKey, scope, node.workspace_id),
+            where: k.node_id == ^node_id and is_nil(k.revoked_at),
+            order_by: [asc: k.id],
+            lock: "FOR UPDATE"
+        )
 
-    with {:ok, key_ids} <- revoke_each(scope, node, keys, reason),
-         :ok <- cancel_codes(scope, node) do
-      {:ok, key_ids}
+      with {:ok, key_ids} <- revoke_each(scope, node, keys, reason),
+           :ok <- cancel_codes(scope, node) do
+        {:ok, key_ids}
+      end
     end
   end
 
@@ -1128,7 +1137,8 @@ defmodule Apiary.AccessKeys do
     place = access_key.workspace_id
 
     Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, action, access_key),
+      with asking = Access.reload(scope),
+           :ok <- Access.check(asking, action, access_key),
            %AccessKey{node_id: node_id} when is_binary(node_id) <-
              Repo.one(
                from k in in_place(AccessKey, scope, place),
@@ -1136,6 +1146,7 @@ defmodule Apiary.AccessKeys do
                  select: struct(k, [:id, :node_id])
              ) || {:error, :not_found},
            {:ok, node} <- lock_node(scope, node_id, place),
+           :ok <- shown_for_kind(asking, node),
            %AccessKey{} = current <-
              Repo.one(
                from k in in_place(AccessKey, scope, place),
