@@ -23,9 +23,8 @@ defmodule Apiary.SecretLogFilter do
   for the 15 minutes it works: a machine that sends it gets a key on the node. Qory Apiary
   shows it once, inside the command, and logs it nowhere; the filter takes it as it takes
   a secret, should a client send it back in an event's parameters, or a crash print it. A
-  code's prefix is taken in the shape the contract gives every prefix, `qec`, a letter or
-  none, and `_`, in any case, and with its `_` URL-encoded as `%5F` too, so a prefix that
-  is no kind's is taken as well. The fingerprint after it in the command (`.` and the
+  code's prefix is taken broadly, `qec`, a letter or none, and `_`, in any case, and with
+  its `_` URL-encoded as `%5F` too, so a prefix that is no kind's is taken as well. The fingerprint after it in the command (`.` and the
   server key's fingerprint) is public, and stays.
 
   It runs before Elixir's `:logger_translator`, which turns a report (a crash report among
@@ -88,8 +87,8 @@ defmodule Apiary.SecretLogFilter do
   @id :apiary_access_key_secrets
 
   # The prefixes taken: a secret's, `qak_`, and an enrolment code's, every kind's
-  # (`EnrolmentCode.prefixes/0`, an adapter's among them) and the contract's shape of
-  # them all, `qec`, a letter or none, and `_`. A code's `_` may be URL-encoded, `%5F`.
+  # (`EnrolmentCode.prefixes/0`, an adapter's among them) and, more broadly, `qec`, a
+  # letter or none, and `_`. A code's `_` may be URL-encoded, `%5F`.
   @code_stems EnrolmentCode.prefixes()
               |> Map.values()
               |> Enum.map(&String.trim_trailing(&1, "_"))

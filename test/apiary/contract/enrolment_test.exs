@@ -61,20 +61,20 @@ defmodule Apiary.Contract.EnrolmentTest do
       assert Enrolment.decode(twice) == {:error, ["code"]}
     end
 
-    test "a code reads with every kind's prefix, and with any prefix of the contract's shape" do
-      unknown = "qec" <> unknown_letter() <> "_"
-
-      for prefix <- Map.values(EnrolmentCode.prefixes()) ++ [unknown] do
+    test "a code reads with every kind's prefix, each the contract's pattern's" do
+      for prefix <- Map.values(EnrolmentCode.prefixes()) do
+        assert prefix =~ ~r/\Aqec[npgi]_\z/
         {body, _public_key} = request(%{"code" => prefix <> @body <> "." <> @fingerprint})
         assert {:ok, request} = Enrolment.decode(Jason.encode!(body)), prefix
         assert request.code_head == prefix <> @body
       end
     end
 
-    test "a code outside the contract's shape is refused, for its code" do
+    test "a code outside the contract's pattern is refused, for its code" do
       prefix = EnrolmentCode.prefix(:node)
 
       for code <- [
+            "qec" <> unknown_letter() <> "_" <> @body,
             String.upcase(prefix) <> @body,
             "qecnn_" <> @body,
             "qec1_" <> @body,

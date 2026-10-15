@@ -336,30 +336,6 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert enrol(body(code, pair)).status == 201
     end
 
-    test "a code with a prefix that is no kind's, with a row whose hash is that code's and without",
-         %{row: row, code: code, pair: pair} do
-      [head, fingerprint] = String.split(code, ".")
-      body_chars = String.replace_prefix(head, EnrolmentCode.prefix(:node), "")
-      kinds = EnrolmentCode.prefixes() |> Map.values()
-
-      # The contract's shape of a prefix, `qec`, a letter and `_`, with a letter no kind's
-      # prefix has.
-      unknown =
-        Enum.find_value(?a..?z, fn letter ->
-          prefix = "qec" <> <<letter>> <> "_"
-          if prefix not in kinds, do: prefix
-        end) <> body_chars
-
-      assert_unauthorized(enrol(body(unknown <> "." <> fingerprint, pair)))
-
-      set_hash(row, unknown)
-      assert_unauthorized(enrol(body(unknown <> "." <> fingerprint, pair)))
-      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
-
-      set_hash(row, head)
-      assert enrol(body(code, pair)).status == 201
-    end
-
     @tag :capture_log
     test "a code row changed outside the application", %{row: row, code: code, pair: pair} do
       Repo.update_all(from(c in EnrolmentCode, where: c.id == ^row.id),

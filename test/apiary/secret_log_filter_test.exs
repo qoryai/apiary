@@ -145,7 +145,7 @@ defmodule Apiary.SecretLogFilterTest do
       end
     end
 
-    test "every kind's prefix is taken, and one of the contract's shape that is no kind's" do
+    test "every kind's prefix is taken, and one of the broader shape that is no kind's" do
       kinds = EnrolmentCode.prefixes()
       assert Enum.sort(Enum.map(codes(), & &1.kind)) == Enum.sort(Map.keys(kinds))
 

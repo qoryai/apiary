@@ -12,10 +12,10 @@ defmodule Apiary.Contract.Enrolment do
   `public_key`, `timestamp` and `proof`, each once:
 
     * `version` is `1`;
-    * `code` is `qec`, a lower-case letter or none, and `_`, then 26 upper-case Crockford
-      base32 characters, then `.` and the fingerprint of the server's key, and during a
-      rotation of that key a second `.` and the next key's fingerprint; it is what the
-      proof signs, so it is read as sent and never normalised;
+    * `code` is the prefix of a kind of node (`Apiary.AccessKeys.EnrolmentCode.prefix/1`),
+      then 26 upper-case Crockford base32 characters, then `.` and the fingerprint of the
+      server's key, and during a rotation of that key a second `.` and the next key's
+      fingerprint; it is what the proof signs, so it is read as sent and never normalised;
     * `name` is the access key's name for people, `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
     * `public_key` is the new key's raw 32 bytes in base64url without padding, decoded
       strictly (`Apiary.Contract.Ed25519.decode/2`);
@@ -67,10 +67,9 @@ defmodule Apiary.Contract.Enrolment do
   @typep node_kind :: :node | :pool | :gateway | :adapter
 
   @members ~w(version code name public_key timestamp proof)
-  # The contract's shape of a code: every kind's prefix
-  # (`Apiary.AccessKeys.EnrolmentCode.prefix/1`) fits it, and a prefix that is no kind's is
-  # read here and refused at the lookup as an unknown code is (`Apiary.AccessKeys.enrol/2`).
-  @code ~r/\Aqec[a-z]?_[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
+  # A code after its prefix, one of every kind's (`EnrolmentCode.prefixes/0`): together
+  # the contract's pattern, `^qec[npgi]_` and this.
+  @code_rest ~r/\A[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/
   @proof ~r/\A[A-Za-z0-9_-]{85}[AQgw]\z/
@@ -116,7 +115,7 @@ defmodule Apiary.Contract.Enrolment do
   end
 
   defp valid?("version", value), do: value === 1
-  defp valid?("code", value), do: is_binary(value) and value =~ @code
+  defp valid?("code", value), do: is_binary(value) and code?(value)
   defp valid?("name", value), do: is_binary(value) and value =~ @name
 
   defp valid?("public_key", value),
@@ -127,6 +126,15 @@ defmodule Apiary.Contract.Enrolment do
 
   defp valid?("proof", value),
     do: is_binary(value) and value =~ @proof and Ed25519.decode(value, 64) != :error
+
+  # A kind's prefix, as written, then the rest of a code.
+  defp code?(value) do
+    Enum.any?(Map.values(EnrolmentCode.prefixes()), fn prefix ->
+      String.starts_with?(value, prefix) and
+        binary_part(value, byte_size(prefix), byte_size(value) - byte_size(prefix)) =~
+          @code_rest
+    end)
+  end
 
   defp request(fields) do
     [head | fingerprints] = String.split(fields["code"], ".")

@@ -27,9 +27,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     6. `400` `invalid_request`, unsigned, for a body the schema refuses, naming the
        members at fault;
     7. `401` `{"error":"unauthorized"}`, unsigned, when the code is not accepted: used,
-       expired, cancelled, never made, carrying another fingerprint than the instance's
-       key's, or made by someone who is no longer an owner or an admin of its workspace;
-       or when the timestamp is more than 300 seconds from the server's clock;
+       expired, cancelled, never made, made for another kind of node than its prefix
+       names, carrying another fingerprint than the instance's key's, or made by someone
+       who is no longer an owner or an admin of its workspace; or when the timestamp is
+       more than 300 seconds from the server's clock;
     8. `409` `{"error":"key_invalid"}`, **unsigned**, for a public key the key checks
        refuse (`Apiary.Contract.Ed25519.decode_public_key/1`), checked first, or a proof
        that does not verify under it: nothing is signed for a proof no checked key made;

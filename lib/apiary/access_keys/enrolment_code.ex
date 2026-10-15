@@ -105,7 +105,8 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   @doc """
   normalise/1 reads a code as a person may type it: the prefix of a kind of node
   (`prefix/1`) in either case, then the 26 characters in either case and in groups, `I`
-  and `L` read as `1`, `O` as `0`, hyphens dropped. `{:ok, code}` in the form
+  and `L` read as `1`, `O` as `0`, hyphens dropped; the case of ASCII letters alone is
+  changed, so a character outside ASCII is refused. `{:ok, code}` in the form
   `generate/1` makes, the prefix in lower case, or `:error` for anything else, `U`
   included.
 
@@ -116,7 +117,7 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   @spec normalise(term) :: {:ok, String.t()} | :error
   def normalise(value) when is_binary(value) do
     with {prefix, rest} <- split_prefix(value),
-         body = rest |> String.replace("-", "") |> String.upcase(),
+         body = rest |> String.replace("-", "") |> String.upcase(:ascii),
          body = body |> String.replace(["I", "L"], "1") |> String.replace("O", "0"),
          26 <- byte_size(body),
          true <- body |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet)) do
@@ -135,7 +136,7 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
 
       case value do
         <<typed::binary-size(^size), rest::binary>> ->
-          if String.downcase(typed) == prefix, do: {prefix, rest}
+          if String.downcase(typed, :ascii) == prefix, do: {prefix, rest}
 
         _shorter ->
           nil
