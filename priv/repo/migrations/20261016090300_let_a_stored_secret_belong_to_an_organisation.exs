@@ -19,7 +19,9 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
   #   A value's secret is of its organisation (`MATCH FULL`) and of its workspace, when it
   #   has one; a value has exactly one data key, its workspace's or its organisation's
   #   (`secret_values_one_key`). `secret_value_scope_matches` refuses a value without a
-  #   workspace whose secret has one, and a secret's change of level while it has values.
+  #   workspace whose secret has one, and `secret_scope_matches_values` a secret's change
+  #   of level while it has values, where the change runs at READ COMMITTED, the app's
+  #   level (see the comment on the trigger).
   #
   # The checks and keys on the rows already there are added NOT VALID, so adding them scans
   # no row under a lock that blocks writes; the next migration validates them.
@@ -123,8 +125,8 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
     # because `secrets (id, workspace_id)` is a unique index, not partial, so a change of
     # `workspace_id` is a change of a key and takes the row FOR UPDATE. The app never
     # changes a secret's level; a change run directly under REPEATABLE READ or
-    # SERIALIZABLE reads its snapshot and is not refused by these triggers, though such a
-    # value decrypts nowhere.
+    # SERIALIZABLE reads its snapshot, and these triggers do not refuse it over a value
+    # committed after that snapshot was taken, though such a value decrypts nowhere.
     execute """
     CREATE FUNCTION secret_value_scope_matches() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
@@ -150,7 +152,7 @@ defmodule Apiary.Repo.Migrations.LetAStoredSecretBelongToAnOrganisation do
     """
 
     # A secret's level is the level of its values: a secret with values keeps its workspace,
-    # or keeps none.
+    # or keeps none, at READ COMMITTED; see above.
     execute """
     CREATE FUNCTION secret_scope_matches_values() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN

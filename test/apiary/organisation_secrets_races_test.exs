@@ -184,8 +184,8 @@ defmodule Apiary.OrganisationSecretsRacesTest do
   # each in SQL at READ COMMITTED, the app's level; the app never changes a secret's
   # level. A value without a workspace locks its secret's row, so the two take turns, and
   # the second finds what the first committed. A change run directly under REPEATABLE READ
-  # or SERIALIZABLE reads its snapshot and is not refused by these triggers, though such a
-  # value decrypts nowhere.
+  # or SERIALIZABLE reads its snapshot, and these triggers do not refuse it over a value
+  # committed after that snapshot was taken, though such a value decrypts nowhere.
   test "a value without a workspace, inserted while its secret gets one: refused" do
     owner = sign_up()
     {secret, value} = secret_without_values(owner.scope)
