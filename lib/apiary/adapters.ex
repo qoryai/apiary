@@ -18,8 +18,8 @@ defmodule Apiary.Adapters do
   # them (`Apiary.Adapters.Connections`); an instance admin reads them where the feature
   # is on; anyone else reads none. An owner or an admin of an organisation connects one
   # (`adapter.connect`, `connect/2`), which makes the organisation's connection to it
-  # (`Apiary.Adapters.Connection`, `ac_…`), pending until the adapter reports it, and which
-  # the organisation's trail records.
+  # (`Apiary.Adapters.Connection`, `ac_…`), pending until a linked return connects it, and
+  # which the organisation's trail records.
   #
   # A node pool may name the adapter that serves it (`served_by_id`, `Apiary.Nodes`): one of
   # `serving_choices/1`, an adapter the pool's organisation is connected to. The database

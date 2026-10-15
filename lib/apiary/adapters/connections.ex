@@ -357,10 +357,11 @@ defmodule Apiary.Adapters.Connections do
   # (`Apiary.Accounts.Scope.for_connection/2`), in this order:
   #
   #   * `{:error, :forbidden}` for a scope of no adapter's key, an id that names no
-  #     connection, a connection of another adapter, one that was never connected
-  #     (`complete_return/4`), pending or ended so, where the feature is off, and for an
+  #     connection, a connection of another adapter, one pending (no linked return has
+  #     connected it yet, `complete_return/4`), where the feature is off, and for an
   #     action the key's role does not take on its adapter: one answer for all;
-  #   * `{:error, :ended}` for one that ended;
+  #   * `{:error, :ended}` for one that ended, connected before or not, and for nothing
+  #     else: no narrowed scope is made for it, and its organisation is not asked about;
   #   * `{:error, :suspended}` while its organisation is out of use: marked for deletion
   #     or held out of use (`Apiary.AccessKeys.organisation_in_use?/1`), or refused by
   #     the edition, which `Apiary.Access.check/3` asks on the narrowed scope of `action`
@@ -380,8 +381,9 @@ defmodule Apiary.Adapters.Connections do
   end
 
   # The connection `public_id` of the adapter whose key `key_scope` carries, with its
-  # organisation: for `:find`, one that was connected (connected now, or ended since); for
-  # `:end`, one in any state, held `FOR UPDATE`. `{:error, :forbidden}` for anything else.
+  # organisation: for `:find`, one that is not pending (connected, or ended from either
+  # state, which `connection_for_key/3` answers `{:error, :ended}`); for `:end`, one in
+  # any state, held `FOR UPDATE`. `{:error, :forbidden}` for anything else.
   defp key_connection(
          %Scope{
            access_key: %AccessKey{
@@ -413,7 +415,7 @@ defmodule Apiary.Adapters.Connections do
         preload: :organisation
 
     case mode do
-      :find -> where(query, [c], not is_nil(c.connected_at))
+      :find -> where(query, [c], c.state != :pending)
       :end -> lock(query, "FOR UPDATE")
     end
   end

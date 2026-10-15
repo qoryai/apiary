@@ -6,7 +6,9 @@ defmodule Apiary.Adapters.ReturnTokenTest do
   alias Apiary.Runs.RunKey
   alias Apiary.SigningKey
 
-  # The known answer: the contract's fixture seed, bytes 65 to 96, as the adapter's key.
+  # The known answer: the seed of the server key in the contract's fixture keys, bytes 65
+  # to 96, standing in as an adapter's key. The contract's vector, signed under the
+  # access key of those keys, is checked by `Apiary.Adapters.ContractFixturesTest`.
   @seed :binary.list_to_bin(Enum.to_list(65..96))
   @connection "ac_0123456789abcdef"
   @nonce :binary.list_to_bin(Enum.to_list(0..15))

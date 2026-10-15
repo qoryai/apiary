@@ -1,7 +1,8 @@
 defmodule Apiary.Adapters.ConnectionsTest do
-  # An organisation's connections to the instance's adapters: starting one, the return the
-  # person brings back, what the adapter's key finds through one, marking it connected,
-  # ending it, the pools it lets an adapter serve, and the table that keeps them. It runs
+  # An organisation's connections to the instance's adapters: starting one, connecting it by
+  # the return the person brings back, what the adapter's key finds through one, recording
+  # its first listing, ending it, the pools it lets an adapter serve, and the table that
+  # keeps them. It runs
   # where the feature adapters belong to is on; `Apiary.AdaptersWithoutFactoryTest` turns
   # it off.
   use Apiary.DataCase, async: true
@@ -411,9 +412,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(connection) == ended
       assert Connections.end_connection(key_scope, connection.public_id) == {:error, :ended}
 
-      # Never connected, so the key finds nothing to act through.
+      # Ended, though never connected: the key gets 409 ended, and nothing to act through.
       assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
-               {:error, :forbidden}
+               {:error, :ended}
 
       # A press after it starts a new connection.
       assert {:ok, _url, {public_id, _nonce}} = Adapters.connect(scope, adapter)
@@ -683,13 +684,47 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.connection_for_key(key_scope, connected.public_id, :"adapter.read") ==
                {:error, :forbidden}
 
-      # Ended and never connected: 403 comes first.
+      # Ended and never connected: 409 ended, as for one ended after it connected.
       Repo.update_all(from(c in Connection, where: c.id == ^pending.id),
         set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
       )
 
       assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
+               {:error, :ended}
+    end
+
+    test "409 ended for a pending one the organisation's purge ended; 403 for another adapter's key",
+         %{adapter: adapter, key_scope: key_scope} do
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, adapter, :pending)
+      other = connectable_adapter_fixture()
+
+      assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
                {:error, :forbidden}
+
+      # The purge's first step (`Apiary.Deletion.purge_organisation/1`).
+      assert Connections.end_for_organisation(second.organisation.id) == 1
+
+      assert %Connection{state: :ended, ended_reason: :organisation_deleted, connected_at: nil} =
+               ended = reload(pending)
+
+      assert Connections.connection_for_key(key_scope, pending.public_id, :"source_item.post") ==
+               {:error, :ended}
+
+      assert Connections.end_connection(key_scope, pending.public_id) == {:error, :ended}
+      assert Connections.mark_listed(pending) == {:error, :ended}
+
+      # Another adapter's key, and an action the key does not take, get 403 first.
+      assert Connections.connection_for_key(
+               key_scope(other.access_key),
+               pending.public_id,
+               :"source_item.post"
+             ) == {:error, :forbidden}
+
+      assert Connections.connection_for_key(key_scope, pending.public_id, :"adapter.read") ==
+               {:error, :forbidden}
+
+      assert reload(pending) == ended
     end
 
     test "409 ended, then 409 suspended, in that order", %{
