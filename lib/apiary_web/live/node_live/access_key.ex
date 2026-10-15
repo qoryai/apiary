@@ -2151,16 +2151,24 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :paths, :map, required: true
   attr :class, :any, default: nil
 
+  attr :adapter, :boolean,
+    default: false,
+    doc: "whether the codes are an integration's, whose command runs on its adapter's host"
+
+  @doc false
   # The commands got and not yet run, neither cancelled nor expired: who got each and
-  # when, until when it works, and Cancel the command…, confirmed in place.
-  defp waiting(assigns) do
+  # when, until when it works, and Cancel the command…, confirmed in place. An
+  # integration's Access key tab (`ApiaryWeb.AdapterLive.AccessKey`) lists its codes with
+  # it too (`adapter`), without the line that names where the command runs: the
+  # integration is not the host it runs on.
+  def waiting(assigns) do
     ~H"""
     <div
       :for={code <- @codes}
       id={"code-#{code.id}"}
       class={["grid gap-2 rounded-field border border-line bg-base-200 p-3 text-[13px]/5", @class]}
     >
-      <.listening>
+      <.listening :if={!@adapter}>
         {gettext("A command is waiting to be run on %{name}.", name: @node.name)}
       </.listening>
       <p class="text-muted">
@@ -2378,25 +2386,23 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :hosts, :any, required: true
   attr :confirming, :any, required: true, doc: "the act asked of this key, or false"
 
-  attr :forager_file, :boolean,
-    default: true,
-    doc: "whether an active key's card leads to its Forager file"
-
-  attr :stored_secrets, :boolean,
-    default: true,
-    doc: "whether the card says if the key may fetch stored secrets"
+  attr :adapter, :boolean,
+    default: false,
+    doc: "whether the key is an integration's adapter's, which Forager never holds"
 
   @doc false
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts. An integration's Access key tab
-  # (`ApiaryWeb.AdapterLive.AccessKey`) lists its keys with it too, without a Forager file
-  # or stored secrets, which an adapter's key has neither of.
+  # (`ApiaryWeb.AdapterLive.AccessKey`) lists its keys with it too (`adapter`), without
+  # what only Forager's keys have: the Forager file, the Forager version it was last used
+  # with, stored secrets, and where its secret is, which is on the adapter's host, not on
+  # the integration the card names.
   def key_card(assigns) do
     %{key: key, may: may} = assigns
 
     assigns =
       assign(assigns,
-        secrets: assigns.stored_secrets and Apiary.Features.visible?(assigns.scope, :secrets),
+        secrets: !assigns.adapter and Apiary.Features.visible?(assigns.scope, :secrets),
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2449,15 +2455,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
         <dd id={"#{@dom}-added"}>{added_words(@key)}</dd>
-        <dt class="text-faint">{gettext("Secret")}</dt>
-        <dd id={"#{@dom}-secret"}>{secret_words(@key, @node)}</dd>
+        <dt :if={!@adapter} class="text-faint">{gettext("Secret")}</dt>
+        <dd :if={!@adapter} id={"#{@dom}-secret"}>{secret_words(@key, @node)}</dd>
         <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
         <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
         <dt class="text-faint">{gettext("Last used")}</dt>
         <dd id={"#{@dom}-used"}>
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
-            <span :if={@key.last_forager_version} class="text-muted">
+            <span :if={@key.last_forager_version && !@adapter} class="text-muted">
               {gettext("Forager %{version}", version: @key.last_forager_version)}
             </span>
           <% else %>
@@ -2523,11 +2529,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           </.inline_confirm>
         <% _none -> %>
           <p
-            :if={@state == :active and (@forager_file or :revoke in @acts)}
+            :if={@state == :active and (!@adapter or :revoke in @acts)}
             class="flex flex-wrap gap-3"
           >
             <.button
-              :if={@forager_file}
+              :if={!@adapter}
               id={"#{@dom}-forager-file"}
               variant="link"
               patch={key_path(@paths, @key, "forager-file")}

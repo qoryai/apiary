@@ -8904,6 +8904,7 @@ msgstr ""
 msgid "Nothing to save: the rule is as it was."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -10566,7 +10567,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for 15 minutes."
+msgid "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for %{minutes} minutes."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -11692,11 +11693,13 @@ msgstr ""
 msgid "That account cannot log in at the moment, so it gets no password link."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command no longer works: it was run, cancelled or expired."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command was run already."
@@ -11869,6 +11872,7 @@ msgstr ""
 msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command is cancelled. It no longer works."

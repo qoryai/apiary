@@ -17,6 +17,11 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # path, flash or title carries it, and nothing logs it. A page opened again starts
   # without it.
   #
+  # A code made and not yet used, cancelled or expired is listed under Enrol its key with
+  # the node tab's pieces (`ApiaryWeb.NodeLive.AccessKey.waiting/1`): who got it and when,
+  # until when it works, and Cancel the command…, confirmed in place at a path of its own
+  # (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code).
+  #
   # The keys are the node's tab's cards (`ApiaryWeb.NodeLive.AccessKey.key_card/1`),
   # those in use first, without a Forager file or stored secrets. Owners and admins revoke
   # an active key, confirmed in place on its card, at a path of its own
@@ -34,19 +39,23 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   on_mount {ApiaryWeb.Access, :"adapter.read"}
 
   alias Apiary.{Access, AccessKeys, Adapters, Repo}
-  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.Enrolment
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{AdapterComponents, NodeLive, SettingsComponents, UserAuth}
 
   # The page's acts, and the action of `Apiary.Access` each one asks.
-  @acts [new_code: :"access_key.create_code", revoke: :"access_key.revoke"]
+  @acts [
+    new_code: :"access_key.create_code",
+    revoke: :"access_key.revoke",
+    revoke_code: :"access_key.cancel_code"
+  ]
 
   # The events that change something, and the act each is.
-  @write_events %{"create_code" => :new_code, "revoke" => :revoke}
+  @write_events %{"create_code" => :new_code, "revoke" => :revoke, "revoke_code" => :revoke_code}
 
   # The paths that show the tab, where Make an enrolment code is offered.
-  @tab_actions [:index, :revoke]
+  @tab_actions [:index, :revoke, :revoke_code]
 
   @impl true
   def mount(%{"adapter_id" => public_id}, _session, socket) do
@@ -64,7 +73,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
            paths: AdapterComponents.paths(scope, adapter),
            server: ApiaryWeb.Endpoint.url()
          )
-         |> assign(issued: nil, carry: false, key: nil, expiry_timer: nil)
+         |> assign(issued: nil, carry: false, key: nil, code: nil, expiry_timer: nil)
          |> assign_may()
          |> load()
          |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
@@ -95,7 +104,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     socket
     |> assign(
       keys: keys,
-      codes: AccessKeys.list_enrolment_codes(scope, adapter),
+      codes: scope |> AccessKeys.list_enrolment_codes(adapter) |> Repo.preload(:created_by),
       intact: Map.new(keys, &{&1.id, AccessKey.verify_integrity(&1) == :ok}),
       summary: AdapterComponents.summary(adapter),
       now: DateTime.utc_now()
@@ -147,13 +156,13 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
   def handle_params(params, _uri, socket) do
     # What the reader leaves, for the focus to go back to the button that opened it.
-    left = socket.assigns.key
+    left = socket.assigns.key || socket.assigns.code
     action = socket.assigns.live_action
 
     # Every path starts without a code shown and without a confirmation open, but the code
     # just made, carried once to its page: a code shown is gone once the reader leaves it.
     issued = if socket.assigns.carry and action == :new_code, do: socket.assigns.issued
-    socket = assign(socket, issued: issued, carry: false, key: nil)
+    socket = assign(socket, issued: issued, carry: false, key: nil, code: nil)
 
     {:noreply,
      socket
@@ -195,9 +204,23 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     end
   end
 
-  # A code's cancelling: the tab lists no code waiting, so there is nothing to confirm.
-  defp apply_action(socket, :revoke_code, _params),
-    do: push_patch(socket, to: socket.assigns.paths.access_key)
+  # A waiting code's cancelling, confirmed in place in its row, as a node's code's is.
+  defp apply_action(socket, :revoke_code, %{"code_id" => code_id}) do
+    code = Enum.find(socket.assigns.codes, &(&1.id == code_id))
+
+    cond do
+      not socket.assigns.may.revoke_code ->
+        refused(socket, :revoke_code)
+
+      is_nil(code) ->
+        socket
+        |> put_flash(:error, outstanding_no_more())
+        |> push_patch(to: socket.assigns.paths.access_key)
+
+      true ->
+        assign(socket, :code, code)
+    end
+  end
 
   # The window's title: the tab's, then the integration's name.
   defp titled(%{assigns: %{adapter: adapter, current_scope: scope}} = socket) do
@@ -216,6 +239,17 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
         %AccessKey{revoked_at: nil} -> "key-#{key_id}-revoke"
         _revoked_or_gone -> "key-#{key_id}-title"
       end
+
+    push_event(socket, "run:focus", %{id: id})
+  end
+
+  # Back on the tab from a code's cancelling, the focus goes to the code's Cancel the
+  # command… where it still waits, or to Make an enrolment code.
+  defp return_focus(%{assigns: %{live_action: :index}} = socket, %EnrolmentCode{id: code_id}) do
+    id =
+      if Enum.any?(socket.assigns.codes, &(&1.id == code_id)),
+        do: "code-#{code_id}-revoke",
+        else: "adapter-code-new"
 
     push_event(socket, "run:focus", %{id: id})
   end
@@ -286,6 +320,40 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     end
   end
 
+  def handle_event(
+        "revoke_code",
+        _params,
+        %{
+          assigns: %{
+            live_action: :revoke_code,
+            code: %EnrolmentCode{} = code,
+            may: %{revoke_code: true}
+          }
+        } = socket
+      ) do
+    case AccessKeys.cancel_code(socket.assigns.current_scope, code) do
+      {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} ->
+        {:noreply,
+         to_tab(socket, :info, gettext("The command is cancelled. It no longer works."))}
+
+      # It expired before the act reached it: nothing was cancelled.
+      {:ok, %EnrolmentCode{}} ->
+        {:noreply, to_tab(socket, :error, outstanding_no_more())}
+
+      {:error, :used} ->
+        {:noreply, to_tab(socket, :error, gettext("That command was run already."))}
+
+      {:error, :forbidden} ->
+        {:noreply, refused(socket, :revoke_code)}
+
+      {:error, :not_found} ->
+        {:noreply, gone(socket)}
+
+      {:error, _not_saved} ->
+        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
   # An act without its page or its confirmation open, or from one the page offers no
   # button: one who may take the act is shown the page again; one who may not is refused,
   # and nothing is done.
@@ -309,6 +377,17 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
+  # The tab, read again, with what was done or why nothing was.
+  defp to_tab(socket, kind, message) do
+    socket
+    |> put_flash(kind, message)
+    |> load()
+    |> push_patch(to: socket.assigns.paths.access_key)
+  end
+
+  defp outstanding_no_more,
+    do: gettext("That command no longer works: it was run, cancelled or expired.")
+
   defp at_limit?(keys),
     do: Enum.count(keys, &is_nil(&1.revoked_at)) >= AccessKeys.key_limit()
 
@@ -328,7 +407,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
       socket
       |> assign_may()
-      |> assign(issued: nil, key: nil)
+      |> assign(issued: nil, key: nil, code: nil)
       |> put_flash(:error, AdapterComponents.only_admins(scope, Keyword.fetch!(@acts, act)))
       |> push_patch(to: socket.assigns.paths.access_key)
     end
@@ -403,7 +482,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               >
                 <p id="adapter-code-text" class="text-muted">
                   {gettext(
-                    "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for 15 minutes."
+                    "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for %{minutes} minutes.",
+                    minutes: Format.number(AccessKeys.code_ttl_minutes())
                   )}
                 </p>
                 <dl class="grid gap-3">
@@ -422,15 +502,27 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 </dl>
               </div>
             <% else %>
-              <div :if={!@full}>
-                <.button
-                  id="adapter-code-new"
-                  variant={if @keys == [], do: "primary", else: "default"}
-                  phx-click="create_code"
-                  phx-hook="FocusOn"
-                >
-                  {gettext("Make an enrolment code")}
-                </.button>
+              <div class="grid gap-3">
+                <NodeLive.AccessKey.waiting
+                  :if={@codes != []}
+                  codes={@codes}
+                  code={@live_action == :revoke_code && @code}
+                  node={@adapter}
+                  may={@may}
+                  paths={@paths}
+                  class="max-w-[46rem]"
+                  adapter
+                />
+                <div :if={!@full}>
+                  <.button
+                    id="adapter-code-new"
+                    variant={if @keys == [], do: "primary", else: "default"}
+                    phx-click="create_code"
+                    phx-hook="FocusOn"
+                  >
+                    {gettext("Make an enrolment code")}
+                  </.button>
+                </div>
               </div>
             <% end %>
           </SettingsComponents.part>
@@ -454,8 +546,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 last_run={nil}
                 hosts={nil}
                 confirming={@key && @key.id == key.id && @live_action}
-                forager_file={false}
-                stored_secrets={false}
+                adapter
               />
             </ul>
           </SettingsComponents.part>

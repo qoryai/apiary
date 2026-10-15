@@ -10541,7 +10541,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for 15 minutes."
+msgid "Run the adapter's enrol command with the server and this code on the adapter's host. The code works once, for %{minutes} minutes."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
