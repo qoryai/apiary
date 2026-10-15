@@ -208,9 +208,14 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
+  # A key of a node, a node pool or a gateway: the Forager contract's. Any other kind's key
+  # is not a node's key here, refused as one the instance does not hold.
   defp lookup(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
-      {:ok, %AccessKey{public_key: <<_::binary-size(32)>> = public_key, node: %Node{}} = key} ->
+      {:ok,
+       %AccessKey{public_key: <<_::binary-size(32)>> = public_key, node: %Node{kind: kind}} =
+           key}
+      when kind in [:node, :pool, :gateway] ->
         {key, public_key}
 
       _other ->

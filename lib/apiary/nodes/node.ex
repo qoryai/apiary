@@ -40,7 +40,11 @@ defmodule Apiary.Nodes.Node do
   @typedoc """
   A node's kind: one permanent machine, a pool of short-lived instances, or a gateway.
   """
-  @type kind :: :node | :pool | :gateway
+  @type kind :: :node | :pool | :gateway | feature_kind()
+
+  # The kind a feature the documentation does not differ by adds (`docs: false`): an
+  # adapter. A private type, so the served docs show its name alone.
+  @typep feature_kind :: :adapter
 
   @typedoc """
   A node's or a pool's choice of gateway: direct, its workspace's default gateway, or the
@@ -50,10 +54,15 @@ defmodule Apiary.Nodes.Node do
 
   @kinds [:node, :pool]
   @all_kinds [:node, :pool, :gateway]
+  # The kinds the schema reads and writes: those of `all_kinds/0`, and an adapter, which
+  # lives at its organisation and is made through `Apiary.Adapters` alone
+  # (`adapter_changeset/2`).
+  @schema_kinds @all_kinds ++ [:adapter]
   @choices [:direct, :default, :named]
   @max_limit 10_000
   @max_url 2048
-  @prefixes %{node: "nd", pool: "np", gateway: "ng"}
+  @max_adapter_name 64
+  @prefixes %{node: "nd", pool: "np", gateway: "ng", adapter: "na"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -61,7 +70,7 @@ defmodule Apiary.Nodes.Node do
   schema "nodes" do
     field :public_id, :string
     field :name, :string
-    field :kind, Ecto.Enum, values: @all_kinds
+    field :kind, Ecto.Enum, values: @schema_kinds
     field :instance_limit, :integer
     field :url, :string
     field :default_gateway, :boolean, default: false
@@ -71,12 +80,22 @@ defmodule Apiary.Nodes.Node do
     field :instance_ids_over_bound, :integer, default: 0
     field :instance_ids_over_bound_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
+    # An adapter's alone (`nodes_adapter_check`): the address a person is sent to when they
+    # connect it, and its periodic check's intervals, in seconds, as it declares them and
+    # as a person sets it.
+    field :connect_url, :string
+    field :sync_interval, :integer
+    field :sync_default_interval, :integer
+    field :sync_minimum_interval, :integer
+    field :sync_sends_changes, :boolean
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :deleted_by, Apiary.Accounts.User
     belongs_to :gateway, __MODULE__
+    # A pool's alone (`nodes_served_by_check`): the adapter that serves it.
+    belongs_to :served_by, __MODULE__
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -150,10 +169,90 @@ defmodule Apiary.Nodes.Node do
     |> put_limit(attrs)
     |> put_url(attrs)
     |> put_choice(attrs)
+    |> put_served_by(attrs)
     |> check_constraint(:url, name: :nodes_url_check)
     |> check_constraint(:gateway_choice, name: :nodes_gateway_choice_check)
     |> check_constraint(:gateway_id, name: :nodes_gateway_is_a_gateway)
     |> foreign_key_constraint(:gateway_id, name: :nodes_gateway_id_fkey)
+    |> served_by_constraints()
+  end
+
+  # An adapter is no node a run runs on, nor a gateway: it lives at its organisation, is
+  # made, renamed and deleted through `Apiary.Adapters`, and its changesets are these
+  # three. Its documentation stays out of the module reference.
+
+  @doc false
+  # The changeset of an adapter's name, as it is made or renamed: 1 to 64 characters
+  # without control characters, unique among the organisation's adapters in use. A new one
+  # (no public id yet) is given its kind's public id, `na_`; its place, the organisation
+  # with no workspace, is the caller's to set, and nothing here casts it, its kind, its
+  # limit, its choice of gateway or its address.
+  @spec adapter_changeset(t, map) :: Ecto.Changeset.t()
+  def adapter_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: @max_adapter_name)
+    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
+      message: dgettext_noop("errors", "must not contain control characters")
+    )
+    |> unique_constraint([:organisation_id, :name],
+      name: :nodes_organisation_adapter_name_index,
+      error_key: :name,
+      message: dgettext_noop("errors", "has already been taken")
+    )
+    |> check_constraint(:name, name: :nodes_adapter_name_check)
+    |> check_constraint(:workspace_id, name: :nodes_place_check)
+    |> then(&if(is_nil(adapter.public_id), do: put_public_id(&1), else: &1))
+  end
+
+  # `https://`, an authority with no `@` and no whitespace, then nothing, or a path, a
+  # query or a fragment without whitespace: as `nodes_connect_url_check` has it.
+  @connect_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?#][^[:space:]]*)?\z}u
+
+  @doc false
+  # The changeset of an adapter's connect address, `connect_url`: `https://`, an authority
+  # without user information, then an optional path, query or fragment, no whitespace
+  # anywhere, at most `max_url/0` characters; nil clears it. The database holds it to the
+  # same (`nodes_connect_url_check`), and to adapters (`nodes_adapter_check`).
+  @spec connect_url_changeset(t, map) :: Ecto.Changeset.t()
+  def connect_url_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> cast(attrs, [:connect_url])
+    |> validate_length(:connect_url, max: @max_url)
+    |> validate_change(:connect_url, fn :connect_url, url ->
+      cond do
+        not String.starts_with?(url, "https://") ->
+          [connect_url: dgettext_noop("errors", "must start with https://")]
+
+        not (url =~ @connect_url) ->
+          [connect_url: dgettext_noop("errors", "has invalid format")]
+
+        true ->
+          []
+      end
+    end)
+    |> check_constraint(:connect_url, name: :nodes_connect_url_check)
+    |> check_constraint(:connect_url, name: :nodes_adapter_check)
+  end
+
+  # A pool's adapter, which a node, a gateway and an adapter never have. Whether the
+  # adapter is one the pool may name, and whether the person may name one, are
+  # `Apiary.Nodes`'s to check; the database refuses one that is not an adapter in use of
+  # the pool's organisation.
+  defp put_served_by(changeset, attrs) do
+    case get_field(changeset, :kind) do
+      :pool -> cast(changeset, attrs, [:served_by_id])
+      nil -> changeset
+      _other -> put_change(changeset, :served_by_id, nil)
+    end
+  end
+
+  defp served_by_constraints(changeset) do
+    changeset
+    |> check_constraint(:served_by_id, name: :nodes_served_by_check)
+    |> check_constraint(:served_by_id, name: :nodes_served_by_is_an_adapter)
+    |> foreign_key_constraint(:served_by_id, name: :nodes_served_by_id_fkey)
   end
 
   @doc """
@@ -185,7 +284,7 @@ defmodule Apiary.Nodes.Node do
           less_than_or_equal_to: @max_limit
         )
 
-      :gateway ->
+      kind when kind in [:gateway, :adapter] ->
         put_change(changeset, :instance_limit, nil)
 
       nil ->
@@ -213,7 +312,7 @@ defmodule Apiary.Nodes.Node do
   # gateway is gone is still renamed.
   defp put_choice(changeset, attrs) do
     case get_field(changeset, :kind) do
-      :gateway ->
+      kind when kind in [:gateway, :adapter] ->
         changeset
         |> put_change(:gateway_choice, :direct)
         |> put_change(:gateway_id, nil)
@@ -307,7 +406,7 @@ defmodule Apiary.Nodes.Node do
 
   defp put_public_id(changeset) do
     case get_field(changeset, :kind) do
-      kind when kind in @all_kinds ->
+      kind when kind in @schema_kinds ->
         put_change(changeset, :public_id, Apiary.PublicId.generate(Map.fetch!(@prefixes, kind)))
 
       nil ->

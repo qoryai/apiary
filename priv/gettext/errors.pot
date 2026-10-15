@@ -123,6 +123,8 @@ msgid "has already been invited"
 msgstr ""
 
 ## From Ecto.Changeset.unique_constraint/3
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen
 msgid "has already been taken"
 msgstr ""
 
@@ -131,6 +133,8 @@ msgid "has an invalid entry"
 msgstr ""
 
 ## From Ecto.Changeset.validate_format/3
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen
 msgid "has invalid format"
 msgstr ""
 
@@ -207,6 +211,8 @@ msgid "is already the slug of another organisation"
 msgstr ""
 
 ## From Ecto.Changeset.put_change/3
+#: lib/apiary/nodes.ex
+#, elixir-autogen
 msgid "is invalid"
 msgstr ""
 
