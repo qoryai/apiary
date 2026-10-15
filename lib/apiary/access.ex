@@ -1050,9 +1050,11 @@ defmodule Apiary.Access do
   defp in_place?(_scope, _subject), do: false
 
   @doc """
-  role/1 is the role the scope acts in, as it carries it: `:access_key` for the gateway's
-  key, `:instance` for the instance, the level of the person's membership there, else the
-  role the edition gives them (`c:Apiary.Edition.role/1`); nil for anyone else.
+  role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
+  node, a node pool or a gateway, `:instance` for the instance, the level of the person's
+  membership there, else the role the edition gives them (`c:Apiary.Edition.role/1`); nil
+  for anyone else. A key whose node the scope does not carry loaded, or whose node is of a
+  kind it does not know, gets no role.
   """
   @spec role(Scope.t() | nil) :: role | nil
   def role(%Scope{access_key: %AccessKey{} = key}), do: key_role(key)
