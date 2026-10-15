@@ -1777,6 +1777,11 @@ msgstr ""
 msgid "%{rate}, bursts of %{burst}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{ref} in %{integration}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{rule} is locked. No target can override it."
@@ -1830,6 +1835,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{runs} and %{denied} in 14 days; most runs on %{peak}, %{max}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs} · %{alive} alive"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs} · none alive"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -2083,6 +2098,16 @@ msgstr ""
 msgid "%{who} changed the policy above this workspace"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} closed this"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} commented %{ago}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} denied %{host}"
@@ -2141,6 +2166,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} switched the workspace's default mode from %{from} to %{to}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} took this in from %{ref}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} undid the take in"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -2277,6 +2312,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "A command is waiting to be run on %{name}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "A comment by %{who} was deleted · %{ago}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3579,6 +3619,11 @@ msgstr ""
 msgid "Behind v%{n}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Build"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -4480,6 +4525,11 @@ msgstr ""
 msgid "Definition digest"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Delete"
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -4888,6 +4938,7 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5393,6 +5444,16 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Expires"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore's gate comes with the phase 2 pages."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -6822,6 +6883,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Its source %{error}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its ticket was closed in %{integration}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9360,6 +9426,7 @@ msgid "Overview"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -9879,6 +9946,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Registered only"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Release"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -10450,6 +10522,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -11001,6 +11074,11 @@ msgstr ""
 msgid "Several values, each with a value ID"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shape"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Shift"
@@ -11215,6 +11293,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Source on GitHub"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Stages"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -12871,6 +12954,11 @@ msgstr ""
 msgid "This workspace's default gateway."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ticket"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
@@ -13179,6 +13267,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Variables, %{number}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Verify"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -14543,6 +14636,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -15044,6 +15138,11 @@ msgstr ""
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "up to %{date}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "updated %{ago}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

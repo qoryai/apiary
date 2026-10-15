@@ -10437,3 +10437,81 @@
     text-align: right;
   }
 }
+
+/* ==== A work item's pages (`WorkItemComponents`) ========================================
+   The stage track, the line where a stage's gate will be, and the Thread's lines. The
+   details rail is the run page's (`q-run-rail`, above). */
+@layer qory {
+  /* The stages in a row that wraps, with no gate between them: only the active one in
+     the text colour, every other one muted. */
+  .q-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-stage {
+    color: var(--q-muted);
+  }
+  .q-stage-n {
+    font-variant-numeric: tabular-nums;
+  }
+  .q-stage-on {
+    color: var(--color-base-content);
+    font-weight: 600;
+  }
+  /* One muted line: a bar above the page below 1280 px, beside it from there. */
+  .q-gate-note {
+    margin-inline: calc(-1 * var(--q-gutter));
+    padding: 8px var(--q-gutter);
+    border-block: 1px solid var(--q-border-subtle);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+  }
+  @media (min-width: 1280px) {
+    .q-gate-note {
+      margin-inline: 0;
+      padding: 0;
+      border-block: 0;
+    }
+  }
+  .q-thread-event {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-thread-event > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .q-comment {
+    min-width: 0;
+    font-size: 0.875rem;
+  }
+  .q-comment-head {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-comment-head > b {
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-comment-body {
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+  }
+  .q-comment-delete {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.8125rem;
+  }
+  .q-comment-deleted {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+}
