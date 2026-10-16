@@ -25,10 +25,14 @@ defmodule Apiary.ProductNameTest do
 
   defp rename(scope, name), do: ProductName.rename(scope, %{"product_name" => name})
 
+  # Every entry of one test shares the sandbox transaction's time, so the id, a version 7
+  # UUID, keeps them in the order they were written.
   defp entries,
     do:
       Repo.all(
-        from e in Entry, where: e.action == "instance.rename", order_by: [asc: e.inserted_at]
+        from e in Entry,
+          where: e.action == "instance.rename",
+          order_by: [asc: e.inserted_at, asc: e.id]
       )
 
   describe "with no name set" do
