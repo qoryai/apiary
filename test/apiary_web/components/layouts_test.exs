@@ -1837,5 +1837,69 @@ defmodule ApiaryWeb.LayoutsTest do
       assert time.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
       assert time.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
     end
+
+    test "mid-sentence: just now and yesterday in lower case, every other form the same" do
+      now = ~U[2026-09-20 14:04:00Z]
+      start = &ApiaryWeb.Format.time_ago(&1, now, case: :start)
+      inline = &ApiaryWeb.Format.time_ago(&1, now, case: :inline)
+
+      assert inline.(~U[2026-09-20 14:03:30Z]) == "just now"
+      assert inline.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
+      assert inline.(~U[2026-09-20 14:02:00Z]) == "2 minutes ago"
+      assert inline.(~U[2026-09-20 13:00:00Z]) == "1 hour ago"
+      assert inline.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
+      assert inline.(~U[2026-09-19 16:40:03Z]) == "yesterday, 16:40"
+      assert inline.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
+      assert inline.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
+
+      assert start.(~U[2026-09-20 14:03:30Z]) == "Just now"
+      assert start.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
+      assert start.(~U[2026-09-20 14:02:00Z]) == "2 minutes ago"
+      assert start.(~U[2026-09-20 13:00:00Z]) == "1 hour ago"
+      assert start.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
+      assert start.(~U[2026-09-19 16:40:03Z]) == "Yesterday, 16:40"
+      assert start.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
+      assert start.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
+
+      for at <- [~U[2026-09-20 14:03:30Z], ~U[2026-09-19 16:40:03Z], ~U[2026-09-01 10:00:00Z]] do
+        assert ApiaryWeb.Format.time_ago(at, now) == start.(at)
+      end
+    end
+
+    test "each lower-case form is a sentence in the catalogues, the counterpart of its start" do
+      for path <- ["default.pot", "en@software/LC_MESSAGES/default.po"] do
+        catalogue = File.read!(Application.app_dir(:apiary, "priv/gettext/" <> path))
+
+        for {lower, upper} <- [
+              {"just now", "Just now"},
+              {"yesterday, %{time}", "Yesterday, %{time}"}
+            ] do
+          assert catalogue =~ ~s(msgid "#{lower}"\n), path
+          assert catalogue =~ ~s(msgid "#{upper}"\n), path
+        end
+      end
+
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
+        now = ~U[2026-09-20 14:04:00Z]
+
+        assert ApiaryWeb.Format.time_ago(~U[2026-09-20 14:03:30Z], now, case: :inline) ==
+                 "just now"
+
+        assert ApiaryWeb.Format.time_ago(~U[2026-09-19 16:40:03Z], now, case: :inline) ==
+                 "yesterday, 16:40"
+      end)
+    end
+
+    test "the component: lower case with case={:inline}, the start form by default" do
+      at = DateTime.add(DateTime.utc_now(), -10, :second)
+
+      inline = render_component(&ApiaryWeb.CoreComponents.time_ago/1, at: at, case: :inline)
+      start = render_component(&ApiaryWeb.CoreComponents.time_ago/1, at: at)
+
+      assert text(inline, "time") == "just now"
+      assert text(start, "time") == "Just now"
+      assert attribute(inline, "time", "datetime") == DateTime.to_iso8601(at)
+      assert attribute(inline, "time", "title") == attribute(start, "time", "title")
+    end
   end
 end
