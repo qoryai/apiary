@@ -14624,6 +14624,11 @@ msgstr ""
 msgid "is taken out of the paths in force for the host."
 msgstr ""
 
+#: lib/apiary_web/format.ex
+#, elixir-autogen, elixir-format
+msgid "just now"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "lane (%{tip})"
@@ -15300,6 +15305,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "yesterday"
+msgstr ""
+
+#: lib/apiary_web/format.ex
+#, elixir-autogen, elixir-format
+msgid "yesterday, %{time}"
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
