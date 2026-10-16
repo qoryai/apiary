@@ -38,7 +38,7 @@ defmodule Apiary.Adapters do
 
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.{ConnectPass, Connections}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
@@ -168,6 +168,24 @@ defmodule Apiary.Adapters do
         {:ok, adapter}
       end
     end)
+  end
+
+  @doc false
+  # Makes an adapter from `attrs`, as `create_adapter/2` does, and its first enrolment code
+  # (`create_code/2`), in one transaction: `{:ok, adapter, code_row, code}`, or its error.
+  @spec create_adapter_with_code(Scope.t(), map) ::
+          {:ok, Node.t(), EnrolmentCode.t(), String.t()}
+          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo}
+  def create_adapter_with_code(%Scope{} = scope, attrs) do
+    Repo.transact(fn ->
+      with {:ok, adapter} <- create_adapter(scope, attrs),
+           {:ok, row, code} <- create_code(scope, adapter),
+           do: {:ok, {adapter, row, code}}
+    end)
+    |> case do
+      {:ok, {adapter, row, code}} -> {:ok, adapter, row, code}
+      {:error, _reason} = error -> error
+    end
   end
 
   @doc false
@@ -336,6 +354,76 @@ defmodule Apiary.Adapters do
       end
     end)
   end
+
+  ## How often it pulls
+
+  @typedoc "How often an adapter pulls: the instance admins' choice and what it declared."
+  @type sync :: %{
+          interval: pos_integer | nil,
+          default: pos_integer | nil,
+          minimum: pos_integer | nil,
+          sends_changes: boolean | nil
+        }
+
+  @doc false
+  # How often `adapter` pulls, to an instance admin. Not built: `{:error, :not_built}`.
+  @spec sync_settings(Scope.t(), Node.t()) ::
+          {:ok, sync} | {:error, :not_built | Access.reason()}
+  def sync_settings(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_built}
+
+  @doc false
+  # Sets how often `adapter` pulls (`adapter.edit`, an instance admin) from `attrs`, its
+  # `sync_interval`. Not built: `{:error, :not_built}`.
+  @spec update_sync_interval(Scope.t(), Node.t(), map) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_built}
+  def update_sync_interval(%Scope{}, %Node{kind: :adapter}, _attrs), do: {:error, :not_built}
+
+  ## Keys and codes
+
+  @doc false
+  # `adapter`'s keys, those in use first, to an instance admin; none to anyone else.
+  @spec list_keys(Scope.t(), Node.t()) :: [AccessKey.t()]
+  def list_keys(%Scope{} = scope, %Node{kind: :adapter} = adapter),
+    do: AccessKeys.list_for_node(scope, adapter)
+
+  @doc false
+  # `adapter`'s outstanding enrolment codes, newest first, to an instance admin; none to
+  # anyone else.
+  @spec list_codes(Scope.t(), Node.t()) :: [EnrolmentCode.t()]
+  def list_codes(%Scope{} = scope, %Node{kind: :adapter} = adapter),
+    do: AccessKeys.list_enrolment_codes(scope, adapter)
+
+  @doc false
+  # Makes an enrolment code for `adapter` (an instance admin after a recent sign-in), with
+  # no stored secrets: `{:ok, code_row, code}`, the code in clear this once.
+  @spec create_code(Scope.t(), Node.t()) ::
+          {:ok, EnrolmentCode.t(), String.t()}
+          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo}
+  def create_code(%Scope{} = scope, %Node{kind: :adapter} = adapter),
+    do: AccessKeys.create_enrolment_code(scope, adapter, %{})
+
+  @doc false
+  # Revokes an adapter's key (an instance admin), as `Apiary.AccessKeys.revoke_access_key/2`.
+  @spec revoke_key(Scope.t(), AccessKey.t()) :: {:ok, AccessKey.t()} | {:error, Access.reason()}
+  def revoke_key(%Scope{} = scope, %AccessKey{organisation_id: nil, workspace_id: nil} = key),
+    do: AccessKeys.revoke_access_key(scope, key)
+
+  @doc false
+  # Cancels an adapter's outstanding enrolment code (an instance admin), as
+  # `Apiary.AccessKeys.cancel_code/2`.
+  @spec cancel_code(Scope.t(), EnrolmentCode.t()) ::
+          {:ok, EnrolmentCode.t()} | {:error, :used | Access.reason()}
+  def cancel_code(
+        %Scope{} = scope,
+        %EnrolmentCode{organisation_id: nil, workspace_id: nil} = code
+      ),
+      do: AccessKeys.cancel_code(scope, code)
+
+  @doc false
+  # Subscribes an instance admin to `adapter`'s keys and codes (`Apiary.AccessKeys.topic/2`).
+  @spec subscribe_keys(Scope.t(), Node.t()) :: :ok | {:error, term}
+  def subscribe_keys(%Scope{} = scope, %Node{kind: :adapter} = adapter),
+    do: AccessKeys.subscribe(scope, adapter)
 
   ## At the server contract
 

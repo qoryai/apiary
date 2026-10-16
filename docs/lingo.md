@@ -47,21 +47,26 @@ This is done with Gettext, not with a list of word swaps:
   `ApiaryWeb.Format` beside the locale, from the same scope. The **skin** (`users.skin`) is stored
   too, with one value, `standard`.
 - `test/apiary_web/lingo_catalogue_test.exs` fails when a source string contains an engine
-  word and a domain's catalogue has no translation for it, and, for a language other than
-  English, when a sentence has a translation neither in the domain's catalogue nor in the
-  language's. It also fails when a catalogue shows a word such as apiary, hive, bee,
-  flower, nectar, honey or jar.
+  word (`@engine_words` in `test/support/lingo_catalogue_case.ex`) and a domain's catalogue
+  has no translation for it, and, for a language other than English, when a sentence has a
+  translation neither in the domain's catalogue nor in the language's. It also fails when a
+  catalogue shows a word such as apiary, hive, bee, flower, nectar, honey or jar.
 
 ## The words
 
 | Engine (msgid) | Software domain (`en@software`) |
 |---|---|
 | target, targets | repository, repositories |
+| collection, collections | repository, repositories |
 | system, systems | forge, forges |
 | change request | pull request |
 | apply, applied | merge, merged |
 | organisation | organisation |
 | workspace, workspaces | workspace, workspaces |
+
+A target is what a run's change request is applied to. A collection is what an adapter
+reports work from, which an organisation assigns to a workspace. The software domain calls
+both a repository, and their msgids stay apart in the engine words.
 
 Everything else (run, task, work item, gate, evidence, member, access key, policy) is the
 same word in the engine and in the software domain. Qory Apiary is the product's name and

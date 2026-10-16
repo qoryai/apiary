@@ -380,40 +380,38 @@ defmodule ApiaryWeb.Routes do
             # Instance › Configuration: the instance's settings, some saved there.
             live "/instance/configuration", InstanceLive.Configuration, :show
 
-            # Instance settings › Integrations, with the `factory` feature, for the
-            # instance's admins: the instance's integrations, with Add an integration a
-            # separate page, and an integration's tabs and its acts, by its adapter's public
-            # id (`na_…`). Its Access key tab has the acts of a node's that an adapter's key
-            # takes: no key made in the browser.
-            live "/instance/integrations", InstanceLive.Integrations, :index
-            live "/instance/integrations/new", InstanceLive.Integrations, :new
+            # Instance settings › Adapters, with the `factory` feature, for the instance's
+            # admins: the instance's adapters, with the catalogue on the list; Add for one
+            # entry of the catalogue, a separate page; and an adapter's tabs, Overview, Access
+            # key (`…/keys`) and Settings, and their acts, by the adapter's public id
+            # (`na_…`). Its Access key tab has the acts of a node's Access key tab that an
+            # adapter's key takes: no key made in the browser. The fixed path goes first, so
+            # that `:adapter_id` never takes it.
+            live "/instance/adapters", InstanceLive.Adapters, :index
+            live "/instance/adapters/new/:entry", InstanceLive.Adapters, :new
+            live "/instance/adapters/:adapter_id", InstanceLive.Adapter, :overview
+            live "/instance/adapters/:adapter_id/keys", AdapterLive.AccessKey, :index
 
-            live "/instance/integrations/:adapter_id/access-key",
-                 AdapterLive.AccessKey,
-                 :index
-
-            live "/instance/integrations/:adapter_id/access-key/new-code",
+            live "/instance/adapters/:adapter_id/keys/new-code",
                  AdapterLive.AccessKey,
                  :new_code
 
-            live "/instance/integrations/:adapter_id/access-key/keys/:key_id/revoke",
+            live "/instance/adapters/:adapter_id/keys/:key_id/revoke",
                  AdapterLive.AccessKey,
                  :revoke
 
-            live "/instance/integrations/:adapter_id/access-key/codes/:code_id/revoke",
+            live "/instance/adapters/:adapter_id/keys/codes/:code_id/revoke",
                  AdapterLive.AccessKey,
                  :revoke_code
 
-            live "/instance/integrations/:adapter_id/settings",
-                 InstanceLive.Integration,
-                 :settings
+            live "/instance/adapters/:adapter_id/settings", InstanceLive.Adapter, :settings
 
-            live "/instance/integrations/:adapter_id/settings/rename",
-                 InstanceLive.Integration,
+            live "/instance/adapters/:adapter_id/settings/rename",
+                 InstanceLive.Adapter,
                  :rename
 
-            live "/instance/integrations/:adapter_id/settings/remove",
-                 InstanceLive.Integration,
+            live "/instance/adapters/:adapter_id/settings/remove",
+                 InstanceLive.Adapter,
                  :remove
 
             unquote(@block)
@@ -538,16 +536,17 @@ defmodule ApiaryWeb.Routes do
                    :revoke_code
 
               # Organisation settings › Integrations, with the `factory` feature: the list of
-              # the instance's integrations, with Add an integration a separate page, where
-              # an owner or an admin connects the organisation to one (Install), and an
-              # integration's page in the organisation, its tabs and its acts, by its
-              # adapter's public id (`na_…`). Making, renaming, removing an integration and its
-              # access key are the instance admins', at `/instance/integrations`. The fixed
-              # path goes first, so that `:adapter_id` never takes it.
+              # the instance's adapters as the organisation's integrations, with Add an
+              # integration a separate page, where an owner or an admin connects the
+              # organisation to one (Install), and an integration's page in the
+              # organisation, its Repositories section, the collections its connection
+              # reaches, assigned to workspaces from a menu on the selection, by its
+              # adapter's public id (`na_…`). Making, renaming, removing an adapter and its
+              # keys are the instance admins', at `/instance/adapters`. The fixed path goes
+              # first, so that `:adapter_id` never takes it.
               live "/settings/integrations", AdapterLive.Index, :index
               live "/settings/integrations/new", AdapterLive.Index, :new
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
-              live "/settings/integrations/:adapter_id/assign", AdapterLive.Show, :assign
             end
 
             unquote(@block)

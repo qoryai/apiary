@@ -396,17 +396,17 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
-    # The instance's integrations, with the `factory` feature, which the instance has
-    # or not: an Instance page has no organisation whose people it could be hidden from
-    # (`use ApiaryWeb.Features, instance: :factory`). After the edition's, before Mail.
-    integrations =
+    # The instance's adapters, with the `factory` feature, which the instance has or not:
+    # an Instance page has no organisation whose people it could be hidden from (`use
+    # ApiaryWeb.Features, instance: :factory`). After the edition's, before Mail.
+    adapters =
       admin? && Apiary.Features.on?(:factory) &&
         %Entry{
           section: :instance,
-          key: :integrations,
-          label: gettext("Integrations"),
+          key: :adapters,
+          label: gettext("Adapters"),
           icon: "hero-puzzle-piece",
-          path: ~p"/instance/integrations",
+          path: ~p"/instance/adapters",
           place: :instance
         }
 
@@ -423,7 +423,7 @@ defmodule ApiaryWeb.Layouts do
 
     for %Entry{} = entry <-
           [general] ++
-            ApiaryWeb.Edition.instance_sections(scope) ++ [integrations, mail, configuration],
+            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

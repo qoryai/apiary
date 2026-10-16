@@ -4,7 +4,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
-  # Integrations; and the Activity filter's
+  # Adapters; and the Activity filter's
   # words for the work item comments.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
@@ -26,8 +26,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterLive.Index,
     ApiaryWeb.AdapterLive.Show,
     ApiaryWeb.AdapterLive.AccessKey,
-    ApiaryWeb.InstanceLive.Integrations,
-    ApiaryWeb.InstanceLive.Integration,
+    ApiaryWeb.InstanceLive.Adapters,
+    ApiaryWeb.InstanceLive.Adapter,
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
@@ -36,8 +36,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   # The modules of the feature's pages of the Instance level.
   @instance_modules [
-    ApiaryWeb.InstanceLive.Integrations,
-    ApiaryWeb.InstanceLive.Integration,
+    ApiaryWeb.InstanceLive.Adapters,
+    ApiaryWeb.InstanceLive.Adapter,
     ApiaryWeb.AdapterLive.AccessKey
   ]
 
@@ -115,7 +115,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     routes = factory_routes(scope, adapter)
     org = "/#{scope.organisation.slug}"
     integration = "#{org}/settings/integrations/#{adapter.public_id}"
-    managed = "/instance/integrations/#{adapter.public_id}"
+    managed = "/instance/adapters/#{adapter.public_id}"
 
     assert Enum.sort(for {verb, path, _module} <- routes, do: {verb, path}) ==
              Enum.sort(
@@ -126,14 +126,15 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/integrations"},
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
-                 {:get, integration <> "/assign"},
-                 # The instance admins': making one, its access key and its settings.
-                 {:get, "/instance/integrations"},
-                 {:get, "/instance/integrations/new"},
-                 {:get, managed <> "/access-key"},
-                 {:get, managed <> "/access-key/new-code"},
-                 {:get, managed <> "/access-key/keys/x1/revoke"},
-                 {:get, managed <> "/access-key/codes/x1/revoke"},
+                 # The instance admins': the list, Add for one entry of the catalogue, and
+                 # an adapter's Overview, its keys and its settings.
+                 {:get, "/instance/adapters"},
+                 {:get, "/instance/adapters/new/x1"},
+                 {:get, managed},
+                 {:get, managed <> "/keys"},
+                 {:get, managed <> "/keys/new-code"},
+                 {:get, managed <> "/keys/x1/revoke"},
+                 {:get, managed <> "/keys/codes/x1/revoke"},
                  {:get, managed <> "/settings"},
                  {:get, managed <> "/settings/rename"},
                  {:get, managed <> "/settings/remove"}
@@ -304,7 +305,7 @@ defmodule ApiaryWeb.FactoryShellTest do
          %{scope: scope, adapter: adapter} do
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
       routes = instance_routes(scope, adapter)
-      assert length(routes) == 9
+      assert length(routes) == 10
 
       for {path, module} <- routes do
         # The answer of the page as it mounts: not the door's, nor the gate's.
@@ -380,32 +381,32 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    test "Instance settings list Integrations for an instance admin, before Mail, and for no one else",
+    test "Instance settings list Adapters for an instance admin, before Mail, and for no one else",
          %{scope: scope} do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
-      assert [:integrations, :mail, :configuration] = Enum.take(keys, -3)
+      assert [:adapters, :mail, :configuration] = Enum.take(keys, -3)
 
-      assert %{label: "Integrations", path: "/instance/integrations", place: :instance} =
-               Enum.find(Layouts.instance_sections(admin), &(&1.key == :integrations))
+      assert %{label: "Adapters", path: "/instance/adapters", place: :instance} =
+               Enum.find(Layouts.instance_sections(admin), &(&1.key == :adapters))
 
       {:ok, view, _html} =
         live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
 
       assert has_element?(
                view,
-               "#instance-tabs a#instance-tab-integrations[href='/instance/integrations']",
-               "Integrations"
+               "#instance-tabs a#instance-tab-adapters[href='/instance/adapters']",
+               "Adapters"
              )
 
-      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key == :integrations))
+      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key == :adapters))
     end
 
     test "the entry asks the instance, whatever the person is shown in the organisation the scope carries" do
       hide_factory(%{})
       admin = instance_admin_scope()
       refute Apiary.Features.visible?(owner_scope(admin.user), :factory)
-      assert Enum.any?(Layouts.instance_sections(admin), &(&1.key == :integrations))
+      assert Enum.any?(Layouts.instance_sections(admin), &(&1.key == :adapters))
     end
 
     test "the organisation has no path that makes, renames, removes an integration or holds its key",
@@ -413,8 +414,9 @@ defmodule ApiaryWeb.FactoryShellTest do
       integration = "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}"
 
       for rest <-
-            ~w(/access-key /access-key/new-code /access-key/keys/x1/revoke
-               /access-key/codes/x1/revoke /settings /settings/rename /settings/remove) do
+            ~w(/keys /keys/new-code /keys/x1/revoke /keys/codes/x1/revoke /access-key
+               /access-key/new-code /access-key/keys/x1/revoke /access-key/codes/x1/revoke
+               /settings /settings/rename /settings/remove) do
         path = integration <> rest
 
         assert Phoenix.Router.route_info(ApiaryWeb.Router, "GET", path, "localhost") == :error,
@@ -565,16 +567,16 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    test "Instance settings leave Integrations out, for an instance admin too" do
+    test "Instance settings leave Adapters out, for an instance admin too" do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
       assert :configuration in keys
-      refute :integrations in keys
+      refute :adapters in keys
 
       {:ok, view, _html} =
         live(log_in_user(build_conn(), admin.user), ~p"/instance/general")
 
-      refute has_element?(view, "#instance-tab-integrations")
+      refute has_element?(view, "#instance-tab-adapters")
     end
   end
 

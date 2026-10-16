@@ -85,6 +85,27 @@ defmodule Apiary.Adapters.Connections do
   def live_by_adapter(%Scope{}), do: %{}
 
   @doc false
+  # The scope's organisation's connection to `adapter` that ended last, to a person who may
+  # read the instance's adapters there (`adapter.read`); nil for none, or anyone else.
+  @spec latest_ended(Scope.t(), Node.t()) :: Connection.t() | nil
+  def latest_ended(
+        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+        %Node{kind: :adapter, id: adapter_id}
+      ) do
+    if Access.can?(scope, :"adapter.read", organisation) do
+      Repo.one(
+        from c in Connection,
+          where: c.organisation_id == ^organisation_id and c.adapter_id == ^adapter_id,
+          where: not is_nil(c.ended_at),
+          order_by: [desc: c.ended_at, desc: c.id],
+          limit: 1
+      )
+    end
+  end
+
+  def latest_ended(%Scope{}, %Node{}), do: nil
+
+  @doc false
   # The connection whose public id is `public_id`, of an adapter in use, with its
   # organisation and its adapter, and the person's scope in that organisation, for a
   # person who reaches it (`Apiary.Organisations.resolve_scope/4`) and may read the
