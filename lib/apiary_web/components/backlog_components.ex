@@ -1,14 +1,18 @@
 defmodule ApiaryWeb.BacklogComponents do
-  # The parts the Backlog draws: a ticket's row in the list, who filed it, the
-  # integration's tile and a compact time.
+  # The parts the Backlog and the full ticket draw: a ticket's row in the list, who filed
+  # it, the integration's tile, a compact time, and one ticket in its frame.
   #
   # Every component takes plain assigns: strings, numbers, times and maps with the keys
   # each one's attributes name, never a context's struct, so the page fills them from
   # whatever the work item records and the source items give it.
   #
   # Everything a ticket holds came from an integration and is untrusted: a component only
-  # interpolates it, so HEEx escapes it, and never puts it in a `class`, a `style` or a
-  # url.
+  # interpolates it, so HEEx escapes it, and never puts it in a `class` or a `style`, or
+  # in a url other than the checked link out ("Open on %{integration}", through
+  # `CoreComponents.external_link/1`). This module calls no `raw/1`. A ticket's text and
+  # its comments' are the page's to render, into the `rendered_body` and
+  # `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
+  # renderer that sanitises formatted text.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -261,5 +265,231 @@ defmodule ApiaryWeb.BacklogComponents do
       true ->
         ngettext("%{number} d", "%{number} d", days, number: Format.number(days))
     end
+  end
+
+  ## The ticket
+
+  @doc """
+  One ticket, with its head, its meta line, its facts, the Take in block, its text and its
+  comments.
+
+  `frame` is `:list` or `:full`:
+
+    * `:list` - the ticket open over the list. It is one markup, which the page's CSS
+      shows beside the list from 1280 px, as a dialog over it from 768 to 1279, and as a
+      sheet below 768: the server does not know the width. It is a dialog named "Ticket",
+      with a scrim, and its head has Open the full ticket (`full_path`), Open on the
+      integration, and Close the ticket; Close and a press on the scrim patch to
+      `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
+    * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
+      and the comments, and beside them the facts, Filed by among them, the link out and
+      the Take in block.
+
+  `ticket` is a map with these keys:
+
+    * `:ref`, `:title`, `:repository` - strings, as in `ticket_row/1`;
+    * `:url` - the ticket's page at the source, or `nil`. Open on the integration is
+      drawn only for a url `CoreComponents.external_url?/1` allows today: absolute `http`
+      or `https`, with a host and no user name or password. That is looser than the
+      core's https rule for a link out of a ticket, so until the component switches to
+      that rule, the url must arrive already checked by it, or as `nil`;
+    * `:labels` - a list of strings, maybe empty;
+    * `:filer` - `%{name: "Lea", kind: :person}`, as in `ticket_row/1`;
+    * `:filed_at`, `:updated_at` - `DateTime`s at the source.
+
+  `comments` is a list of maps, oldest first, each with `:id` (unique in the ticket),
+  `:author` (a name) and `:at` (a `DateTime`), plus whatever the `rendered_comment` slot
+  reads to render its text.
+
+  The slots are the page's:
+
+    * `take_in` - the Take in or Take in again block, where the ticket has one;
+    * `rendered_body` - the ticket's text, rendered: the page passes
+      `SourceComponents.body/1` with the ticket's text and its format;
+    * `rendered_comment` - one comment's text, rendered, given the comment
+      (`:let={comment}`): the page passes `SourceComponents.body/1` with its text and
+      format.
+
+  Without them, the ticket has no block and no text.
+  """
+  attr :id, :string, required: true, doc: "the ticket's DOM id; the parts take ids under it"
+  attr :frame, :atom, default: :list, values: [:list, :full], doc: "over the list, or a page"
+  attr :ticket, :map, required: true, doc: "the ticket, as above"
+  attr :integration, :string, required: true, doc: "the integration's name, `\"GitHub\"`"
+  attr :comments, :list, default: [], doc: "the ticket's comments, as above"
+  attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+  attr :full_path, :string, default: nil, doc: "`:list`: the full ticket's page"
+  attr :close_patch, :string, default: nil, doc: "`:list`: the list without the ticket"
+  attr :back_path, :string, default: nil, doc: "`:full`: the Backlog"
+
+  slot :take_in, doc: "the Take in or Take in again block"
+  slot :rendered_body, doc: "the ticket's text, through `SourceComponents.body/1`"
+  slot :rendered_comment, doc: "a comment's text, given the comment, through `body/1`"
+
+  def ticket(assigns) do
+    ticket = assigns.ticket
+    now = assigns.now || DateTime.utc_now()
+
+    assigns =
+      assign(assigns,
+        now: now,
+        out: external_url?(ticket.url),
+        open_on: gettext("Open on %{integration}", integration: assigns.integration),
+        meta:
+          gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
+            name: ticket.filer.name,
+            filed_ago: Format.time_ago(ticket.filed_at, now),
+            updated_ago: Format.time_ago(ticket.updated_at, now)
+          )
+      )
+
+    case assigns.frame do
+      :list -> list_frame(assigns)
+      :full -> full_frame(assigns)
+    end
+  end
+
+  defp list_frame(assigns) do
+    ~H"""
+    <div
+      :if={@close_patch}
+      id={"#{@id}-scrim"}
+      class="q-bl-prev-scrim"
+      phx-click={JS.patch(@close_patch)}
+      aria-hidden="true"
+    >
+    </div>
+    <div id={@id} class="q-bl-prev" role="dialog" aria-label={gettext("Ticket")}>
+      <div class="q-bl-tb">
+        <.integration_tile name={@integration} class="q-bl-src" />
+        <span class="q-bl-key">{@ticket.ref}</span>
+        <span class="q-bl-grow"></span>
+        <.button
+          :if={@full_path}
+          id={"#{@id}-full"}
+          variant="ghost"
+          class="btn-square"
+          navigate={@full_path}
+          aria-label={gettext("Open the full ticket")}
+          title={gettext("Open the full ticket")}
+        >
+          <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
+        </.button>
+        <.external_link
+          :if={@out}
+          id={"#{@id}-out"}
+          href={@ticket.url}
+          class="btn btn-ghost btn-sm btn-square q-bl-out-icon"
+          title={@open_on}
+        >
+          <span class="sr-only">{@open_on}</span>
+        </.external_link>
+        <.button
+          :if={@close_patch}
+          id={"#{@id}-close"}
+          variant="ghost"
+          class="btn-square"
+          patch={@close_patch}
+          aria-label={gettext("Close the ticket")}
+          title={gettext("Close")}
+        >
+          <.icon name="hero-x-mark-micro" class="size-3.5" />
+        </.button>
+      </div>
+      <h2 id={"#{@id}-title"} class="q-bl-h">{@ticket.title}</h2>
+      <p class="q-bl-meta">{@meta}</p>
+      <.facts id={@id} ticket={@ticket} filed_by={false} />
+      {render_slot(@take_in)}
+      <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
+      <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+    </div>
+    """
+  end
+
+  defp full_frame(assigns) do
+    ~H"""
+    <article id={@id} class="q-bl-tk" aria-labelledby={"#{@id}-title"}>
+      <.button
+        :if={@back_path}
+        id={"#{@id}-back"}
+        variant="ghost"
+        class="q-bl-crumb-back"
+        navigate={@back_path}
+      >
+        <.icon name="hero-arrow-left-micro" class="size-3.5" />{gettext("Backlog")}
+      </.button>
+      <div class="q-bl-tk-head">
+        <div class="q-bl-key">
+          <.integration_tile name={@integration} class="q-bl-src" />{@ticket.ref}
+        </div>
+        <h1 id={"#{@id}-title"}>{@ticket.title}</h1>
+        <p class="q-bl-meta">{@meta}</p>
+      </div>
+      <div class="q-bl-tk-grid">
+        <div class="q-bl-tk-main">
+          <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
+          <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+        </div>
+        <div class="q-bl-tk-side">
+          <.facts id={@id} ticket={@ticket} filed_by={true} />
+          <.external_link :if={@out} id={"#{@id}-out"} href={@ticket.url} class="q-bl-out">
+            {@open_on}
+          </.external_link>
+          {render_slot(@take_in)}
+        </div>
+      </div>
+    </article>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :ticket, :map, required: true
+  attr :filed_by, :boolean, required: true
+
+  defp facts(assigns) do
+    ~H"""
+    <dl id={"#{@id}-facts"} class="q-bl-facts">
+      <dt>{pgettext("ticket", "Collection")}</dt>
+      <dd class="q-bl-repo q-mono">{@ticket.repository}</dd>
+      <%= if @ticket.labels != [] do %>
+        <dt>{pgettext("ticket", "Labels")}</dt>
+        <dd class="q-bl-lb">{Enum.join(@ticket.labels, ", ")}</dd>
+      <% end %>
+      <%= if @filed_by do %>
+        <dt>{gettext("Filed by")}</dt>
+        <dd>{@ticket.filer.name}</dd>
+      <% end %>
+    </dl>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :comments, :list, required: true
+  attr :now, :any, required: true
+  attr :rendered_comment, :list, required: true
+
+  defp comments(assigns) do
+    assigns = assign(assigns, :count, length(assigns.comments))
+
+    ~H"""
+    <section
+      :if={@count > 0}
+      id={"#{@id}-comments"}
+      class="q-bl-thread"
+      aria-labelledby={"#{@id}-comments-h"}
+    >
+      <h3 id={"#{@id}-comments-h"}>
+        {ngettext("%{number} comment", "%{number} comments", @count, number: Format.number(@count))}
+      </h3>
+      <div :for={comment <- @comments} id={"#{@id}-comment-#{comment.id}"} class="q-bl-cmt">
+        <div class="q-bl-who">
+          <.avatar name={comment.author} size="sm" />
+          <b>{comment.author}</b>
+          <span class="q-bl-when">{Format.time_ago(comment.at, @now)}</span>
+        </div>
+        <div class="q-bl-txt">{render_slot(@rendered_comment, comment)}</div>
+      </div>
+    </section>
+    """
   end
 end

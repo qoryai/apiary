@@ -659,6 +659,11 @@ msgstr ""
 msgid "%{name} fails its integrity check: its record is not as it was saved."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} filed this %{filed_ago} · updated %{updated_ago}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it."
@@ -959,6 +964,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} chunk"
 msgid_plural "%{number} chunks"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} comment"
+msgid_plural "%{number} comments"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3620,6 +3632,7 @@ msgstr ""
 msgid "Background tasks"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
@@ -4098,6 +4111,7 @@ msgstr ""
 msgid "Clearing"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -4109,6 +4123,11 @@ msgstr ""
 msgid "Close menu"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Close the ticket"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when a new policy denied the host."
@@ -4118,6 +4137,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
 msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket"
+msgid "Collection"
+msgstr "Repository"
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -5559,6 +5584,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Fetching the release's description.json and checksums.txt…"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Filed by"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -7057,6 +7087,12 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Labels"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket"
 msgid "Labels"
 msgstr ""
 
@@ -9264,6 +9300,11 @@ msgstr ""
 msgid "Open menu"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open on %{integration}"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Open on %{system}"
@@ -9277,6 +9318,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open run"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open the full ticket"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -12975,6 +13021,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace's default gateway."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ticket"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex

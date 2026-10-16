@@ -1,11 +1,13 @@
 defmodule ApiaryWeb.BacklogComponentsTest do
   @moduledoc """
   The Backlog's parts (`ApiaryWeb.BacklogComponents`): a ticket's row in each state of its
-  work item, who filed it, the integration's tile and the compact time. Every value a
-  ticket holds is escaped, and the texts that wait for a later step are not drawn.
+  work item, who filed it, the integration's tile, the compact time, and one ticket over
+  the list and as a page. Every value a ticket holds is escaped, and the texts that wait
+  for a later step are not drawn.
   """
   use ExUnit.Case, async: true
 
+  import Phoenix.Component, only: [sigil_H: 2]
   import Phoenix.LiveViewTest
 
   alias ApiaryWeb.BacklogComponents
@@ -66,16 +68,25 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     |> String.trim()
   end
 
+  defp texts(html, selector) do
+    html |> query(selector) |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
   defp attr(html, selector, name), do: html |> query(selector) |> LazyHTML.attribute(name)
 
   defp count(html, selector), do: html |> query(selector) |> Enum.count()
 
-  # The texts that are not drawn yet: Qory files no tickets yet, and a closed work item
-  # has no approved words on a row.
+  # The texts that are not drawn yet: the Take in notes wait for the adapter's label and
+  # comment, a closed work item's note has no approved words, Qory files no tickets yet,
+  # and the full ticket's side has no approved name.
   @not_drawn [
+    "Qory adds its label",
+    "Take in again makes work item",
+    "Qory puts its label back",
+    "closed in Qory",
     "Filed by Qory",
     "Qory",
-    "closed in Qory"
+    "About the ticket"
   ]
 
   defp refute_not_drawn(html) do
@@ -312,6 +323,264 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
     test "a time ahead of now is no time ago" do
       assert {"0 min", _, _} = compact(DateTime.add(@now, 7200, :second))
+    end
+  end
+
+  describe "ticket/1" do
+    defp comments do
+      [
+        %{id: "c1", author: "Sam", at: ago(27 * 3600), body: "Same on the mobile web."},
+        %{id: "c2", author: "Mirek", at: ago(20 * 3600), body: "Fine to take in."},
+        %{id: "c3", author: "Lea", at: ago(180), body: "Added a screenshot."}
+      ]
+    end
+
+    defp list_frame(ticket, comments) do
+      assigns = %{ticket: ticket, comments: comments, now: @now}
+
+      rendered_to_string(~H"""
+      <BacklogComponents.ticket
+        id="tk"
+        ticket={@ticket}
+        integration="GitHub"
+        comments={@comments}
+        now={@now}
+        full_path="/acme/shop/backlog/tkt_01"
+        close_patch="/acme/shop/backlog"
+      >
+        <:take_in>
+          <section id="block">the block</section>
+        </:take_in>
+        <:rendered_body>
+          <p id="text">the text</p>
+        </:rendered_body>
+        <:rendered_comment :let={comment}>
+          <p class="said">{comment.body}</p>
+        </:rendered_comment>
+      </BacklogComponents.ticket>
+      """)
+    end
+
+    defp full_frame(ticket, comments) do
+      assigns = %{ticket: ticket, comments: comments, now: @now}
+
+      rendered_to_string(~H"""
+      <BacklogComponents.ticket
+        id="tk"
+        frame={:full}
+        ticket={@ticket}
+        integration="GitHub"
+        comments={@comments}
+        now={@now}
+        back_path="/acme/shop/backlog"
+      >
+        <:take_in>
+          <section id="block">the block</section>
+        </:take_in>
+        <:rendered_body>
+          <p id="text">the text</p>
+        </:rendered_body>
+        <:rendered_comment :let={comment}>
+          <p class="said">{comment.body}</p>
+        </:rendered_comment>
+      </BacklogComponents.ticket>
+      """)
+    end
+
+    test "over the list (the panel, the dialog and the sheet): one dialog named Ticket" do
+      html = list_frame(ticket(), comments())
+
+      # The page's CSS makes it the panel from 1280 px, the dialog from 768 to 1279 and
+      # the sheet below 768: the markup is the same at every width.
+      assert count(html, "[role=dialog]") == 1
+      assert count(html, "aside") == 0
+      assert attr(html, "div#tk", "role") == ["dialog"]
+      assert attr(html, "div#tk", "aria-label") == ["Ticket"]
+      assert attr(html, "div#tk", "class") == ["q-bl-prev"]
+      assert count(html, "article, h1") == 0
+
+      [scrim] = attr(html, "#tk-scrim", "phx-click")
+      assert scrim =~ "patch"
+      assert scrim =~ "/acme/shop/backlog"
+      assert attr(html, "#tk-scrim", "aria-hidden") == ["true"]
+    end
+
+    test "over the list: the head, its three actions, the title and the meta line" do
+      html = list_frame(ticket(), comments())
+
+      assert attr(html, ".q-bl-tb .q-bl-src", "aria-label") == ["GitHub"]
+      assert text(html, ".q-bl-tb .q-bl-key") == "acme/shop#1231"
+
+      assert attr(html, "a#tk-full", "href") == ["/acme/shop/backlog/tkt_01"]
+      assert attr(html, "a#tk-full", "data-phx-link") == ["redirect"]
+      assert attr(html, "a#tk-full", "aria-label") == ["Open the full ticket"]
+      assert attr(html, "a#tk-full", "title") == ["Open the full ticket"]
+
+      assert attr(html, "a#tk-out", "href") == ["https://example.com/acme/shop/issues/1231"]
+      assert attr(html, "a#tk-out", "target") == ["_blank"]
+      assert attr(html, "a#tk-out", "rel") == ["noopener noreferrer nofollow"]
+      assert attr(html, "a#tk-out", "title") == ["Open on GitHub"]
+      assert text(html, "a#tk-out") == "Open on GitHub (opens in a new tab)"
+
+      assert attr(html, "a#tk-close", "href") == ["/acme/shop/backlog"]
+      assert attr(html, "a#tk-close", "data-phx-link") == ["patch"]
+      assert attr(html, "a#tk-close", "aria-label") == ["Close the ticket"]
+      assert attr(html, "a#tk-close", "title") == ["Close"]
+
+      assert text(html, "h2#tk-title") == "Discount codes are case-sensitive at checkout"
+      assert text(html, ".q-bl-meta") == "Lea filed this 2 days ago · updated 3 minutes ago"
+    end
+
+    test "over the list: Repository and Labels, the block, the text, the comments" do
+      html = list_frame(ticket(), comments())
+
+      assert texts(html, "#tk-facts dt") == ["Repository", "Labels"]
+      assert text(html, "#tk-facts .q-bl-repo") == "acme/shop"
+      assert text(html, "#tk-facts .q-bl-lb") == "bug, checkout"
+      refute text(html, "#tk-facts") =~ "Filed by"
+
+      assert text(html, "div#tk > #block") == "the block"
+      assert text(html, "#tk-text > #text") == "the text"
+
+      assert text(html, "#tk-comments h3") == "3 comments"
+      assert attr(html, "#tk-comments", "aria-labelledby") == ["tk-comments-h"]
+
+      assert [sam, mirek, lea] = html |> query("#tk-comments .q-bl-cmt") |> Enum.to_list()
+      assert LazyHTML.attribute(sam, "id") == ["tk-comment-c1"]
+      assert sam |> LazyHTML.query("b") |> LazyHTML.text() == "Sam"
+      assert sam |> LazyHTML.query(".avatar") |> LazyHTML.text() |> String.trim() == "S"
+
+      assert sam |> LazyHTML.query(".q-bl-when") |> LazyHTML.text() ==
+               Format.time_ago(ago(27 * 3600), @now)
+
+      assert sam |> LazyHTML.query(".q-bl-txt .said") |> LazyHTML.text() |> String.trim() ==
+               "Same on the mobile web."
+
+      assert mirek |> LazyHTML.query(".q-bl-txt") |> LazyHTML.text() |> String.trim() ==
+               "Fine to take in."
+
+      assert lea |> LazyHTML.query(".q-bl-when") |> LazyHTML.text() == "3 minutes ago"
+
+      refute_not_drawn(html)
+    end
+
+    test "the full ticket: a page with the back link, the text left, the facts right" do
+      html = full_frame(ticket(), comments())
+
+      assert count(html, "aside, [role=dialog], #tk-scrim, #tk-close, #tk-full") == 0
+      assert attr(html, "article#tk", "aria-labelledby") == ["tk-title"]
+
+      assert text(html, "a#tk-back") == "Backlog"
+      assert attr(html, "a#tk-back", "href") == ["/acme/shop/backlog"]
+
+      assert attr(html, ".q-bl-tk-head .q-bl-src", "aria-label") == ["GitHub"]
+      assert text(html, ".q-bl-tk-head .q-bl-key") == "G acme/shop#1231"
+      assert text(html, "h1#tk-title") == "Discount codes are case-sensitive at checkout"
+      assert text(html, ".q-bl-meta") == "Lea filed this 2 days ago · updated 3 minutes ago"
+
+      assert text(html, ".q-bl-tk-main #tk-text > #text") == "the text"
+      assert text(html, ".q-bl-tk-main #tk-comments h3") == "3 comments"
+
+      assert texts(html, ".q-bl-tk-side #tk-facts dt") == ["Repository", "Labels", "Filed by"]
+      assert texts(html, ".q-bl-tk-side #tk-facts dd") == ["acme/shop", "bug, checkout", "Lea"]
+      assert text(html, ".q-bl-tk-side a#tk-out") == "Open on GitHub (opens in a new tab)"
+      assert attr(html, "a#tk-out", "href") == ["https://example.com/acme/shop/issues/1231"]
+      assert attr(html, "a#tk-out", "target") == ["_blank"]
+      assert text(html, ".q-bl-tk-side > #block") == "the block"
+
+      refute_not_drawn(html)
+    end
+
+    test "without labels or comments: no Labels fact and no thread" do
+      for html <- [
+            list_frame(ticket(%{labels: []}), []),
+            full_frame(ticket(%{labels: []}), [])
+          ] do
+        refute text(html, "#tk-facts") =~ "Labels"
+        assert count(html, ".q-bl-lb, #tk-comments, .q-bl-cmt") == 0
+        refute html =~ "comment"
+      end
+    end
+
+    test "one comment: its count in the singular" do
+      [first | _] = comments()
+      assert text(list_frame(ticket(), [first]), "#tk-comments h3") == "1 comment"
+    end
+
+    test "a link out only for a url that may be one" do
+      for url <- [
+            nil,
+            "",
+            "javascript:alert(1)",
+            "data:text/html,x",
+            "/acme/shop/issues/1",
+            "//example.com/x",
+            "https://user:secret@example.com/x"
+          ],
+          html <- [list_frame(ticket(%{url: url}), []), full_frame(ticket(%{url: url}), [])] do
+        assert count(html, "#tk-out") == 0, "drew a link out for #{inspect(url)}"
+        refute html =~ "Open on GitHub"
+      end
+    end
+
+    # external_url?/1 lets these through today; the core's https rule for a link out of a
+    # ticket refuses them. They fail until the component switches to that rule.
+    @tag skip: "until the core's https rule for a ticket's link is public"
+    test "a link out only for a url the core's https rule allows" do
+      for url <- [
+            "https://xn--gthub-n4a.com/acme/shop/issues/1",
+            "http://example.com/acme/shop/issues/1",
+            "https://[::1]/x",
+            "https://example.com:99999/x",
+            "https://1.1/",
+            "https://ex%61mple.com/x"
+          ],
+          html <- [list_frame(ticket(%{url: url}), []), full_frame(ticket(%{url: url}), [])] do
+        assert count(html, "#tk-out") == 0, "drew a link out for #{inspect(url)}"
+      end
+    end
+
+    test "without slots: no block and no text" do
+      assigns = %{ticket: ticket(), now: @now}
+
+      html =
+        rendered_to_string(~H"""
+        <BacklogComponents.ticket id="tk" ticket={@ticket} integration="GitHub" now={@now} />
+        """)
+
+      assert text(html, "#tk-text") == ""
+      assert count(html, "section, #tk-scrim, #tk-close, #tk-full") == 0
+      refute_not_drawn(html)
+    end
+
+    test "a bot filer in the meta line and the facts" do
+      bot = ticket(%{filer: %{name: "deps-bot", kind: :bot}})
+
+      assert text(list_frame(bot, []), ".q-bl-meta") =~ "deps-bot filed this 2 days ago"
+      assert text(full_frame(bot, []), "#tk-facts dd") =~ "deps-bot"
+    end
+
+    test "markup in what the source sent prints as text" do
+      markup = "<img src=x onerror=\"alert(1)\">"
+
+      t =
+        ticket(%{
+          ref: markup,
+          title: markup,
+          repository: markup,
+          labels: [markup, "bug"],
+          filer: %{name: markup, kind: :person}
+        })
+
+      comment = %{id: "c1", author: markup, at: ago(60), body: "plain"}
+
+      for html <- [list_frame(t, [comment]), full_frame(t, [comment])] do
+        assert count(html, "img") == 0
+        assert html =~ "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
+        assert text(html, "#tk-title") == markup
+        assert text(html, ".q-bl-lb, .q-bl-tk-side dd") =~ markup <> ", bug"
+        assert text(html, ".q-bl-cmt b") == markup
+      end
     end
   end
 end
