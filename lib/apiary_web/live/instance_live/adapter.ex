@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.Adapter do
   # An adapter's page in Instance settings › Adapters, for the instance's admins: its
   # Overview tab (`:overview`), its state, the install address it declared and how often
-  # it pulls; and its
-  # Settings tab, renaming it and removing it (`:settings`, `:rename`, `:remove`). Its Access key tab is
+  # it pulls; and its Settings tab, how often it pulls, renaming it and removing it
+  # (`:settings`, `:rename`, `:remove`). Its Access key tab is
   # `ApiaryWeb.AdapterLive.AccessKey`. A page of the Instance level, with no organisation:
   # its gate asks the instance whether the feature is on (`use ApiaryWeb.Features,
   # instance: :factory`), and anyone but an instance admin is answered as a path that does
@@ -13,11 +13,15 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
   # (`Apiary.Adapters.subscribe_keys/2`); the install address the adapter declared, and
   # how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or that it
-  # declared neither yet. The
-  # Settings tab holds its name, with Rename…, and the danger zone, whose Remove adapter…
-  # opens the Remove page. Rename and Remove are pages; each act is asked again by the
-  # context function, and a removed adapter's pages leave for the list. A rename is said
-  # on the Settings tab, a removal on the list.
+  # declared neither yet.
+  #
+  # The Settings tab holds how often the adapter pulls, chosen among the intervals its
+  # declaration allows, its default marked, and saved with
+  # `Apiary.Adapters.update_sync_interval/3`; before it declares, the choice is shown
+  # disabled, with why. Then its name, with Rename…, and the danger zone, whose Remove
+  # adapter… opens the Remove page. Rename and Remove are pages; each act is asked again
+  # by the context function, and a removed adapter's pages leave for the list. A saved
+  # interval and a rename are said on the Settings tab, a removal on the list.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -41,7 +45,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       {:ok,
        socket
        |> assign(adapter: adapter, paths: AdapterComponents.paths(adapter), form: nil)
-       |> assign(:sync, sync)
+       |> assign(sync: sync, interval_form: nil)
        |> assign_connected()}
     else
       _not_theirs -> raise ApiaryWeb.NotFound
@@ -71,7 +75,24 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   defp apply_action(socket, :rename),
     do: assign(socket, :form, rename_form(Adapters.change_adapter(socket.assigns.adapter)))
 
+  defp apply_action(socket, :settings),
+    do: assign(socket, form: nil, interval_form: interval_form(socket.assigns.sync))
+
   defp apply_action(socket, _action), do: assign(socket, :form, nil)
+
+  # The interval choice, on how often the adapter pulls now.
+  defp interval_form(sync) do
+    every = AdapterComponents.pulls_every(sync)
+    to_form(%{"sync_interval" => every && to_string(every)}, as: "sync")
+  end
+
+  # How often the adapter pulls, read again, with the choice on it.
+  defp read_sync(%{assigns: %{current_scope: scope, adapter: adapter}} = socket) do
+    case Adapters.sync_settings(scope, adapter) do
+      {:ok, sync} -> assign(socket, sync: sync, interval_form: interval_form(sync))
+      {:error, reason} -> refused(socket, reason)
+    end
+  end
 
   defp rename_form(changeset), do: to_form(changeset, as: "adapter")
 
@@ -142,9 +163,37 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     end
   end
 
+  def handle_event(
+        "save_interval",
+        %{"sync" => params},
+        %{assigns: %{live_action: :settings}} = socket
+      )
+      when is_map(params) do
+    %{current_scope: scope, adapter: adapter} = socket.assigns
+
+    case Adapters.update_sync_interval(scope, adapter, Map.take(params, ["sync_interval"])) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:adapter, %{updated | created_by: adapter.created_by})
+         |> read_sync()
+         |> put_flash(:info, gettext("%{name} is saved.", name: updated.name))}
+
+      {:error, :not_declared} ->
+        {:noreply, read_sync(socket)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :interval_form, to_form(changeset, as: "sync"))}
+
+      {:error, reason} ->
+        {:noreply, refused(socket, reason)}
+    end
+  end
+
   # An act without its page open: nothing is done.
-  def handle_event(event, _params, socket) when event in ~w(validate rename remove),
-    do: {:noreply, socket}
+  def handle_event(event, _params, socket)
+      when event in ~w(validate rename remove save_interval),
+      do: {:noreply, socket}
 
   @impl true
   # A key arrived at the adapter: its state read again.
@@ -276,7 +325,13 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           seen={@seen}
           sync={@sync}
         />
-        <.settings :if={@live_action == :settings} adapter={@adapter} paths={@paths} />
+        <.settings
+          :if={@live_action == :settings}
+          adapter={@adapter}
+          paths={@paths}
+          sync={@sync}
+          interval_form={@interval_form}
+        />
       </.settings_page>
     </.frame>
     """
@@ -386,11 +441,57 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
   attr :adapter, Node, required: true
   attr :paths, :map, required: true
+  attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
+  attr :interval_form, Phoenix.HTML.Form, required: true
 
-  # The Settings tab: the adapter's name, with Rename…, and the danger zone.
+  # The Settings tab: how often the adapter pulls, its name, with Rename…, and the danger
+  # zone.
   defp settings(assigns) do
     ~H"""
     <div id="adapter-settings" class="grid gap-8">
+      <SettingsComponents.part id="adapter-interval" title={gettext("Pull interval")}>
+        <.form
+          :if={@sync.choices != []}
+          for={@interval_form}
+          id="adapter-interval-form"
+          phx-submit="save_interval"
+          class="q-form max-w-[26.25rem]"
+        >
+          <.input
+            field={@interval_form[:sync_interval]}
+            type="select"
+            label={gettext("How often the adapter pulls what changed")}
+            options={interval_options(@sync)}
+            hint={interval_hint(@sync)}
+          />
+          <SettingsComponents.save id="adapter-interval-save">
+            <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
+              {gettext("Save")}
+            </.button>
+          </SettingsComponents.save>
+        </.form>
+        <div
+          :if={@sync.choices == []}
+          id="adapter-interval-undeclared"
+          class="q-form max-w-[26.25rem]"
+        >
+          <.input
+            type="select"
+            id="adapter-interval-undeclared-choice"
+            name="sync[sync_interval]"
+            value=""
+            label={gettext("How often the adapter pulls what changed")}
+            options={[]}
+            prompt={gettext("Not declared yet")}
+            hint={
+              gettext(
+                "The adapter declares its default, and the most often it may pull, once it is connected and running. Until then this can't be set."
+              )
+            }
+            disabled
+          />
+        </div>
+      </SettingsComponents.part>
       <SettingsComponents.part id="adapter-name" title={gettext("Name")}>
         <p class="flex flex-wrap items-baseline gap-x-3 text-[13.5px]/5">
           <span id="adapter-name-value" class="font-medium">{@adapter.name}</span>
@@ -418,5 +519,34 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       </SettingsComponents.danger_zone>
     </div>
     """
+  end
+
+  # The intervals an instance admin may choose, each in words, the adapter's default
+  # marked.
+  defp interval_options(%{choices: choices, default: default}) do
+    for seconds <- choices do
+      label = AdapterComponents.interval_label(seconds)
+
+      if seconds == default,
+        do: {gettext("%{interval} (its default)", interval: label), seconds},
+        else: {label, seconds}
+    end
+  end
+
+  # What the choice is for, with what the adapter declared, in a sentence's words.
+  defp interval_hint(%{sends_changes: true} = sync) do
+    gettext(
+      "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting.",
+      default: AdapterComponents.interval_words(sync.default),
+      minimum: AdapterComponents.interval_words(sync.minimum)
+    )
+  end
+
+  defp interval_hint(sync) do
+    gettext(
+      "The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting.",
+      default: AdapterComponents.interval_words(sync.default),
+      minimum: AdapterComponents.interval_words(sync.minimum)
+    )
   end
 end
