@@ -761,9 +761,15 @@ msgstr ""
 msgid "%{name} is on Forager's deny list."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is removed."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is renamed."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex

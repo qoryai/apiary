@@ -142,6 +142,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
       lv |> form("#adapter-rename-form", adapter: %{name: "Platform tracker"}) |> render_submit()
       assert_patch(lv, page_path(adapter, "/settings"))
+      assert render(lv) =~ "Platform tracker is renamed."
       assert words(lv, "#adapter-name-value") == "Platform tracker"
       assert has_element?(lv, "h1", "Platform tracker")
       assert Adapters.get_adapter(admin, adapter.public_id).name == "Platform tracker"
@@ -196,9 +197,10 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
                ~s{#adapter-remove-save-cancel[href="#{page_path(adapter, "/settings")}"]}
              )
 
-      assert {:error, {:live_redirect, %{to: "/instance/adapters"}}} =
-               lv |> element("#adapter-remove-button") |> render_click()
-
+      removed = lv |> element("#adapter-remove-button") |> render_click()
+      assert {:error, {:live_redirect, %{to: "/instance/adapters"}}} = removed
+      {:ok, _list, html} = follow_redirect(removed, conn)
+      assert html =~ "Platform tracker is removed."
       assert Adapters.get_adapter(admin, adapter.public_id) == nil
       assert Repo.get!(AccessKey, key.id).revoked_at
       assert Repo.get!(EnrolmentCode, code.id).cancelled_at

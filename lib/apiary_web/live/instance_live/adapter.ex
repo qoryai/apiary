@@ -14,7 +14,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # or that it declared none yet. The
   # Settings tab holds its name, with Rename…, and the danger zone, whose Remove adapter…
   # opens the Remove page. Rename and Remove are pages; each act is asked again by the
-  # context function, and a removed adapter's pages leave for the list.
+  # context function, and a removed adapter's pages leave for the list. A rename is said
+  # on the Settings tab, a removal on the list.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -111,6 +112,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         {:noreply,
          socket
          |> assign(:adapter, %{renamed | created_by: adapter.created_by})
+         |> put_flash(:info, gettext("%{name} is renamed.", name: renamed.name))
          |> push_patch(to: paths.settings)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -125,8 +127,14 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     %{current_scope: scope, adapter: adapter, paths: paths} = socket.assigns
 
     case Adapters.delete_adapter(scope, adapter) do
-      {:ok, _removed} -> {:noreply, push_navigate(socket, to: paths.list)}
-      {:error, reason} -> {:noreply, refused(socket, reason)}
+      {:ok, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("%{name} is removed.", name: removed.name))
+         |> push_navigate(to: paths.list)}
+
+      {:error, reason} ->
+        {:noreply, refused(socket, reason)}
     end
   end
 
