@@ -280,14 +280,20 @@ defmodule Apiary.Sources.Body do
     |> Enum.join()
   end
 
-  # An absolute https URL with a host and no user name or password, and by choice a plain
-  # one: a port up to 65535, and a host of letters, digits, `-`, `_` and `.` with no empty
-  # label and no punycode label (`xn--`), or, where its last label is a number, an IPv4
-  # address of four decimal parts. IPv6 addresses and hosts outside ASCII are not linked.
-  # This is stricter than the sanitiser's URL parser, so a link kept here keeps its href
-  # there. A URL with a character outside ASCII is checked with that character
-  # percent-encoded, as the renderer writes it, so a host outside ASCII has a `%`.
-  defp https?(url) when is_binary(url) do
+  # Whether `url` is a link the console may have: an absolute `https` URL with a host and no
+  # user name or password, and by choice a plain one: a port up to 65535, and a host of
+  # letters, digits, `-`, `_` and `.` with no empty label (a trailing `.` aside) and no
+  # punycode label (`xn--`), or, where its last label is a number, an IPv4 address of four
+  # decimal parts. IPv6 addresses and hosts outside ASCII are refused. This is stricter than
+  # the sanitiser's URL parser, so a link kept here keeps its href there. A URL with a
+  # character outside ASCII is checked with that character percent-encoded, as the renderer
+  # writes it, so a host outside ASCII has a `%`. Anything that is not a binary, nil
+  # included, is refused.
+  #
+  # `render/2` links a URL only where this is true.
+  @doc false
+  @spec https?(term()) :: boolean()
+  def https?(url) when is_binary(url) do
     parsed =
       with {:error, _} <- URI.new(url),
            do: URI.new(URI.encode(url, &(&1 < 128)))
@@ -301,6 +307,8 @@ defmodule Apiary.Sources.Body do
         false
     end
   end
+
+  def https?(_), do: false
 
   defp host?(host) do
     cond do
