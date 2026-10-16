@@ -99,6 +99,10 @@ defmodule ApiaryWeb.NodesPartTest do
           ] do
         hide([])
         {:ok, view, _html} = live(conn, path)
+        # The async reads the page starts (a node's or a gateway's page reads its recent
+        # runs) finish before it leaves, so none is killed holding the test's sandbox
+        # connection.
+        render_async(view)
 
         # Hidden meanwhile: the page hears of it as of any change to the reader's place.
         hide([:nodes])
