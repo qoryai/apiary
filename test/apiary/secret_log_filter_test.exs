@@ -4,6 +4,11 @@ defmodule Apiary.SecretLogFilterTest do
   alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.SecretLogFilter
 
+  # A struct of the app's with a payload, as a message a LiveView's process may be sent.
+  defmodule Payload do
+    defstruct [:payload, :topic, :note]
+  end
+
   # The fixture secret of Forager's contract (keys.json), and one in capitals.
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
@@ -833,6 +838,35 @@ defmodule Apiary.SecretLogFilterTest do
 
         assert report.last_message == kept
       end
+    end
+
+    test "keeps a reply's status only when it is an atom" do
+      reply = %Phoenix.Socket.Reply{topic: "lv:phx-1", status: @marker, payload: %{}}
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+
+      %{msg: {:report, report}} =
+        SecretLogFilter.filter(terminate_report(label, :killed, reply), nil)
+
+      assert report.last_message == %Phoenix.Socket.Reply{
+               topic: "lv:phx-1",
+               status: "[FILTERED]",
+               payload: "[FILTERED]",
+               ref: nil,
+               join_ref: nil
+             }
+
+      refute inspect(report) =~ @marker
+    end
+
+    test "writes [FILTERED] for any other struct with a payload, its other fields included" do
+      other = %Payload{payload: %{}, topic: "lv:phx-1", note: @marker}
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+
+      %{msg: {:report, report}} =
+        SecretLogFilter.filter(terminate_report(label, :killed, other), nil)
+
+      assert report.last_message == "[FILTERED]"
+      refute inspect(report) =~ @marker
     end
 
     test "writes [FILTERED] for a crash report that defeats it" do

@@ -100,13 +100,14 @@ defmodule Apiary.SecretLogFilter do
   The state is `[FILTERED]`. The last message, when a client sent it on the socket, keeps
   its topic only when it is the LiveView's, which its join verified, and its event only
   when Phoenix or LiveView names it; its payload, its references, and a topic or an event
-  a client chose, are `[FILTERED]`. A broadcast keeps its event and a reply its status, and
-  each its topic only when it is the LiveView's verified one (a broadcast's topic may name
-  a session); its payload and its references are `[FILTERED]`. Any other last message
-  keeps its atoms, pids, ports, references and functions, a tuple's elements and an
-  exception taken as above, and has every other term (a number, a binary, a list, a map)
-  replaced by `[FILTERED]`. Any other event of such a process has the terms of its
-  `:crash_reason` metadata replaced the same way.
+  a client chose, are `[FILTERED]`. Phoenix's broadcast keeps its event, and Phoenix's
+  reply its status when it is an atom; each keeps its topic only when it is the LiveView's
+  verified one (a broadcast's topic may name a session); its payload, a reply's
+  references, and a reply's status that is not an atom, are `[FILTERED]`. Any other last
+  message keeps its atoms, pids, ports, references and functions, a tuple's elements and
+  an exception taken as above, and has every other term (a number, a binary, a list, a
+  map, any other struct) replaced by `[FILTERED]`. Any other event of such a process has
+  the terms of its `:crash_reason` metadata replaced the same way.
 
   OTP's crash report of the process (`{:proc_lib, :crash}`, which Logger drops unless
   `:handle_sasl_reports` is set) keeps its exception, or its exit's reason, and its
@@ -132,8 +133,9 @@ defmodule Apiary.SecretLogFilter do
     * a line a LiveView's process, a channel's or the socket's logs at error or above, or
       with a `:crash_reason`, but for a line of the app's code (a module of `Apiary` or
       `ApiaryWeb`), which is kept as written. The app's lines at error that such a process
-      can log write ids, a secret value's name, an exception's module, and, for a run
-      configuration the contract refuses, the hosts and paths it holds.
+      can log write ids, whether a data key is a workspace's or an organisation's, the
+      name of the setting `APIARY_ENCRYPTION_SECRET`, an exception's module, and, for a
+      run configuration the contract refuses, the hosts and paths it holds.
 
   Any other event without a secret is passed on exactly as it came. The filter never
   stops an event and never raises: should a term defeat it, the event is passed on as it
@@ -520,9 +522,9 @@ defmodule Apiary.SecretLogFilter do
   # A message a client sent on a socket keeps its topic when it is the one the LiveView's
   # join verified, and its event when Phoenix or LiveView names it; its payload and its
   # references are `[FILTERED]`. A broadcast or a reply, which the server makes, keeps its
-  # event and its status, and its topic only when it is the verified one (a broadcast's
-  # topic may name a session); its payload and its references are `[FILTERED]`. Any other
-  # message is redacted.
+  # event, or its status when it is an atom, and its topic only when it is the verified one
+  # (a broadcast's topic may name a session); its payload and its references are
+  # `[FILTERED]`. Any other message, any other struct with a payload included, is redacted.
   defp strip_message(%Phoenix.Socket.Message{} = message, label) do
     %{
       message
@@ -534,15 +536,25 @@ defmodule Apiary.SecretLogFilter do
     }
   end
 
-  defp strip_message(%{__struct__: _, payload: _} = message, label) do
-    message
-    |> Map.replace_lazy(:topic, &if(verified_topic?(&1, label), do: &1, else: @filtered))
-    |> Map.replace_lazy(:ref, &redact/1)
-    |> Map.replace_lazy(:join_ref, &redact/1)
-    |> Map.put(:payload, @filtered)
+  defp strip_message(%Phoenix.Socket.Broadcast{} = broadcast, label) do
+    %{broadcast | topic: verified_topic(broadcast.topic, label), payload: @filtered}
+  end
+
+  defp strip_message(%Phoenix.Socket.Reply{} = reply, label) do
+    %{
+      reply
+      | topic: verified_topic(reply.topic, label),
+        status: if(is_atom(reply.status), do: reply.status, else: @filtered),
+        ref: redact(reply.ref),
+        join_ref: redact(reply.join_ref),
+        payload: @filtered
+    }
   end
 
   defp strip_message(message, _label), do: redact(message)
+
+  defp verified_topic(topic, label),
+    do: if(verified_topic?(topic, label), do: topic, else: @filtered)
 
   defp verified_topic?(topic, {Phoenix.LiveView, _view, topic}) when is_binary(topic), do: true
   defp verified_topic?(_topic, _label), do: false
