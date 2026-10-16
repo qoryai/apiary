@@ -67,14 +67,48 @@ defmodule Apiary.SecretLogFilter do
   return path inside another parameter). A value of another shape, an invitation's id
   among them (`invitation=<uuid>` in a line the app writes), is left as it is.
 
-  An event without a secret is passed on exactly as it came. The filter never stops an
-  event and never raises: should a term defeat it, the event is passed on as it came.
+  **A crash of a LiveView's process.** What a browser sends a LiveView comes in a frame of
+  its socket, and a crafted frame can make the process fail on it, before any page reads
+  it (an event's value that is not text, a payload without the keys LiveView reads, a
+  `"meta"` or a `"cid"` of the wrong kind) or inside a page. Its crash report would print
+  what the frame carried where no page can reach it: in the last message, in the
+  exception's terms (a `MatchError`'s term, a `FunctionClauseError`'s arguments), in the
+  arguments of a call in the stacktrace, and, at debug, in the state, a page's assigns
+  among them. So the crash report of a LiveView's process, a channel's or the socket's (a
+  process whose label is `{Phoenix.LiveView, view, topic}`, `{Phoenix.Channel, channel,
+  topic}` or `{Phoenix.Socket, handler, id}`, or, before the label is set, whose initial
+  call is a LiveView's or a channel's) keeps:
+
+    * the exception's module, and its message made from its terms with each binary,
+      list and map in them replaced by `[FILTERED]` (atoms and numbers stay). A
+      `FunctionClauseError` names its function and arity, without the arguments; an
+      Erlang error is made the Elixir exception it stands for first. An exception whose
+      message is stored as text (a `RuntimeError`'s, an `ArgumentError`'s, an
+      `Ecto.CastError`'s) has `[FILTERED]` in its place, as that text may hold the terms;
+    * the stacktrace, each call with its arity in place of its arguments;
+    * the process's name and label, and the client's name and stacktrace.
+
+  The last message's payload is `[FILTERED]` (another message keeps its atoms alone), and
+  so is the state. Any other event of such a process has the terms of its `:crash_reason`
+  metadata replaced the same way. OTP's crash report of the process (`{:proc_lib, :crash}`,
+  which Logger drops unless `:handle_sasl_reports` is set) keeps its exception, its
+  stacktrace and its messages the same way, and of its process dictionary the entries
+  that OTP and Logger read. Should such a crash report defeat the filter, its message is
+  `[FILTERED]`. A crash report of any other process keeps its terms, a secret and a
+  token in them replaced as above.
+
+  Any other event without a secret is passed on exactly as it came. The filter never
+  stops an event and never raises: should a term defeat it, the event is passed on as it
+  came, or with the message `[FILTERED]` when it is a crash report of a LiveView's
+  process, a channel's or the socket's.
 
   What it does not cover: a secret split across the parts of a term (two binaries, or an
   iolist's pieces inside a report or inside a message that cannot be read as text, each
   holding part of `qak_` or of a code's prefix); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
-  standard output or standard error). A public key whose base64url happens to hold `qak_`
+  standard output or standard error). A crash report made text before the filter reads
+  it, and the report of a task a LiveView starts, are scrubbed of a secret and a token
+  alone. A public key whose base64url happens to hold `qak_`
   or a code's prefix is filtered from a log line as a secret would be. A link's token
   anywhere else is not recognised: in another parameter of a query, or alone as a parameter's value,
   which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
@@ -204,7 +238,9 @@ defmodule Apiary.SecretLogFilter do
 
   @doc """
   filter/2 is the log event with each secret in its message and its metadata replaced by
-  `[FILTERED]`, or the event as it came when it holds none.
+  `[FILTERED]`, and, in a crash report of a LiveView's process, a channel's or the
+  socket's, what the process was sent replaced by `[FILTERED]` as well; or the event as
+  it came when it holds neither.
   """
   @spec filter(:logger.log_event(), term) :: :logger.log_event()
   # The set-up link's line writes its link whole (`Apiary.Setup`).
@@ -214,13 +250,234 @@ defmodule Apiary.SecretLogFilter do
     _kind, _defeated -> event
   end
 
-  def filter(%{msg: msg, meta: meta} = event, _extra) when is_map(meta) do
-    %{event | msg: scrub_msg(msg), meta: scrub(meta)}
-  catch
-    _kind, _defeated -> event
+  def filter(%{meta: meta} = event, _extra) when is_map(meta) do
+    event = strip_crash(event)
+
+    try do
+      %{event | msg: scrub_msg(event.msg), meta: scrub(event.meta)}
+    catch
+      _kind, _defeated -> event
+    end
   end
 
   def filter(event, _extra), do: event
+
+  # What replaces a term.
+  @filtered "[FILTERED]"
+
+  # The labels Phoenix gives a LiveView's process, a channel's and a socket's, and the
+  # modules a LiveView's and a channel's process start in, before the label is set.
+  @channel_labels [Phoenix.LiveView, Phoenix.Channel, Phoenix.Socket]
+  @channel_modules [Phoenix.LiveView.Channel, Phoenix.Channel.Server]
+
+  # The entries of a process dictionary that OTP and Logger read in a crash report.
+  @dictionary_keys [
+    :"$initial_call",
+    :"$ancestors",
+    :"$callers",
+    :"$process_label",
+    :"$logger_metadata$",
+    :logger_enabled
+  ]
+
+  # A crash report of a LiveView's process, a channel's or the socket's, with what the
+  # process was sent taken out; any other event as it came. Should the report defeat it,
+  # its message is `[FILTERED]`, and its crash reason goes.
+  defp strip_crash(%{msg: msg, meta: meta} = event) do
+    if crash_of_channel?(msg, meta) do
+      try do
+        %{event | msg: strip_msg(msg), meta: strip_meta(meta)}
+      catch
+        _kind, _defeated ->
+          %{event | msg: {:string, @filtered}, meta: Map.delete(meta, :crash_reason)}
+      end
+    else
+      event
+    end
+  end
+
+  defp strip_crash(event), do: event
+
+  defp crash_of_channel?({:report, %{label: {:gen_server, :terminate}} = report}, meta),
+    do: channel_process?(Map.get(report, :process_label), nil, meta)
+
+  defp crash_of_channel?({:report, %{label: {:proc_lib, :crash}, report: [crashed | _]}}, meta)
+       when is_list(crashed) do
+    channel_process?(entry(crashed, :process_label), entry(crashed, :initial_call), meta)
+  end
+
+  defp crash_of_channel?(_msg, %{crash_reason: _} = meta), do: channel_process?(nil, nil, meta)
+  defp crash_of_channel?(_msg, _meta), do: false
+
+  # A keyword's value, read up to an improper tail.
+  defp entry([{key, value} | _rest], key), do: value
+  defp entry([_entry | rest], key), do: entry(rest, key)
+  defp entry(_tail, _key), do: nil
+
+  # The report's label or initial call, or else, for an event the process logs itself,
+  # the process's.
+  defp channel_process?(label, initial_call, meta) do
+    channel_label?(label) or channel_call?(initial_call) or
+      (Map.get(meta, :pid) == self() and
+         (channel_label?(Process.get(:"$process_label")) or
+            channel_call?(Process.get(:"$initial_call"))))
+  end
+
+  defp channel_label?({kind, _module, _id}) when kind in @channel_labels, do: true
+  defp channel_label?(_label), do: false
+
+  defp channel_call?({module, :init, _args}) when module in @channel_modules, do: true
+  defp channel_call?(_call), do: false
+
+  defp strip_msg({:report, %{label: {:gen_server, :terminate}} = report}) do
+    report =
+      :maps.map(
+        fn
+          key, value when key in [:label, :name, :process_label] -> value
+          :reason, reason -> strip_reason(reason)
+          :client_info, client -> strip_client(client)
+          :last_message, message -> strip_message(message)
+          :log, _log -> []
+          _key, _value -> @filtered
+        end,
+        report
+      )
+
+    {:report, report}
+  end
+
+  defp strip_msg({:report, %{label: {:proc_lib, :crash}, report: [crashed | linked]} = report}) do
+    {:report, %{report | report: [Enum.map(crashed, &strip_crashed/1) | linked]}}
+  end
+
+  defp strip_msg(msg), do: msg
+
+  # An entry of OTP's crash report of the process.
+  defp strip_crashed({:error_info, {:error, reason, stack}}) do
+    {reason, stack} = strip_reason({reason, stack})
+    {:error_info, {:error, reason, stack}}
+  end
+
+  defp strip_crashed({:error_info, {kind, reason, stack}}) when is_list(stack),
+    do: {:error_info, {kind, redact(reason), strip_stack(stack)}}
+
+  defp strip_crashed({:messages, messages}) when is_list(messages),
+    do: {:messages, Enum.map(messages, &strip_message/1)}
+
+  defp strip_crashed({:dictionary, dictionary}) when is_list(dictionary),
+    do: {:dictionary, Enum.filter(dictionary, &match?({key, _} when key in @dictionary_keys, &1))}
+
+  defp strip_crashed({:current_stacktrace, stack}) when is_list(stack),
+    do: {:current_stacktrace, strip_stack(stack)}
+
+  defp strip_crashed({key, _value} = entry)
+       when key in [
+              :initial_call,
+              :pid,
+              :registered_name,
+              :process_label,
+              :ancestors,
+              :message_queue_len,
+              :links,
+              :trap_exit,
+              :status,
+              :heap_size,
+              :stack_size,
+              :reductions
+            ],
+       do: entry
+
+  defp strip_crashed({key, _value}), do: {key, @filtered}
+
+  defp strip_meta(%{crash_reason: reason} = meta),
+    do: %{meta | crash_reason: strip_reason(reason)}
+
+  defp strip_meta(meta), do: meta
+
+  # A message a socket carries keeps its topic, event and reference; any other keeps its
+  # atoms alone.
+  defp strip_message(%{__struct__: _, payload: _} = message), do: %{message | payload: @filtered}
+  defp strip_message(message), do: redact(message)
+
+  # A crash's reason: the error and its stacktrace, or else an exit's reason.
+  defp strip_reason({error, stack} = reason) when is_list(stack) do
+    if stacktrace?(stack) do
+      stack = strip_stack(stack)
+      {strip_error(error, stack), stack}
+    else
+      redact(reason)
+    end
+  end
+
+  defp strip_reason(reason), do: redact(reason)
+
+  defp strip_client({client, {name, stack}}) when is_list(stack),
+    do: {client, {name, strip_stack(stack)}}
+
+  defp strip_client(client), do: redact(client)
+
+  # An Erlang error is made the exception it stands for, read from the stacktrace without
+  # its arguments; one that stands for none is an exit's reason, its atoms kept.
+  defp strip_error(error, _stack) when is_exception(error), do: strip_exception(error)
+
+  defp strip_error(error, stack) do
+    case Exception.normalize(:error, error, stack) do
+      %ErlangError{} -> redact(error)
+      exception -> strip_exception(exception)
+    end
+  end
+
+  defp strip_exception(%FunctionClauseError{} = exception),
+    do: %{exception | args: nil, clauses: nil}
+
+  defp strip_exception(exception) do
+    :maps.map(
+      fn
+        key, value when key in [:__struct__, :__exception__] -> value
+        :args, args when is_list(args) -> Enum.map(args, fn _arg -> @filtered end)
+        _key, value -> redact(value)
+      end,
+      exception
+    )
+  end
+
+  # Each call with its arity in place of its arguments.
+  defp strip_stack(stack), do: Enum.map(stack, &strip_call/1)
+
+  defp strip_call({module, function, args, location}) when is_list(args),
+    do: {module, function, length(args), location}
+
+  defp strip_call({fun, args, location}) when is_list(args), do: {fun, length(args), location}
+  defp strip_call(call), do: call
+
+  defp stacktrace?([call | stack]), do: call?(call) and stacktrace?(stack)
+  defp stacktrace?([]), do: true
+  defp stacktrace?(_tail), do: false
+
+  defp call?({module, function, args, location})
+       when is_atom(module) and is_atom(function) and (is_list(args) or is_integer(args)) and
+              is_list(location),
+       do: true
+
+  defp call?({fun, args, location})
+       when is_function(fun) and (is_list(args) or is_integer(args)) and is_list(location),
+       do: true
+
+  defp call?(_call), do: false
+
+  # A term with its atoms, numbers, pids, ports, references and functions kept (inspect
+  # writes none of a function's captured values), a tuple's elements and an exception's
+  # terms each taken the same way, and anything else replaced by `[FILTERED]`.
+  defp redact(term)
+       when is_atom(term) or is_number(term) or is_pid(term) or is_port(term) or
+              is_reference(term) or is_function(term),
+       do: term
+
+  defp redact(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> Enum.map(&redact/1) |> List.to_tuple()
+
+  defp redact(exception) when is_exception(exception), do: strip_exception(exception)
+  defp redact(_term), do: @filtered
 
   defp scrub_msg({:string, chardata} = msg) do
     case chardata_text(chardata) do

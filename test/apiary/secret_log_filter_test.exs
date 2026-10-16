@@ -448,6 +448,209 @@ defmodule Apiary.SecretLogFilterTest do
     end
   end
 
+  describe "a crash of a LiveView's process, a channel's or the socket's" do
+    # What a client sends: no log line of such a process may hold it.
+    @marker "plaintext-marker-3f8a"
+
+    # A call in a stacktrace, with its arguments.
+    @call {Acme.Page, :handle_event, ["save", %{"password" => @marker}, %{assigns: %{}}],
+           [file: ~c"lib/acme.ex", line: 7]}
+
+    # The crash report of a GenServer, as OTP logs it, of a process labelled `label`, sent
+    # by another process.
+    defp terminate_report(label, reason, last_message) do
+      %{
+        level: :error,
+        msg:
+          {:report,
+           %{
+             label: {:gen_server, :terminate},
+             name: self(),
+             process_label: label,
+             last_message: last_message,
+             state: %{assigns: %{password: @marker}},
+             log: [{:in, @marker}],
+             reason: reason,
+             client_info: {self(), {self(), [@call]}}
+           }},
+        meta: %{pid: :c.pid(0, 1, 0), domain: [:otp]}
+      }
+    end
+
+    test "has each term the process was sent replaced, and keeps the exception's names" do
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+      message = %Phoenix.Socket.Message{topic: "lv:phx-1", event: "event", payload: @marker}
+
+      %{msg: {:report, report}} =
+        SecretLogFilter.filter(
+          terminate_report(label, {{:badmatch, %{"password" => @marker}}, [@call]}, message),
+          nil
+        )
+
+      stack = [{Acme.Page, :handle_event, 3, [file: ~c"lib/acme.ex", line: 7]}]
+
+      assert report == %{
+               label: {:gen_server, :terminate},
+               name: self(),
+               process_label: label,
+               last_message: %{message | payload: "[FILTERED]"},
+               state: "[FILTERED]",
+               log: [],
+               reason: {%MatchError{term: "[FILTERED]"}, stack},
+               client_info: {self(), {self(), stack}}
+             }
+    end
+
+    test "makes an Erlang error the exception it stands for, and keeps an exit's atoms" do
+      label = {Phoenix.Socket, Phoenix.LiveView.Socket, nil}
+      strip = &SecretLogFilter.filter(terminate_report(label, &1, {:tcp, :socket, @marker}), nil)
+
+      for {reason, stripped} <- [
+            {{:function_clause, [@call]},
+             %FunctionClauseError{module: Acme.Page, function: :handle_event, arity: 3}},
+            {{%FunctionClauseError{module: Acme.Page, function: :f, arity: 1, args: [@marker]},
+              [@call]}, %FunctionClauseError{module: Acme.Page, function: :f, arity: 1}},
+            {{{:badkey, @marker, %{@marker => 1}}, [@call]},
+             %KeyError{key: "[FILTERED]", term: "[FILTERED]"}},
+            {{%Ecto.CastError{type: :map, value: @marker, message: "got: #{@marker}"}, [@call]},
+             %Ecto.CastError{type: :map, value: "[FILTERED]", message: "[FILTERED]"}},
+            {{{:case_clause, {:ok, @marker}}, [@call]},
+             %CaseClauseError{term: {:ok, "[FILTERED]"}}}
+          ] do
+        %{msg: {:report, report}} = strip.(reason)
+        assert {^stripped, [{Acme.Page, :handle_event, 3, _location}]} = report.reason
+        assert report.last_message == {:tcp, :socket, "[FILTERED]"}
+      end
+
+      %{msg: {:report, report}} = strip.({:shutdown, {:closed, @marker}})
+      assert report.reason == {:shutdown, {:closed, "[FILTERED]"}}
+    end
+
+    test "keeps the frame out of the crash report of the socket's process, a channel's, " <>
+           "and a LiveView's before its label" do
+      for {key, value} <- [
+            {:"$process_label", {Phoenix.Socket, Phoenix.LiveView.Socket, nil}},
+            {:"$process_label", {Phoenix.Channel, Acme.Channel, "room:1"}},
+            {:"$initial_call", {Phoenix.LiveView.Channel, :init, 1}}
+          ] do
+        log =
+          ExUnit.CaptureLog.capture_log([level: :error], fn ->
+            {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Socket, {key, value})
+            ref = Process.monitor(pid)
+            send(pid, {:tcp, :socket, JSON.encode!(%{"payload" => @marker})})
+            assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+          end)
+
+        assert log =~ "terminating"
+        assert log =~ "** (MatchError)"
+        assert log =~ "Phoenix.Socket.V2.JSONSerializer"
+        assert log =~ ~s(Last message: {:tcp, :socket, "[FILTERED]"})
+        refute log =~ @marker
+      end
+    end
+
+    test "keeps the detail of any other process's crash report" do
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Crashing, nil)
+          ref = Process.monitor(pid)
+          send(pid, {:clause, @marker})
+          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+        end)
+
+      assert log =~ ~s{Apiary.SecretLogFilterTest.Crashing.only_ok("#{@marker}")}
+      assert log =~ ~s(Last message: {:clause, "#{@marker}"})
+    end
+
+    test "has the crash reason of another event of such a process replaced" do
+      crash_reason = {{:badmatch, @marker}, [@call]}
+
+      meta =
+        Task.async(fn ->
+          Process.put(:"$process_label", {Phoenix.LiveView, Acme.Page, "lv:phx-1"})
+
+          event = %{
+            level: :error,
+            msg: {:string, "x"},
+            meta: %{pid: self(), crash_reason: crash_reason}
+          }
+
+          SecretLogFilter.filter(event, nil).meta
+        end)
+        |> Task.await()
+
+      assert meta.crash_reason ==
+               {%MatchError{term: "[FILTERED]"},
+                [{Acme.Page, :handle_event, 3, [file: ~c"lib/acme.ex", line: 7]}]}
+
+      # Logged by another process, it is kept.
+      event = %{
+        level: :error,
+        msg: {:string, "x"},
+        meta: %{pid: self(), crash_reason: crash_reason}
+      }
+
+      assert SecretLogFilter.filter(event, nil) == event
+    end
+
+    test "keeps the frame out of OTP's crash report of the process" do
+      crashed = [
+        initial_call: {Phoenix.LiveView.Channel, :init, [:Argument__1]},
+        pid: self(),
+        registered_name: [],
+        process_label: :undefined,
+        error_info: {:error, {:badmatch, %{"password" => @marker}}, [@call]},
+        ancestors: [],
+        message_queue_len: 1,
+        messages: [%Phoenix.Socket.Message{topic: "lv:phx-1", event: "event", payload: @marker}],
+        links: [],
+        dictionary: [{:"$initial_call", {Phoenix.LiveView.Channel, :init, 1}}, {:held, @marker}],
+        trap_exit: false,
+        status: :running,
+        heap_size: 1,
+        stack_size: 1,
+        reductions: 1
+      ]
+
+      event = %{
+        level: :error,
+        msg: {:report, %{label: {:proc_lib, :crash}, report: [crashed, []]}},
+        meta: %{pid: :c.pid(0, 1, 0), domain: [:otp, :sasl]}
+      }
+
+      %{msg: {:report, %{report: data}}} = SecretLogFilter.filter(event, nil)
+      refute inspect(data, limit: :infinity, printable_limit: :infinity) =~ @marker
+
+      {:ok, text, meta} =
+        Logger.Translator.translate(:debug, :error, :report, {{:proc_lib, :crash}, data})
+
+      text = IO.chardata_to_string(text)
+      assert text =~ "** (MatchError)"
+      assert text =~ "Acme.Page.handle_event/3"
+      refute text =~ @marker
+      refute inspect(meta, limit: :infinity, printable_limit: :infinity) =~ @marker
+    end
+
+    test "writes [FILTERED] for a crash report that defeats it" do
+      crashed = [
+        {:process_label, {Phoenix.LiveView, Acme.Page, "lv:phx-1"}},
+        {:messages, [@marker]} | :tail
+      ]
+
+      event = %{
+        level: :error,
+        msg: {:report, %{label: {:proc_lib, :crash}, report: [crashed, []]}},
+        meta: %{pid: self(), crash_reason: {@marker, []}}
+      }
+
+      assert SecretLogFilter.filter(event, nil) == %{
+               event
+               | msg: {:string, "[FILTERED]"},
+                 meta: %{pid: self()}
+             }
+    end
+  end
+
   defmodule Crashing do
     use GenServer
 
@@ -456,5 +659,26 @@ defmodule Apiary.SecretLogFilterTest do
 
     @impl true
     def handle_info({:value, value}, _state), do: raise(ArgumentError, "refused #{value}")
+    def handle_info({:clause, value}, state), do: {:noreply, only_ok(value) && state}
+
+    def only_ok(:ok), do: :ok
+  end
+
+  # A process labelled as Phoenix labels a socket's, or a channel's, or started as a
+  # LiveView's is: a frame it cannot read takes it down.
+  defmodule Socket do
+    use GenServer
+
+    @impl true
+    def init({key, value}) do
+      Process.put(key, value)
+      {:ok, %{held: :none}}
+    end
+
+    @impl true
+    def handle_info({:tcp, _socket, frame}, state) do
+      Phoenix.Socket.V2.JSONSerializer.decode!(frame, opcode: :text)
+      {:noreply, state}
+    end
   end
 end

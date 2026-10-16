@@ -1780,8 +1780,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
           assert_receive {:DOWN, ^ref, :process, _pid, _reason}
         end)
 
-      assert log =~ "FunctionClauseError"
-      assert log =~ ~s{"value" => "[FILTERED]"}
+      assert log =~
+               "(FunctionClauseError) no function clause matching in " <>
+                 "ApiaryWeb.NodeLive.AccessKey.handle_event/3"
+
+      # The event's payload, as a crash report of the page's process writes it
+      # (`Apiary.SecretLogFilter`).
+      assert log =~ ~s{payload: "[FILTERED]"}
       refute log =~ ~r/qak_/i
       assert AccessKeys.list_for_node(scope, node) == []
     end
