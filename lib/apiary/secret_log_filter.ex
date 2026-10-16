@@ -8,10 +8,10 @@ defmodule Apiary.SecretLogFilter do
 
   Qory Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
-  parameters of a LiveView event, which `Phoenix.LiveView.Logger` logs at debug before the
-  page refuses an event holding a secret, or the arguments and the last message that a
-  crash report prints when a process fails on them. Phoenix filters parameters by their
-  names (`:filter_parameters`), not by their values, so this filter takes the value: the
+  parameters of a request or of a socket's connection, which Phoenix logs, or the
+  arguments and the last message that a crash report prints when a process fails on them.
+  Phoenix filters parameters by their names (`:filter_parameters`), not by their values,
+  so this filter takes the value: the
   Forager contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
   the page refuses by.
 
@@ -66,6 +66,14 @@ defmodule Apiary.SecretLogFilter do
   (a `Plug.Conn`'s `query_string`), and in its URL-encoded form (`%3Finvitation%3D…`, a
   return path inside another parameter). A value of another shape, an invitation's id
   among them (`invitation=<uuid>` in a line the app writes), is left as it is.
+
+  **A page's lines at debug.** The lines a LiveView logs as it mounts, as it handles the
+  parameters of its URL and as it handles an event (`MOUNT`, `HANDLE PARAMS` and
+  `HANDLE EVENT`) are `ApiaryWeb.LiveViewLog`'s, in place of `Phoenix.LiveView.Logger`'s:
+  every value of the parameters, and of the session the page mounts with (the token a
+  person is signed in with, and the socket's id), is written as `[FILTERED]`, and the
+  keys, the page's module, the component's and the event's name are kept. This filter
+  then scrubs those lines as it scrubs any other.
 
   **A crash of a LiveView's process.** What a browser sends a LiveView comes in a frame of
   its socket, and a crafted frame can make the process fail on it, before any page reads
@@ -147,14 +155,16 @@ defmodule Apiary.SecretLogFilter do
   holding part of `qak_` or of a code's prefix); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). The report of a task a LiveView starts, a line
-  of another process that writes a crash as text, and the lines `Phoenix.LiveView.Logger`
-  writes at debug (a page's parameters, which `:filter_parameters` masks by their names)
-  are scrubbed of a secret and a token alone. A public key whose base64url happens to hold `qak_`
-  or a code's prefix is filtered from a log line as a secret would be. A link's token
-  anywhere else is not recognised: in another parameter of a query, or alone as a parameter's value,
-  which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
-  another segment (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
-  route's, and is left whole.
+  of another process that writes a crash as text, the lines Phoenix writes of a request
+  and of a socket's connection (their parameters, which `:filter_parameters` masks by
+  their names), and the lines Ecto writes of a query at debug (its parameters, the token
+  a person is signed in with among them) are scrubbed of a secret and a token alone. A
+  public key whose base64url happens to hold `qak_` or a code's prefix is filtered from a
+  log line as a secret would be. A link's token anywhere else is not recognised: in
+  another parameter of a query, or alone as a parameter's value, which
+  `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one
+  of those paths after another segment (`/acme/users/password/…`,
+  `https://…/docs/setup/…`) is another route's, and is left whole.
   """
 
   alias Apiary.AccessKeys.EnrolmentCode
