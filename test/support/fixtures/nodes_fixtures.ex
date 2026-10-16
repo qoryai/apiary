@@ -124,9 +124,10 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
-  Moves the expiry kept for the latest connect pass of the pending connection
-  `public_id` a minute back, as if that pass was made a minute ago, so the next press of
-  Install takes the same connection with a new pass. A press in the same second as the
+  Sets the expiry kept for the latest connect pass of the pending connection `public_id`
+  to `validity/0` seconds less a minute after now, truncated to the second, which is when
+  a pass made a minute before now expires, so the next press of Install takes the same
+  connection with a new pass. A press in the same second as the
   pass before it would instead end the connection as `replaced` and start a new one
   (`Apiary.Adapters.Connections.start/3`).
   """

@@ -121,12 +121,15 @@ defmodule Apiary.AdaptersRacesTest do
     (payload |> Base.url_decode64!(padding: false) |> Jason.decode!())["nonce"]
   end
 
-  # Every pass in `urls` is good at `at`: it expires after it, and no more than
-  # `ConnectPass.validity/0` seconds after it.
+  # Every pass in `urls` verifies at `at`, a time after each was made, and expires no
+  # later than `ConnectPass.validity/0` seconds after `at`, truncated to the second.
   defp all_good_at(urls, at) do
+    latest = at |> DateTime.truncate(:second) |> DateTime.add(ConnectPass.validity(), :second)
+
     for url <- urls do
       [_address, pass] = String.split(url, "state=")
       assert {:ok, _pass} = ConnectPass.verify(pass, Apiary.SigningKey.public_key(), now: at)
+      refute DateTime.compare(expiry(url), latest) == :gt
     end
   end
 

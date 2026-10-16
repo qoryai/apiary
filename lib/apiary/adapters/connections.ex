@@ -8,7 +8,8 @@ defmodule Apiary.Adapters.Connections do
   # (`adapter.connect`) makes the pending connection, or takes the one pending, with a
   # new connect pass whose nonce and expiry it keeps (`start/3`), each pass expiring
   # strictly later than the one before it. Should that take the pass more than
-  # `Apiary.Adapters.ConnectPass.validity/0` seconds ahead, which the adapter refuses, the
+  # `Apiary.Adapters.ConnectPass.validity/0` seconds ahead, where it can reach the adapter
+  # more than that ahead of its clock, which the adapter refuses (`pass_expired`), the
   # press ends the pending connection (`replaced`) and starts a new one in its place,
   # whose pass is its first. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
@@ -153,7 +154,8 @@ defmodule Apiary.Adapters.Connections do
   # `FOR UPDATE`, so two presses never read the same previous time. When it is later
   # (`Apiary.Adapters.ConnectPass.beyond_validity?/2`), as for two presses in the same
   # second, or after the clock stepped back, a pass that expires after the previous one
-  # would expire more than `validity/0` seconds ahead, which the adapter refuses: the
+  # would expire more than `validity/0` seconds ahead, and could reach the adapter more
+  # than that ahead of its clock, which the adapter refuses (`pass_expired`): the
   # pending connection is ended (`replaced`) instead, in the same transaction and under
   # the same lock, with its nonce, its pass's expiry and its person as they were, and a
   # new pending connection is made in its place, as for one connected. A return under

@@ -180,7 +180,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
     # A press at `now`, as `Apiary.Adapters.connect/2` makes it: the connection, the
     # `expires_at` the pass says, read from its payload, and the pass. Every pass verifies
-    # at `now`: it expires no more than `validity/0` seconds after it.
+    # at `now`, and expires exactly `validity/0` seconds after `now`, truncated to the
+    # second, never later, which the connection keeps.
     defp press(scope, adapter, now) do
       assert {:ok, {connection, pass}} =
                Repo.transact(fn ->
@@ -193,7 +194,12 @@ defmodule Apiary.Adapters.ConnectionsTest do
                ConnectPass.verify(pass, Apiary.SigningKey.public_key(), now: now)
 
       assert connection_id == connection.public_id
-      assert DateTime.diff(expires_at, now, :second) <= ConnectPass.validity()
+
+      assert DateTime.compare(
+               expires_at,
+               now |> DateTime.truncate(:second) |> DateTime.add(ConnectPass.validity(), :second)
+             ) == :eq
+
       assert reload(connection).pass_expires_at == expires_at
 
       {connection, signed_expiry(pass), pass}

@@ -28,7 +28,8 @@ defmodule Apiary.Adapters.ConnectPass do
   #     tells the newer pass: when that would take a pass more than `validity/0` seconds
   #     ahead (`beyond_validity?/2`), the connection ends instead, and the pass is the first
   #     of a new connection in its place (`issue/3`). So no pass expires more than
-  #     `validity/0` seconds after it was made, which the adapter would refuse.
+  #     `validity/0` seconds after it was made; one that did could reach the adapter more
+  #     than `validity/0` seconds ahead of its clock, which the adapter refuses.
   #
   # `issue/3` makes one; `verify/3` reads one back: the length, both parts decoded
   # strictly, the signature over the message under the public key given, the payload
@@ -147,9 +148,10 @@ defmodule Apiary.Adapters.ConnectPass do
   # more than `validity/0` seconds after `now`, as `expires_at/2` rounds both: `true` when
   # `not_before`, rounded up to the second, is later than `validity/0` seconds after
   # `now`, truncated to the second; `false` when it is that time or earlier, and for
-  # `nil`. Such a pass is one the adapter refuses, and `verify/3` too. The caller that
-  # keeps a connection's passes makes none: it ends the connection and starts a new one
-  # instead (`Apiary.Adapters.Connections.start/3`).
+  # `nil`. Such a pass can reach the adapter more than `validity/0` seconds ahead of its
+  # clock, which the adapter refuses (`pass_expired`). The caller that keeps a
+  # connection's passes makes none: it ends the connection and starts a new one instead
+  # (`Apiary.Adapters.Connections.start/3`).
   @doc false
   @spec beyond_validity?(DateTime.t(), DateTime.t() | nil) :: boolean
   def beyond_validity?(%DateTime{} = now, not_before),
