@@ -339,7 +339,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   # Recording the use is bookkeeping: the request is already verified, and an error here
   # (a lost connection, a value the row refuses) leaves it a success. A delivery's use is
-  # the receiver's to record.
+  # the receiver's to record. An adapter's key never verifies here (`lookup/1`):
+  # `ApiaryWeb.Contract.AdapterRequest` records its use, POSTs included.
   defp touch(%Plug.Conn{method: "POST"} = conn, _access_key), do: conn
 
   defp touch(conn, access_key) do

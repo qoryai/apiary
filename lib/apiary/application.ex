@@ -5,15 +5,18 @@ defmodule Apiary.Application do
 
   use Application
 
-  # The jobs Oban's cron plugin enqueues, in UTC, each once a day: the audit trail's
-  # retention sweep (`Apiary.Audit.PruneSweep`), the sweep of invitations expired for 30
-  # days (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is
-  # past its grace period (`Apiary.Deletion.PurgeSweep`). The edition's follow
+  # The jobs Oban's cron plugin enqueues, in UTC: once a day, the audit trail's retention
+  # sweep (`Apiary.Audit.PruneSweep`), the sweep of invitations expired for 30 days
+  # (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is past
+  # its grace period (`Apiary.Deletion.PurgeSweep`); then, every ten minutes, the purge of
+  # the request signatures an adapter's replay check no longer needs
+  # (`Apiary.Adapters.SeenRequestsPurge`). The edition's follow
   # (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
-    {"20 3 * * *", Apiary.Deletion.PurgeSweep}
+    {"20 3 * * *", Apiary.Deletion.PurgeSweep},
+    {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge}
   ]
 
   @impl true

@@ -135,7 +135,9 @@ defmodule Apiary.MixProject do
         "deps.unlock --unused",
         "format",
         "gettext.extract --check-up-to-date",
-        "docs --warnings-as-errors",
+        # In dev, as CI builds the documentation: the test env compiles test/support,
+        # whose docs name modules the documentation leaves out.
+        "cmd env MIX_ENV=dev mix docs --warnings-as-errors",
         "test"
       ],
       # The documentation is one tree per set of features (Mix.Tasks.Docs.All), so every

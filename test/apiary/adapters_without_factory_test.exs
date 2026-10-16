@@ -96,6 +96,14 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     assert Repo.get!(Node, adapter.id).deleted_at == nil
   end
 
+  test "when an adapter was last seen is read by nobody, even an instance admin",
+       %{scope: scope, admin: admin, adapter: adapter} do
+    for asker <- [admin, scope] do
+      assert Adapters.last_seen(asker, adapter) == {:error, :not_found}
+      assert Adapters.last_seen(asker, [adapter]) == {:error, :not_found}
+    end
+  end
+
   # The instance's switch decides for an instance admin, whatever the organisation their
   # scope carries shows them, and nobody passes it while it is off.
   test "an instance admin is answered as anyone else, shown the feature or not", %{
@@ -181,6 +189,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     key_scope = Scope.for_access_key(key)
 
     for action <- [
+          :"adapter.declare",
           :"source_item.post",
           :"work_item.read_changes",
           :"adapter.disconnect"
