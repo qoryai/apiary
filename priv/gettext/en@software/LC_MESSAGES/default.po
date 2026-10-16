@@ -969,6 +969,13 @@ msgid_plural "%{number} connections while this call was open"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} d"
+msgid_plural "%{number} d"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary/instance_config.ex
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/core_components.ex
@@ -1105,6 +1112,13 @@ msgid_plural "%{number} gone quiet"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} h"
+msgid_plural "%{number} h"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -1199,6 +1213,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} member"
 msgid_plural "%{number} members"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} min"
+msgid_plural "%{number} min"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1790,6 +1811,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{ref} · by %{who} · %{ago}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -3609,6 +3635,11 @@ msgstr ""
 msgid "Behind v%{n}"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Brings back work item #%{number}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -4485,6 +4516,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Declared by the harness"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Declined by %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -5523,6 +5559,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Fetching the release's description.json and checksums.txt…"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Filed by %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -11450,6 +11491,21 @@ msgctxt "ticket table"
 msgid "Table in the ticket"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in again"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Taken in: work item #%{number}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
@@ -13591,6 +13647,11 @@ msgstr ""
 msgid "Work"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work item #%{number}, declined by %{name}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item comment added"
@@ -13770,6 +13831,7 @@ msgstr ""
 msgid "Yes, suspend"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Yesterday"
