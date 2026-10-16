@@ -523,9 +523,6 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       end
     end
 
-    # external_url?/1 lets these through today; the core's https rule for a link out of a
-    # ticket refuses them. They fail until the component switches to that rule.
-    @tag skip: "until the core's https rule for a ticket's link is public"
     test "a link out only for a url the core's https rule allows" do
       for url <- [
             "https://xn--gthub-n4a.com/acme/shop/issues/1",
@@ -533,10 +530,20 @@ defmodule ApiaryWeb.BacklogComponentsTest do
             "https://[::1]/x",
             "https://example.com:99999/x",
             "https://1.1/",
-            "https://ex%61mple.com/x"
+            "https://ex%61mple.com/x",
+            "https://user@example.com/x",
+            :x
           ],
           html <- [list_frame(ticket(%{url: url}), []), full_frame(ticket(%{url: url}), [])] do
         assert count(html, "#tk-out") == 0, "drew a link out for #{inspect(url)}"
+        refute html =~ "Open on GitHub"
+      end
+
+      url = "https://github.com/acme/shop/issues/1"
+
+      for html <- [list_frame(ticket(%{url: url}), []), full_frame(ticket(%{url: url}), [])] do
+        assert attr(html, "a#tk-out", "href") == [url]
+        assert html =~ "Open on GitHub"
       end
     end
 

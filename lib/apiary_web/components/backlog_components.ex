@@ -289,10 +289,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
     * `:ref`, `:title`, `:repository` - strings, as in `ticket_row/1`;
     * `:url` - the ticket's page at the source, or `nil`. Open on the integration is
-      drawn only for a url `CoreComponents.external_url?/1` allows today: absolute `http`
-      or `https`, with a host and no user name or password. That is looser than the
-      core's https rule for a link out of a ticket, so until the component switches to
-      that rule, the url must arrive already checked by it, or as `nil`;
+      drawn only for a url the core's https rule (`Apiary.Sources.Body.https?/1`) allows;
     * `:labels` - a list of strings, maybe empty;
     * `:filer` - `%{name: "Lea", kind: :person}`, as in `ticket_row/1`;
     * `:filed_at`, `:updated_at` - `DateTime`s at the source.
@@ -333,7 +330,7 @@ defmodule ApiaryWeb.BacklogComponents do
     assigns =
       assign(assigns,
         now: now,
-        out: external_url?(ticket.url),
+        out: Apiary.Sources.Body.https?(ticket.url),
         open_on: gettext("Open on %{integration}", integration: assigns.integration),
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
