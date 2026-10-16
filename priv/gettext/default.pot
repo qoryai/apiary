@@ -2684,6 +2684,7 @@ msgstr ""
 msgid "Accepted an invitation"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -2813,6 +2814,7 @@ msgstr ""
 msgid "Activity pruned"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Adapters"
@@ -3012,6 +3014,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #, elixir-autogen, elixir-format
 msgid "Added by"
+msgstr ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "Added by %{person}, %{date}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4213,6 +4220,7 @@ msgstr ""
 msgid "Connect with a command."
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/gateways.ex
 #, elixir-autogen, elixir-format
@@ -8119,6 +8127,11 @@ msgstr ""
 msgid "No instance of this pool is running. An instance shows here while it runs."
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "No key yet"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9390,6 +9403,7 @@ msgstr ""
 msgid "Overrides the workspace's value"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -11003,6 +11017,7 @@ msgstr ""
 msgid "Setting up"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/settings_components.ex
