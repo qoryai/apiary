@@ -113,14 +113,25 @@ defmodule Apiary.Mail.Settings do
   end
 
   @doc """
-  without_password/1 is `changeset` with the password it was given taken out of its changes
-  and its parameters, so a form made from it, which a page keeps, never holds it. A
-  password given stays in the parameters as an empty one, so the form still shows the
-  field's errors.
+  without_password/1 is `settings`, or `changeset`, with nothing of a password: the
+  password given and the one saved, encrypted, each a field `inspect/1` redacts, taken out
+  of the settings, and out of the changeset's data and changes; and the password given out
+  of its parameters, where it stays as an empty one, so the form still shows the field's
+  errors. A form made from it, which a page keeps, holds neither.
   """
+  @spec without_password(t) :: t
   @spec without_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def without_password(%__MODULE__{} = settings) do
+    Enum.reduce(__schema__(:redact_fields), settings, &Map.put(&2, &1, nil))
+  end
+
   def without_password(%Ecto.Changeset{} = changeset) do
-    changeset = delete_change(changeset, :smtp_password)
+    changeset =
+      Enum.reduce(
+        __schema__(:redact_fields),
+        %{changeset | data: without_password(changeset.data)},
+        &delete_change(&2, &1)
+      )
 
     case changeset.params do
       %{"smtp_password" => _given} = params ->

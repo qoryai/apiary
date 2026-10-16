@@ -26,6 +26,61 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
     def deliver(_email, _config), do: {:error, {:permanent_failure, "550 refused"}}
   end
 
+  # An adapter that hands the test what it was asked to send, and how.
+  defmodule Capture do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    def deliver(email, config) do
+      for pid <- Enum.uniq([self() | List.wrap(Process.get(:"$callers"))]),
+          do: send(pid, {:sent, email, config})
+
+      {:ok, %{}}
+    end
+  end
+
+  # The fields of the mail settings that hold a password, given or saved.
+  @sealed Apiary.Mail.Settings.__schema__(:redact_fields)
+
+  # The page's state holds no byte of the saved password's ciphertext; no settings, form
+  # data or changeset in it holds a password, given or saved; and its form's changeset
+  # none in its data or its changes.
+  defp refute_sealed_state(view, ciphertext) do
+    assigns = :sys.get_state(view.pid).socket.assigns
+    assert :binary.match(:erlang.term_to_binary(assigns), ciphertext) == :nomatch
+    refute_sealed(assigns)
+
+    %Phoenix.HTML.Form{data: data, source: %Ecto.Changeset{} = changeset} = assigns.form
+
+    for field <- @sealed do
+      assert Map.get(data, field) == nil
+      assert Map.get(changeset.data, field) == nil
+      refute Map.has_key?(changeset.changes, field)
+    end
+  end
+
+  # Walks a term: wherever a map or a struct has one of the sealed fields, it is empty. A
+  # changeset's types name each field with its type, not its value.
+  defp refute_sealed(%Ecto.Changeset{} = changeset),
+    do: changeset |> Map.from_struct() |> Map.delete(:types) |> refute_sealed()
+
+  defp refute_sealed(%_{} = struct), do: struct |> Map.from_struct() |> refute_sealed()
+
+  defp refute_sealed(map) when is_map(map) do
+    for {key, value} <- map do
+      if key in @sealed, do: assert(value == nil, "#{key} held")
+      refute_sealed(value)
+    end
+  end
+
+  defp refute_sealed([head | tail]) do
+    refute_sealed(head)
+    refute_sealed(tail)
+  end
+
+  defp refute_sealed(tuple) when is_tuple(tuple), do: tuple |> Tuple.to_list() |> refute_sealed()
+  defp refute_sealed(_term), do: :ok
+
   @attrs %{
     "smtp_relay" => "smtp.example.com",
     "smtp_port" => "587",
@@ -320,6 +375,47 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       html = save(view, %{@attrs | "smtp_password" => ""})
       assert html =~ "can&#39;t be blank"
+    end
+
+    test "the page's state holds nothing of the saved password: opened, saved, or refused, and a save keeps it",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      ciphertext = Mail.settings().smtp_password_ciphertext
+      assert is_binary(ciphertext)
+      refute_sealed_state(view, ciphertext)
+
+      # Opened with the password saved: said to be there.
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      refute_sealed_state(view, ciphertext)
+      assert text(view, "#mail_form") =~ "Saved, and never shown."
+
+      # Refused with a password given, and refused for the saved one, none given.
+      html = save(view, %{@attrs | "smtp_relay" => "smtp example com"})
+      assert html =~ "must be a host name, such as smtp.example.com"
+      refute_sealed_state(view, ciphertext)
+
+      html = save(view, %{@attrs | "smtp_password" => "", "smtp_port" => "2525"})
+      assert html =~ "enter it again: the relay, port, TLS or username changed"
+      assert has_element?(view, "#mail_form input[name='mail[smtp_port]'][value='2525']")
+      refute_sealed_state(view, ciphertext)
+
+      # Saved with the field empty: the saved password is kept, and sends.
+      before = Application.get_env(:apiary, Mail)
+      Application.put_env(:apiary, Mail, smtp_adapter: Capture)
+      on_exit(fn -> Application.put_env(:apiary, Mail, before) end)
+
+      save(view, %{@attrs | "smtp_password" => "", "mail_from" => "mail@example.com"})
+      assert_received {:sent, %{subject: @subject}, config}
+      assert config[:password] == @password
+      assert Mail.settings().smtp_password_ciphertext == ciphertext
+      refute_sealed_state(view, ciphertext)
+      assert text(view, "#mail_form") =~ "Saved, and never shown."
+
+      assert has_element?(
+               view,
+               "#mail_form input[name='mail[mail_from]'][value='mail@example.com']"
+             )
     end
 
     test "a test link that could not be sent: saved, and the page says so", %{conn: conn} do

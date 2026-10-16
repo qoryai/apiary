@@ -25,7 +25,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
 
   alias Apiary.{Access, Mail}
-  alias Apiary.Mail.{Password, Settings}
+  alias Apiary.Mail.Settings
   alias ApiaryWeb.SettingsComponents
 
   @impl true
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
               {gettext("Off: invitations and password links are copied by hand.")}
             </.notice>
             <.notice :if={@state == :on} kind={:success}>
-              {gettext("On since %{day}.", day: Format.day(@settings.mail_verified_at))}
+              {gettext("On since %{day}.", day: Format.day(@mail_verified_at))}
             </.notice>
             <.notice :if={@state == :unreadable} kind={:error}>
               {gettext("Off: the saved password cannot be read. Enter it again and save.")}
@@ -167,7 +167,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
             id="mail-pending"
             class="q-foot-note"
           >
-            {if @settings.mail_saved_by_id == @current_scope.user.id,
+            {if @mail_saved_by_id == @current_scope.user.id,
               do:
                 gettext(
                   "Mail turns on when you follow the link we sent to %{email}, signed in as you.",
@@ -251,18 +251,21 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   end
 
   # What the page shows, read now: where mail comes from, and the saved settings, their
-  # state, whether a test link waits, and the form. None of it holds a password.
+  # state, whether a test link waits, and the form. None of it holds a password, given or
+  # saved (`Apiary.Mail.shown/0`): of the settings, the page keeps when mail turned on and
+  # who saved them, and the form.
   defp load(socket) do
-    settings = Mail.settings()
+    %{settings: settings, state: state, password_saved: password_saved} = Mail.shown()
 
     assign(socket,
       source: Mail.source(),
       env: env_shown(),
       default_sender: Apiary.Mailer.default_address(),
-      settings: settings,
-      state: Mail.state(settings),
+      mail_verified_at: settings && settings.mail_verified_at,
+      mail_saved_by_id: settings && settings.mail_saved_by_id,
+      state: state,
       link_waiting: Mail.test_link_waiting?(settings),
-      password_saved: match?({:ok, _password}, settings && Password.decrypt(settings)),
+      password_saved: password_saved,
       form: settings_form(settings)
     )
   end
