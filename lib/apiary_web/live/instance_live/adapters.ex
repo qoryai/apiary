@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.InstanceLive.Adapters do
   # Instance settings › Adapters, for the instance's admins: the instance's adapters, with
-  # the catalogue of the ones it can add (`:index`), and Add for one entry of the
-  # catalogue, which makes the adapter and its first enrolment code (`:new`, by the
-  # entry). A page of the Instance level, with no organisation: its gate asks the
-  # instance whether the feature is on (`use ApiaryWeb.Features, instance: :factory`), and
-  # anyone but an instance admin is answered as a path that does not exist, as on the
-  # Instance's other pages.
+  # the catalogue of the ones it can add (`:index`), and an adapter's Overview tab, its
+  # state, the install address it declared and how often it pulls (`:overview`). A page of
+  # the Instance level, with no organisation: its gate asks the instance whether the
+  # feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone but an
+  # instance admin is answered as a path that does not exist, as on the Instance's other
+  # pages.
   #
   # It answers as a path that does not exist until its page is built here. The feature is
   # hidden from the documentation, so the module is too.

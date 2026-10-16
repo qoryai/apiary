@@ -148,6 +148,39 @@ defmodule ApiaryWeb.FactoryShellTest do
     assert routes |> Enum.map(&elem(&1, 2)) |> Enum.uniq() |> Enum.sort() == Enum.sort(@modules)
   end
 
+  test "each path of Instance settings › Adapters is served by its page and action",
+       %{adapter: adapter} do
+    managed = "/instance/adapters/#{adapter.public_id}"
+
+    served =
+      for path <-
+            ["/instance/adapters", "/instance/adapters/new/x1", managed] ++
+              for(
+                rest <-
+                  ~w(/keys /keys/new-code /keys/x1/revoke /keys/codes/x1/revoke /settings
+                     /settings/rename /settings/remove),
+                do: managed <> rest
+              ) do
+        %{phoenix_live_view: {module, action, _, _}} =
+          Phoenix.Router.route_info(ApiaryWeb.Router, "GET", path, "localhost")
+
+        {path, module, action}
+      end
+
+    assert served == [
+             {"/instance/adapters", ApiaryWeb.InstanceLive.Adapters, :index},
+             {"/instance/adapters/new/x1", ApiaryWeb.InstanceLive.Adapter, :new},
+             {managed, ApiaryWeb.InstanceLive.Adapters, :overview},
+             {managed <> "/keys", ApiaryWeb.AdapterLive.AccessKey, :index},
+             {managed <> "/keys/new-code", ApiaryWeb.AdapterLive.AccessKey, :new_code},
+             {managed <> "/keys/x1/revoke", ApiaryWeb.AdapterLive.AccessKey, :revoke},
+             {managed <> "/keys/codes/x1/revoke", ApiaryWeb.AdapterLive.AccessKey, :revoke_code},
+             {managed <> "/settings", ApiaryWeb.InstanceLive.Adapter, :settings},
+             {managed <> "/settings/rename", ApiaryWeb.InstanceLive.Adapter, :rename},
+             {managed <> "/settings/remove", ApiaryWeb.InstanceLive.Adapter, :remove}
+           ]
+  end
+
   describe "with the feature" do
     test "each page answers as a path that does not exist until it is built, to anyone", %{
       conn: conn,

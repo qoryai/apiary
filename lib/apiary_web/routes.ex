@@ -382,14 +382,15 @@ defmodule ApiaryWeb.Routes do
 
             # Instance settings › Adapters, with the `factory` feature, for the instance's
             # admins: the instance's adapters, with the catalogue on the list; Add for one
-            # entry of the catalogue, a separate page; and an adapter's tabs, Overview, Access
-            # key (`…/keys`) and Settings, and their acts, by the adapter's public id
-            # (`na_…`). Its Access key tab has the acts of a node's Access key tab that an
-            # adapter's key takes: no key made in the browser. The fixed path goes first, so
-            # that `:adapter_id` never takes it.
+            # entry of the catalogue, a separate page, served by the module that holds the
+            # first code it makes; and an adapter's tabs, Overview, Access key (`…/keys`) and
+            # Settings, and their acts, by the adapter's public id (`na_…`). Its Access key
+            # tab has the acts of a node's Access key tab that an adapter's key takes: no key
+            # made in the browser. The fixed path goes first, so that `:adapter_id` never
+            # takes it.
             live "/instance/adapters", InstanceLive.Adapters, :index
-            live "/instance/adapters/new/:entry", InstanceLive.Adapters, :new
-            live "/instance/adapters/:adapter_id", InstanceLive.Adapter, :overview
+            live "/instance/adapters/new/:entry", InstanceLive.Adapter, :new
+            live "/instance/adapters/:adapter_id", InstanceLive.Adapters, :overview
             live "/instance/adapters/:adapter_id/keys", AdapterLive.AccessKey, :index
 
             live "/instance/adapters/:adapter_id/keys/new-code",
