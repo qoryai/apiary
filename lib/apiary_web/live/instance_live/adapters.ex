@@ -49,7 +49,8 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
     >
       <.settings_page section={:adapters} title={gettext("Adapters")} measure="list">
         <:subtitle>
-          {gettext(
+          {pgettext(
+            "plain",
             "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
           )}
         </:subtitle>

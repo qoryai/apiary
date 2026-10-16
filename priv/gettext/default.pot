@@ -11845,6 +11845,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
 msgstr ""
 
