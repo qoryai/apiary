@@ -631,7 +631,7 @@ defmodule Apiary.AdaptersTest do
       end
     end
 
-    test "no organisation's suspension refuses it: its scope carries none", %{
+    test "an edition's refusal for an organisation does not refuse it: its scope carries none", %{
       scope: scope,
       admin: admin
     } do
