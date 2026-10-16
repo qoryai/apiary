@@ -11309,3 +11309,47 @@
     text-underline-offset: 3px;
   }
 }
+
+/* ==== Qory's bee: two mask icons, drawn in the text colour =================================
+   The design's two symbols, as data: `q-icon-bee` (24 px, the head, two wings and a striped
+   body) and `q-icon-bee-sm` (16 px and below: no head, round wings behind the body, a heavier
+   line). In the small one the body hides the wings behind it; a mask has no fill colour, so
+   the wings are cut out inside the body and the fill under the icon shows there. A Backlog
+   bee avatar (`.q-bl-bee`, `.q-bl-bee-lg`) left empty draws the bee in its place. ==== */
+@layer qory {
+  :root {
+    --q-icon-bee: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='6.9' cy='9.2' rx='3.7' ry='2.4' transform='rotate(-28 6.9 9.2)'/%3E%3Cellipse cx='17.1' cy='9.2' rx='3.7' ry='2.4' transform='rotate(28 17.1 9.2)'/%3E%3Ccircle cx='12' cy='5.4' r='1.9'/%3E%3Cellipse cx='12' cy='14.8' rx='4.1' ry='5.8'/%3E%3Cpath d='M8.3 13h7.4M8.4 16.6h7.2'/%3E%3C/svg%3E");
+    --q-icon-bee-sm: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cdefs%3E%3Cmask id='b'%3E%3Crect width='24' height='24' fill='white' stroke='none'/%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6' fill='black' stroke='none'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23b)'%3E%3Ccircle cx='7' cy='8' r='4'/%3E%3Ccircle cx='17' cy='8' r='4'/%3E%3C/g%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6'/%3E%3Cpath d='M7.8 12.6h8.4M7.8 16.4h8.4'/%3E%3C/svg%3E");
+  }
+  .q-icon-bee,
+  .q-icon-bee-sm,
+  .q-bl-bee:empty::before {
+    display: inline-block;
+    flex: none;
+    background-color: currentColor;
+    vertical-align: middle;
+    -webkit-mask: var(--q-icon) center / contain no-repeat;
+    mask: var(--q-icon) center / contain no-repeat;
+  }
+  .q-icon-bee {
+    --q-icon: var(--q-icon-bee);
+    width: 24px;
+    height: 24px;
+  }
+  .q-icon-bee-sm {
+    --q-icon: var(--q-icon-bee-sm);
+    width: 16px;
+    height: 16px;
+  }
+  .q-bl-bee:empty::before {
+    --q-icon: var(--q-icon-bee-sm);
+    content: "";
+    width: 12px;
+    height: 12px;
+  }
+  .q-bl-bee.q-bl-bee-lg:empty::before {
+    --q-icon: var(--q-icon-bee);
+    width: 18px;
+    height: 18px;
+  }
+}
