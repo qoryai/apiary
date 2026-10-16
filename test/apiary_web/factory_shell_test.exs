@@ -169,8 +169,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
     assert served == [
              {"/instance/adapters", ApiaryWeb.InstanceLive.Adapters, :index},
-             {"/instance/adapters/new/x1", ApiaryWeb.InstanceLive.Adapter, :new},
-             {managed, ApiaryWeb.InstanceLive.Adapters, :overview},
+             {"/instance/adapters/new/x1", ApiaryWeb.AdapterLive.AccessKey, :new},
+             {managed, ApiaryWeb.InstanceLive.Adapter, :overview},
              {managed <> "/keys", ApiaryWeb.AdapterLive.AccessKey, :index},
              {managed <> "/keys/new-code", ApiaryWeb.AdapterLive.AccessKey, :new_code},
              {managed <> "/keys/x1/revoke", ApiaryWeb.AdapterLive.AccessKey, :revoke},
