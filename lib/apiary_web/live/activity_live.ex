@@ -170,7 +170,7 @@ defmodule ApiaryWeb.ActivityLive do
               </:col>
               <:col :let={row} label={gettext("Subject")}>
                 <span id={"entry-#{row.id}-subject"} class="flex min-w-0 items-baseline gap-2">
-                  <span class="q-cut max-w-[48ch]" title={row.subject.text}>
+                  <span class="q-cut shrink-[1000] max-w-[48ch]" title={row.subject.text}>
                     <.link :if={row.subject.href} navigate={row.subject.href} class="hover:underline">
                       <.subject_text subject={row.subject} />
                     </.link>

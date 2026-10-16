@@ -127,6 +127,11 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert has_element?(
                view,
+               "#entry-#{created.id}-subject > [class~='shrink-[1000]'][title='build-01']"
+             )
+
+      assert has_element?(
+               view,
                "#entry-#{created.id}-subject > .q-faint.q-cut.shrink[title='in Production']",
                "in Production"
              )
