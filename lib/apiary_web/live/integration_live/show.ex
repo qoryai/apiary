@@ -453,7 +453,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.link
           :if={row.workspace}
           navigate={~p"/#{@current_scope.organisation}/#{row.workspace}"}
-          class="hover:underline"
+          class="q-cut hover:underline"
+          title={row.workspace.name}
         >
           {row.workspace.name}
         </.link>

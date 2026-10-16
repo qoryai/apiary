@@ -321,6 +321,49 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       refute render_list([row(%{})], source: false) =~ "Source"
     end
 
+    test "fits its box at every width: a host and a path wrap, each column to its floor" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      rule = fn selector ->
+        [body] =
+          Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+        body
+      end
+
+      host = rule.(".q-pr td.q-pr-host")
+      assert host =~ "width: auto;"
+      assert host =~ "min-width: min(28ch, 36cqi);"
+      refute host =~ "36%"
+
+      # A long host wraps; it is not cut, so a wildcard host's tooltip is not clipped.
+      host_words = rule.(".q-pr .q-host.q-pr-h")
+      assert host_words =~ "white-space: normal;"
+      assert host_words =~ "overflow-wrap: anywhere;"
+      refute host_words =~ "overflow: hidden"
+
+      # A path breaks at every width of the table, above its floor.
+      assert rule.(".q-pr td.q-pr-paths") =~ "min-width: min(36ch, 30cqi);"
+      paths = rule.(".q-pr td.q-pr-paths code.q-rule")
+      assert paths =~ "overflow-wrap: anywhere;"
+      assert paths =~ "white-space: normal;"
+      refute css =~ ~r/@container \(max-width: 999\.98px\) \{\s*\.q-pr /
+
+      # Where a rule is written breaks between its words; the paths and the use do not.
+      assert rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-use") =~ "white-space: nowrap;"
+      refute rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-src,\n  .q-pr td.q-pr-use") =~ "nowrap"
+    end
+
+    test "Source shows from 600 px of the table, its head and its cells alike" do
+      doc = LazyHTML.from_fragment(render_list([row(%{})]))
+
+      assert doc |> LazyHTML.query("thead th.q-from-sm") |> Enum.map(&LazyHTML.text/1) ==
+               ["Source"]
+
+      assert doc |> LazyHTML.query("td.q-pr-src.q-from-sm") |> Enum.count() == 1
+      assert doc |> LazyHTML.query("td.q-pr-src:not(.q-from-sm)") |> Enum.count() == 0
+    end
+
     # The list as the core's pages draw it: a section with its header, Add rule a link to
     # the New rule page and a row's Edit a link to its Edit rule page.
     defp paged_list(assigns) do

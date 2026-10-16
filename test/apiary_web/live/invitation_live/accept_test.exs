@@ -48,6 +48,8 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     {:ok, lv, html} = live(conn, ~p"/invitations/#{token}")
     assert html =~ "Accept invitation"
     assert html =~ user.email
+    # The line that names who is signed in is cut to its box, the email whole in its title.
+    assert has_element?(lv, ~s{p.truncate[title="#{user.email}"]}, user.email)
 
     workspace = ~p"/#{owner.organisation}/#{owner.workspace}"
 

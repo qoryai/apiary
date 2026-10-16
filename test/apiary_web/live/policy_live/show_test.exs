@@ -1528,6 +1528,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-targets") =~ "Follows the workspace"
 
+      # The repository's name is cut to its column, whole in its title.
+      assert has_element?(view, "#target-#{target.id} a.q-target-name.q-cut[title$='/acme/shop']")
+
       assert has_element?(
                view,
                "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']"

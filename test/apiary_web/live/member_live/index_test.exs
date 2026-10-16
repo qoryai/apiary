@@ -32,6 +32,13 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ "Manages access keys"
 
       assert has_element?(lv, "#member-#{scope.membership.id}")
+      # A name cut to its column holds the whole of it in its title.
+      assert has_element?(
+               lv,
+               "#member-#{scope.membership.id} .q-nm > .q-title[title='#{user.email}']",
+               user.email
+             )
+
       # The only owner, reading: the last-owner rule is theirs to hear.
       assert html =~
                "The only owner cannot be removed or demoted until another member is an owner."
@@ -260,6 +267,20 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       conn = conn |> get(~p"/#{organisation}/#{scope.workspace}") |> recycle()
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/people")
       assert has_element?(lv, "#invitation-#{invitation.id}-workspace", "Platform")
+
+      # The Workspace column shows from 600 px of the table; below, the email, its expiry
+      # and the row's menu fit a phone. The email holds the whole of it in its title.
+      head = "[role=region][aria-label='Pending invitations'] thead"
+      assert has_element?(lv, "#{head} th.q-from-sm", "Workspace")
+      assert has_element?(lv, "td.q-from-sm > #invitation-#{invitation.id}-workspace")
+      refute has_element?(lv, "#{head} th.q-from-sm", "Email")
+      refute has_element?(lv, "#{head} th.q-from-sm", "Expires")
+
+      assert has_element?(
+               lv,
+               "#invitation-#{invitation.id} .q-title[title='bee@example.com']",
+               "bee@example.com"
+             )
 
       lv |> element("#invitation-#{invitation.id} button", "Revoke") |> render_click()
       assert Organisations.list_invitations(scope) == []

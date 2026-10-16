@@ -211,6 +211,9 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "#target-#{shop.id} a[href='/#{scope.organisation.slug}/#{shop.slug}']"
              )
 
+      # The workspace's name is cut to its column, the whole of it in its title.
+      assert has_element?(lv, "#target-#{shop.id} a.q-cut[title='Shop']", "Shop")
+
       assert has_element?(lv, "#remove-target-#{shop.id}[aria-label='Remove Shop']")
 
       # Cancel gives the focus back to the row's Remove.

@@ -162,28 +162,26 @@ defmodule ApiaryWeb.ActivityLive do
               <:col :let={row} label={gettext("When")}>
                 <.relative_time id={"entry-#{row.id}-time"} at={row.at} />
               </:col>
-              <:col :let={row} label={gettext("Who")}>
+              <:col :let={row} label={gettext("Who")} from="sm">
                 <Actor.actor actor={row.actor} id={"entry-#{row.id}-actor"} />
               </:col>
               <:col :let={row} label={gettext("What")} kind="title">
-                <span id={"entry-#{row.id}-action"}>{row.sentence}</span>
+                <span id={"entry-#{row.id}-action"} class="q-parts">{row.sentence}</span>
               </:col>
               <:col :let={row} label={gettext("Subject")}>
                 <span id={"entry-#{row.id}-subject"} class="flex min-w-0 items-baseline gap-2">
-                  <span class="max-w-[48ch] truncate">
+                  <span class="q-cut max-w-[48ch]" title={row.subject.text}>
                     <.link :if={row.subject.href} navigate={row.subject.href} class="hover:underline">
                       <.subject_text subject={row.subject} />
                     </.link>
                     <.subject_text :if={!row.subject.href} subject={row.subject} />
                   </span>
-                  <span :if={row.place} class="q-faint truncate">
-                    {gettext("in %{workspace}", workspace: row.place)}
-                  </span>
+                  <.place_words :if={row.place} place={row.place} />
                 </span>
               </:col>
               <:col :let={row} label={gettext("Change")} kind="faint" from="md">
                 <span id={"entry-#{row.id}-change"} class="grid">
-                  <span :for={line <- row.change}><.rich text={line} /></span>
+                  <span :for={line <- row.change} class="q-parts"><.rich text={line} /></span>
                 </span>
               </:col>
             </.table>
@@ -215,6 +213,19 @@ defmodule ApiaryWeb.ActivityLive do
         </div>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :place, :string, required: true
+
+  # Where an entry happened, beside its subject: the subject gives way first, and the
+  # workspace stays whole up to its cap. The words are bound once, so what shows and the
+  # title cannot differ.
+  defp place_words(assigns) do
+    assigns = assign(assigns, :words, gettext("in %{workspace}", workspace: assigns.place))
+
+    ~H"""
+    <span class="q-faint q-cut shrink-0 max-w-[min(28ch,20cqi)]" title={@words}>{@words}</span>
     """
   end
 

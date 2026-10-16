@@ -2857,6 +2857,28 @@
   .q-mono {
     font-family: var(--font-mono);
   }
+  /* A cell's one line that gives way to the other columns: cut with an ellipsis down to a
+     floor, its element carrying the whole text as a title. break-all cuts at the last
+     letter that fits, not at the last whole word. Scoped to a list table, so it outranks a
+     nowrap that a word's class sets (`.q-tname`). */
+  .q-tbl .q-cut {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-all;
+    min-width: 5ch;
+  }
+  /* A line that breaks between its parts (its child elements, the words of plain text)
+     and never inside one, only where one line does not fit. */
+  .q-tbl .q-parts {
+    white-space: normal;
+  }
+  .q-tbl .q-parts > * {
+    white-space: nowrap;
+  }
   /* A text input with a prefix (`<.input prefix>`): the prefix in mono, muted, on the
      field's own border, and the input completing it as one field. */
   .q-input-prefix {
@@ -2911,9 +2933,11 @@
       display: table-cell;
     }
   }
-  /* Where the table is narrow, an id beside the title gives way to the other columns. */
+  /* Where the table is narrow, an id beside the title gives way to the other columns, one
+     that carries a title included. */
   @container (max-width: 599px) {
-    .q-tbl .q-side.q-mono {
+    .q-tbl .q-side.q-mono,
+    .q-tbl .q-nm > .q-side.q-mono[title] {
       display: none;
     }
   }
@@ -2933,6 +2957,28 @@
   }
   .q-nm > .q-side {
     flex: none;
+  }
+  /* A secondary word beside a title that carries its whole text as a title attribute (a
+     note, an id, "Set for …") gives way to the other columns, cut down to a floor of about
+     ten letters, less on a phone; one without a title ("you") keeps its width. */
+  .q-tbl .q-nm > .q-side[title] {
+    flex: 0 1 auto;
+    min-width: min(10ch, 14cqi);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-all;
+  }
+  /* A cut name in a name cell gives way too, after the words beside it: a title keeps a
+     larger floor, so the name is the last to give way. */
+  .q-tbl .q-nm > .q-cut {
+    flex: 0 1 auto;
+  }
+  .q-tbl .q-nm > .q-title.q-cut {
+    min-width: min(24ch, 32cqi);
   }
 
   /* ---- A state in words: muted; a dot and the text colour when it needs someone ---- */
@@ -2958,6 +3004,11 @@
   }
   .q-stw-info .q-stw-dot {
     background-color: var(--color-info);
+  }
+  /* A state of several words that breaks onto a further line rather than widen the
+     table: lock_of/1's "Set aside: locked above the workspace". */
+  .q-stw.q-stw-wrap {
+    white-space: normal;
   }
 
   /* ---- The ⋯ menu of a row: faint until the row is read, a list in the top layer ---- */
@@ -8564,8 +8615,11 @@
     width: 1%;
     padding-right: 0;
   }
+  /* The host takes the room it needs, down to a floor: a long host breaks onto two or
+     three lines, not into a column of short ones. */
   .q-pr td.q-pr-host {
-    width: 36%;
+    width: auto;
+    min-width: min(28ch, 36cqi);
     white-space: nowrap;
   }
   /* A rule's mark keeps a decision's colours, both on a soft tile: a column of solid red
@@ -8578,10 +8632,13 @@
     background-color: var(--q-denied-tint);
     color: var(--color-error);
   }
+  /* A long host wraps in its cell; it is not cut, as a cut would clip the tooltip a
+     wildcard host carries. */
   .q-pr .q-host.q-pr-h {
     color: var(--color-base-content);
     font: 500 13px/20px var(--font-mono);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .q-pr .q-newdot {
     margin-left: 8px;
@@ -8600,7 +8657,21 @@
   .q-pr td.q-pr-use {
     color: var(--q-muted);
     font-size: 0.78125rem;
+  }
+  /* Where a rule is written (a workspace's name) breaks between its words; the paths and
+     the use stay on their lines. */
+  .q-pr td.q-pr-paths,
+  .q-pr td.q-pr-use {
     white-space: nowrap;
+  }
+  /* The paths' floor: a path breaks at every width of the table, and the column keeps
+     room for a path of about 36 letters, so a row of many paths stays a few lines tall. */
+  .q-pr td.q-pr-paths {
+    min-width: min(36ch, 30cqi);
+  }
+  .q-pr td.q-pr-paths code.q-rule {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
   .q-pr-pth {
     display: inline-flex;
@@ -8671,16 +8742,6 @@
   .q-pr tr.q-pr-off .q-mark {
     background: none;
     color: var(--q-border-strong);
-  }
-  /* Where the table is narrow, the host gives up its share and a long path breaks. */
-  @container (max-width: 999.98px) {
-    .q-pr td.q-pr-host {
-      width: auto;
-    }
-    .q-pr td.q-pr-paths code.q-rule {
-      overflow-wrap: anywhere;
-      white-space: normal;
-    }
   }
   /* In a narrow table the words are the two of them, the whole on the row's title; from
      1000 px of the table's width they are cut to the column, and whole from 1300 px. */

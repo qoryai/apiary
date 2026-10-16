@@ -1518,7 +1518,7 @@ defmodule ApiaryWeb.PolicyComponents do
             </th>
             <th scope="col">{gettext("Host")}</th>
             <th scope="col">{gettext("Paths")}</th>
-            <th :if={@source} scope="col">{gettext("Source")}</th>
+            <th :if={@source} scope="col" class="q-from-sm">{gettext("Source")}</th>
             <th :if={@seen? or @off?} scope="col" class="q-from-sm">{@use_label}</th>
             <th scope="col" class="q-from-md">{gettext("Added")}</th>
             <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
@@ -1531,7 +1531,7 @@ defmodule ApiaryWeb.PolicyComponents do
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-36")]}></span>
             </td>
             <td><span class="skeleton q-skel w-16"></span></td>
-            <td :if={@source}><span class="skeleton q-skel w-20"></span></td>
+            <td :if={@source} class="q-from-sm"><span class="skeleton q-skel w-20"></span></td>
             <td :if={@seen? or @off?} class="q-from-sm">
               <span class="skeleton q-skel w-16"></span>
             </td>
@@ -1670,7 +1670,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
       </td>
       <td class="q-pr-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@source} class="q-pr-src">
+      <td :if={@source} class="q-pr-src q-from-sm">
         <span :if={@tile && !@rule[:above]} class="q-tile" aria-hidden="true">{@tile}</span><span
           :if={@tile && @rule[:above]}
           id={"#{@id}-lock"}

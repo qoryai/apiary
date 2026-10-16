@@ -85,6 +85,9 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#owners", member.email)
       assert has_element?(lv, "#owners-part h2 .q-part-n", "2")
 
+      # An email cut to its line keeps the whole of it in its title.
+      assert has_element?(lv, ~s{#owners .truncate[title="#{other_owner.email}"]})
+
       # With two owners, the last-owner rule holds nobody in place, and is not said.
       refute has_element?(lv, "#owners-note", "only owner")
     end
