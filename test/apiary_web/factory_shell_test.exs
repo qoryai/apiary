@@ -36,9 +36,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   # The modules of the feature's pages of the Instance level not built yet, which answer an
   # instance admin as a path that does not exist.
-  @unbuilt [
-    ApiaryWeb.InstanceLive.Adapter
-  ]
+  @unbuilt []
 
   # The modules of the feature's pages of the Instance level.
   @instance_modules [
@@ -206,7 +204,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
           module != ApiaryWeb.AdapterRedirectController,
-          module in @unbuilt or module not in @instance_modules do
+          Enum.member?(@unbuilt, module) or module not in @instance_modules do
         {:ok, view, _html} = navigable(conn, scope, path)
 
         assert {%{status: 404, reason: "reload"}, _call} =
@@ -349,7 +347,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       for {path, module} <- routes do
         # The answer of the page as it mounts: not the door's, nor the gate's.
-        if module in @unbuilt,
+        if Enum.member?(@unbuilt, module),
           do: assert_raise(ApiaryWeb.NotFound, fn -> live(admin_conn, path) end)
 
         assert ApiaryWeb.Features.gate(module) == :factory
@@ -361,7 +359,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       hide_factory(%{})
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
 
-      for {path, module} <- instance_routes(scope, adapter), module in @unbuilt do
+      for {path, module} <- instance_routes(scope, adapter), Enum.member?(@unbuilt, module) do
         assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
       end
 

@@ -3536,6 +3536,11 @@ msgstr ""
 msgid "At least 12 characters."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "At most 64 characters, and not the name of another adapter here."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -4220,6 +4225,7 @@ msgid "Connect %{name} with a command"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Connect it"
 msgstr ""
@@ -6421,6 +6427,11 @@ msgstr ""
 msgid "In this browser"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Install address"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -6831,6 +6842,21 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Its key arrived at %{time} and is active."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Its keys are revoked, and every organisation's installation of it ends. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Its keys are revoked, so the adapter can no longer reach Qory. A command still waiting is cancelled."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Its name is free again. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -7796,6 +7822,7 @@ msgid "Moved an integration to another version"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -8654,6 +8681,11 @@ msgstr ""
 msgid "Not allowed"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Not declared yet"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not deleted."
@@ -9384,6 +9416,11 @@ msgstr ""
 msgid "Organisations"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Organisations see the new name on their Integrations page and when they install it."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Other targets do not change."
@@ -9885,6 +9922,11 @@ msgstr ""
 msgid "Qory policy of %{subject}, version %{version}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Qory tells the adapter nothing."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Quiet"
@@ -9986,6 +10028,7 @@ msgid "Reloaded."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10008,6 +10051,12 @@ msgstr ""
 msgid "Remove %{filter}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{name}?"
@@ -10033,6 +10082,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove API…"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Remove adapter…"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10068,6 +10122,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove this API"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Remove this adapter"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -10126,11 +10185,22 @@ msgstr ""
 msgid "Remove…"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Removing"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Rename"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Rename %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -10171,6 +10241,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Renamed the workspace"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Rename…"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -10656,6 +10731,7 @@ msgstr ""
 msgid "SMTP relay"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/mail.ex
@@ -10707,6 +10783,7 @@ msgstr ""
 msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -11065,6 +11142,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -11327,6 +11405,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -12747,6 +12826,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "This destination is no longer among the connections shown."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "This happens at once:"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -14934,6 +15018,11 @@ msgstr ""
 msgid "open or close the item"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "organisations can install it once it is connected and running"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "overridden"
@@ -15275,6 +15364,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "wall"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "where organisations are sent to install it, as it declares"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
