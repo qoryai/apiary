@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Apiary.Prune do
   @shortdoc "Deletes the events and log bytes older than each workspace's retention"
 
   @moduledoc """
-  Runs the retention job now, as the nightly `Apiary.Retention.Scheduler` does: for every
+  Runs the retention job now, as the daily `Apiary.Retention.Scheduler` does: for every
   workspace with a retention setting, the runs last heard from before the cut-off lose
   their log bytes, or all their events, in bounded batches (`Apiary.Retention`).
 
@@ -10,7 +10,7 @@ defmodule Mix.Tasks.Apiary.Prune do
       mix apiary.prune --dry-run    # delete nothing, record nothing, print the same counts
       mix apiary.prune --batch 500  # rows a delete (default 2000)
 
-  Safe beside a running server; when the nightly job or another `mix apiary.prune` is at
+  Safe beside a running server; when the daily job or another `mix apiary.prune` is at
   work it says so and does nothing. In a release, where there is no Mix:
   `bin/apiary eval "Apiary.Release.prune()"`, or `"Apiary.Release.prune(dry_run: true)"`.
   """

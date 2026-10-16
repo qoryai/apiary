@@ -182,7 +182,7 @@ defmodule Apiary.Application do
     if Apiary.Runs.Liveness.enabled?(), do: [Apiary.Runs.Liveness], else: []
   end
 
-  # The nightly retention job, after the migrator like the lost-run check. Off in test,
+  # The daily retention job, after the migrator like the lost-run check. Off in test,
   # where the tests call `Apiary.Retention.prune_all/1` themselves.
   defp retention do
     if Apiary.Retention.Scheduler.enabled?(), do: [Apiary.Retention.Scheduler], else: []

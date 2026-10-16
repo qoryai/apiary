@@ -46,8 +46,8 @@ defmodule Apiary.Retention do
   `(run_id, sequence)`, in a separate short transaction under the run's projection lock: no
   statement scans `events`, and none holds a lock longer than its batch. The runs that are
   due are read through the partial indexes `runs_retention_events_index` and
-  `runs_retention_log_index`, which a pruned run leaves. One night prunes at most
-  `:max_runs` runs of a workspace (10,000) and goes on the next night.
+  `runs_retention_log_index`, which a pruned run leaves. One run of the job prunes at most
+  `:max_runs` runs of a workspace (10,000), and the next daily job goes on.
 
   **A node's instances.** Under the same lock, on every workspace whatever its settings,
   the job deletes the rows of nodes' instances that the pages no longer show
@@ -58,7 +58,7 @@ defmodule Apiary.Retention do
   It says what it did: a `Apiary.Retention.RetentionRun` per workspace per run of the job,
   which the settings page lists, and one log line per workspace,
   `retention pruned workspace=…`. With `dry_run: true` it deletes nothing, writes no
-  record and returns the same counts. `Apiary.Retention.Scheduler` runs it nightly;
+  record and returns the same counts. `Apiary.Retention.Scheduler` runs it daily;
   `mix apiary.prune` runs it by hand.
   """
 
@@ -585,7 +585,7 @@ defmodule Apiary.Retention do
 
   # A workspace marked for deletion is left alone, and so is every workspace of an
   # organisation marked: it is purged whole once its grace period is over, and pruned
-  # again the night after its deletion is cancelled.
+  # again by the next daily job after its deletion is cancelled.
   defp workspaces(opts) do
     query =
       from h in Workspace,
