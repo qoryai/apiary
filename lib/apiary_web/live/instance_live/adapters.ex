@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.InstanceLive.Adapters do
-  # Instance settings › Adapters, for the instance's admins: the instance's adapters, with
-  # the catalogue of the ones it can add (`:index`). Add for one entry of the catalogue is
-  # `ApiaryWeb.AdapterLive.AccessKey`'s. A page of the Instance level, with no
-  # organisation: its gate asks the instance whether the feature is on (`use
-  # ApiaryWeb.Features, instance: :factory`), and anyone but an instance admin is answered
-  # as a path that does not exist, as on the Instance's other pages.
+  # Instance settings › Adapters, for the instance's admins: the instance's adapters
+  # (`:index`). Add for one entry of the catalogue is `ApiaryWeb.AdapterLive.AccessKey`'s.
+  # A page of the Instance level, with no organisation: its gate asks the instance whether
+  # the feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone but an
+  # instance admin is answered as a path that does not exist, as on the Instance's other
+  # pages.
   #
   # Each adapter is a row, by name: its name, which leads to its Overview, its public id,
   # and its state (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it

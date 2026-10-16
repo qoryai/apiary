@@ -347,10 +347,25 @@ defmodule ApiaryWeb.FactoryShellTest do
       routes = instance_routes(scope, adapter)
       assert length(routes) == 10
 
+      keys = "/instance/adapters/#{adapter.public_id}/keys"
+
       for {path, module} <- routes do
         # The answer of the page as it mounts: not the door's, nor the gate's.
-        if Enum.member?(@unbuilt, module),
-          do: assert_raise(ApiaryWeb.NotFound, fn -> live(admin_conn, path) end)
+        cond do
+          Enum.member?(@unbuilt, module) ->
+            assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # Add, not found until the catalogue exists.
+          String.starts_with?(path, "/instance/adapters/new/") ->
+            assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # No code just made, no such key, no such code: the page leads to the tab.
+          path in [keys <> "/new-code", keys <> "/x1/revoke", keys <> "/codes/x1/revoke"] ->
+            assert {:error, {:live_redirect, %{to: ^keys}}} = live(admin_conn, path), path
+
+          true ->
+            assert {:ok, _view, _html} = live(admin_conn, path), path
+        end
 
         assert ApiaryWeb.Features.gate(module) == :factory
       end
