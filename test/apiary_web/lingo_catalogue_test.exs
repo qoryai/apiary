@@ -32,6 +32,30 @@ defmodule ApiaryWeb.LingoCatalogueTest do
              ]) == []
     end
 
+    test "a collection is an engine word, said in a domain's words" do
+      source = [
+        singular("Find a collection"),
+        %Message.Plural{msgid: ["%{count} collection"], msgid_plural: ["%{count} collections"]}
+      ]
+
+      assert untranslated(source, []) == [
+               {"", "Find a collection"},
+               {"", "%{count} collection"}
+             ]
+
+      assert untranslated(source, [
+               singular("Find a collection", "Find a repository"),
+               %Message.Plural{
+                 msgid: ["%{count} collection"],
+                 msgid_plural: ["%{count} collections"],
+                 msgstr: %{0 => ["%{count} repository"], 1 => ["%{count} repositories"]}
+               }
+             ]) == []
+
+      assert untranslated([singular("Renamed %{collection}.")], []) == []
+      assert untranslated([singular("Nothing collected")], []) == []
+    end
+
     test "a fuzzy translation does not count" do
       source = [singular("Apply the change request")]
       po = [singular("Apply the change request", "Merge the pull request", flags: [["fuzzy"]])]

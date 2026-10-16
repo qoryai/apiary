@@ -1251,6 +1251,37 @@ defmodule Apiary.Adapters.ConnectionsTest do
     end
   end
 
+  describe "the one that ended last" do
+    test "is the organisation's connection to the adapter that ended last, to its people", %{
+      scope: scope,
+      adapter: adapter,
+      key: key
+    } do
+      assert Connections.latest_ended(scope, adapter) == nil
+
+      {first, _} = connection_fixture(scope, adapter, :listed)
+      {:ok, _ended} = Connections.end_connection(key_scope(key), first.public_id)
+      an_hour_ago = DateTime.add(DateTime.utc_now(), -3600, :second)
+      first |> reload() |> Ecto.Changeset.change(ended_at: an_hour_ago) |> Repo.update!()
+
+      {second, _} = connection_fixture(scope, adapter, :listed)
+      {:ok, _ended} = Connections.end_connection(key_scope(key), second.public_id)
+
+      # A connection that has not ended is not one, nor another organisation's.
+      {_live, _} = connection_fixture(scope, adapter, :listed)
+      %{scope: other} = sign_up_fixture()
+
+      assert %Connection{id: id, ended_reason: :adapter_reported} =
+               Connections.latest_ended(scope, adapter)
+
+      assert id == second.id
+      assert Connections.latest_ended(other, adapter) == nil
+
+      %{scope: member} = member_fixture(scope, :member)
+      assert %Connection{id: ^id} = Connections.latest_ended(member, adapter)
+    end
+  end
+
   describe "ending from Qory" do
     test "deleting an adapter ends every live connection", %{
       scope: scope,

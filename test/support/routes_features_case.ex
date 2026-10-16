@@ -112,9 +112,9 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         assert ApiaryWeb.Contract.OutcomeController.__feature__() == :observability
       end
 
-      test "the instance admins' integration pages belong to factory" do
+      test "the instance admins' adapter pages belong to factory" do
         pages =
-          for {_verb, "/instance/integrations" <> _, module} <-
+          for {_verb, "/instance/adapters" <> _, module} <-
                 ApiaryWeb.RoutesFeaturesCase.routes(@router),
               do: module
 

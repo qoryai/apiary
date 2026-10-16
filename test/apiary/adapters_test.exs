@@ -513,6 +513,55 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "what its pages call" do
+    test "an instance admin makes one with its first code, in one transaction, after a recent sign-in",
+         %{scope: scope, admin: admin} do
+      assert {:ok, %Node{kind: :adapter} = adapter, %EnrolmentCode{} = row, code} =
+               Adapters.create_adapter_with_code(admin, %{name: "Acme tracker"})
+
+      assert row.node_id == adapter.id
+      assert row.allow_secrets == false
+      assert EnrolmentCode.hash(code) == row.code_sha256
+      assert [%EnrolmentCode{id: id}] = Adapters.list_codes(admin, adapter)
+      assert id == row.id
+
+      # Refused, or a name taken: neither the adapter nor a code is made.
+      assert Adapters.create_adapter_with_code(scope, %{name: "Other"}) == {:error, :forbidden}
+
+      assert Adapters.create_adapter_with_code(signed_in(admin, 21), %{name: "Other"}) ==
+               {:error, :sudo}
+
+      assert {:error, %Ecto.Changeset{}} =
+               Adapters.create_adapter_with_code(admin, %{name: "Acme tracker"})
+
+      assert Repo.aggregate(from(n in Node, where: n.kind == :adapter), :count) == 1
+      assert Repo.aggregate(EnrolmentCode, :count) == 1
+    end
+
+    test "an instance admin reads its keys and codes, makes a code, revokes a key and cancels a code; anyone else reads none",
+         %{scope: scope, admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+
+      assert {:ok, %EnrolmentCode{allow_secrets: false} = row, _code} =
+               Adapters.create_code(admin, adapter)
+
+      assert [%AccessKey{id: key_row_id}] = Adapters.list_keys(admin, adapter)
+      assert key_row_id == key.id
+      assert [%EnrolmentCode{id: row_id}] = Adapters.list_codes(admin, adapter)
+      assert row_id == row.id
+      assert Adapters.list_keys(scope, adapter) == []
+      assert Adapters.list_codes(scope, adapter) == []
+      assert Adapters.create_code(scope, adapter) == {:error, :forbidden}
+      assert Adapters.subscribe_keys(scope, adapter) == {:error, :forbidden}
+
+      assert Adapters.subscribe_keys(admin, adapter) == :ok
+      assert {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} = Adapters.cancel_code(admin, row)
+      assert_receive {:code_cancelled, %{code_id: ^row_id}}
+      assert {:ok, %AccessKey{revoked_at: %DateTime{}}} = Adapters.revoke_key(admin, key)
+    end
+  end
+
   describe "the scope and role of its key" do
     test "carries no organisation and no workspace, and acts as adapter_key", %{
       scope: scope,

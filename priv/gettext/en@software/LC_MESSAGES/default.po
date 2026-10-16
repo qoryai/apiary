@@ -580,7 +580,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
-msgid "%{integration} is connected. Its repositories and projects appear here as it sends them."
+msgid "%{integration} is connected."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -2811,6 +2811,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Activity pruned"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Adapters"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -6434,7 +6439,6 @@ msgstr ""
 msgid "Integration changed"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/integration_live/definition.ex

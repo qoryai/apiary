@@ -74,14 +74,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
 
   # How the install ended, said on the integration's page.
   defp told(conn, :linked, name) do
-    put_flash(
-      conn,
-      :info,
-      gettext(
-        "%{integration} is connected. Its repositories and projects appear here as it sends them.",
-        integration: name
-      )
-    )
+    put_flash(conn, :info, gettext("%{integration} is connected.", integration: name))
   end
 
   defp told(conn, :cancelled, name) do

@@ -80,8 +80,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
 
       assert redirected_to(conn) == page(scope, adapter)
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
-               "Acme tracker is connected. Its repositories and projects appear here as it sends them."
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Acme tracker is connected."
 
       assert get_session(conn, "connect_passes") == nil
 

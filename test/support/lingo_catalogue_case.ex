@@ -28,10 +28,10 @@ defmodule ApiaryWeb.LingoCatalogueCase do
   alias Expo.Message
 
   # The engine's surface words: the ones every domain renames. Whole words only, so
-  # "targeted" or "systemd" do not count. `organisation` is not here: it is the same word
+  # "targeted", "systemd" or "collected" do not count. `organisation` is not here: it is the same word
   # in the engine and the software domain. Nor is `workspace`: organisation and workspace
   # are the same words in every domain.
-  @engine_words ~r/\b(targets?|systems?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
+  @engine_words ~r/\b(targets?|systems?|collections?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
 
   # The words no source string or catalogue shows: apiary, hive, bee and the like.
   # `Qory Apiary`, the product's name, is taken out before the check.
