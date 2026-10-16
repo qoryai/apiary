@@ -12,9 +12,15 @@ defmodule ApiaryWeb.SecretLive.LogTest do
 
   setup :register_and_log_in_user
 
+  # A page's event line is `ApiaryWeb.LiveViewLog`'s, its `Replied in` line LiveView's.
   setup do
     Logger.put_module_level(Phoenix.LiveView.Logger, :debug)
-    on_exit(fn -> Logger.delete_module_level(Phoenix.LiveView.Logger) end)
+    Logger.put_module_level(ApiaryWeb.LiveViewLog, :debug)
+
+    on_exit(fn ->
+      Logger.delete_module_level(Phoenix.LiveView.Logger)
+      Logger.delete_module_level(ApiaryWeb.LiveViewLog)
+    end)
   end
 
   test "a value is filtered out of the parameters a log line holds" do
