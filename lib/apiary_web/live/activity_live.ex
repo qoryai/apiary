@@ -218,14 +218,16 @@ defmodule ApiaryWeb.ActivityLive do
 
   attr :place, :string, required: true
 
-  # Where an entry happened, beside its subject: the subject gives way first, and the
-  # workspace stays whole up to its cap. The words are bound once, so what shows and the
-  # title cannot differ.
+  # Where an entry happened, beside its subject, up to its cap: it gives way down to a
+  # floor of five letters, so the table holds it in its box on a phone. The words are
+  # bound once, so what shows and the title cannot differ.
   defp place_words(assigns) do
     assigns = assign(assigns, :words, gettext("in %{workspace}", workspace: assigns.place))
 
     ~H"""
-    <span class="q-faint q-cut shrink-0 max-w-[min(28ch,20cqi)]" title={@words}>{@words}</span>
+    <span class="q-faint q-cut shrink min-w-[5ch] max-w-[min(28ch,20cqi)]" title={@words}>
+      {@words}
+    </span>
     """
   end
 

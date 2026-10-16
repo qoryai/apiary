@@ -127,11 +127,14 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert has_element?(
                view,
-               "#entry-#{created.id}-subject > .q-faint.q-cut.shrink-0[title='in Production']",
+               "#entry-#{created.id}-subject > .q-faint.q-cut.shrink[title='in Production']",
                "in Production"
              )
 
       refute has_element?(view, "#entry-#{created.id}-subject .truncate")
+      # It gives way down to a floor of five letters, never a fixed width.
+      refute has_element?(view, "#entry-#{created.id}-subject > .shrink-0")
+      assert has_element?(view, "#entry-#{created.id}-subject > [class~='min-w-[5ch]']")
 
       # Each line of the change breaks between its parts.
       assert has_element?(view, "#entry-#{renamed.id}-change > span.q-parts", "Production")
