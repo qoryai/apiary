@@ -501,6 +501,127 @@ defmodule Apiary.SecretLogFilterTest do
              }
     end
 
+    test "keeps of a socket message the topic the join verified and an event LiveView names" do
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+
+      for {message, kept} <- [
+            {%Phoenix.Socket.Message{topic: "lv:phx-1", event: "event", ref: "7", join_ref: 4},
+             %Phoenix.Socket.Message{
+               topic: "lv:phx-1",
+               event: "event",
+               ref: "[FILTERED]",
+               join_ref: "[FILTERED]",
+               payload: "[FILTERED]"
+             }},
+            {%Phoenix.Socket.Message{topic: "lv:" <> @marker, event: @marker, ref: @marker},
+             %Phoenix.Socket.Message{
+               topic: "[FILTERED]",
+               event: "[FILTERED]",
+               ref: "[FILTERED]",
+               payload: "[FILTERED]"
+             }}
+          ] do
+        %{msg: {:report, report}} =
+          SecretLogFilter.filter(terminate_report(label, {:shutdown, :closed}, message), nil)
+
+        assert report.last_message == kept
+      end
+
+      # A channel's topic, and a socket's id, which names its session, are a client's.
+      for {label, stripped} <- [
+            {{Phoenix.Channel, Acme.Channel, "room:" <> @marker},
+             {Phoenix.Channel, Acme.Channel, "[FILTERED]"}},
+            {{Phoenix.Socket, Phoenix.LiveView.Socket, "users_sessions:" <> @marker},
+             {Phoenix.Socket, Phoenix.LiveView.Socket, "[FILTERED]"}}
+          ] do
+        %{msg: {:report, report}} =
+          SecretLogFilter.filter(terminate_report(label, :killed, :timeout), nil)
+
+        assert report.process_label == stripped
+      end
+    end
+
+    test "has a number replaced, and keeps an arity" do
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+
+      %{msg: {:report, report}} =
+        SecretLogFilter.filter(
+          terminate_report(
+            label,
+            {{:badmatch, {:ok, 987_654_321_987, 1.5}}, [@call]},
+            {:tcp, :socket, 42}
+          ),
+          nil
+        )
+
+      assert {%MatchError{term: {:ok, "[FILTERED]", "[FILTERED]"}},
+              [{Acme.Page, :handle_event, 3, _}]} =
+               report.reason
+
+      assert report.last_message == {:tcp, :socket, "[FILTERED]"}
+    end
+
+    test "keeps a Protocol.UndefinedError's protocol and the type of its value" do
+      label = {Phoenix.LiveView, Acme.Page, "lv:phx-1"}
+
+      for {value, type} <- [
+            {987_654_321_987, "Integer"},
+            {98_765.4321, "Float"},
+            {@marker, "BitString"},
+            {[@marker], "List"},
+            {%{"x" => @marker}, "Map"},
+            {{:ok, @marker}, "Tuple"},
+            {%URI{host: @marker}, "URI (a struct)"},
+            {:an_atom, "Atom"}
+          ] do
+        error = %Protocol.UndefinedError{protocol: Enumerable, value: value, description: "x"}
+
+        %{msg: {:report, report}} =
+          SecretLogFilter.filter(terminate_report(label, {error, [@call]}, :timeout), nil)
+
+        {%Protocol.UndefinedError{} = stripped, _stack} = report.reason
+        message = Exception.message(stripped)
+
+        assert message =~ "protocol Enumerable not implemented for #{type}, x"
+        refute message =~ @marker
+        refute message =~ "987654321987"
+        refute message =~ "98765.4321"
+      end
+    end
+
+    test "writes [FILTERED] for a line a client's terms reach, its level and metadata kept" do
+      mfa = {Phoenix.Socket, :handle_in, 4}
+      text = ~s(Ignoring unmatched topic "zz:#{@marker}" in Phoenix.LiveView.Socket)
+      event = %{level: :warning, msg: {:string, text}, meta: %{pid: self(), mfa: mfa}}
+
+      assert SecretLogFilter.filter(event, nil) == %{event | msg: {:string, "[FILTERED]"}}
+
+      in_process = fn level, mfa, msg ->
+        Task.async(fn ->
+          Process.put(:"$process_label", {Phoenix.Socket, Phoenix.LiveView.Socket, nil})
+          event = %{level: level, msg: msg, meta: %{pid: self(), mfa: mfa}}
+          {event, SecretLogFilter.filter(event, nil)}
+        end)
+        |> Task.await()
+      end
+
+      # At error, a line of a LiveView's process, a channel's or the socket's, as text or
+      # as a format and its arguments.
+      for msg <- [{:string, "got #{@marker}"}, {~c"got ~s", [@marker]}] do
+        {event, filtered} = in_process.(:error, {Plug.Crypto, :verify, 4}, msg)
+        assert filtered == %{event | msg: {:string, "[FILTERED]"}}
+      end
+
+      # A line the app logs, and one below error, keep their text.
+      for {level, mfa} <- [
+            {:error, {Apiary.Organisations, :invite, 3}},
+            {:info, {Plug.Crypto, :verify, 4}}
+          ] do
+        {event, filtered} = in_process.(level, mfa, {:string, "a line"})
+        assert filtered == event
+      end
+    end
+
     test "makes an Erlang error the exception it stands for, and keeps an exit's atoms" do
       label = {Phoenix.Socket, Phoenix.LiveView.Socket, nil}
       strip = &SecretLogFilter.filter(terminate_report(label, &1, {:tcp, :socket, @marker}), nil)

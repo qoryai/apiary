@@ -69,46 +69,73 @@ defmodule Apiary.SecretLogFilter do
 
   **A crash of a LiveView's process.** What a browser sends a LiveView comes in a frame of
   its socket, and a crafted frame can make the process fail on it, before any page reads
-  it (an event's value that is not text, a payload without the keys LiveView reads, a
-  `"meta"` or a `"cid"` of the wrong kind) or inside a page. Its crash report would print
-  what the frame carried where no page can reach it: in the last message, in the
-  exception's terms (a `MatchError`'s term, a `FunctionClauseError`'s arguments), in the
-  arguments of a call in the stacktrace, and, at debug, in the state, a page's assigns
-  among them. So the crash report of a LiveView's process, a channel's or the socket's (a
-  process whose label is `{Phoenix.LiveView, view, topic}`, `{Phoenix.Channel, channel,
-  topic}` or `{Phoenix.Socket, handler, id}`, or, before the label is set, whose initial
-  call is a LiveView's or a channel's) keeps:
+  it (a join's payload of the wrong kind, an event's value that is not text, a payload
+  without the keys LiveView reads, a `"meta"` or a `"cid"` of the wrong kind) or inside a
+  page. Its crash report would print what the frame carried where no page can reach it:
+  in the last message, in the exception's terms (a `MatchError`'s term, a
+  `FunctionClauseError`'s arguments), in the arguments of a call in the stacktrace, and,
+  at debug, in the state, a page's assigns among them. So the crash report of a
+  LiveView's process, a channel's or the socket's (a process whose label is
+  `{Phoenix.LiveView, view, topic}`, `{Phoenix.Channel, channel, topic}` or
+  `{Phoenix.Socket, handler, id}`, or, before the label is set, whose initial call is a
+  LiveView's or a channel's) keeps:
 
-    * the exception's module, and its message made from its terms with each binary,
-      list and map in them replaced by `[FILTERED]` (atoms and numbers stay). A
-      `FunctionClauseError` names its function and arity, without the arguments; an
-      Erlang error is made the Elixir exception it stands for first. An exception whose
-      message is stored as text (a `RuntimeError`'s, an `ArgumentError`'s, an
-      `Ecto.CastError`'s) has `[FILTERED]` in its place, as that text may hold the terms;
+    * the exception's module, and its message made from its terms, in which atoms, pids,
+      ports, references, functions and an arity stay, and every number, binary, list and
+      map is replaced by `[FILTERED]`. A `FunctionClauseError` names its function and
+      arity, without the arguments; an Erlang error is made the Elixir exception it
+      stands for first. A `Protocol.UndefinedError` keeps its protocol, its description
+      and the type of its value, which becomes one of that type holding nothing sent:
+      `[FILTERED]` for text, `["[FILTERED]"]` for a list, `%{"[FILTERED]" => "[FILTERED]"}`
+      for a map, `0` for a number, the struct with its fields replaced for a struct, and an
+      atom, a pid, a port, a reference or a function as it is. An
+      exception whose message is stored as text (a `RuntimeError`'s, an
+      `ArgumentError`'s, an `Ecto.CastError`'s) has `[FILTERED]` in its place, as that
+      text may hold the terms;
     * the stacktrace, each call with its arity in place of its arguments;
-    * the process's name and label, and the client's name and stacktrace.
+    * the process's name and label (with `[FILTERED]` for a channel's topic, which a
+      client chose, and for a socket's id, which names the session it was opened with),
+      and the client's name and stacktrace.
 
-  The last message's payload is `[FILTERED]` (another message keeps its atoms alone), and
-  so is the state. Any other event of such a process has the terms of its `:crash_reason`
-  metadata replaced the same way. OTP's crash report of the process (`{:proc_lib, :crash}`,
-  which Logger drops unless `:handle_sasl_reports` is set) keeps its exception, its
-  stacktrace and its messages the same way, and of its process dictionary the entries
-  that OTP and Logger read. Should such a crash report defeat the filter, its message is
-  `[FILTERED]`. A crash report of any other process keeps its terms, a secret and a
-  token in them replaced as above.
+  The state is `[FILTERED]`. The last message, when a client sent it on the socket, keeps
+  its topic only when it is the LiveView's, which its join verified, and its event only
+  when Phoenix or LiveView names it; its payload, its references, and a topic or an event
+  a client chose, are `[FILTERED]`. Any other last message keeps its atoms, pids, ports,
+  references and functions, and has every other term replaced by `[FILTERED]`. Any other
+  event of such a process has the terms of its `:crash_reason` metadata replaced the same
+  way. OTP's crash report of the process (`{:proc_lib, :crash}`, which Logger drops unless
+  `:handle_sasl_reports` is set) keeps its exception, its stacktrace, its label and its
+  messages the same way, and of its process dictionary the entries that OTP and Logger
+  read. Should such a crash report defeat the filter, its message is `[FILTERED]`. A
+  crash report of any other process keeps its terms, a secret and a token in them
+  replaced as above.
+
+  A line of text a client's terms reach is written as `[FILTERED]`, its level and its
+  metadata kept, so the `:mfa` still says where it was logged:
+
+    * any process's line from a call of Phoenix's or LiveView's that writes what a client
+      sent: Phoenix's join of a channel (a join whose LiveView's process crashed: it
+      writes the process's exit, with the arguments of its calls), `Phoenix.Socket`'s
+      handling of a frame (a topic no route takes, a channel joined twice, the limit of
+      channels), and LiveView's mount (a mount without a session), its check of a
+      navigation's URL, and its handling of a message the LiveView does not handle;
+    * a line a LiveView's process, a channel's or the socket's logs at error or above, or
+      with a `:crash_reason`, but for a line of the app's code (a module of `Apiary` or
+      `ApiaryWeb`), which writes ids alone.
 
   Any other event without a secret is passed on exactly as it came. The filter never
   stops an event and never raises: should a term defeat it, the event is passed on as it
   came, or with the message `[FILTERED]` when it is a crash report of a LiveView's
-  process, a channel's or the socket's.
+  process, a channel's or the socket's, or when reading where it comes from fails.
 
   What it does not cover: a secret split across the parts of a term (two binaries, or an
   iolist's pieces inside a report or inside a message that cannot be read as text, each
   holding part of `qak_` or of a code's prefix); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
-  standard output or standard error). A crash report made text before the filter reads
-  it, and the report of a task a LiveView starts, are scrubbed of a secret and a token
-  alone. A public key whose base64url happens to hold `qak_`
+  standard output or standard error). The report of a task a LiveView starts, a line
+  of another process that writes a crash as text, and the lines `Phoenix.LiveView.Logger`
+  writes at debug (a page's parameters, which `:filter_parameters` masks by their names)
+  are scrubbed of a secret and a token alone. A public key whose base64url happens to hold `qak_`
   or a code's prefix is filtered from a log line as a secret would be. A link's token
   anywhere else is not recognised: in another parameter of a query, or alone as a parameter's value,
   which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
@@ -280,23 +307,83 @@ defmodule Apiary.SecretLogFilter do
     :logger_enabled
   ]
 
+  # The calls of Phoenix and LiveView that write what a client sent into a line of text:
+  # a join whose process crashed (its exit, with the arguments of its calls), a topic no
+  # route takes, a mount without a session, a navigation's URL, a message a LiveView does
+  # not handle. Any process's line from one of them is written as `[FILTERED]`.
+  @client_text_calls [
+    {Phoenix.Channel.Server, :join},
+    {Phoenix.Socket, :handle_in},
+    {Phoenix.LiveView.Channel, :mount},
+    {Phoenix.LiveView.Channel, :authorize_session},
+    {Phoenix.LiveView.Channel, :view_handle_info}
+  ]
+
+  # The events Phoenix and LiveView name; any other a client chose.
+  @socket_events ~w(phx_join phx_leave heartbeat event live_patch progress allow_upload
+                    cids_will_destroy cids_destroyed chunk)
+
   # A crash report of a LiveView's process, a channel's or the socket's, with what the
-  # process was sent taken out; any other event as it came. Should the report defeat it,
-  # its message is `[FILTERED]`, and its crash reason goes.
+  # process was sent taken out; a line of text such a process logs at error, or of a
+  # crash, or from a call that writes what a client sent, as `[FILTERED]`; any other event
+  # as it came. Should the report defeat it, its message is `[FILTERED]`, and its crash
+  # reason goes.
   defp strip_crash(%{msg: msg, meta: meta} = event) do
-    if crash_of_channel?(msg, meta) do
-      try do
-        %{event | msg: strip_msg(msg), meta: strip_meta(meta)}
-      catch
-        _kind, _defeated ->
-          %{event | msg: {:string, @filtered}, meta: Map.delete(meta, :crash_reason)}
-      end
-    else
-      event
+    cond do
+      client_text?(event) ->
+        %{event | msg: {:string, @filtered}, meta: strip_meta(meta)}
+
+      crash_of_channel?(msg, meta) ->
+        try do
+          %{event | msg: strip_msg(msg, meta), meta: strip_meta(meta)}
+        catch
+          _kind, _defeated ->
+            %{event | msg: {:string, @filtered}, meta: Map.delete(meta, :crash_reason)}
+        end
+
+      true ->
+        event
     end
+  catch
+    _kind, _defeated ->
+      %{event | msg: {:string, @filtered}, meta: Map.delete(meta, :crash_reason)}
   end
 
   defp strip_crash(event), do: event
+
+  # A line of text, or a format and its arguments, that a call of `@client_text_calls`
+  # logs, or that a LiveView's process, a channel's or the socket's logs at error or above
+  # or with a crash reason, but for a line of the app's code, which writes ids alone.
+  defp client_text?(%{msg: msg, meta: meta} = event) do
+    text?(msg) and
+      (client_text_call?(Map.get(meta, :mfa)) or
+         (channel_process?(nil, nil, meta) and not app_call?(Map.get(meta, :mfa)) and
+            (is_map_key(meta, :crash_reason) or error?(Map.get(event, :level)))))
+  end
+
+  defp text?({:string, _chardata}), do: true
+
+  defp text?({format, args}) when (is_list(format) or is_binary(format)) and is_list(args),
+    do: true
+
+  defp text?(_msg), do: false
+
+  defp client_text_call?({module, function, _arity}), do: {module, function} in @client_text_calls
+  defp client_text_call?(_mfa), do: false
+
+  defp app_call?({module, _function, _arity}) when is_atom(module) do
+    case Module.split(module) do
+      [app | _] when app in ["Apiary", "ApiaryWeb"] -> true
+      _other -> false
+    end
+  rescue
+    _not_elixir -> false
+  end
+
+  defp app_call?(_mfa), do: false
+
+  defp error?(level) when is_atom(level), do: :logger.compare_levels(level, :error) in [:gt, :eq]
+  defp error?(_level), do: false
 
   defp crash_of_channel?({:report, %{label: {:gen_server, :terminate}} = report}, meta),
     do: channel_process?(Map.get(report, :process_label), nil, meta)
@@ -329,14 +416,17 @@ defmodule Apiary.SecretLogFilter do
   defp channel_call?({module, :init, _args}) when module in @channel_modules, do: true
   defp channel_call?(_call), do: false
 
-  defp strip_msg({:report, %{label: {:gen_server, :terminate}} = report}) do
+  defp strip_msg({:report, %{label: {:gen_server, :terminate}} = report}, meta) do
+    label = Map.get(report, :process_label) || own_label(meta)
+
     report =
       :maps.map(
         fn
-          key, value when key in [:label, :name, :process_label] -> value
+          key, value when key in [:label, :name] -> value
+          :process_label, label -> strip_label(label)
           :reason, reason -> strip_reason(reason)
           :client_info, client -> strip_client(client)
-          :last_message, message -> strip_message(message)
+          :last_message, message -> strip_message(message, label)
           :log, _log -> []
           _key, _value -> @filtered
         end,
@@ -346,36 +436,51 @@ defmodule Apiary.SecretLogFilter do
     {:report, report}
   end
 
-  defp strip_msg({:report, %{label: {:proc_lib, :crash}, report: [crashed | linked]} = report}) do
-    {:report, %{report | report: [Enum.map(crashed, &strip_crashed/1) | linked]}}
+  defp strip_msg(
+         {:report, %{label: {:proc_lib, :crash}, report: [crashed | linked]} = report},
+         _meta
+       ) do
+    label = entry(crashed, :process_label)
+    {:report, %{report | report: [Enum.map(crashed, &strip_crashed(&1, label)) | linked]}}
   end
 
-  defp strip_msg(msg), do: msg
+  defp strip_msg(msg, _meta), do: msg
+
+  # The label of the process that logs the event.
+  defp own_label(meta),
+    do: if(Map.get(meta, :pid) == self(), do: Process.get(:"$process_label"))
+
+  # A channel's label holds the topic a client joined, and a socket's its id, which names
+  # the session it was opened with; a LiveView's holds the topic its join verified.
+  defp strip_label({Phoenix.Channel, channel, _topic}), do: {Phoenix.Channel, channel, @filtered}
+  defp strip_label({Phoenix.Socket, handler, id}), do: {Phoenix.Socket, handler, redact(id)}
+  defp strip_label(label), do: label
 
   # An entry of OTP's crash report of the process.
-  defp strip_crashed({:error_info, {:error, reason, stack}}) do
+  defp strip_crashed({:error_info, {:error, reason, stack}}, _label) do
     {reason, stack} = strip_reason({reason, stack})
     {:error_info, {:error, reason, stack}}
   end
 
-  defp strip_crashed({:error_info, {kind, reason, stack}}) when is_list(stack),
+  defp strip_crashed({:error_info, {kind, reason, stack}}, _label) when is_list(stack),
     do: {:error_info, {kind, redact(reason), strip_stack(stack)}}
 
-  defp strip_crashed({:messages, messages}) when is_list(messages),
-    do: {:messages, Enum.map(messages, &strip_message/1)}
+  defp strip_crashed({:messages, messages}, label) when is_list(messages),
+    do: {:messages, Enum.map(messages, &strip_message(&1, label))}
 
-  defp strip_crashed({:dictionary, dictionary}) when is_list(dictionary),
+  defp strip_crashed({:process_label, label}, _label), do: {:process_label, strip_label(label)}
+
+  defp strip_crashed({:dictionary, dictionary}, _label) when is_list(dictionary),
     do: {:dictionary, Enum.filter(dictionary, &match?({key, _} when key in @dictionary_keys, &1))}
 
-  defp strip_crashed({:current_stacktrace, stack}) when is_list(stack),
+  defp strip_crashed({:current_stacktrace, stack}, _label) when is_list(stack),
     do: {:current_stacktrace, strip_stack(stack)}
 
-  defp strip_crashed({key, _value} = entry)
+  defp strip_crashed({key, _value} = entry, _label)
        when key in [
               :initial_call,
               :pid,
               :registered_name,
-              :process_label,
               :ancestors,
               :message_queue_len,
               :links,
@@ -387,17 +492,35 @@ defmodule Apiary.SecretLogFilter do
             ],
        do: entry
 
-  defp strip_crashed({key, _value}), do: {key, @filtered}
+  defp strip_crashed({key, _value}, _label), do: {key, @filtered}
 
   defp strip_meta(%{crash_reason: reason} = meta),
     do: %{meta | crash_reason: strip_reason(reason)}
 
   defp strip_meta(meta), do: meta
 
-  # A message a socket carries keeps its topic, event and reference; any other keeps its
-  # atoms alone.
-  defp strip_message(%{__struct__: _, payload: _} = message), do: %{message | payload: @filtered}
-  defp strip_message(message), do: redact(message)
+  # A message a client sent on a socket keeps its topic when it is the one the LiveView's
+  # join verified, and its event when Phoenix or LiveView names it; its payload and its
+  # references are `[FILTERED]`. A broadcast or a reply, which the server makes, keeps all
+  # but its payload; any other message is redacted.
+  defp strip_message(%Phoenix.Socket.Message{} = message, label) do
+    %{
+      message
+      | topic: if(verified_topic?(message.topic, label), do: message.topic, else: @filtered),
+        event: if(message.event in @socket_events, do: message.event, else: @filtered),
+        ref: redact(message.ref),
+        join_ref: redact(message.join_ref),
+        payload: @filtered
+    }
+  end
+
+  defp strip_message(%{__struct__: _, payload: _} = message, _label),
+    do: %{message | payload: @filtered}
+
+  defp strip_message(message, _label), do: redact(message)
+
+  defp verified_topic?(topic, {Phoenix.LiveView, _view, topic}) when is_binary(topic), do: true
+  defp verified_topic?(_topic, _label), do: false
 
   # A crash's reason: the error and its stacktrace, or else an exit's reason.
   defp strip_reason({error, stack} = reason) when is_list(stack) do
@@ -430,16 +553,36 @@ defmodule Apiary.SecretLogFilter do
   defp strip_exception(%FunctionClauseError{} = exception),
     do: %{exception | args: nil, clauses: nil}
 
+  # Its message names the type of its value: the value is one of the same type that holds
+  # nothing the client sent. Its description is the protocol's code's.
+  defp strip_exception(%Protocol.UndefinedError{value: value} = exception),
+    do: %{exception | value: same_type(value)}
+
   defp strip_exception(exception) do
     :maps.map(
       fn
         key, value when key in [:__struct__, :__exception__] -> value
+        :arity, arity when is_integer(arity) -> arity
         :args, args when is_list(args) -> Enum.map(args, fn _arg -> @filtered end)
         _key, value -> redact(value)
       end,
       exception
     )
   end
+
+  defp same_type(%{__struct__: _} = struct),
+    do:
+      :maps.map(
+        fn key, value -> if key == :__struct__, do: value, else: redact(value) end,
+        struct
+      )
+
+  defp same_type(map) when is_map(map), do: %{@filtered => @filtered}
+  defp same_type(list) when is_list(list), do: [@filtered]
+  defp same_type(integer) when is_integer(integer), do: 0
+  defp same_type(float) when is_float(float), do: 0.0
+  defp same_type(bitstring) when is_bitstring(bitstring), do: @filtered
+  defp same_type(term), do: redact(term)
 
   # Each call with its arity in place of its arguments.
   defp strip_stack(stack), do: Enum.map(stack, &strip_call/1)
@@ -465,12 +608,12 @@ defmodule Apiary.SecretLogFilter do
 
   defp call?(_call), do: false
 
-  # A term with its atoms, numbers, pids, ports, references and functions kept (inspect
-  # writes none of a function's captured values), a tuple's elements and an exception's
-  # terms each taken the same way, and anything else replaced by `[FILTERED]`.
+  # A term with its atoms, pids, ports, references and functions kept (inspect writes none
+  # of a function's captured values), a tuple's elements and an exception's terms each
+  # taken the same way, and anything else, a number among them, replaced by `[FILTERED]`.
   defp redact(term)
-       when is_atom(term) or is_number(term) or is_pid(term) or is_port(term) or
-              is_reference(term) or is_function(term),
+       when is_atom(term) or is_pid(term) or is_port(term) or is_reference(term) or
+              is_function(term),
        do: term
 
   defp redact(tuple) when is_tuple(tuple),

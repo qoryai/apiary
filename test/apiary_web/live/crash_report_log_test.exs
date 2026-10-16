@@ -39,9 +39,10 @@ defmodule ApiaryWeb.CrashReportLogTest do
     :ok
   end
 
-  # The page's process is sent a frame's event with `payload`, and fails on it: what it
-  # logged, as the captured text and as the events a handler is given.
-  defp crash(view, payload, level \\ :error) do
+  # The page's process is sent a frame's event with `payload` (and the message's `fields`),
+  # and fails on it: what it logged, as the captured text and as the events a handler is
+  # given.
+  defp crash(view, payload, level \\ :error, fields \\ []) do
     {_ref, topic, _proxy} = view.proxy
     pid = view.pid
     ref = Process.monitor(pid)
@@ -51,12 +52,14 @@ defmodule ApiaryWeb.CrashReportLogTest do
     log =
       try do
         capture_log([level: level], fn ->
-          send(pid, %Phoenix.Socket.Message{
+          message = %Phoenix.Socket.Message{
             topic: topic,
             event: "event",
             ref: "crash-test",
             payload: payload
-          })
+          }
+
+          send(pid, struct!(message, fields))
 
           assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2_000
         end)
@@ -149,6 +152,42 @@ defmodule ApiaryWeb.CrashReportLogTest do
 
       assert log =~ ~s(event: "event", payload: "[FILTERED]")
       refute log =~ @marker
+    end
+  end
+
+  describe "what a client chose in the message" do
+    test "keeps its references out of the report", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/users/log-in")
+
+      {log, events} =
+        crash(view, %{"type" => "form", "event" => "x", "value" => "a=1", "meta" => 1}, :error,
+          ref: @marker,
+          join_ref: @marker
+        )
+
+      assert log =~ ~s(event: "event", payload: "[FILTERED]", ref: "[FILTERED]")
+      assert_stripped({log, events}, [@marker], ["(BadMapError)"])
+    end
+
+    test "keeps a number it sent out of the report", %{conn: conn} do
+      number = "987654321987"
+
+      {:ok, view, _html} = live(conn, ~p"/users/log-in")
+
+      view
+      |> crash(%{"type" => "form", "event" => "x", "value" => "a=1", "meta" => 987_654_321_987})
+      |> assert_stripped([number], ["(BadMapError)"])
+
+      conn = log_in_user(conn, user_fixture())
+      {:ok, view, _html} = live(conn, ~p"/users/settings")
+
+      view
+      |> crash(%{
+        "type" => "hook",
+        "event" => "update_password",
+        "value" => %{"user" => 987_654_321_987}
+      })
+      |> assert_stripped([number], ["(Ecto.CastError)"])
     end
   end
 
@@ -287,6 +326,26 @@ defmodule ApiaryWeb.CrashReportLogTest do
 
       assert log =~ ~s(State: "[FILTERED]")
       assert_stripped({log, events}, [@marker], ["(MatchError)"])
+    end
+
+    test "a message a page does not handle is logged without its terms", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/users/log-in")
+      {_ref, topic, _proxy} = view.proxy
+
+      log =
+        capture_log([level: :debug], fn ->
+          send(view.pid, %Phoenix.Socket.Message{
+            topic: topic,
+            event: @marker,
+            ref: @marker,
+            payload: %{"x" => @marker}
+          })
+
+          assert render(view) =~ "Log in"
+        end)
+
+      assert log =~ "[FILTERED]"
+      refute log =~ @marker
     end
 
     test "a socket's assigns stay out of the arguments", %{conn: conn} do
