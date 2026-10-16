@@ -8,10 +8,10 @@ defmodule ApiaryWeb.BacklogComponents do
   #
   # Everything a ticket holds came from an integration and is untrusted: a component only
   # interpolates it, so HEEx escapes it, and never puts it in a `class` or a `style`, or
-  # in a url other than the checked link out ("Open on %{integration}", through
-  # `CoreComponents.external_link/1`). This module calls no `raw/1`. A ticket's text and
-  # its comments' are the page's to render, into the `rendered_body` and
-  # `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
+  # in a url other than the link out ("Open on %{integration}"), which the core's https
+  # rule checks and `CoreComponents.external_link/1` draws. This module calls no `raw/1`.
+  # A ticket's text and its comments' are the page's to render, into the `rendered_body`
+  # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
   #
   # The feature is hidden from the documentation, so the module is too.
@@ -292,7 +292,8 @@ defmodule ApiaryWeb.BacklogComponents do
 
     * `:ref`, `:title`, `:repository` - strings, as in `ticket_row/1`;
     * `:url` - the ticket's page at the source, or `nil`. Open on the integration is
-      drawn only for a url the core's https rule (`Apiary.Sources.Body.https?/1`) allows;
+      drawn only for a url both the core's https rule (`Apiary.Sources.Body.https?/1`)
+      and its external link (`CoreComponents.external_url?/1`) allow;
     * `:labels` - a list of strings, maybe empty;
     * `:filer` - `%{name: "Lea", kind: :person}`, as in `ticket_row/1`;
     * `:filed_at`, `:updated_at` - `DateTime`s at the source.
@@ -333,7 +334,7 @@ defmodule ApiaryWeb.BacklogComponents do
     assigns =
       assign(assigns,
         now: now,
-        out: Apiary.Sources.Body.https?(ticket.url),
+        out: Apiary.Sources.Body.https?(ticket.url) and external_url?(ticket.url),
         open_on: gettext("Open on %{integration}", integration: assigns.integration),
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",

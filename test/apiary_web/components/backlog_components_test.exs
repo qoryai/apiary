@@ -553,6 +553,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
             "https://1.1/",
             "https://ex%61mple.com/x",
             "https://user@example.com/x",
+            "https://example.com/café",
             :x
           ],
           html <- [list_frame(ticket(%{url: url}), []), full_frame(ticket(%{url: url}), [])] do
