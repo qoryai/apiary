@@ -332,5 +332,10 @@ defmodule Apiary.Adapters.SyncTest do
       assert Adapters.last_seen(%Scope{}, adapter) == {:error, :forbidden}
       assert Adapters.last_seen(%Scope{}, [adapter]) == {:error, :forbidden}
     end
+
+    test "is refused to an adapter's key", %{adapter: adapter, key_scope: key_scope} do
+      assert Adapters.last_seen(key_scope, adapter) == {:error, :forbidden}
+      assert Adapters.last_seen(key_scope, [adapter]) == {:error, :forbidden}
+    end
   end
 end

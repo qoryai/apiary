@@ -30,7 +30,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's limit, 1 MiB, for its signed paths, which this
   # documentation does not name.
   @adapter_max_bytes 1024 * 1024
-  # The integration contract's other signed paths, read the same way.
+  # The integration contract's signed paths served here, read the same way:
+  # `POST /v1/adapter`.
   @adapter_paths [["v1", "adapter"]]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
