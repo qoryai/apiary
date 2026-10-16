@@ -267,6 +267,35 @@ defmodule Apiary.Sources.BodyTest do
                "https://example.com/%C3%BCber"
              ]
     end
+
+    test "https?/1 is true for a plain https URL: a name, a port or an IPv4 address" do
+      for url <- [
+            "https://tracker.example.com/browse/ENG-17",
+            "https://tracker.example.com:8443/browse/ENG-17",
+            "https://192.0.2.10/x"
+          ] do
+        assert Body.https?(url), url
+      end
+    end
+
+    test "https?/1 is false for a URL that is not a plain https one, and for nil" do
+      for url <- [
+            "http://tracker.example.com/browse/ENG-17",
+            "https://xn--gthub-n4a.com/x",
+            "https://[::1]/x",
+            "https://tracker.example.com:99999/x",
+            "https://1.1/",
+            "https://exa%20mple.com/",
+            "https://u@h.example/x",
+            "javascript:alert(1)",
+            "mailto:a@b.example",
+            "/browse/ENG-17",
+            "",
+            nil
+          ] do
+        refute Body.https?(url), inspect(url)
+      end
+    end
   end
 
   describe "images" do
