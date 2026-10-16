@@ -30,18 +30,18 @@ defmodule Apiary.AdaptersTest do
     :"adapter.disconnect"
   ]
 
-  # The edition holds the organisations a test names suspended, as an edition that
-  # suspends an organisation answers for it (`c:Apiary.Edition.check/3`): whatever a scope
-  # of one asks is refused, read from the organisation the scope carries.
-  defmodule Suspends do
+  # The edition holds the organisations a test names refused, as an edition that refuses
+  # an organisation answers for it (`c:Apiary.Edition.check/3`): whatever a scope of one
+  # asks is refused, read from the organisation the scope carries.
+  defmodule RefusesOrganisations do
     @moduledoc false
     alias Apiary.Accounts.Scope
     alias Apiary.Organisations.Organisation
 
-    def put(ids), do: Process.put(:suspended_organisations, ids)
+    def put(ids), do: Process.put(:refused_organisations, ids)
 
     def check(%Scope{organisation: %Organisation{id: id}} = scope, action, subject) do
-      if id in (Process.get(:suspended_organisations) || []),
+      if id in (Process.get(:refused_organisations) || []),
         do: {:error, :forbidden},
         else: Apiary.Edition.module().check(scope, action, subject)
     end
@@ -638,8 +638,8 @@ defmodule Apiary.AdaptersTest do
       adapter = adapter_fixture()
       %{key: key} = keyed(admin, adapter)
       key_scope = Scope.for_access_key(key)
-      Edition.put_test_stub(Suspends)
-      Suspends.put([scope.organisation.id, instance_id()])
+      Edition.put_test_stub(RefusesOrganisations)
+      RefusesOrganisations.put([scope.organisation.id, instance_id()])
 
       assert Access.check(key_scope, :"source_item.post", adapter) == :ok
       assert Adapters.for_key(key_scope, :"source_item.post") == {:ok, reload(adapter)}

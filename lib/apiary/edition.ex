@@ -334,9 +334,9 @@ defmodule Apiary.Edition do
     names in the gateways' lock order (`Apiary.Gateways.lock/1`), at the change's one point;
   - it answers the relation alone, and never the organisation itself. It may name an
     organisation out of use: the core never skips a level for that, so the defaults, the
-    choices, the automatic default and the default after a deletion keep it, and a
-    suspension never moves a node on Default to another gateway. Use is checked where
-    it matters, at the server contract: the key of an organisation's gateway is verified
+    choices, the automatic default and the default after a deletion keep it, and taking an
+    organisation out of use never moves a node on Default to another gateway. Use is checked
+    where it matters, at the server contract: the key of an organisation's gateway is verified
     while its organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
     run's place is checked at its attach, its batches and its reload
     (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the

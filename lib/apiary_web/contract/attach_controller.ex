@@ -8,7 +8,9 @@ defmodule ApiaryWeb.Contract.AttachController do
   (a content type other than `application/json`, a header sent twice, a request that does
   not verify, the key's rate, an instance id, a contract revision not served) and signs
   the answer. A key whose organisation is out of use verifies under no key, and is
-  refused there. The body is read raw, up to 64 KiB (`ApiaryWeb.Contract.RawBody`).
+  refused there; the key of an organisation's gateway still verifies, and attaches no
+  run whose place is out of use (`Apiary.AccessKeys.place_in_use?/2`). The body is read
+  raw, up to 64 KiB (`ApiaryWeb.Contract.RawBody`).
 
   Then, in order: a body the contract refuses is `400` `invalid_request`, with the member
   that refused it in `names`; a `time` more than 300 seconds from the server's clock is

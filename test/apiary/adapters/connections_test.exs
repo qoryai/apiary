@@ -21,16 +21,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
   @moduletag needs: :factory
 
   # The edition refuses whatever a scope of the organisations a test names asks, as an
-  # edition that suspends an organisation answers for it (`c:Apiary.Edition.check/3`).
-  defmodule Suspends do
+  # edition that refuses an organisation answers for it (`c:Apiary.Edition.check/3`).
+  defmodule RefusesOrganisations do
     @moduledoc false
     alias Apiary.Accounts.Scope
     alias Apiary.Organisations.Organisation
 
-    def put(ids), do: Process.put(:suspended_organisations, ids)
+    def put(ids), do: Process.put(:refused_organisations, ids)
 
     def check(%Scope{organisation: %Organisation{id: id}} = scope, action, subject) do
-      if id in (Process.get(:suspended_organisations) || []),
+      if id in (Process.get(:refused_organisations) || []),
         do: {:error, :forbidden},
         else: Apiary.Edition.module().check(scope, action, subject)
     end
@@ -1163,15 +1163,15 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert {:ok, _, _} =
                Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
 
-      Edition.put_test_stub(Suspends)
-      Suspends.put([scope.organisation.id])
+      Edition.put_test_stub(RefusesOrganisations)
+      RefusesOrganisations.put([scope.organisation.id])
 
       assert Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post") ==
                {:error, :suspended}
 
       # The scope of the key carries no organisation, which the edition does not refuse.
       assert {:ok, _adapter} = Adapters.for_key(key_scope, :"source_item.post")
-      Suspends.put([])
+      RefusesOrganisations.put([])
 
       assert {:ok, _, _} =
                Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
