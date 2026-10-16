@@ -9,6 +9,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   alias Apiary.{Repo, Secrets, Variables}
   alias Apiary.Audit.Entry
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.Value
 
   @moduletag needs: :secrets
 
@@ -60,6 +61,33 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   end
 
   defp refute_value(html), do: refute(html =~ @value)
+
+  # The nonce and the ciphertext of each of a secret's values, as the database has them.
+  defp sealed_rows(secret) do
+    Repo.all(from v in Value, where: v.secret_id == ^secret.id, select: {v.nonce, v.ciphertext})
+  end
+
+  # The page's state holds none of the sealed bytes, and its form's changeset no nonce nor
+  # ciphertext, in its data or its changes.
+  defp refute_sealed_state(lv, rows) do
+    assigns = :sys.get_state(lv.pid).socket.assigns
+    bytes = :erlang.term_to_binary(assigns)
+
+    for {nonce, ciphertext} <- rows, sealed <- [nonce, ciphertext] do
+      assert :binary.match(bytes, sealed) == :nomatch
+    end
+
+    case assigns[:form] do
+      %Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset} ->
+        for field <- [:nonce, :ciphertext] do
+          assert Map.get(changeset.data, field) == nil
+          refute Map.has_key?(changeset.changes, field)
+        end
+
+      _none ->
+        :ok
+    end
+  end
 
   # A page's or a dialog's path the page refuses as it opens: back to the list, with why.
   defp refused_at(conn, path) do
@@ -770,6 +798,33 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is now web-app."
       assert reveal(scope, secret, "web-app") == {:ok, @value}
       refute_value(render(lv))
+    end
+
+    test "a value's save, refused or made, leaves no sealed bytes in the page's state",
+         %{conn: conn, scope: scope} do
+      secret = secret!(scope, %{name: "DEPLOY_KEYS", value_id: "main-app"})
+      {:ok, _} = Secrets.add_value(scope, secret, %{value_id: "bot-app", value: "x"})
+      before = sealed_rows(secret)
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/change"))
+
+      lv |> form("#secret-form", secret_value: %{value: ""}) |> render_submit()
+      assert has_element?(lv, "#secret_value_value-error")
+      refute_sealed_state(lv, before)
+
+      lv |> form("#secret-form", secret_value: %{value: "next"}) |> render_submit()
+      assert reveal(scope, secret, "main-app") == {:ok, "next"}
+      refute_sealed_state(lv, before ++ sealed_rows(secret))
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/rename"))
+
+      for value_id <- ["Not A Slug", "bot-app"] do
+        lv |> form("#secret-form", secret_value: %{value_id: value_id}) |> render_submit()
+        assert has_element?(lv, "#secret_value_value_id-error")
+        refute_sealed_state(lv, sealed_rows(secret))
+      end
     end
 
     test "deletes a value of several; a secret's one value goes only with it",

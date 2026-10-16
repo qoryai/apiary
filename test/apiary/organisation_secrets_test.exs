@@ -504,6 +504,48 @@ defmodule Apiary.OrganisationSecretsTest do
       refute Map.has_key?(details, "level")
       assert workspace_id == workspace.id
     end
+
+    test "no changeset handed back keeps a sealed value", %{scope: scope} do
+      secret = create!(scope, %{name: "KEYS", value_id: "main"})
+      {:ok, secret} = Secrets.add_value(scope, secret, %{value_id: "bot", value: "bot value"})
+      rows = [row!(secret, "main"), row!(secret, "bot")]
+
+      # Its row read again, and refused by its checks.
+      assert {:error, changeset} = Secrets.set_value(scope, secret, "main", "")
+      assert changeset.errors[:value]
+      refute_sealed(changeset, rows)
+
+      assert {:error, changeset} = Secrets.rename_value(scope, secret, "main", "Not A Slug")
+      assert changeset.errors[:value_id]
+      refute_sealed(changeset, rows)
+
+      # Encrypted, then refused by the database: a value id the secret has.
+      assert {:error, changeset} =
+               Secrets.add_value(scope, secret, %{value_id: "main", value: "x"})
+
+      assert changeset.errors[:value_id]
+      refute_sealed(changeset, rows)
+
+      assert {:error, changeset} = Secrets.rename_value(scope, secret, "bot", "main")
+      assert changeset.errors[:value_id]
+      refute_sealed(changeset, rows)
+    end
+  end
+
+  # No nonce nor ciphertext in the changeset's data or changes, and none of the rows'
+  # sealed bytes anywhere in it.
+  defp refute_sealed(%Ecto.Changeset{} = changeset, rows) do
+    for field <- [:nonce, :ciphertext] do
+      assert Map.get(changeset.data, field) == nil
+      refute Map.has_key?(changeset.changes, field)
+    end
+
+    bytes = :erlang.term_to_binary(changeset)
+
+    for row <- rows, sealed <- [row.nonce, row.ciphertext] do
+      assert is_binary(sealed)
+      assert :binary.match(bytes, sealed) == :nomatch
+    end
   end
 
   describe "sealing" do

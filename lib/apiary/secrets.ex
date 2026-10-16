@@ -952,14 +952,16 @@ defmodule Apiary.Secrets do
   defp reload(other), do: other
 
   # A changeset handed back to a caller keeps no plaintext: not in its params, under a
-  # string or an atom key, nor in its changes.
+  # string or an atom key, nor in its changes. Nor does it keep a sealed value: no `nonce`
+  # and no `ciphertext`, neither the row's, read again, in its data, nor one encrypted
+  # before the database refused the row, in its changes; a page keeps the changeset.
   # The values under a new secret's changeset are scrubbed too, and the `values` the
   # form sent dropped from its params.
   defp scrub(%Ecto.Changeset{} = changeset) do
     params = changeset.params && Map.drop(changeset.params, ["value", :value, "values", :values])
 
     changes =
-      case Map.delete(changeset.changes, :value) do
+      case Map.drop(changeset.changes, [:value, :nonce, :ciphertext]) do
         %{values: values} = changes when is_list(values) ->
           %{changes | values: Enum.map(values, &scrub/1)}
 
@@ -967,8 +969,15 @@ defmodule Apiary.Secrets do
           changes
       end
 
-    %{changeset | params: params, changes: changes}
+    %{changeset | params: params, changes: changes, data: unsealed(changeset.data)}
   end
+
+  defp unsealed(%Value{} = value), do: %{value | nonce: nil, ciphertext: nil}
+
+  defp unsealed(%Secret{values: values} = secret) when is_list(values),
+    do: %{secret | values: Enum.map(values, &unsealed/1)}
+
+  defp unsealed(data), do: data
 
   defp fetch_value(%Secret{values: values}, value_id) do
     case Enum.find(values, &(&1.value_id == value_id)) do
