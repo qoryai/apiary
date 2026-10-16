@@ -3,13 +3,15 @@ defmodule ApiaryWeb.AdapterComponents do
   # paths of an adapter's page (`paths/1`), the browser title of each page (`page_title/2`),
   # the line under the adapter's name, who added it and when, and its public id
   # (`adapter_meta/1`), its tabs, Overview, Access key and Settings (`adapter_tabs/1`), and
-  # its state in words (`adapter_state/1`). An adapter's page is two LiveViews,
+  # its state in words (`adapter_seen/1`). An adapter's page is two LiveViews,
   # `ApiaryWeb.InstanceLive.Adapter` (Overview and Settings) and
   # `ApiaryWeb.AdapterLive.AccessKey` (Access key), so both draw the same header and tabs
   # from here.
   #
   # An adapter's state is "No key yet" while it holds no active key, with the dot of a
-  # state that needs someone, and "Connected" once it holds one.
+  # state that needs someone. Once it holds one, it is a node's: when it was last seen,
+  # the latest use of one of its keys (`Apiary.Adapters.last_seen/2`), or "Never seen"
+  # (`ApiaryWeb.NodeComponents.node_state/1`).
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -17,7 +19,7 @@ defmodule ApiaryWeb.AdapterComponents do
 
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Nodes.Node
-  alias ApiaryWeb.{People, SettingsComponents}
+  alias ApiaryWeb.{NodeComponents, People, SettingsComponents}
 
   @doc false
   # The paths of the pages of Instance settings › Adapters: the list, and the adapter's
@@ -102,16 +104,25 @@ defmodule ApiaryWeb.AdapterComponents do
   end
 
   attr :id, :string, required: true
+  attr :adapter, Node, required: true
   attr :connected, :boolean, required: true, doc: "whether the adapter holds an active key"
+
+  attr :seen, DateTime,
+    default: nil,
+    doc: "when one of its keys was last used (`Apiary.Adapters.last_seen/2`), or nil"
 
   @doc false
   # An adapter's state in words: "No key yet", with the dot of a state that needs someone,
-  # while it holds no active key; "Connected" once it holds one.
-  def adapter_state(assigns) do
+  # while it holds no active key; once it holds one, "Last seen" and when, ticking in the
+  # browser, or "Never seen", as a node's.
+  def adapter_seen(assigns) do
     ~H"""
-    <span :if={@connected} id={@id} class="q-sdot q-sdot-succeeded">
-      <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
-    </span>
+    <NodeComponents.node_state
+      :if={@connected}
+      id={@id}
+      node={@adapter}
+      activity={%{running: [], last: nil, used: @seen}}
+    />
     <.state_word :if={!@connected} id={@id} hot>{gettext("No key yet")}</.state_word>
     """
   end

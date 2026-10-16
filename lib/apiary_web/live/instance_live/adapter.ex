@@ -1,16 +1,17 @@
 defmodule ApiaryWeb.InstanceLive.Adapter do
   # An adapter's page in Instance settings › Adapters, for the instance's admins: its
-  # Overview tab (`:overview`), its state, the install address it declared and how often
-  # it pulls; and its Settings tab, how often it pulls, renaming it and removing it
-  # (`:settings`, `:rename`, `:remove`). Its Access key tab is
+  # Overview tab (`:overview`), its state and the install address it declared; and its
+  # Settings tab, renaming it and removing it (`:settings`, `:rename`, `:remove`). Its Access key tab is
   # `ApiaryWeb.AdapterLive.AccessKey`. A page of the Instance level, with no organisation:
   # its gate asks the instance whether the feature is on (`use ApiaryWeb.Features,
   # instance: :factory`), and anyone but an instance admin is answered as a path that does
   # not exist, as on the Instance's other pages.
   #
-  # The Overview says the adapter's state, No key yet, with the way to connect it, or
-  # Connected, and changes as a key arrives (`Apiary.Adapters.subscribe_keys/2`);
-  # and the install address the adapter declared, or that it declared none yet. The
+  # The Overview says the adapter's state, No key yet, with the way to connect it, or,
+  # once it holds a key, when it was last seen or Never seen
+  # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
+  # (`Apiary.Adapters.subscribe_keys/2`); and the install address the adapter declared,
+  # or that it declared none yet. The
   # Settings tab holds its name, with Rename…, and the danger zone, whose Remove adapter…
   # opens the Remove page. Rename and Remove are pages; each act is asked again by the
   # context function, and a removed adapter's pages leave for the list.
@@ -42,8 +43,16 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     end
   end
 
-  defp assign_connected(socket),
-    do: assign(socket, :connected, AccessKeys.active_key?(socket.assigns.adapter))
+  # Whether the adapter holds an active key, and when one of its keys was last used.
+  defp assign_connected(%{assigns: %{current_scope: scope, adapter: adapter}} = socket) do
+    seen =
+      case Adapters.last_seen(scope, adapter) do
+        {:ok, seen} -> seen
+        {:error, _reason} -> nil
+      end
+
+    assign(socket, connected: AccessKeys.active_key?(adapter), seen: seen)
+  end
 
   @impl true
   def handle_params(%{"adapter_id" => public_id}, _uri, %{assigns: %{adapter: adapter}} = socket)
@@ -252,6 +261,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           adapter={@adapter}
           paths={@paths}
           connected={@connected}
+          seen={@seen}
         />
         <.settings :if={@live_action == :settings} adapter={@adapter} paths={@paths} />
       </.settings_page>
@@ -292,6 +302,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :adapter, Node, required: true
   attr :paths, :map, required: true
   attr :connected, :boolean, required: true
+  attr :seen, DateTime, default: nil
 
   # The Overview: the adapter's state and the install address it declared.
   defp overview(assigns) do
@@ -302,7 +313,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     >
       <dt class="text-faint">{gettext("State")}</dt>
       <dd id="adapter-overview-state" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <AdapterComponents.adapter_state id="adapter-state" connected={@connected} />
+        <AdapterComponents.adapter_seen
+          id="adapter-state"
+          adapter={@adapter}
+          connected={@connected}
+          seen={@seen}
+        />
         <span :if={!@connected} class="text-faint">
           <span aria-hidden="true">·</span>
           {gettext("organisations can install it once it is connected and running")}

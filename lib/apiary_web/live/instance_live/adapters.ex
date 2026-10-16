@@ -7,9 +7,10 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   # as a path that does not exist, as on the Instance's other pages.
   #
   # Each adapter is a row, by name: its name, which leads to its Overview, its public id,
-  # and its state (`ApiaryWeb.AdapterComponents.adapter_state/1`), No key yet or
-  # Connected. With none, the page says there is no adapter yet. The instance has no
-  # catalogue of adapters to add yet, so the page lists none.
+  # and its state (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it
+  # was last seen, or Never seen, all the rows' times read at once. With none, the page
+  # says there is no adapter yet. The instance has no catalogue of adapters to add yet,
+  # so the page lists none.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -25,9 +26,16 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
     scope = socket.assigns.current_scope
     if Adapters.authorize_instance(scope) != :ok, do: raise(ApiaryWeb.NotFound)
 
+    list = Adapters.list_adapters(scope)
+    {:ok, seen} = Adapters.last_seen(scope, list)
+
     adapters =
-      for adapter <- Adapters.list_adapters(scope),
-          do: %{adapter: adapter, connected: AccessKeys.active_key?(adapter)}
+      for adapter <- list,
+          do: %{
+            adapter: adapter,
+            connected: AccessKeys.active_key?(adapter),
+            seen: Map.get(seen, adapter.id)
+          }
 
     {:ok,
      assign(socket,
@@ -75,9 +83,11 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
             </span>
           </:col>
           <:col :let={row} sr_label={gettext("State")} class="text-right">
-            <AdapterComponents.adapter_state
+            <AdapterComponents.adapter_seen
               id={"adapter-#{row.adapter.public_id}-state"}
+              adapter={row.adapter}
               connected={row.connected}
+              seen={row.seen}
             />
           </:col>
         </.table>

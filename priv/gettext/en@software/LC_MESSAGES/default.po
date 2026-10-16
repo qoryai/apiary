@@ -4242,7 +4242,6 @@ msgstr ""
 msgid "Connect with a command."
 msgstr ""
 
-#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/gateways.ex
 #, elixir-autogen, elixir-format

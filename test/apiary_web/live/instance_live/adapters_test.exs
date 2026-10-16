@@ -1,16 +1,19 @@
 defmodule ApiaryWeb.InstanceLive.AdaptersTest do
   # Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapters`), for an instance
-  # admin: the instance's adapters by name, each leading to its Overview, with its state;
+  # admin: the instance's adapters by name, each leading to its Overview, with its state,
+  # No key yet, or when it was last seen, or Never seen;
   # with none, that there is no adapter yet; and a path that does not exist for anyone
   # else.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Adapters
+  alias Apiary.{Adapters, Repo}
+  alias Apiary.AccessKeys.AccessKey
 
   @moduletag needs: :factory
 
@@ -33,7 +36,13 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
        %{conn: conn, admin: admin} do
     shop = adapter_fixture(%{name: "Shop tracker"})
     platform = adapter_fixture(%{name: "Platform tracker"})
-    enrolled_key_fixture(admin, shop)
+    acme = adapter_fixture(%{name: "Acme tracker"})
+    %{access_key: key} = enrolled_key_fixture(admin, shop)
+    enrolled_key_fixture(admin, acme)
+
+    Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
+      set: [last_used_at: DateTime.add(DateTime.utc_now(:second), -120)]
+    )
 
     {:ok, lv, html} = live(conn, ~p"/instance/adapters")
 
@@ -48,7 +57,12 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     assert html =~ ~s(<span class="sr-only">State</span>)
 
     rows = for [_whole, id] <- Regex.scan(~r/id="(adapter-na_[^"-]+)"/, html), do: id
-    assert rows == ["adapter-#{platform.public_id}", "adapter-#{shop.public_id}"]
+
+    assert rows == [
+             "adapter-#{acme.public_id}",
+             "adapter-#{platform.public_id}",
+             "adapter-#{shop.public_id}"
+           ]
 
     assert has_element?(
              lv,
@@ -57,8 +71,11 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
            )
 
     assert words(lv, "#adapter-#{shop.public_id}") =~ shop.public_id
-    assert words(lv, "#adapter-#{shop.public_id}-state") == "Connected"
+    assert words(lv, "#adapter-#{shop.public_id}-state") =~ ~r/^Last seen \S/
+    assert has_element?(lv, "#adapter-#{shop.public_id}-state-seen")
+    assert words(lv, "#adapter-#{acme.public_id}-state") == "Never seen"
     assert words(lv, "#adapter-#{platform.public_id}-state") == "No key yet"
+    refute html =~ "Connected"
     assert has_element?(lv, "#adapter-#{platform.public_id}-state.q-stw-hot")
     refute has_element?(lv, "#adapters-empty")
   end

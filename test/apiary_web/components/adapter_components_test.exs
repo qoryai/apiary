@@ -107,15 +107,35 @@ defmodule ApiaryWeb.AdapterComponentsTest do
     end
   end
 
-  test "adapter_state/1 is No key yet with its dot, or Connected" do
-    assigns = %{}
-    html = rendered_to_string(~H|<AdapterComponents.adapter_state id="s" connected={false} />|)
+  test "adapter_seen/1 is No key yet with its dot, or, with a key, Last seen or Never seen" do
+    adapter = %Node{kind: :adapter, name: "Shop tracker", public_id: "na_8f3k2m9q4x7v1t6r"}
+    seen = DateTime.add(DateTime.utc_now(), -120, :second)
+    assigns = %{adapter: adapter, seen: seen}
+
+    html =
+      rendered_to_string(
+        ~H|<AdapterComponents.adapter_seen id="s" adapter={@adapter} connected={false} />|
+      )
+
     assert text(html) == "No key yet"
     assert html =~ "q-stw-hot"
 
-    html = rendered_to_string(~H|<AdapterComponents.adapter_state id="s" connected />|)
-    assert text(html) == "Connected"
-    assert html =~ "q-sdot-succeeded"
+    html =
+      rendered_to_string(
+        ~H|<AdapterComponents.adapter_seen id="s" adapter={@adapter} connected />|
+      )
+
+    assert text(html) == "Never seen"
+
+    html =
+      rendered_to_string(
+        ~H|<AdapterComponents.adapter_seen id="s" adapter={@adapter} connected seen={@seen} />|
+      )
+
+    assert text(html) =~ ~r/^Last seen \S/
+    assert html =~ ~s(id="s-seen")
+
+    refute html =~ "Connected"
     refute html =~ "No key yet"
   end
 end

@@ -1,11 +1,13 @@
 defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # An adapter's page in Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapter`),
-  # for an instance admin: its Overview, the state, as a key arrives, and the install
+  # for an instance admin: its Overview, the state, when it was last seen, read again as a
+  # key arrives, and the install
   # address; its Settings tab, with its name and the danger zone; the Rename page, with its
   # errors; the Remove page, which revokes its keys and ends every connection to it; and a
   # path that does not exist for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
@@ -62,16 +64,27 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert has_element?(lv, ~s{#adapter-connect-it[href="#{page_path(adapter, "/keys")}"]})
     end
 
-    test "turns Connected as a key arrives, and shows the install address it declared",
+    test "with a key, says when it was last seen, or Never seen, and shows the install address it declared",
          %{conn: conn, admin: admin} do
-      %{adapter: adapter} = connectable_adapter_fixture(%{name: "Platform tracker"})
-      {:ok, lv, _html} = live(conn, page_path(adapter))
+      %{adapter: adapter, access_key: key} =
+        connectable_adapter_fixture(%{name: "Platform tracker"})
 
-      assert words(lv, "#adapter-overview-state") == "Connected"
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") == "Never seen"
       refute has_element?(lv, "#adapter-connect-it")
+      refute html =~ "Connected"
 
       assert words(lv, "#adapter-overview-install") ==
                "#{adapter.connect_url} · where organisations are sent to install it, as it declares"
+
+      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
+        set: [last_used_at: DateTime.add(DateTime.utc_now(:second), -120)]
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+      assert words(lv, "#adapter-overview-state") =~ ~r/^Last seen \S/
+      assert has_element?(lv, "#adapter-state-seen")
 
       other = adapter_fixture(%{name: "Shop tracker 2"})
       {:ok, lv, _html} = live(conn, page_path(other))
@@ -79,7 +92,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
       %{access_key: key} = enrolled_key_fixture(admin, other)
       send(lv.pid, {:key_enrolled, %{key_id: key.key_id, node_id: other.id}})
-      assert words(lv, "#adapter-overview-state") == "Connected"
+      assert words(lv, "#adapter-overview-state") == "Never seen"
+      refute has_element?(lv, "#adapter-connect-it")
     end
   end
 
