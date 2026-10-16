@@ -1,10 +1,9 @@
 defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # An adapter's page in Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapter`),
   # for an instance admin: its Overview, the state, when it was last seen, read again as a
-  # key arrives, and the install
-  # address; its Settings tab, with its name and the danger zone; the Rename page, with its
-  # errors; the Remove page, which revokes its keys and ends every connection to it; and a
-  # path that does not exist for anyone else.
+  # key arrives, and the install address; its Settings tab, with its name and the danger
+  # zone; the Rename page, with its errors; the Remove page, which revokes its keys and
+  # ends every connection to it; and a path that does not exist for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query

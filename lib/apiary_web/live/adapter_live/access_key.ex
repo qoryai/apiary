@@ -2,12 +2,12 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # An adapter's Access key tab in Instance settings › Adapters, at `…/keys`, for the
   # instance's admins: its keys and enrolment codes, with the acts on them that a node's
   # Access key tab has (`ApiaryWeb.NodeLive.AccessKey`); and Add for one entry of the
-  # catalogue (`:new`, by the entry), which makes the adapter and its first enrolment code,
-  # and patches to the command (`:new_code`), the code held by this page's process alone.
-  # A page of the Instance level, with no organisation: its gate asks the instance whether
-  # the feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone but an
-  # instance admin is answered as a path that does not exist, as on the Instance's other
-  # pages. The keys, the codes and their topic are an instance admin's
+  # catalogue (`:new`, by the entry), which makes the adapter and its first enrolment
+  # code, and patches to the command (`:new_code`), the code held by this page's process
+  # alone. A page of the Instance level, with no organisation: its gate asks the instance
+  # whether the feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone
+  # but an instance admin is answered as a path that does not exist, as on the Instance's
+  # other pages. The keys, the codes and their topic are an instance admin's
   # (`Apiary.Adapters.subscribe_keys/2`).
   #
   # An adapter's key is enrolled with a code alone, never made in a browser, so the tab
@@ -22,10 +22,10 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # carries it, and nothing logs it. A page opened again starts without it.
   #
   # A key's revocation and a waiting code's cancelling are confirmed in place, each at its
-  # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`,
-  # by the code's row id, never the code. Revoking the
-  # adapter's last active key says that no tickets arrive for any organisation until it
-  # has a new one. Every act is asked again by the context function.
+  # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`, by
+  # the code's row id, never the code. Revoking the adapter's last active key says that no
+  # tickets arrive for any organisation until it has a new one. Every act is asked again
+  # by the context function.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.

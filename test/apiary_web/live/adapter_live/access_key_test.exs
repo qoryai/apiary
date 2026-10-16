@@ -3,8 +3,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
   # (`ApiaryWeb.AdapterLive.AccessKey`), for an instance admin: Connect it with no key
   # yet, Get the command and the command's page, which holds the code once, hears the key
   # arrive and says when the code no longer works; a waiting code's cancelling and a key's
-  # revocation, each confirmed in place; the limit of two keys; a stale sign-in; and a path
-  # that does not exist for anyone else, Add for every entry included.
+  # revocation, each confirmed in place; the limit of two keys; a stale sign-in; and a
+  # path that does not exist for anyone else, Add for every entry included.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
