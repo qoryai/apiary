@@ -16,6 +16,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   alias Apiary.{Adapters, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.Connection
+  alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
 
@@ -30,6 +31,13 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   end
 
   defp page_path(adapter, rest \\ ""), do: "/instance/adapters/#{adapter.public_id}" <> rest
+
+  # As the adapter's declaration would: its default, its minimum and whether it sends
+  # changes.
+  defp declare(adapter, set) do
+    {1, _} = Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: set)
+    adapter
+  end
 
   defp words(lv, selector) do
     lv
@@ -59,7 +67,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
              )
 
       assert words(lv, "#adapter-overview") ==
-               "State No key yet · organisations can install it once it is connected and running Connect it Install address Not declared yet"
+               "State No key yet · organisations can install it once it is connected and running Connect it Install address Not declared yet Pulls Not declared yet"
 
       assert has_element?(lv, ~s{#adapter-connect-it[href="#{page_path(adapter, "/keys")}"]})
     end
@@ -94,6 +102,38 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       send(lv.pid, {:key_enrolled, %{key_id: key.key_id, node_id: other.id}})
       assert words(lv, "#adapter-overview-state") == "Never seen"
       refute has_element?(lv, "#adapter-connect-it")
+    end
+  end
+
+  describe "the Overview's Pulls row" do
+    test "says how often it pulls, that changes are sent, and leads to Settings",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: true
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-pulls") ==
+               "Every hour, and changes are sent as they happen · Change"
+
+      lv |> element("#adapter-change-pulls") |> render_click()
+      assert_patch(lv, page_path(adapter, "/settings"))
+    end
+
+    test "says the chosen interval alone when the adapter sends no changes",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter,
+        sync_interval: 7200,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: false
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+      assert words(lv, "#adapter-overview-pulls") == "Every 2 hours · Change"
     end
   end
 

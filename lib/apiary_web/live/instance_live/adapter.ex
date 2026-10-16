@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.InstanceLive.Adapter do
   # An adapter's page in Instance settings › Adapters, for the instance's admins: its
-  # Overview tab (`:overview`), its state and the install address it declared; and its
+  # Overview tab (`:overview`), its state, the install address it declared and how often
+  # it pulls; and its
   # Settings tab, renaming it and removing it (`:settings`, `:rename`, `:remove`). Its Access key tab is
   # `ApiaryWeb.AdapterLive.AccessKey`. A page of the Instance level, with no organisation:
   # its gate asks the instance whether the feature is on (`use ApiaryWeb.Features,
@@ -10,8 +11,9 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # The Overview says the adapter's state, No key yet, with the way to connect it, or,
   # once it holds a key, when it was last seen or Never seen
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
-  # (`Apiary.Adapters.subscribe_keys/2`); and the install address the adapter declared,
-  # or that it declared none yet. The
+  # (`Apiary.Adapters.subscribe_keys/2`); the install address the adapter declared, and
+  # how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or that it
+  # declared neither yet. The
   # Settings tab holds its name, with Rename…, and the danger zone, whose Remove adapter…
   # opens the Remove page. Rename and Remove are pages; each act is asked again by the
   # context function, and a removed adapter's pages leave for the list. A rename is said
@@ -32,12 +34,14 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     scope = socket.assigns.current_scope
 
     with :ok <- Adapters.authorize_instance(scope),
-         %Node{} = adapter <- Adapters.get_adapter(scope, public_id) do
+         %Node{} = adapter <- Adapters.get_adapter(scope, public_id),
+         {:ok, sync} <- Adapters.sync_settings(scope, adapter) do
       if connected?(socket), do: Adapters.subscribe_keys(scope, adapter)
 
       {:ok,
        socket
        |> assign(adapter: adapter, paths: AdapterComponents.paths(adapter), form: nil)
+       |> assign(:sync, sync)
        |> assign_connected()}
     else
       _not_theirs -> raise ApiaryWeb.NotFound
@@ -270,6 +274,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           paths={@paths}
           connected={@connected}
           seen={@seen}
+          sync={@sync}
         />
         <.settings :if={@live_action == :settings} adapter={@adapter} paths={@paths} />
       </.settings_page>
@@ -311,8 +316,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :paths, :map, required: true
   attr :connected, :boolean, required: true
   attr :seen, DateTime, default: nil
+  attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
-  # The Overview: the adapter's state and the install address it declared.
+  # The Overview: the adapter's state, the install address it declared, and how often it
+  # pulls.
   defp overview(assigns) do
     ~H"""
     <dl
@@ -348,6 +355,27 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
             <span aria-hidden="true">·</span>
             {gettext("where organisations are sent to install it, as it declares")}
           </span>
+        <% else %>
+          <span class="text-faint">{gettext("Not declared yet")}</span>
+        <% end %>
+      </dd>
+      <dt class="text-faint">{gettext("Pulls")}</dt>
+      <dd id="adapter-overview-pulls" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <%= if every = AdapterComponents.pulls_every(@sync) do %>
+          <span :if={@sync.sends_changes}>
+            {gettext("%{interval}, and changes are sent as they happen",
+              interval: AdapterComponents.interval_label(every)
+            )}
+          </span>
+          <span :if={!@sync.sends_changes}>{AdapterComponents.interval_label(every)}</span>
+          <span aria-hidden="true" class="text-faint">·</span>
+          <.link
+            id="adapter-change-pulls"
+            patch={@paths.settings}
+            class="text-accent hover:underline"
+          >
+            {gettext("Change")}
+          </.link>
         <% else %>
           <span class="text-faint">{gettext("Not declared yet")}</span>
         <% end %>

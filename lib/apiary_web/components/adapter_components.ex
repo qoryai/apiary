@@ -3,7 +3,8 @@ defmodule ApiaryWeb.AdapterComponents do
   # paths of an adapter's page (`paths/1`), the browser title of each page (`page_title/2`),
   # the line under the adapter's name, who added it and when, and its public id
   # (`adapter_meta/1`), its tabs, Overview, Access key and Settings (`adapter_tabs/1`), and
-  # its state in words (`adapter_seen/1`). An adapter's page is two LiveViews,
+  # its state in words (`adapter_seen/1`), and how often it pulls (`pulls_every/1`,
+  # `interval_label/1`, `interval_words/1`). An adapter's page is two LiveViews,
   # `ApiaryWeb.InstanceLive.Adapter` (Overview and Settings) and
   # `ApiaryWeb.AdapterLive.AccessKey` (Access key), so both draw the same header and tabs
   # from here.
@@ -12,6 +13,11 @@ defmodule ApiaryWeb.AdapterComponents do
   # state that needs someone. Once it holds one, it is a node's: when it was last seen,
   # the latest use of one of its keys (`Apiary.Adapters.last_seen/2`), or "Never seen"
   # (`ApiaryWeb.NodeComponents.node_state/1`).
+  #
+  # An interval is said from its seconds by one rule: in hours when it is whole hours
+  # ("Every hour", "Every 2 hours"), else in minutes when it is whole minutes ("Every
+  # minute", "Every 15 minutes"), else in seconds; and the same in lower case, to stand
+  # inside a sentence.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -126,4 +132,56 @@ defmodule ApiaryWeb.AdapterComponents do
     <.state_word :if={!@connected} id={@id} hot>{gettext("No key yet")}</.state_word>
     """
   end
+
+  @doc false
+  # How often the adapter pulls, in seconds, from what it declared and the interval an
+  # instance admin chose (`Apiary.Adapters.sync_settings/2`): the chosen one, else its
+  # default, raised to its minimum, as the adapter raises it; nil before it declares.
+  @spec pulls_every(map) :: pos_integer | nil
+  def pulls_every(%{default: default} = sync) when is_integer(default) do
+    every = sync.interval || default
+
+    case sync.minimum do
+      minimum when is_integer(minimum) and minimum > every -> minimum
+      _minimum -> every
+    end
+  end
+
+  def pulls_every(_sync), do: nil
+
+  @doc false
+  # How often the adapter pulls, as `Apiary.Adapters.sync_settings/2` gives it, read from
+  # the adapter's row: for the list, which has the rows already.
+  @spec sync_of(Node.t()) :: map
+  def sync_of(%Node{} = adapter) do
+    %{
+      interval: adapter.sync_interval,
+      default: adapter.sync_default_interval,
+      minimum: adapter.sync_minimum_interval,
+      sends_changes: adapter.sync_sends_changes
+    }
+  end
+
+  @doc false
+  # An interval of `seconds` in words: "Every hour", "Every 2 hours", "Every minute",
+  # "Every 15 minutes", or "Every 90 seconds".
+  @spec interval_label(pos_integer) :: String.t()
+  def interval_label(seconds) when rem(seconds, 3600) == 0,
+    do: ngettext("Every hour", "Every %{count} hours", div(seconds, 3600))
+
+  def interval_label(seconds) when rem(seconds, 60) == 0,
+    do: ngettext("Every minute", "Every %{count} minutes", div(seconds, 60))
+
+  def interval_label(seconds), do: gettext("Every %{count} seconds", count: seconds)
+
+  @doc false
+  # The same in lower case, to stand inside a sentence: "every hour", "every 15 minutes".
+  @spec interval_words(pos_integer) :: String.t()
+  def interval_words(seconds) when rem(seconds, 3600) == 0,
+    do: ngettext("every hour", "every %{count} hours", div(seconds, 3600))
+
+  def interval_words(seconds) when rem(seconds, 60) == 0,
+    do: ngettext("every minute", "every %{count} minutes", div(seconds, 60))
+
+  def interval_words(seconds), do: gettext("every %{count} seconds", count: seconds)
 end
