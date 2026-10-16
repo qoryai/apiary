@@ -588,6 +588,7 @@ msgstr ""
 msgid "%{key} leaves focus"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{label} is revoked."
@@ -716,6 +717,7 @@ msgstr ""
 msgid "%{name} is changed."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is connected."
@@ -2688,6 +2690,7 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Access key"
@@ -2841,6 +2844,7 @@ msgstr ""
 msgid "Add a host rule"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Add a key"
@@ -3647,6 +3651,7 @@ msgstr ""
 msgid "Cancel the command from %{time}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel the command from %{time}?"
@@ -3720,6 +3725,7 @@ msgstr ""
 msgid "Cancelled."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -4095,6 +4101,7 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4194,11 +4201,13 @@ msgstr ""
 msgid "Confirming"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connect %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connect %{name} with a command"
@@ -4210,6 +4219,7 @@ msgid "Connect it"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connect with a command"
@@ -5015,6 +5025,7 @@ msgstr ""
 msgid "Domains"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -5669,6 +5680,7 @@ msgstr ""
 msgid "Find an organisation or workspace…"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Fingerprint"
@@ -6039,12 +6051,14 @@ msgstr ""
 msgid "Generating"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Get a new command"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Get the command"
@@ -6659,6 +6673,7 @@ msgstr ""
 msgid "It is removed from this organisation. This cannot be undone."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It is revoked at once, and its public key can never be used again. This cannot be undone."
@@ -6667,6 +6682,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "It is served %{workspace}'s policy, version %{version}."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -6741,6 +6761,7 @@ msgstr ""
 msgid "It stays on the Access key tab."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It stops working at once. A machine that runs it after this is refused."
@@ -6800,6 +6821,7 @@ msgstr ""
 msgid "Its key %{error}."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Its key arrived at %{time} and is active."
@@ -6948,6 +6970,7 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep it"
@@ -6969,6 +6992,7 @@ msgstr ""
 msgid "Keep the secret in a secret store."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -7007,6 +7031,7 @@ msgstr ""
 msgid "Keyboard shortcuts of the timeline"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -8852,6 +8877,7 @@ msgstr ""
 msgid "Nothing to save: the rule is as it was."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -8990,6 +9016,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "On since %{day}."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Once it runs, organisations can install it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10247,6 +10278,7 @@ msgstr ""
 msgid "Revoke %{label}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoke %{label}?"
@@ -10287,6 +10319,7 @@ msgstr ""
 msgid "Revoke…"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoking"
@@ -11580,11 +11613,13 @@ msgstr ""
 msgid "That account is already connected to another organisation."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command no longer works: it was run, cancelled or expired."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command was run already."
@@ -11702,6 +11737,21 @@ msgstr ""
 msgid "The Forager file's lines for this key. Nothing here is secret."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter connects to Qory Apiary with a key that it makes on its machine. Until it has one, organisations can't install it."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter makes the key there and sends Qory only its public half."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter signs every request with its key. Qory Apiary keeps only the public half."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "The address email comes from. Empty: %{address}."
@@ -11758,14 +11808,25 @@ msgstr ""
 msgid "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory only the public half. The secret never leaves the machine."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command is cancelled. It no longer works."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The command printed a fingerprint when it ran. If it isn't this one, revoke the key on the Access key tab."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12982,6 +13043,11 @@ msgstr ""
 msgid "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node pool holds two keys at most."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "To move the adapter to a new key, get a new command and run it, then revoke the old key once the new one is in use. An adapter holds two keys at most."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "To review"
@@ -13364,6 +13430,11 @@ msgstr ""
 msgid "Waiting for %{node} to run it."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for the command to run. This page shows when the adapter is connected."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for the run to start"
@@ -13737,6 +13808,7 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, cancel it"
@@ -13775,6 +13847,7 @@ msgstr ""
 msgid "Yes, remove"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, revoke"
@@ -13953,6 +14026,11 @@ msgstr ""
 msgid "You get one command to run on %{name}. It carries a one-time code, not a key, which works once within 15 minutes."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "You have not been added to a workspace yet"
@@ -13975,6 +14053,7 @@ msgid "You must log in to access this page."
 msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/member_live/index.ex
