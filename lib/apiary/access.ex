@@ -312,8 +312,8 @@ defmodule Apiary.Access do
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
     # The instance's adapters: an organisation's people read them and connect them; an
-    # instance admin makes, renames and deletes them, which no role takes: the context
-    # function asks `instance_admin?/1` (`Apiary.Adapters`).
+    # instance admin makes, renames and deletes them and sets how often they pull, which no
+    # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`).
     Action.new(:"adapter.read", "read the instance's adapters",
       feature: :factory,
       roles: @members,
@@ -327,6 +327,12 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(:"adapter.edit", "rename an adapter: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.set_interval",
+      "set how often an adapter pulls: an instance admin, which no role takes",
       feature: :factory,
       asked_of: :organisation
     ),
@@ -372,6 +378,13 @@ defmodule Apiary.Access do
       roles: @admins
     ),
     # An adapter's key at the server contract, asked of the adapter itself.
+    Action.new(
+      :"adapter.declare",
+      "say where a person is sent to connect the adapter and how often it pulls",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
     Action.new(:"source_item.post", "post the items of a source",
       feature: :factory,
       roles: [:adapter_key],

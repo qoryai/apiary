@@ -29,7 +29,12 @@ defmodule Apiary.Adapters do
   # (`Apiary.Access.role/1`), with a scope of no organisation and no workspace
   # (`Apiary.Accounts.Scope.for_access_key/1`): `for_key/2` is the adapter such a scope
   # stands for, once the action is allowed. It acts for an organisation only through a
-  # connection (`Apiary.Adapters.Connections.connection_for_key/3`).
+  # connection (`Apiary.Adapters.Connections.connection_for_key/3`). Each time it starts it
+  # declares its connect address and how it pulls (`declare/2`, `adapter.declare`); an
+  # instance admin then chooses how often it pulls among the choices that declaration
+  # allows (`sync_settings/2`, `update_sync_interval/3`, `adapter.set_interval`), which
+  # the adapter learns from its change feed (`Apiary.Adapters.Feed`). When it was last
+  # seen is its keys' latest use (`last_seen/2`).
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -39,7 +44,7 @@ defmodule Apiary.Adapters do
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
-  alias Apiary.Adapters.{ConnectPass, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connections, Feed, Wire}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -357,26 +362,216 @@ defmodule Apiary.Adapters do
 
   ## How often it pulls
 
-  @typedoc "How often an adapter pulls: the instance admins' choice and what it declared."
+  # The intervals an instance admin may choose, in seconds, one ladder for every adapter:
+  # a minute, 5, 10, 15 and 30 minutes, an hour, 2, 6 and 12 hours, and a day, the
+  # contract's longest (`Apiary.Adapters.Wire.interval_range/0`). An adapter's choices
+  # are the steps at or above its declared minimum, and its declared default, which may
+  # be off the ladder (`sync_choices/1`).
+  @sync_ladder [60, 300, 600, 900, 1800, 3600, 7200, 21_600, 43_200, 86_400]
+
+  @typedoc """
+  How often an adapter pulls: the interval an instance admin chose (nil for the adapter's
+  default), what the adapter declared (each nil until it first declares), and the
+  intervals an instance admin may choose (none before it declares).
+  """
   @type sync :: %{
           interval: pos_integer | nil,
           default: pos_integer | nil,
           minimum: pos_integer | nil,
-          sends_changes: boolean | nil
+          sends_changes: boolean | nil,
+          choices: [pos_integer]
         }
 
   @doc false
-  # How often `adapter` pulls, to an instance admin. Not built: `{:error, :not_built}`.
-  @spec sync_settings(Scope.t(), Node.t()) ::
-          {:ok, sync} | {:error, :not_built | Access.reason()}
-  def sync_settings(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_built}
+  # How often `adapter` pulls, to an instance admin (`authorize_instance/2`), read from the
+  # adapter in use now: `{:ok, sync}`, with `interval` as stored even when a later
+  # declaration leaves it out of `choices` (below the minimum; the adapter raises such an
+  # interval to its minimum, as the contract has it). `{:error, :forbidden}` for anyone
+  # else, `{:error, :not_found}` where the feature is off or the adapter is deleted.
+  @spec sync_settings(Scope.t(), Node.t()) :: {:ok, sync} | {:error, Access.reason()}
+  def sync_settings(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
+    with :ok <- authorize_instance(scope),
+         %Node{} = current <-
+           live_query() |> where([n], n.id == ^id) |> Repo.one() || {:error, :not_found} do
+      {:ok, sync(current)}
+    end
+  end
+
+  defp sync(%Node{} = adapter) do
+    %{
+      interval: adapter.sync_interval,
+      default: adapter.sync_default_interval,
+      minimum: adapter.sync_minimum_interval,
+      sends_changes: adapter.sync_sends_changes,
+      choices: sync_choices(adapter)
+    }
+  end
+
+  # The intervals an instance admin may choose for `adapter`: the ladder's steps at or
+  # above its declared minimum, with its declared default, in order; none before it
+  # declares.
+  defp sync_choices(%Node{sync_minimum_interval: minimum, sync_default_interval: default})
+       when is_integer(minimum) and is_integer(default) do
+    [default | Enum.filter(@sync_ladder, &(&1 >= minimum))]
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp sync_choices(%Node{}), do: []
 
   @doc false
-  # Sets how often `adapter` pulls (`adapter.edit`, an instance admin) from `attrs`, its
-  # `sync_interval`. Not built: `{:error, :not_built}`.
+  # Sets how often `adapter` pulls (`adapter.set_interval`, an instance admin,
+  # `authorize_instance/2`) from `attrs`'s `sync_interval`, in seconds: one of
+  # `sync_settings/2`'s `choices`, an integer or its decimal string, or nil or `""` for
+  # the adapter's declared default. In one transaction, under the adapter's row held
+  # `FOR NO KEY UPDATE` (`mutate/3`): a change leaves its entry in the instance's trail
+  # and appends `{kind: "sync", interval}` to the adapter's change feed
+  # (`Apiary.Adapters.Feed`, nil for the default), which is how the adapter learns of it;
+  # the same interval changes nothing and leaves neither.
+  # `{:ok, adapter}`; `{:error, :not_declared}` while the adapter has not declared how it
+  # pulls; `{:error, changeset}` for a value that is not one of the choices;
+  # `{:error, :forbidden}`; or `{:error, :not_found}`.
   @spec update_sync_interval(Scope.t(), Node.t(), map) ::
-          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_built}
-  def update_sync_interval(%Scope{}, %Node{kind: :adapter}, _attrs), do: {:error, :not_built}
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_declared}
+  def update_sync_interval(%Scope{} = scope, %Node{kind: :adapter} = adapter, attrs)
+      when is_map(attrs) do
+    mutate(scope, adapter, fn recorder, current ->
+      with :ok <- declared(current),
+           {:ok, updated} <-
+             current
+             |> Node.sync_interval_changeset(sync_attrs(attrs), sync_choices(current))
+             |> Repo.update(),
+           :ok <- record_interval(recorder, current, updated) do
+        {:ok, updated}
+      end
+    end)
+  end
+
+  defp declared(%Node{sync_default_interval: default}) when is_integer(default), do: :ok
+  defp declared(%Node{}), do: {:error, :not_declared}
+
+  # The interval as a page sends it, under a string key or an atom one.
+  defp sync_attrs(attrs) do
+    case Map.new(attrs, fn {key, value} -> {to_string(key), value} end) do
+      %{"sync_interval" => interval} -> %{"sync_interval" => interval}
+      _other -> %{}
+    end
+  end
+
+  defp record_interval(recorder, old, new) do
+    case Audit.changed(old, new, [:sync_interval]) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, recorder, :"adapter.set_interval", new, changes),
+             {:ok, _seq} <- Feed.append(new, %{kind: "sync", interval: new.sync_interval}),
+             do: :ok
+    end
+  end
+
+  ## What an adapter declares
+
+  @declared [:connect_url, :sync_default_interval, :sync_minimum_interval, :sync_sends_changes]
+
+  @doc false
+  # Stores what the adapter of `scope`, an adapter's key
+  # (`Apiary.Accounts.Scope.for_access_key/1`), declared as it started
+  # (`Apiary.Adapters.Wire.declaration/1`): its connect address and how it pulls
+  # (`adapter.declare`, `for_key/2`). One transaction, with the adapter's row held
+  # `FOR NO KEY UPDATE`, as an instance admin's change holds it, so a declaration and a
+  # change of the interval come one after the other; an adapter deleted meanwhile is
+  # `{:error, :not_found}`.
+  #
+  # A declaration that changes something leaves an entry in the instance's trail whose
+  # actor is the key; one that changes nothing leaves none. The adapter's first
+  # declaration appends `{kind: "sync", interval: nil}` to its change feed, its default,
+  # and a later one appends nothing: as the contract has it, the feed carries the interval
+  # at the first declaration and whenever a person changes it. The interval an instance
+  # admin chose stays whatever a later declaration says; the adapter raises one below its
+  # minimum to that minimum.
+  # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
+  # `{:error, :not_found}`.
+  @spec declare(Scope.t(), Wire.declaration()) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def declare(%Scope{} = scope, %{} = declaration) do
+    Repo.transact(fn ->
+      with {:ok, %Node{id: id}} <- for_key(scope, :"adapter.declare"),
+           %Node{} = current <-
+             live_query()
+             |> where([n], n.id == ^id)
+             |> lock("FOR NO KEY UPDATE")
+             |> Repo.one() || {:error, :not_found},
+           {:ok, declared} <-
+             current
+             |> Node.declaration_changeset(%{
+               connect_url: declaration.connect_url,
+               sync_default_interval: declaration.default_interval,
+               sync_minimum_interval: declaration.minimum_interval,
+               sync_sends_changes: declaration.sends_changes
+             })
+             |> Repo.update(),
+           :ok <- record_declaration(scope, current, declared),
+           :ok <- tell_first(current, declared) do
+        {:ok, declared}
+      end
+    end)
+  end
+
+  defp record_declaration(scope, current, declared) do
+    case Audit.changed(current, declared, @declared) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, scope, :"adapter.declare", declared, changes),
+             do: :ok
+    end
+  end
+
+  # The adapter's interval is its default from its first declaration on: the feed says so
+  # once.
+  defp tell_first(%Node{sync_default_interval: nil}, declared) do
+    with {:ok, _seq} <- Feed.append(declared, %{kind: "sync", interval: nil}), do: :ok
+  end
+
+  defp tell_first(%Node{}, _declared), do: :ok
+
+  ## When it was last seen
+
+  @doc false
+  # When `adapter` was last seen, as a node is: the latest use of any of its access keys,
+  # revoked ones included (`last_used_at`, which every accepted request of an adapter's key
+  # records, `ApiaryWeb.Contract.AdapterRequest`), or nil when none was ever used. Given a
+  # list of adapters, a map of each one's id to its time, one query, without the adapters
+  # never seen. To an instance admin (`authorize_instance/2`), `{:ok, time}` or
+  # `{:ok, map}`; `{:error, :forbidden}` for anyone else, `{:error, :not_found}` where the
+  # feature is off.
+  @spec last_seen(Scope.t(), Node.t()) :: {:ok, DateTime.t() | nil} | {:error, Access.reason()}
+  @spec last_seen(Scope.t(), [Node.t()]) ::
+          {:ok, %{Ecto.UUID.t() => DateTime.t()}} | {:error, Access.reason()}
+  def last_seen(%Scope{} = scope, %Node{kind: :adapter, id: id} = adapter) do
+    with {:ok, seen} <- last_seen(scope, [adapter]), do: {:ok, Map.get(seen, id)}
+  end
+
+  def last_seen(%Scope{} = scope, adapters) when is_list(adapters) do
+    with :ok <- authorize_instance(scope) do
+      {:ok, last_used(for %Node{kind: :adapter, id: id} <- adapters, do: id)}
+    end
+  end
+
+  defp last_used([]), do: %{}
+
+  defp last_used(ids) do
+    from(k in AccessKey,
+      where: k.node_id in ^ids and not is_nil(k.last_used_at),
+      where: is_nil(k.organisation_id) and is_nil(k.workspace_id),
+      group_by: k.node_id,
+      select: {k.node_id, max(k.last_used_at)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
 
   ## Keys and codes
 
