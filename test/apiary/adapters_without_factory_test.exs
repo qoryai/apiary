@@ -181,6 +181,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     key_scope = Scope.for_access_key(key)
 
     for action <- [
+          :"adapter.declare",
           :"source_item.post",
           :"work_item.read_changes",
           :"adapter.disconnect"

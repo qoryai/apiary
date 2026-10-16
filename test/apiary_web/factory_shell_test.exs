@@ -50,11 +50,13 @@ defmodule ApiaryWeb.FactoryShellTest do
   # Every route of the core's router whose page or controller belongs to `factory`, as
   # `{verb, path, module}` with its parameters filled in: the scope's organisation and
   # workspace, the adapter, a connection's id that names none, a work item's number, and
-  # a made-up id for the rest.
+  # a made-up id for the rest. The signed requests of an adapter are no page of the shell:
+  # `ApiaryWeb.Contract.AdapterRequestTest` and its fixtures' test answer for them.
   defp factory_routes(scope, adapter) do
     for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(ApiaryWeb.Router),
         function_exported?(Code.ensure_loaded!(module), :__feature__, 0),
-        module.__feature__() == :factory do
+        module.__feature__() == :factory,
+        module != ApiaryWeb.Contract.AdapterController do
       {verb, fill(path, scope, adapter), module}
     end
   end

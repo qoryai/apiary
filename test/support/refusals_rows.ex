@@ -431,6 +431,7 @@ defmodule ApiaryWeb.RefusalsRows do
       contract: [
         :"run.post_events",
         :"run_configuration.fetch",
+        :"adapter.declare",
         :"source_item.post",
         :"work_item.read_changes",
         :"adapter.disconnect"
@@ -446,6 +447,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"connection.write",
         :"adapter.create",
         :"adapter.edit",
+        :"adapter.set_interval",
         :"adapter.delete",
         :"adapter.connect",
         :"collection.assign",
