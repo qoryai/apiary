@@ -223,8 +223,27 @@ defmodule ApiaryWeb.InstanceLive.Mail do
     end
   end
 
+  # An event the page's form never sends is refused in silence, before any clause reads it
+  # (`sent?/2`): the page stays up, so no crash report prints the event, and a password in
+  # it with the rest of its terms.
   @impl true
-  def handle_event("save", %{"mail" => params}, socket) when is_map(params) do
+  def handle_event(event, params, socket) do
+    if sent?(event, params), do: handle(event, params, socket), else: {:noreply, socket}
+  end
+
+  # Whether an event and its parameters are what the page's form sends: `save`, its fields
+  # under `mail`, each name and each value text, as a browser encodes a form, `_unused_`
+  # ones among them. So the clause below, `Apiary.Mail.save_settings/3` and the form shown
+  # again are given text only: a value of another type, or bytes that are not text, never
+  # reach a cast, a query or a render that could fail on them and print them.
+  defp sent?("save", %{"mail" => %{} = fields}),
+    do: Enum.all?(fields, fn {name, value} -> text?(name) and text?(value) end)
+
+  defp sent?(_event, _params), do: false
+
+  defp text?(value), do: is_binary(value) and String.valid?(value)
+
+  defp handle("save", %{"mail" => params}, socket) when is_map(params) do
     url_fun = &url(~p"/instance/mail/confirm/#{&1}")
 
     case Mail.save_settings(socket.assigns.current_scope, params, url_fun) do
