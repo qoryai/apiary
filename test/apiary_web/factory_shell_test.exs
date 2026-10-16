@@ -625,11 +625,19 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   # A page a live navigation to `path` starts from, in the same live session: an Instance
   # page, opened by an instance admin, for a page of the Instance level, else a page of
-  # the workspace.
-  defp navigable(_conn, _scope, "/instance/" <> _),
+  # the workspace. The async reads it starts (the runs page's) finish first
+  # (`render_async/1`): the refused navigation ends the page, and a task still reading
+  # would be killed holding the test's sandbox connection.
+  defp navigable(conn, scope, path) do
+    {:ok, view, html} = start_page(conn, scope, path)
+    render_async(view)
+    {:ok, view, html}
+  end
+
+  defp start_page(_conn, _scope, "/instance/" <> _),
     do: live(log_in_user(build_conn(), instance_admin_scope().user), ~p"/instance/general")
 
-  defp navigable(conn, scope, _path),
+  defp start_page(conn, scope, _path),
     do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
   # Where ⌘K's Go to leads, as `ApiaryWeb.JumpController` answers it from the
