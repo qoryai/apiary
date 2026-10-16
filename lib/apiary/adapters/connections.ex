@@ -7,7 +7,10 @@ defmodule Apiary.Adapters.Connections do
   # Starting one is `Apiary.Adapters.connect/2`'s: an owner or an admin of the organisation
   # (`adapter.connect`) makes the pending connection, or takes the one pending, with a
   # new connect pass whose nonce and expiry it keeps (`start/3`), each pass expiring
-  # strictly later than the one before it. The person comes back with a return
+  # strictly later than the one before it. Should that take the pass more than
+  # `Apiary.Adapters.ConnectPass.validity/0` seconds ahead, which the adapter refuses, the
+  # press ends the pending connection (`replaced`) and starts a new one in its place,
+  # whose pass is its first. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
   # any change; a return that says the adapter linked makes the connection connected.
   # The adapter's first listing that names it is recorded as it is accepted
@@ -21,7 +24,8 @@ defmodule Apiary.Adapters.Connections do
   # organisation (`Apiary.Accounts.Scope.for_connection/2`).
   #
   # A connection ends for good: when the adapter says it is gone (`end_connection/2`),
-  # when a press of Install replaces it while connected and not yet listed (`start/3`),
+  # when a press of Install replaces it (`start/3`), while connected and not yet listed,
+  # or while pending when its next pass would expire too far ahead,
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
@@ -135,23 +139,34 @@ defmodule Apiary.Adapters.Connections do
   # (`complete_return/4`), which no listing has named yet (`mark_listed/1`), is ended
   # (`replaced`), as `end_connection/2` ends one, with its pass, its person and the time
   # it connected as they were, and the pools it served cleared, and a new pending
-  # connection is made in its place, as above. `{:ok, connection, pass}`;
+  # connection is made in its place, with a new public id, as above. One pending is
+  # replaced so too when its next pass would expire too far ahead, below.
+  # `{:ok, connection, pass}`;
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
   # cannot be made, which the caller's transaction rolls back.
   #
   # The pass expires `Apiary.Adapters.ConnectPass.validity/0` seconds after now, to the
-  # second, or one second after the pass the connection had before, when that is later:
-  # read, and the new time written with the new nonce in the same update, under the
-  # connection's row held `FOR UPDATE`, so two presses never read the same previous time,
-  # and each new pass of a connection expires strictly later than the one before it, even
-  # for two presses in the same second or after the clock stepped back. A new connection,
-  # the first press's or one made in place of a replaced one, has no previous pass: its
-  # pass expires `validity/0` seconds after now. `opts[:now]`, the current time unless
-  # given, is for tests only.
+  # second, which is strictly later than the pass the connection had before, so long as
+  # one second after that pass's expiry is no later than that time: read, and the new
+  # time written with the new nonce in the same update, under the connection's row held
+  # `FOR UPDATE`, so two presses never read the same previous time. When it is later
+  # (`Apiary.Adapters.ConnectPass.beyond_validity?/2`), as for two presses in the same
+  # second, or after the clock stepped back, a pass that expires after the previous one
+  # would expire more than `validity/0` seconds ahead, which the adapter refuses: the
+  # pending connection is ended (`replaced`) instead, in the same transaction and under
+  # the same lock, with its nonce, its pass's expiry and its person as they were, and a
+  # new pending connection is made in its place, as for one connected. A return under
+  # the ended one's pass is not found after, and the adapter's key finds it ended. A new
+  # connection, the first press's or one made in place of a replaced one, has no previous
+  # pass, nor has one made before its pass's expiry was kept: its pass expires
+  # `validity/0` seconds after now. So each new pass of a connection expires strictly
+  # later than the one before it, and no pass expires more than `validity/0` seconds after
+  # now. `opts[:now]`, the current time unless given, is for tests only.
   #
-  # Two at once make one connection: the second's insert waits for the first's and does
-  # nothing, and it then takes the first's row, with the new nonce in it. Should the live
+  # Two at once make one live connection: the second's insert waits for the first's and
+  # does nothing, and it then takes the first's row, with the new nonce in it, or, in the
+  # same second, replaces it with a new one, as above. Should the live
   # row its lock waited on end meanwhile (replaced by another press, or ended by the
   # adapter), the lock finds no live row, and it tries again: its insert now makes a
   # connection, or finds the one that replaced it. Each try after the first follows a
@@ -183,49 +198,68 @@ defmodule Apiary.Adapters.Connections do
         take_live(organisation_id, adapter, user_id, nonce, now)
 
       # Its pass is made here, under the row's lock: the previous pass's expiry is read and
-      # the new one written in the same update.
+      # the new one written in the same update. Should the new pass have to expire more
+      # than `validity/0` seconds ahead to expire after the previous one, the connection
+      # ends and a new one takes its place, whose pass is its first.
       %Connection{state: :pending} = pending ->
-        with {:ok, pass, expires_at} <-
-               issue(adapter, pending.public_id, nonce, now, pending.pass_expires_at),
-             {:ok, connection} <-
-               pending
-               |> Ecto.Changeset.change(
-                 pass_nonce: nonce,
-                 pass_nonce_used_at: nil,
-                 pass_expires_at: expires_at,
-                 created_by_id: user_id,
-                 updated_at: now
-               )
-               |> Repo.update() do
-          {:ok, connection, pass}
+        not_before = after_previous(pending.pass_expires_at)
+
+        if ConnectPass.beyond_validity?(now, not_before) do
+          replace(pending, organisation_id, adapter, user_id, nonce, now)
+        else
+          with {:ok, pass, expires_at} <-
+                 issue(adapter, pending.public_id, nonce, now, not_before),
+               {:ok, connection} <-
+                 pending
+                 |> Ecto.Changeset.change(
+                   pass_nonce: nonce,
+                   pass_nonce_used_at: nil,
+                   pass_expires_at: expires_at,
+                   created_by_id: user_id,
+                   updated_at: now
+                 )
+                 |> Repo.update() do
+            {:ok, connection, pass}
+          end
         end
 
-      # Connected, and no listing has named it: it takes no new pass, so it ends with its
-      # nonce, the person who started it and the time it connected as they are, and a new
+      # Connected, and no listing has named it: it takes no new pass, so it ends, and a new
       # one takes its place, whose pass is its first.
       %Connection{state: :connected, listed_at: nil} = unlisted ->
-        fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
-
-        with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
-             {:ok, _ended} <- end_live(unlisted, :replaced, now),
-             {:ok, connection} <-
-               Connection
-               |> struct!(%{fields | pass_expires_at: expires_at})
-               |> Repo.insert() do
-          {:ok, connection, pass}
-        end
+        replace(unlisted, organisation_id, adapter, user_id, nonce, now)
 
       %Connection{state: :connected} ->
         {:error, :connected}
     end
   end
 
-  # The connect pass of `adapter` for the connection `public_id`, made at `now`, and when
-  # it expires: one second after `previous`, the expiry of the connection's previous pass,
-  # when that is later than `validity/0` seconds after now; `nil` for a connection's first.
-  defp issue(%Node{public_id: adapter_public_id}, public_id, nonce, now, previous) do
-    not_before = if previous, do: DateTime.add(previous, 1, :second)
+  # Ends `live`, held `FOR UPDATE`, as `replaced`, with its nonce, its pass's expiry, the
+  # person who started it and the time it connected as they are, and clears the pools it
+  # served; then makes a new pending connection in its place, with a new public id, started
+  # by the person who pressed, whose pass, with `nonce`, is its first and expires
+  # `validity/0` seconds after now.
+  defp replace(live, organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
+    fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
 
+    with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
+         {:ok, _ended} <- end_live(live, :replaced, now),
+         {:ok, connection} <-
+           Connection
+           |> struct!(%{fields | pass_expires_at: expires_at})
+           |> Repo.insert() do
+      {:ok, connection, pass}
+    end
+  end
+
+  # One second after `previous`, the expiry of the connection's previous pass; `nil` for
+  # none, a connection's first pass.
+  defp after_previous(nil), do: nil
+  defp after_previous(%DateTime{} = previous), do: DateTime.add(previous, 1, :second)
+
+  # The connect pass of `adapter` for the connection `public_id`, made at `now`, and when
+  # it expires (`Apiary.Adapters.ConnectPass.expires_at/2` of now and `not_before`), the
+  # same time the pass says.
+  defp issue(%Node{public_id: adapter_public_id}, public_id, nonce, now, not_before) do
     with {:ok, pass} <-
            ConnectPass.issue(adapter_public_id, public_id,
              nonce: nonce,

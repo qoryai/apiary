@@ -8,13 +8,16 @@ defmodule Apiary.Adapters.Connection do
   # `state` is where it stands: `:pending` from the start, `:connected` since
   # `connected_at`, once the person who started it came back with a return that says it
   # is linked, `:ended` from either, for `ended_reason`, which is final: `:replaced` when
-  # a press of Install ended it while it was connected and no listing had named it yet,
-  # and made a new connection in its place. `listed_at` is when the adapter's first
+  # a press of Install ended it and made a new connection in its place, either while it
+  # was connected and no listing had named it yet, or while it was pending and its next
+  # pass would have expired more than `Apiary.Adapters.ConnectPass.validity/0` seconds
+  # ahead (`Apiary.Adapters.Connections.start/3`). `listed_at` is when the adapter's first
   # listing that names it was accepted. `pass_nonce` is the 16 bytes of the nonce of the
   # latest connect pass made for it, and `pass_nonce_used_at` when a return under that
   # nonce came back. `pass_expires_at` is when that latest pass expires, to the second, as
   # the pass says (`Apiary.Adapters.ConnectPass`), or `nil` for a connection made before
-  # it was kept; each new pass of the connection expires strictly later than it
+  # it was kept; each new pass of the connection expires strictly later than it, and no
+  # more than `validity/0` seconds after it was made, else the connection is replaced
   # (`Apiary.Adapters.Connections.start/3`), so the adapter can always tell the newer
   # pass. `created_by_id` is the person who pressed Install for that latest pass. Once
   # connected, a connection takes no new pass: `pass_nonce`, `pass_expires_at`,

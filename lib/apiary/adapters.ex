@@ -254,7 +254,10 @@ defmodule Apiary.Adapters do
   # named yet and makes a new one in its place), with a new connect pass for it
   # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
   # expiry the connection keeps as its latest pass's; each new pass of a connection
-  # expires strictly later than the one before it.
+  # expires strictly later than the one before it, and when that would take it more than
+  # `Apiary.Adapters.ConnectPass.validity/0` seconds ahead, the pending connection is
+  # ended and a new one made in its place too, so the connection named in `session` may
+  # be a new one.
   # `{:ok, url, session}`: `url`, the address the adapter declared (`connect_url`) with
   # the pass as its query parameter `state`, where the page sends the person; `session`,
   # `{connection_public_id, nonce}`, the nonce in base64url, which the person's session

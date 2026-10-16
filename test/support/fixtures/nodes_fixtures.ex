@@ -124,6 +124,29 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  Moves the expiry kept for the latest connect pass of the pending connection
+  `public_id` a minute back, as if that pass was made a minute ago, so the next press of
+  Install takes the same connection with a new pass. A press in the same second as the
+  pass before it would instead end the connection as `replaced` and start a new one
+  (`Apiary.Adapters.Connections.start/3`).
+  """
+  def pass_made_earlier(public_id) do
+    alias Apiary.Adapters.{ConnectPass, Connection}
+
+    earlier =
+      DateTime.utc_now()
+      |> DateTime.truncate(:second)
+      |> DateTime.add(ConnectPass.validity() - 60, :second)
+
+    {1, _} =
+      Repo.update_all(from(c in Connection, where: c.public_id == ^public_id),
+        set: [pass_expires_at: earlier]
+      )
+
+    :ok
+  end
+
+  @doc """
   A return as an adapter hands one back (`Apiary.Adapters.ReturnToken`), signed with
   `secret`, the adapter's key's: for the connection `connection_id` and the pass's
   `nonce` (16 bytes, or base64url), `linked` unless `opts[:outcome]` says otherwise, with
