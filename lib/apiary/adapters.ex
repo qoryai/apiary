@@ -21,13 +21,9 @@ defmodule Apiary.Adapters do
   # (`Apiary.Adapters.Connection`, `ac_…`), pending until a linked return connects it, and
   # which the organisation's trail records.
   #
-  # A node pool may name the adapter that serves it (`served_by_id`, `Apiary.Nodes`): one of
-  # `serving_choices/1`, an adapter the pool's organisation is connected to. The database
-  # holds a pool to such an adapter (`nodes_served_by_is_an_adapter`), holding the
-  # connection `FOR SHARE`. Deleting an adapter revokes its keys, cancels its codes, ends
-  # its connections and clears every pool it served, in one transaction, with the
-  # adapter's row `FOR NO KEY UPDATE`: the lock order is the adapter's row, then its
-  # connections, then the pools (`Apiary.Adapters.Connections`).
+  # Deleting an adapter revokes its keys, cancels its codes and ends its connections, in one
+  # transaction, with the adapter's row `FOR NO KEY UPDATE`: the lock order is the
+  # adapter's row, then its connections (`Apiary.Adapters.Connections`).
   #
   # At the server contract an adapter's key acts as the role `adapter_key`
   # (`Apiary.Access.role/1`), with a scope of no organisation and no workspace
@@ -43,7 +39,7 @@ defmodule Apiary.Adapters do
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{ConnectPass, Connection, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connections}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -122,53 +118,6 @@ defmodule Apiary.Adapters do
     do:
       Access.can?(scope, :"adapter.read", scope.organisation) or
         authorize_instance(scope) == :ok
-
-  @doc false
-  # The adapters a node pool of the scope's organisation may name as the one that serves
-  # it: the instance's adapters in use the organisation is connected to (a connection in
-  # state `connected`), by name. A pending one does not count.
-  @spec serving_choices(Scope.t()) :: [Node.t()]
-  def serving_choices(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
-    if Features.visible?(scope, :factory), do: connected_to(organisation_id), else: []
-  end
-
-  def serving_choices(%Scope{}), do: []
-
-  defp connected_to(organisation_id) do
-    live_query()
-    |> join(:inner, [n], c in Connection,
-      on:
-        c.adapter_id == n.id and c.organisation_id == ^organisation_id and
-          c.state == :connected
-    )
-    |> order_by([n], asc: n.name, asc: n.id)
-    |> Repo.all()
-  end
-
-  @doc false
-  # Inside the transaction of a change of a pool, before the pool's row is locked: the
-  # connection the change names, held as the lock order wants it
-  # (`Apiary.Adapters.Connections.lock_serving/2`).
-  @spec lock_serving(Scope.t(), map) :: :ok
-  defdelegate lock_serving(scope, attrs), to: Connections
-
-  @doc false
-  # The node pools in use of the scope's organisation, in any of its workspaces, that
-  # `adapter` serves, by name.
-  @spec served_pools(Scope.t(), Node.t()) :: [Node.t()]
-  def served_pools(
-        %Scope{organisation: %Organisation{id: organisation_id}},
-        %Node{kind: :adapter, id: id}
-      ) do
-    from(n in Node,
-      where: n.organisation_id == ^organisation_id and n.served_by_id == ^id,
-      where: n.kind == :pool and is_nil(n.deleted_at),
-      order_by: [asc: n.name, asc: n.id]
-    )
-    |> Repo.all()
-  end
-
-  def served_pools(%Scope{}, %Node{}), do: []
 
   # The instance's adapters in use: of no organisation and no workspace.
   defp live_query do
@@ -332,9 +281,9 @@ defmodule Apiary.Adapters do
   # is free again, and its row stays for what names it. In the same transaction, under its
   # row held `FOR NO KEY UPDATE` (`mutate/3`), its keys in use are revoked and its
   # outstanding codes cancelled (`Apiary.AccessKeys.revoke_node_keys/3`, each key with
-  # its entry of `access_key.revoke`), every connection to it that has not ended ends
-  # (`integration_deleted`), and then every pool it served is served by none, which the
-  # entry records (`ended_connection_ids` and `unserved_pool_ids`, their public ids).
+  # its entry of `access_key.revoke`), and every connection to it that has not ended ends
+  # (`integration_deleted`), which the entry records (`ended_connection_ids`, their public
+  # ids).
   # `{:ok, adapter}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
   @spec delete_adapter(Scope.t(), Node.t()) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
@@ -344,7 +293,6 @@ defmodule Apiary.Adapters do
 
       with {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
-           pool_ids = unserve_pools(current, now),
            {:ok, deleted} <-
              current
              |> Ecto.Changeset.change(deleted_at: now, deleted_by_id: scope.user.id)
@@ -358,23 +306,10 @@ defmodule Apiary.Adapters do
                  |> Map.take([:name, :kind, :public_id])
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> Map.put(:ended_connection_ids, connection_ids)
-                 |> Map.put(:unserved_pool_ids, pool_ids)
              }) do
         {:ok, deleted}
       end
     end)
-  end
-
-  # Every pool `adapter` serves, of any organisation, deleted ones too, is served by none
-  # from now on: the public ids of those in use, in order.
-  defp unserve_pools(%Node{id: id}, now) do
-    {_count, pools} =
-      Repo.update_all(
-        from(n in Node, where: n.served_by_id == ^id, select: {n.public_id, n.deleted_at}),
-        set: [served_by_id: nil, updated_at: now]
-      )
-
-    for({public_id, nil} <- pools, do: public_id) |> Enum.sort()
   end
 
   # Asks `authorize_instance/2` of the person as they are now, then hands `fun` the scope
@@ -384,11 +319,9 @@ defmodule Apiary.Adapters do
   # `FOR NO KEY UPDATE`, not `FOR UPDATE`: a rename and a deletion change no column a
   # reference names (`id`, `public_id`, `organisation_id`, `workspace_id`), so they need
   # not wait on, or keep out, the `FOR KEY SHARE` that Postgres takes on the adapter's row
-  # to check a pool's `served_by_id`. A change of a pool holds the connection
-  # `FOR SHARE` before that check; were the deletion to hold the adapter `FOR UPDATE`
-  # while it waits to end that connection, the two would wait on each other. It still
-  # keeps out a connect, which holds the row `FOR SHARE`, and a change of the adapter's
-  # keys (`Apiary.AccessKeys`), which holds it `FOR UPDATE`.
+  # to check a reference to it. It still keeps out a connect, which holds the row
+  # `FOR SHARE`, and a change of the adapter's keys (`Apiary.AccessKeys`), which holds it
+  # `FOR UPDATE`.
   defp mutate(scope, %Node{id: id}, fun) do
     Repo.transact(fn ->
       with :ok <- authorize_instance(scope),

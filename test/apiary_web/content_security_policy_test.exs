@@ -70,7 +70,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
                  "/:org/settings/integrations/new",
                  "/:org/settings/integrations/:adapter_id",
                  "/:org/settings/integrations/:adapter_id/assign",
-                 "/:org/settings/integrations/:adapter_id/node-pools",
                  "/instance/integrations",
                  "/instance/integrations/new",
                  "/instance/integrations/:adapter_id/access-key",

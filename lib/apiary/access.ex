@@ -384,12 +384,6 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited: {:not, @read}
     ),
-    Action.new(:"dispatch.claim", "claim what is dispatched to an adapter",
-      feature: :factory,
-      roles: [:adapter_key],
-      asked_of: :organisation,
-      audited: {:not, "a claim is kept with what it claims, not in the audit trail"}
-    ),
     Action.new(:"adapter.disconnect", "end a connection of the adapter",
       feature: :factory,
       roles: [:adapter_key],

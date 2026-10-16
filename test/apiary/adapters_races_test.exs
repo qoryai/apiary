@@ -1,10 +1,8 @@
 defmodule Apiary.AdaptersRacesTest do
   # The connections of an organisation to the instance's adapters, racing: two presses of
   # Install, a return against the adapter's disconnect, a linked return against a press,
-  # a press on a connected connection no listing has named against the first listing, a
-  # return, the disconnect, the deletion, another press and a pool naming it, and an
-  # adapter's deletion against a pool naming it, before, after and between the pool's
-  # locks. Each side runs on a separate
+  # and a press on a connected connection no listing has named against the first listing,
+  # a return, the disconnect, the deletion and another press. Each side runs on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to
   # every other test while they run, and they delete it again before they end. The
@@ -15,14 +13,14 @@ defmodule Apiary.AdaptersRacesTest do
   # The rules under test (`Apiary.Adapters.Connections`): one connection that has not
   # ended per organisation and adapter, the second insert waiting on the first's; a press
   # on a connected connection, not yet listed, replacing it; and the lock order, the
-  # adapter's row, then its connections, then the pools.
+  # adapter's row, then its connections.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.Races
 
-  alias Apiary.{Adapters, Edition, Nodes, Repo}
+  alias Apiary.{Adapters, Edition, Repo}
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
@@ -71,7 +69,6 @@ defmodule Apiary.AdaptersRacesTest do
   defp delete_adapters(query) do
     ids = Repo.all(select(query, [n], n.id))
     Repo.delete_all(from c in Connection, where: c.adapter_id in ^ids)
-    Repo.update_all(from(n in Node, where: n.served_by_id in ^ids), set: [served_by_id: nil])
     Repo.delete_all(from k in AccessKey, where: k.node_id in ^ids)
     Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^ids)
     Repo.delete_all(from n in Node, where: n.id in ^ids)
@@ -422,9 +419,8 @@ defmodule Apiary.AdaptersRacesTest do
 
   describe "a press of Install on a connected connection no listing has named" do
     # A connection that a linked return connected, which no listing has named yet: a press
-    # ends it (`replaced`), clears the pools it served, and makes a new one in its place,
-    # in one transaction, under the adapter's row held `FOR SHARE` and the connection's
-    # `FOR UPDATE`.
+    # ends it (`replaced`) and makes a new one in its place, in one transaction, under the
+    # adapter's row held `FOR SHARE` and the connection's `FOR UPDATE`.
     setup do
       %{scope: scope} = sign_up()
       %{scope: admin, user: other} = member(scope, :admin)
@@ -543,85 +539,6 @@ defmodule Apiary.AdaptersRacesTest do
                ),
                :count
              ) == 0
-    end
-
-    test "a pool named first: the press waits, then replaces the connection and clears the pool",
-         ctx do
-      pool = pool_fixture(ctx.scope, name: "spot-runners")
-
-      {first, first_pid} =
-        hold(fn -> Nodes.update_node(ctx.scope, pool, %{served_by_id: ctx.adapter.id}) end)
-
-      assert {:ok, %Node{}} = first.result
-
-      second = start(press(ctx))
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, nonce)
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-    end
-
-    test "the press first: a pool's change waits, then is refused", ctx do
-      pool = pool_fixture(ctx.scope, name: "spot-runners")
-      {first, first_pid} = hold(press(ctx))
-      assert {:ok, _url, {public_id, nonce}} = first.result
-
-      second =
-        start(fn -> Nodes.update_node(ctx.scope, pool, %{served_by_id: ctx.adapter.id}) end)
-
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:error, %Ecto.Changeset{} = changeset} = Task.await(second.task)
-      assert {_message, _} = changeset.errors[:served_by_id]
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, nonce)
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-    end
-
-    # A pool's change, or a pool made, holds the connection `FOR SHARE` first; the press,
-    # started in between, holds the adapter's row `FOR SHARE` and waits on the connection.
-    # The change then takes the adapter's row `FOR KEY SHARE`, as Postgres checks the
-    # reference `served_by_id`, which the press's lock lets through.
-    for {what, change} <- [
-          {"a pool's change", :update},
-          {"a pool made with it", :create}
-        ] do
-      test "#{what} between its two locks goes through, then the press clears it", ctx do
-        pool = if unquote(change) == :update, do: pool_fixture(ctx.scope, name: "spot-runners")
-
-        {held, held_pid} =
-          hold(fn -> Connections.lock_serving(ctx.scope, %{served_by_id: ctx.adapter.id}) end)
-
-        pressed = start(press(ctx))
-        await_waited(pressed.backend, held_pid)
-
-        assert {:ok, %Node{} = pool} =
-                 continue(held, fn ->
-                   case unquote(change) do
-                     :update ->
-                       Nodes.update_node(ctx.scope, pool, %{served_by_id: ctx.adapter.id})
-
-                     :create ->
-                       Nodes.create_node(ctx.scope, %{
-                         kind: "pool",
-                         name: "spot-runners",
-                         served_by_id: ctx.adapter.id
-                       })
-                   end
-                 end)
-
-        assert pool.served_by_id == ctx.adapter.id
-        commit(held)
-
-        assert {:ok, _url, {public_id, nonce}} = Task.await(pressed.task)
-        ended_as(ctx, :replaced)
-        replaced_by(ctx, public_id, nonce)
-        assert Repo.get!(Node, pool.id).served_by_id == nil
-      end
     end
 
     test "the press first: a return for the old connection waits, then changes nothing",
@@ -805,204 +722,6 @@ defmodule Apiary.AdaptersRacesTest do
       # connection do.
       rows = one_live_and_the_rest_replaced(ctx.adapter, urls)
       assert all(ctx) == length(rows) + 1
-    end
-  end
-
-  describe "an adapter's deletion and a pool naming it" do
-    setup do
-      %{scope: scope} = sign_up()
-      %{adapter: adapter} = adapter()
-      {connection, _nonce} = connection_fixture(scope, adapter, :listed)
-      pool = pool_fixture(scope, name: "spot-runners")
-      admin = Apiary.OrganisationsFixtures.instance_admin_scope()
-      %{scope: scope, adapter: adapter, connection: connection, pool: pool, admin: admin}
-    end
-
-    test "the pool named first: the deletion waits, then ends the connection and clears the pool",
-         ctx do
-      {first, first_pid} =
-        hold(fn -> Nodes.update_node(ctx.scope, ctx.pool, %{served_by_id: ctx.adapter.id}) end)
-
-      assert {:ok, %Node{}} = first.result
-
-      second = start(fn -> Adapters.delete_adapter(ctx.admin, ctx.adapter) end)
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:ok, %Node{deleted_at: %DateTime{}}} = Task.await(second.task)
-      assert Repo.get!(Node, ctx.pool.id).served_by_id == nil
-      assert Repo.get!(Connection, ctx.connection.id).state == :ended
-
-      assert %Entry{details: details} =
-               Repo.one!(
-                 from e in Entry,
-                   where: e.action == "adapter.delete" and e.subject_id == ^ctx.adapter.id
-               )
-
-      assert details["unserved_pool_ids"] == [ctx.pool.public_id]
-      assert details["ended_connection_ids"] == [ctx.connection.public_id]
-    end
-
-    test "the deletion first: the pool's change waits, then is refused", ctx do
-      {first, first_pid} = hold(fn -> Adapters.delete_adapter(ctx.admin, ctx.adapter) end)
-      assert {:ok, %Node{}} = first.result
-
-      second =
-        start(fn -> Nodes.update_node(ctx.scope, ctx.pool, %{served_by_id: ctx.adapter.id}) end)
-
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:error, %Ecto.Changeset{} = changeset} = Task.await(second.task)
-      assert {_message, _} = changeset.errors[:served_by_id]
-      assert Repo.get!(Node, ctx.pool.id).served_by_id == nil
-    end
-  end
-
-  describe "an adapter's deletion between a pool's two locks" do
-    # A pool's change takes the connection `FOR SHARE` first, and the adapter's row
-    # `FOR KEY SHARE` last, as Postgres checks the reference `served_by_id`; a pool made
-    # with one takes the same two, in the same order, in one insert. The deletion, started
-    # in between, holds the adapter's row and waits on the connection. Were it to hold the
-    # row `FOR UPDATE`, the check would wait on the deletion, and the two on each other
-    # (`deadlock_detected`); it holds it `FOR NO KEY UPDATE`, which lets the check
-    # through.
-    setup do
-      %{scope: scope} = sign_up()
-      %{adapter: adapter} = adapter()
-      {connection, _nonce} = connection_fixture(scope, adapter, :listed)
-      admin = Apiary.OrganisationsFixtures.instance_admin_scope()
-      %{scope: scope, adapter: adapter, connection: connection, admin: admin}
-    end
-
-    # The first lock, the connection `FOR SHARE`, held; the deletion started and waiting
-    # on it long enough to be the one Postgres would refuse.
-    defp first_lock_then_deletion(ctx) do
-      {held, held_pid} =
-        hold(fn -> Connections.lock_serving(ctx.scope, %{served_by_id: ctx.adapter.id}) end)
-
-      deletion = start(fn -> Adapters.delete_adapter(ctx.admin, ctx.adapter) end)
-      await_waited(deletion.backend, held_pid)
-      {held, deletion}
-    end
-
-    defp after_deletion(ctx, pool) do
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-      assert Repo.get!(Connection, ctx.connection.id).state == :ended
-
-      assert %Entry{details: details} =
-               Repo.one!(
-                 from e in Entry,
-                   where: e.action == "adapter.delete" and e.subject_id == ^ctx.adapter.id
-               )
-
-      assert details["unserved_pool_ids"] == [pool.public_id]
-    end
-
-    test "a pool's change goes through, then the deletion clears it", ctx do
-      pool = pool_fixture(ctx.scope, name: "spot-runners")
-      {held, deletion} = first_lock_then_deletion(ctx)
-
-      assert {:ok, %Node{}} =
-               continue(held, fn ->
-                 Nodes.update_node(ctx.scope, pool, %{served_by_id: ctx.adapter.id})
-               end)
-
-      commit(held)
-
-      assert {:ok, %Node{deleted_at: %DateTime{}}} = Task.await(deletion.task)
-      after_deletion(ctx, pool)
-    end
-
-    test "a pool made with it goes through, then the deletion clears it", ctx do
-      # `lock_serving/2` takes the lock the insert's trigger takes first, the connection
-      # `FOR SHARE`, which the insert then takes again.
-      {held, deletion} = first_lock_then_deletion(ctx)
-
-      assert {:ok, %Node{} = pool} =
-               continue(held, fn ->
-                 Nodes.create_node(ctx.scope, %{
-                   kind: "pool",
-                   name: "spot-runners",
-                   served_by_id: ctx.adapter.id
-                 })
-               end)
-
-      commit(held)
-
-      assert {:ok, %Node{deleted_at: %DateTime{}}} = Task.await(deletion.task)
-      after_deletion(ctx, pool)
-    end
-  end
-
-  describe "ends and pools crossing over" do
-    # Two connections of one organisation, each ending (its row locked first, the pools
-    # it served cleared after), and two pools crossing over to the other's adapter. Were a
-    # pool's change to lock its pool before the connection it names, the four would wait
-    # in a ring: each end on the pool the other change holds, each change on the
-    # connection the other end holds. A change takes the connection first
-    # (`Apiary.Adapters.lock_serving/2`), so it waits holding nothing, and each end's
-    # second half goes through.
-    test "each end's second half goes through while the pools' changes wait" do
-      %{scope: scope, user: user} = sign_up()
-      %{adapter: a} = adapter()
-      %{adapter: b} = adapter()
-      {to_a, _} = connection_fixture(scope, a, :listed)
-      {to_b, _} = connection_fixture(scope, b, :listed)
-
-      # Each pool in a separate workspace, so the changes of the two do not take turns
-      # on one workspace's lock (`Apiary.Gateways.lock/1`).
-      other =
-        Apiary.OrganisationsFixtures.workspace_scope(
-          user,
-          Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
-        )
-
-      on_a = pool_fixture(scope)
-      on_b = pool_fixture(other)
-      {:ok, _} = Nodes.update_node(scope, on_a, %{served_by_id: a.id})
-      {:ok, _} = Nodes.update_node(other, on_b, %{served_by_id: b.id})
-
-      # The first half of an end: the connection's row, locked and ended.
-      first_half = fn connection ->
-        fn ->
-          Repo.one!(from c in Connection, where: c.id == ^connection.id, lock: "FOR UPDATE")
-
-          Repo.update_all(from(c in Connection, where: c.id == ^connection.id),
-            set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
-          )
-        end
-      end
-
-      # The second half: the pools of the organisation the adapter served.
-      second_half = fn adapter ->
-        fn ->
-          Repo.update_all(
-            from(n in Node,
-              where: n.organisation_id == ^scope.organisation.id and n.served_by_id == ^adapter.id
-            ),
-            set: [served_by_id: nil]
-          )
-        end
-      end
-
-      {end_a, end_a_pid} = hold(first_half.(to_a))
-      {end_b, end_b_pid} = hold(first_half.(to_b))
-
-      a_to_b = start(fn -> Nodes.update_node(scope, on_a, %{served_by_id: b.id}) end)
-      await_blocked(a_to_b.backend, end_b_pid)
-      b_to_a = start(fn -> Nodes.update_node(other, on_b, %{served_by_id: a.id}) end)
-      await_blocked(b_to_a.backend, end_a_pid)
-
-      assert {1, _} = continue(end_a, second_half.(a))
-      assert {1, _} = continue(end_b, second_half.(b))
-      commit(end_a)
-      commit(end_b)
-
-      assert {:error, %Ecto.Changeset{}} = Task.await(a_to_b.task)
-      assert {:error, %Ecto.Changeset{}} = Task.await(b_to_a.task)
-
-      for pool <- [on_a, on_b], do: assert(Repo.get!(Node, pool.id).served_by_id == nil)
     end
   end
 end

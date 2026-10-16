@@ -1,8 +1,8 @@
 defmodule Apiary.AdaptersWithoutFactoryTest do
   # An instance without the feature adapters belong to: no adapter is made or changed,
   # none of their keys or codes is made, enrolled, revoked or cancelled, even by an instance
-  # admin, and no pool names one. The adapters there already stay as they are. Not async:
-  # the features are the whole node's.
+  # admin. The adapters there already stay as they are. Not async: the features are the
+  # whole node's.
   use Apiary.DataCase, async: false
 
   import Ecto.Query
@@ -10,7 +10,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Access, AccessKeys, Adapters, Nodes}
+  alias Apiary.{Access, AccessKeys, Adapters}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Connection, Connections}
@@ -156,7 +156,6 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
 
     assert Connections.locate(scope, pending.public_id) == :error
     assert Connections.live_by_adapter(scope) == %{}
-    assert Adapters.serving_choices(scope) == []
 
     key_scope = Scope.for_access_key(key)
 
@@ -184,22 +183,11 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     for action <- [
           :"source_item.post",
           :"work_item.read_changes",
-          :"dispatch.claim",
           :"adapter.disconnect"
         ] do
       assert Access.authorize(key_scope, action, adapter) == {:error, :not_found}
       assert Adapters.for_key(key_scope, action) == {:error, :not_found}
     end
-  end
-
-  test "no pool names an adapter", %{scope: scope, adapter: adapter} do
-    pool = pool_fixture(scope)
-
-    assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
-    assert "is invalid" in errors_on(changeset).served_by_id
-
-    assert {:error, _changeset} =
-             Nodes.create_node(scope, %{kind: "pool", name: "spot", served_by_id: adapter.id})
   end
 
   test "an adapter's key is not revoked, nor its code cancelled", %{

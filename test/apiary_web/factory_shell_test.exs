@@ -127,7 +127,6 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
                  {:get, integration <> "/assign"},
-                 {:get, integration <> "/node-pools"},
                  # The instance admins': making one, its access key and its settings.
                  {:get, "/instance/integrations"},
                  {:get, "/instance/integrations/new"},

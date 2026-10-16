@@ -93,8 +93,6 @@ defmodule Apiary.Nodes.Node do
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :deleted_by, Apiary.Accounts.User
     belongs_to :gateway, __MODULE__
-    # A pool's alone (`nodes_served_by_check`): the adapter that serves it.
-    belongs_to :served_by, __MODULE__
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -168,12 +166,10 @@ defmodule Apiary.Nodes.Node do
     |> put_limit(attrs)
     |> put_url(attrs)
     |> put_choice(attrs)
-    |> put_served_by(attrs)
     |> check_constraint(:url, name: :nodes_url_check)
     |> check_constraint(:gateway_choice, name: :nodes_gateway_choice_check)
     |> check_constraint(:gateway_id, name: :nodes_gateway_is_a_gateway)
     |> foreign_key_constraint(:gateway_id, name: :nodes_gateway_id_fkey)
-    |> served_by_constraints()
   end
 
   # An adapter is no node a run runs on, nor a gateway: it is the instance's, with no
@@ -234,25 +230,6 @@ defmodule Apiary.Nodes.Node do
     end)
     |> check_constraint(:connect_url, name: :nodes_connect_url_check)
     |> check_constraint(:connect_url, name: :nodes_adapter_check)
-  end
-
-  # A pool's adapter, which a node, a gateway and an adapter never have. Whether the
-  # adapter is one the pool may name, and whether the person may name one, are
-  # `Apiary.Nodes`'s to check; the database refuses one that is not an adapter in use of
-  # the pool's organisation.
-  defp put_served_by(changeset, attrs) do
-    case get_field(changeset, :kind) do
-      :pool -> cast(changeset, attrs, [:served_by_id])
-      nil -> changeset
-      _other -> put_change(changeset, :served_by_id, nil)
-    end
-  end
-
-  defp served_by_constraints(changeset) do
-    changeset
-    |> check_constraint(:served_by_id, name: :nodes_served_by_check)
-    |> check_constraint(:served_by_id, name: :nodes_served_by_is_an_adapter)
-    |> foreign_key_constraint(:served_by_id, name: :nodes_served_by_id_fkey)
   end
 
   @doc """

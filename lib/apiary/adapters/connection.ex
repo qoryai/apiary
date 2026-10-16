@@ -2,7 +2,7 @@ defmodule Apiary.Adapters.Connection do
   # An organisation's connection to an adapter of the instance (a node of kind `adapter`,
   # `na_…`), made when an owner or an admin of the organisation starts connecting it
   # (`Apiary.Adapters.connect/2`). The table and its rules are
-  # `20261015131100_let_a_pool_be_served_by_an_adapter`'s, with `pass_expires_at` from
+  # `20261015131100_connect_an_organisation_to_an_adapter`'s, with `pass_expires_at` from
   # `20261016090500_keep_when_a_connection_s_latest_pass_expires`.
   #
   # `state` is where it stands: `:pending` from the start, `:connected` since

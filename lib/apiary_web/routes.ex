@@ -548,7 +548,6 @@ defmodule ApiaryWeb.Routes do
               live "/settings/integrations/new", AdapterLive.Index, :new
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
               live "/settings/integrations/:adapter_id/assign", AdapterLive.Show, :assign
-              live "/settings/integrations/:adapter_id/node-pools", AdapterLive.Show, :pools
             end
 
             unquote(@block)

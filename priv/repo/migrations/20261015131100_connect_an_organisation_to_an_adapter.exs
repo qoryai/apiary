@@ -1,9 +1,8 @@
-defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
+defmodule Apiary.Repo.Migrations.ConnectAnOrganisationToAnAdapter do
   use Ecto.Migration
 
   # An organisation's connections to the instance's adapters, `adapter_connections`
-  # (`Apiary.Adapters.Connection`), and the adapter that serves a node pool,
-  # `served_by_id`.
+  # (`Apiary.Adapters.Connection`).
   #
   # A connection is made when an owner or an admin of an organisation starts connecting an
   # adapter (a node of kind `adapter`, which has no organisation). `public_id` is `ac_`
@@ -27,24 +26,6 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
   # the adapter's row held `FOR NO KEY UPDATE`, either comes first and is seen, or waits
   # and finds the new connection. A connection never moves to another organisation or
   # adapter. It goes with its organisation.
-  #
-  # A node pool may name the adapter that serves it, `served_by_id`. Only a pool names one
-  # (`nodes_served_by_check`); every row that is there when the column is added names
-  # none. `served_by_id` is a plain reference to the adapter's row. The trigger
-  # `nodes_served_by_is_an_adapter` refuses a reference, made or changed, unless the
-  # pool's organisation holds a connection to that adapter in state `connected`, and
-  # holds that connection's row `FOR SHARE` for the rest of the transaction, so a change
-  # that ends the connection, which clears the pools that name its adapter after it
-  # locked the connection, either comes first and is seen, or waits and finds the pool.
-  #
-  # The lock order of these rows is the adapter's row, then its connections, then the
-  # pools (`Apiary.Adapters.Connections`). The reference `served_by_id` takes the
-  # adapter's row `FOR KEY SHARE` after this trigger took the connection, so an adapter's
-  # deletion holds its row `FOR NO KEY UPDATE`, which lets that check through.
-  #
-  # The check on `nodes` is added NOT VALID, so adding it scans no row under a lock that
-  # blocks writes to `nodes`; a later migration validates it
-  # (`20261015131200_validate_an_adapter_s_checks`).
   @public_id "^ac_[0-9a-hjkmnp-tv-z]{16}$"
 
   def up do
@@ -141,48 +122,10 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
     BEFORE INSERT OR UPDATE OF organisation_id, adapter_id ON adapter_connections
     FOR EACH ROW EXECUTE FUNCTION adapter_connections_adapter_check()
     """
-
-    alter table(:nodes) do
-      add :served_by_id, references(:nodes, type: :binary_id, on_delete: :nilify_all)
-    end
-
-    execute """
-    ALTER TABLE nodes ADD CONSTRAINT nodes_served_by_check
-      CHECK (served_by_id IS NULL OR kind = 'pool') NOT VALID
-    """
-
-    create index(:nodes, [:served_by_id], where: "served_by_id IS NOT NULL")
-
-    execute """
-    CREATE FUNCTION nodes_served_by_is_an_adapter() RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN
-      IF NEW.served_by_id IS NOT NULL
-         AND (TG_OP = 'INSERT' OR NEW.served_by_id IS DISTINCT FROM OLD.served_by_id) THEN
-        PERFORM 1 FROM adapter_connections
-          WHERE adapter_id = NEW.served_by_id AND organisation_id = NEW.organisation_id
-            AND state = 'connected'
-          FOR SHARE;
-
-        IF NOT FOUND THEN
-          RAISE EXCEPTION 'a pool is served by an adapter its organisation is connected to'
-            USING ERRCODE = 'check_violation', CONSTRAINT = 'nodes_served_by_is_an_adapter';
-        END IF;
-      END IF;
-
-      RETURN NEW;
-    END
-    $$
-    """
-
-    execute """
-    CREATE TRIGGER nodes_served_by_is_an_adapter
-    BEFORE INSERT OR UPDATE OF served_by_id ON nodes
-    FOR EACH ROW EXECUTE FUNCTION nodes_served_by_is_an_adapter()
-    """
   end
 
-  # Rolled back, no pool names an adapter, and no connection is kept: refused while a
-  # connection is there, which the rollback would lose.
+  # Rolled back, no connection is kept: refused while a connection is there, which the
+  # rollback would lose.
   def down do
     execute """
     DO $$
@@ -193,16 +136,6 @@ defmodule Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter do
     END
     $$
     """
-
-    execute "DROP TRIGGER nodes_served_by_is_an_adapter ON nodes"
-    execute "DROP FUNCTION nodes_served_by_is_an_adapter()"
-
-    drop index(:nodes, [:served_by_id], where: "served_by_id IS NOT NULL")
-    execute "ALTER TABLE nodes DROP CONSTRAINT nodes_served_by_check"
-
-    alter table(:nodes) do
-      remove :served_by_id
-    end
 
     execute "DROP TRIGGER adapter_connections_adapter_check ON adapter_connections"
     execute "DROP FUNCTION adapter_connections_adapter_check()"
