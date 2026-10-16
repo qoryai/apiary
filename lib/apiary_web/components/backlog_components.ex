@@ -68,11 +68,11 @@ defmodule ApiaryWeb.BacklogComponents do
       |> assign(row_view(assigns.ticket))
 
     ~H"""
-    <li id={@id} class="q-bl-row" aria-current={@selected && "true"}>
+    <li id={@id} class="q-bl-row">
       <.integration_tile name={@integration} class="q-bl-mk" />
       <span class="q-bl-no">#{@ticket.number}</span>
       <span class="q-bl-ttl">
-        <.link patch={@patch} class="q-bl-t">{@ticket.title}</.link>
+        <.link patch={@patch} class="q-bl-t" aria-current={@selected && "true"}>{@ticket.title}</.link>
         <span :if={@word} class="q-bl-w">{@word}</span>
         <span class="q-bl-sub">
           {gettext("%{ref} · by %{who} · %{ago}",

@@ -98,7 +98,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       html = row(ticket())
 
       assert attr(html, "li#ticket-1231", "class") == ["q-bl-row"]
-      assert attr(html, "li", "aria-current") == []
+      assert count(html, "[aria-current]") == 0
 
       assert attr(html, ".q-bl-mk", "role") == ["img"]
       assert attr(html, ".q-bl-mk", "aria-label") == ["GitHub"]
@@ -133,7 +133,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
     test "the open ticket is marked as the current one" do
       html = row(ticket(), selected: true)
-      assert attr(html, "li#ticket-1231", "aria-current") == ["true"]
+      assert attr(html, "a.q-bl-t", "aria-current") == ["true"]
+      assert count(html, "[aria-current]") == 1
     end
 
     test "taken in: the work item's number links its page, and no action" do
