@@ -7,12 +7,20 @@ defmodule ApiaryWeb.LiveViewLog do
   same level (debug, unless a page sets another), but for the values: every value of the
   parameters, and of the session a page mounts with, is written as `[FILTERED]`, and the
   keys, the maps and lists they are nested in, the page's module, the component's and the
-  event's name are kept.
+  event's name (when it is text) are kept.
 
   The session holds the token a person is signed in with, and the socket's id, which holds
   that token in base64; the parameters hold what a person typed. `:filter_parameters`
   masks a parameter by its name alone, and `Phoenix.LiveView.Logger` writes the session as
   it is. The `Replied in` lines, and their timing, are still `Phoenix.LiveView.Logger`'s.
+
+  An event's name is written when it is text; a name of another kind, which a client can
+  send as LiveView takes it unchecked, is written as `[FILTERED]`.
+
+  The lines are this module's, so lowering the level of `Phoenix.LiveView.Logger` alone
+  no longer shows them: lower `ApiaryWeb.LiveViewLog`'s too. Should the
+  `phoenix_live_view` application be restarted after Qory's, LiveView's handlers come
+  back and write their lines beside these, until a call of `attach/0` removes them again.
   """
 
   require Logger
@@ -98,14 +106,19 @@ defmodule ApiaryWeb.LiveViewLog do
   end
 
   defp parts([_phoenix, :live_view, :handle_event, _start], metadata) do
-    {["HANDLE EVENT ", inspect(metadata.event), " in ", inspect(metadata.socket.view)],
+    {["HANDLE EVENT ", event_name(metadata.event), " in ", inspect(metadata.socket.view)],
      [{"Parameters", masked(metadata.params)}]}
   end
 
   defp parts([_phoenix, :live_component, :handle_event, _start], metadata) do
-    {["HANDLE EVENT ", inspect(metadata.event), " in ", inspect(metadata.socket.view)],
+    {["HANDLE EVENT ", event_name(metadata.event), " in ", inspect(metadata.socket.view)],
      [{"Component", inspect(metadata.component)}, {"Parameters", masked(metadata.params)}]}
   end
+
+  # A client sends the event's name, and LiveView takes it unchecked: text is written,
+  # anything else is `[FILTERED]`.
+  defp event_name(name) when is_binary(name), do: inspect(name)
+  defp event_name(_name), do: @filtered
 
   defp title([_phoenix, :live_view, :mount, _start]), do: "MOUNT"
   defp title([_phoenix, :live_view, :handle_params, _start]), do: "HANDLE PARAMS"

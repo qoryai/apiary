@@ -95,6 +95,36 @@ defmodule ApiaryWeb.LiveViewLogTest do
 
       refute log =~ @marker
     end
+
+    test "an event's name that is not text is written as [FILTERED]", %{conn: conn, scope: scope} do
+      Process.flag(:trap_exit, true)
+
+      for name <- [%{"x" => @marker}, [@marker, %{"y" => @marker}]] do
+        {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
+        render_async(view)
+        {_ref, topic, _proxy} = view.proxy
+        pid = view.pid
+        ref = Process.monitor(pid)
+
+        # The frame a client can send: a hook's event with a name of another kind, on
+        # which the page's process fails once the line is written.
+        log =
+          capture_log([level: :debug], fn ->
+            send(pid, %Phoenix.Socket.Message{
+              topic: topic,
+              event: "event",
+              ref: "1",
+              payload: %{"type" => "hook", "event" => name, "value" => %{}}
+            })
+
+            assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2_000
+          end)
+
+        assert [line] = entries(log, "HANDLE EVENT ")
+        assert line =~ "HANDLE EVENT [FILTERED] in ApiaryWeb.ActivityLive\n  Parameters: %{}"
+        refute log =~ @marker
+      end
+    end
   end
 
   # The entries of a captured log that `text` starts, after the level.
@@ -125,6 +155,24 @@ defmodule ApiaryWeb.LiveViewLogTest do
     assert log =~ "Component: ApiaryWeb.LiveViewLogTest"
     assert log =~ ~s(Parameters: %{"form" => %{"name" => "[FILTERED]"}})
     refute log =~ @marker
+  end
+
+  test "a component's event whose name is not text is written as [FILTERED]" do
+    socket = %Phoenix.LiveView.Socket{view: ApiaryWeb.ActivityLive}
+
+    for name <- [%{"x" => @marker}, [@marker]] do
+      log =
+        capture_log([level: :debug], fn ->
+          :telemetry.execute(
+            [:phoenix, :live_component, :handle_event, :start],
+            %{system_time: System.system_time()},
+            %{socket: socket, component: ApiaryWeb.LiveViewLogTest, event: name, params: %{}}
+          )
+        end)
+
+      assert log =~ "HANDLE EVENT [FILTERED] in ApiaryWeb.ActivityLive"
+      refute log =~ @marker
+    end
   end
 
   test "at boot, LiveView's handlers of these lines are detached and this module's attached" do

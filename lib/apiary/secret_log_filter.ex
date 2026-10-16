@@ -72,8 +72,8 @@ defmodule Apiary.SecretLogFilter do
   `HANDLE EVENT`) are `ApiaryWeb.LiveViewLog`'s, in place of `Phoenix.LiveView.Logger`'s:
   every value of the parameters, and of the session the page mounts with (the token a
   person is signed in with, and the socket's id), is written as `[FILTERED]`, and the
-  keys, the page's module, the component's and the event's name are kept. This filter
-  then scrubs those lines as it scrubs any other.
+  keys, the page's module, the component's and the event's name (when it is text) are
+  kept. This filter then scrubs those lines as it scrubs any other.
 
   **A crash of a LiveView's process.** What a browser sends a LiveView comes in a frame of
   its socket, and a crafted frame can make the process fail on it, before any page reads
