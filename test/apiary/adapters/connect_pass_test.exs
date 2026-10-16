@@ -188,6 +188,35 @@ defmodule Apiary.Adapters.ConnectPassTest do
                ~U[2026-10-15 12:15:00Z]
     end
 
+    test "beyond_validity?/2: only a :not_before later than validity/0 seconds after now" do
+      # Equal is not beyond: the pass expires validity/0 seconds after now.
+      for not_before <- [nil, ~U[2026-10-15 12:14:59Z], ~U[2026-10-15 12:15:00Z]] do
+        refute ConnectPass.beyond_validity?(@now, not_before), inspect(not_before)
+      end
+
+      # One second over, or any fraction over, rounded up as expires_at/2 rounds it.
+      for not_before <- [~U[2026-10-15 12:15:01Z], ~U[2026-10-15 12:15:00.000001Z]] do
+        assert ConnectPass.beyond_validity?(@now, not_before), inspect(not_before)
+      end
+
+      # Now is truncated to the second, as expires_at/2 truncates it.
+      late = ~U[2026-10-15 12:00:00.999999Z]
+      refute ConnectPass.beyond_validity?(late, ~U[2026-10-15 12:15:00Z])
+      assert ConnectPass.beyond_validity?(late, ~U[2026-10-15 12:15:01Z])
+
+      # Whatever is not beyond expires validity/0 seconds after now; whatever is, later.
+      for not_before <- [
+            nil,
+            ~U[2026-10-15 12:14:59Z],
+            ~U[2026-10-15 12:15:00Z],
+            ~U[2026-10-15 12:15:00.5Z],
+            ~U[2026-10-15 12:15:01Z]
+          ] do
+        assert ConnectPass.beyond_validity?(@now, not_before) ==
+                 (ConnectPass.expires_at(@now, not_before) != ~U[2026-10-15 12:15:00Z])
+      end
+    end
+
     test "refuses a :not_before that is not a DateTime" do
       assert ConnectPass.issue(@adapter, @connection,
                key: @key,

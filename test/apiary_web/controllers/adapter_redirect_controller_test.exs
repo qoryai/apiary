@@ -131,6 +131,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
                |> Enum.sort()
 
       for {opts, kind, message} <- told do
+        :ok = pass_made_earlier(connection.public_id)
         {:ok, _url, {_id, nonce} = session} = Adapters.connect(scope, adapter)
         token = return_token(pair.secret, connection.public_id, nonce, opts)
 

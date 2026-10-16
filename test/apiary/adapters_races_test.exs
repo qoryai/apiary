@@ -26,7 +26,7 @@ defmodule Apiary.AdaptersRacesTest do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{Connection, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connection, Connections}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
   alias Ecto.Adapters.SQL.Sandbox
@@ -98,59 +98,182 @@ defmodule Apiary.AdaptersRacesTest do
     Scope.for_access_key(verified)
   end
 
+  # A press of Install made at `now`, as `Apiary.Adapters.connect/2` makes it, with the
+  # adapter's row held `FOR SHARE`: `{:ok, {connection, pass}}`.
+  defp press_at(scope, adapter, now) do
+    fn ->
+      Repo.transact(fn ->
+        current = Repo.one!(from n in Node, where: n.id == ^adapter.id, lock: "FOR SHARE")
+
+        with {:ok, connection, pass} <-
+               Connections.start(scope, current, ConnectPass.new_nonce(), now: now),
+             do: {:ok, {connection, pass}}
+      end)
+    end
+  end
+
+  # When a pass expires, as its payload says.
+  defp pass_expiry(pass), do: expiry("state=" <> pass)
+
+  # The nonce of a pass, in base64url, as the person's session keeps it.
+  defp nonce_of(pass) do
+    [payload, _signature] = String.split(pass, ".")
+    (payload |> Base.url_decode64!(padding: false) |> Jason.decode!())["nonce"]
+  end
+
+  # Every pass in `urls` verifies at `at`, a time after each was made, and expires no
+  # later than `ConnectPass.validity/0` seconds after `at`, truncated to the second.
+  defp all_good_at(urls, at) do
+    latest = at |> DateTime.truncate(:second) |> DateTime.add(ConnectPass.validity(), :second)
+
+    for url <- urls do
+      [_address, pass] = String.split(url, "state=")
+      assert {:ok, _pass} = ConnectPass.verify(pass, Apiary.SigningKey.public_key(), now: at)
+      refute DateTime.compare(expiry(url), latest) == :gt
+    end
+  end
+
+  # The adapter's one live connection, pending, is one the passes in `urls` name, and every
+  # other they name ended, replaced. Within each connection, each pass expires at a different time, and
+  # the connection keeps the latest.
+  defp one_live_and_the_rest_replaced(adapter, urls) do
+    by_connection =
+      Enum.group_by(
+        urls,
+        fn url ->
+          [_address, pass] = String.split(url, "state=")
+          [payload, _signature] = String.split(pass, ".")
+          (payload |> Base.url_decode64!(padding: false) |> Jason.decode!())["connection_id"]
+        end,
+        &expiry/1
+      )
+
+    ids = Map.keys(by_connection)
+
+    live =
+      Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id and is_nil(c.ended_at))
+
+    assert [%Connection{state: :pending, public_id: live_id}] = live
+    assert live_id in ids
+
+    rows =
+      Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id and c.public_id in ^ids)
+
+    assert length(rows) == length(ids)
+
+    for %Connection{} = row <- rows do
+      expiries = Map.fetch!(by_connection, row.public_id)
+      assert length(Enum.uniq(expiries)) == length(expiries)
+      assert row.pass_expires_at == Enum.max(expiries, DateTime)
+
+      if row.ended_at,
+        do: assert(%Connection{state: :ended, ended_reason: :replaced} = row)
+    end
+
+    rows
+  end
+
   describe "two presses of Install" do
-    test "the second waits for the first's connection, and takes it with a new pass" do
+    @at ~U[2026-10-16 12:00:00.250000Z]
+
+    test "in the same second: the second waits for the first's connection, then replaces it" do
       %{scope: scope} = sign_up()
       %{scope: admin, user: other} = member(scope, :admin)
       %{adapter: adapter} = adapter()
 
-      {first, first_pid} = hold(fn -> Adapters.connect(scope, adapter) end)
-      assert {:ok, _url, {public_id, first_nonce}} = first.result
+      {first, first_pid} = hold(press_at(scope, adapter, @at))
+      assert {:ok, {first_connection, first_pass}} = first.result
 
-      second = start(fn -> Adapters.connect(admin, adapter) end)
+      second = start(press_at(admin, adapter, DateTime.add(@at, 500, :millisecond)))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, second_url, {^public_id, second_nonce}} = Task.await(second.task)
-      refute first_nonce == second_nonce
+      assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
+      refute second_connection.public_id == first_connection.public_id
 
-      assert [
-               %Connection{
-                 public_id: ^public_id,
-                 created_by_id: by,
-                 pass_nonce: kept,
-                 pass_expires_at: kept_expiry
-               }
-             ] = Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
+      # The first is kept, ended, with its pass and its person as they were.
+      assert %Connection{state: :ended, ended_reason: :replaced} =
+               ended = Repo.get!(Connection, first_connection.id)
+
+      fields = [:pass_nonce, :pass_nonce_used_at, :pass_expires_at, :created_by_id]
+      assert Map.take(ended, fields) == Map.take(first_connection, fields)
+
+      assert %Connection{state: :pending, created_by_id: by, pass_expires_at: kept_expiry} =
+               Repo.get!(Connection, second_connection.id)
 
       assert by == other.id
-      assert Apiary.Contract.Ed25519.encode(kept) == second_nonce
+      assert kept_expiry == pass_expiry(second_pass)
+
+      # Neither pass expires more than validity/0 seconds after now.
+      assert pass_expiry(first_pass) == ~U[2026-10-16 12:15:00Z]
+      assert pass_expiry(second_pass) == ~U[2026-10-16 12:15:00Z]
+    end
+
+    test "a second apart: the second waits for the first's connection, and takes it with a new pass" do
+      %{scope: scope} = sign_up()
+      %{scope: admin, user: other} = member(scope, :admin)
+      %{adapter: adapter} = adapter()
+
+      {first, first_pid} = hold(press_at(scope, adapter, @at))
+      assert {:ok, {first_connection, first_pass}} = first.result
+
+      second = start(press_at(admin, adapter, DateTime.add(@at, 1, :second)))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
+      assert second_connection.id == first_connection.id
+      refute second_connection.pass_nonce == first_connection.pass_nonce
+
+      assert [%Connection{created_by_id: by, pass_expires_at: kept_expiry}] =
+               Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
 
       # The second read the first's expiry under the row's lock, after the first committed:
       # its pass expires strictly later, and the connection keeps it.
-      {:ok, first_url, _session} = first.result
-      assert DateTime.compare(expiry(second_url), expiry(first_url)) == :gt
-      assert kept_expiry == expiry(second_url)
+      assert by == other.id
+      assert pass_expiry(second_pass) == ~U[2026-10-16 12:15:01Z]
+      assert DateTime.compare(pass_expiry(second_pass), pass_expiry(first_pass)) == :gt
+      assert kept_expiry == pass_expiry(second_pass)
     end
 
-    test "many at once make one connection" do
+    test "many at once in the same second: one after another, each replaces the one before it" do
+      %{scope: scope} = sign_up()
+      %{adapter: adapter} = adapter()
+      n = sides(6)
+
+      results = together(for _ <- 1..n, do: press_at(scope, adapter, @at))
+
+      assert Enum.all?(results, &match?({:ok, {%Connection{}, _pass}}, &1))
+      ids = Enum.map(results, fn {:ok, {connection, _pass}} -> connection.public_id end)
+      assert length(Enum.uniq(ids)) == n
+
+      for {:ok, {_connection, pass}} <- results,
+          do: assert(pass_expiry(pass) == ~U[2026-10-16 12:15:00Z])
+
+      rows =
+        one_live_and_the_rest_replaced(
+          adapter,
+          for({:ok, {_connection, pass}} <- results, do: "state=" <> pass)
+        )
+
+      assert length(rows) == n
+    end
+
+    test "many at once, as they come: none past validity/0, one live, and each connection's passes expire apart" do
       %{scope: scope} = sign_up()
       %{adapter: adapter} = adapter()
       n = sides(6)
 
       results = together(for _ <- 1..n, do: fn -> Adapters.connect(scope, adapter) end)
+      finished = DateTime.utc_now()
 
       assert Enum.all?(results, &match?({:ok, _url, {_id, _nonce}}, &1))
-      assert [_one] = results |> Enum.map(fn {:ok, _, {id, _}} -> id end) |> Enum.uniq()
+      urls = for {:ok, url, _session} <- results, do: url
+      all_good_at(urls, finished)
+      rows = one_live_and_the_rest_replaced(adapter, urls)
 
-      assert [%Connection{pass_expires_at: kept_expiry}] =
-               Repo.all(from c in Connection, where: c.adapter_id == ^adapter.id)
-
-      # One after another under the row's lock, each pass expires strictly later than the
-      # one before it, and the connection keeps the last.
-      expiries = Enum.map(results, fn {:ok, url, _session} -> expiry(url) end)
-      assert length(Enum.uniq(expiries)) == n
-      assert kept_expiry == Enum.max(expiries, DateTime)
+      assert Repo.aggregate(from(c in Connection, where: c.adapter_id == ^adapter.id), :count) ==
+               length(rows)
     end
   end
 
@@ -278,6 +401,7 @@ defmodule Apiary.AdaptersRacesTest do
       %{adapter: adapter, pair: pair} = adapter()
       {connection, nonce} = connection_fixture(scope, adapter, :pending)
       token = return_token(pair.secret, connection.public_id, nonce)
+      :ok = pass_made_earlier(connection.public_id)
 
       {first, first_pid} = hold(fn -> Adapters.connect(admin, adapter) end)
       assert {:ok, _url, {public_id, _nonce}} = first.result
@@ -622,34 +746,65 @@ defmodule Apiary.AdaptersRacesTest do
       assert details["ended_connection_ids"] == [public_id]
     end
 
-    test "two presses: the second waits, then takes the first's new connection", ctx do
-      {first, first_pid} = hold(press(ctx, :scope))
-      assert {:ok, _url, {public_id, first_nonce}} = first.result
-      refute public_id == ctx.connection.public_id
+    test "two presses in the same second: the second waits, then replaces the first's new connection too",
+         ctx do
+      at = ~U[2026-10-16 12:00:00.250000Z]
+      {first, first_pid} = hold(press_at(ctx.scope, ctx.adapter, at))
+      assert {:ok, {first_connection, _pass}} = first.result
+      refute first_connection.public_id == ctx.connection.public_id
 
-      second = start(press(ctx))
+      second = start(press_at(ctx.admin, ctx.adapter, at))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, _url, {^public_id, second_nonce}} = Task.await(second.task)
-      refute first_nonce == second_nonce
+      assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
+      refute second_connection.public_id == first_connection.public_id
       ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, second_nonce)
+
+      assert %Connection{state: :ended, ended_reason: :replaced} =
+               Repo.get!(Connection, first_connection.id)
+
+      replaced_by(ctx, second_connection.public_id, nonce_of(second_pass))
+      assert all(ctx) == 3
+    end
+
+    test "two presses a second apart: the second waits, then takes the first's new connection",
+         ctx do
+      at = ~U[2026-10-16 12:00:00.250000Z]
+      {first, first_pid} = hold(press_at(ctx.scope, ctx.adapter, at))
+      assert {:ok, {first_connection, first_pass}} = first.result
+      refute first_connection.public_id == ctx.connection.public_id
+
+      second = start(press_at(ctx.admin, ctx.adapter, DateTime.add(at, 1, :second)))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
+      assert second_connection.public_id == first_connection.public_id
+      refute nonce_of(first_pass) == nonce_of(second_pass)
+      ended_as(ctx, :replaced)
+      replaced_by(ctx, first_connection.public_id, nonce_of(second_pass))
 
       assert all(ctx) == 2
     end
 
-    test "many at once make one new connection", ctx do
+    test "many at once: none past validity/0, one new connection live, the rest replaced", ctx do
       n = sides(6)
       results = together(for _ <- 1..n, do: press(ctx))
+      finished = DateTime.utc_now()
 
       assert Enum.all?(results, &match?({:ok, _url, {_id, _nonce}}, &1))
-      assert [public_id] = results |> Enum.map(fn {:ok, _, {id, _}} -> id end) |> Enum.uniq()
-      refute public_id == ctx.connection.public_id
-      ended_as(ctx, :replaced)
-      assert live(ctx) == [public_id]
+      urls = for {:ok, url, _session} <- results, do: url
+      all_good_at(urls, finished)
 
-      assert all(ctx) == 2
+      ended_as(ctx, :replaced)
+      assert [public_id] = live(ctx)
+      refute public_id == ctx.connection.public_id
+
+      # The old connection took no pass; the new ones took them as presses on a pending
+      # connection do.
+      rows = one_live_and_the_rest_replaced(ctx.adapter, urls)
+      assert all(ctx) == length(rows) + 1
     end
   end
 

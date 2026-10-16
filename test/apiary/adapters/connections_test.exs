@@ -102,6 +102,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
          %{scope: scope, adapter: adapter} do
       %{scope: admin, user: other} = member_fixture(scope, :admin)
       {:ok, _url, {public_id, first}} = Adapters.connect(scope, adapter)
+      :ok = pass_made_earlier(public_id)
       {:ok, _url, {^public_id, second}} = Adapters.connect(admin, adapter)
 
       refute first == second
@@ -178,7 +179,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
     @at ~U[2026-10-16 12:00:00.250000Z]
 
     # A press at `now`, as `Apiary.Adapters.connect/2` makes it: the connection, the
-    # `expires_at` the pass says, read from its payload, and the pass.
+    # `expires_at` the pass says, read from its payload, and the pass. Every pass verifies
+    # at `now`, and expires exactly `validity/0` seconds after `now`, truncated to the
+    # second, never later, which the connection keeps.
     defp press(scope, adapter, now) do
       assert {:ok, {connection, pass}} =
                Repo.transact(fn ->
@@ -186,6 +189,18 @@ defmodule Apiary.Adapters.ConnectionsTest do
                         Connections.start(scope, adapter, ConnectPass.new_nonce(), now: now),
                       do: {:ok, {connection, pass}}
                end)
+
+      assert {:ok, %{connection_id: connection_id, expires_at: expires_at}} =
+               ConnectPass.verify(pass, Apiary.SigningKey.public_key(), now: now)
+
+      assert connection_id == connection.public_id
+
+      assert DateTime.compare(
+               expires_at,
+               now |> DateTime.truncate(:second) |> DateTime.add(ConnectPass.validity(), :second)
+             ) == :eq
+
+      assert reload(connection).pass_expires_at == expires_at
 
       {connection, signed_expiry(pass), pass}
     end
@@ -197,50 +212,131 @@ defmodule Apiary.Adapters.ConnectionsTest do
       time
     end
 
-    test "two presses in the same second: the second expires one second after the first", %{
+    # The session nonce of a pass, in base64url, as the person's session keeps it.
+    defp pass_nonce(pass) do
+      {:ok, %{nonce: nonce}} =
+        ConnectPass.verify(pass, Apiary.SigningKey.public_key(),
+          now: DateTime.add(signed_expiry(pass), -1, :second)
+        )
+
+      Ed25519.encode(nonce)
+    end
+
+    defp live(adapter) do
+      Repo.all(
+        from c in Connection,
+          where: c.adapter_id == ^adapter.id and is_nil(c.ended_at),
+          select: c.public_id
+      )
+    end
+
+    test "two presses in the same second: the second ends the connection as replaced and starts a new one",
+         %{scope: scope, adapter: adapter} do
+      %{scope: admin, user: other} = member_fixture(scope, :admin)
+      {first, first_at, _} = press(scope, adapter, @at)
+      assert first_at == ~U[2026-10-16 12:15:00Z]
+      kept = reload(first)
+
+      # One second after the first pass's expiry is later than validity/0 seconds after
+      # now, so no pass of the first connection could expire after its last one.
+      {second, second_at, second_pass} =
+        press(admin, adapter, DateTime.add(@at, 500, :millisecond))
+
+      refute second.id == first.id
+      refute second.public_id == first.public_id
+      assert second_at == ~U[2026-10-16 12:15:00Z]
+
+      assert %Connection{
+               state: :pending,
+               created_by_id: by,
+               pass_expires_at: ^second_at,
+               pass_nonce_used_at: nil,
+               ended_at: nil
+             } = reload(second)
+
+      assert by == other.id
+      assert Ed25519.encode(reload(second).pass_nonce) == pass_nonce(second_pass)
+
+      # The first is kept, ended, with its values as they were.
+      assert %Connection{state: :ended, ended_reason: :replaced, ended_at: %DateTime{}} =
+               ended = reload(first)
+
+      fields = [:public_id, :pass_nonce, :pass_nonce_used_at, :pass_expires_at, :created_by_id]
+      assert Map.take(ended, fields) == Map.take(kept, fields)
+      assert live(adapter) == [second.public_id]
+    end
+
+    test "the boundary: a second later takes the same connection; any sooner replaces it", %{
       scope: scope,
       adapter: adapter
     } do
       {first, first_at, _} = press(scope, adapter, @at)
       assert first_at == ~U[2026-10-16 12:15:00Z]
-      assert reload(first).pass_expires_at == first_at
 
-      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, 500, :millisecond))
+      # One second after the first pass's expiry is exactly validity/0 seconds after now:
+      # the same connection, a pass expiring one second later.
+      {second, second_at, _} = press(scope, adapter, ~U[2026-10-16 12:00:01.000000Z])
       assert second.id == first.id
       assert second_at == ~U[2026-10-16 12:15:01Z]
-      assert reload(second).pass_expires_at == second_at
+
+      # One second over: replaced.
+      {third, third_at, _} = press(scope, adapter, ~U[2026-10-16 12:00:01.999999Z])
+      refute third.id == first.id
+      assert third_at == ~U[2026-10-16 12:15:01Z]
+
+      assert %Connection{state: :ended, ended_reason: :replaced, pass_expires_at: ^second_at} =
+               reload(first)
+
+      assert live(adapter) == [third.public_id]
     end
 
-    test "a clock that stepped back: the next pass still expires one second after the last", %{
+    test "a clock stepped back a minute: the next press replaces the connection", %{
       scope: scope,
       adapter: adapter
     } do
-      {_first, first_at, _} = press(scope, adapter, @at)
-      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, -60, :second))
+      {first, first_at, _} = press(scope, adapter, @at)
 
-      assert second_at == DateTime.add(first_at, 1, :second)
-      assert reload(second).pass_expires_at == second_at
+      # One second after 12:15:00 is later than 12:14:00, validity/0 seconds after now.
+      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, -60, :second))
+      refute second.id == first.id
+      assert second_at == ~U[2026-10-16 12:14:00Z]
+
+      assert %Connection{state: :ended, ended_reason: :replaced, pass_expires_at: ^first_at} =
+               reload(first)
+
+      # The new connection then goes on as any does: a press back at the first's time
+      # takes it, one second after its pass's expiry being earlier than validity/0
+      # seconds after now.
+      {third, third_at, _} = press(scope, adapter, @at)
+      assert third.id == second.id
+      assert third_at == ~U[2026-10-16 12:15:00Z]
+      assert live(adapter) == [second.public_id]
     end
 
     test "a press later on: the pass expires validity/0 seconds after it", %{
       scope: scope,
       adapter: adapter
     } do
-      {_first, _first_at, _} = press(scope, adapter, @at)
+      {first, _first_at, _} = press(scope, adapter, @at)
       {second, second_at, _} = press(scope, adapter, DateTime.add(@at, 120, :second))
 
+      assert second.id == first.id
       assert second_at == ~U[2026-10-16 12:17:00Z]
-      assert reload(second).pass_expires_at == second_at
     end
 
-    test "many quick presses: each expires one second after the last, past validity/0", %{
-      scope: scope,
-      adapter: adapter
-    } do
-      times = for _ <- 1..3, do: scope |> press(adapter, @at) |> elem(1)
+    test "many quick presses: each replaces the one before it, and none expires past validity/0",
+         %{scope: scope, adapter: adapter} do
+      presses = for _ <- 1..3, do: press(scope, adapter, @at)
 
-      assert times ==
-               [~U[2026-10-16 12:15:00Z], ~U[2026-10-16 12:15:01Z], ~U[2026-10-16 12:15:02Z]]
+      assert Enum.map(presses, &elem(&1, 1)) ==
+               [~U[2026-10-16 12:15:00Z], ~U[2026-10-16 12:15:00Z], ~U[2026-10-16 12:15:00Z]]
+
+      [first, second, third] = Enum.map(presses, &reload(elem(&1, 0)))
+      assert length(Enum.uniq([first.public_id, second.public_id, third.public_id])) == 3
+      assert %Connection{state: :ended, ended_reason: :replaced} = first
+      assert %Connection{state: :ended, ended_reason: :replaced} = second
+      assert %Connection{state: :pending, ended_at: nil} = third
+      assert live(adapter) == [third.public_id]
     end
 
     test "a connection made before its pass expiry was kept: the next pass expires as a first",
@@ -252,8 +348,9 @@ defmodule Apiary.Adapters.ConnectionsTest do
       )
 
       {second, second_at, _} = press(scope, adapter, @at)
+      assert second.id == first.id
       assert second_at == ~U[2026-10-16 12:15:00Z]
-      assert reload(second).pass_expires_at == second_at
+      assert %Connection{state: :pending, ended_at: nil} = reload(second)
     end
 
     test "a new connection in place of a replaced one: its pass expires as a first", %{
@@ -270,10 +367,37 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {second, second_at, _} = press(scope, adapter, @at)
       refute second.id == first.id
       assert second_at == first_at
-      assert reload(second).pass_expires_at == second_at
 
       assert %Connection{state: :ended, ended_reason: :replaced, pass_expires_at: ^first_at} =
                reload(first)
+    end
+
+    test "a pending connection replaced so: the old pass's return is not found, and the adapter finds it ended",
+         %{scope: scope, adapter: adapter, pair: pair, key: key} do
+      now = DateTime.utc_now()
+      {first, _first_at, first_pass} = press(scope, adapter, now)
+      first_nonce = pass_nonce(first_pass)
+      {second, _second_at, _} = press(scope, adapter, now)
+      refute second.id == first.id
+      ended = reload(first)
+
+      for outcome <- [:linked, :cancelled] do
+        token = return_token(pair.secret, first.public_id, first_nonce, outcome: outcome)
+
+        assert Connections.complete_return(scope, first.public_id, token, first_nonce) ==
+                 {:error, :not_found}
+      end
+
+      assert reload(first) == ended
+
+      key_scope = key_scope(key)
+
+      assert Connections.connection_for_key(key_scope, first.public_id, :"source_item.post") ==
+               {:error, :ended}
+
+      assert Connections.end_connection(key_scope, first.public_id) == {:error, :ended}
+      assert reload(first) == ended
+      assert %Connection{state: :pending, ended_at: nil} = reload(second)
     end
 
     test "the expiry kept is the signed one, for each press of Install", %{
@@ -344,6 +468,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       connection: connection
     } do
       for reason <- Apiary.Adapters.ReturnToken.reasons() do
+        :ok = pass_made_earlier(connection.public_id)
         {:ok, _url, {_id, nonce}} = Adapters.connect(scope, adapter)
 
         token =
@@ -359,6 +484,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
                  reload(connection)
       end
 
+      :ok = pass_made_earlier(connection.public_id)
       {:ok, _url, {_id, nonce}} = Adapters.connect(scope, adapter)
       token = return_token(pair.secret, connection.public_id, nonce, outcome: :cancelled)
 
@@ -547,6 +673,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       connection: connection,
       nonce: first
     } do
+      :ok = pass_made_earlier(connection.public_id)
       {:ok, _url, {_id, nonce}} = Adapters.connect(scope, adapter)
       linked = return_token(pair.secret, connection.public_id, nonce)
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, linked, nonce)
@@ -585,6 +712,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       connection: connection,
       nonce: first
     } do
+      :ok = pass_made_earlier(connection.public_id)
       {:ok, _url, {_id, second}} = Adapters.connect(scope, adapter)
       early = return_token(pair.secret, connection.public_id, first)
 

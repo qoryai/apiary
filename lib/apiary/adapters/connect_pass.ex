@@ -23,10 +23,13 @@ defmodule Apiary.Adapters.ConnectPass do
   #   * `connection_id`, the connection it is made for, by its public id (`ac_`);
   #   * `nonce`, 16 random bytes in base64url without padding, 22 characters;
   #   * `expires_at`, when the pass stops being good, in UTC to the second, as
-  #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made, or later when the
-  #     connection's previous pass expires at that time or after it (`issue/3`). Each new
-  #     pass of a connection expires strictly later than the one before it, which is how
-  #     the adapter tells the newer pass.
+  #     `2026-10-15T12:15:00Z`: `validity/0` seconds after it was made. Each new pass of a
+  #     connection expires strictly later than the one before it, which is how the adapter
+  #     tells the newer pass: when that would take a pass more than `validity/0` seconds
+  #     ahead (`beyond_validity?/2`), the connection ends instead, and the pass is the first
+  #     of a new connection in its place (`issue/3`). So no pass expires more than
+  #     `validity/0` seconds after it was made; one that did could reach the adapter more
+  #     than `validity/0` seconds ahead of its clock, which the adapter refuses.
   #
   # `issue/3` makes one; `verify/3` reads one back: the length, both parts decoded
   # strictly, the signature over the message under the public key given, the payload
@@ -81,9 +84,12 @@ defmodule Apiary.Adapters.ConnectPass do
   # It expires at `expires_at/2` of now and `opts[:not_before]`: `validity/0` seconds
   # after now, to the second, or `:not_before` when that is later. The caller that keeps a
   # connection's passes (`Apiary.Adapters.Connections.start/3`) gives `:not_before` as one
-  # second after the connection's previous pass expires, so each new pass of a connection
-  # expires strictly later than the one before it, even for two passes made in the same
-  # second or after the clock stepped back; it gives none for a connection's first pass.
+  # second after the connection's previous pass expires, and only when that is no later
+  # than `validity/0` seconds after now (`beyond_validity?/2`), so the pass expires
+  # `validity/0` seconds after now, strictly later than the one before it. When it is
+  # later, as for two passes in the same second, or after the clock stepped back, that
+  # caller ends the connection (`replaced`) and makes the first pass of a new connection
+  # in its place; it gives no `:not_before` for a connection's first pass.
   # It is signed under the instance's signing key, with `opts[:nonce]` as its nonce, 16
   # bytes, which the caller that keeps it makes with `new_nonce/0`, else 16 fresh random
   # bytes. `:now`, a `DateTime`, is the time the pass is made, the current time unless
@@ -137,6 +143,19 @@ defmodule Apiary.Adapters.ConnectPass do
       %DateTime{} -> Enum.max([after_now, whole_second_up(not_before)], DateTime)
     end
   end
+
+  # Whether a pass made at `now` that may expire no earlier than `not_before` would expire
+  # more than `validity/0` seconds after `now`, as `expires_at/2` rounds both: `true` when
+  # `not_before`, rounded up to the second, is later than `validity/0` seconds after
+  # `now`, truncated to the second; `false` when it is that time or earlier, and for
+  # `nil`. Such a pass can reach the adapter more than `validity/0` seconds ahead of its
+  # clock, which the adapter refuses (`pass_expired`). The caller that keeps a
+  # connection's passes makes none: it ends the connection and starts a new one instead
+  # (`Apiary.Adapters.Connections.start/3`).
+  @doc false
+  @spec beyond_validity?(DateTime.t(), DateTime.t() | nil) :: boolean
+  def beyond_validity?(%DateTime{} = now, not_before),
+    do: DateTime.compare(expires_at(now, not_before), expires_at(now, nil)) == :gt
 
   defp whole_second_up(time) do
     time = DateTime.shift_zone!(time, "Etc/UTC")
