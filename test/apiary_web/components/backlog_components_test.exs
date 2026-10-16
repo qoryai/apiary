@@ -297,9 +297,11 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       {text(html, "time"), attr(html, "time", "title"), attr(html, "time", "datetime")}
     end
 
-    test "minutes, hours, Yesterday, days; time_ago's words in the title" do
+    test "now, minutes, hours, Yesterday, days; time_ago's words in the title" do
       for {seconds, words} <- [
-            {0, "0 min"},
+            {0, "now"},
+            {59, "now"},
+            {60, "1 min"},
             {180, "3 min"},
             {59 * 60 + 59, "59 min"},
             {5 * 3600, "5 h"},
@@ -323,7 +325,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     end
 
     test "a time ahead of now is no time ago" do
-      assert {"0 min", _, _} = compact(DateTime.add(@now, 7200, :second))
+      assert {"now", _, _} = compact(DateTime.add(@now, 7200, :second))
     end
   end
 
@@ -500,6 +502,23 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         refute text(html, "#tk-facts") =~ "Labels"
         assert count(html, ".q-bl-lb, #tk-comments, .q-bl-cmt") == 0
         refute html =~ "comment"
+      end
+    end
+
+    test "the meta line's times in lower case, mid-sentence" do
+      just_now = ticket(%{filed_at: ago(20), updated_at: ago(5)})
+
+      for html <- [list_frame(just_now, []), full_frame(just_now, [])] do
+        assert text(html, ".q-bl-meta") == "Lea filed this just now · updated just now"
+      end
+
+      filed_at = ago(30 * 3600)
+      yesterday = ticket(%{filed_at: filed_at, updated_at: ago(5)})
+      filed_ago = Format.time_ago(filed_at, @now, case: :inline)
+      assert filed_ago =~ ~r/\Ayesterday, /
+
+      for html <- [list_frame(yesterday, []), full_frame(yesterday, [])] do
+        assert text(html, ".q-bl-meta") == "Lea filed this #{filed_ago} · updated just now"
       end
     end
 

@@ -231,8 +231,8 @@ defmodule ApiaryWeb.BacklogComponents do
   end
 
   @doc """
-  A time in a row's narrow column: "3 min", "5 h", "Yesterday", "9 d", by the reader's
-  days, with `ApiaryWeb.Format.time_ago/2`'s words in the `title`.
+  A time in a row's narrow column: "now" (under a minute), "3 min", "5 h", "Yesterday",
+  "9 d", by the reader's days, with `ApiaryWeb.Format.time_ago/2`'s words in the `title`.
   """
   attr :at, DateTime, required: true, doc: "the time"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -251,6 +251,9 @@ defmodule ApiaryWeb.BacklogComponents do
     days = Format.days_back(at, now)
 
     cond do
+      seconds < 60 ->
+        gettext("now")
+
       seconds < 3600 ->
         n = div(seconds, 60)
         ngettext("%{number} min", "%{number} min", n, number: Format.number(n))
@@ -335,8 +338,8 @@ defmodule ApiaryWeb.BacklogComponents do
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
             name: ticket.filer.name,
-            filed_ago: Format.time_ago(ticket.filed_at, now),
-            updated_ago: Format.time_ago(ticket.updated_at, now)
+            filed_ago: Format.time_ago(ticket.filed_at, now, case: :inline),
+            updated_ago: Format.time_ago(ticket.updated_at, now, case: :inline)
           )
       )
 
