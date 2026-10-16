@@ -10466,7 +10466,7 @@
   }
   /* The ticket open: the honey fill and a line on its left. Faint text is under 4.5:1 on
      the fill, so the row draws it muted. */
-  .q-bl-row[aria-current="true"] {
+  .q-bl-row:has([aria-current="true"]) {
     --q-faint: var(--q-muted);
     background-color: var(--q-primary-soft);
     box-shadow: inset 2px 0 0 var(--color-primary);
@@ -10544,8 +10544,10 @@
     font-variant-numeric: tabular-nums;
   }
   .q-bl-act {
+    position: relative;
     display: flex;
     width: 96px;
+    align-items: center;
     justify-content: flex-end;
   }
 
@@ -10642,19 +10644,33 @@
   .q-bl-take:hover {
     background-color: var(--color-base-300);
   }
-  .q-bl-row:is(:hover, :focus-within, [aria-current="true"]) .q-bl-take {
+  .q-bl-row:is(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take:not(.q-bl-again) {
     opacity: 1;
   }
   /* A declined ticket: Take in again takes the place of its work item's number on hover
-     or focus. */
+     or focus. Hidden, it lies over the number's place, unseen and out of the pointer's way,
+     and stays in the tab order: a Tab onto it shows it. The number, hidden in its turn,
+     stays focusable as well, and shows again while it has the keyboard's focus. */
   .q-bl-take.q-bl-again {
-    display: none;
+    position: absolute;
+    top: 50%;
+    right: 0;
+    translate: 0 -50%;
+    pointer-events: none;
   }
-  .q-bl-row:is(:hover, :focus-within) .q-bl-take.q-bl-again {
-    display: inline-flex;
+  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-take.q-bl-again {
+    position: static;
+    translate: none;
+    opacity: 1;
+    pointer-events: auto;
   }
-  .q-bl-row:is(:hover, :focus-within) .q-bl-wi-declined {
-    display: none;
+  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-wi-declined {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    translate: 0 -50%;
+    opacity: 0;
+    pointer-events: none;
   }
   /* The work item a ticket became: its number, always there; declined, the number faint. */
   .q-bl-wi {
@@ -10679,7 +10695,7 @@
   }
   /* With the ticket open beside the list, its Take in is the panel's block. */
   @media (min-width: 1280px) {
-    .q-bl:has(> .q-bl-prev) .q-bl-row[aria-current="true"]:not(:hover, :focus-within) .q-bl-take {
+    .q-bl:has(> .q-bl-prev) .q-bl-row:has([aria-current="true"]):not(:hover, :focus-within) .q-bl-take {
       opacity: 0;
     }
   }
@@ -10732,8 +10748,16 @@
       width: auto;
       padding-top: 1px;
     }
-    .q-bl-row:not(:hover, :focus-within, [aria-current="true"]) .q-bl-take {
-      display: none;
+    /* Take in takes no width here until the row is read, and stays in the tab order: a
+       zero-size clip, which a Tab onto the button lifts. */
+    .q-bl-row:not(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
     }
   }
 
