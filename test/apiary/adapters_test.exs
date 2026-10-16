@@ -3,9 +3,8 @@ defmodule Apiary.AdaptersTest do
   # workspace, made, renamed and deleted by an instance admin through `Apiary.Adapters`, in
   # the trail of the instance's organisation; their access keys, enrolled with a code an
   # instance admin makes, and verified whatever any organisation's state; the role their
-  # keys act in; a node pool's adapter (`served_by_id`), which no pool names; and the schema
-  # that keeps them. It runs where the feature adapters belong to is on;
-  # `Apiary.AdaptersWithoutFactoryTest` turns it off.
+  # keys act in; and the schema that keeps them. It runs where the feature adapters belong
+  # to is on; `Apiary.AdaptersWithoutFactoryTest` turns it off.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -26,7 +25,6 @@ defmodule Apiary.AdaptersTest do
   @adapter_key_actions [
     :"source_item.post",
     :"work_item.read_changes",
-    :"dispatch.claim",
     :"adapter.disconnect"
   ]
 
@@ -136,10 +134,6 @@ defmodule Apiary.AdaptersTest do
       assert Repo.get!(EnrolmentCode, second_code.id).cancelled_at
     end
   end
-
-  # The entries of `node`'s edits.
-  defp edits_of(node),
-    do: Repo.all(from e in Entry, where: e.action == "node.edit" and e.subject_id == ^node.id)
 
   # A row of `nodes` like `node`'s with `changes`, for the schema's checks.
   defp row(node, changes) do
@@ -626,6 +620,10 @@ defmodule Apiary.AdaptersTest do
         assert Access.action(action).roles == [:adapter_key]
       end
 
+      # The adapter's key holds these actions and no other: no claim of dispatched work.
+      assert Access.roles().adapter_key == @adapter_key_actions
+      refute :"dispatch.claim" in Access.roles().adapter_key
+
       for action <- [:"adapter.create", :"adapter.edit", :"adapter.delete"] do
         assert Access.action(action).roles == []
       end
@@ -647,7 +645,7 @@ defmodule Apiary.AdaptersTest do
   end
 
   describe "deleting one" do
-    test "revokes its keys, cancels its codes and serves no pool, in one entry of the instance's organisation",
+    test "revokes its keys and cancels its codes, in one entry of the instance's organisation",
          %{admin: admin} do
       adapter = adapter_fixture()
       %{key: key} = keyed(admin, adapter)
@@ -664,7 +662,6 @@ defmodule Apiary.AdaptersTest do
                Repo.one!(from e in Entry, where: e.action == "adapter.delete")
 
       assert trail == instance_id()
-      assert details["unserved_pool_ids"] == []
       assert details["ended_connection_ids"] == []
       assert details["revoked_key_ids"] == [key.key_id]
 
@@ -680,46 +677,6 @@ defmodule Apiary.AdaptersTest do
       assert Adapters.delete_adapter(member, adapter) == {:error, :forbidden}
       assert AccessKeys.revoke_node_keys(scope, adapter, :node_deleted) == {:error, :forbidden}
       assert reload(adapter).deleted_at == nil
-    end
-  end
-
-  describe "a pool's adapter" do
-    test "a pool names none its organisation is not connected to", %{scope: scope} do
-      adapter = adapter_fixture()
-      pool = pool_fixture(scope)
-      gateway = organisation_gateway_fixture(scope)
-
-      assert Adapters.serving_choices(scope) == []
-      assert Adapters.served_pools(scope, adapter) == []
-
-      for id <- [adapter.id, gateway.id, pool.id, Ecto.UUID.generate(), "not-a-uuid"] do
-        assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: id})
-        assert "is invalid" in errors_on(changeset).served_by_id
-      end
-
-      assert {:error, _changeset} =
-               Nodes.create_node(scope, %{kind: "pool", name: "spot", served_by_id: adapter.id})
-
-      assert reload(pool).served_by_id == nil
-    end
-
-    test "a node or a gateway has none", %{scope: scope} do
-      adapter = adapter_fixture()
-      node = node_fixture(scope)
-      gateway = gateway_fixture(scope)
-
-      for subject <- [node, gateway] do
-        assert {:ok, %Node{served_by_id: nil}} =
-                 Nodes.update_node(scope, subject, %{served_by_id: adapter.id})
-      end
-    end
-
-    test "a member names none", %{scope: scope} do
-      adapter = adapter_fixture()
-      pool = pool_fixture(scope)
-      %{scope: member} = member_fixture(scope, :member)
-
-      assert Nodes.update_node(member, pool, %{served_by_id: adapter.id}) == {:error, :forbidden}
     end
   end
 
@@ -911,27 +868,6 @@ defmodule Apiary.AdaptersTest do
       end
     end
 
-    test "a pool is served by an adapter its organisation is connected to, which none is",
-         %{scope: scope} do
-      adapter = adapter_fixture()
-      pool = pool_fixture(scope)
-      node = node_fixture(scope)
-      gateway = organisation_gateway_fixture(scope)
-
-      for {subject, id} <- [
-            {pool, adapter.id},
-            {node, adapter.id},
-            {pool, gateway.id},
-            {pool, pool.id}
-          ] do
-        assert refused(fn ->
-                 Repo.update_all(from(n in Node, where: n.id == ^subject.id),
-                   set: [served_by_id: id]
-                 )
-               end) == "nodes_served_by_is_an_adapter"
-      end
-    end
-
     test "its keys and codes have no organisation and no workspace, and none moves", %{
       scope: scope,
       admin: admin
@@ -1032,27 +968,6 @@ defmodule Apiary.AdaptersTest do
       refute Apiary.Features.visible?(Access.reload(admin), :factory)
 
       %{adapter: adapter, key: key, code: code, others: others, hidden: hidden}
-    end
-
-    test "a pool names no adapter, and the rest of the edit saves", %{
-      scope: scope,
-      adapter: adapter
-    } do
-      pool = pool_fixture(scope)
-
-      assert {:ok, %Node{name: "renamed", instance_limit: 3, served_by_id: nil}} =
-               Nodes.update_node(scope, pool, %{
-                 "name" => "renamed",
-                 "instance_limit" => "3",
-                 "served_by_id" => ""
-               })
-
-      refute Enum.any?(edits_of(pool), &Map.has_key?(&1.after, "served_by_id"))
-
-      # Naming an adapter is refused, as before, and changes nothing.
-      assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
-      assert "is invalid" in errors_on(changeset).served_by_id
-      assert reload(pool).served_by_id == nil
     end
 
     # An adapter is the instance's: an instance admin reaches it where the instance has the
@@ -1163,7 +1078,6 @@ defmodule Apiary.AdaptersTest do
     } do
       for asker <- [scope, admin] do
         assert Adapters.connect(asker, adapter) == {:error, :not_found}
-        assert Adapters.serving_choices(Access.reload(asker)) == []
         refute Access.can?(Access.reload(asker), :"adapter.read", asker.organisation)
       end
     end

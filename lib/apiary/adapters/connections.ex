@@ -30,40 +30,23 @@ defmodule Apiary.Adapters.Connections do
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
-  # connections are suspended instead, and come back with it. Every end clears the pools
-  # of that organisation the adapter served.
+  # connections are suspended instead, and come back with it.
   #
-  # The lock order: the adapter's row, then its connections, then the pools.
+  # The lock order: the adapter's row, then its connections.
   #
   #   * A deletion of the adapter (`Apiary.Adapters.delete_adapter/2`) holds its row
-  #     `FOR NO KEY UPDATE`, ends its connections, then clears the pools.
+  #     `FOR NO KEY UPDATE`, then ends its connections.
   #   * A connect (`Apiary.Adapters.connect/2`) holds the adapter's row `FOR SHARE`, then
-  #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do,
-  #     then clears the pools; a connection it makes takes the adapter's row `FOR SHARE`
-  #     again (the trigger `adapter_connections_adapter_check`) and `FOR KEY SHARE` (its
-  #     reference), which it holds already, and nobody else sees it until it commits. It
+  #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do;
+  #     a connection it makes takes the adapter's row `FOR SHARE` again (the trigger
+  #     `adapter_connections_adapter_check`) and `FOR KEY SHARE` (its reference), which
+  #     it holds already, and nobody else sees it until it commits. It
   #     also takes the organisation's and the person's rows `FOR KEY SHARE` (its
   #     references); `Apiary.Access.authorize/3` locks neither, and only a deletion of
   #     either row, or a change of its key, waits on that lock or keeps it waiting.
-  #   * A change of a pool (`Apiary.Nodes.update_node/3`) that names the adapter that
-  #     serves it holds that connection `FOR SHARE` (`lock_serving/2`) before it locks the
-  #     pool's row; a pool made with one (`Apiary.Nodes.create_node/2`) takes the
-  #     connection `FOR SHARE` in the trigger `nodes_served_by_is_an_adapter` as it is
-  #     inserted. Both take the locks of `Apiary.Gateways.lock/1` first, which none of
-  #     the others here takes.
   #   * The return (`complete_return/4`) and `mark_listed/1` hold the connection
   #     `FOR UPDATE`, and nothing else. An end (`end_connection/2`,
-  #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
-  #     then clears the pools.
-  #
-  # One lock goes against the order: as a pool is made or changed to name an adapter,
-  # Postgres checks the reference `served_by_id`, which takes the adapter's row
-  # `FOR KEY SHARE`, after the connection. So whatever holds the adapter's row while it
-  # waits on a connection holds it in a mode that lets `FOR KEY SHARE` through: the
-  # deletion's `FOR NO KEY UPDATE`. A change of the adapter's keys
-  # (`Apiary.AccessKeys`) holds the row `FOR UPDATE`, which keeps that check waiting,
-  # but it takes no connection and no pool, so it ends first. So no two of them wait on
-  # each other.
+  #     `end_for_organisation/1`) holds the connection, or all of the organisation's.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -139,9 +122,9 @@ defmodule Apiary.Adapters.Connections do
   # `pass_expires_at`, and the scope's person as the one who started it. One connected
   # (`complete_return/4`), which no listing has named yet (`mark_listed/1`), is ended
   # (`replaced`), as `end_connection/2` ends one, with its pass, its person and the time
-  # it connected as they were, and the pools it served cleared, and a new pending
-  # connection is made in its place, with a new public id, as above. One pending is
-  # replaced so too when its next pass would expire too far ahead, below.
+  # it connected as they were, and a new pending connection is made in its place, with a
+  # new public id, as above. One pending is replaced so too when its next pass would
+  # expire too far ahead, below.
   # `{:ok, connection, pass}`;
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
@@ -236,10 +219,9 @@ defmodule Apiary.Adapters.Connections do
   end
 
   # Ends `live`, held `FOR UPDATE`, as `replaced`, with its nonce, its pass's expiry, the
-  # person who started it and the time it connected as they are, and clears the pools it
-  # served; then makes a new pending connection in its place, with a new public id, started
-  # by the person who pressed, whose pass, with `nonce`, is its first and expires
-  # `validity/0` seconds after now.
+  # person who started it and the time it connected as they are; then makes a new pending
+  # connection in its place, with a new public id, started by the person who pressed,
+  # whose pass, with `nonce`, is its first and expires `validity/0` seconds after now.
   defp replace(live, organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
     fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
 
@@ -583,8 +565,7 @@ defmodule Apiary.Adapters.Connections do
   @doc false
   # end_connection/2 ends the connection `public_id` (`ac_…`) of the adapter whose key
   # `key_scope` carries, pending or connected, as the adapter reports it gone
-  # (`adapter_reported`), whatever its organisation's state, and clears the pools of that
-  # organisation the adapter served, in one transaction, the connection's row first. A
+  # (`adapter_reported`), whatever its organisation's state, in one transaction. A
   # return for a pending one it ended is not found after (`complete_return/4`). The
   # answers, in this order:
   #
@@ -610,29 +591,23 @@ defmodule Apiary.Adapters.Connections do
     end)
   end
 
-  # Ends `connection`, held `FOR UPDATE` and live, for `reason`, and then clears the pools
-  # of its organisation its adapter served: the connection's row first, then the pools.
-  # `{:ok, connection}`, ended.
+  # Ends `connection`, held `FOR UPDATE` and live, for `reason`. `{:ok, connection}`,
+  # ended.
   defp end_live(%Connection{} = connection, reason, now) do
-    with {:ok, ended} <-
-           connection
-           |> Ecto.Changeset.change(
-             state: :ended,
-             ended_at: now,
-             ended_reason: reason,
-             updated_at: now
-           )
-           |> Repo.update() do
-      _pools = unserve(connection.organisation_id, connection.adapter_id, now)
-      {:ok, ended}
-    end
+    connection
+    |> Ecto.Changeset.change(
+      state: :ended,
+      ended_at: now,
+      ended_reason: reason,
+      updated_at: now
+    )
+    |> Repo.update()
   end
 
   @doc false
   # Inside `Apiary.Adapters.delete_adapter/2`'s transaction, which holds the adapter's row
   # `FOR NO KEY UPDATE`: ends every connection of `adapter` that has not ended
-  # (`integration_deleted`). The public ids of those ended, in order. The caller clears
-  # the pools it served, after.
+  # (`integration_deleted`). The public ids of those ended, in order.
   @spec end_for_adapter(Node.t(), DateTime.t()) :: [String.t()]
   def end_for_adapter(%Node{kind: :adapter, id: adapter_id}, %DateTime{} = now) do
     {_count, ids} =
@@ -649,76 +624,26 @@ defmodule Apiary.Adapters.Connections do
 
   @doc false
   # end_for_organisation/1 ends every connection of the organisation `organisation_id`
-  # that has not ended (`organisation_deleted`), and clears the pools of the organisation
-  # that name an adapter: once the organisation's purge has claimed it, and its deletion
-  # can no longer be cancelled (`Apiary.Deletion`). The number of connections ended.
+  # that has not ended (`organisation_deleted`): once the organisation's purge has claimed
+  # it, and its deletion can no longer be cancelled (`Apiary.Deletion`). The number of
+  # connections ended.
   @spec end_for_organisation(Ecto.UUID.t()) :: non_neg_integer
   def end_for_organisation(organisation_id) do
-    {:ok, count} =
-      Repo.transact(fn ->
-        now = DateTime.utc_now()
+    now = DateTime.utc_now()
 
-        {count, _} =
-          Repo.update_all(
-            from(c in Connection,
-              where: c.organisation_id == ^organisation_id and is_nil(c.ended_at)
-            ),
-            set: [
-              state: :ended,
-              ended_at: now,
-              ended_reason: :organisation_deleted,
-              updated_at: now
-            ]
-          )
-
-        _pools = unserve(organisation_id, :any, now)
-        {:ok, count}
-      end)
+    {count, _} =
+      Repo.update_all(
+        from(c in Connection,
+          where: c.organisation_id == ^organisation_id and is_nil(c.ended_at)
+        ),
+        set: [
+          state: :ended,
+          ended_at: now,
+          ended_reason: :organisation_deleted,
+          updated_at: now
+        ]
+      )
 
     count
   end
-
-  # The pools of the organisation that name `adapter_id` (any adapter, for `:any`) as the
-  # one that serves them, deleted ones too, served by none from now on: the public ids of
-  # those in use, in order.
-  defp unserve(organisation_id, adapter_id, now) do
-    query =
-      from n in Node,
-        where: n.organisation_id == ^organisation_id and not is_nil(n.served_by_id),
-        select: {n.public_id, n.deleted_at}
-
-    query =
-      if adapter_id == :any, do: query, else: where(query, [n], n.served_by_id == ^adapter_id)
-
-    {_count, pools} = Repo.update_all(query, set: [served_by_id: nil, updated_at: now])
-    for({public_id, nil} <- pools, do: public_id) |> Enum.sort()
-  end
-
-  ## A pool's adapter
-
-  @doc false
-  # Inside the transaction of a change of a pool, before the pool's row is locked: the
-  # connection of the scope's organisation to the adapter `attrs` name as the one that
-  # serves the pool (`served_by_id`), connected, held `FOR SHARE`, as the trigger
-  # `nodes_served_by_is_an_adapter` holds it after, so the change takes the connection
-  # before the pool, in the lock order above. `:ok` whatever it finds: the change checks
-  # what it names.
-  @spec lock_serving(Scope.t(), map) :: :ok
-  def lock_serving(%Scope{organisation: %Organisation{id: organisation_id}}, attrs)
-      when is_map(attrs) do
-    with id when is_binary(id) <- Map.get(attrs, :served_by_id, Map.get(attrs, "served_by_id")),
-         {:ok, id} <- Ecto.UUID.cast(id) do
-      Repo.all(
-        from c in Connection,
-          where: c.organisation_id == ^organisation_id and c.adapter_id == ^id,
-          where: c.state == :connected,
-          lock: "FOR SHARE",
-          select: c.id
-      )
-    end
-
-    :ok
-  end
-
-  def lock_serving(%Scope{}, _attrs), do: :ok
 end

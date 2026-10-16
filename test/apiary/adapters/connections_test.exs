@@ -1,16 +1,16 @@
 defmodule Apiary.Adapters.ConnectionsTest do
   # An organisation's connections to the instance's adapters: starting one,
   # connecting it by the return the person brings back, what the adapter's key
-  # finds through one, recording its first listing, ending it, the pools it lets
-  # an adapter serve, and the table that keeps them. It runs where the feature
-  # adapters belong to is on; `Apiary.AdaptersWithoutFactoryTest` turns it off.
+  # finds through one, recording its first listing, ending it, and the table that keeps
+  # them. It runs where the feature adapters belong to is on;
+  # `Apiary.AdaptersWithoutFactoryTest` turns it off.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Access, AccessKeys, Adapters, Deletion, Edition, EditionStubs, Nodes}
+  alias Apiary.{Access, AccessKeys, Adapters, Deletion, Edition, EditionStubs}
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{ConnectPass, Connection, Connections}
@@ -57,12 +57,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
   defp key_scope(key) do
     {:ok, verified} = AccessKeys.fetch_for_verification(key.key_id)
     Scope.for_access_key(verified)
-  end
-
-  defp connected_pool(scope, adapter) do
-    pool = pool_fixture(scope)
-    {:ok, pool} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
-    pool
   end
 
   defp nonce_bytes(nonce), do: elem(Ed25519.decode(nonce, 16), 1)
@@ -494,7 +488,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert %Connection{state: :pending, connected_at: nil} = reload(connection)
     end
 
-    test "connected and not yet listed, a press ends it as replaced, clears its pools, starts anew",
+    test "connected and not yet listed, a press ends it as replaced and starts anew",
          %{
            scope: scope,
            adapter: adapter,
@@ -507,13 +501,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, token, nonce)
       connected = reload(connection)
       %{scope: admin, user: other} = member_fixture(scope, :admin)
-
-      # A pool may name the adapter as soon as the return connected it; one served by
-      # another adapter is kept.
-      pool = connected_pool(scope, adapter)
-      second_adapter = connectable_adapter_fixture()
-      {_ours, _} = connection_fixture(scope, second_adapter.adapter, :connected)
-      kept = connected_pool(scope, second_adapter.adapter)
 
       assert {:ok, url, {public_id, second}} = Adapters.connect(admin, adapter)
       refute public_id == connection.public_id
@@ -528,15 +515,13 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Ed25519.encode(bytes) == second
 
       # The connected one ended, with its pass, its person and the time it connected as they
-      # were, and the pool it served is served by none.
+      # were.
       assert %Connection{state: :ended, ended_at: %DateTime{}, ended_reason: :replaced} =
                ended = reload(connection)
 
       fields = [:pass_nonce, :pass_nonce_used_at, :created_by_id, :connected_at, :listed_at]
       assert Map.take(ended, fields) == Map.take(connected, fields)
       assert {ended.pass_nonce, ended.created_by_id} == {nonce_bytes(nonce), scope.user.id}
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-      assert Repo.get!(Node, kept.id).served_by_id == second_adapter.adapter.id
 
       # The new one is pending, started by the admin with the new pass.
       assert %Connection{
@@ -971,7 +956,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {theirs, _nonce} = connection_fixture(scope, other.adapter, :connected)
       {ended, _nonce} = connection_fixture(sign_up_fixture().scope, adapter, :listed)
       {:ok, _} = Connections.end_connection(key_scope, ended.public_id)
-      pool = connected_pool(scope, adapter)
 
       held = [connected, pending, theirs, ended] |> Enum.map(&reload/1)
 
@@ -1001,7 +985,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       # Nothing changed, and the key's other actions are as they were.
       assert Enum.map(held, &reload/1) == held
-      assert Repo.get!(Node, pool.id).served_by_id == adapter.id
 
       assert {:ok, _, _} =
                Connections.connection_for_key(key_scope, connected.public_id, :"source_item.post")
@@ -1238,17 +1221,13 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(connected) == ended
     end
 
-    test "end_connection/2 ends it whatever its organisation's state, and clears its pools there",
+    test "end_connection/2 ends it whatever its organisation's state",
          %{scope: scope, adapter: adapter, connected: connected, key_scope: key_scope} do
       {:ok, connection} = Connections.mark_listed(connected)
       %{scope: other} = sign_up_fixture()
       {theirs, _} = connection_fixture(other, adapter, :listed)
       second = connectable_adapter_fixture()
       {_ours, _} = connection_fixture(scope, second.adapter, :listed)
-
-      pool = connected_pool(scope, adapter)
-      kept = connected_pool(scope, second.adapter)
-      their_pool = connected_pool(other, adapter)
 
       Edition.put_test_stub(EditionStubs.OutOfUse)
       Process.put(:out_of_use, [scope.organisation.id])
@@ -1260,9 +1239,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
                 ended_reason: :adapter_reported
               }} = Connections.end_connection(key_scope, connection.public_id)
 
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-      assert Repo.get!(Node, kept.id).served_by_id == second.adapter.id
-      assert Repo.get!(Node, their_pool.id).served_by_id == adapter.id
       assert reload(theirs).state == :connected
 
       assert Connections.end_connection(key_scope, connection.public_id) == {:error, :ended}
@@ -1276,7 +1252,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
   end
 
   describe "ending from Qory" do
-    test "deleting an adapter ends every live connection and clears the pools it served", %{
+    test "deleting an adapter ends every live connection", %{
       scope: scope,
       admin: admin,
       adapter: adapter
@@ -1284,7 +1260,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {connected, _} = connection_fixture(scope, adapter, :listed)
       %{scope: other} = sign_up_fixture()
       {pending, _} = connection_fixture(other, adapter, :pending)
-      pool = connected_pool(scope, adapter)
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
 
@@ -1292,15 +1267,11 @@ defmodule Apiary.Adapters.ConnectionsTest do
         assert %Connection{state: :ended, ended_reason: :integration_deleted} = reload(connection)
       end
 
-      assert Repo.get!(Node, pool.id).served_by_id == nil
-
       assert %Entry{details: details} =
                Repo.one!(from e in Entry, where: e.action == "adapter.delete")
 
       assert details["ended_connection_ids"] ==
                Enum.sort([connected.public_id, pending.public_id])
-
-      assert details["unserved_pool_ids"] == [pool.public_id]
     end
 
     test "an organisation's purge ends its connections first, then deletes them with it", %{
@@ -1310,12 +1281,10 @@ defmodule Apiary.Adapters.ConnectionsTest do
       {connection, _} = connection_fixture(scope, adapter, :listed)
       %{scope: other} = sign_up_fixture()
       {theirs, _} = connection_fixture(other, adapter, :listed)
-      pool = connected_pool(scope, adapter)
 
       assert Connections.end_for_organisation(scope.organisation.id) == 1
 
       assert %Connection{state: :ended, ended_reason: :organisation_deleted} = reload(connection)
-      assert Repo.get!(Node, pool.id).served_by_id == nil
       assert reload(theirs).state == :connected
       assert Connections.end_for_organisation(scope.organisation.id) == 0
 
@@ -1336,51 +1305,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
       assert Repo.get(Connection, connection.id) == nil
       assert reload(theirs).state == :connected
-    end
-  end
-
-  describe "a pool's adapter" do
-    test "is one the organisation is connected to, from the linked return: pending does not count",
-         %{scope: scope, adapter: adapter, pair: pair} do
-      pool = pool_fixture(scope)
-      {connection, nonce} = connection_fixture(scope, adapter, :pending)
-
-      assert Adapters.serving_choices(scope) == []
-      assert {:error, changeset} = Nodes.update_node(scope, pool, %{served_by_id: adapter.id})
-      assert "is invalid" in errors_on(changeset).served_by_id
-
-      assert_raise Postgrex.Error, ~r/nodes_served_by_is_an_adapter/, fn ->
-        Repo.update_all(from(n in Node, where: n.id == ^pool.id), set: [served_by_id: adapter.id])
-      end
-
-      # Connected by the linked return, before any listing.
-      {:ok, :linked} =
-        Connections.complete_return(
-          scope,
-          connection.public_id,
-          return_token(pair.secret, connection.public_id, nonce),
-          nonce
-        )
-
-      assert %Connection{state: :connected, listed_at: nil} = reload(connection)
-
-      assert [%Node{id: id}] = Adapters.serving_choices(scope)
-      assert id == adapter.id
-
-      assert {:ok, %Node{served_by_id: served_by}} =
-               Nodes.update_node(scope, pool, %{"served_by_id" => adapter.id})
-
-      assert served_by == adapter.id
-      assert [%Node{}] = Adapters.served_pools(scope, adapter)
-
-      assert {:ok, %Node{served_by_id: ^served_by}} =
-               Nodes.create_node(scope, %{kind: "pool", name: "spot", served_by_id: adapter.id})
-
-      # Another organisation, not connected, names none.
-      %{scope: other} = sign_up_fixture()
-      assert Adapters.serving_choices(other) == []
-      their_pool = pool_fixture(other)
-      assert {:error, _} = Nodes.update_node(other, their_pool, %{served_by_id: adapter.id})
     end
   end
 
@@ -1412,7 +1336,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
   end
 
   describe "where the person is not shown the feature" do
-    test "nothing is started, taken back, read or offered", %{
+    test "nothing is started, taken back or read", %{
       scope: scope,
       adapter: adapter,
       pair: pair
@@ -1432,7 +1356,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert reload(connection) == connection
       assert Connections.locate(scope, connection.public_id) == :error
       assert Connections.live_by_adapter(Access.reload(scope)) == %{}
-      assert Adapters.serving_choices(Access.reload(scope)) == []
     end
   end
 

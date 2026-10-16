@@ -433,7 +433,6 @@ defmodule ApiaryWeb.RefusalsRows do
         :"run_configuration.fetch",
         :"source_item.post",
         :"work_item.read_changes",
-        :"dispatch.claim",
         :"adapter.disconnect"
       ],
       token: [:"invitation.accept"],

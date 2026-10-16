@@ -63,7 +63,7 @@ defmodule Apiary.Nodes do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Adapters, Audit, Features, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes.{Instance, Node, Throttle}
@@ -280,8 +280,7 @@ defmodule Apiary.Nodes do
              |> Node.create_changeset(attrs)
              |> made_here()
              |> put_first_choice(attrs, workspace)
-             |> validate_gateway(scope)
-             |> validate_served_by(asking),
+             |> validate_gateway(scope),
            {:ok, changeset} <- limit_set(asking, changeset, workspace),
            {:ok, node} <- Repo.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
@@ -314,7 +313,6 @@ defmodule Apiary.Nodes do
   defp created(%Node{} = node) do
     fields = [:name, :kind, :public_id, :instance_limit, :gateway_choice]
     fields = if node.gateway_choice == :named, do: fields ++ [:gateway_id], else: fields
-    fields = if node.served_by_id, do: fields ++ [:served_by_id], else: fields
     Map.take(node, fields)
   end
 
@@ -414,39 +412,6 @@ defmodule Apiary.Nodes do
 
   defp validate_gateway(changeset, _scope), do: changeset
 
-  # A pool's adapter, when it is set, changed or cleared, and only where the person is
-  # shown the feature it belongs to. Where they are not, a clear is dropped from the
-  # changeset, so the pool keeps its adapter while the rest of the edit saves, and an
-  # adapter named is refused, as before. One named must be one of the adapters that may
-  # serve the scope's workspace (`Apiary.Adapters.serving_choices/1`). The database
-  # refuses an adapter the pool's organisation is not connected to all the same.
-  defp validate_served_by(%Ecto.Changeset{valid?: valid?} = changeset, scope) do
-    shown? = Features.visible?(scope, :factory)
-
-    case Ecto.Changeset.fetch_change(changeset, :served_by_id) do
-      :error ->
-        changeset
-
-      {:ok, nil} ->
-        if shown?,
-          do: changeset,
-          else: Ecto.Changeset.delete_change(changeset, :served_by_id)
-
-      {:ok, _id} when not valid? ->
-        changeset
-
-      {:ok, id} ->
-        if shown? and Enum.any?(Adapters.serving_choices(scope), &(&1.id == id)),
-          do: changeset,
-          else:
-            Ecto.Changeset.add_error(
-              changeset,
-              :served_by_id,
-              dgettext_noop("errors", "is invalid")
-            )
-    end
-  end
-
   @doc """
   update_node/3 renames `node`, and changes a gateway's `url` or a node's or a pool's
   choice of gateway (`node.edit`), and a pool's instance limit (`node.set_limit`), from
@@ -467,15 +432,11 @@ defmodule Apiary.Nodes do
       with :ok <- Gateways.lock_for(scope, node),
            asking = Access.reload(scope),
            :ok <- may_change(asking, node),
-           # The connection to the adapter the edit names before the pool's row, in the
-           # lock order of `Apiary.Adapters`.
-           :ok <- Adapters.lock_serving(scope, attrs),
            %Node{} = current <- lock_node(scope, node) || {:error, :not_found},
            changeset =
              current
              |> Node.changeset(attrs)
-             |> validate_gateway(scope)
-             |> validate_served_by(asking),
+             |> validate_gateway(scope),
            :ok <- check_each(asking, edit_actions(changeset), current),
            {:ok, updated} <- Repo.update(changeset),
            :ok <- record_edit(scope, current, updated) do
@@ -708,8 +669,7 @@ defmodule Apiary.Nodes do
            :url,
            :gateway_choice,
            :gateway_id,
-           :default_gateway,
-           :served_by_id
+           :default_gateway
          ]) do
       nil ->
         :ok

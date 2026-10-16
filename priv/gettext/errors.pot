@@ -215,12 +215,6 @@ msgstr ""
 msgid "is already the slug of another organisation"
 msgstr ""
 
-## From Ecto.Changeset.put_change/3
-#: lib/apiary/nodes.ex
-#, elixir-autogen
-msgid "is invalid"
-msgstr ""
-
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "is locked above, so it cannot be set here"

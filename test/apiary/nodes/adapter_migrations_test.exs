@@ -1,6 +1,6 @@
 defmodule Apiary.Nodes.AdapterMigrationsTest do
-  # The three migrations that make an adapter a kind of node of the instance, let a pool
-  # name one, and validate their checks, run down and up again inside the test's
+  # The three migrations that make an adapter a kind of node of the instance, connect an
+  # organisation to one, and validate their checks, run down and up again inside the test's
   # transaction, which rolls it all back. They change `nodes`, `access_keys` and
   # `access_key_enrolment_codes` under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -13,8 +13,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
 
   @kind {20_261_015_131_000, Apiary.Repo.Migrations.MakeAnAdapterAKindOfNode,
          "make_an_adapter_a_kind_of_node"}
-  @served {20_261_015_131_100, Apiary.Repo.Migrations.LetAPoolBeServedByAnAdapter,
-           "let_a_pool_be_served_by_an_adapter"}
+  @connect {20_261_015_131_100, Apiary.Repo.Migrations.ConnectAnOrganisationToAnAdapter,
+            "connect_an_organisation_to_an_adapter"}
   @validate {20_261_015_131_200, Apiary.Repo.Migrations.ValidateAnAdapterSChecks,
              "validate_an_adapter_s_checks"}
 
@@ -24,7 +24,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
              access_key_enrolment_codes_node_fkey)
 
   setup_all do
-    for {version, migration, name} <- [@kind, @served, @validate],
+    for {version, migration, name} <- [@kind, @connect, @validate],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -44,13 +44,13 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
 
   defp down_all! do
     down!(@validate)
-    down!(@served)
+    down!(@connect)
     down!(@kind)
   end
 
   defp up_all! do
     up!(@kind)
-    up!(@served)
+    up!(@connect)
     up!(@validate)
   end
 
@@ -124,14 +124,14 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     adapter_fixture()
 
     down!(@validate)
-    down!(@served)
+    down!(@connect)
 
     assert_raise Postgrex.Error, ~r/nodes holds adapters/, fn ->
       Ecto.Migrator.down(Repo, elem(@kind, 0), elem(@kind, 1), @options)
     end
 
     assert nullable()["nodes"]
-    up!(@served)
+    up!(@connect)
     up!(@validate)
   end
 end
