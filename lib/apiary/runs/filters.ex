@@ -663,14 +663,20 @@ defmodule Apiary.Runs.Filters do
 
   ## Ranges
 
-  @doc "The instants the range covers, `{from, to}`, either of them nil for open."
-  @spec bounds(t(), DateTime.t()) :: {DateTime.t() | nil, DateTime.t() | nil}
-  def bounds(%__MODULE__{from: from, to: to}, _now) when not is_nil(from) or not is_nil(to) do
-    {from && DateTime.new!(from, ~T[00:00:00.000000], "Etc/UTC"),
-     to && DateTime.new!(Date.add(to, 1), ~T[00:00:00.000000], "Etc/UTC")}
+  @doc """
+  The instants the range covers, `{from, to}`, either of them nil for open. The From and
+  To dates are days in `zone`, the reader's (`Apiary.Accounts.Scope.time_zone/1`): from
+  the start of the From day to the end of the To day there (`Apiary.Days`).
+  """
+  @spec bounds(t(), DateTime.t(), String.t()) :: {DateTime.t() | nil, DateTime.t() | nil}
+  def bounds(filters, now, zone \\ "Etc/UTC")
+
+  def bounds(%__MODULE__{from: from, to: to}, _now, zone)
+      when not is_nil(from) or not is_nil(to) do
+    {from && Apiary.Days.start_of(from, zone), to && Apiary.Days.start_of(Date.add(to, 1), zone)}
   end
 
-  def bounds(%__MODULE__{since: since}, now) do
+  def bounds(%__MODULE__{since: since}, now, _zone) do
     seconds =
       case since do
         "1h" -> 3600
@@ -687,7 +693,7 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The range in words, for the Started section: "last 7 days", "14 Sept 2026 to 20 Sept
-  2026"; nil for every run. The dates are UTC days (`bounds/2`).
+  2026"; nil for every run. The dates are the reader's days (`bounds/3`).
   """
   def range_label(%__MODULE__{from: nil, to: nil, since: since}) do
     case since do

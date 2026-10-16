@@ -190,10 +190,14 @@ Unicode CLDR (`ApiaryWeb.Cldr`), and every view has it as `Format`:
 - **Stored in UTC, shown in the reader's zone.** The shift happens in `ApiaryWeb.Format`
   and nowhere else. "Today" and "Yesterday" are the reader's days. A list grouped by day
   groups by the reader's day, `DateTime.to_date(Format.local(at))`.
-- **Counted days are still UTC days.** What the database counts per day, the overview's
-  chart and its fourteen days, and the From and To dates of the runs and connections
-  filters, are UTC days. A page that shows such days says so, as the overview's note does,
-  until they move to the reader's zone.
+- **Counted days are the reader's days too.** What the database counts per day, the
+  overview's chart and its fourteen days, a target's fourteen days, and the From and To
+  dates of the runs and connections filters, are days in the reader's zone, from midnight
+  to midnight there. The contexts take the zone from the scope
+  (`Apiary.Accounts.Scope.time_zone/1`) and cut the days with `Apiary.Days`, in Elixir and
+  in SQL (`Apiary.Days.sql_day/2`); a day's link (`from=` and `to=` the same date) lands on
+  the runs that day counts. A `Date` is a calendar day, and `Format.date/1` shows it as it
+  is.
 - **A sentence binds a formatted value**, as it binds any phrase:
   `gettext("Revoked %{date}", date: Format.date(key.revoked_at))`,
   `gettext("Yesterday, %{time}", time: Format.time(at))`.

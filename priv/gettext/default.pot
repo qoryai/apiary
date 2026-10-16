@@ -148,7 +148,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{date} pruned %{runs}; not finished, the next night goes on."
+msgid "%{date} pruned %{runs}; not finished, the next daily job goes on."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -2265,7 +2265,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "A change applies at the next daily job, at 02:40 UTC. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgid "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -4462,11 +4462,6 @@ msgstr ""
 msgid "Day"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Days in UTC."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Decided by %{name}'s policy"
@@ -5313,7 +5308,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Every day, %{from}–%{to} UTC"
+msgid "Every day, %{from}–%{to} %{zone}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -7102,16 +7097,6 @@ msgstr ""
 msgid "Last hour"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Last night pruned %{runs}."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Last night pruned %{runs}; not finished, the next night goes on."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -8213,7 +8198,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "No prune has run yet. The job runs nightly."
+msgid "No prune has run yet. The job runs every day."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -8849,11 +8834,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing was old enough to prune last night."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -12122,12 +12102,12 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The page of the first run started on or after that day, in UTC."
+msgid "The page of the first run started on or after that day."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The page of the first run started on or before that day, in UTC."
+msgid "The page of the first run started on or before that day."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

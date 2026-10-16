@@ -152,7 +152,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
             <:note>
               {pgettext(
                 "plain",
-                "A change applies at the next daily job, at 02:40 UTC. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+                "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back.",
+                time: audit_sweep_time()
               )}
             </:note>
           </.part_form>
@@ -545,10 +546,27 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
   defp pruning(false), do: gettext("Off")
 
-  defp pruning(hour),
-    do: gettext("Every day, %{from}–%{to} UTC", from: clock(hour), to: clock(rem(hour + 1, 24)))
+  # The hour as times of today, in the reader's zone, with the zone's mark at its start.
+  defp pruning(hour) do
+    from = today_at(Time.new!(hour, 0, 0))
 
-  defp clock(hour), do: String.pad_leading(Integer.to_string(hour), 2, "0") <> ":00"
+    gettext("Every day, %{from}–%{to} %{zone}",
+      from: Format.time(from),
+      to: Format.time(DateTime.add(from, 1, :hour)),
+      zone: Format.zone(from)
+    )
+  end
+
+  # When the audit trail's daily job runs (`Apiary.Audit.PruneSweep`), in the reader's
+  # zone with its mark: "04:40 CEST".
+  defp audit_sweep_time,
+    do:
+      Apiary.Audit.PruneSweep
+      |> Apiary.Application.daily_at()
+      |> today_at()
+      |> Format.time(zone: true)
+
+  defp today_at(%Time{} = time), do: DateTime.new!(Date.utc_today(), time, "Etc/UTC")
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 end

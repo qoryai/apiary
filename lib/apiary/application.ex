@@ -19,6 +19,18 @@ defmodule Apiary.Application do
     {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge}
   ]
 
+  @doc """
+  The time of day, in UTC, a daily job of the core's crontab runs at: `~T[02:40:00]` for
+  `Apiary.Audit.PruneSweep`. Read from the crontab, so a page that names the time says
+  the one Oban runs the job at.
+  """
+  @spec daily_at(module) :: Time.t()
+  def daily_at(worker) do
+    {expression, ^worker} = List.keyfind!(@crontab, worker, 1)
+    [minute, hour, "*", "*", "*"] = String.split(expression)
+    Time.new!(String.to_integer(hour), String.to_integer(minute), 0)
+  end
+
   @impl true
   def start(_type, _args) do
     # First, so a wrong QORY_FEATURES, or an edition's features that do not add up, stops

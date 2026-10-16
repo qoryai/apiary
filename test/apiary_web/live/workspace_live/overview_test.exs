@@ -906,7 +906,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#overview-strip-denied .q-sum-v") == "1"
       assert text(view, "#overview-strip-denied") =~ "to 1 destination"
       refute has_element?(view, "#activity-cost")
-      assert text(view, "#activity-foot") =~ "Days in UTC."
+      refute text(view, "#activity-foot") =~ "UTC"
 
       costed = run_fixture(scope)
       event_fixture(costed, 2, "run.started", started_data(), time: DateTime.utc_now())
@@ -1116,6 +1116,38 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#overview-targets-none", "in the last 14 days")
     end
 
+    test "the chart's days are the reader's: today is their day, not UTC's", %{
+      conn: conn,
+      scope: scope,
+      user: user
+    } do
+      # A zone whose day is not UTC's now, its midnight at least an hour away: fourteen hours
+      # ahead from 11:00 UTC, twelve behind before it.
+      zone = if DateTime.utc_now().hour >= 11, do: "Etc/GMT-14", else: "Etc/GMT+12"
+      {:ok, _} = Apiary.Accounts.update_user_preferences(user, %{time_zone: zone})
+      today = Apiary.Days.today(zone)
+      refute today == Date.utc_today()
+
+      started_run(scope, shop(), ago: 0)
+      view = open(conn, scope)
+
+      days =
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#days a[data-day]")
+        |> LazyHTML.attribute("data-day")
+
+      assert length(days) == 14
+      assert List.last(days) == Date.to_iso8601(today)
+      assert hd(days) == today |> Date.add(-13) |> Date.to_iso8601()
+
+      assert has_element?(
+               view,
+               "#days a[data-day='#{today}'][aria-label^='Today: 1 run']"
+             )
+    end
+
     # The caption for denied destinations not counted is in `OverviewBudgetTest`, not
     # async: the cap it lowers is the node's, and here it would lower it for every test
     # running beside this one.
@@ -1214,14 +1246,46 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#overview-retention-setting") == "30 days of log output"
 
       assert text(view, "#overview-retention-last") ==
-               "No prune has run yet. The job runs nightly."
+               "No prune has run yet. The job runs every day."
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       %{runs_pruned: 0} = Retention.prune_workspace(workspace)
+      today = Format.short_date(Date.utc_today())
       view = open(conn, scope)
 
-      assert text(view, "#overview-retention-last") =~
-               "Nothing was old enough to prune last night."
+      assert text(view, "#overview-retention-last") ==
+               "Nothing was old enough to prune on #{today}."
+    end
+
+    test "retention: the last prune says its date, a prune of yesterday too", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      {:ok, _} = Retention.update_retention(scope, %{"log_retention_days" => "30"})
+      yesterday = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      prune = fn complete ->
+        Repo.insert!(%Apiary.Retention.RetentionRun{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          trigger: "schedule",
+          started_at: DateTime.add(yesterday, -60, :second),
+          finished_at: yesterday,
+          runs_pruned: 3,
+          complete: complete
+        })
+      end
+
+      date = Format.short_date(yesterday)
+      run = prune.(true)
+      assert text(open(conn, scope), "#overview-retention-last") == "#{date} pruned 3 runs."
+
+      Repo.delete!(run)
+      prune.(false)
+
+      assert text(open(conn, scope), "#overview-retention-last") ==
+               "#{date} pruned 3 runs; not finished, the next daily job goes on."
     end
   end
 

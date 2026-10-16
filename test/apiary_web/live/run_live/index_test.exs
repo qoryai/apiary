@@ -1899,6 +1899,17 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(open(conn, runs(scope, "?sort=longest")), "#runs-jump")
     end
 
+    test "Jump to date says which run it lands on, on the reader's day",
+         %{conn: conn, scope: scope} do
+      run_fixture(scope)
+
+      assert text(open(conn, scope), "#runs-jump .q-jumpdate-note") ==
+               "The page of the first run started on or before that day."
+
+      assert text(open(conn, runs(scope, "?sort=oldest")), "#runs-jump .q-jumpdate-note") ==
+               "The page of the first run started on or after that day."
+    end
+
     test "Jump to date answers a day it cannot go to under the field, and stays open",
          %{conn: conn, scope: scope} do
       run_fixture(scope)

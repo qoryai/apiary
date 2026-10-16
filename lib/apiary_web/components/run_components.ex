@@ -114,6 +114,7 @@ defmodule ApiaryWeb.RunComponents do
           <time
             :if={@quiet_since}
             data-tick="seconds"
+            data-time-zone={Format.time_zone()}
             data-since={iso(@quiet_since)}
             data-now={iso(DateTime.utc_now())}
             aria-live="off"
@@ -465,6 +466,7 @@ defmodule ApiaryWeb.RunComponents do
         id={@id}
         phx-hook={@id && "Ticker"}
         data-tick="duration"
+        data-time-zone={Format.time_zone()}
         data-base={@elapsed_seconds}
         data-since={iso(@elapsed_at)}
         data-now={iso(@now)}
@@ -544,6 +546,7 @@ defmodule ApiaryWeb.RunComponents do
       phx-hook={@id && "Ticker"}
       datetime={iso(@at)}
       data-tick={@format}
+      data-time-zone={Format.time_zone()}
       data-now={iso(DateTime.utc_now())}
       title={Format.datetime(@at, seconds: true, zone: true)}
       aria-live="off"
@@ -863,6 +866,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <time
       data-tick="seconds"
+      data-time-zone={Format.time_zone()}
       data-since={iso(@at)}
       data-now={iso(@now)}
       aria-live="off"
@@ -1738,6 +1742,7 @@ defmodule ApiaryWeb.RunComponents do
           <time
             :if={@quiet_since}
             data-tick="seconds"
+            data-time-zone={Format.time_zone()}
             data-since={iso(@quiet_since)}
             data-now={iso(DateTime.utc_now())}
             aria-live="off"
