@@ -34,8 +34,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterRedirectController
   ]
 
-  # The modules of the feature's pages of the Instance level not built yet, which answer an
-  # instance admin as a path that does not exist.
+  # The modules of the feature's pages of the Instance level not built yet, which answer
+  # an instance admin as a path that does not exist.
   @unbuilt []
 
   # The modules of the feature's pages of the Instance level.

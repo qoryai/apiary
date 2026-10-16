@@ -1,21 +1,20 @@
 defmodule ApiaryWeb.InstanceLive.Adapter do
   # An adapter's page in Instance settings › Adapters, for the instance's admins: its
   # Overview tab (`:overview`), its state and the install address it declared; and its
-  # Settings tab, renaming it and removing it (`:settings`, `:rename`, `:remove`). Its Access key tab is
-  # `ApiaryWeb.AdapterLive.AccessKey`. A page of the Instance level, with no organisation:
-  # its gate asks the instance whether the feature is on (`use ApiaryWeb.Features,
-  # instance: :factory`), and anyone but an instance admin is answered as a path that does
-  # not exist, as on the Instance's other pages.
+  # Settings tab, renaming it and removing it (`:settings`, `:rename`, `:remove`). Its
+  # Access key tab is `ApiaryWeb.AdapterLive.AccessKey`. A page of the Instance level,
+  # with no organisation: its gate asks the instance whether the feature is on (`use
+  # ApiaryWeb.Features, instance: :factory`), and anyone but an instance admin is answered
+  # as a path that does not exist, as on the Instance's other pages.
   #
   # The Overview says the adapter's state, No key yet, with the way to connect it, or,
   # once it holds a key, when it was last seen or Never seen
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
   # (`Apiary.Adapters.subscribe_keys/2`); and the install address the adapter declared,
-  # or that it declared none yet. The
-  # Settings tab holds its name, with Rename…, and the danger zone, whose Remove adapter…
-  # opens the Remove page. Rename and Remove are pages; each act is asked again by the
-  # context function, and a removed adapter's pages leave for the list. A rename is said
-  # on the Settings tab, a removal on the list.
+  # or that it declared none yet. The Settings tab holds its name, with Rename…, and the
+  # danger zone, whose Remove adapter… opens the Remove page. Rename and Remove are pages;
+  # each act is asked again by the context function, and a removed adapter's pages leave
+  # for the list. A rename is said on the Settings tab, a removal on the list.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -112,7 +111,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         {:noreply,
          socket
          |> assign(:adapter, %{renamed | created_by: adapter.created_by})
-         |> put_flash(:info, gettext("%{name} is renamed.", name: renamed.name))
+         |> renamed_flash(adapter, renamed)
          |> push_patch(to: paths.settings)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -155,6 +154,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
   defp refused(socket, _forbidden),
     do: push_navigate(socket, to: socket.assigns.paths.overview)
+
+  # A rename is said only when the name changed.
+  defp renamed_flash(socket, %{name: name}, %{name: name}), do: socket
+
+  defp renamed_flash(socket, _adapter, renamed),
+    do: put_flash(socket, :info, gettext("%{name} is renamed.", name: renamed.name))
 
   ## Render
 
@@ -331,6 +336,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           <span aria-hidden="true">·</span>
           {gettext("organisations can install it once it is connected and running")}
         </span>
+        <span :if={!@connected} class="text-faint" aria-hidden="true">·</span>
         <.link
           :if={!@connected}
           id="adapter-connect-it"

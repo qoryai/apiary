@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.AdapterComponents do
   # What the pages of Instance settings › Adapters share, for the instance's admins: the
-  # paths of an adapter's page (`paths/1`), the browser title of each page (`page_title/2`),
-  # the line under the adapter's name, who added it and when, and its public id
-  # (`adapter_meta/1`), its tabs, Overview, Access key and Settings (`adapter_tabs/1`), and
-  # its state in words (`adapter_seen/1`). An adapter's page is two LiveViews,
-  # `ApiaryWeb.InstanceLive.Adapter` (Overview and Settings) and
+  # paths of an adapter's page (`paths/1`), the browser title of each page
+  # (`page_title/2`), the line under the adapter's name, who added it and when, and its
+  # public id (`adapter_meta/1`), its tabs, Overview, Access key and Settings
+  # (`adapter_tabs/1`), and its state in words (`adapter_seen/1`). An adapter's page is
+  # two LiveViews, `ApiaryWeb.InstanceLive.Adapter` (Overview and Settings) and
   # `ApiaryWeb.AdapterLive.AccessKey` (Access key), so both draw the same header and tabs
   # from here.
   #

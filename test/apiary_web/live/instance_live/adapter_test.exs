@@ -1,10 +1,9 @@
 defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # An adapter's page in Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapter`),
   # for an instance admin: its Overview, the state, when it was last seen, read again as a
-  # key arrives, and the install
-  # address; its Settings tab, with its name and the danger zone; the Rename page, with its
-  # errors; the Remove page, which revokes its keys and ends every connection to it; and a
-  # path that does not exist for anyone else.
+  # key arrives, and the install address; its Settings tab, with its name and the danger
+  # zone; the Rename page, with its errors; the Remove page, which revokes its keys and
+  # ends every connection to it; and a path that does not exist for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -59,7 +58,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
              )
 
       assert words(lv, "#adapter-overview") ==
-               "State No key yet · organisations can install it once it is connected and running Connect it Install address Not declared yet"
+               "State No key yet · organisations can install it once it is connected and running · Connect it Install address Not declared yet"
 
       assert has_element?(lv, ~s{#adapter-connect-it[href="#{page_path(adapter, "/keys")}"]})
     end
@@ -146,6 +145,20 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, "#adapter-name-value") == "Platform tracker"
       assert has_element?(lv, "h1", "Platform tracker")
       assert Adapters.get_adapter(admin, adapter.public_id).name == "Platform tracker"
+    end
+
+    test "the name saved unchanged closes the form and says nothing", %{
+      conn: conn,
+      admin: admin,
+      adapter: adapter
+    } do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
+
+      lv |> form("#adapter-rename-form", adapter: %{name: "Shop tracker"}) |> render_submit()
+      assert_patch(lv, page_path(adapter, "/settings"))
+      refute render(lv) =~ "is renamed."
+      assert words(lv, "#adapter-name-value") == "Shop tracker"
+      assert Adapters.get_adapter(admin, adapter.public_id).name == "Shop tracker"
     end
 
     test "a name taken by another adapter, or too long, is said under the field",

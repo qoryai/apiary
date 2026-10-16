@@ -3,8 +3,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
   # (`ApiaryWeb.AdapterLive.AccessKey`), for an instance admin: Connect it with no key
   # yet, Get the command and the command's page, which holds the code once, hears the key
   # arrive and says when the code no longer works; a waiting code's cancelling and a key's
-  # revocation, each confirmed in place; the limit of two keys; a stale sign-in; and a path
-  # that does not exist for anyone else, Add for every entry included.
+  # revocation, each confirmed in place; the limit of two keys; a stale sign-in; and a
+  # path that does not exist for anyone else, Add for every entry included.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -312,6 +312,13 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       # Asked anyway, no code is made.
       render_click(lv, "create_code", %{})
       assert Adapters.list_codes(admin, adapter) == []
+
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert_patch(lv, tab_path(adapter))
+      assert words(lv, "#flash-group") =~ "tracker-01 is revoked."
+
+      assert [%AccessKey{label: "tracker-02", revoked_at: nil}] =
+               Enum.filter(Adapters.list_keys(admin, adapter), &is_nil(&1.revoked_at))
     end
 
     test "a revoked key's path says so, and an unknown one leads back to the tab",

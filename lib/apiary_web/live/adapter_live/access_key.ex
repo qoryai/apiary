@@ -22,10 +22,10 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # starts without it.
   #
   # A key's revocation and a waiting code's cancelling are confirmed in place, each at its
-  # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`,
-  # by the code's row id, never the code. Revoking the
-  # adapter's last active key says that no tickets arrive for any organisation until it
-  # has a new one. Every act is asked again by the context function.
+  # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`, by
+  # the code's row id, never the code. Revoking the adapter's last active key says that no
+  # tickets arrive for any organisation until it has a new one. Every act is asked again
+  # by the context function.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -516,7 +516,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             </.inline_confirm>
           </SettingsComponents.part>
 
-          <%!-- A key in use: the same way, for moving to a new key, but at the limit. --%>
+          <%!-- A key in use: the same way, for moving to a new key, but at the
+               limit. --%>
           <SettingsComponents.part :if={@active > 0} id="adapter-add" title={gettext("Add a key")}>
             <p id="adapter-add-intro" class="text-[13px]/5 text-muted">
               {gettext(
