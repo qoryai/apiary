@@ -92,9 +92,15 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :organisation_id, :workspace_id, :user_id]
 
-# Parameters the Phoenix logger masks in development request logs, and in the lines a
-# LiveView logs for its mount and its events. Production logs never include parameters
-# at all. A parameter whose name holds one of these words is logged as [FILTERED]:
+# Parameters the Phoenix logger masks in development request logs; the lines a LiveView
+# logs for its mount, its parameters and its events write every value as [FILTERED]
+# (`ApiaryWeb.LiveViewLog`). In production (`config/prod.exs`) the Phoenix logger is
+# off, so it writes no request, socket or channel line; the request log writes a
+# request's path, a link's token in it replaced (`ApiaryWeb.RequestLog`), and no other
+# parameter; and the level, `:info`, leaves out a LiveView's lines. A request's crash
+# report can hold parameters, with a secret and a token scrubbed
+# (`Apiary.SecretLogFilter`). A parameter whose name holds one of these words is logged
+# as [FILTERED]:
 # `value` keeps a stored secret's value out of the log, and a variable's; `code` the
 # set-up link's code (`Apiary.Setup`); `token` a link's token, which the path of an
 # invitation, a log-in link, an email change, a password link and Instance settings ›

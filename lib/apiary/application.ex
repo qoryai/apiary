@@ -42,6 +42,9 @@ defmodule Apiary.Application do
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
+    # A page's debug lines (its mount, its parameters and its events) with every value
+    # `[FILTERED]`, in place of LiveView's.
+    ApiaryWeb.LiveViewLog.attach()
     attach_request_log()
     # A job's failure, cancellation or discard is one line, with its organisation and
     # workspace ids and without its arguments.

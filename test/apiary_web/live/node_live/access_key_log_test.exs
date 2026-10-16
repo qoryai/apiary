@@ -18,9 +18,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     previous = Logger.level()
     Logger.configure(level: :debug)
     Logger.put_module_level(Phoenix.LiveView.Logger, :debug)
+    Logger.put_module_level(ApiaryWeb.LiveViewLog, :debug)
 
     on_exit(fn ->
       Logger.delete_module_level(Phoenix.LiveView.Logger)
+      Logger.delete_module_level(ApiaryWeb.LiveViewLog)
       Logger.configure(level: previous)
     end)
   end
