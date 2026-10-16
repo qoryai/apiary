@@ -142,6 +142,19 @@ defmodule ApiaryWeb.LogMetadataTest do
       assert_receive {:stream_async, ^ids}
     end
 
+    test "runs its async work in the reader's time zone and language" do
+      ApiaryWeb.Format.put_time_zone("Asia/Kolkata")
+      Gettext.put_locale("de")
+
+      work =
+        ApiaryWeb.Async.carry(
+          fn -> {ApiaryWeb.Format.time_zone(), Gettext.get_locale()} end,
+          :start_async
+        )
+
+      assert work |> Task.async() |> Task.await() == {"Asia/Kolkata", "de"}
+    end
+
     test "is warned of a socket its async work captured, as LiveView warns" do
       warning =
         ExUnit.CaptureIO.capture_io(:stderr, fn ->

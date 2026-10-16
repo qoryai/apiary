@@ -1340,7 +1340,7 @@ defmodule ApiaryWeb.RunPageComponents do
               )
             }
             phx-no-format
-          ><:part name={:time}><time data-tick="seconds" data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0))}</time></:part></.rich>
+          ><:part name={:time}><time data-tick="seconds" data-time-zone={Format.time_zone()} data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0))}</time></:part></.rich>
         </span>
       </span>
     </p>

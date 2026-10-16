@@ -198,14 +198,19 @@ defmodule ApiaryWeb.Format do
     if this_year?(at, now), do: short_date(at), else: date(at)
   end
 
-  @doc "A time of day: \"14:03\", or \"14:03:11\" with `seconds: true`."
+  @doc """
+  A time of day: "14:03", or "14:03:11" with `seconds: true`. With `zone: true` it names
+  the time zone: "14:03 UTC".
+  """
   @spec time(moment() | nil, keyword()) :: String.t() | nil
   def time(at, opts \\ [])
   def time(nil, _opts), do: nil
 
   def time(at, opts) do
     style = if opts[:seconds], do: :medium, else: :short
-    Cldr.Time.to_string!(local(at), backend: Backend, locale: locale(), format: style)
+    local = local(at)
+    text = Cldr.Time.to_string!(local, backend: Backend, locale: locale(), format: style)
+    if opts[:zone], do: with_zone(text, local), else: text
   end
 
   @doc """
@@ -344,8 +349,17 @@ defmodule ApiaryWeb.Format do
   midnight in the reader's time zone.
   """
   @spec days_back(moment(), moment()) :: integer()
-  def days_back(at, now),
-    do: Date.diff(DateTime.to_date(local(now)), DateTime.to_date(local(at)))
+  def days_back(at, now) do
+    zone = time_zone()
+    Date.diff(Apiary.Days.day_of(now, zone), Apiary.Days.day_of(at, zone))
+  end
+
+  @doc """
+  The reader's day at `now`: the day a page calls today. A `Date`, which `date/1` and
+  `short_date/1` show as it is (`Apiary.Days.today/2`).
+  """
+  @spec today(DateTime.t()) :: Date.t()
+  def today(now \\ DateTime.utc_now()), do: Apiary.Days.today(time_zone(), now)
 
   ## Helpers
 

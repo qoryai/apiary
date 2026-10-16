@@ -312,4 +312,25 @@ defmodule Apiary.TargetsTest do
       refute Targets.shared?(scope, "acme/api")
     end
   end
+
+  describe "days in the reader's zone" do
+    test "the index's and a target's fourteen days end with the reader's today" do
+      %{scope: scope} = sign_up_fixture()
+      # @now is 14:00 UTC on 20 September 2026, 02:00 on the 21st in Auckland (NZST, UTC+12),
+      # whose day turned at 12:00 UTC: one run before it, one after.
+      started_run(scope, repo("github.example", "acme/shop"), now: @now, ago: 2 * 3600 + 60)
+      started_run(scope, repo("github.example", "acme/shop"), now: @now, ago: 2 * 3600 - 60)
+      shop = target(scope, "github.example", "acme/shop")
+
+      days = fn scope ->
+        %{rows: [row]} = Targets.page(scope, %{}, @now)
+        summary = Targets.summary(scope, shop, @now)
+        assert row.days == summary.days
+        Enum.take(row.days, -2)
+      end
+
+      assert days.(scope) == [0, 2]
+      assert days.(%{scope | user: %{scope.user | time_zone: "Pacific/Auckland"}}) == [1, 1]
+    end
+  end
 end

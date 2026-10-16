@@ -54,6 +54,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
+  alias Apiary.Days
   alias Apiary.Gateways
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -199,7 +200,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                     )
                   } />
                 </span>
-                {gettext("Days in UTC.")}
                 <span class="q-live-on">{gettext("Updated as batches land.")}</span>
                 <span class="q-live-off">{gettext("Reconnecting.")}</span>
                 <span :if={@connections == :unavailable} id="activity-uncounted">
@@ -233,7 +233,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             policy_failed?={!!@failed[:policy]}
             workspace={@current_scope.workspace}
             retention={@retention}
-            now={@now}
           />
         </div>
       </div>
@@ -273,7 +272,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         live?: posted?,
         landed: nil,
         now: now,
-        today: DateTime.to_date(now),
+        today: Format.today(now),
         onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
         command: nil,
         table?: false,
@@ -288,7 +287,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         target_count: 0,
         shared: MapSet.new(),
         retention: nil,
-        days: empty_days(DateTime.to_date(now)),
+        days: empty_days(Format.today(now)),
         facts: nil,
         drift: %{},
         connections: nil,
@@ -337,9 +336,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp read(socket, :activity) do
     %{current_scope: scope, today: today, security?: security?} = socket.assigns
+    zone = Format.time_zone()
 
     start_async(socket, :activity, fn ->
-      read_activity(scope, today, DateTime.utc_now(), security?)
+      read_activity(scope, today, zone, DateTime.utc_now(), security?)
     end)
   end
 
@@ -378,8 +378,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   ## The reads. Each runs in its own task; nothing here touches the socket.
 
-  defp read_activity(scope, today, now, security?) do
-    from = start_of(Date.add(today, -(@thresholds.chart_days - 1)))
+  defp read_activity(scope, today, zone, now, security?) do
+    from = Days.start_of(Date.add(today, -(@thresholds.chart_days - 1)), zone)
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
@@ -393,11 +393,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # Today's column and the alive runs again: what a run change can move.
-  defp read_today(scope, today, now, security?) do
+  defp read_today(scope, today, zone, now, security?) do
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
-      today: Runs.day_facts(scope, start_of(today)),
+      today: Runs.day_facts(scope, Days.start_of(today, zone)),
       alive_runs: alive_runs,
       drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
@@ -824,21 +824,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp drop_command(socket), do: socket
 
   # The coalesced re-read: today's column, the alive rows, the last runs, the lost runs. At
-  # midnight UTC the window has moved: the fourteen days are read anew.
+  # the reader's midnight the window has moved: the fourteen days are read anew.
   defp refresh_runs(%{assigns: %{live?: true}} = socket) do
     %{current_scope: scope, today: today, security?: security?} = socket.assigns
     now = DateTime.utc_now()
+    zone = Format.time_zone()
+    local_today = Days.today(zone, now)
 
-    if Date.compare(DateTime.to_date(now), today) == :gt do
-      new_today = DateTime.to_date(now)
-
+    if Date.compare(local_today, today) == :gt do
       socket
-      |> assign(today: new_today)
+      |> assign(today: local_today)
       |> then(
-        &start_async(&1, :activity, fn -> read_activity(scope, new_today, now, security?) end)
+        &start_async(&1, :activity, fn ->
+          read_activity(scope, local_today, zone, now, security?)
+        end)
       )
     else
-      start_async(socket, :today, fn -> read_today(scope, today, now, security?) end)
+      start_async(socket, :today, fn -> read_today(scope, today, zone, now, security?) end)
     end
   end
 
@@ -1686,8 +1688,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp add_cost(nil, cost), do: cost
   defp add_cost(sum, nil), do: sum
   defp add_cost(sum, cost), do: Decimal.add(sum, cost)
-
-  defp start_of(%Date{} = day), do: DateTime.new!(day, ~T[00:00:00.000000], "Etc/UTC")
 
   ## Small things
 

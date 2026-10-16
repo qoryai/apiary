@@ -29,10 +29,12 @@ const loadWords = () => {
 
 // Dates and times are written with `Intl.DateTimeFormat` in the locale and the time zone
 // the server formats in (`ApiaryWeb.Format`, on the body as `data-locale` and
-// `data-time-zone`), never the browser's own: a page shows one zone, the reader's.
-const reader = () => ({
+// `data-time-zone`), never the browser's locale or zone: a page shows one zone, the
+// reader's. An element the server rendered names the zone it rendered in
+// (`data-time-zone`), which is taken first; the body's is for an element without it.
+const reader = el => ({
   locale: document.body.dataset.locale || "en-GB",
-  timeZone: document.body.dataset.timeZone || "UTC",
+  timeZone: (el && el.dataset.timeZone) || document.body.dataset.timeZone || "UTC",
 })
 
 const formats = new Map()
@@ -56,20 +58,20 @@ const fill = (template, bindings) =>
 const pad = n => String(n).padStart(2, "0")
 // A 24-hour clock writes the hour in two digits, as CLDR's patterns do ("09:30"); a
 // 12-hour one does not ("9:30 AM").
-const HM = () => {
-  const cycle = formatter({hour: "numeric"}).resolvedOptions().hourCycle
+const HM = r => {
+  const cycle = formatter({hour: "numeric"}, r).resolvedOptions().hourCycle
   return {hour: cycle === "h23" || cycle === "h24" ? "2-digit" : "numeric", minute: "2-digit"}
 }
-const HMS = () => ({...HM(), second: "2-digit"})
-const hm = d => formatter(HM()).format(d)
-const hms = d => formatter(HMS()).format(d)
+const HMS = r => ({...HM(r), second: "2-digit"})
+const hm = (d, r) => formatter(HM(r), r).format(d)
+const hms = (d, r) => formatter(HMS(r), r).format(d)
 
 // The reader's calendar day of a moment, as a day number, and its year.
-const calendar = d => {
+const calendar = (d, r) => {
   const parts = {}
   for (const {type, value} of formatter({year: "numeric", month: "numeric", day: "numeric"}, {
     locale: "en-GB",
-    timeZone: reader().timeZone,
+    timeZone: r.timeZone,
   }).formatToParts(d))
     parts[type] = Number(value)
   return {day: Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000, year: parts.year}
@@ -84,28 +86,28 @@ export const formatSeconds = (s, w = loadWords()) => {
 }
 
 // As `ApiaryWeb.Format.relative/2`.
-export const formatRelative = (at, now, w = loadWords()) => {
+export const formatRelative = (at, now, w = loadWords(), r = reader()) => {
   if (!w) return null
   const seconds = Math.max(0, Math.floor((now - at) / 1000))
-  const [then, today] = [calendar(at), calendar(now)]
+  const [then, today] = [calendar(at, r), calendar(now, r)]
   const days = today.day - then.day
   if (seconds < 5) return w.justNow
   if (seconds < 60) return w.secondsAgo[seconds]
   if (seconds < 3600) return w.minutesAgo[Math.floor(seconds / 60)]
   // A missing count keeps the server's text rather than blanking it.
   if (days <= 0) return w.hoursAgo[Math.floor(seconds / 3600)] ?? null
-  if (days === 1) return fill(w.yesterday, {time: hm(at)})
+  if (days === 1) return fill(w.yesterday, {time: hm(at, r)})
   const year = then.year === today.year ? {} : {year: "numeric"}
-  return formatter({day: "numeric", month: "short", ...year, ...HM()}).format(at)
+  return formatter({day: "numeric", month: "short", ...year, ...HM(r)}, r).format(at)
 }
 
 // As `ApiaryWeb.Format.clock/2`.
-export const formatClock = (at, now, w = loadWords()) => {
+export const formatClock = (at, now, w = loadWords(), r = reader()) => {
   if (!w) return null
-  const days = calendar(now).day - calendar(at).day
-  if (days === 0) return fill(w.today, {time: hms(at)})
-  if (days === 1) return fill(w.yesterday, {time: hms(at)})
-  return formatter({day: "numeric", month: "short", year: "numeric", ...HMS()}).format(at)
+  const days = calendar(now, r).day - calendar(at, r).day
+  if (days === 0) return fill(w.today, {time: hms(at, r)})
+  if (days === 1) return fill(w.yesterday, {time: hms(at, r)})
+  return formatter({day: "numeric", month: "short", year: "numeric", ...HMS(r)}, r).format(at)
 }
 
 // The browser's clock is never trusted. Every ticking element carries the server's now at
@@ -138,8 +140,8 @@ const render = el => {
   // time it said so (`data-since`).
   const base = kind === "duration" ? Number(el.dataset.base) || 0 : 0
   const text =
-    kind === "relative" ? formatRelative(at, now)
-    : kind === "clock" ? formatClock(at, now)
+    kind === "relative" ? formatRelative(at, now, loadWords(), reader(el))
+    : kind === "clock" ? formatClock(at, now, loadWords(), reader(el))
     : formatSeconds(base + Math.max(0, (now - at) / 1000))
   if (text !== null && el.textContent !== text) el.textContent = text
 }

@@ -3,9 +3,10 @@ defmodule ApiaryWeb.Async do
   `assign_async/3,4`, `start_async/3,4` and `stream_async/3,4` as a page of the console
   calls them: those of `Phoenix.LiveView`, with the function run under the organisation and
   workspace ids the LiveView's process carries in its Logger metadata
-  (`Apiary.LogMetadata.carry/1`). The task LiveView starts has no metadata,
-  so without this a line logged by a page's async read would say no
-  organisation.
+  (`Apiary.LogMetadata.carry/1`), and in the reader's language and time zone
+  (`ApiaryWeb.Lingo`). The task LiveView starts has none of them, so without this a line
+  logged by a page's async read would say no organisation, and a time the read formats
+  would be in UTC and in English.
 
   `use ApiaryWeb.Async` imports these in place of `Phoenix.LiveView`'s: `use ApiaryWeb,
   :live_view` and `:live_component` say it, and so does a module that imports
@@ -67,12 +68,20 @@ defmodule ApiaryWeb.Async do
   end
 
   @doc false
-  # `Apiary.LogMetadata.carry/1`, after LiveView's runtime check of what the function
+  # `Apiary.LogMetadata.carry/1`, with the caller's Gettext locale and time zone
+  # (`ApiaryWeb.Format.time_zone/0`), after LiveView's runtime check of what the function
   # captured, when that check is on.
   @spec carry((-> result), atom()) :: (-> result) when result: term()
   def carry(func, op) when is_function(func, 0) do
     check_captures(func, op)
-    Apiary.LogMetadata.carry(func)
+    locale = Gettext.get_locale()
+    zone = ApiaryWeb.Format.time_zone()
+
+    Apiary.LogMetadata.carry(fn ->
+      Gettext.put_locale(locale)
+      ApiaryWeb.Format.put_time_zone(zone)
+      func.()
+    end)
   end
 
   if Application.compile_env(:phoenix_live_view, :enable_expensive_runtime_checks, false) do
