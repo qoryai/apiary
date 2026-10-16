@@ -6,9 +6,7 @@ defmodule Apiary.Adapters.NotBuiltTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Adapters
   alias Apiary.Adapters.Collections
-  alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
 
@@ -16,16 +14,7 @@ defmodule Apiary.Adapters.NotBuiltTest do
     %{scope: scope} = sign_up_fixture()
     %{adapter: adapter} = connectable_adapter_fixture(%{name: "Acme tracker"})
     {connection, _nonce} = connection_fixture(scope, adapter, :listed)
-    %{scope: scope, admin: instance_admin_scope(), adapter: adapter, connection: connection}
-  end
-
-  test "how often an adapter pulls: read and set", %{admin: admin, adapter: adapter} do
-    assert Adapters.sync_settings(admin, adapter) == {:error, :not_built}
-
-    assert Adapters.update_sync_interval(admin, adapter, %{sync_interval: 3600}) ==
-             {:error, :not_built}
-
-    assert %Node{sync_interval: nil} = Repo.get!(Node, adapter.id)
+    %{scope: scope, connection: connection}
   end
 
   test "the collections a connection reaches: the list, the unassigned count, assigning, the listing's topic",

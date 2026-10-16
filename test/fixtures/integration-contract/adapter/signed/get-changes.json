@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "target": "/v1/work-items/changes?after=c_00000040",
+  "headers": {
+    "X-Qory-Access-Key-Id": "ak_f1xt0re000000000",
+    "X-Qory-Instance-Id": "i_gYKDhIWGh4iJiouMjY6PkA",
+    "X-Qory-Contract-Version": "1",
+    "X-Qory-Timestamp": "1792065600",
+    "X-Qory-Signature-Ed25519": "MwZ-cfLela3HNe1g-z27Jcx6PV6vvl6_WQKvWw6wTC3tlKgJna1Jg44atPV_gqZKsCJHQKCCbetWIGVwKC7MCw"
+  },
+  "body": null,
+  "note": "The change feed's read after the cursor c_00000040, signed at 1792065600 (2026-10-15T12:00:00Z) under the access key of keys.json: the request string is qory-request-ed25519-v1, the access key id, the instance id, GET, the target and the timestamp, joined by line feeds with none after the last."
+}

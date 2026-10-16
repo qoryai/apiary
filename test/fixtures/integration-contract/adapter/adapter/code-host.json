@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connect_url": "https://code-adapter.example.com/connect",
+  "sync": {
+    "default_interval": 3600,
+    "minimum_interval": 60,
+    "sends_changes": true
+  }
+}

@@ -23,6 +23,7 @@ defmodule Apiary.AdaptersTest do
 
   # The actions of an adapter's key at the server contract, which its role alone takes.
   @adapter_key_actions [
+    :"adapter.declare",
     :"source_item.post",
     :"work_item.read_changes",
     :"adapter.disconnect"
@@ -673,7 +674,12 @@ defmodule Apiary.AdaptersTest do
       assert Access.roles().adapter_key == @adapter_key_actions
       refute :"dispatch.claim" in Access.roles().adapter_key
 
-      for action <- [:"adapter.create", :"adapter.edit", :"adapter.delete"] do
+      for action <- [
+            :"adapter.create",
+            :"adapter.edit",
+            :"adapter.set_interval",
+            :"adapter.delete"
+          ] do
         assert Access.action(action).roles == []
       end
     end

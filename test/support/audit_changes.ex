@@ -100,8 +100,10 @@ defmodule Apiary.AuditChanges do
       :"connection.write",
       :"adapter.create",
       :"adapter.edit",
+      :"adapter.set_interval",
       :"adapter.delete",
-      :"adapter.connect"
+      :"adapter.connect",
+      :"adapter.declare"
     ] ++ @stand_ins
   end
 
@@ -404,6 +406,15 @@ defmodule Apiary.AuditChanges do
     %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
   end
 
+  # An instance admin sets how often a declared adapter pulls.
+  def make(:"adapter.set_interval", _ctx) do
+    adapter = declared_adapter()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, _} = Adapters.update_sync_interval(admin, adapter, %{sync_interval: 3600})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
   def make(:"adapter.delete", _ctx) do
     adapter = adapter_fixture()
     admin = instance_admin_scope()
@@ -425,6 +436,23 @@ defmodule Apiary.AuditChanges do
       subject: {"organisation", scope.organisation.id},
       secret: pass,
       before: before
+    }
+  end
+
+  # An adapter's key declares, in the trail of the instance's organisation, and the
+  # entry's actor is the key.
+  def make(:"adapter.declare", _ctx) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    key_scope = Scope.for_access_key(key)
+    before = entries()
+    {:ok, _declared} = Adapters.declare(key_scope, declaration())
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id}
     }
   end
 
@@ -635,10 +663,38 @@ defmodule Apiary.AuditChanges do
     {before, Deletion.purge_workspace(%{scope | workspace: workspace})}
   end
 
+  # A node's key declares no adapter.
+  def refuse(:"adapter.declare", %{scope: scope}) do
+    connectable_adapter_fixture()
+    %{access_key: key} = node_key_fixture(scope, node_fixture(scope))
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    before = entries()
+    {before, Adapters.declare(Scope.for_access_key(key), declaration())}
+  end
+
   # A member where the change is an owner's or an admin's; where every member may make it,
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
+
+  # What an adapter declares as it starts (`Apiary.Adapters.Wire.declaration/1`).
+  defp declaration do
+    %{
+      time: DateTime.utc_now(:second),
+      connect_url: "https://tracker-adapter.acme.example/connect",
+      default_interval: 900,
+      minimum_interval: 300,
+      sends_changes: false
+    }
+  end
+
+  # An adapter that has declared how it pulls.
+  defp declared_adapter do
+    %{access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {:ok, declared} = Adapters.declare(Scope.for_access_key(key), declaration())
+    declared
+  end
 
   defp prepare(:"member.change_level", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"member.remove", %{scope: scope}), do: member_fixture(scope).membership
@@ -665,6 +721,7 @@ defmodule Apiary.AuditChanges do
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
   defp prepare(:"adapter.edit", _ctx), do: adapter_fixture()
+  defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
   defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
   defp prepare(:"adapter.connect", _ctx), do: adapter_fixture()
   defp prepare(:"collection.assign", %{scope: scope}), do: scope.organisation
@@ -774,6 +831,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"adapter.edit", scope, adapter),
     do: Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
+
+  defp attempt(:"adapter.set_interval", scope, adapter),
+    do: Adapters.update_sync_interval(scope, adapter, %{sync_interval: 3600})
 
   defp attempt(:"adapter.delete", scope, adapter), do: Adapters.delete_adapter(scope, adapter)
 
