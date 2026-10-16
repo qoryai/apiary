@@ -268,16 +268,26 @@ defmodule ApiaryWeb.Format do
   @doc """
   A timestamp as people say it, up to seven days back ("2 minutes ago", "Yesterday,
   17:20", "3 days ago"), then its date.
+
+  Options:
+
+    * `case: :inline` is the form for a time that follows other words in a sentence:
+      "just now" and "yesterday, 17:20", in lower case. The other forms are the same in
+      both cases. The default, `case: :start`, is the form that starts a sentence or
+      stands alone.
   """
-  @spec time_ago(moment(), DateTime.t()) :: String.t()
-  def time_ago(at, now \\ DateTime.utc_now()) do
+  @spec time_ago(moment(), DateTime.t(), keyword()) :: String.t()
+  def time_ago(at, now \\ DateTime.utc_now(), opts \\ []) do
     seconds = max(DateTime.diff(now, utc(at), :second), 0)
     days = days_back(at, now)
+    inline? = Keyword.get(opts, :case, :start) == :inline
 
     cond do
+      seconds < 60 and inline? -> gettext("just now")
       seconds < 60 -> gettext("Just now")
       seconds < 3600 -> ago(div(seconds, 60), :minute)
       days <= 0 -> ago(div(seconds, 3600), :hour)
+      days == 1 and inline? -> gettext("yesterday, %{time}", time: time(at))
       days == 1 -> gettext("Yesterday, %{time}", time: time(at))
       days <= 7 -> ago(days, :day)
       true -> date(at)
