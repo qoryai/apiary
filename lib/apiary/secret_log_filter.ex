@@ -100,15 +100,25 @@ defmodule Apiary.SecretLogFilter do
   The state is `[FILTERED]`. The last message, when a client sent it on the socket, keeps
   its topic only when it is the LiveView's, which its join verified, and its event only
   when Phoenix or LiveView names it; its payload, its references, and a topic or an event
-  a client chose, are `[FILTERED]`. Any other last message keeps its atoms, pids, ports,
-  references and functions, and has every other term replaced by `[FILTERED]`. Any other
-  event of such a process has the terms of its `:crash_reason` metadata replaced the same
-  way. OTP's crash report of the process (`{:proc_lib, :crash}`, which Logger drops unless
-  `:handle_sasl_reports` is set) keeps its exception, its stacktrace, its label and its
-  messages the same way, and of its process dictionary the entries that OTP and Logger
-  read. Should such a crash report defeat the filter, its message is `[FILTERED]`. A
-  crash report of any other process keeps its terms, a secret and a token in them
-  replaced as above.
+  a client chose, are `[FILTERED]`. A broadcast keeps its event and a reply its status, and
+  each its topic only when it is the LiveView's verified one (a broadcast's topic may name
+  a session); its payload and its references are `[FILTERED]`. Any other last message
+  keeps its atoms, pids, ports, references and functions, a tuple's elements and an
+  exception taken as above, and has every other term (a number, a binary, a list, a map)
+  replaced by `[FILTERED]`. Any other event of such a process has the terms of its
+  `:crash_reason` metadata replaced the same way.
+
+  OTP's crash report of the process (`{:proc_lib, :crash}`, which Logger drops unless
+  `:handle_sasl_reports` is set) keeps its exception, or its exit's reason, and its
+  stacktraces as above, its label as above, each of its messages as a last message is
+  kept, its pid, name, initial call, ancestors and links, the figures OTP writes of the
+  process (its status, whether it traps exits, the length of its queue, its sizes and its
+  reductions), and of its process dictionary the entries that OTP and Logger read: the
+  initial call, the ancestors, the callers, the label taken as above, Logger's metadata,
+  and whether Logger is on. The dictionary's other entries are left out, and any other
+  entry of the report is `[FILTERED]`. Should such a crash report defeat the filter, its
+  message is `[FILTERED]`. A crash report of any other process keeps its terms, a secret
+  and a token in them replaced as above.
 
   A line of text a client's terms reach is written as `[FILTERED]`, its level and its
   metadata kept, so the `:mfa` still says where it was logged:
@@ -121,7 +131,9 @@ defmodule Apiary.SecretLogFilter do
       navigation's URL, and its handling of a message the LiveView does not handle;
     * a line a LiveView's process, a channel's or the socket's logs at error or above, or
       with a `:crash_reason`, but for a line of the app's code (a module of `Apiary` or
-      `ApiaryWeb`), which writes ids alone.
+      `ApiaryWeb`), which is kept as written. The app's lines at error that such a process
+      can log write ids, a secret value's name, an exception's module, and, for a run
+      configuration the contract refuses, the hosts and paths it holds.
 
   Any other event without a secret is passed on exactly as it came. The filter never
   stops an event and never raises: should a term defeat it, the event is passed on as it
@@ -353,7 +365,7 @@ defmodule Apiary.SecretLogFilter do
 
   # A line of text, or a format and its arguments, that a call of `@client_text_calls`
   # logs, or that a LiveView's process, a channel's or the socket's logs at error or above
-  # or with a crash reason, but for a line of the app's code, which writes ids alone.
+  # or with a crash reason, but for a line of the app's code, which is kept as written.
   defp client_text?(%{msg: msg, meta: meta} = event) do
     text?(msg) and
       (client_text_call?(Map.get(meta, :mfa)) or
@@ -470,8 +482,14 @@ defmodule Apiary.SecretLogFilter do
 
   defp strip_crashed({:process_label, label}, _label), do: {:process_label, strip_label(label)}
 
-  defp strip_crashed({:dictionary, dictionary}, _label) when is_list(dictionary),
-    do: {:dictionary, Enum.filter(dictionary, &match?({key, _} when key in @dictionary_keys, &1))}
+  defp strip_crashed({:dictionary, dictionary}, _label) when is_list(dictionary) do
+    entries =
+      for {key, value} <- dictionary, key in @dictionary_keys do
+        if key == :"$process_label", do: {key, strip_label(value)}, else: {key, value}
+      end
+
+    {:dictionary, entries}
+  end
 
   defp strip_crashed({:current_stacktrace, stack}, _label) when is_list(stack),
     do: {:current_stacktrace, strip_stack(stack)}
@@ -501,8 +519,10 @@ defmodule Apiary.SecretLogFilter do
 
   # A message a client sent on a socket keeps its topic when it is the one the LiveView's
   # join verified, and its event when Phoenix or LiveView names it; its payload and its
-  # references are `[FILTERED]`. A broadcast or a reply, which the server makes, keeps all
-  # but its payload; any other message is redacted.
+  # references are `[FILTERED]`. A broadcast or a reply, which the server makes, keeps its
+  # event and its status, and its topic only when it is the verified one (a broadcast's
+  # topic may name a session); its payload and its references are `[FILTERED]`. Any other
+  # message is redacted.
   defp strip_message(%Phoenix.Socket.Message{} = message, label) do
     %{
       message
@@ -514,8 +534,13 @@ defmodule Apiary.SecretLogFilter do
     }
   end
 
-  defp strip_message(%{__struct__: _, payload: _} = message, _label),
-    do: %{message | payload: @filtered}
+  defp strip_message(%{__struct__: _, payload: _} = message, label) do
+    message
+    |> Map.replace_lazy(:topic, &if(verified_topic?(&1, label), do: &1, else: @filtered))
+    |> Map.replace_lazy(:ref, &redact/1)
+    |> Map.replace_lazy(:join_ref, &redact/1)
+    |> Map.put(:payload, @filtered)
+  end
 
   defp strip_message(message, _label), do: redact(message)
 

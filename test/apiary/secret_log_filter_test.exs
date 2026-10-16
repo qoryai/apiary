@@ -752,6 +752,89 @@ defmodule Apiary.SecretLogFilterTest do
       refute inspect(meta, limit: :infinity, printable_limit: :infinity) =~ @marker
     end
 
+    test "keeps a socket's id out of the label in OTP's crash report's dictionary" do
+      label = {Phoenix.Socket, Phoenix.LiveView.Socket, "users_sessions:" <> @marker}
+
+      crashed = [
+        initial_call: {Bandit.HTTP1.Handler, :init, [:Argument__1]},
+        pid: self(),
+        registered_name: [],
+        process_label: label,
+        error_info: {:error, :badarg, [@call]},
+        ancestors: [],
+        message_queue_len: 0,
+        messages: [],
+        links: [],
+        dictionary: [
+          {:"$process_label", label},
+          {:"$initial_call", {Bandit.HTTP1.Handler, :init, 1}}
+        ],
+        trap_exit: true,
+        status: :running,
+        heap_size: 1,
+        stack_size: 1,
+        reductions: 1
+      ]
+
+      event = %{
+        level: :error,
+        msg: {:report, %{label: {:proc_lib, :crash}, report: [crashed, []]}},
+        meta: %{pid: :c.pid(0, 1, 0), domain: [:otp, :sasl]}
+      }
+
+      %{msg: {:report, %{report: [stripped, []] = data}}} = SecretLogFilter.filter(event, nil)
+
+      assert Keyword.fetch!(stripped, :dictionary) == [
+               {:"$process_label", {Phoenix.Socket, Phoenix.LiveView.Socket, "[FILTERED]"}},
+               {:"$initial_call", {Bandit.HTTP1.Handler, :init, 1}}
+             ]
+
+      {:ok, text, _meta} =
+        Logger.Translator.translate(:debug, :error, :report, {{:proc_lib, :crash}, data})
+
+      assert IO.chardata_to_string(text) =~ "Dictionary:"
+      refute IO.chardata_to_string(text) =~ @marker
+    end
+
+    test "keeps a broadcast's topic, and a reply's references, out of a crash report" do
+      session = "users_sessions:" <> @marker
+      broadcast = %Phoenix.Socket.Broadcast{topic: session, event: "disconnect", payload: %{}}
+
+      reply = %Phoenix.Socket.Reply{
+        topic: "lv:" <> @marker,
+        status: :ok,
+        payload: %{"x" => @marker},
+        ref: @marker,
+        join_ref: @marker
+      }
+
+      verified = %Phoenix.Socket.Broadcast{topic: "lv:phx-1", event: "diff", payload: @marker}
+
+      for {label, message, kept} <- [
+            {{Phoenix.Socket, Phoenix.LiveView.Socket, session}, broadcast,
+             %Phoenix.Socket.Broadcast{
+               topic: "[FILTERED]",
+               event: "disconnect",
+               payload: "[FILTERED]"
+             }},
+            {{Phoenix.Socket, Phoenix.LiveView.Socket, nil}, reply,
+             %Phoenix.Socket.Reply{
+               topic: "[FILTERED]",
+               status: :ok,
+               payload: "[FILTERED]",
+               ref: "[FILTERED]",
+               join_ref: "[FILTERED]"
+             }},
+            {{Phoenix.LiveView, Acme.Page, "lv:phx-1"}, verified,
+             %Phoenix.Socket.Broadcast{topic: "lv:phx-1", event: "diff", payload: "[FILTERED]"}}
+          ] do
+        %{msg: {:report, report}} =
+          SecretLogFilter.filter(terminate_report(label, :killed, message), nil)
+
+        assert report.last_message == kept
+      end
+    end
+
     test "writes [FILTERED] for a crash report that defeats it" do
       crashed = [
         {:process_label, {Phoenix.LiveView, Acme.Page, "lv:phx-1"}},
