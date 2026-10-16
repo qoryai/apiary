@@ -34,11 +34,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
     )
   end
 
-  defp card(key, adapter) do
+  defp card(key, adapter, may \\ @may) do
     assigns = %{
       key: key,
       node: %Node{name: "example-host", kind: if(adapter, do: :adapter, else: :node)},
       scope: %Scope{},
+      paths: @paths,
+      may: may,
       adapter: adapter
     }
 
@@ -47,8 +49,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
       key={@key}
       node={@node}
       scope={@scope}
-      paths={%{access_key: "/acme/shop/nodes/n/access-key"}}
-      may={%{revoke: true, revoke_code: true}}
+      paths={@paths}
+      may={@may}
       intact
       last_run={nil}
       hosts={nil}
@@ -104,19 +106,37 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
       assert has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-revoke")
     end
 
-    test "an adapter's key card leaves off the Secret, Last used, stored secrets and the Forager file" do
+    test "an adapter's key card says where its secret is and when it was last used, without Forager's rows" do
       doc = card(key(allow_secrets: true), true)
 
-      assert labels(doc) == ["Key ID", "Added", "Fingerprint"]
-      refute has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-secret")
-      refute has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-used")
+      assert labels(doc) == ["Key ID", "Added", "Secret", "Last used", "Fingerprint"]
+
+      assert text(LazyHTML.query(doc, "#key-ak_3n7p2x9k4m8q1v5t-secret")) ==
+               "On the machine that ran the command; never shown"
+
+      assert text(LazyHTML.query(doc, "#key-ak_3n7p2x9k4m8q1v5t-used")) ==
+               text(LazyHTML.from_fragment(ApiaryWeb.Format.datetime(@at)))
+
       refute has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-stored-secrets")
       refute has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-forager-file")
       refute text(doc) =~ "Forager"
       refute text(doc) =~ "example-host"
 
-      # Revoke… stays for a key it may revoke, and the row of acts goes with it.
+      never = card(key(last_used_at: nil), true)
+      assert text(LazyHTML.query(never, "#key-ak_3n7p2x9k4m8q1v5t-used")) == "Not yet"
+    end
+
+    test "an adapter's key card has a row of acts only for a key it may revoke" do
+      doc = card(key(), true)
       assert has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-revoke")
+
+      # An active key it may not revoke: no Forager file and no Revoke…, so no empty row.
+      may_not = card(key(), true, %{revoke: false, revoke_code: false})
+      refute has?(may_not, "#key-ak_3n7p2x9k4m8q1v5t-revoke")
+      refute has?(may_not, "p.flex")
+
+      # A node's active key keeps its row for the Forager file all the same.
+      assert has?(card(key(), false, %{revoke: false, revoke_code: false}), "p.flex")
 
       revoked = card(key(revoked_at: @at, revoked_by: nil), true)
       refute has?(revoked, "#key-ak_3n7p2x9k4m8q1v5t-revoke")
@@ -130,12 +150,51 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
       assert text(waiting(false)) =~ "dana@example.com got it at"
     end
 
-    test "an adapter's waiting command leaves off the line that names where it runs" do
+    test "an adapter's waiting command names no place where it runs" do
       doc = waiting(true)
-      refute text(doc) =~ "A command is waiting to be run"
+      assert text(LazyHTML.query(doc, "p:first-child")) == "A command is waiting to be run."
       refute text(doc) =~ "example-host"
       assert text(doc) =~ "dana@example.com got it at"
       assert has?(doc, "[id$=-revoke]")
+    end
+  end
+
+  describe "who draws an adapter's card" do
+    # An adapter's key card shows when its key was last used, which is the instance admins'
+    # alone: only a page of the instance's admins, at `/instance/…`, may draw it. Every
+    # module that calls `key_card/1` or `waiting/1` but the tab that defines them is such a
+    # page.
+    @tab "lib/apiary_web/live/node_live/access_key.ex"
+    @call ~r/AccessKey\.(key_card|waiting)\b|<\.(key_card|waiting)\b|\b(key_card|waiting): 1\b/
+
+    defp live_paths(module) do
+      for %{path: path, metadata: %{phoenix_live_view: {^module, _action, _opts, _extra}}} <-
+            ApiaryWeb.Router.__routes__(),
+          do: path
+    end
+
+    test "every page that draws them, but a node's Access key tab, is an instance admin's" do
+      callers =
+        for path <- Path.wildcard("lib/**/*.{ex,heex}"),
+            path != @tab,
+            source = File.read!(path),
+            source =~ @call,
+            [_, name] <- Regex.scan(~r/^defmodule ([\w.]+) do/m, source),
+            do: Module.concat([name])
+
+      for module <- callers do
+        paths = live_paths(module)
+        assert paths != [], "#{inspect(module)} draws a key card and is not a page"
+
+        assert Enum.all?(paths, &String.starts_with?(&1, "/instance/")),
+               "#{inspect(module)} draws a key card at #{inspect(paths)}"
+      end
+    end
+
+    test "an adapter's Access key tab is served under /instance/ alone" do
+      paths = live_paths(ApiaryWeb.AdapterLive.AccessKey)
+      assert paths != []
+      assert Enum.all?(paths, &String.starts_with?(&1, "/instance/adapters"))
     end
   end
 end

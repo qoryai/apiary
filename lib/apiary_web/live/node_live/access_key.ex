@@ -2158,8 +2158,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   @doc false
   # The commands got and not yet run, neither cancelled nor expired: who got each and
   # when, until when it works, and Cancel the command…, confirmed in place. With
-  # `adapter`, it lists an adapter's codes, for an adapter's Access key tab, without the
-  # line that names where the command runs: the adapter is not the host it runs on.
+  # `adapter`, it lists an adapter's codes, for an adapter's Access key tab, and its first
+  # line names no place where the command runs: the adapter is not the host it runs on.
   def waiting(assigns) do
     ~H"""
     <div
@@ -2167,8 +2167,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       id={"code-#{code.id}"}
       class={["grid gap-2 rounded-field border border-line bg-base-200 p-3 text-[13px]/5", @class]}
     >
-      <.listening :if={!@adapter}>
-        {gettext("A command is waiting to be run on %{name}.", name: @node.name)}
+      <.listening>
+        {if @adapter,
+          do: gettext("A command is waiting to be run."),
+          else: gettext("A command is waiting to be run on %{name}.", name: @node.name)}
       </.listening>
       <p class="text-muted">
         {gettext(
@@ -2393,9 +2395,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts. With `adapter`, it is an
   # adapter's key, for an adapter's Access key tab, without what only Forager's keys have:
-  # the Forager file, the Forager version it was last used with, stored secrets, and where
-  # its secret is, which is on the adapter's host, not on the adapter the card names. It
-  # leaves Last used off as well.
+  # the Forager file, the Forager version it was last used with, and stored secrets; and
+  # its secret is said to be on the machine that ran the command, since the adapter the
+  # card names is not that machine. Its Last used is the key's `last_used_at`, which every
+  # accepted request of an adapter's key records. An adapter's card is for an instance
+  # admin's page alone (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an
+  # adapter's key and when it was used are the instance admins'.
   def key_card(assigns) do
     %{key: key, may: may} = assigns
 
@@ -2454,15 +2459,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
         <dd id={"#{@dom}-added"}>{added_words(@key)}</dd>
-        <dt :if={!@adapter} class="text-faint">{gettext("Secret")}</dt>
-        <dd :if={!@adapter} id={"#{@dom}-secret"}>{secret_words(@key, @node)}</dd>
+        <dt class="text-faint">{gettext("Secret")}</dt>
+        <dd id={"#{@dom}-secret"}>
+          {if @adapter,
+            do: gettext("On the machine that ran the command; never shown"),
+            else: secret_words(@key, @node)}
+        </dd>
         <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
         <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
-        <dt :if={!@adapter} class="text-faint">{gettext("Last used")}</dt>
-        <dd :if={!@adapter} id={"#{@dom}-used"}>
+        <dt class="text-faint">{gettext("Last used")}</dt>
+        <dd id={"#{@dom}-used"}>
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
-            <span :if={@key.last_forager_version} class="text-muted">
+            <span :if={@key.last_forager_version && !@adapter} class="text-muted">
               {gettext("Forager %{version}", version: @key.last_forager_version)}
             </span>
           <% else %>

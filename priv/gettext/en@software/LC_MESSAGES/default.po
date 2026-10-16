@@ -2294,6 +2294,11 @@ msgstr ""
 msgid "A command is waiting to be run on %{name}."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "A command is waiting to be run."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "A connection no rule allows is denied."
@@ -8977,6 +8982,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "On since %{day}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "On the machine that ran the command; never shown"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
