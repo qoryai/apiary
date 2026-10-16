@@ -10,8 +10,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   `POST /.well-known/qory-enrolment`, whatever the
   content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
-  endpoint skips `Plug.Parsers` for such a request. The contract's other signed paths are
-  read the same way. Every other request passes untouched.
+  endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
 
   At most `max_bytes/0` of a delivery are read, 2 MiB, `max_bytes(:registration)` of a
   registration, 64 KiB, `max_bytes(:attach)` of an attach, 64 KiB, `max_bytes(:outcome)`
@@ -31,6 +30,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's limit, 1 MiB, for its signed paths, which this
   # documentation does not name.
   @adapter_max_bytes 1024 * 1024
+  # The integration contract's other signed paths, read the same way.
   @adapter_paths [["v1", "adapter"]]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]

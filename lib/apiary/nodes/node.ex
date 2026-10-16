@@ -240,7 +240,8 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Adapters.declare/2`): its connect address (`connect_url_changeset/2`) and how
   # it pulls changes, `sync_default_interval` and `sync_minimum_interval`, whole seconds
   # from 60 to 86,400, the minimum at most the default, and `sync_sends_changes`. Each is
-  # required. The database holds them to the same (`nodes_sync_check`).
+  # required. The database holds the intervals it has to the same range, and the minimum
+  # to at most the default (`nodes_sync_check`).
   @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
   def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter

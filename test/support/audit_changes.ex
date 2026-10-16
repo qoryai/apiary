@@ -663,8 +663,6 @@ defmodule Apiary.AuditChanges do
     {before, Deletion.purge_workspace(%{scope | workspace: workspace})}
   end
 
-  # A member where the change is an owner's or an admin's; where every member may make it,
-  # a person who was a member when the scope was loaded and is no longer.
   # A node's key declares no adapter.
   def refuse(:"adapter.declare", %{scope: scope}) do
     connectable_adapter_fixture()
@@ -674,6 +672,8 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
   end
 
+  # A member where the change is an owner's or an admin's; where every member may make it,
+  # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
 

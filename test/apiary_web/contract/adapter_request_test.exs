@@ -87,7 +87,7 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
              } = reload(ctx.adapter)
 
       assert %DateTime{} = used_at(ctx.key)
-      assert Adapters.last_seen(ctx.admin, ctx.adapter) == used_at(ctx.key)
+      assert Adapters.last_seen(ctx.admin, ctx.adapter) == {:ok, used_at(ctx.key)}
       assert Enum.map(Feed.entries(ctx.adapter), & &1.kind) == ["sync"]
     end
 
@@ -179,7 +179,7 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
       assert used_at(ctx.key) == nil
     end
 
-    test "a node's key keeps today's recording: its verified POST records no use in the plug",
+    test "a node's key: its verified POST records no use in the plug",
          ctx do
       node = node_fixture(ctx.scope)
       %{access_key: node_key, pair: node_pair} = enrolled_key_fixture(ctx.scope, node)

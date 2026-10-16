@@ -137,7 +137,7 @@ defmodule Apiary.Adapters.SyncTest do
       assert Feed.entries(adapter) == []
     end
 
-    test "the database refuses what the contract refuses, whatever the caller" do
+    test "the changeset refuses what the contract refuses" do
       adapter = %Node{kind: :adapter}
 
       for {attrs, field} <- [
@@ -308,8 +308,8 @@ defmodule Apiary.Adapters.SyncTest do
          %{scope: scope, admin: admin, adapter: adapter, key: key} do
       other = adapter_fixture(name: "Acme chat")
 
-      assert Adapters.last_seen(admin, adapter) == nil
-      assert Adapters.last_seen(admin, [adapter, other]) == %{}
+      assert Adapters.last_seen(admin, adapter) == {:ok, nil}
+      assert Adapters.last_seen(admin, [adapter, other]) == {:ok, %{}}
 
       %{access_key: second} = enrolled_key_fixture(admin, adapter)
       earlier = ~U[2026-10-15 10:00:00.000000Z]
@@ -322,14 +322,15 @@ defmodule Apiary.Adapters.SyncTest do
 
       {:ok, _} = Adapters.revoke_key(admin, Repo.get!(AccessKey, key.id))
 
-      assert Adapters.last_seen(admin, adapter) == later
-      assert Adapters.last_seen(admin, [adapter, other]) == %{adapter.id => later}
+      assert Adapters.last_seen(admin, adapter) == {:ok, later}
+      assert Adapters.last_seen(admin, [adapter, other]) == {:ok, %{adapter.id => later}}
 
-      # Whoever may read the instance's adapters reads it; a member of an organisation where
-      # they are shown, too.
-      assert Adapters.last_seen(scope, adapter) == later
-      assert Adapters.last_seen(%Scope{}, adapter) == nil
-      assert Adapters.last_seen(%Scope{}, [adapter]) == %{}
+      # An instance admin reads it; a member of an organisation where adapters are shown
+      # does not.
+      assert Adapters.last_seen(scope, adapter) == {:error, :forbidden}
+      assert Adapters.last_seen(scope, [adapter]) == {:error, :forbidden}
+      assert Adapters.last_seen(%Scope{}, adapter) == {:error, :forbidden}
+      assert Adapters.last_seen(%Scope{}, [adapter]) == {:error, :forbidden}
     end
   end
 end

@@ -544,29 +544,33 @@ defmodule Apiary.Adapters do
   # revoked ones included (`last_used_at`, which every accepted request of an adapter's key
   # records, `ApiaryWeb.Contract.AdapterRequest`), or nil when none was ever used. Given a
   # list of adapters, a map of each one's id to its time, one query, without the adapters
-  # never seen. To whoever may read the instance's adapters (`readable?/1`); nil, or an
-  # empty map, to anyone else.
-  @spec last_seen(Scope.t(), Node.t()) :: DateTime.t() | nil
-  @spec last_seen(Scope.t(), [Node.t()]) :: %{Ecto.UUID.t() => DateTime.t()}
+  # never seen. To an instance admin (`authorize_instance/2`), `{:ok, time}` or
+  # `{:ok, map}`; `{:error, :forbidden}` for anyone else, `{:error, :not_found}` where the
+  # feature is off.
+  @spec last_seen(Scope.t(), Node.t()) :: {:ok, DateTime.t() | nil} | {:error, Access.reason()}
+  @spec last_seen(Scope.t(), [Node.t()]) ::
+          {:ok, %{Ecto.UUID.t() => DateTime.t()}} | {:error, Access.reason()}
   def last_seen(%Scope{} = scope, %Node{kind: :adapter, id: id} = adapter) do
-    scope |> last_seen([adapter]) |> Map.get(id)
+    with {:ok, seen} <- last_seen(scope, [adapter]), do: {:ok, Map.get(seen, id)}
   end
 
   def last_seen(%Scope{} = scope, adapters) when is_list(adapters) do
-    ids = for %Node{kind: :adapter, id: id} <- adapters, do: id
-
-    if ids != [] and readable?(scope) do
-      from(k in AccessKey,
-        where: k.node_id in ^ids and not is_nil(k.last_used_at),
-        where: is_nil(k.organisation_id) and is_nil(k.workspace_id),
-        group_by: k.node_id,
-        select: {k.node_id, max(k.last_used_at)}
-      )
-      |> Repo.all()
-      |> Map.new()
-    else
-      %{}
+    with :ok <- authorize_instance(scope) do
+      {:ok, last_used(for %Node{kind: :adapter, id: id} <- adapters, do: id)}
     end
+  end
+
+  defp last_used([]), do: %{}
+
+  defp last_used(ids) do
+    from(k in AccessKey,
+      where: k.node_id in ^ids and not is_nil(k.last_used_at),
+      where: is_nil(k.organisation_id) and is_nil(k.workspace_id),
+      group_by: k.node_id,
+      select: {k.node_id, max(k.last_used_at)}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   ## Keys and codes
