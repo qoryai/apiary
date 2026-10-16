@@ -190,12 +190,14 @@ defmodule Apiary.Runs.OverviewTest do
       assert Enum.take(facts.("Pacific/Auckland"), -2) == [1, 1]
 
       auckland = in_zone(scope, "Pacific/Auckland")
-      today = Apiary.Days.today("Pacific/Auckland")
+      # The days run to the clock's today in Auckland, which may turn during the read.
+      before = Apiary.Days.today("Pacific/Auckland")
 
       assert %{rows: [%{runs: 2, days: days}]} =
                Runs.active_targets(auckland, ~D[2026-09-20], 8)
 
-      assert length(days) == Date.diff(today, ~D[2026-09-20]) + 1
+      later = Apiary.Days.today("Pacific/Auckland")
+      assert length(days) in for(t <- [before, later], do: Date.diff(t, ~D[2026-09-20]) + 1)
       assert Enum.take(days, 2) == [1, 1]
     end
   end

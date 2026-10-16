@@ -46,7 +46,7 @@ defmodule Apiary.Retention do
   `(run_id, sequence)`, in a separate short transaction under the run's projection lock: no
   statement scans `events`, and none holds a lock longer than its batch. The runs that are
   due are read through the partial indexes `runs_retention_events_index` and
-  `runs_retention_log_index`, which a pruned run leaves. One run of the job prunes at most
+  `runs_retention_log_index`, which a pruned run leaves. Each daily job prunes at most
   `:max_runs` runs of a workspace (10,000), and the next daily job goes on.
 
   **A node's instances.** Under the same lock, on every workspace whatever its settings,

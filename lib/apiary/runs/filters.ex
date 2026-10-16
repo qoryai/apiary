@@ -669,8 +669,6 @@ defmodule Apiary.Runs.Filters do
   the start of the From day to the end of the To day there (`Apiary.Days`).
   """
   @spec bounds(t(), DateTime.t(), String.t()) :: {DateTime.t() | nil, DateTime.t() | nil}
-  def bounds(filters, now, zone \\ "Etc/UTC")
-
   def bounds(%__MODULE__{from: from, to: to}, _now, zone)
       when not is_nil(from) or not is_nil(to) do
     {from && Apiary.Days.start_of(from, zone), to && Apiary.Days.start_of(Date.add(to, 1), zone)}

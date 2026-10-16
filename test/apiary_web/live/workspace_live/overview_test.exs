@@ -1123,10 +1123,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       # A zone whose day is not UTC's now, its midnight at least an hour away: fourteen hours
       # ahead from 11:00 UTC, twelve behind before it.
-      zone = if DateTime.utc_now().hour >= 11, do: "Etc/GMT-14", else: "Etc/GMT+12"
+      now = DateTime.utc_now()
+      zone = if now.hour >= 11, do: "Etc/GMT-14", else: "Etc/GMT+12"
       {:ok, _} = Apiary.Accounts.update_user_preferences(user, %{time_zone: zone})
-      today = Apiary.Days.today(zone)
-      refute today == Date.utc_today()
+      today = Apiary.Days.today(zone, now)
+      refute today == DateTime.to_date(now)
 
       started_run(scope, shop(), ago: 0)
       view = open(conn, scope)
@@ -1250,11 +1251,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       %{runs_pruned: 0} = Retention.prune_workspace(workspace)
-      today = Format.short_date(Date.utc_today())
+      # The day the prune finished, in the reader's zone (UTC here), whatever the clock says
+      # by the time the page renders.
+      [prune] = Retention.list_retention_runs(scope, 1)
       view = open(conn, scope)
 
       assert text(view, "#overview-retention-last") ==
-               "Nothing was old enough to prune on #{today}."
+               "Nothing was old enough to prune on #{Format.short_date(prune.finished_at)}."
     end
 
     test "retention: the last prune says its date, a prune of yesterday too", %{

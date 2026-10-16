@@ -79,8 +79,8 @@ random part of an hour, and prunes every workspace that has a setting.
 - Every delete is one statement over at most 2,000 rows of one run, found through an index,
   in a separate short transaction. No statement scans `events`, and none holds a lock for longer
   than its batch, so the receiver keeps writing while the job runs.
-- One run of the job prunes at most 10,000 runs of a workspace, oldest first, and the
-  next daily job goes on. The first job after a setting is shortened is the long one.
+- Each daily job prunes at most 10,000 runs of a workspace, oldest first, and the next
+  daily job goes on. The first job after a setting is shortened is the long one.
 - Under the same lock, on every workspace whatever its settings, the job deletes the
   instances of nodes the pages no longer show: a node pool's instances not seen for a
   day, and a node's instances other than its latest not seen for thirty days. Runs keep

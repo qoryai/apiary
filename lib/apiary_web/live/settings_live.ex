@@ -439,7 +439,7 @@ defmodule ApiaryWeb.SettingsLive do
     <SettingsComponents.part id="retention-pruned" title={gettext("Pruned")}>
       <p :if={@retention_runs == []} id="retention-runs-empty" class="text-muted">
         {if retention_set?(@current_scope.workspace),
-          do: gettext("Nothing has been pruned yet. The pruning job runs every night."),
+          do: gettext("Nothing has been pruned yet. The pruning job runs every day."),
           else: gettext("Nothing is pruned: this workspace keeps everything.")}
       </p>
       <ul :if={@retention_runs != []} id="retention-runs" class="q-plain-list">

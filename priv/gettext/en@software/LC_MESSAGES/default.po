@@ -8760,7 +8760,7 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Nothing has been pruned yet. The pruning job runs every night."
+msgid "Nothing has been pruned yet. The pruning job runs every day."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
