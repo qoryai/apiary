@@ -487,7 +487,10 @@ defmodule Apiary.Adapters.Connections do
 
   # The key's role holds `action` on its adapter (`Apiary.Access.check/3`, asked of the
   # adapter as `Apiary.Adapters.for_key/2` asks it), from the key and `action` alone,
-  # before any connection is looked up.
+  # before any connection is looked up. The key's scope carries no organisation here, so
+  # an edition's suspension of an organisation shows only in `in_use/3`, after the
+  # connection is found. Rights therefore stay first: a disconnect, which never asks
+  # `in_use/3`, is not refused for a suspended organisation.
   defp key_may(%Scope{access_key: %AccessKey{node: %Node{} = adapter}} = key_scope, action) do
     case Access.check(key_scope, action, adapter) do
       :ok -> :ok
