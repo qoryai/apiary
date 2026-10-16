@@ -91,13 +91,13 @@ defmodule ApiaryWeb.NodeComponentsTest do
       assert alternate?(parts)
     end
 
-    test "a program's command refuses --replace and --via" do
+    test "a program's command refuses --replace and --via, and takes their absence" do
       for opts <- [
             [replace: true],
-            [replace: false],
             [via: "https://edge.example.com"],
-            [via: nil],
-            [replace: true, via: "https://edge.example.com"]
+            [replace: true, via: "https://edge.example.com"],
+            [replace: false, via: "https://edge.example.com"],
+            [replace: true, via: nil]
           ] do
         assert_raise ArgumentError, fn ->
           NodeComponents.enrol_parts(@server, @adapter_code, [adapter: @program] ++ opts)
@@ -106,6 +106,16 @@ defmodule ApiaryWeb.NodeComponentsTest do
         assert_raise ArgumentError, fn ->
           NodeComponents.enrol_command(@server, @adapter_code, opts ++ [adapter: @program])
         end
+      end
+
+      plain = NodeComponents.enrol_parts(@server, @adapter_code, adapter: @program)
+
+      for opts <- [[replace: false], [via: nil], [replace: false, via: nil]] do
+        assert NodeComponents.enrol_parts(@server, @adapter_code, [adapter: @program] ++ opts) ==
+                 plain
+
+        assert NodeComponents.enrol_command(@server, @adapter_code, opts ++ [adapter: @program]) ==
+                 NodeComponents.enrol_command(@server, @adapter_code, adapter: @program)
       end
     end
 

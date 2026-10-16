@@ -207,8 +207,9 @@ defmodule ApiaryWeb.NodeComponents do
   # not name (`feature_enrol_option`): `program access-key enrol --secret-file FILE`, this
   # server's address and the code, where FILE is the path the person chooses for the
   # adapter's secret, written as the word FILE. The program goes through `shell_word/1` as
-  # the addresses do. It carries no `--replace` and no `--via`: passing either option with
-  # `:adapter`, even `replace: false` or `via: nil`, raises an `ArgumentError`.
+  # the addresses do. It carries no `--replace` and no `--via`: `replace: true` or a `via`
+  # URL with `:adapter` raises an `ArgumentError`, while `replace: false` and `via: nil`,
+  # which ask for neither, change nothing.
   @spec enrol_command(String.t(), String.t(), [enrol_option]) :: String.t()
   def enrol_command(server, code, opts \\ []) when is_binary(server) and is_binary(code) do
     server
@@ -266,8 +267,8 @@ defmodule ApiaryWeb.NodeComponents do
         [{:text, "qory access-key enrol"}] ++ replace ++ via ++ [{:text, server}, {:text, code}]
 
       program when is_binary(program) ->
-        if Keyword.has_key?(opts, :replace) or Keyword.has_key?(opts, :via),
-          do: raise(ArgumentError, "the :adapter command takes neither :replace nor :via")
+        if Keyword.get(opts, :replace, false) or Keyword.get(opts, :via) != nil,
+          do: raise(ArgumentError, "the :adapter command takes neither --replace nor --via")
 
         [
           {:text, shell_word(program)},
