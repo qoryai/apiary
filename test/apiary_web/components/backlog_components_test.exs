@@ -20,6 +20,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
   defp ticket(overrides \\ %{}) do
     Map.merge(
       %{
+        id: "tkt_01",
         ref: "acme/shop#1231",
         number: 1231,
         title: "Discount codes are case-sensitive at checkout",
@@ -42,10 +43,10 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     assigns =
       Keyword.merge(
         [
-          id: "ticket-1231",
+          id: "ticket-tkt_01",
           ticket: ticket,
           integration: "GitHub",
-          patch: "/acme/shop/backlog?ticket=acme%2Fshop%231231",
+          patch: "/acme/shop/backlog?ticket=tkt_01",
           now: @now,
           take_in: "take_in",
           take_in_again: "take_in_again"
@@ -97,7 +98,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     test "an open ticket: its parts, and Take in" do
       html = row(ticket())
 
-      assert attr(html, "li#ticket-1231", "class") == ["q-bl-row"]
+      assert attr(html, "li#ticket-tkt_01", "class") == ["q-bl-row"]
       assert count(html, "[aria-current]") == 0
 
       assert attr(html, ".q-bl-mk", "role") == ["img"]
@@ -106,7 +107,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, ".q-bl-no") == "#1231"
 
       assert text(html, "a.q-bl-t") == "Discount codes are case-sensitive at checkout"
-      assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=acme%2Fshop%231231"]
+      assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=tkt_01"]
       assert attr(html, "a.q-bl-t", "data-phx-link") == ["patch"]
       assert count(html, ".q-bl-w") == 0
 
@@ -125,7 +126,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       refute LazyHTML.text(take) =~ "again"
       assert LazyHTML.attribute(take, "type") == ["button"]
       assert LazyHTML.attribute(take, "phx-click") == ["take_in"]
-      assert LazyHTML.attribute(take, "phx-value-ref") == ["acme/shop#1231"]
+      assert LazyHTML.attribute(take, "phx-value-id") == ["tkt_01"]
+      assert LazyHTML.attribute(take, "phx-value-ref") == []
       assert count(html, ".q-bl-wi") == 0
 
       refute_not_drawn(html)
@@ -134,7 +136,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     test "the open ticket is marked as the current one" do
       html = row(ticket(), selected: true)
       assert attr(html, "a.q-bl-t", "aria-current") == ["true"]
-      assert attr(html, "li#ticket-1231", "aria-current") == []
+      assert attr(html, "li#ticket-tkt_01", "aria-current") == []
       assert count(html, "[aria-current]") == 1
     end
 
@@ -176,7 +178,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert "q-bl-again" in String.split(class)
       assert LazyHTML.attribute(again, "title") == ["Brings back work item #79"]
       assert LazyHTML.attribute(again, "phx-click") == ["take_in_again"]
-      assert LazyHTML.attribute(again, "phx-value-ref") == ["acme/shop#1231"]
+      assert LazyHTML.attribute(again, "phx-value-id") == ["tkt_01"]
+      assert LazyHTML.attribute(again, "phx-value-ref") == []
     end
 
     for state <- [:undone, :closed] do
