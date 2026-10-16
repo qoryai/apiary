@@ -1969,9 +1969,51 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## Events
 
+  # An event the page's controls never send is refused in silence, before any clause
+  # reads it (`sent?/2`): the page stays up, so no crash report prints the event, and a
+  # secret's value in it with the rest of its terms.
   @impl true
+  def handle_event(event, params, socket) do
+    if sent?(event, params), do: handle(event, params, socket), else: {:noreply, socket}
+  end
+
+  # Whether an event and its parameters are what the page's controls send: a form's
+  # fields, under the form's key, each a string; a search's `q`, and the `id` a row's menu
+  # names, strings; a confirmation's button, nothing the page reads. So every clause
+  # below, and all it calls, is given strings, as the forms give them. New secret's values
+  # are a map of rows by index, each a map: a field of a row that is not text is refused
+  # under its field, as `Apiary.Secrets.create_secret/2` casts it.
+  defp sent?(event, %{"q" => q}) when event in ~w(find find_target), do: is_binary(q)
+
+  defp sent?("create_secret", %{"secret" => %{} = fields}),
+    do: strings?(Map.delete(fields, "values")) and rows?(fields["values"])
+
+  defp sent?("update_secret", %{"secret" => fields}), do: strings?(fields)
+
+  defp sent?(event, %{"secret_value" => fields})
+       when event in ~w(add_value set_value rename_value),
+       do: strings?(fields)
+
+  defp sent?(event, %{"variable" => fields})
+       when event in ~w(validate_variable create_variable change_variable),
+       do: strings?(fields)
+
+  defp sent?(event, %{} = params)
+       when event in ~w(lock_variable unlock_variable delete_variable),
+       do: is_binary(Map.get(params, "id", ""))
+
+  defp sent?(event, _params) when event in ~w(delete_value delete_secret), do: true
+  defp sent?(_event, _params), do: false
+
+  defp strings?(%{} = fields), do: Enum.all?(fields, fn {_key, field} -> is_binary(field) end)
+  defp strings?(_fields), do: false
+
+  defp rows?(nil), do: true
+  defp rows?(%{} = rows), do: Enum.all?(rows, fn {_index, row} -> is_map(row) end)
+  defp rows?(_rows), do: false
+
   # The search is the URL's `q`, sent as the reader types.
-  def handle_event("find", %{"q" => q}, socket) do
+  defp handle("find", %{"q" => q}, socket) do
     query = %{socket.assigns.query | q: String.trim(q)}
 
     {:noreply,
@@ -1981,13 +2023,13 @@ defmodule ApiaryWeb.SecretLive.Index do
      )}
   end
 
-  def handle_event("find_target", %{"q" => q}, socket),
+  defp handle("find_target", %{"q" => q}, socket),
     do: {:noreply, assign(socket, :target_q, String.trim(q))}
 
   # One value, or several, each with its value ID: only the fields of the choice taken
   # are read, and a refused save shows the form again, its errors under their fields and
   # every value empty, to write again.
-  def handle_event("create_secret", %{"secret" => params}, socket) when is_map(params) do
+  defp handle("create_secret", %{"secret" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
     kind = if params["values_kind"] == "several", do: "several", else: "one"
 
@@ -2015,12 +2057,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "update_secret",
-        %{"secret" => params},
-        %{assigns: %{act: :edit_secret}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "update_secret",
+         %{"secret" => params},
+         %{assigns: %{act: :edit_secret}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret} = socket.assigns
 
     case Secrets.update_secret(scope, secret, Map.take(params, ~w(name note))) do
@@ -2035,12 +2077,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "add_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :add_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "add_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :add_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret} = socket.assigns
     params = Map.take(params, ~w(value_id value first_value_id))
 
@@ -2063,12 +2105,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "set_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :change_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "set_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :change_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.set_value(scope, secret, value.value_id, params["value"]) do
@@ -2094,12 +2136,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "rename_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :rename_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "rename_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :rename_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.rename_value(scope, secret, value.value_id, params["value_id"]) do
@@ -2122,7 +2164,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
+  defp handle("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.delete_value(scope, secret, value.value_id) do
@@ -2141,7 +2183,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_secret", _params, %{assigns: %{act: :delete_secret}} = socket) do
+  defp handle("delete_secret", _params, %{assigns: %{act: :delete_secret}} = socket) do
     %{current_scope: scope, secret: secret} = socket.assigns
 
     case Secrets.delete_secret(scope, secret) do
@@ -2153,7 +2195,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("validate_variable", %{"variable" => params}, socket) when is_map(params) do
+  defp handle("validate_variable", %{"variable" => params}, socket) when is_map(params) do
     changeset =
       %Variable{}
       |> Variables.change_variable(params)
@@ -2164,7 +2206,7 @@ defmodule ApiaryWeb.SecretLive.Index do
      assign(socket, form: to_form(changeset, as: "variable"), warning: warning(params["name"]))}
   end
 
-  def handle_event("create_variable", %{"variable" => params}, socket) when is_map(params) do
+  defp handle("create_variable", %{"variable" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
 
     case Variables.create_variable(scope, :workspace, Map.take(params, ~w(name value locked))) do
@@ -2180,12 +2222,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "change_variable",
-        %{"variable" => params},
-        %{assigns: %{act: :change_variable}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "change_variable",
+         %{"variable" => params},
+         %{assigns: %{act: :change_variable}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, variable: variable} = socket.assigns
     asked_at = DateTime.utc_now()
 
@@ -2203,32 +2245,32 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The confirmation on a row acts on the variable its path named; the context asks again
   # whether the reader still may. A row's menu names its own variable (below).
-  def handle_event(event, params, %{assigns: %{act: act}} = socket)
-      when {event, act} in [
-             {"lock_variable", :lock_variable},
-             {"unlock_variable", :unlock_variable},
-             {"delete_variable", :delete_variable}
-           ] and not is_map_key(params, "id"),
-      do: {:noreply, change_variable(socket, event, socket.assigns.variable)}
+  defp handle(event, params, %{assigns: %{act: act}} = socket)
+       when {event, act} in [
+              {"lock_variable", :lock_variable},
+              {"unlock_variable", :unlock_variable},
+              {"delete_variable", :delete_variable}
+            ] and not is_map_key(params, "id"),
+       do: {:noreply, change_variable(socket, event, socket.assigns.variable)}
 
   # Lock and Unlock act at once from the row's menu, which names the variable.
-  def handle_event(event, %{"id" => id}, socket)
-      when event in ~w(lock_variable unlock_variable) do
+  defp handle(event, %{"id" => id}, socket)
+       when event in ~w(lock_variable unlock_variable) do
     {:noreply, with_variable(socket, id, :edit, &change_variable(&1, event, &2))}
   end
 
   # A change without its page or its confirmation open: a second click of a button whose
   # confirmation has gone, or an event the page offers no control for. One who may change the view is shown the
   # list again; one who may not is refused, as a path the page offers no button for is.
-  def handle_event(event, _params, socket)
-      when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
+  defp handle(event, _params, socket)
+       when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
     if socket.assigns.may_write,
       do: {:noreply, reload(socket)},
       else: {:noreply, refused(socket, :"secret.write")}
   end
 
-  def handle_event(event, _params, socket)
-      when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
+  defp handle(event, _params, socket)
+       when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
     if socket.assigns.may_edit,
       do: {:noreply, reload(socket)},
       else: {:noreply, refused(socket, :"variable.edit")}
