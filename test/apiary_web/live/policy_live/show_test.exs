@@ -1717,6 +1717,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#ver-1[href='#{older}']")
       refute has_element?(view, "#ver-1[aria-current]")
 
+      # Who made each version, cut to the list, with the whole of it as its title.
+      who = scope.user.email |> String.split("@") |> hd()
+      assert has_element?(view, "#ver-2 small[title='#{who}']", who)
+
       # On the version in force's own page, its entry is the version shown, not the page.
       view = open(conn, scope, "/policy/versions/2")
       assert has_element?(view, "#ver-2[href='#{document}'][aria-current=true]")
