@@ -428,7 +428,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/targets"}>
         {gettext("Targets")}
       </:crumb>
-      <:crumb>{@chosen_path}</:crumb>
+      <:crumb title={@chosen_path}>{@chosen_path}</:crumb>
 
       <.page_header id="target-choose" title={@chosen_path}>
         <:description>

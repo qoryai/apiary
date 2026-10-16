@@ -53,7 +53,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
+      <:crumb navigate={Common.connection_path(@current_scope, @connection)} title={elem(@names, 0)}>
         {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Add workspace")}</:crumb>
@@ -138,7 +138,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
+      <:crumb navigate={Common.connection_path(@current_scope, @connection)} title={elem(@names, 0)}>
         {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Change version")}</:crumb>
@@ -201,7 +201,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb patch={@tab != :overview && Common.connection_path(@current_scope, @connection)}>
+      <:crumb
+        patch={@tab != :overview && Common.connection_path(@current_scope, @connection)}
+        title={elem(@names, 0)}
+      >
         {elem(@names, 0)}
       </:crumb>
 

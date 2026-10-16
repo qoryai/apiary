@@ -50,6 +50,10 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
              {"Claude Code", nil}
            ]
 
+    # The name, as the page, is whole in its title; fixed words carry none.
+    assert has_element?(lv, "#breadcrumb [aria-current=page] .truncate[title='Claude Code']")
+    refute has_element?(lv, "#breadcrumb .truncate[title='Integrations']")
+
     for rest <- ["/targets", "/settings", "/delete"] do
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, rest))
 
@@ -58,6 +62,9 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                {"Integrations", integrations},
                {"Claude Code", ipath(scope, runtime)}
              ]
+
+      # As a link back, the name is whole in its title too.
+      assert has_element?(lv, "#breadcrumb a .truncate[title='Claude Code']", "Claude Code")
 
       # A tab of the same page: the way back is a patch, as the tabs are.
       assert has_element?(

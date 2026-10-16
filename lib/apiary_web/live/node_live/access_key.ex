@@ -1309,7 +1309,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
 
@@ -1448,10 +1448,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb :if={@live_action == :generate}>{gettext("Generate a key")}</:crumb>
-      <:crumb :if={@live_action == :generated}>{@key.label}</:crumb>
+      <:crumb :if={@live_action == :generated} title={@key.label}>{@key.label}</:crumb>
 
       <section
         id="key-generate"
@@ -1723,9 +1723,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
-      <:crumb>{@key.label}</:crumb>
+      <:crumb title={@key.label}>{@key.label}</:crumb>
 
       <section
         id="key-forager-file"
@@ -1858,7 +1858,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
 
       <NodeComponents.node_header node={@node} activity={@activity} />
       <NodeComponents.node_tabs node={@node} paths={@paths} current={:access_key} view={:access_key} />

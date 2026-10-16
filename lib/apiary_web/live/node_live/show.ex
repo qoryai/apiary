@@ -595,7 +595,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@live_action != :overview && @paths.overview}>
+      <:crumb navigate={@live_action != :overview && @paths.overview} title={@node.name}>
         {@node.name}
       </:crumb>
 

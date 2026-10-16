@@ -34,6 +34,18 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-made", scope.user.email)
       assert has_element?(lv, "#breadcrumb", "Nodes")
 
+      # The node's name, cut where the segment is short, is whole in its title; the fixed
+      # words before it carry none.
+      titled =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#breadcrumb .q-trail-link .truncate[title]")
+        |> LazyHTML.attribute("title")
+
+      assert titled == ["build-01"]
+      refute has_element?(lv, "#breadcrumb .truncate[title='Nodes']")
+
       assert has_element?(lv, ~s{nav#node-tabs[aria-label="Node"]})
       assert has_element?(lv, ~s{#node-tabs-overview[aria-current="page"]}, "Overview")
 

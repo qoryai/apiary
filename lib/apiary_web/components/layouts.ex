@@ -604,6 +604,10 @@ defmodule ApiaryWeb.Layouts do
     attr :patch, :string,
       doc:
         "where the segment leads within the page's LiveView, as its tabs do; in place of `navigate`"
+
+    attr :title, :string,
+      doc:
+        "the whole of a name the segment shows, as its title where the segment is cut; none for fixed words"
   end
 
   slot :inner_block, required: true
@@ -1277,14 +1281,16 @@ defmodule ApiaryWeb.Layouts do
         patch={crumb[:patch]}
         class="q-trail-link"
       >
-        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate">{render_slot(crumb)}</span>
+        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate" title={crumb[:title]}>{render_slot(
+          crumb
+        )}</span>
       </.link>
       <span
         :if={!link?(crumb)}
         class="q-trail-link q-trail-page"
         aria-current={i == length(@crumb) - 1 && "page"}
       >
-        <span class="truncate">{render_slot(crumb)}</span>
+        <span class="truncate" title={crumb[:title]}>{render_slot(crumb)}</span>
       </span>
     </li>
     """
