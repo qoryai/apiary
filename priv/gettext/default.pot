@@ -2817,8 +2817,14 @@ msgstr ""
 msgid "Activity pruned"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapters.ex
+#, elixir-autogen, elixir-format
+msgid "Adapter"
+msgstr ""
+
 #: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "Adapters"
 msgstr ""
@@ -8000,6 +8006,11 @@ msgstr ""
 msgid "No"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapters.ex
+#, elixir-autogen, elixir-format
+msgid "No adapter yet"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "No changes yet"
@@ -11316,6 +11327,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/live/instance_live/adapters.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -11750,6 +11762,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The adapter signs every request with its key. Qory Apiary keeps only the public half."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapters.ex
+#, elixir-autogen, elixir-format
+msgid "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex
