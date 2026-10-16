@@ -456,6 +456,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           id="adapter-interval-form"
           phx-submit="save_interval"
           class="q-form max-w-[26.25rem]"
+          novalidate
         >
           <.input
             field={@interval_form[:sync_interval]}
