@@ -464,6 +464,36 @@ defmodule Apiary.MailSettingsTest do
       refute_received {:sent, _email, _config}
     end
 
+    test "a refused save's changeset and the settings shown hold nothing of the saved password",
+         %{scope: scope} do
+      save!(scope)
+      ciphertext = row().smtp_password_ciphertext
+      assert is_binary(ciphertext)
+
+      # Refused by the changeset, with a password given; and by the password kept, none given.
+      for attrs <- [
+            %{@attrs | "smtp_relay" => "smtp example com"},
+            %{@attrs | "smtp_password" => "", "smtp_port" => "2525"}
+          ] do
+        assert {:error, changeset} = Mail.save_settings(scope, attrs, &url/1)
+        assert changeset.data.smtp_password_ciphertext == nil
+        refute Map.has_key?(changeset.changes, :smtp_password_ciphertext)
+        assert :binary.match(:erlang.term_to_binary(changeset), ciphertext) == :nomatch
+      end
+
+      assert %{settings: settings, state: :pending, password_saved: true} = Mail.shown()
+      assert settings.smtp_password_ciphertext == nil
+      assert {settings.smtp_relay, settings.smtp_username} == {"smtp.example.com", "qory"}
+      assert :binary.match(:erlang.term_to_binary(Mail.shown()), ciphertext) == :nomatch
+
+      # The row keeps it, and the sender reads it from there.
+      assert row().smtp_password_ciphertext == ciphertext
+      assert Password.decrypt(Mail.settings()) == {:ok, @password}
+
+      unreadable!()
+      assert %{state: :unreadable, password_saved: false} = Mail.shown()
+    end
+
     test "saved, and the test link not sent: the settings are kept, and say so", %{scope: scope} do
       put_env(Mail, smtp_adapter: Refusing)
 
