@@ -134,6 +134,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     test "the open ticket is marked as the current one" do
       html = row(ticket(), selected: true)
       assert attr(html, "a.q-bl-t", "aria-current") == ["true"]
+      assert attr(html, "li#ticket-1231", "aria-current") == []
       assert count(html, "[aria-current]") == 1
     end
 
