@@ -352,6 +352,8 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       # Where a rule is written breaks between its words; the paths and the use do not.
       assert rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-use") =~ "white-space: nowrap;"
       refute rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-src,\n  .q-pr td.q-pr-use") =~ "nowrap"
+      # Stated, as every table cell is nowrap otherwise.
+      assert rule.(".q-pr td.q-pr-src") =~ "white-space: normal;"
     end
 
     test "Source shows from 600 px of the table, its head and its cells alike" do

@@ -8664,6 +8664,9 @@
   .q-pr td.q-pr-use {
     white-space: nowrap;
   }
+  .q-pr td.q-pr-src {
+    white-space: normal;
+  }
   /* The paths' floor: a path breaks at every width of the table, and the column keeps
      room for a path of about 36 letters, so a row of many paths stays a few lines tall. */
   .q-pr td.q-pr-paths {
