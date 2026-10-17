@@ -36,9 +36,10 @@ defmodule Apiary.Environments do
   #
   # `trigger/2` first locks every record of its collections, of every pool, `FOR UPDATE`,
   # in one statement, by collection and then pool, whatever order its caller names them
-  # in; the lapse of a claimed prebuild locks its record in the same order before it
-  # decides which prebuild waits (`Apiary.Dispatches.Slots`, which names the order of
-  # every lock). The record is then written by one statement that decides whether it is
+  # in; a free of lapsed leases locks the records of every claimed prebuild that lapsed
+  # in its scope in the same order, in one statement, before its first batch decides
+  # which prebuild waits (`Apiary.Dispatches.Slots`, which names the order of every
+  # lock). The record is then written by one statement that decides whether it is
   # due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the same
   # pool and collection take turns, and the second sees the first's `queued_ref`; and the
   # prebuild that waits is one per pool and collection in the database too

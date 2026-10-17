@@ -160,6 +160,54 @@ defmodule Apiary.DispatchesRacesTest do
     )
   end
 
+  # Prebuilds of `pool` claimed by `key` long ago, their leases lapsed, one per
+  # `{collection, id}`, the run of that id: written in two statements, as a sweep of
+  # more than one batch needs hundreds of them.
+  defp claimed_prebuilds!(ctx, key, pool, pairs) do
+    back = DateTime.add(Dispatches.now(), -700, :second)
+    lease_until = Dispatches.lease_until(back)
+    %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
+
+    runs =
+      for {collection, id} <- pairs do
+        %{
+          id: id,
+          run_id: Ecto.UUID.generate(),
+          organisation_id: organisation_id,
+          workspace_id: workspace_id,
+          step: DispatchRun.prebuild(),
+          state: :claimed,
+          source_collection_id: collection.id,
+          pool_id: pool.id,
+          environment_ref: "env-1",
+          queued_at: back,
+          inserted_at: back,
+          updated_at: back
+        }
+      end
+
+    dispatches =
+      for {_collection, id} <- pairs do
+        %{
+          id: Ecto.UUID.generate(),
+          organisation_id: organisation_id,
+          workspace_id: workspace_id,
+          dispatch_run_id: id,
+          pool_id: pool.id,
+          access_key_id: key.id,
+          claimed_at: back,
+          lease_until: lease_until,
+          inserted_at: back,
+          updated_at: back
+        }
+      end
+
+    count = length(pairs)
+    {^count, _rows} = Repo.insert_all(DispatchRun, runs)
+    {^count, _rows} = Repo.insert_all(Dispatch, dispatches)
+    :ok
+  end
+
   # The claims of `keys`, all let go at once.
   defp claims(keys) do
     keys
@@ -430,6 +478,69 @@ defmodule Apiary.DispatchesRacesTest do
 
       for collection <- [low, high],
           do: assert(waiting_and_queued(collection, pool) == {["env-2"], "env-2"})
+    end
+
+    test "a sweep of more than one batch locks the records of every batch before its first, so a listing that holds a later batch's record and then asks for an earlier one's never waits on it for good",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+      [low, high] = Enum.sort_by([collection!(ctx, "A"), collection!(ctx, "B")], & &1.id)
+      {:ok, _queued} = listing([low, high], "env-1").()
+
+      # None waits for the higher one, so one of its lapsed ones waits again.
+      {1, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun, where: r.source_collection_id == ^high.id),
+          set: [state: :ended, end_cause: :superseded]
+        )
+
+      # A free takes 500 lapsed dispatches a batch, by run id: the first batch holds
+      # prebuilds of the higher collection only, the second one of the lower and one more
+      # of the higher.
+      ids = Enum.sort(for _ <- 1..502, do: Ecto.UUID.generate())
+      {first_batch, [lower, last]} = Enum.split(ids, 500)
+      highs = first_batch ++ [last]
+      claimed_prebuilds!(ctx, key, pool, [{low, lower} | Enum.map(highs, &{high, &1})])
+
+      # A listing part way: the lower collection's record locked.
+      {first, holder} = hold(fn -> lock_records(low) end)
+
+      sweep = start(rescued(fn -> Dispatches.sweep(Dispatches.now()) end))
+      await_waited(sweep.backend, holder)
+
+      # The listing goes on to the higher one's record, which the sweep took no lock on
+      # before the lower one's.
+      assert [_id] = continue(first, fn -> lock_records(high) end)
+      commit(first)
+
+      assert Task.await(sweep.task) == [ctx.scope.workspace.id]
+
+      superseded =
+        Repo.all(
+          from r in DispatchRun,
+            where: r.id in ^[lower | highs] and r.end_cause == :superseded,
+            select: r.id
+        )
+
+      assert length(superseded) == 501
+      assert lower in superseded
+      # One of the first batch waits again; the second batch finds it waiting.
+      assert [again] = [lower | highs] -- superseded
+      assert again in first_batch
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} =
+               Repo.get!(DispatchRun, again)
+
+      for collection <- [low, high],
+          do: assert(waiting_and_queued(collection, pool) == {["env-1"], "env-1"})
+
+      assert Repo.aggregate(
+               from(d in Dispatch,
+                 where: d.dispatch_run_id in ^superseded and d.end_cause == :run_ended,
+                 where: not is_nil(d.stale_at) and not is_nil(d.slot_freed_at)
+               ),
+               :count
+             ) == 501
     end
 
     test "flips of two collections in any order, sweeps, lapses and claims together: no error, and what waits carries the record's queued_ref",
