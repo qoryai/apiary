@@ -6,11 +6,13 @@ defmodule Apiary.Adapters.Collection do
   # `external_ref` is the adapter's ref for it, which the core compares and stores and
   # never reads meaning into; `url`, `title` and the target (`target_system`,
   # `target_path`, both or neither) are as the listing last gave them, and
-  # `last_listed_at` is the `started_at` of the newest listing that named it. It is live
-  # until `ended_at`, for `ended_reason`, which is final: `:disconnected`, `:not_listed`
-  # (a complete listing left it out) or `:connection_ended`. One collection per adapter
-  # and ref is live at a time. `workspace_id` is the one workspace it is linked to, or
-  # none.
+  # `last_listed_at` is the `started_at` of the newest listing that named it.
+  # `environment_ref` is the adapter's id of its environment definition, as that listing
+  # gave it, compared and stored, never read; nil when that listing named it without one,
+  # so it has none. It is live until `ended_at`, for `ended_reason`, which is final:
+  # `:disconnected`, `:not_listed` (a complete listing left it out) or
+  # `:connection_ended`. One collection per adapter and ref is live at a time.
+  # `workspace_id` is the one workspace it is linked to, or none.
   #
   # `public_id` is its name outside the database: `sc_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -41,6 +43,7 @@ defmodule Apiary.Adapters.Collection do
     field :title, :string
     field :target_system, :string
     field :target_path, :string
+    field :environment_ref, :string
     field :last_listed_at, :utc_datetime
     field :ended_at, :utc_datetime_usec
 

@@ -11,15 +11,18 @@ defmodule Apiary.Adapters.Collections do
   # never beside the end of that connection. A part records the connection's first listing
   # (`Apiary.Adapters.Connections.mark_listed/1`), then adds its number to the listing's
   # bookkeeping (`source_collection_listings`), then makes each collection it names live
-  # under the connection, or updates the one live: its `url`, `title` and target, and
-  # `last_listed_at`, the listing's `started_at`, unless a newer listing named it already.
-  # A ref live under another connection of the adapter stays with that connection. A part
-  # that disagrees with the parts before it (another `started_at`, a second last part, a
-  # part after the last) is refused and changes nothing. Once every part from 1 to the last
-  # has arrived, the listing is complete: every live collection of the connection whose
-  # `last_listed_at` is before its `started_at` ends (`not_listed`), once, and the
-  # connection keeps the time (`listing_completed_at`, the listing-complete marker). The
-  # bookkeeping is deleted a day after a listing's first part (`purge_listings/1`).
+  # under the connection, or updates the one live: its `url`, `title`, target and
+  # `environment_ref`, and `last_listed_at`, the listing's `started_at`, unless a newer
+  # listing named it already. A collection named without `environment_ref` has none; one
+  # a listing leaves out keeps its record and its `environment_ref` as they are, and only
+  # a complete listing ends it (below). A ref live under another connection of the
+  # adapter stays with that connection. A part that disagrees with the parts before it
+  # (another `started_at`, a second last part, a part after the last) is refused and
+  # changes nothing. Once every part from 1 to the last has arrived, the listing is
+  # complete: every live collection of the connection whose `last_listed_at` is before
+  # its `started_at` ends (`not_listed`), once, and the connection keeps the time
+  # (`listing_completed_at`, the listing-complete marker). The bookkeeping is deleted a
+  # day after a listing's first part (`purge_listings/1`).
   #
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
   # for deletion, a collection a part makes is linked to it as it is made, with the feed's
@@ -261,6 +264,7 @@ defmodule Apiary.Adapters.Collections do
           title: collection.title,
           target_system: collection.target && collection.target.system,
           target_path: collection.target && collection.target.path,
+          environment_ref: Map.get(collection, :environment_ref),
           last_listed_at: started_at,
           inserted_at: now,
           updated_at: now
@@ -279,6 +283,7 @@ defmodule Apiary.Adapters.Collections do
             title: fragment("EXCLUDED.title"),
             target_system: fragment("EXCLUDED.target_system"),
             target_path: fragment("EXCLUDED.target_path"),
+            environment_ref: fragment("EXCLUDED.environment_ref"),
             last_listed_at: fragment("EXCLUDED.last_listed_at"),
             updated_at: fragment("EXCLUDED.updated_at")
           ]

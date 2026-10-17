@@ -90,6 +90,20 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
                Repo.get_by!(Collection, external_ref: "R_1001")
     end
 
+    test "the contract's listing with an environment_ref: kept for the collection that has one",
+         ctx do
+      conn =
+        send_post(ctx, @listing, fresh("source-collections/code-host-environment-ref.json", ctx))
+
+      assert conn.status == 204
+      assert signed_answer?(conn)
+
+      assert %Collection{environment_ref: "env-3f2a91c4"} =
+               Repo.get_by!(Collection, external_ref: "C_2001")
+
+      assert %Collection{environment_ref: nil} = Repo.get_by!(Collection, external_ref: "C_2002")
+    end
+
     test "the contract's invalid listing, and each bound past its limit, is 400 invalid_request",
          ctx do
       body = fresh("source-collections/code-host.json", ctx)
@@ -100,6 +114,10 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
       bodies = [
         fresh("invalid/source-collections-no-listing.json", ctx),
         fresh("invalid/source-collections-part-10001.json", ctx),
+        fresh("invalid/source-collections-environment-ref-201.json", ctx),
+        fresh("invalid/source-collections-environment-ref-empty.json", ctx),
+        fresh("invalid/source-collections-environment-ref-nul.json", ctx),
+        collection_with.(%{"environment_ref" => nil}),
         Map.put(body, "version", 2),
         Map.put(body, "connection_id", "ac_short"),
         Map.put(body, "connection_id", "na_0000000000000000"),

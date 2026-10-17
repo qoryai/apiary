@@ -30,9 +30,11 @@ defmodule Apiary.Adapters.Wire do
   # `listing/1` reads the body of `POST /v1/source-collections`
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters), `collections`, at most 100, each exactly `ref`,
-  # `url` and `title`, and `target` when given, which holds exactly `system` and `path`;
-  # and `listing`, exactly `id`, `part`, `started_at` and `complete`. A ref named twice in
-  # one part is taken as the last time it is named.
+  # `url` and `title`, `target` when given, which holds exactly `system` and `path`, and
+  # `environment_ref` when given, 1 to 200 characters like a ref (nil when absent: the
+  # collection has no environment definition); and `listing`, exactly `id`, `part`,
+  # `started_at` and `complete`. A ref named twice in one part is taken as the last time
+  # it is named.
   #
   # `source_disconnect/1` reads the body of `POST /v1/sources/disconnect`
   # (`sources-disconnect.schema.json`): exactly `version` (1), `time` and
@@ -81,7 +83,8 @@ defmodule Apiary.Adapters.Wire do
           ref: String.t(),
           url: String.t(),
           title: String.t(),
-          target: target | nil
+          target: target | nil,
+          environment_ref: String.t() | nil
         }
 
   @type listing :: %{
@@ -265,17 +268,34 @@ defmodule Apiary.Adapters.Wire do
 
   defp collection(%{} = item) do
     with {:ok, target} <- target(item),
-         true <- Enum.sort(Map.keys(Map.delete(item, "target"))) == @collection_keys,
+         {:ok, environment_ref} <- environment_ref(item),
+         true <-
+           Enum.sort(Map.keys(Map.drop(item, ["target", "environment_ref"]))) ==
+             @collection_keys,
          true <- text?(item["ref"], 1, @max_ref),
          true <- url?(item["url"]),
          true <- text?(item["title"], 1, @max_title) do
-      {:ok, %{ref: item["ref"], url: item["url"], title: item["title"], target: target}}
+      {:ok,
+       %{
+         ref: item["ref"],
+         url: item["url"],
+         title: item["title"],
+         target: target,
+         environment_ref: environment_ref
+       }}
     else
       _ -> :error
     end
   end
 
   defp collection(_item), do: :error
+
+  # A collection's `environment_ref` (`$defs/environment_ref`, a ref): `{:ok, ref}`,
+  # `{:ok, nil}` when the collection has none, or `:error`.
+  defp environment_ref(%{"environment_ref" => ref}),
+    do: if(text?(ref, 1, @max_ref), do: {:ok, ref}, else: :error)
+
+  defp environment_ref(%{}), do: {:ok, nil}
 
   # The `target` of `item`, a collection or an item (`$defs/target`): `{:ok, target}`,
   # `{:ok, nil}` when `item` has none, or `:error`.

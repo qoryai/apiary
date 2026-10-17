@@ -252,9 +252,42 @@ defmodule Apiary.Adapters.WireTest do
     test "the contract's invalid ones are refused" do
       assert listing("invalid/source-collections-no-listing.json") == :error
       assert listing("invalid/source-collections-part-10001.json") == :error
+
+      for name <- ~w(201 empty nul) do
+        assert listing("invalid/source-collections-environment-ref-#{name}.json") == :error,
+               name
+      end
+
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
+    end
+
+    test "a collection's environment_ref is read as given, and is nil when absent" do
+      assert {:ok,
+              %{
+                collections: [
+                  %{ref: "C_2001", environment_ref: "env-3f2a91c4"},
+                  %{ref: "C_2002", environment_ref: nil}
+                ]
+              }} = listing("source-collections/code-host-environment-ref.json")
+
+      assert {:ok, %{collections: [%{environment_ref: nil}]}} =
+               listing("source-collections/code-host.json")
+
+      {:ok, body} = Wire.decode(fixture("source-collections/code-host-environment-ref.json"))
+      [first | rest] = body["collections"]
+      with_ref = &Map.put(body, "collections", [Map.put(first, "environment_ref", &1) | rest])
+
+      # 1 to 200 code points, as a ref; a string, never null.
+      for ref <- ["e", String.duplicate("😀", 200), String.duplicate("e\u0301", 100)] do
+        assert {:ok, %{collections: [%{environment_ref: ^ref} | _]}} =
+                 Wire.listing(with_ref.(ref))
+      end
+
+      for ref <- ["", String.duplicate("😀", 201), "a\u0000b", nil, 7, ["env"], %{}] do
+        assert Wire.listing(with_ref.(ref)) == :error, inspect(ref)
+      end
     end
 
     test "a ref named twice in one part is taken as named last" do
