@@ -186,11 +186,12 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 20
+      assert length(items) == 22
       assert length(comments) == 2
 
       for name <- ~w(comment-count-above-maximum title-nul created-at-leap-second
-                     url-user-information url-bad-percent-escape url-port-0 url-port-65536),
+                     created-at-hour-24 created-at-minute-60 url-user-information
+                     url-bad-percent-escape url-port-0 url-port-65536),
           do: assert("invalid/source-items-#{name}.json" in items)
 
       for path <- items do

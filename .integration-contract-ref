@@ -16,4 +16,4 @@
 # invalid/description-settings-properties-1025-members.json and
 # invalid/description-string-16385-characters.json, are not vendored: of those bounds,
 # Qory Apiary holds only the 256 KiB of a fetched description.json.
-b02db3c29abf240f5bc6169f99cb3f16570b501b
+c7314d06f33cfb48e1ebea138446214d5ea82061
