@@ -4,7 +4,8 @@ defmodule Apiary.Integrations.DescriptionTest do
   import Apiary.DescriptionFixtures
   import ExUnit.CaptureLog
 
-  alias Apiary.Integrations.Description
+  alias Apiary.Integrations
+  alias Apiary.Integrations.{Description, Release}
 
   @fixtures Path.expand("../../fixtures/integration-contract", __DIR__)
 
@@ -165,6 +166,121 @@ defmodule Apiary.Integrations.DescriptionTest do
       bad = put_in(github_description(), ["roles", "credential", "argument"], "(")
 
       assert {:error, {:description_invalid, [{:argument_invalid, "credential"}]}} = parse(bad)
+    end
+  end
+
+  describe "a member name held twice" do
+    # The text of `description` with `raw`, JSON text, in place of the value at `path`.
+    defp with_raw(description, path, raw) do
+      marker = "raw-value-placeholder"
+      description |> put_in(path, marker) |> encode() |> String.replace(~s("#{marker}"), raw)
+    end
+
+    defp repeated?(text),
+      do: Description.parse(text) == {:error, {:description_invalid, [:member_repeated]}}
+
+    test "is refused at the top level, the same value or another" do
+      text = encode(tracker_description())
+      assert {:ok, _} = Description.parse(text)
+
+      assert repeated?(String.replace(text, ~s("version":1), ~s("version":1,"version":1)))
+      assert repeated?(String.replace(text, ~s("version":1), ~s("version":1,"version":2)))
+    end
+
+    test "is refused nested in the settings, in a role, or in an object in a list" do
+      in_settings =
+        with_raw(github_description(), ["settings", "properties", "app_id"], ~s(
+          {"type": "integer", "title": "App ID", "type": "string"}
+        ))
+
+      in_role =
+        with_raw(github_description(), ["roles", "credential", "hosts"], ~s(
+          ["api.github.com"], "hosts": ["github.com"]
+        ))
+
+      in_list =
+        with_raw(github_description(), ["settings", "allOf"], ~s(
+          [{"required": ["app_id"]}, {"required": ["app_id"], "required": []}]
+        ))
+
+      for text <- [in_settings, in_role, in_list], do: assert(repeated?(text))
+    end
+
+    test "is refused when the two names differ only in how they are escaped" do
+      text =
+        with_raw(github_description(), ["settings", "properties", "app_id"], ~s(
+          {"type": "integer", "\\u0074ype": "string"}
+        ))
+
+      assert text =~ ~S("\u0074ype")
+      assert repeated?(text)
+
+      once = with_raw(github_description(), ["settings", "properties", "app_id"], ~s(
+        {"\\u0074ype": "integer"}
+      ))
+
+      assert {:ok, _} = Description.parse(once)
+    end
+
+    test "is refused, as a string of invalid UTF-8 or a lone surrogate is" do
+      text = encode(tracker_description(%{"settings" => %{"type" => "object"}}))
+      assert {:ok, _} = Description.parse(text)
+
+      assert repeated?(
+               String.replace(text, ~s({"type":"object"}), ~s({"type":"object","type":"object"}))
+             )
+
+      for title <- [<<"Acme ", 0xFF, " tracker">>, ~S(Acme \ud800 tracker)] do
+        broken = String.replace(text, ~s("Acme tracker"), ~s("#{title}"))
+        assert broken != text
+        assert {:error, {:description_invalid, [:not_json]}} = Description.parse(broken)
+      end
+    end
+
+    test "is not found in any accepted fixture" do
+      for file <- Path.wildcard(Path.join(@fixtures, "*.json")) do
+        assert {:ok, %Description{}} = file |> File.read!() |> Description.parse(),
+               Path.basename(file)
+      end
+    end
+
+    test "makes a stored release's description unreadable, as any refusal does" do
+      text = encode(github_description())
+      assert {:ok, %Description{name: "github"}} = Integrations.description(ready(text))
+
+      repeated = String.replace(text, ~s("version":1), ~s("version":1,"version":1))
+      assert repeated?(repeated)
+      assert Integrations.description(ready(repeated)) == {:error, :not_ready}
+    end
+
+    defp ready(bytes), do: %Release{state: "ready", description: bytes}
+
+    # A description of 256 KiB, the most a release's description.json may be, whose
+    # domains are 30001 objects; the last repeats its member when `repeat` is true.
+    defp many_objects(repeat) do
+      last = if repeat, do: ~s({"k":0,"k":1}), else: ~s({"k":0,"j":1})
+      list = Enum.join(List.duplicate(~s({"k":0}), 30_000) ++ [last], ",")
+      text = with_raw(tracker_description(), ["domains"], "[#{list}]")
+      padding = 262_144 - byte_size(text) - byte_size(~s(,"x":""))
+      text = String.replace_suffix(text, "}", ~s(,"x":"#{String.duplicate("p", padding)}"}))
+      assert byte_size(text) == 262_144
+      text
+    end
+
+    test "is found within 150 ms in a description of 256 KiB and 30001 objects" do
+      for {repeat, expected} <- [{true, :member_repeated}, {false, :limits}] do
+        text = many_objects(repeat)
+        {microseconds, result} = :timer.tc(fn -> Description.parse(text) end)
+        assert div(microseconds, 1000) < 150, "took #{div(microseconds, 1000)} ms"
+
+        case expected do
+          :member_repeated ->
+            assert result == {:error, {:description_invalid, [:member_repeated]}}
+
+          :limits ->
+            assert {:error, {:description_invalid, [{:schema, %{limits: _}}]}} = result
+        end
+      end
     end
   end
 

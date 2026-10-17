@@ -5,9 +5,12 @@ defmodule Apiary.Integrations.Description do
   (`priv/contract/integration/description.schema.json`, vendored from the contract at the
   commit `.integration-contract-ref` names for it).
 
-  `parse/1` validates the bytes with JSV against the vendored schema, its patterns read as
-  the contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within
-  the limits below, then checks what the schema cannot:
+  `parse/1` refuses a document in which an object repeats a member, at any depth, the
+  names compared once their escapes are read: Jason keeps the first value of a repeated
+  name, and a reader that keeps the last would read another document. It then
+  validates the bytes with JSV against the vendored schema, its patterns read as the
+  contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within the
+  limits below, and checks what the schema cannot:
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
       it, and no secret is nested in another setting;
@@ -91,12 +94,41 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
+  # The bytes are decoded twice: once keeping every member of each object in order, to
+  # find a name held twice, then as maps, which keep only one value of a name, for the
+  # rest of the checks.
   defp decode(bytes) do
-    case Jason.decode(bytes) do
-      {:ok, %{} = document} -> {:ok, document}
-      {:ok, _other} -> {:error, {:description_invalid, [:not_an_object]}}
-      {:error, _error} -> {:error, {:description_invalid, [:not_json]}}
+    case Jason.decode(bytes, objects: :ordered_objects) do
+      {:ok, %Jason.OrderedObject{} = ordered} ->
+        if repeats_member?([ordered]),
+          do: {:error, {:description_invalid, [:member_repeated]}},
+          else: {:ok, Jason.decode!(bytes)}
+
+      {:ok, _other} ->
+        {:error, {:description_invalid, [:not_an_object]}}
+
+      {:error, _error} ->
+        {:error, {:description_invalid, [:not_json]}}
     end
+  end
+
+  # Whether an object of the ordered decode, at any depth, holds a member name twice. The
+  # values still to read are kept in a list and each function calls the next last, so
+  # nesting of any depth runs in constant stack.
+  defp repeats_member?([]), do: false
+
+  defp repeats_member?([%Jason.OrderedObject{values: members} | rest]),
+    do: members_repeat?(members, %{}, rest)
+
+  defp repeats_member?([list | rest]) when is_list(list), do: repeats_member?(list ++ rest)
+  defp repeats_member?([_scalar | rest]), do: repeats_member?(rest)
+
+  defp members_repeat?([], _seen, rest), do: repeats_member?(rest)
+
+  defp members_repeat?([{name, value} | members], seen, rest) do
+    if is_map_key(seen, name),
+      do: true,
+      else: members_repeat?(members, Map.put(seen, name, true), [value | rest])
   end
 
   defp schema(document) do
