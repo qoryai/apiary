@@ -13,4 +13,4 @@
 # priv/contract/integration/ from this commit too. Qory Apiary holds the bounds of a
 # description: the 256 KiB of a fetched description.json when it is fetched, and the rest
 # in Apiary.Integrations.Description.parse/1.
-3630480b0a2919781d7675d88b8e1eeeb0941f69
+df3cdbb1b276545fbbe6830f713220fdd314e3e4
