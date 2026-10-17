@@ -120,7 +120,7 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
          body = rest |> String.replace("-", "") |> String.upcase(:ascii),
          body = body |> String.replace(["I", "L"], "1") |> String.replace("O", "0"),
          26 <- byte_size(body),
-         true <- body |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet)) do
+         true <- alphabet?(body) do
       {:ok, prefix <> body}
     else
       _ -> :error
@@ -128,6 +128,11 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   end
 
   def normalise(_value), do: :error
+
+  # Byte by byte: the alphabet is ASCII, so a byte outside it, the first byte of a
+  # character that takes more than one, or bytes that are not UTF-8 at all, is refused.
+  defp alphabet?(body),
+    do: for(<<byte <- body>>, reduce: true, do: (ok -> ok and byte in @alphabet))
 
   # The prefix of a kind of node a typed code starts with, in either case, and the rest.
   defp split_prefix(value) do
