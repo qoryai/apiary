@@ -326,6 +326,7 @@ defmodule Apiary.Dispatches.WireTest do
             &Map.put(&1, "time", "2026-10-15T12:00:00.5Z"),
             &Map.put(&1, "time", "2026-10-15T12:00:00+00:00"),
             &Map.put(&1, "time", "2026-10-15 12:00:00Z"),
+            &Map.put(&1, "time", "2026-10-15T12:00:00\u0000"),
             &Map.put(&1, "time", 1_792_065_600)
           ] do
         changed = change.(body)
@@ -335,9 +336,12 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   describe "bounded first" do
-    # Generous for a shared machine: a refused body takes a few milliseconds here, and the
-    # worst a body of 1 MiB can be made to cost well under this.
-    @quick_ms 500
+    # The bound the adapter wire's test holds a refused body to
+    # (`test/apiary/sources/wire_test.exs`), as these bodies are decoded as an adapter's
+    # are. Generous for a shared machine: the costliest of them, many members or deep
+    # nesting, is refused in about a tenth of a second on an idle machine and has taken
+    # over half a second on a shared one.
+    @quick_ms 1000
 
     defp quick(fun) do
       {microseconds, result} = :timer.tc(fun)
@@ -456,6 +460,7 @@ defmodule Apiary.Dispatches.WireTest do
             "np_0123456789abcdef0",
             "nd_0123456789abcdef",
             "np_0123456789abcdef\n",
+            "np_0123456789abcde\u0000",
             1
           ] do
         assert claim(Map.put(@claim, "pool_id", pool_id)) == :error, inspect(pool_id)
@@ -477,11 +482,15 @@ defmodule Apiary.Dispatches.WireTest do
             Map.put(@external, "type", ""),
             Map.put(@external, "type", String.duplicate("a", 41)),
             Map.put(@external, "type", "ci_system"),
+            Map.put(@external, "type", "example\u0000ci"),
             Map.put(@external, "ref", ""),
             Map.put(@external, "ref", String.duplicate("r", 201)),
             Map.put(@external, "ref", 8812),
+            Map.put(@external, "ref", "run\u00008812"),
+            Map.put(@external, "ref", "\u0000"),
             Map.put(@external, "url", "http://ci.example.com/runs/8812"),
             Map.put(@external, "url", "https://user@ci.example.com/runs/8812"),
+            Map.put(@external, "url", "https://ci.example.com/runs/\u00008812"),
             Map.put(@external, "url", "https://ci.example.com/" <> String.duplicate("a", 2048))
           ] do
         assert dispatched(Map.put(@dispatched, "external", external)) == :error,
@@ -514,6 +523,8 @@ defmodule Apiary.Dispatches.WireTest do
             &Map.put(&1, "reason", String.duplicate("r", 201)),
             &Map.put(&1, "reason", nil),
             &Map.put(&1, "reason", 1),
+            &Map.put(&1, "reason", "The job\u0000could not start."),
+            &Map.put(&1, "reason", "\u0000"),
             &Map.delete(&1, "reason"),
             &Map.put(&1, "retry", "true"),
             &Map.put(&1, "retry", 1),
@@ -523,6 +534,14 @@ defmodule Apiary.Dispatches.WireTest do
         changed = change.(@release)
         assert release(changed) == :error, inspect(changed)
       end
+    end
+
+    test "refuses a reason or a ref that is not valid UTF-8" do
+      invalid = "run-" <> <<0xFF>>
+
+      assert Wire.release(Map.put(@release, "reason", invalid)) == :error
+      external = Map.put(@external, "ref", invalid)
+      assert Wire.dispatched(Map.put(@dispatched, "external", external)) == :error
     end
 
     test "counts a reason's characters, not its bytes" do

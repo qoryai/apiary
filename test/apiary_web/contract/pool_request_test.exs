@@ -390,6 +390,47 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert signed_answer?(conn)
     end
 
+    test "a U+0000 in a dispatched's external or a release's reason is 400 invalid_request, signed, and records nothing; the same text without it is accepted",
+         ctx do
+      dispatched = @dispatch <> "/dispatched"
+      release = @dispatch <> "/release"
+
+      external = %{
+        "type" => "example-ci",
+        "ref" => "run-8812",
+        "url" => "https://ci.example.com/runs/8812"
+      }
+
+      with_external = &Map.put(body(dispatched), "external", Map.merge(external, &1))
+
+      for {target, invalid} <- [
+            {dispatched, with_external.(%{"ref" => "run\u00008812"})},
+            {dispatched, with_external.(%{"ref" => "\u0000"})},
+            {dispatched, with_external.(%{"type" => "example\u0000ci"})},
+            {dispatched, with_external.(%{"url" => "https://ci.example.com/runs/\u00008812"})},
+            {release, Map.put(body(release), "reason", "The job\u0000could not start.")},
+            {release, Map.put(body(release), "reason", "\u0000")}
+          ] do
+        conn = signed(ctx, target, invalid)
+        assert json_response(conn, 400) == @invalid, inspect(invalid)
+        assert signed_answer?(conn)
+      end
+
+      assert seen_count() == 0
+      assert used_at(ctx.key) == nil
+
+      for {target, valid} <- [
+            {dispatched, with_external.(%{})},
+            {release, Map.put(body(release), "reason", "The job could not start.")}
+          ] do
+        conn = signed(ctx, target, valid)
+        assert accepted?(conn, target), inspect(valid)
+        assert signed_answer?(conn)
+      end
+
+      assert seen_count() == 2
+    end
+
     test "a POST answered 2xx without accept/2 is answered 500", ctx do
       raw = Jason.encode!(body(@claim))
 
