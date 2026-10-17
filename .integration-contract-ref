@@ -11,5 +11,9 @@
 # contracts/integration/v1/description.schema.json, vendored under
 # priv/contract/integration/, stays at the earlier commit
 # 6f182adf71ae4bae78af8de8bbfce1514e647feb until the step that adopts the description's
-# `source` role.
-256400611e9230daccc6c78d0c4d5b156305c3b8
+# `source` role. The description fixtures that bound a description's size,
+# invalid/description-settings-enum-1025-entries.json,
+# invalid/description-settings-properties-1025-members.json and
+# invalid/description-string-16385-characters.json, are not vendored: of those bounds,
+# Qory Apiary holds only the 256 KiB of a fetched description.json.
+b02db3c29abf240f5bc6169f99cb3f16570b501b

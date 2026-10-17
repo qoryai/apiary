@@ -3,8 +3,8 @@ defmodule Apiary.Sources.IngestTest do
   # refusals in the contract's order; an item written when it is newer than the one kept or
   # as new; complete and partial listings, a listing's close counting as a write at its
   # `started_at`, and the purge of their bookkeeping; comments, with `complete.since`, its
-  # mark counting as a write at that time, and `deleted`; a `comment_count` past what a
-  # bigint holds; a ref another live collection of the adapter holds, and the collection
+  # mark counting as a write at that time, and `deleted`; a `comment_count` at the most
+  # the contract allows; a ref another live collection of the adapter holds, and the collection
   # that answers for comments; another adapter's key; and the ids the Backlog is sent.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
@@ -37,7 +37,8 @@ defmodule Apiary.Sources.IngestTest do
     not_linked: "collection_not_linked"
   }
 
-  @max_bigint 9_223_372_036_854_775_807
+  # `$defs/item/comment_count`'s maximum, 2^53 - 1.
+  @max_comment_count 9_007_199_254_740_991
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -265,18 +266,11 @@ defmodule Apiary.Sources.IngestTest do
       assert count(Item) == 1
     end
 
-    test "a comment_count past what a bigint holds is kept as that most, never refused",
-         ctx do
-      past = @max_bigint * 4
-
-      assert post(ctx, "TRK", [
-               item("PAST", comment_count: past),
-               item("MOST", comment_count: @max_bigint)
-             ]) ==
+    test "a comment_count at the most the contract allows, 2^53 - 1, is kept as sent", ctx do
+      assert post(ctx, "TRK", [item("MOST", comment_count: @max_comment_count)]) ==
                {:ok, :accepted}
 
-      assert ticket(ctx.trk, "PAST").comment_count == @max_bigint
-      assert ticket(ctx.trk, "MOST").comment_count == @max_bigint
+      assert ticket(ctx.trk, "MOST").comment_count == @max_comment_count
     end
   end
 
