@@ -30,6 +30,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.InstanceLive.Adapters,
     ApiaryWeb.InstanceLive.Adapter,
     ApiaryWeb.BacklogLive.Index,
+    ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.AdapterRedirectController,
@@ -59,13 +60,16 @@ defmodule ApiaryWeb.FactoryShellTest do
   # a made-up id for the rest. The signed requests of an adapter and of a node pool's
   # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
   # `ApiaryWeb.Contract.ChangesControllerTest`,
-  # `ApiaryWeb.Contract.SourceCollectionsControllerTest` and their fixtures' tests, and
-  # `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
+  # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
+  # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest` and
+  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
   @signed_routes [
     ApiaryWeb.Contract.AdapterController,
     ApiaryWeb.Contract.ChangesController,
     ApiaryWeb.Contract.SourceCollectionsController,
     ApiaryWeb.Contract.SourcesDisconnectController,
+    ApiaryWeb.Contract.SourceItemsController,
+    ApiaryWeb.Contract.SourceItemCommentsController,
     ApiaryWeb.Contract.PoolClaimController,
     ApiaryWeb.Contract.DispatchController,
     ApiaryWeb.Contract.HandoverController
@@ -163,7 +167,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/settings/remove"}
                ] ++
                  for(
-                   rest <- ~w(/backlog /backlog/x1/take-in /work /work/1 /work/1/thread),
+                   rest <- ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )

@@ -13,6 +13,7 @@ defmodule Apiary.WorkItems.DocsTest do
     ApiaryWeb.AdapterLive.Show,
     ApiaryWeb.AdapterLive.AccessKey,
     ApiaryWeb.BacklogLive.Index,
+    ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.AdapterRedirectController,

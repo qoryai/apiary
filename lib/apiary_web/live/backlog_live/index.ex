@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.BacklogLive.Index do
   # A workspace's Backlog: the tickets of the repositories and projects assigned to it, and
-  # the Take in dialog over it (`:index`, `:take_in`).
+  # one ticket open over the list (`?ticket=`) (`:index`).
   #
   # It answers as a path that does not exist until its page is built here. The feature is
   # hidden from the documentation, so the module is too.
