@@ -2,7 +2,13 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `run_id` is the subject of the run's events, unique within the workspace. The row is
+  `public_id` is the run's id in Qory Apiary, `rn_` and sixteen characters
+  (`Apiary.PublicId`): the console names and addresses a run by it,
+  `/:org/:workspace/runs/:public_id`. The application sets it when it creates the row; the
+  column's default, `run_public_id()`, is the same shape.
+
+  `run_id` is the node's run id, the subject of the run's events in the server contract,
+  unique within the workspace. The row is
   created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
@@ -28,7 +34,9 @@ defmodule Apiary.Runs.Run do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Phoenix.Param, key: :public_id}
   schema "runs" do
+    field :public_id, :string, read_after_writes: true
     field :run_id, Ecto.UUID
 
     # The run's target as its labels named it (`Apiary.Lingo.Domain`): the system and the
@@ -270,4 +278,12 @@ defmodule Apiary.Runs.Run do
   @spec projected_from(map) :: 0 | 1
   def projected_from(%{registered_at: %DateTime{}}), do: 1
   def projected_from(_run), do: 0
+
+  @doc "new_public_id/0 is a fresh `public_id` for a run: `rn_` and 16 characters."
+  @spec new_public_id() :: String.t()
+  def new_public_id, do: Apiary.PublicId.generate("rn")
+
+  @doc "public_id?/1 says whether `value` is a run's `public_id` in shape, `rn_…`."
+  @spec public_id?(term) :: boolean
+  def public_id?(value), do: Apiary.PublicId.valid?("rn", value)
 end

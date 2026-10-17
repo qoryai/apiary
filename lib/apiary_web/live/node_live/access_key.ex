@@ -2483,10 +2483,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dt :if={@last_run} class="text-faint">{gettext("Last run")}</dt>
         <dd :if={@last_run}>
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run.run_id}"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run.public_id}"}
             class="q-mono text-accent hover:underline"
           >
-            {gettext("run %{id}", id: short_id(@last_run.run_id))}
+            {gettext("run %{id}", id: short_id(@last_run.public_id))}
           </.link>
         </dd>
         <dt :if={@hosts} class="text-faint">{gettext("Hosts, 14 days")}</dt>

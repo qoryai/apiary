@@ -325,6 +325,7 @@ defmodule Apiary.Runs.Ingest do
         Map.merge(
           %{
             id: Ecto.UUID.generate(),
+            public_id: Run.new_public_id(),
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
             run_id: batch.subject,

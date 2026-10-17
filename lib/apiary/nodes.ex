@@ -706,14 +706,14 @@ defmodule Apiary.Nodes do
 
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
-  start of its oldest run alive), its newest run alive (`run_id`, the run's subject) and
-  the Forager version that run reported.
+  start of its oldest run alive), its newest run alive (`run_public_id`, the run's
+  `public_id`) and the Forager version that run reported.
   """
   @type running :: %{
           instance_id: String.t(),
           name: String.t() | nil,
           since: DateTime.t(),
-          run_id: Ecto.UUID.t(),
+          run_public_id: String.t(),
           forager_version: String.t() | nil
         }
 
@@ -1134,7 +1134,7 @@ defmodule Apiary.Nodes do
            instance_id: instance_id,
            name: row && row.name,
            since: runs |> Enum.map(& &1.since) |> Enum.min(DateTime),
-           run_id: newest.run_id,
+           run_public_id: newest.public_id,
            forager_version: newest.forager_version || (row && row.last_forager_version)
          }}
       end)
@@ -1197,7 +1197,7 @@ defmodule Apiary.Nodes do
       select: %{
         node_id: r.node_id,
         instance_id: r.instance_id,
-        run_id: r.run_id,
+        public_id: r.public_id,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }

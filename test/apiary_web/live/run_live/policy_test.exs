@@ -133,7 +133,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
   defp connections(conn, scope, run) do
     {:ok, view, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
     view
   end
@@ -180,7 +180,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, configuration.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       path =
         workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{configuration.version}")
@@ -203,7 +203,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, configuration.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert has_element?(
                view,
@@ -225,7 +225,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, baseline.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#run-facts") =~ "v#{baseline.version} · of the workspace's policy"
 
@@ -253,7 +253,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       # Details names both
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
       assert text(view, "#policy-in-force") =~ "v1 · of acme/shop"
@@ -268,7 +268,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, @other)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#policy-unrendered") ==
                "0f0f0f0f0f0f Not a version made in this workspace"
@@ -286,7 +286,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, old.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-drift")
 
@@ -329,7 +329,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, _} = Policy.allow(scope, target, %{host: "files.cdn.example"})
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-drift")
       refute has_element?(view, "#run-behind")
@@ -343,7 +343,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-facts a.q-ver")
       refute has_element?(view, "#run-drift")
@@ -363,7 +363,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, applied: v1.digest, again: v2.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#e-3") =~ "Policy applied"
       refute text(view, "#e-3") =~ "again"
@@ -401,7 +401,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, applied: v.digest, again: v.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       sentence = text(view, "#e-30-reload")
       refute sentence =~ "new"
@@ -435,7 +435,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, run} = Projector.project(run)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#e-3") =~ "observe · 1 host allowed · denies 1 host"
       assert text(view, "#e-9") =~ "reloaded · observe · 1 host allowed · denies 2 hosts"
@@ -451,7 +451,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "the same hosts are allowed; denies 2 hosts more and 1 host fewer."
 
       {:ok, _view, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       details = html |> String.replace(~r/<[^>]+>/, " ") |> String.replace(~r/\s+/, " ")
       assert details =~ "Allowed hosts api.example"
@@ -481,7 +481,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, run} = Projector.project(run)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       html = view |> element("#e-9") |> render()
       refute html =~ "<script>alert"
@@ -725,7 +725,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       # the timeline's row of the same attempt has no line after it: the present
       {:ok, timeline, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(timeline, "#e-5 .q-cx-denied") =~
                "Denied. No rule matches. Enforce mode denies it."

@@ -865,6 +865,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     run = %{
       id: id,
+      public_id: Run.new_public_id(),
       organisation_id: organisation.id,
       workspace_id: workspace.id,
       run_id: run_id,

@@ -74,7 +74,7 @@ says "Nodes use this gateway: build-01, spot-runners. Point them to another gate
 direct, then delete it.", naming the first five of the workspace and then how many more.
 Nor is one that runs still go through, live or waiting for the gateway to attach them:
 the page says "Runs are going through this gateway:", the first five to register, named
-by run id, then how many more, and "Delete it once they end."; both in one notice when
+by their `rn_` id, then how many more, and "Delete it once they end."; both in one notice when
 both hold.
 When the default goes and other gateways remain, the oldest of them becomes the default.
 

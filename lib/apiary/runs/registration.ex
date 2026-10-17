@@ -647,6 +647,7 @@ defmodule Apiary.Runs.Registration do
         [
           %{
             id: Ecto.UUID.generate(),
+            public_id: Run.new_public_id(),
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
             run_id: registration.run_id,

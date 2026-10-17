@@ -349,7 +349,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-instance-name", "build-01.example.com")
       assert has_element?(lv, "#node-instance", "i_1")
       assert has_element?(lv, "#node-instance", "Running since")
-      assert has_element?(lv, ~s{#node-instance a[href$="/runs/#{run.run_id}"]})
+      assert has_element?(lv, ~s{#node-instance a[href$="/runs/#{run.public_id}"]})
 
       assert has_element?(
                lv,
@@ -360,11 +360,16 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute render(lv) =~ "Once runners use"
 
       render_async(lv)
-      assert has_element?(lv, "#node-runs-table #run-#{run.run_id} .q-rowlink", "Fix the build")
 
       assert has_element?(
                lv,
-               "#node-runs-table #run-#{run.run_id} .q-rl-about",
+               "#node-runs-table #run-#{run.public_id} .q-rowlink",
+               "Fix the build"
+             )
+
+      assert has_element?(
+               lv,
+               "#node-runs-table #run-#{run.public_id} .q-rl-about",
                "Implementation · ticket ENG-17"
              )
 

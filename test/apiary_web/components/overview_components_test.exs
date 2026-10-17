@@ -6,11 +6,11 @@ defmodule ApiaryWeb.OverviewComponentsTest do
 
   alias ApiaryWeb.OverviewComponents
 
-  @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
+  @public_id "rn_7f3e9b205b1d4c7e"
 
   test "a row calls a run by its title, else its command line, else its short id" do
     run = %{
-      run_id: @run_id,
+      public_id: @public_id,
       about_title: "Fix the login redirect",
       labels: %{"task" => "fix-login"},
       command: "claude",
@@ -27,6 +27,6 @@ defmodule ApiaryWeb.OverviewComponentsTest do
     assert String.length(OverviewComponents.row_title(long)) == 40
     assert OverviewComponents.row_title(long) =~ ~r/…\z/
 
-    assert OverviewComponents.row_title(%{untitled | command: nil}) == "7f3e9b20"
+    assert OverviewComponents.row_title(%{untitled | command: nil}) == "rn_7f3e9b20"
   end
 end

@@ -29,7 +29,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
   end
 
   defp page(conn, scope, run),
-    do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+    do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
   test "the header says the starter's state and the runtime's exit", %{conn: conn, scope: scope} do
     run =

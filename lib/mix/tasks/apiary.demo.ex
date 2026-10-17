@@ -82,9 +82,9 @@ defmodule Mix.Tasks.Apiary.Demo do
           Mix.shell().info("""
 
           #{file |> Path.relative_to(Application.app_dir(:apiary)) |> Path.relative_to_cwd()}
-            run id  #{run.run_id}
+            run id  #{run.public_id}
             state   #{run.state}, #{run.event_count} events
-            url     #{runs_url}/#{run.run_id}\
+            url     #{runs_url}/#{run.public_id}\
           """)
 
         {:error, reason} ->

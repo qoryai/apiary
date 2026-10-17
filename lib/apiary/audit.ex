@@ -623,7 +623,10 @@ defmodule Apiary.Audit do
       runs:
         lookup(
           runs,
-          from(r in Run, where: r.organisation_id == ^organisation_id, select: {r.id, r.run_id})
+          from(r in Run,
+            where: r.organisation_id == ^organisation_id,
+            select: {r.id, r.public_id}
+          )
         ),
       organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name}))
     }
