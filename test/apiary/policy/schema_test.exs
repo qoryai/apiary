@@ -7,11 +7,6 @@ defmodule Apiary.Policy.SchemaTest do
 
   alias Apiary.Policy.Schema
 
-  # The check takes less than this many milliseconds: the document below is refused in
-  # about 20, where JSV and the normalising of its errors took about 0.2 s; the time leaves
-  # room for a slow machine, and the trace tells the two apart.
-  @budget_ms 1000
-
   @normalise {JSV.ErrorFormatter, :normalize_error, :_}
 
   setup do
@@ -37,9 +32,9 @@ defmodule Apiary.Policy.SchemaTest do
     # `arity`: each trace message carries the arity, not the errors.
     :erlang.trace(pid, true, [:call, :arity])
     send(pid, :go)
-    assert_receive {:done, ^pid, result}, 5000
+    assert_receive {:done, ^pid, result}, 10_000
     ref = :erlang.trace_delivered(pid)
-    assert_receive {:trace_delivered, ^pid, ^ref}
+    assert_receive {:trace_delivered, ^pid, ^ref}, 10_000
     {result, count_calls(0)}
   end
 
@@ -52,7 +47,7 @@ defmodule Apiary.Policy.SchemaTest do
     end
   end
 
-  test "a refused run configuration's errors are summed up, at once" do
+  test "a refused run configuration's errors are summed up, not normalised" do
     # The schema is built once; the first check pays for it.
     assert Schema.validate(~s({"version":1})) == :ok
 
@@ -65,11 +60,9 @@ defmodule Apiary.Policy.SchemaTest do
         }
       })
 
-    {{microseconds, result}, normalised} =
-      normalising(fn -> :timer.tc(fn -> Schema.validate(document) end) end)
+    {result, normalised} = normalising(fn -> Schema.validate(document) end)
 
     assert normalised == 0
-    assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
 
     assert {:error, %{valid: false, count: count, errors: errors}} = result
     assert count > 30_000

@@ -359,11 +359,25 @@ defmodule Apiary.Integrations.DescriptionTest do
       text
     end
 
-    test "is found within 150 ms in a description of 256 KiB and 30001 objects" do
+    # The value of `fun` and the reductions it did, in another process.
+    defp reductions(fun) do
+      task =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          result = fun.()
+          {:reductions, done} = Process.info(self(), :reductions)
+          {done - before, result}
+        end)
+
+      Task.await(task, 60_000)
+    end
+
+    test "is found within 2000000 reductions in a description of 256 KiB and 30001 objects" do
       for {repeat, expected} <- [{true, :member_repeated}, {false, :limits}] do
         text = many_objects(repeat)
-        {microseconds, result} = :timer.tc(fn -> Description.parse(text) end)
-        assert div(microseconds, 1000) < 150, "took #{div(microseconds, 1000)} ms"
+        {reductions, result} = reductions(fn -> Description.parse(text) end)
+        # Measured: 712377 reductions when found, 1151713 when the limits refuse it.
+        assert reductions < 2_000_000, "#{reductions} reductions"
 
         case expected do
           :member_repeated ->
@@ -445,25 +459,18 @@ defmodule Apiary.Integrations.DescriptionTest do
   end
 
   describe "the size of a description, and of its settings" do
-    # A check takes less than this many milliseconds: the limits refuse each input below
-    # in a few. Without them, JSV and the normalising of its errors took about 3 to 5 s on
-    # the slowest descriptions below and about 3 s on the slowest settings, and JSV alone
-    # over 0.25 s on some of them; the budget leaves room for a slow machine. Which inputs
-    # the limits refuse is asserted apart from the time: a refusal by the limits carries
-    # them, `%{limits: _}`, and one by the schema does not.
-    @budget_ms 150
+    # The limits refuse each input below before JSV reads it. Without them, JSV and the
+    # normalising of its errors took about 3 to 5 s on the slowest descriptions below and
+    # about 3 s on the slowest settings, and JSV alone over 0.25 s on some of them. Which
+    # inputs the limits refuse is asserted, not the time: a refusal by the limits carries
+    # them, `%{limits: _}`, and one by the schema does not; that JSV never reads an input
+    # the limits refuse is asserted by tracing (`Apiary.Kinds.BoundsCallersTest`).
 
     setup do
       # The schemas are built once; the first check pays for it.
       assert {:ok, _} = parse(tracker_description())
       assert {:ok, description} = parse(unbounded_settings())
       %{description: description}
-    end
-
-    defp timed(fun) do
-      {microseconds, result} = :timer.tc(fun)
-      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
-      result
     end
 
     defp entries(entry, count), do: Enum.join(List.duplicate(entry, count), ",")
@@ -570,10 +577,10 @@ defmodule Apiary.Integrations.DescriptionTest do
     defp values(value) when is_list(value), do: 1 + (value |> Enum.map(&values/1) |> Enum.sum())
     defp values(_value), do: 1
 
-    test "a description over the limits is refused by them, at once" do
+    test "a description over the limits is refused by them" do
       for text <- attacks() do
         assert byte_size(text) in 90_000..262_144
-        assert limited?(timed(fn -> Description.parse(text) end))
+        assert limited?(Description.parse(text))
       end
     end
 
@@ -582,7 +589,7 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert values(document) == 4096
       text = encode(document)
       assert byte_size(text) > 30_000
-      assert {:ok, %Description{}} = timed(fn -> Description.parse(text) end)
+      assert {:ok, %Description{}} = Description.parse(text)
 
       for over <- [
             update_in(document, ["settings", "examples"], &[["one more"] | &1]),
@@ -611,11 +618,11 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "settings over the limits are refused by them, at once, whatever their schema",
+    test "settings over the limits are refused by them, whatever their schema",
          %{description: description} do
       for settings <- settings_attacks() do
         assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 50_000..65_536
-        assert limited?(timed(fn -> Description.check_settings(description, settings) end))
+        assert limited?(Description.check_settings(description, settings))
       end
     end
 
@@ -667,9 +674,8 @@ defmodule Apiary.Integrations.DescriptionTest do
     # draft-07; 24 s to 28 s for 1000 backtracking patterns against a string of 60001
     # bytes, 15 s against 128 settings, 9.5 s against a list of 100 strings, and 13.3 s for
     # 1000 email formats against a string of 60 KB. With it, each ran out within 350 ms.
-    # The time asserted leaves room for a slow machine; the time of the budget, 10 s,
-    # decides none of them.
-    @refused_within_ms 1000
+    # The reason is asserted and the time is not: a check its time stopped, 10 s, would log
+    # `reason=time`.
 
     defp with_settings_schema(schema) do
       assert {:ok, description} = parse(tracker_description(%{"settings" => schema}))
@@ -700,17 +706,15 @@ defmodule Apiary.Integrations.DescriptionTest do
         else: with_settings_schema(schema)
     end
 
-    # The refusal, in time, and the budget it ran out of, `reason`: "reductions" or "heap".
+    # The refusal, and the budget it ran out of, `reason`: "reductions" or "heap".
     defp over_budget(description, settings, reason) do
-      {{microseconds, result}, log} =
-        with_log(fn -> :timer.tc(fn -> Description.check_settings(description, settings) end) end)
+      {result, log} = with_log(fn -> Description.check_settings(description, settings) end)
 
       assert result ==
                {:error, {:integration_settings_invalid, %{valid: false, budget: :exceeded}}}
 
       assert log =~ "settings check was stopped name=acme-tracker"
       assert log =~ ~r/reason=(#{reason})$/m
-      assert div(microseconds, 1000) < @refused_within_ms, "took #{div(microseconds, 1000)} ms"
     end
 
     # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.

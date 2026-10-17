@@ -220,11 +220,12 @@ defmodule Apiary.Kinds.ServicesTest do
   end
 
   describe "the size of a definition" do
-    # A check takes less than this many milliseconds: the bounds the schema gives, lists
-    # of 32 entries and objects of 8 members, refuse each input below in under one, where
-    # JSV and the normalising of its errors took up to 0.4 s; the budget leaves room for a
-    # slow machine. Which inputs the bounds refuse is asserted apart from the time.
-    @budget_ms 150
+    # The bounds the schema gives, lists of 32 entries and objects of 8 members, refuse an
+    # oversized definition within 1000 reductions, where JSV and the normalising of its
+    # errors took up to 0.4 s; deep nesting passes them and the schema refuses it within
+    # 1000000, and the largest valid definition passes within 100000. The work is
+    # asserted in reductions, the same on any machine running the same OTP release, not
+    # in time; which inputs the bounds refuse is asserted apart from it.
 
     setup do
       # The schema and its bounds are built once; the first check pays for it.
@@ -232,10 +233,17 @@ defmodule Apiary.Kinds.ServicesTest do
       :ok
     end
 
-    defp timed(fun) do
-      {microseconds, result} = :timer.tc(fun)
-      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
-      result
+    # The value of `fun` and the reductions it did, in another process.
+    defp reductions(fun) do
+      task =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          result = fun.()
+          {:reductions, done} = Process.info(self(), :reductions)
+          {done - before, result}
+        end)
+
+      Task.await(task, 60_000)
     end
 
     defp deep(depth), do: Enum.reduce(1..depth, [], fn _, inner -> [inner] end)
@@ -253,23 +261,27 @@ defmodule Apiary.Kinds.ServicesTest do
       ]
     end
 
-    test "a definition over the schema's bounds is refused, at once" do
+    test "a definition over the schema's bounds is refused within 1000 reductions" do
       for definition <- oversized() do
         assert byte_size(Jason.encode!(definition)) in 100_000..140_000
         refute Bounds.within?(definition, ServiceDefinition.bounds())
 
-        assert timed(fn -> ServiceDefinition.validate(definition) end) ==
-                 {:error, [{:definition_invalid, ""}]}
+        {reductions, result} = reductions(fn -> ServiceDefinition.validate(definition) end)
+        # Measured: 66 to 197 reductions; JSV reads the entries in millions.
+        assert reductions < 1000, "#{reductions} reductions"
+        assert result == {:error, [{:definition_invalid, ""}]}
       end
     end
 
-    test "deep nesting passes the bounds in constant stack, and the schema refuses it at once" do
+    test "deep nesting passes the bounds in constant stack, and the schema refuses it" do
       definition = definition(%{"hosts" => deep(60_000)})
       assert byte_size(Jason.encode!(definition)) in 100_000..140_000
       assert Bounds.within?(definition, ServiceDefinition.bounds())
 
-      assert timed(fn -> ServiceDefinition.validate(definition) end) ==
-               {:error, [{:definition_invalid, ""}]}
+      {reductions, result} = reductions(fn -> ServiceDefinition.validate(definition) end)
+      # Measured: 544396 reductions.
+      assert reductions < 1_000_000, "#{reductions} reductions"
+      assert result == {:error, [{:definition_invalid, ""}]}
     end
 
     test "a valid definition with every list at its largest passes" do
@@ -293,7 +305,10 @@ defmodule Apiary.Kinds.ServicesTest do
         })
 
       assert Bounds.within?(largest, ServiceDefinition.bounds())
-      assert {:ok, ^largest} = timed(fn -> ServiceDefinition.validate(largest) end)
+      {reductions, result} = reductions(fn -> ServiceDefinition.validate(largest) end)
+      # Measured: 23051 reductions.
+      assert reductions < 100_000, "#{reductions} reductions"
+      assert {:ok, ^largest} = result
 
       refute Bounds.within?(
                %{largest | "paths" => ["/" | largest["paths"]]},

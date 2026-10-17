@@ -68,8 +68,17 @@ defmodule Apiary.Kinds.BoundsTest do
     test "a long list is refused after reading one entry more than the limit" do
       # A million entries and a limit of two: the answer comes without a walk of them all.
       long = List.duplicate(%{}, 1_000_000)
-      {microseconds, false} = :timer.tc(fn -> Bounds.within?(long, list: 2) end)
-      assert microseconds < 50_000
+
+      task =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          false = Bounds.within?(long, list: 2)
+          {:reductions, done} = Process.info(self(), :reductions)
+          done - before
+        end)
+
+      # Measured: 44 reductions; a walk of the million entries does a million or more.
+      assert Task.await(task, 60_000) < 1000
     end
   end
 
