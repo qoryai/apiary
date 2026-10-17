@@ -763,6 +763,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           number: 88,
           current: :thread,
           ticket_path: "/8wonders/main/work/88",
+          explore_path: "/8wonders/main/work/88/explore",
           thread_path: "/8wonders/main/work/88/thread",
           comment_count: 3
         )
@@ -779,6 +780,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           number: 88,
           current: :ticket,
           ticket_path: "/8wonders/main/work/88",
+          explore_path: "/8wonders/main/work/88/explore",
           thread_path: "/8wonders/main/work/88/thread"
         )
 

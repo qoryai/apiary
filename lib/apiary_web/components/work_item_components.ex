@@ -1212,8 +1212,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc """
-  The notice of an ended work item: who closed, declined or undid it and when, what that
-  left on the ticket, and Take in again, a link to the ticket's panel in the Backlog
+  The notice of an ended work item: who closed, declined or undid it and when (and where
+  it was declined, its `:stage`, at Explore or at Confirm), what that left on the ticket, and Take in again, a link to the ticket's panel in the Backlog
   (`again_path`). After the integration's uninstall (`uninstalled`) the ticket is in no
   Backlog: the first line alone. Nothing for a live work item.
   """
@@ -1264,6 +1264,18 @@ defmodule ApiaryWeb.WorkItemComponents do
     if you?(by),
       do: rich_gettext("You closed this work item on %{date}.", date: date),
       else: rich_gettext("%{name} closed this work item on %{date}.", name: by.name, date: date)
+  end
+
+  defp end_line(%{status: :declined, stage: :explore, ended_by: by} = work_item, now) do
+    at = inline_ago(work_item.ended_at, now)
+
+    if you?(by),
+      do: rich_gettext("You declined this work item %{when}, at Explore.", when: at),
+      else:
+        rich_gettext("%{name} declined this work item %{when}, at Explore.",
+          name: by.name,
+          when: at
+        )
   end
 
   defp end_line(%{status: :declined, ended_by: by} = work_item, now) do
@@ -1448,13 +1460,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## The tabs
 
   @doc """
-  A work item's tabs: Ticket (`ticket_path`) and Thread (`thread_path`), with the count of
-  people's comments where there are any; named "Work item #%{number}".
+  A work item's tabs: Ticket (`ticket_path`), Explore (`explore_path`) and Thread
+  (`thread_path`), with the count of people's comments where there are any; named "Work
+  item #%{number}". Ticket stays the work item's address.
   """
   attr :id, :string, default: "work-item-tabs"
   attr :number, :integer, required: true, doc: "the work item's number"
-  attr :current, :atom, required: true, values: [:ticket, :thread], doc: "the page's tab"
+
+  attr :current, :atom,
+    required: true,
+    values: [:ticket, :explore, :thread],
+    doc: "the page's tab"
+
   attr :ticket_path, :string, required: true, doc: "the Ticket tab, `/work/:number`"
+  attr :explore_path, :string, required: true, doc: "Explore's tab, `/work/:number/explore`"
   attr :thread_path, :string, required: true, doc: "the Thread, `/work/:number/thread`"
   attr :comment_count, :integer, default: 0, doc: "people's comments in the Thread"
 
@@ -1466,6 +1485,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       current={@current}
     >
       <:tab key={:ticket} patch={@ticket_path} icon="hero-document-text">{gettext("Ticket")}</:tab>
+      <:tab key={:explore} patch={@explore_path} icon="hero-light-bulb">{stage_name(:explore)}</:tab>
       <:tab
         key={:thread}
         patch={@thread_path}
@@ -1619,23 +1639,78 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     * `:taken_in` - who took the work item in from the ticket (`external_ref`, beside the
       mark of the integration it came from, `integration`, and a link out where `url` is
-      given), who owns it where that is another person (`owner`), and the first
-      instruction under it (`first_instruction`, none where it is empty or blank);
-    * `:closed`, `:declined` - who closed or declined it;
+      given), or took it in again (`again`), who owns it where that is another person
+      (`owner`), and the first instruction under it (`first_instruction`, none where it is
+      empty or blank);
+    * `:started` - Qory started Explore in a run (`run`), its first, again with the
+      answers (`start: :answers`), or again after Run Explore again or a retry
+      (`start: :again`), with the run's place in the take in beside it;
+    * `:asked` - how many questions Qory asked and after how long (`questions`,
+      `duration`), the questions quoted under it;
+    * `:answered` - who answered Qory's questions, each question and its answer quoted;
+    * `:proposed` - Qory proposed how to build it, after how long, and whose turn it is
+      (`owner`); nothing where it has no owner;
+    * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
+      (`outcome`: `:error`, `:none` or `:refused`);
+    * `:explore_again` - who asked Qory to explore again;
+    * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
+    * `:closed`, `:declined` - who closed or declined it, and where it was declined
+      (`stage`);
     * `:undone` - who undid it, before a run started.
 
-  Every kind takes `integration`, so no page draws the ref without its mark.
+  A run is `%{id:, path:, attempt:, of:}`, its id shown as `short_id/1` and linked where
+  `path` is given. A question is `%{public_id:, text:, answer:}`. Every kind takes
+  `integration`, so no page draws the ref without its mark. What a run wrote, and a
+  member's answers, are quoted as plain text, never inside a sentence.
   """
   attr :id, :string, required: true, doc: "the DOM id: the event's `public_id` under the Thread's"
-  attr :kind, :atom, required: true, values: [:taken_in, :closed, :declined, :undone]
-  attr :actor, :map, required: true, doc: "who acted, a person"
+
+  attr :kind, :atom,
+    required: true,
+    values: [
+      :taken_in,
+      :started,
+      :asked,
+      :answered,
+      :proposed,
+      :no_result,
+      :lost,
+      :cancelled,
+      :explore_again,
+      :confirmed,
+      :closed,
+      :declined,
+      :undone
+    ]
+
+  attr :actor, :map, default: nil, doc: "who acted, a person; none for Qory's events"
   attr :at, :any, required: true, doc: "when"
   attr :external_ref, :string, default: nil, doc: "`:taken_in`: the ticket's ref"
   attr :url, :string, default: nil, doc: "`:taken_in`: the ticket's page at the source"
   attr :integration, :string, required: true, doc: "the integration's name, beside the ref"
-  attr :owner, :map, default: nil, doc: "`:taken_in`: who owns it, a person"
+  attr :owner, :map, default: nil, doc: "`:taken_in`, `:proposed`: who owns it, a person"
   attr :first_instruction, :string, default: nil, doc: "`:taken_in`: the first instruction"
+  attr :again, :boolean, default: false, doc: "`:taken_in`: whether it was taken in again"
+  attr :start, :atom, default: nil, values: [nil, :answers, :again], doc: "`:started`: how"
+  attr :run, :map, default: nil, doc: "the run, as above"
+  attr :questions, :list, default: [], doc: "`:asked`, `:answered`: the questions, as above"
+  attr :duration, :string, default: nil, doc: "`:asked`, `:proposed`: how long the run took"
+
+  attr :outcome, :atom,
+    default: :error,
+    values: [:error, :none, :refused],
+    doc: "`:no_result`: why the run gave none"
+
+  attr :changed, :boolean, default: false, doc: "`:confirmed`: with the member's changes"
+
+  attr :stage, :atom,
+    default: :confirm,
+    values: [:explore, :confirm],
+    doc: "`:declined`: where"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+
+  def thread_event(%{kind: :proposed, owner: nil} = assigns), do: ~H""
 
   def thread_event(assigns) do
     now = now(assigns)
@@ -1643,6 +1718,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         line: event_line(assigns),
+        tag:
+          assigns.kind == :started &&
+            gettext("Run %{attempt} of %{of}",
+              attempt: Format.number(assigns.run.attempt),
+              of: Format.number(assigns.run.of)
+            ),
+        qory: assigns.kind in [:started, :asked, :proposed],
+        bad: assigns.kind in [:no_result, :lost, :cancelled],
         at_words: time_tag(assigns.at, Format.relative(assigns.at, now)),
         href: if(out?(assigns.url), do: assigns.url),
         instruction: assigns.kind == :taken_in && instruction(assigns.first_instruction)
@@ -1651,7 +1734,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <li id={@id} class="q-wi-ev">
       <span class="q-wi-ev-ic" aria-hidden="true">
-        <span><.icon name={event_icon(@kind)} class="size-3" /></span>
+        <.bee :if={@qory} class="q-bl-bee q-bl-bee-lg" />
+        <span :if={!@qory} class={@bad && "q-wi-ev-bad"}>
+          <.icon name={event_icon(@kind)} class="size-3" />
+        </span>
       </span>
       <div>
         <p>
@@ -1663,20 +1749,66 @@ defmodule ApiaryWeb.WorkItemComponents do
               </span>
             </:part>
           </.rich>
+          <span :if={@tag} class="q-wi-tag">{@tag}</span>
           <span class="q-wi-when">{@at_words}</span>
         </p>
         <p :if={@instruction} class="q-wi-q">
           {gettext("First instruction: %{text}", text: @instruction)}
         </p>
+        <ol :if={@kind == :asked} id={"#{@id}-questions"} class="q-wi-qs">
+          <li :for={question <- @questions} phx-no-format>{question.text}</li>
+        </ol>
+        <div :if={@kind == :answered} id={"#{@id}-answers"} class="q-wi-qa">
+          <div :for={question <- @questions}>
+            <div class="q-wi-qa-q" phx-no-format>{question.text}</div>
+            <div class="q-wi-qa-a" phx-no-format>{question.answer}</div>
+          </div>
+        </div>
       </div>
     </li>
     """
   end
 
   defp event_icon(:taken_in), do: "hero-arrow-down-tray-micro"
+  defp event_icon(:answered), do: "hero-chat-bubble-left-right-micro"
+  defp event_icon(:no_result), do: "hero-exclamation-triangle-micro"
+  defp event_icon(:lost), do: "hero-signal-slash-micro"
+  defp event_icon(:cancelled), do: "hero-stop-circle-micro"
+  defp event_icon(:explore_again), do: "hero-arrow-path-micro"
+  defp event_icon(:confirmed), do: "hero-check-micro"
   defp event_icon(:closed), do: "hero-x-circle-micro"
   defp event_icon(:declined), do: "hero-minus-circle-micro"
   defp event_icon(:undone), do: "hero-arrow-uturn-left-micro"
+
+  defp event_line(%{kind: :taken_in, again: true, actor: actor, owner: owner}) do
+    ref = {:part, :ref}
+    name = {:b, actor.name}
+    other_owner = owner && !same_person?(owner, actor) && owner
+
+    cond do
+      !other_owner and you?(actor) ->
+        rich_gettext("You took this in again from %{ref}", ref: ref)
+
+      !other_owner ->
+        rich_gettext("%{name} took this in again from %{ref}", name: name, ref: ref)
+
+      you?(actor) ->
+        rich_gettext("You took this in again from %{ref}. %{owner} owns it",
+          ref: ref,
+          owner: {:b, other_owner.name}
+        )
+
+      you?(other_owner) ->
+        rich_gettext("%{name} took this in again from %{ref}. You own it", name: name, ref: ref)
+
+      true ->
+        rich_gettext("%{name} took this in again from %{ref}. %{owner} owns it",
+          name: name,
+          ref: ref,
+          owner: {:b, other_owner.name}
+        )
+    end
+  end
 
   defp event_line(%{kind: :taken_in, actor: actor, owner: owner}) do
     ref = {:part, :ref}
@@ -1708,10 +1840,113 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
+  defp event_line(%{kind: :started, start: :answers, run: run}),
+    do:
+      rich_gettext("Qory started Explore again, with the answers, in run %{run}",
+        run: run_ref(run)
+      )
+
+  defp event_line(%{kind: :started, start: :again, run: run}),
+    do: rich_gettext("Qory started Explore again in run %{run}", run: run_ref(run))
+
+  defp event_line(%{kind: :started, run: run}),
+    do: rich_gettext("Qory started Explore in run %{run}", run: run_ref(run))
+
+  defp event_line(%{kind: :asked, questions: questions, duration: duration}) do
+    n = length(questions)
+
+    ngettext(
+      "Qory asked %{number} question, after %{duration}",
+      "Qory asked %{number} questions, after %{duration}",
+      n,
+      number: Format.number(n),
+      duration: duration
+    )
+  end
+
+  defp event_line(%{kind: :answered, actor: actor, questions: questions}) do
+    n = length(questions)
+
+    if you?(actor),
+      do: ngettext("You answered Qory's question", "You answered Qory's questions", n),
+      else:
+        rich_ngettext("%{name} answered Qory's question", "%{name} answered Qory's questions", n,
+          name: {:b, actor.name}
+        )
+  end
+
+  defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
+    if you?(owner),
+      do:
+        rich_gettext(
+          "Qory proposed how to build it, after %{duration}. It waits for you to confirm",
+          duration: duration
+        ),
+      else:
+        rich_gettext(
+          "Qory proposed how to build it, after %{duration}. It waits for %{name} to confirm",
+          duration: duration,
+          name: {:b, owner.name}
+        )
+  end
+
+  defp event_line(%{kind: :no_result, outcome: :none, run: run}),
+    do: rich_gettext("Run %{run} ended without a result", run: run_ref(run))
+
+  defp event_line(%{kind: :no_result, outcome: :refused, run: run}),
+    do:
+      rich_gettext("Run %{run} returned a result that did not pass Qory's check",
+        run: run_ref(run)
+      )
+
+  defp event_line(%{kind: :no_result, run: run}),
+    do:
+      rich_gettext("Run %{run} ended with an error, so Explore has no result", run: run_ref(run))
+
+  defp event_line(%{kind: :lost, run: run}),
+    do:
+      rich_gettext("Run %{run} was lost before it ended, so Explore has no result",
+        run: run_ref(run)
+      )
+
+  defp event_line(%{kind: :cancelled, run: run}),
+    do:
+      rich_gettext("Run %{run} was cancelled before it ended, so Explore has no result",
+        run: run_ref(run)
+      )
+
+  defp event_line(%{kind: :explore_again, actor: actor}) do
+    if you?(actor),
+      do: gettext("You asked Qory to explore again"),
+      else: rich_gettext("%{name} asked Qory to explore again", name: {:b, actor.name})
+  end
+
+  defp event_line(%{kind: :confirmed, changed: true, actor: actor}) do
+    if you?(actor),
+      do: gettext("You changed Qory's proposal and confirmed it. Ready for Shape"),
+      else:
+        rich_gettext("%{name} changed Qory's proposal and confirmed it. Ready for Shape",
+          name: {:b, actor.name}
+        )
+  end
+
+  defp event_line(%{kind: :confirmed, actor: actor}) do
+    if you?(actor),
+      do: gettext("You confirmed Qory's proposal. Ready for Shape"),
+      else:
+        rich_gettext("%{name} confirmed Qory's proposal. Ready for Shape", name: {:b, actor.name})
+  end
+
   defp event_line(%{kind: :closed, actor: actor}) do
     if you?(actor),
       do: gettext("You closed this work item"),
       else: rich_gettext("%{name} closed this work item", name: {:b, actor.name})
+  end
+
+  defp event_line(%{kind: :declined, stage: :explore, actor: actor}) do
+    if you?(actor),
+      do: gettext("You declined this work item at Explore"),
+      else: rich_gettext("%{name} declined this work item at Explore", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :declined, actor: actor}) do
