@@ -141,9 +141,11 @@ defmodule Apiary.Kinds.Bounds do
       `additionalProperties: false`;
     * `true`, or a map without a string `type`, a `$ref`, a `const` or an `enum`, where a
       value is described: the schema itself, a member of `properties`, `items` or `$defs`;
-      or `items`, `properties` or `additionalProperties` in such a map;
-    * a `$ref` that is neither into the schema's `$defs` nor into a document of
-      `documents`, or a `const` or `enum` that holds a list or an object.
+      or `items`, `properties` or `additionalProperties` in such a map; or, there, an
+      array without `items`, whose entries may be anything;
+    * a `$ref` that is neither to a member of the schema's `$defs`, `#/$defs/<name>`, nor
+      into a document of `documents`, or a `const` or `enum` that holds a list or an
+      object.
 
   The members of `allOf`, `anyOf`, `oneOf`, `not`, `if`, `then` and `else` narrow the
   value their schema describes, which that schema bounds: they need no `type`. The
@@ -203,6 +205,9 @@ defmodule Apiary.Kinds.Bounds do
     acc =
       case type do
         "array" ->
+          if place == :value and not Map.has_key?(schema, "items"),
+            do: refuse("an array without items, whose entries may be anything", schema)
+
           case schema do
             %{"maxItems" => max} when is_integer(max) -> put_elem(acc, 0, max(elem(acc, 0), max))
             _no_max -> refuse("an array without maxItems", schema)
@@ -241,11 +246,17 @@ defmodule Apiary.Kinds.Bounds do
 
   defp described?(schema), do: Enum.any?(~w($ref const enum), &Map.has_key?(schema, &1))
 
-  # A `$ref` into the schema's `$defs` needs nothing more: every member of `$defs` is read
-  # as a value. A `$ref` into a document of `documents` has its target read where the
-  # `$ref` is, with no further documents.
+  # A `$ref` to a member of the schema's `$defs` needs nothing more: every member of
+  # `$defs` is read as a value. A `$ref` further into one, such as into its `allOf`, could
+  # reach a schema read only as narrowing, and raises. A `$ref` into a document of
+  # `documents` has its target read where the `$ref` is, with no further documents.
   defp ref(acc, nil, _place, _documents), do: acc
-  defp ref(acc, "#/$defs/" <> _name, _place, _documents), do: acc
+
+  defp ref(acc, "#/$defs/" <> name = ref, _place, _documents) do
+    if String.contains?(name, "/"),
+      do: refuse("a $ref further into a member of $defs than the member", ref),
+      else: acc
+  end
 
   defp ref(acc, ref, place, documents) when is_binary(ref) do
     with [url, "/" <> pointer] <- String.split(ref, "#", parts: 2),

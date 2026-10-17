@@ -152,7 +152,22 @@ defmodule Apiary.Kinds.BoundsTest do
             {object.(%{"a" => %{"type" => "string", "anyOf" => [%{"type" => "array"}]}}), %{}},
             {object.(%{"a" => %{"type" => "string", "oneOf" => %{}}}), %{}},
             {object.(%{"a" => %{"type" => "string", "not" => %{"type" => "object"}}}), %{}},
-            {%{"type" => "string"}, %{url => %{"type" => "array"}}}
+            {%{"type" => "string"}, %{url => %{"type" => "array"}}},
+            # An array without items takes entries of any size.
+            {%{"type" => "array", "maxItems" => 2}, %{}},
+            {object.(%{"tags" => %{"type" => "array", "maxItems" => 4}}), %{}},
+            {%{"type" => "string", "$defs" => %{"a" => %{"type" => "array", "maxItems" => 4}}},
+             %{}},
+            # A $ref further into a member of $defs than the member, which could reach a
+            # schema read only as narrowing.
+            {Map.put(
+               object.(%{"p" => %{"$ref" => "#/$defs/a/allOf/0/properties/x"}}),
+               "$defs",
+               %{"a" => %{"type" => "string", "allOf" => [%{"properties" => %{"x" => true}}]}}
+             ), %{}},
+            {Map.put(object.(%{"p" => %{"$ref" => "#/$defs/a/items"}}), "$defs", %{
+               "a" => %{"type" => "array", "maxItems" => 1, "items" => %{"type" => "string"}}
+             }), %{}}
           ] do
         assert_raise ArgumentError, fn -> Bounds.from_schema(schema, documents) end
       end

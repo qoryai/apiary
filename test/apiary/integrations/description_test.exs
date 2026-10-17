@@ -237,11 +237,11 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   describe "the size of a description, and of its settings" do
     # A check takes less than this many milliseconds: the limits refuse each input below
-    # in a few, where JSV and the normalising of its errors took up to 3.5 s for a
-    # description and 2.9 s for settings, and JSV alone over 0.25 s on some of them; the
-    # budget leaves room for a slow machine. Which inputs the limits refuse is asserted
-    # apart from the time: a refusal by the limits carries them, `%{limits: _}`, and one
-    # by the schema does not.
+    # in a few. Without them, JSV and the normalising of its errors took about 3 to 5 s on
+    # the slowest descriptions below and about 3 s on the slowest settings, and JSV alone
+    # over 0.25 s on some of them; the budget leaves room for a slow machine. Which inputs
+    # the limits refuse is asserted apart from the time: a refusal by the limits carries
+    # them, `%{limits: _}`, and one by the schema does not.
     @budget_ms 150
 
     setup do

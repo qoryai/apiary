@@ -43,7 +43,7 @@ defmodule Apiary.Kinds.PatternTest do
 
   test "a schema validated with JSV reads $ as the contracts do" do
     {:ok, root} = Schema.build(%{"type" => "string", "pattern" => "^[a-z]+$"})
-    assert Schema.validate("github", root, []) == :ok
-    assert {:error, _} = Schema.validate("github\n", root, [])
+    assert Schema.validate("acme", root, []) == :ok
+    assert {:error, _} = Schema.validate("acme\n", root, [])
   end
 end
