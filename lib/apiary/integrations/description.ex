@@ -26,7 +26,9 @@ defmodule Apiary.Integrations.Description do
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  alias Apiary.Kinds.{CanonicalJSON, Pattern, Schema}
+  require Logger
+
+  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, Schema}
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -62,6 +64,10 @@ defmodule Apiary.Integrations.Description do
   # before a schema is applied (see the module's documentation and `check_settings/2`).
   @limits [list: 1024, members: 1024, nodes: 4096, string: 16_384, depth: 64]
   @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
+
+  # The budget of the settings check, the build of the schema and the validation
+  # (`Apiary.Kinds.Budget`): 500 ms and 4194304 words of heap, 32 MiB on a 64-bit machine.
+  @settings_budget [ms: 500, heap_words: 4_194_304]
 
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
@@ -182,7 +188,10 @@ defmodule Apiary.Integrations.Description do
       that hold a list of more than 1024 entries, an object of more than 1024 members,
       more than 4096 values in all or more than 64 lists and objects nested in one
       another are refused so: the schema comes from the description and need bound none
-      of them.
+      of them. For the same reason the schema is built and the settings validated in
+      another process, within 500 ms and 32 MiB of heap: a schema of a few references
+      can make the work grow exponentially with their nesting. Settings whose check
+      goes over that budget, or fails, are refused as `integration_settings_invalid`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -221,13 +230,30 @@ defmodule Apiary.Integrations.Description do
         "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
       })
 
-    with {:ok, root} <- Schema.build(schema),
-         :ok <- Schema.validate(settings, root, @settings_limits) do
-      :ok
-    else
-      {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
+    check = fn ->
+      with {:ok, root} <- Schema.build(schema),
+           do: Schema.validate(settings, root, @settings_limits)
+    end
+
+    case Budget.run(check, @settings_budget) do
+      {:ok, :ok} ->
+        :ok
+
+      {:ok, {:error, errors}} ->
+        {:error, {:integration_settings_invalid, errors}}
+
+      {:error, reason} ->
+        Logger.warning(
+          "an integration's settings check was stopped name=#{description.name} " <>
+            "program_version=#{description.program_version} reason=#{reason}"
+        )
+
+        {:error, {:integration_settings_invalid, budget_refusal(reason)}}
     end
   end
+
+  defp budget_refusal(:exceeded), do: %{valid: false, budget: :exceeded}
+  defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
 
   @doc """
   check_argument/2 checks the argument a connection of `description` stores:

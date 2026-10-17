@@ -432,4 +432,105 @@ defmodule Apiary.Integrations.DescriptionTest do
       refute limited?(refused)
     end
   end
+
+  describe "the budget of the settings check" do
+    # The settings schema comes from the description, and a few of its references can make
+    # the check's work grow exponentially, which no limit on the settings bounds. The check
+    # runs in another process within 500 ms and 32 MiB of heap; one over that budget is
+    # refused as invalid settings, `budget: :exceeded`, in about 500 ms or less. Without
+    # the budget the checks below took 1.2 s to 1.7 s at 20 levels of allOf and for the
+    # patterns, 5.6 s at 20 levels of anyOf, and over 5 s at 24 levels of allOf. The time
+    # asserted leaves room for a slow machine.
+    @refused_within_ms 1000
+
+    defp with_settings_schema(schema) do
+      assert {:ok, description} = parse(tracker_description(%{"settings" => schema}))
+      description
+    end
+
+    # A schema whose every level refers twice to the next, in `keyword`: 2^levels checks of
+    # one string, which the last level takes as `last` says.
+    defp doubling(levels, keyword \\ "allOf", last \\ "string") do
+      defs =
+        Map.new(1..levels, fn i ->
+          next = %{"$ref" => "#/$defs/d#{i + 1}"}
+          {"d#{i}", %{keyword => [next, next]}}
+        end)
+
+      with_settings_schema(%{
+        "type" => "object",
+        "properties" => %{"a" => %{"$ref" => "#/$defs/d1"}},
+        "$defs" => Map.put(defs, "d#{levels + 1}", %{"type" => last})
+      })
+    end
+
+    defp over_budget(description, settings) do
+      {microseconds, result} =
+        :timer.tc(fn -> Description.check_settings(description, settings) end)
+
+      assert result ==
+               {:error, {:integration_settings_invalid, %{valid: false, budget: :exceeded}}}
+
+      assert div(microseconds, 1000) < @refused_within_ms, "took #{div(microseconds, 1000)} ms"
+    end
+
+    @tag :capture_log
+    test "a schema that doubles its work at each of 20 or 24 levels is refused within the budget" do
+      over_budget(doubling(20), %{"a" => "s"})
+      over_budget(doubling(24), %{"a" => "s"})
+    end
+
+    @tag :capture_log
+    test "a schema whose anyOf doubles its work at each of 20 levels is refused within the budget" do
+      # The string fails every branch, so every branch is checked.
+      over_budget(doubling(20, "anyOf", "integer"), %{"a" => "s"})
+    end
+
+    @tag :capture_log
+    test "a schema of 1000 patterns for each of 1024 strings is refused within the budget" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{
+              "type" => "array",
+              "items" => %{
+                "anyOf" => for(i <- 1..1000, do: %{"type" => "string", "pattern" => "^z#{i}$"})
+              }
+            }
+          }
+        })
+
+      over_budget(description, %{"x" => List.duplicate("a", 1024)})
+    end
+
+    test "a schema that doubles its work at each of 10 levels passes, as do 1000 settings" do
+      assert Description.check_settings(doubling(10), %{"a" => "s"}) == :ok
+
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" =>
+            Map.new(1..1000, &{"p#{&1}", %{"type" => "string", "pattern" => "^[a-z0-9]{1,40}$"}})
+        })
+
+      settings = Map.new(1..1000, &{"p#{&1}", "value#{&1}"})
+      assert Description.check_settings(description, settings) == :ok
+    end
+
+    test "every fixture with settings takes the settings it describes" do
+      assert {:ok, github} =
+               @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()
+
+      assert Description.check_settings(github, %{
+               "app_id" => 123_456,
+               "installation_id" => 7,
+               "permissions" => %{"contents" => "read"},
+               "api_url" => "https://api.github.com"
+             }) == :ok
+
+      assert {:ok, tracker} = parse(tracker_description())
+      assert Description.check_settings(tracker, %{"url" => "https://tracker.example.com"}) == :ok
+    end
+  end
 end

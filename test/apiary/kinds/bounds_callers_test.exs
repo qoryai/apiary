@@ -40,11 +40,13 @@ defmodule Apiary.Kinds.BoundsCallersTest do
         end
       end)
 
-    :erlang.trace(pid, true, [:call])
+    # `set_on_spawn` traces the processes it starts too, such as the one the settings are
+    # checked in (`Apiary.Kinds.Budget`).
+    :erlang.trace(pid, true, [:call, :set_on_spawn])
     send(pid, :go)
     assert_receive {:done, ^pid, _result}
-    ref = :erlang.trace_delivered(pid)
-    assert_receive {:trace_delivered, ^pid, ^ref}
+    ref = :erlang.trace_delivered(:all)
+    assert_receive {:trace_delivered, :all, ^ref}
     collect([])
   end
 
