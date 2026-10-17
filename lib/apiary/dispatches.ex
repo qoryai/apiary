@@ -6,7 +6,7 @@ defmodule Apiary.Dispatches do
   # any node pool of the workspace claims from with its pool's access key
   # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`).
   #
-  # ## Queueing: `queue/2` and `cancel_for_undo/1`
+  # ## Queueing: `queue/2`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
@@ -26,6 +26,18 @@ defmodule Apiary.Dispatches do
   # lapsed first (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The
   # runs of the take in are locked `FOR UPDATE` before their dispatches are looked at, so
   # a claim of one either commits before and is seen, or finds the run ended.
+  #
+  # `cancel_for_close(work_item_ids, now)`, inside the caller's transaction, which holds
+  # the work items `FOR UPDATE`, is what a close of the work items asks
+  # (`Apiary.WorkItems.close_locked/3`). Their runs not yet handed over, waiting or
+  # claimed, are locked `FOR UPDATE` in the order of their ids; a lease that lapsed and
+  # was not yet swept is lapsed first (`Apiary.Dispatches.Slots.free/2`), as an undo has
+  # it. Then each run ends, end cause `closed`. A stale dispatch of one ends with it, end
+  # cause `run_ended`; a claimed run's live dispatch, neither stale nor handed over, ends
+  # with it, end cause `closed`: a dispatch that ended, which the provisioner contract
+  # answers `410 gone`. The slot each ended dispatch held is freed once
+  # (`Apiary.Dispatches.Slots.free/2`). A handed-over run is left as it is: it goes on to
+  # its end, and its result and its outcome are taken as before.
   #
   # ## Claiming: `claim/2`
   #
@@ -219,6 +231,64 @@ defmodule Apiary.Dispatches do
 
       broadcast(freed)
       :ok
+    end
+  end
+
+  # cancel_for_close/2 ends the runs not yet handed over of the work items
+  # `work_item_ids`, and their dispatches, at `now`, inside the caller's transaction (the
+  # moduledoc): `{:ok, workspace_ids}`, the workspaces whose queue or slots changed, for
+  # the caller to tell once its transaction commits.
+  @doc false
+  @spec cancel_for_close([Ecto.UUID.t()], DateTime.t()) :: {:ok, [Ecto.UUID.t()]}
+  def cancel_for_close(work_item_ids, %DateTime{} = now) when is_list(work_item_ids) do
+    in_transaction!("cancel_for_close/2")
+
+    runs =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id in ^work_item_ids,
+          where: fragment("? IN ('waiting', 'claimed')", r.state),
+          order_by: r.id,
+          lock: "FOR UPDATE",
+          select: {r.id, r.workspace_id}
+      )
+
+    case runs do
+      [] ->
+        {:ok, []}
+
+      _some ->
+        {run_ids, workspace_ids} = Enum.unzip(runs)
+
+        # A lease that lapsed unswept frees its run first, as an undo has it.
+        lapsed = Slots.free({:runs, run_ids}, now)
+
+        {_count, _rows} =
+          Repo.update_all(from(r in DispatchRun, where: r.id in ^run_ids),
+            set: [state: :ended, end_cause: :closed, updated_at: now]
+          )
+
+        # A stale dispatch ends with its run; a live one, not handed over, as its run.
+        {_count, _rows} =
+          Repo.update_all(
+            from(d in Dispatch,
+              where: d.dispatch_run_id in ^run_ids,
+              where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+            ),
+            set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+          )
+
+        {_count, _rows} =
+          Repo.update_all(
+            from(d in Dispatch,
+              where: d.dispatch_run_id in ^run_ids,
+              where: is_nil(d.stale_at) and is_nil(d.handed_over_at) and is_nil(d.ended_at)
+            ),
+            set: [ended_at: now, end_cause: :closed, updated_at: now]
+          )
+
+        freed = Slots.free({:runs, run_ids}, now)
+        {:ok, Enum.uniq(workspace_ids ++ lapsed ++ freed)}
     end
   end
 

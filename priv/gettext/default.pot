@@ -7639,6 +7639,11 @@ msgstr ""
 msgid "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Its owner and name, such as acme/shop-integration."

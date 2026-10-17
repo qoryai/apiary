@@ -3,8 +3,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # for an instance admin: its Overview, the state, when it was last seen, read again as a
   # key arrives, the install address and how often it pulls; its Settings tab, with the
   # pull interval, its name and the danger zone; the Rename page, with its errors; the
-  # Remove page, which revokes its keys and ends every connection to it; and a path that
-  # does not exist for anyone else.
+  # Remove page, which revokes its keys, ends every connection to it and closes the open
+  # work items of those connections; and a path that does not exist for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -12,12 +12,14 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{Adapters, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.{Connection, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
 
@@ -473,7 +475,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   end
 
   describe "Remove" do
-    test "says what happens, then revokes its keys, cancels its codes and ends its connections",
+    test "says what happens, then revokes its keys, cancels its codes, ends its connections and closes their work items",
          %{conn: conn, admin: admin} do
       %{scope: scope} = sign_up_fixture()
 
@@ -482,6 +484,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
       {:ok, code, _code} = Adapters.create_code(admin, adapter)
       {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+      work_item = work_item_fixture(scope, connection_id: connection.id)
 
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
 
@@ -490,7 +493,11 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, ".q-settings-head-sub") == "This happens at once:"
 
       assert words(lv, "#adapter-remove-follows") ==
-               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
+               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
+
+      # The close of its work items is the second line, after the keys.
+      assert words(lv, "#adapter-remove-follows li:nth-child(2)") ==
+               "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
 
       assert has_element?(lv, "#adapter-remove-button", "Remove Platform tracker")
 
@@ -507,6 +514,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert Repo.get!(AccessKey, key.id).revoked_at
       assert Repo.get!(EnrolmentCode, code.id).cancelled_at
       assert Repo.get!(Connection, connection.id).ended_at
+      assert %WorkItem{state: :closed, closed_by_id: nil} = Repo.get!(WorkItem, work_item.id)
 
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, page_path(adapter)) end
     end

@@ -41,7 +41,7 @@ defmodule Apiary.Adapters do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, AccessKeys, Accounts, Audit, Features, Repo}
+  alias Apiary.{Access, AccessKeys, Accounts, Audit, Dispatches, Features, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.{Collections, ConnectPass, Connections, Feed, Wire}
@@ -314,16 +314,22 @@ defmodule Apiary.Adapters do
   # its entry of `access_key.revoke`), and every connection to it that has not ended ends
   # (`integration_deleted`), which the entry records (`ended_connection_ids`, their public
   # ids), and once that commits, each one's organisation hears of it
-  # (`Apiary.Adapters.Connections.broadcast_ended_with/1`).
+  # (`Apiary.Adapters.Connections.broadcast_ended_with/1`). After the connections, every
+  # live work item whose ticket came through one of them, in every organisation, is
+  # closed as a member would close it, by the instance (`Apiary.WorkItems.close_for_adapter/2`,
+  # whose moduledoc gives the lock order), and its runs not yet handed over end; once that
+  # commits, the workspaces whose queue changed hear of it (`Apiary.Dispatches.broadcast/1`).
+  # The tickets are left as they are. If a close fails, nothing of the deletion is kept.
   # `{:ok, adapter}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
   @spec delete_adapter(Scope.t(), Node.t()) ::
-          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_live}
   def delete_adapter(%Scope{} = scope, %Node{} = adapter) do
     mutate(scope, adapter, fn recorder, current ->
       now = DateTime.utc_now()
 
       with {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
+           {:ok, workspace_ids} <- WorkItems.close_for_adapter(current, now),
            {:ok, deleted} <-
              current
              |> Ecto.Changeset.change(deleted_at: now, deleted_by_id: scope.user.id)
@@ -338,13 +344,18 @@ defmodule Apiary.Adapters do
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> Map.put(:ended_connection_ids, connection_ids)
              }) do
-        {:ok, deleted}
+        {:ok, {deleted, workspace_ids}}
       end
     end)
-    |> tap(fn
-      {:ok, deleted} -> :ok = Connections.broadcast_ended_with(deleted)
-      _refused -> :ok
-    end)
+    |> case do
+      {:ok, {deleted, workspace_ids}} ->
+        :ok = Connections.broadcast_ended_with(deleted)
+        :ok = Dispatches.broadcast(workspace_ids)
+        {:ok, deleted}
+
+      {:error, _reason} = refused ->
+        refused
+    end
   end
 
   # Asks `authorize_instance/2` of the person as they are now, then hands `fun` the scope
