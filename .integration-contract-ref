@@ -1,10 +1,12 @@
 # The commit of qoryai/integrations whose contracts/integration/v1 fixtures are under
 # test/fixtures/integration-contract/ (its description fixtures, and under adapter/ the
 # signed connect pass and return with their keys and payloads, the adapter's declarations,
-# accepted and refused, the change feed's answers, accepted and refused, and two signed
-# requests, a POST and a GET, with the GET's signed answer), and whose
-# connect-return.schema.json is under test/fixtures/integration-contract/schema/: a
-# commit of the integrations, pinned by its id.
+# accepted and refused, the change feed's answers, accepted and refused, the listings of
+# collections and a disconnect of one, accepted and refused, the bodies of a collection's
+# items and of an item's comments, accepted and refused, the refusals the control plane
+# answers with, and two signed requests, a POST and a GET, with the GET's signed answer),
+# and whose connect-return.schema.json is under test/fixtures/integration-contract/schema/:
+# a commit of the integrations, pinned by its id.
 #
 # contracts/integration/v1/description.schema.json, vendored under
 # priv/contract/integration/, stays at the earlier commit

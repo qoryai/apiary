@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "item_ref": "I_2001",
+  "comments": [
+    {
+      "ref": "IC_3001",
+      "url": "https://github.com/acme/shop/issues/42#issuecomment-3001",
+      "author": {
+        "name": "octo-acme",
+        "kind": "person"
+      },
+      "body": "",
+      "body_format": "markdown",
+      "created_at": "2026-10-14T16:05:00Z",
+      "updated_at": "2026-10-15T11:59:00Z",
+      "deleted": true
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "collection_ref": "TRK",
+  "items": [
+    {
+      "ref": "TRK-1",
+      "url": "https://tracker.acme.example/TRK/TRK-1",
+      "title": "Checkout fails on an empty cart",
+      "body": "Steps to reproduce checkout fails on an empty cart.",
+      "body_format": "markdown",
+      "filed_by": {
+        "name": "Ada Example",
+        "kind": "person"
+      },
+      "labels": [
+        "bug",
+        ""
+      ],
+      "state": "open",
+      "state_reason": null,
+      "comment_count": 0,
+      "created_at": "2026-10-01T09:00:00Z",
+      "updated_at": "2026-10-14T08:00:00Z"
+    }
+  ]
+}

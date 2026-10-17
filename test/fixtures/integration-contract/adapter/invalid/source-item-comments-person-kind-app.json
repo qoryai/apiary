@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "item_ref": "TRK-1",
+  "comments": [
+    {
+      "ref": "C-11",
+      "url": "https://tracker.acme.example/TRK/TRK-1#C-11",
+      "author": {
+        "name": "Tracker bot",
+        "kind": "app"
+      },
+      "body": "Linked.",
+      "body_format": "text",
+      "created_at": "2026-10-15T12:00:00Z",
+      "updated_at": "2026-10-15T12:00:00Z"
+    }
+  ]
+}
