@@ -527,7 +527,7 @@ defmodule Apiary.Audit do
           nodes: %{Ecto.UUID.t() => String.t()},
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
-          runs: %{Ecto.UUID.t() => Ecto.UUID.t()},
+          runs: %{Ecto.UUID.t() => String.t()},
           organisations: %{Ecto.UUID.t() => String.t()}
         }
 

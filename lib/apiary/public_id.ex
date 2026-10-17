@@ -24,8 +24,10 @@ defmodule Apiary.PublicId do
     size = byte_size(prefix)
 
     case id do
+      # Byte by byte: the alphabet is ASCII, so a byte outside it, the first byte of a
+      # character that takes more than one, or bytes that are not UTF-8 at all, is refused.
       <<^prefix::binary-size(^size), "_", rest::binary-size(16)>> ->
-        rest |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet))
+        for <<byte <- rest>>, reduce: true, do: (ok -> ok and byte in @alphabet)
 
       _other ->
         false

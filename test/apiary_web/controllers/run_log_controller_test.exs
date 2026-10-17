@@ -205,6 +205,13 @@ defmodule ApiaryWeb.RunLogControllerTest do
                404
     end
 
+    test "an id of 16 bytes that are not UTF-8 is not found", %{conn: conn, scope: scope} do
+      # `%FF` decodes to the byte 0xFF: with the 15 characters after it, 16 bytes after `rn_`.
+      conn = get(conn, "#{workspace_path(scope)}/runs/rn_%FF123456789abcdef/log")
+      assert conn.status == 404
+      assert conn.resp_body == "not found"
+    end
+
     test "where the run's Terminal is hidden from the reader, every stream and the download are not found",
          %{conn: conn, scope: scope} do
       run = sized_run(scope)

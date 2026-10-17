@@ -102,6 +102,23 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert response(get(conn, old <> "/log"), 404)
     end
 
+    test "an address whose id is 16 bytes that are not UTF-8 is not found", %{
+      conn: conn,
+      scope: scope
+    } do
+      # `%FF` decodes to the byte 0xFF: with the 15 characters after it, 16 bytes after `rn_`.
+      address = "#{workspace_path(scope)}/runs/rn_%FF123456789abcdef"
+
+      for path <- ["", "/terminal", "/network", "/details"] do
+        assert {:ok, _lv, html} = live(conn, address <> path)
+        assert html =~ "This run is not in this workspace"
+      end
+
+      page = get(conn, address)
+      assert page.status == 200
+      assert page.resp_body =~ "This run is not in this workspace"
+    end
+
     test "the breadcrumb leads to Runs, then names the run asked for when its id is a run's",
          %{conn: conn, scope: scope} do
       runs = workspace_path(scope, "/runs")
