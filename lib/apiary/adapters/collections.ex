@@ -31,7 +31,7 @@ defmodule Apiary.Adapters.Collections do
   # assigns it.
   #
   # **Prebuilds**: a part applies the trigger of `Apiary.Environments.trigger/2` to the
-  # collections it made or updated, and an assign to those it linked or moved to a
+  # collections it made or updated, and an assign to those it assigned or moved to a
   # workspace, in its transaction: a prebuild is queued for each live node pool of the
   # collection's workspace whose record of it is missing or was queued for another
   # `environment_ref`, and a collection named without one retires its records.

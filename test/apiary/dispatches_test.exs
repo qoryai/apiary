@@ -126,6 +126,45 @@ defmodule Apiary.DispatchesTest do
       assert_receive {Dispatches, :changed}
     end
 
+    test "while one waits for the collection and the pool, sets the newer environment_ref on it",
+         ctx do
+      collection = collection_fixture(ctx.scope)
+      other = pool_fixture(ctx.scope)
+
+      {:ok, first} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
+
+      {:ok, again} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+
+      assert {again.id, again.run_id, again.queued_at} ==
+               {first.id, first.run_id, first.queued_at}
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = run!(first)
+
+      # Another pool gets a separate one.
+      {:ok, theirs} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, other, "env-2") end)
+
+      assert theirs.id != first.id
+
+      # Claimed, it is left as it is, and the next waits beside it.
+      assert {:ok, %{run: %{id: claimed_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert claimed_id == first.id
+
+      {:ok, next} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-3") end)
+
+      assert next.id != first.id
+      assert %DispatchRun{state: :claimed, environment_ref: "env-2"} = run!(first)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-3"} = run!(next)
+
+      # The database holds one waiting per collection and pool.
+      assert_raise Postgrex.Error, ~r/dispatch_runs_waiting_prebuild_index/, fn ->
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^first.id), set: [state: :waiting])
+      end
+    end
+
     test "refuses a pool of another workspace, and runs only inside a transaction", ctx do
       collection = collection_fixture(ctx.scope)
 
@@ -208,13 +247,14 @@ defmodule Apiary.DispatchesTest do
          ctx do
       workspace = workspace_fixture(ctx.scope.organisation)
       ended = collection_fixture(ctx.scope)
-      unlinked = collection_fixture(ctx.scope)
+      unassigned = collection_fixture(ctx.scope)
       moved = collection_fixture(ctx.scope)
       bare = collection_fixture(ctx.scope)
       cut = collection_fixture(ctx.scope)
 
       runs =
-        for collection <- [ended, unlinked, moved, bare, cut], do: prebuild!(collection, ctx.pool)
+        for collection <- [ended, unassigned, moved, bare, cut],
+            do: prebuild!(collection, ctx.pool)
 
       kept = collection_fixture(ctx.scope)
       next = prebuild!(kept, ctx.pool)
@@ -225,7 +265,7 @@ defmodule Apiary.DispatchesTest do
         set: [ended_at: now, ended_reason: :disconnected]
       )
 
-      Repo.update_all(from(c in Collection, where: c.id == ^unlinked.id),
+      Repo.update_all(from(c in Collection, where: c.id == ^unassigned.id),
         set: [workspace_id: nil]
       )
 
@@ -254,6 +294,35 @@ defmodule Apiary.DispatchesTest do
       end
 
       assert_received {Dispatches, :changed}
+    end
+
+    test "a deleted pool's waiting prebuild holds no slot, and holds back no other claim nor the queue's order",
+         ctx do
+      other = pool_fixture(ctx.scope)
+      %{access_key: other_key} = enrolled_key_fixture(ctx.scope, other)
+      deleted = pool_fixture(ctx.scope)
+      collection = collection_fixture(ctx.scope)
+
+      held = prebuild!(collection, deleted)
+      explore = queued!(ctx.scope)
+      mine = prebuild!(collection, ctx.pool)
+      later = queued!(ctx.scope)
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, deleted)
+
+      # The other pools take the runs in the queue's order, the oldest held for none.
+      assert {:ok, %{run: %{id: first}}} = Dispatches.claim(other_key, Dispatches.now(), 1)
+      assert {:ok, %{run: %{id: second}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: third}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert [first, second, third] == [explore.id, mine.id, later.id]
+
+      assert Dispatches.claim(ctx.key, Dispatches.now(), 2) == {:ok, :none}
+      assert Dispatches.claim(other_key, Dispatches.now(), 2) == {:ok, :none}
+
+      # It still waits, and counts toward no pool's slots.
+      assert run!(held).state == :waiting
+      assert Slots.held(deleted.id) == 0
+      assert Slots.held(ctx.pool.id) == 2
+      assert Slots.held(other.id) == 1
     end
 
     test "a collection whose environment_ref went away is still built", ctx do

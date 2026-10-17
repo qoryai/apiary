@@ -8,7 +8,10 @@ defmodule Apiary.DispatchesRacesTest do
   # The rules under test: a claim locks its pool's row `FOR UPDATE` before it counts the
   # pool's slots, so two claims of one pool take turns and the second counts the first;
   # and it takes the oldest waiting run `FOR UPDATE SKIP LOCKED`, so two claims, of one
-  # pool or of two, never take one run.
+  # pool or of two, never take one run. One prebuild waits per collection and node pool:
+  # two triggers at once take turns on the environment record, two queues at once on the
+  # index of the waiting ones, and a lapse that would make a claimed prebuild wait again
+  # waits for a trigger that holds the record.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -17,9 +20,11 @@ defmodule Apiary.DispatchesRacesTest do
   import Apiary.Races
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Repo}
+  alias Apiary.{Dispatches, Environments, Repo}
   alias Apiary.AccessKeys.PublicKey
-  alias Apiary.Dispatches.{Dispatch, Slots}
+  alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
   alias Apiary.WorkItems.WorkItem
@@ -60,6 +65,46 @@ defmodule Apiary.DispatchesRacesTest do
       {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
       run
     end
+  end
+
+  # A live collection of the scope's workspace, with a target, under a connection of
+  # an adapter remembered for `on_exit`.
+  defp collection!(ctx) do
+    connection = ticket_connection_fixture(ctx.scope)
+    Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+
+    Repo.insert!(%Collection{
+      public_id: Apiary.PublicId.generate(Collection.prefix()),
+      organisation_id: ctx.scope.organisation.id,
+      adapter_id: connection.adapter_id,
+      connection_id: connection.id,
+      workspace_id: ctx.scope.workspace.id,
+      external_ref: "SHOP",
+      url: "https://code.example.com/acme/shop",
+      title: "shop",
+      target_system: "code.example.com",
+      target_path: "acme/shop",
+      last_listed_at: DateTime.utc_now(:second)
+    })
+  end
+
+  # The trigger for `collection` named with `ref`, in a separate transaction.
+  defp trigger(collection, ref) do
+    fn ->
+      Repo.transact(fn ->
+        {:ok, Environments.trigger([%{collection | environment_ref: ref}], Dispatches.now())}
+      end)
+    end
+  end
+
+  # The prebuilds of `collection`, `{state, environment_ref}`, the oldest first.
+  defp prebuilds(collection) do
+    Repo.all(
+      from r in DispatchRun,
+        where: r.source_collection_id == ^collection.id,
+        order_by: [asc: r.queued_at, asc: r.id],
+        select: {r.state, r.environment_ref}
+    )
   end
 
   # The claims of `keys`, all let go at once.
@@ -139,5 +184,93 @@ defmodule Apiary.DispatchesRacesTest do
     assert {1, _} = Task.await(mover.task)
 
     assert run.workspace_id == ctx.scope.workspace.id
+  end
+
+  describe "one prebuild waits per collection and node pool" do
+    test "of two triggers at once, the second waits on the record and sets its environment_ref on the waiting one",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      collection = collection!(ctx)
+
+      {first, holder} =
+        hold(fn ->
+          Environments.trigger([%{collection | environment_ref: "env-1"}], Dispatches.now())
+        end)
+
+      assert [%DispatchRun{environment_ref: "env-1"}] = first.result
+
+      second = start(trigger(collection, "env-2"))
+      await_blocked(second.backend, holder)
+      commit(first)
+
+      assert {:ok, [%DispatchRun{id: id, environment_ref: "env-2"}]} = Task.await(second.task)
+      assert id == hd(first.result).id
+      assert prebuilds(collection) == [{:waiting, "env-2"}]
+      assert %Record{queued_ref: "env-2"} = Environments.fetch(pool.id, collection.id)
+    end
+
+    test "of many triggers let go at once, with two environment_refs, one prebuild waits",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      collection = collection!(ctx)
+
+      answers =
+        ~w(env-1 env-2)
+        |> Stream.cycle()
+        |> Enum.take(sides(6))
+        |> Enum.map(&trigger(collection, &1))
+        |> together()
+
+      assert Enum.all?(answers, &match?({:ok, _queued}, &1))
+      assert [{:waiting, ref}] = prebuilds(collection)
+      assert %Record{queued_ref: ^ref} = Environments.fetch(pool.id, collection.id)
+    end
+
+    test "of two queues at once, the second waits on the index and sets its environment_ref on the first",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      collection = collection!(ctx)
+
+      {first, holder} = hold(fn -> Dispatches.queue_prebuild(collection, pool, "env-1") end)
+      assert {:ok, run} = first.result
+
+      second =
+        start(fn ->
+          Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-2") end)
+        end)
+
+      await_blocked(second.backend, holder)
+      commit(first)
+
+      assert {:ok, %DispatchRun{id: id, environment_ref: "env-2"}} = Task.await(second.task)
+      assert id == run.id
+      assert prebuilds(collection) == [{:waiting, "env-2"}]
+    end
+
+    test "a lapse waits for the trigger that holds the record, then ends the claimed one superseded",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+      collection = collection!(ctx)
+
+      {:ok, [run]} = trigger(collection, "env-1").()
+      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+
+      {first, holder} =
+        hold(fn ->
+          Environments.trigger([%{collection | environment_ref: "env-2"}], Dispatches.now())
+        end)
+
+      assert [%DispatchRun{environment_ref: "env-2"}] = first.result
+
+      sweep = start(fn -> Dispatches.sweep(dispatch.lease_until) end)
+      await_blocked(sweep.backend, holder)
+      commit(first)
+      Task.await(sweep.task)
+
+      assert %DispatchRun{state: :ended, end_cause: :superseded} = Repo.get!(DispatchRun, run.id)
+      assert prebuilds(collection) == [{:ended, "env-1"}, {:waiting, "env-2"}]
+      assert %Dispatch{end_cause: :run_ended} = Repo.get!(Dispatch, dispatch.id)
+    end
   end
 end

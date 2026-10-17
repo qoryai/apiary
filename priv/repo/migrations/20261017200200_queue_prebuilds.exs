@@ -18,15 +18,22 @@ defmodule Apiary.Repo.Migrations.QueuePrebuilds do
   # above (`dispatch_runs_step_shape_check`). So the work item's key becomes MATCH SIMPLE:
   # MATCH FULL refuses an empty `work_item_id` beside the run's `organisation_id`.
   #
-  # The end cause `collection_ended`, on both tables: the collection of a prebuild ended,
-  # or was linked to none or to another workspace, before the run was handed over.
+  # At most one prebuild waits per collection and node pool
+  # (`dispatch_runs_waiting_prebuild_index`): a newer `environment_ref` updates the
+  # waiting one. A claimed, handed-over or ended one is left out of the index, so a change
+  # while one is claimed or runs queues the one that waits next.
+  #
+  # The end causes, on both tables: `collection_ended`, the collection of a prebuild
+  # ended, was assigned to none or to another workspace, has no target, or its connection
+  # ended, before the run was handed over; `superseded`, a claimed prebuild whose lease
+  # lapsed while another prebuild of its collection and pool waited.
   #
   # The collection and the node pool are NO ACTION, as a dispatch's pool is: the purge
   # deletes the runs of the queue before them. Rolled back, the shape and the causes are
   # as before, and the roll back refuses while a run of the queue for the step `prebuild`
   # is kept.
   @end_causes ~w(released closed undone run_ended lost)
-  @prebuild_causes @end_causes ++ ~w(collection_ended)
+  @prebuild_causes @end_causes ++ ~w(collection_ended superseded)
 
   def up do
     execute("""
@@ -65,6 +72,11 @@ defmodule Apiary.Repo.Migrations.QueuePrebuilds do
 
     create index(:dispatch_runs, [:pool_id], where: "pool_id IS NOT NULL")
 
+    create unique_index(:dispatch_runs, [:source_collection_id, :pool_id],
+             where: "step = 'prebuild' AND state = 'waiting'",
+             name: :dispatch_runs_waiting_prebuild_index
+           )
+
     create constraint(:dispatch_runs, :dispatch_runs_step_shape_check,
              check:
                "(step = 'prebuild' AND work_item_id IS NULL AND take_in IS NULL AND " <>
@@ -82,6 +94,11 @@ defmodule Apiary.Repo.Migrations.QueuePrebuilds do
   def down do
     causes(@end_causes)
     drop constraint(:dispatch_runs, :dispatch_runs_step_shape_check)
+
+    drop index(:dispatch_runs, [:source_collection_id, :pool_id],
+           name: :dispatch_runs_waiting_prebuild_index
+         )
+
     drop index(:dispatch_runs, [:pool_id])
     drop index(:dispatch_runs, [:source_collection_id])
 

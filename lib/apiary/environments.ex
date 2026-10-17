@@ -11,42 +11,40 @@ defmodule Apiary.Environments do
   # ## The trigger: `trigger/2` and `trigger_for_pool/2`
   #
   # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
-  # held for that pool) when the collection is live, linked to the pool's workspace, has a
+  # held for that pool) when the collection is live, assigned to the pool's workspace, has a
   # target and an `environment_ref`, and the pool's record of it is missing, was queued
   # for another `environment_ref`, or was retired after it was last queued. Queuing sets
   # the record's `queued_ref` and `queued_at`, making the record when there was none. So
-  # the same `environment_ref` named again queues nothing, and a change while a build waits
-  # or runs queues a build for it, never folded into that one.
+  # the same `environment_ref` named again queues nothing. A change while a prebuild of
+  # the collection waits for the pool sets the change's `environment_ref` on that waiting
+  # one, in the same transaction as the record's `queued_ref`, so at most one waits per
+  # collection and pool; a change while one is claimed or runs queues the one that waits
+  # next.
   #
   # `trigger(collections, now)` applies it, inside the caller's transaction, to
   # collections as they now stand, for every live pool of each one's workspace: a
   # listing's part calls it for the collections it made or updated, and an assign for
-  # those it linked or moved to a workspace (`Apiary.Adapters.Collections`). A collection
-  # without an `environment_ref` queues nothing, and its records that are not retired yet
-  # are retired at `now`: the image goes from new runs, and the record keeps the rest. A
-  # collection linked to no workspace, or without a target, queues nothing.
+  # those it assigned or moved to a workspace (`Apiary.Adapters.Collections`). A collection
+  # without an `environment_ref` queues nothing, and its records not retired since they
+  # were last queued are retired at `now`: the image goes from new runs, and the record
+  # keeps the rest. A collection assigned to no workspace, or without a target, queues
+  # nothing.
   #
   # `trigger_for_pool(pool, now)` applies it, inside the caller's transaction, to a new
-  # node pool, for every collection linked to its workspace (`Apiary.Nodes.create_node/2`).
+  # node pool, for every collection assigned to its workspace (`Apiary.Nodes.create_node/2`).
   #
   # The record is written by one statement that decides, under the row's lock, whether it
   # is due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the
-  # same pool and collection queue one prebuild.
+  # same pool and collection take turns, and the second sees the first's `queued_ref`;
+  # and the prebuild that waits is one per pool and collection in the database too
+  # (`Apiary.Dispatches.queue_prebuild/3`).
   #
-  # ## A run's image: `image_for/2` and `with_image/2`
+  # ## A run's image: `image_for/2`
   #
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
-  # live collections linked to the pool's workspace with that target, only those with an
+  # live collections assigned to the pool's workspace with that target, only those with an
   # `environment_ref` count, and of their records for the pool, the one built last
   # (`built_at`) that is not retired gives its `image`; nil when there is none.
-  #
-  # `with_image(document, image)` is a run configuration document (`Apiary.Policy.Render`)
-  # with `image` added inline to its `security_policy`, as the run's signed policy names
-  # the image it starts in, and the new document's digest. The members already there keep
-  # their order and their bytes. A document without a `security_policy` (the document of
-  # no policy) is refused, `{:error, :no_security_policy}`: the policy needs its `egress`.
-  # Nothing serves the document yet: the policy contract this server vendors names an
-  # image by name only, not by a reference pinned by its digest.
 
   import Ecto.Query, only: [from: 2]
 
@@ -54,7 +52,6 @@ defmodule Apiary.Environments do
   alias Apiary.Adapters.Collection
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
-  alias Apiary.Policy.Render
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
   @doc false
@@ -99,38 +96,6 @@ defmodule Apiary.Environments do
     )
   end
 
-  # with_image/2 is the run configuration document `document` with `image` in its
-  # `security_policy`, and its digest (the moduledoc).
-  @doc false
-  @spec with_image(binary, String.t()) ::
-          {:ok, %{document: binary, digest: String.t()}} | {:error, :no_security_policy}
-  def with_image(document, image) when is_binary(document) and is_binary(image) do
-    %Jason.OrderedObject{values: members} = Jason.decode!(document, objects: :ordered_objects)
-
-    case List.keyfind(members, "security_policy", 0) do
-      {"security_policy", %Jason.OrderedObject{values: policy}} ->
-        policy = put_member(policy, "image", image)
-
-        composed =
-          members
-          |> put_member("security_policy", Jason.OrderedObject.new(policy))
-          |> Jason.OrderedObject.new()
-          |> Jason.encode!(escape: :json)
-
-        {:ok, %{document: composed, digest: Render.digest(composed)}}
-
-      nil ->
-        {:error, :no_security_policy}
-    end
-  end
-
-  # `name` set to `value`, in its place when it is there, else last.
-  defp put_member(members, name, value) do
-    if List.keymember?(members, name, 0),
-      do: List.keyreplace(members, name, 0, {name, value}),
-      else: members ++ [{name, value}]
-  end
-
   ## The trigger
 
   # trigger/2 applies the trigger to `collections` as they now stand, at `now`, inside
@@ -151,7 +116,7 @@ defmodule Apiary.Environments do
   end
 
   # trigger_for_pool/2 applies the trigger to the new node pool `pool`, at `now`, for
-  # every collection linked to its workspace, inside the caller's transaction (the
+  # every collection assigned to its workspace, inside the caller's transaction (the
   # moduledoc): the prebuilds it queued.
   @doc false
   @spec trigger_for_pool(Node.t(), DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
@@ -173,7 +138,7 @@ defmodule Apiary.Environments do
     for collection <- collections, run <- queue(collection, [pool], now), do: run
   end
 
-  # A live collection linked to a workspace, with a target and an `environment_ref`.
+  # A live collection assigned to a workspace, with a target and an `environment_ref`.
   defp due?(%Collection{ended_at: nil, workspace_id: workspace_id, target_system: system}),
     do: is_binary(workspace_id) and is_binary(system)
 
@@ -191,7 +156,8 @@ defmodule Apiary.Environments do
     |> Enum.group_by(& &1.workspace_id)
   end
 
-  # Retires, at `now`, the records not yet retired of `collections`.
+  # Retires, at `now`, the records of `collections` not retired since they were last
+  # queued.
   defp retire([], _now), do: :ok
 
   defp retire(collections, now) do
@@ -199,7 +165,10 @@ defmodule Apiary.Environments do
 
     {_count, _rows} =
       Repo.update_all(
-        from(r in Record, where: r.source_collection_id in ^ids and is_nil(r.retired_at)),
+        from(r in Record,
+          where: r.source_collection_id in ^ids,
+          where: is_nil(r.retired_at) or r.retired_at < r.queued_at
+        ),
         set: [retired_at: now, updated_at: now]
       )
 

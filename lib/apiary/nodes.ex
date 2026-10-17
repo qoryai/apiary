@@ -293,7 +293,7 @@ defmodule Apiary.Nodes do
     end)
   end
 
-  # A new node pool applies the prebuilds' trigger for the collections linked to its
+  # A new node pool applies the prebuilds' trigger for the collections assigned to its
   # workspace (`Apiary.Environments.trigger_for_pool/2`).
   defp queue_prebuilds(%Node{kind: :pool} = pool),
     do: Environments.trigger_for_pool(pool, DateTime.utc_now())

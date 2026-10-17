@@ -16,8 +16,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # A run for the step `prebuild` (`prebuild_changeset/2`) has no work item and no take
   # in: it builds the environment of a collection's target (`source_collection_id`) for
   # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
-  # collection's `environment_ref` it was queued for. Every other run is held for no pool
-  # and has none of the three (`20261017200200_queue_prebuilds`).
+  # collection's `environment_ref` it was queued for. At most one waits per collection and
+  # pool (`Apiary.Dispatches.queue_prebuild/3`). Every other run is held for no pool and
+  # has none of the three (`20261017200200_queue_prebuilds`).
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`
@@ -37,9 +38,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   # work item closed or undone before its handover (refusal.schema.json, 410 gone);
   # `run_ended`, the run ended by its outcome or its exit after its handover, and a stale
   # dispatch with its run (handover.schema.json); `lost`, a handed-over run the liveness
-  # check ended; `collection_ended`, the collection of a prebuild ended, or was linked to
-  # none or to another workspace, before its handover.
-  @end_causes [:released, :closed, :undone, :run_ended, :lost, :collection_ended]
+  # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
+  # none or to another workspace, has no target, or its connection ended, before its
+  # handover; `superseded`, a claimed prebuild whose lease lapsed while another prebuild of
+  # its collection and pool waited (`Apiary.Dispatches.Slots`).
+  @end_causes [:released, :closed, :undone, :run_ended, :lost, :collection_ended, :superseded]
 
   # The step that builds a collection's environment for a node pool.
   @prebuild "prebuild"

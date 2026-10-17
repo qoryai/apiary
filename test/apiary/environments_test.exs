@@ -4,21 +4,21 @@ defmodule Apiary.EnvironmentsTest do
   # pinned by its digest, the bounds of the refs, a failure's cause and reason), the
   # composite keys that hold a record to its pool's workspace and its collection's
   # organisation, the purges of a workspace and of an organisation, the trigger that
-  # queues a prebuild per node pool from a listing, an assign and a new pool, and a run's
-  # image: which record gives it, and the run configuration document that names it.
+  # queues a prebuild per node pool from a listing, an assign and a new pool, one waiting
+  # per collection and pool, and a run's image: which record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
+  import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{AccessKeys, Deletion, Environments, Nodes, Repo}
+  alias Apiary.{AccessKeys, Deletion, Dispatches, Environments, Nodes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections}
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Environments.Record
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Policy.{Effective, Render, Schema}
 
   @moduletag needs: :factory
 
@@ -80,6 +80,24 @@ defmodule Apiary.EnvironmentsTest do
         order_by: [asc: r.queued_at, asc: r.pool_id],
         select: {r.pool_id, r.environment_ref}
     )
+  end
+
+  # The prebuilds that wait, `{pool_id, environment_ref}` by pool.
+  defp waiting(collection) do
+    Repo.all(
+      from r in DispatchRun,
+        where: r.step == ^DispatchRun.prebuild() and r.source_collection_id == ^collection.id,
+        where: r.state == :waiting,
+        order_by: r.pool_id,
+        select: {r.pool_id, r.environment_ref}
+    )
+  end
+
+  # Claims the oldest run `pool` may take, at revision 2: the run and its dispatch.
+  defp claim!(ctx, pool) do
+    %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+    {:ok, %{run: run, dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+    %{run: run, dispatch: dispatch}
   end
 
   defp sorted(pools), do: pools |> Enum.map(& &1.id) |> Enum.sort()
@@ -281,14 +299,18 @@ defmodule Apiary.EnvironmentsTest do
       list(ctx, 2, %{environment_ref: "env-1"})
       assert length(prebuilds(shop)) == 2
 
-      # Another queues one more for each pool, the waiting ones left as they are.
+      # Another, while they wait, is set on the waiting ones: one waits per pool.
       list(ctx, 3, %{environment_ref: "env-2"})
-      assert Enum.drop(prebuilds(shop), 2) == Enum.map(pools, &{&1, "env-2"})
+      assert prebuilds(shop) == Enum.map(pools, &{&1, "env-2"})
+      assert waiting(shop) == Enum.map(pools, &{&1, "env-2"})
       assert Enum.map(Environments.for_collection(shop.id), & &1.queued_ref) == ~w(env-2 env-2)
 
-      # None retires the records and queues nothing.
+      # Claimed, then none: the records are retired and nothing is queued.
+      claim!(ctx, ctx.pool)
+      claim!(ctx, other)
       list(ctx, 4, %{})
-      assert length(prebuilds(shop)) == 4
+      assert length(prebuilds(shop)) == 2
+      assert waiting(shop) == []
 
       for record <- Environments.for_collection(shop.id) do
         assert %Record{queued_ref: "env-2", retired_at: %DateTime{}} = record
@@ -297,11 +319,89 @@ defmodule Apiary.EnvironmentsTest do
       # Named again, even as it was, it queues again, once.
       list(ctx, 5, %{environment_ref: "env-2"})
       list(ctx, 6, %{environment_ref: "env-2"})
-      assert Enum.drop(prebuilds(shop), 4) == Enum.map(pools, &{&1, "env-2"})
+      assert Enum.drop(prebuilds(shop), 2) == Enum.map(pools, &{&1, "env-2"})
+      assert waiting(shop) == Enum.map(pools, &{&1, "env-2"})
 
       # A listing that leaves it out changes nothing.
       list(ctx, 7, %{ref: "OTHER", target: nil, environment_ref: "env-9"})
-      assert length(prebuilds(shop)) == 6
+      assert length(prebuilds(shop)) == 4
+    end
+
+    test "thirty changes leave one prebuild waiting, for the last environment_ref", ctx do
+      for minute <- 1..30, do: list(ctx, minute, %{environment_ref: "env-#{rem(minute, 2)}"})
+      shop = Repo.get_by!(Collection, external_ref: "SHOP")
+
+      assert prebuilds(shop) == [{ctx.pool.id, "env-0"}]
+      assert waiting(shop) == [{ctx.pool.id, "env-0"}]
+      assert %Record{queued_ref: "env-0"} = Environments.fetch(ctx.pool.id, shop.id)
+    end
+
+    test "changes across two node pools leave one prebuild waiting for each", ctx do
+      pools = sorted([ctx.pool, pool_fixture(ctx.scope)])
+      for minute <- 1..6, do: list(ctx, minute, %{environment_ref: "env-#{minute}"})
+      shop = Repo.get_by!(Collection, external_ref: "SHOP")
+
+      assert prebuilds(shop) == Enum.map(pools, &{&1, "env-6"})
+      assert waiting(shop) == Enum.map(pools, &{&1, "env-6"})
+
+      for record <- Environments.for_collection(shop.id),
+          do: assert(record.queued_ref == "env-6")
+    end
+
+    test "a change while one is claimed queues exactly one that waits; the claimed one, lapsed, gives way",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+
+      # Lapsed with none waiting, it waits again, as any run does.
+      %{run: first, dispatch: lapsed} = claim!(ctx, ctx.pool)
+      Dispatches.sweep(lapsed.lease_until)
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+
+      %{run: claimed, dispatch: dispatch} = claim!(ctx, ctx.pool)
+      assert claimed.id == first.id
+
+      list(ctx, 2, %{environment_ref: "env-2"})
+      list(ctx, 3, %{environment_ref: "env-3"})
+      list(ctx, 4, %{environment_ref: "env-2"})
+
+      assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+      assert prebuilds(shop) == [{ctx.pool.id, "env-1"}, {ctx.pool.id, "env-2"}]
+
+      assert %DispatchRun{state: :claimed, environment_ref: "env-1"} =
+               Repo.get!(DispatchRun, claimed.id)
+
+      assert %Record{queued_ref: "env-2"} = Environments.fetch(ctx.pool.id, shop.id)
+
+      # Its lease lapsed, the claimed one ends, superseded by the one that waits, and its
+      # dispatch with it.
+      Dispatches.sweep(dispatch.lease_until)
+
+      assert %DispatchRun{state: :ended, end_cause: :superseded} =
+               Repo.get!(DispatchRun, claimed.id)
+
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}, end_cause: :run_ended} =
+               Repo.get!(Dispatch, dispatch.id)
+
+      assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+    end
+
+    test "an environment_ref removed and named again queues each time it comes back", ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      claim!(ctx, ctx.pool)
+
+      list(ctx, 2, %{})
+      list(ctx, 3, %{environment_ref: "env-1"})
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+      claim!(ctx, ctx.pool)
+
+      # Removed a second time, the record is retired again, after it was queued again.
+      list(ctx, 4, %{})
+      record = Environments.fetch(ctx.pool.id, shop.id)
+      assert DateTime.compare(record.retired_at, record.queued_at) == :gt
+
+      list(ctx, 5, %{environment_ref: "env-1"})
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+      assert length(prebuilds(shop)) == 3
     end
 
     test "an older listing queues nothing", ctx do
@@ -316,13 +416,13 @@ defmodule Apiary.EnvironmentsTest do
                Environments.fetch(ctx.pool.id, shop.id)
     end
 
-    test "a collection without a target, or linked to no workspace, queues nothing", ctx do
+    test "a collection without a target, or assigned to no workspace, queues nothing", ctx do
       shop = list(ctx, 1, %{target: nil, environment_ref: "env-1"})
       assert shop.workspace_id == ctx.scope.workspace.id
       assert prebuilds(shop) == []
       assert Environments.for_collection(shop.id) == []
 
-      # With a second workspace, a new collection is linked to none.
+      # With a second workspace, a new collection is assigned to none.
       empty = workspace_fixture(ctx.scope.organisation)
       list(ctx, 2, %{ref: "NEW", environment_ref: "env-1"})
       new = Repo.get_by!(Collection, external_ref: "NEW")
@@ -377,7 +477,8 @@ defmodule Apiary.EnvironmentsTest do
 
       {:ok, _deleted} = Nodes.delete_node(ctx.scope, new)
       list(ctx, 2, %{environment_ref: "env-2"})
-      assert Enum.drop(prebuilds(shop), 2) == [{ctx.pool.id, "env-2"}]
+      assert Enum.sort(waiting(shop)) == Enum.sort([{ctx.pool.id, "env-2"}, {new.id, "env-1"}])
+      assert Environments.fetch(new.id, shop.id).queued_ref == "env-1"
     end
 
     test "runs only inside the caller's transaction", ctx do
@@ -425,7 +526,7 @@ defmodule Apiary.EnvironmentsTest do
       assert Environments.image_for(ctx.pool, @shop) == image("2")
 
       # Newer, but not counted: a collection without an environment_ref, a record retired,
-      # a collection ended or linked to another workspace, another target.
+      # a collection ended or assigned to another workspace, another target.
       built!(ctx, shop(ctx, environment_ref: nil), "3", 3)
       built!(ctx, shop(ctx), "4", 4, %{retired_at: DateTime.utc_now()})
       ended = shop(ctx)
@@ -457,45 +558,6 @@ defmodule Apiary.EnvironmentsTest do
       # Another pool has no build of the target.
       other = pool_fixture(ctx.scope)
       assert Environments.image_for(other, @shop) == nil
-    end
-
-    test "goes inline into the security policy of the run configuration document" do
-      effective = %Effective{mode: "enforce", allow: ["api.example.com"], deny: ["bad.example"]}
-      document = Render.document(effective)
-
-      assert {:ok, %{document: composed, digest: digest}} =
-               Environments.with_image(document, image("a"))
-
-      assert digest == Render.digest(composed)
-      assert digest != Render.digest(document)
-
-      assert Environments.with_image(document, image("a")) ==
-               {:ok, %{document: composed, digest: digest}}
-
-      assert %{"version" => 1, "security_policy" => policy} = Jason.decode!(composed)
-      assert policy["image"] == image("a")
-
-      # The rest keeps its members, its order and its bytes.
-      assert Map.delete(policy, "image") == Jason.decode!(document)["security_policy"]
-
-      members =
-        composed
-        |> Jason.decode!(objects: :ordered_objects)
-        |> then(& &1["security_policy"].values)
-
-      assert Enum.map(members, &elem(&1, 0)) == ~w(version egress image)
-
-      assert composed ==
-               String.replace_suffix(document, "}}", ~s(,"image":"#{image("a")}"}}))
-
-      # The vendored policy contract names an image by name only, so the document is not
-      # one this server serves yet.
-      assert :ok = Schema.validate(document)
-      assert {:error, _reason} = Schema.validate(composed)
-
-      # A document with no policy has no security policy to put it in.
-      assert Environments.with_image(Render.no_policy_document(), image("a")) ==
-               {:error, :no_security_policy}
     end
   end
 end

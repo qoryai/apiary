@@ -18,9 +18,12 @@ defmodule Apiary.Dispatches do
   #
   # `queue_prebuild(collection, pool, environment_ref)` writes, inside the caller's
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
-  # the collection's, held for that pool, for the collection's `environment_ref`. It has
-  # no work item and counts toward no take in; like any run, it takes a slot of the pool
-  # when it is claimed. `Apiary.Environments` decides when one is due.
+  # the collection's, held for that pool, for the collection's `environment_ref`. At most
+  # one waits per collection and pool: while one waits, it is that run, its
+  # `environment_ref` set to the newer one and its place in the queue kept; a claimed or
+  # handed-over one is left as it is. It has no work item and counts toward no take in;
+  # like any run, it takes a slot of the pool when it is claimed. `Apiary.Environments`
+  # decides when one is due.
   #
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
@@ -71,7 +74,7 @@ defmodule Apiary.Dispatches do
   #      revision 1 never sees one. A run whose work item is no longer live (closed,
   #      declined, undone, its connection ended, or gone) or no longer in the run's
   #      workspace is not handed out: it ends, `undone` for a work item undone and
-  #      `closed` otherwise; nor is a prebuild whose collection ended, is linked to no
+  #      `closed` otherwise; nor is a prebuild whose collection ended, is assigned to no
   #      workspace or another one, has no target or whose connection ended: it ends,
   #      `collection_ended`. A stale dispatch of a run ended so ends with it
   #      (`run_ended`), and the next is taken, up to 100 per claim;
@@ -117,6 +120,8 @@ defmodule Apiary.Dispatches do
   @step "explore"
   # The step of a run that builds a collection's environment for one node pool.
   @prebuild DispatchRun.prebuild()
+  # The index that holds one waiting prebuild per collection and node pool.
+  @waiting_prebuild "(source_collection_id, pool_id) WHERE step = 'prebuild' AND state = 'waiting'"
   # The runs a take in has at most, the explore contract's `run.of`.
   @of 3
   # How long a dispatch is the starter's, from its claim, in seconds.
@@ -203,8 +208,8 @@ defmodule Apiary.Dispatches do
   end
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
-  # node pool `pool` of the collection's workspace, for `environment_ref`, inside the
-  # caller's transaction (the moduledoc).
+  # node pool `pool` of the collection's workspace, for `environment_ref`, or sets it on
+  # the one that waits, inside the caller's transaction (the moduledoc).
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -233,7 +238,11 @@ defmodule Apiary.Dispatches do
         environment_ref: environment_ref,
         queued_at: now()
       })
-      |> Repo.insert()
+      |> Repo.insert(
+        on_conflict: {:replace, [:environment_ref, :updated_at]},
+        conflict_target: {:unsafe_fragment, @waiting_prebuild},
+        returning: true
+      )
 
     with {:ok, _run} <- result, do: broadcast([workspace_id])
     result
@@ -483,7 +492,7 @@ defmodule Apiary.Dispatches do
     with {:ok, work_item} <- work_item_of(run), do: {:ok, %{work_item: work_item}}
   end
 
-  # A prebuild's collection when it is live, linked to the run's workspace, has a target
+  # A prebuild's collection when it is live, assigned to the run's workspace, has a target
   # and its connection has not ended; else the run ends, `collection_ended`. Read without
   # a lock, as a work item is: the run is locked, and its pool too.
   defp collection_of(%DispatchRun{
