@@ -17,8 +17,8 @@ defmodule Apiary.Explore.Result do
   #     the event is read, not on the escaped form the event's JSON writes it in;
   #   * valid UTF-8, checked before any function that assumes it;
   #   * one JSON object, its numbers with a fraction or an exponent read exactly;
-  #   * a `version` that is exactly 1, written with at most 34 digits; a longer spelling
-  #     fails decoding and is refused;
+  #   * a `version` that is exactly 1: written with at most 33 significant digits it is
+  #     always read; with more, decoding may fail and the document is refused;
   #   * no list longer, and no object with more members, than the schema allows anywhere,
   #     checked in one walk of the decoded document before the schema, so a document of
   #     tens of thousands of entries costs its reading, not a check of each entry;
@@ -42,7 +42,7 @@ defmodule Apiary.Explore.Result do
   #
   # A result is the decoded document: a map with string keys, as the schema has them,
   # such as `%{"version" => 1, "verdict" => "not_understood", "questions" => [...]}`;
-  # `version` is the integer 1 however the text wrote it, within those 34 digits.
+  # `version` is the integer 1 however the text wrote it.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -100,13 +100,15 @@ defmodule Apiary.Explore.Result do
   def parse(_text), do: :none
 
   # A number with a fraction or an exponent is decoded as a `Decimal`, so 1.0000000000000001
-  # stays itself and is not rounded to 1.0. Decimal parses at most 34 digits and an
-  # exponent of at most 6144 by default, a limit kept against numbers that cost too much
-  # to read: a longer number fails decoding, and the document is refused. The schema holds
-  # one number, `version`, which is `const` 1: a version that is exactly 1, written 1,
-  # 1.0, 1e0 or 10e-1 in at most 34 digits, is the integer 1 in the result, and any other
-  # is refused, 1. followed by 40 zeros among them. A `Decimal` anywhere else is refused
-  # by `within_bounds?/1`: the schema takes no other number.
+  # stays itself and is not rounded to 1.0. Decimal parses at most 34 significant digits,
+  # leading zeros not counted, and an exponent of at most 6144 by default, a limit kept
+  # against numbers that cost too much to read; Jason writes a number with an exponent and
+  # no fraction with a fraction of `.0` before Decimal reads it, one digit more. So a
+  # version that is exactly 1, written with at most 33 significant digits, such as 1,
+  # 1.0, 1e0 or 10e-1, is always read; with more, decoding may fail and the document is
+  # refused. The schema holds one number, `version`, which is `const` 1: one that is read
+  # and exactly 1 is the integer 1 in the result, and any other is refused. A `Decimal`
+  # anywhere else is refused by `within_bounds?/1`: the schema takes no other number.
   defp version(%{"version" => %Decimal{} = number} = document) do
     if one?(number), do: {:ok, %{document | "version" => 1}}, else: :none
   end

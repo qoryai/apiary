@@ -476,12 +476,19 @@ defmodule Apiary.Explore.ResultTest do
       end
     end
 
-    test "1 written with more than 34 digits fails decoding and is refused" do
+    test "1. followed by 33 zeros is read, and followed by 34 or 40 zeros fails decoding and is refused" do
       assert {:ok, %{"version" => 1}} =
                Result.parse(with_version("1." <> String.duplicate("0", 33)))
 
       assert Result.parse(with_version("1." <> String.duplicate("0", 34))) == :none
       assert Result.parse(with_version("1." <> String.duplicate("0", 40))) == :none
+    end
+
+    test "Decimal counts significant digits, without leading zeros, after Jason adds a fraction to an exponent" do
+      assert Result.parse(with_version("1" <> String.duplicate("0", 33) <> "e-33")) == :none
+
+      assert {:ok, %{"version" => 1}} =
+               Result.parse(with_version("0." <> String.duplicate("0", 39) <> "1e40"))
     end
 
     test "a number with a fraction anywhere else is refused" do
