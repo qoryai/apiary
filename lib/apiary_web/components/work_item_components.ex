@@ -2485,7 +2485,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   def edit_title(number), do: gettext("Change Qory's proposal · #%{number}", number: number)
 
   @doc """
-  The edit page (`/work/:number/explore/edit`), a page with its own address: Explore, the
+  The edit page (`/work/:number/explore/edit`), a page at an address apart from the tab: Explore, the
   way back (`explore_path`); what it is for; the fields a member may change, each starting
   from the run's words (`proposal`, as `explore_tab/1` describes it): Complexity (its
   level and why), Understanding, In scope and Out of scope (one line for each entry; a
