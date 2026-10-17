@@ -276,7 +276,11 @@ defmodule Apiary.Adapters.Wire do
 
   defp collection(_item), do: :error
 
-  defp target(%{"target" => %{} = target}) do
+  # The `target` of `item`, a collection or an item (`$defs/target`): `{:ok, target}`,
+  # `{:ok, nil}` when `item` has none, or `:error`.
+  @doc false
+  @spec target(map) :: {:ok, target | nil} | :error
+  def target(%{"target" => %{} = target}) do
     with true <- Enum.sort(Map.keys(target)) == @target_keys,
          system when is_binary(system) <- target["system"],
          true <- Regex.match?(@system, system),
@@ -287,10 +291,13 @@ defmodule Apiary.Adapters.Wire do
     end
   end
 
-  defp target(%{"target" => _other}), do: :error
-  defp target(%{}), do: {:ok, nil}
+  def target(%{"target" => _other}), do: :error
+  def target(%{}), do: {:ok, nil}
 
-  defp listing_part(%{} = listing) do
+  # One part of a listing (`$defs/listing`): `{:ok, part}` or `:error`.
+  @doc false
+  @spec listing_part(term) :: {:ok, map} | :error
+  def listing_part(%{} = listing) do
     with true <- Enum.sort(Map.keys(listing)) == @listing_keys,
          true <- text?(listing["id"], 1, @max_ref),
          part when is_integer(part) and part in 1..@max_part <- listing["part"],
@@ -302,7 +309,7 @@ defmodule Apiary.Adapters.Wire do
     end
   end
 
-  defp listing_part(_listing), do: :error
+  def listing_part(_listing), do: :error
 
   # The body of `POST /v1/sources/disconnect`, decoded (`decode/1`): `{:ok, disconnect}`
   # or `:error`.
@@ -321,11 +328,13 @@ defmodule Apiary.Adapters.Wire do
 
   def source_disconnect(_body), do: :error
 
-  # A string of `min` to `max` code points, with no U+0000.
-  defp text?(value, min, max) when is_binary(value) do
+  # Whether `value` is a string of `min` to `max` code points, with no U+0000.
+  @doc false
+  @spec text?(term, non_neg_integer, pos_integer) :: boolean
+  def text?(value, min, max) when is_binary(value) do
     byte_size(value) <= 4 * max and String.valid?(value) and
       not String.contains?(value, <<0>>) and length(String.codepoints(value)) in min..max//1
   end
 
-  defp text?(_value, _min, _max), do: false
+  def text?(_value, _min, _max), do: false
 end

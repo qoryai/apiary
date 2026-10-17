@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "time": "2026-10-15T15:00:04Z",
+  "collection_ref": "TRK",
+  "items": [
+    {
+      "ref": "TRK-3",
+      "url": "https://tracker.acme.example/TRK/TRK-3",
+      "title": "Search ignores accents",
+      "body": "",
+      "body_format": "markdown",
+      "filed_by": {
+        "name": "Ada Example",
+        "kind": "person"
+      },
+      "labels": [],
+      "state": "open",
+      "state_reason": null,
+      "comment_count": 0,
+      "created_at": "2026-10-01T09:00:00Z",
+      "updated_at": "2026-10-12T08:00:00Z"
+    }
+  ],
+  "listing": {
+    "id": "items-5",
+    "started_at": "2026-10-15T15:00:00Z",
+    "part": 2,
+    "complete": true
+  }
+}
