@@ -354,13 +354,13 @@ request that does not verify or is not fresh, and before every answer that depen
 key: the `404` of a key that may not open a run, the repeat, the `410`, the resolution's
 `409`s and the instance limit. A node's key, a node pool's and a gateway's, one of a
 workspace or of an organisation, are given that one answer for such an id, and the answer
-never tells which kind of key asked or what the key may do. Nothing is stored, counted on
-the node or recorded on the key. Only a caller that registers a run of the queue itself,
-whose `run_id` names that run by design, skips the lookup
-(`Apiary.Runs.Registration.register_without_dispatch_lookup/3`); the run endpoint never
-does. A run of the queue is given its `run_id`, a fresh UUID, when it is queued, before
-anyone outside the instance learns it, and the id never changes, so no registration can
-come between the queue and the lookup.
+never tells which kind of key asked or what the key may do. The refusal stores nothing
+beyond what every verified request leaves, the spent token of the key's rate and the
+instance's sighting (`Apiary.Nodes.seen/3`): no run, no count of the node's instance limit,
+no use recorded on the key. A lookup the database cannot answer is `503` `unavailable`. A
+run of the queue is given its `run_id`, a fresh UUID, when it is queued, before anyone
+outside the instance learns it, and the id never changes, so no registration can come
+between the queue and the lookup.
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's

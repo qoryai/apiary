@@ -11,12 +11,13 @@ defmodule ApiaryWeb.Contract.QueuedRunIdTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Ecto.Query
+  import ExUnit.CaptureLog
 
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Repo
-  alias Apiary.Runs.{Registration, Run}
+  alias Apiary.Runs.Run
 
   @run_id_used %{"error" => "run_id_used"}
   @unauthorized %{"error" => "unauthorized"}
@@ -246,20 +247,26 @@ defmodule ApiaryWeb.Contract.QueuedRunIdTest do
     end
   end
 
-  describe "a registration that skips the lookup" do
-    test "registers a run of the queue under a pool's key; register/3 refuses it", ctx do
-      %{access_key: key} = contract_key_fixture(ctx.scope, node: pool_fixture(ctx.scope))
-      bytes = Jason.encode!(registration(ctx.queued.run_id))
-      {:ok, registration} = Registration.parse(Jason.decode!(bytes))
-      meta = %{body: bytes, contract_version: 1, instance_id: ctx.queued.run_id}
+  describe "a lookup the database cannot answer" do
+    # A table of the test's connection alone, without `run_id`, stands in front of the
+    # queue's (a temporary table comes first on the search path): the lookup fails, and
+    # the queue's table is never locked for the other tests.
+    test "is 503 unavailable, signed, and nothing is stored", ctx do
+      ours = key(ctx.scope, node_fixture(ctx.scope))
+      Repo.query!("CREATE TEMPORARY TABLE dispatch_runs (id integer)")
+      run_id = Ecto.UUID.generate()
 
-      assert Registration.register(key, registration, meta) == {:error, :run_id_used}
-      assert runs(ctx.queued.run_id) == 0
+      log =
+        capture_log(fn ->
+          conn = register(ours, registration(run_id))
+          assert json_response(conn, 503) == %{"error" => "unavailable"}
+          assert signed_answer?(conn)
+        end)
 
-      assert {:ok, %{run: %Run{node_run_id: run_id}, repeated: false}} =
-               Registration.register_without_dispatch_lookup(key, registration, meta)
-
-      assert run_id == ctx.queued.run_id
+      assert log =~ "a registration could not be stored: Postgrex.Error"
+      Repo.query!("DROP TABLE pg_temp.dispatch_runs")
+      assert runs(run_id) == 0
+      assert Repo.reload!(ours.key).last_used_at == nil
     end
   end
 
