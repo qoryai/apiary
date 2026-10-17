@@ -47,7 +47,7 @@ defmodule Apiary.Kinds.Budget do
     ms = Keyword.fetch!(budget, :ms)
     caller = self()
     ref = make_ref()
-    deadline = System.monotonic_time(:millisecond) + ms
+    deadline = now() + ms * 1000
 
     # The process starts its work once its watcher is there: a caller that dies before
     # leaves a process that waits, and ends at its time.
@@ -98,21 +98,25 @@ defmodule Apiary.Kinds.Budget do
 
       # Before the time, only the runtime kills the process: its heap is past the budget.
       {:DOWN, ^monitor, :process, ^pid, :killed} ->
-        if System.monotonic_time(:millisecond) < deadline,
-          do: {:error, :heap},
-          else: {:error, :time}
+        if now() < deadline, do: {:error, :heap}, else: {:error, :time}
 
       {:DOWN, ^monitor, :process, ^pid, _reason} ->
         {:error, :crashed}
     after
-      min(@poll_ms, max(deadline - System.monotonic_time(:millisecond), 0)) ->
+      min(@poll_ms, left(deadline)) ->
         cond do
-          System.monotonic_time(:millisecond) >= deadline -> stop(run, :time)
+          now() >= deadline -> stop(run, :time)
           reductions(pid) > most -> stop(run, :reductions)
           true -> wait(run, most)
         end
     end
   end
+
+  # Microseconds, so that a deadline is not passed early by the rounding of milliseconds.
+  defp now, do: System.monotonic_time(:microsecond)
+
+  # The milliseconds left until `deadline`, rounded up.
+  defp left(deadline), do: max(div(deadline - now() + 999, 1000), 0)
 
   # The process's reductions, 0 once it is gone: its :DOWN is then in the mailbox.
   defp reductions(pid) do
@@ -146,7 +150,7 @@ defmodule Apiary.Kinds.Budget do
     receive do
       {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
     after
-      max(deadline - System.monotonic_time(:millisecond), 0) ->
+      left(deadline) ->
         Process.exit(pid, :kill)
 
         receive do
