@@ -325,7 +325,8 @@ defmodule Apiary.DispatchesTest do
       assert Slots.held(other.id) == 1
     end
 
-    test "a collection whose environment_ref went away is still built", ctx do
+    test "a prebuild whose collection no longer names an environment_ref ends, collection_ended, and none is handed out",
+         ctx do
       collection = collection_fixture(ctx.scope)
       run = prebuild!(collection, ctx.pool)
 
@@ -333,8 +334,8 @@ defmodule Apiary.DispatchesTest do
         set: [environment_ref: nil]
       )
 
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
-      assert id == run.id
+      assert Dispatches.claim(ctx.key, Dispatches.now(), 2) == {:ok, :none}
+      assert %DispatchRun{state: :ended, end_cause: :collection_ended} = run!(run)
     end
   end
 

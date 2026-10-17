@@ -39,9 +39,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `run_ended`, the run ended by its outcome or its exit after its handover, and a stale
   # dispatch with its run (handover.schema.json); `lost`, a handed-over run the liveness
   # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
-  # none or to another workspace, has no target, or its connection ended, before its
-  # handover; `superseded`, a claimed prebuild whose lease lapsed while another prebuild of
-  # its collection and pool waited (`Apiary.Dispatches.Slots`).
+  # none or to another workspace, has no target or no `environment_ref`, or its
+  # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
+  # lapsed while another prebuild of its collection and pool waited or went back to
+  # waiting (`Apiary.Dispatches.Slots`).
   @end_causes [:released, :closed, :undone, :run_ended, :lost, :collection_ended, :superseded]
 
   # The step that builds a collection's environment for a node pool.

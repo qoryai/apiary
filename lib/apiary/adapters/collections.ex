@@ -1,7 +1,7 @@
 defmodule Apiary.Adapters.Collections do
   # The collections an organisation's connection to an adapter reaches
   # (`Apiary.Adapters.Collection`, `sc_…`), as the adapter's listing names them, each
-  # linked to one workspace or to none; and the refs that name them at the server
+  # assigned to one workspace or to none; and the refs that name them at the server
   # contract. A collection is an engine word (docs/lingo.md).
   #
   # **The listing** (`post_listing/2`, `POST /v1/source-collections`) comes in parts, each
@@ -25,10 +25,10 @@ defmodule Apiary.Adapters.Collections do
   # day after a listing's first part (`purge_listings/1`).
   #
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
-  # for deletion, a collection a part makes is linked to it as it is made, with the feed's
-  # `linked` entry, in the part's transaction; one the part only updates keeps its link.
-  # With two workspaces or more, a new collection is linked to none, until a person
-  # assigns it.
+  # for deletion, a collection a part makes is assigned to it as it is made, with the
+  # feed's `linked` entry, in the part's transaction; one the part only updates keeps its
+  # workspace. With two workspaces or more, a new collection is assigned to none, until a
+  # person assigns it.
   #
   # **Prebuilds**: a part applies the trigger of `Apiary.Environments.trigger/2` to the
   # collections it made or updated, and an assign to those it assigned or moved to a

@@ -17,27 +17,53 @@ defmodule Apiary.Dispatches.Slots do
   #   dispatch whose lease lapsed before its handover (`now` at or after `lease_until`,
   #   neither handed over, stale nor ended) is marked stale at `now`, its slot freed, and
   #   its run, claimed, waits in its workspace's queue again with the same `run_id` and
-  #   the same `queued_at`, so it takes back its place in the queue; but a prebuild whose
-  #   collection and node pool have another prebuild waiting, queued for the newer
-  #   `environment_ref` while it was claimed, ends instead, `superseded`, and its dispatch
-  #   with it (`run_ended`), as one prebuild waits per collection and pool
-  #   (`Apiary.Dispatches.queue_prebuild/3`). A dispatch that ended with its slot still
-  #   held has it freed. Whatever the state of the pool or of the key
-  #   that claimed it: a deleted pool's or a revoked key's dispatch lapses at its
-  #   `lease_until` as any other does, and its run waits for the workspace's other pools.
+  #   the same `queued_at`, so it takes back its place in the queue; except a prebuild
+  #   whose collection and node pool have another prebuild waiting: one prebuild waits per
+  #   collection and pool (`Apiary.Dispatches.queue_prebuild/3`), and the one that waits
+  #   carries the `queued_ref` of the pool's environment record of the collection, the
+  #   latest `environment_ref` asked for. So, per collection and pool, of its lapsed
+  #   claimed prebuilds: while another waits, each ends, `superseded`, and the one that
+  #   waits takes the record's `queued_ref`; while none waits, one waits again, with the
+  #   record's `queued_ref`, the one queued for it or else the one queued last, and each
+  #   other ends `superseded`. A dispatch of a run that ends so ends with it
+  #   (`run_ended`). A dispatch that ended with its slot still held has it freed.
+  #   Whatever the state of the pool or of the key that claimed it: a deleted pool's or a
+  #   revoked key's dispatch lapses at its `lease_until` as any other does, and its run waits for the workspace's other pools.
   #   It answers the ids of the workspaces whose queue or slots changed, for the caller to
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
   # - `free_slot/2` frees one dispatch's slot, for the paths that end a dispatch.
   #
-  # **Locks.** A run of the queue is locked before its dispatch, as every path that locks
-  # both does, so that no two of them wait on each other: `free/2` locks the runs of the
-  # lapsed dispatches `FOR UPDATE`, in the order of their ids, and only then writes the
-  # dispatches, each write asking its conditions again, so a dispatch handed over, ended or
-  # freed meanwhile is left as it is. Before a lapsed prebuild waits again, the environment
-  # records of its collection and pool are locked `FOR UPDATE`, in the order of their ids:
-  # a trigger locks the record before it queues (`Apiary.Environments`), so the prebuild
-  # that waits is the one either sees. Every function here runs inside the caller's
-  # transaction.
+  # **Locks.** Every path that locks more than one of these takes them in this order, so
+  # that no two paths wait on each other:
+  #
+  #   1. the collections (a listing's part, by ref, or an assign, by id;
+  #      `Apiary.Adapters.Collections`);
+  #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
+  #      a registration on the pool, which takes it `FOR UPDATE`
+  #      (`Apiary.Nodes.check_instance_limit/3`), and another claim take turns with it,
+  #      while the `FOR KEY SHARE` that a trigger's writes take for their foreign keys to
+  #      the pool never waits on it;
+  #   3. the environment records, `FOR UPDATE`, by collection and then pool: a trigger
+  #      locks every record of its collections in one statement before it writes one
+  #      (`Apiary.Environments.trigger/2`), whatever order its caller names them in, and
+  #      `free/2` the records of the prebuilds among its lapsed runs, read before their
+  #      lock, as a run's collection and pool never change;
+  #   4. the runs of the queue whose dispatch lapsed, `FOR UPDATE`, by id (`free/2`), and
+  #      the runs `Apiary.Dispatches` ends for an undo or a close;
+  #   5. the waiting runs: the one prebuild that waits per collection and pool, which a
+  #      trigger writes or ends and `free/2` reads `FOR UPDATE`, only under the record's
+  #      lock; a claim takes a waiting run `FOR UPDATE SKIP LOCKED`, which waits on none;
+  #   6. the dispatches.
+  #
+  # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
+  # only under the lock of its record, and whoever comes second sees what the first
+  # wrote; a claim that takes or ends the one that waits holds its row, and whoever reads
+  # it `FOR UPDATE` meanwhile reads it again once the claim commits. The records come
+  # before the runs: a run `free/2` locks by its id may have gone back to waiting
+  # meanwhile, and a trigger that holds the record waits for that run's lock. `free/2`
+  # writes the dispatches with each write asking its conditions again, so a dispatch
+  # handed over, ended or freed meanwhile is left as it is. Every function here runs
+  # inside the caller's transaction.
 
   import Ecto.Query, only: [from: 2]
 
@@ -94,7 +120,7 @@ defmodule Apiary.Dispatches.Slots do
       from(d in lapsed(pool, now),
         order_by: d.dispatch_run_id,
         limit: @batch,
-        select: {d.id, d.dispatch_run_id}
+        select: d.dispatch_run_id
       )
       |> Repo.all()
 
@@ -102,39 +128,46 @@ defmodule Apiary.Dispatches.Slots do
       [] ->
         workspaces
 
-      _some ->
-        {ids, run_ids} = Enum.unzip(candidates)
+      run_ids ->
+        # The environment records of the prebuilds among the runs first, then the runs,
+        # then their dispatches (the moduledoc).
+        queued_refs = lock_records(run_ids)
 
-        # The runs first, then their dispatches.
-        _locked =
+        runs =
           Repo.all(
             from r in DispatchRun,
               where: r.id in ^run_ids,
               order_by: r.id,
-              lock: "FOR UPDATE",
-              select: r.id
+              lock: "FOR UPDATE"
           )
 
         {_count, stale} =
           Repo.update_all(
             from(d in lapsed(pool, now),
-              where: d.id in ^ids,
+              where: d.dispatch_run_id in ^run_ids,
               select: {d.dispatch_run_id, d.workspace_id}
             ),
             set: [stale_at: now, slot_freed_at: now, updated_at: now]
           )
 
         {stale_runs, stale_workspaces} = Enum.unzip(stale)
-        :ok = supersede(stale_runs, now)
+        stale_runs = MapSet.new(stale_runs)
+
+        {prebuilds, others} =
+          runs
+          |> Enum.filter(&(MapSet.member?(stale_runs, &1.id) and &1.state == :claimed))
+          |> Enum.split_with(&(&1.step == DispatchRun.prebuild()))
 
         {_count, _rows} =
           Repo.update_all(
             from(r in DispatchRun,
-              where: r.id in ^stale_runs and fragment("? = 'claimed'", r.state)
+              where: r.id in ^Enum.map(others, & &1.id),
+              where: fragment("? = 'claimed'", r.state)
             ),
             set: [state: :waiting, updated_at: now]
           )
 
+        :ok = wait_once(prebuilds, queued_refs, now)
         workspaces = Enum.uniq(stale_workspaces ++ workspaces)
 
         # Another batch, while a whole one lapsed.
@@ -144,42 +177,48 @@ defmodule Apiary.Dispatches.Slots do
     end
   end
 
-  # Ends, `superseded`, the claimed prebuilds of `run_ids` whose collection and pool have
-  # another prebuild waiting, and their stale dispatches (`run_ended`), under the lock of
-  # their environment records (the moduledoc).
-  defp supersede(run_ids, now) do
-    prebuilds =
-      from r in DispatchRun,
-        where: r.id in ^run_ids and r.step == ^DispatchRun.prebuild()
-
-    records =
+  # Locks the environment records of the collections and pools of the prebuilds among
+  # the runs `run_ids` `FOR UPDATE`, by collection and then pool, as
+  # `Apiary.Environments.trigger/2` does, before the runs are locked: the `queued_ref` of
+  # each, by `{collection_id, pool_id}`. A run's collection and pool never change, so they
+  # are read before its lock.
+  defp lock_records(run_ids) do
+    keys =
       from e in Record,
-        join: r in subquery(prebuilds),
+        join: r in DispatchRun,
         on: r.source_collection_id == e.source_collection_id and r.pool_id == e.pool_id,
+        where: r.id in ^run_ids and r.step == ^DispatchRun.prebuild(),
         select: e.id
 
-    _locked =
-      Repo.all(
-        from e in Record,
-          where: e.id in subquery(records),
-          order_by: e.id,
-          lock: "FOR UPDATE",
-          select: e.id
-      )
+    Repo.all(
+      from e in Record,
+        where: e.id in subquery(keys),
+        order_by: [e.source_collection_id, e.pool_id],
+        lock: "FOR UPDATE",
+        select: {{e.source_collection_id, e.pool_id}, e.queued_ref}
+    )
+    |> Map.new()
+  end
 
-    {_count, superseded} =
+  # Of the lapsed claimed `prebuilds`, under the lock of their environment records, per
+  # collection and pool: while another prebuild waits, each ends `superseded`, and the
+  # one that waits takes the record's `queued_ref`; else one waits again, with its
+  # `run_id` and its `queued_at`, and the record's `queued_ref`: the one queued for that
+  # `queued_ref`, or else the one queued last; the others end `superseded`. Their stale
+  # dispatches end with them (`run_ended`).
+  defp wait_once([], _queued_refs, _now), do: :ok
+
+  defp wait_once(prebuilds, queued_refs, now) do
+    superseded =
+      prebuilds
+      |> Enum.group_by(&{&1.source_collection_id, &1.pool_id})
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.flat_map(fn {key, runs} -> wait_one(key, runs, Map.get(queued_refs, key), now) end)
+
+    {_count, _rows} =
       Repo.update_all(
-        from(r in prebuilds,
-          as: :run,
-          where: fragment("? = 'claimed'", r.state),
-          where:
-            exists(
-              from w in DispatchRun,
-                where: w.source_collection_id == parent_as(:run).source_collection_id,
-                where: w.pool_id == parent_as(:run).pool_id,
-                where: w.step == ^DispatchRun.prebuild() and fragment("? = 'waiting'", w.state)
-            ),
-          select: r.id
+        from(r in DispatchRun,
+          where: r.id in ^superseded and fragment("? = 'claimed'", r.state)
         ),
         set: [state: :ended, end_cause: :superseded, updated_at: now]
       )
@@ -195,6 +234,57 @@ defmodule Apiary.Dispatches.Slots do
 
     :ok
   end
+
+  # The runs of one collection and pool that end `superseded`, the one that waits written.
+  defp wait_one({collection_id, pool_id}, runs, queued_ref, now) do
+    waiting =
+      Repo.one(
+        from w in DispatchRun,
+          where: w.source_collection_id == ^collection_id and w.pool_id == ^pool_id,
+          where: w.step == ^DispatchRun.prebuild() and fragment("? = 'waiting'", w.state),
+          lock: "FOR UPDATE"
+      )
+
+    case waiting do
+      %DispatchRun{} = waiting ->
+        :ok = take_ref(waiting, queued_ref, now)
+        Enum.map(runs, & &1.id)
+
+      nil ->
+        newest_first = Enum.sort_by(runs, &order/1, :desc)
+        again = Enum.find(newest_first, &(&1.environment_ref == queued_ref)) || hd(newest_first)
+
+        {1, _rows} =
+          Repo.update_all(
+            from(r in DispatchRun, where: r.id == ^again.id),
+            set: [
+              state: :waiting,
+              environment_ref: queued_ref || again.environment_ref,
+              updated_at: now
+            ]
+          )
+
+        for run <- runs, run.id != again.id, do: run.id
+    end
+  end
+
+  # The waiting prebuild takes the record's `queued_ref`, when it has another.
+  defp take_ref(%DispatchRun{environment_ref: ref}, ref, _now), do: :ok
+  defp take_ref(%DispatchRun{}, nil, _now), do: :ok
+
+  defp take_ref(%DispatchRun{id: id}, queued_ref, now) do
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
+        set: [environment_ref: queued_ref, updated_at: now]
+      )
+
+    :ok
+  end
+
+  # When a prebuild was queued, the later the greater.
+  defp order(%DispatchRun{queued_at: queued_at, inserted_at: inserted_at, id: id}),
+    do:
+      {DateTime.to_unix(queued_at, :microsecond), DateTime.to_unix(inserted_at, :microsecond), id}
 
   # The dispatches whose lease lapsed before their handover at `now`, with their slot
   # held: neither handed over, stale nor ended.

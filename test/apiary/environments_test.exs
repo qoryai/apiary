@@ -12,6 +12,7 @@ defmodule Apiary.EnvironmentsTest do
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Deletion, Dispatches, Environments, Nodes, Repo}
   alias Apiary.Accounts.Scope
@@ -383,6 +384,130 @@ defmodule Apiary.EnvironmentsTest do
                Repo.get!(Dispatch, dispatch.id)
 
       assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+    end
+
+    test "two claimed prebuilds of one collection and pool lapsing together leave one waiting, for the record's queued_ref",
+         ctx do
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
+      back = DateTime.add(Dispatches.now(), -700, :second)
+
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, back, 2)
+      list(ctx, 2, %{environment_ref: "env-2"})
+      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, back, 2)
+      assert {older.environment_ref, newer.environment_ref} == {"env-1", "env-2"}
+
+      # Another organisation's explore run, claimed, lapses in the same sweep.
+      %{scope: other} = sign_up_fixture()
+      other_pool = pool_fixture(other)
+      %{access_key: other_key} = enrolled_key_fixture(other, other_pool)
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(other), 1) end)
+      {:ok, %{run: explore, dispatch: explore_dispatch}} = Dispatches.claim(other_key, back)
+
+      Dispatches.sweep(Dispatches.now())
+
+      assert %DispatchRun{state: :ended, end_cause: :superseded} =
+               Repo.get!(DispatchRun, older.id)
+
+      assert %Dispatch{end_cause: :run_ended} = Repo.get!(Dispatch, older_dispatch.id)
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} =
+               Repo.get!(DispatchRun, newer.id)
+
+      assert %Dispatch{stale_at: %DateTime{}, ended_at: nil} =
+               Repo.get!(Dispatch, newer_dispatch.id)
+
+      assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, explore.id)
+      assert %Dispatch{stale_at: %DateTime{}} = Repo.get!(Dispatch, explore_dispatch.id)
+
+      # The next sweep and claims go on as before.
+      Dispatches.sweep(Dispatches.now())
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(key, Dispatches.now(), 2)
+      assert id == newer.id
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(other_key, Dispatches.now())
+      assert id == explore.id
+    end
+
+    test "of claimed prebuilds lapsing together, none queued for the record's queued_ref, the one queued last waits, with it",
+         ctx do
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
+      back = DateTime.add(Dispatches.now(), -700, :second)
+
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      {:ok, %{run: older}} = Dispatches.claim(key, back, 2)
+      list(ctx, 2, %{environment_ref: "env-2"})
+      {:ok, %{run: newer}} = Dispatches.claim(key, back, 2)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Record, where: r.source_collection_id == ^shop.id),
+          set: [queued_ref: "env-3"]
+        )
+
+      Dispatches.sweep(Dispatches.now())
+
+      assert %DispatchRun{state: :ended, end_cause: :superseded} =
+               Repo.get!(DispatchRun, older.id)
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-3"} =
+               Repo.get!(DispatchRun, newer.id)
+    end
+
+    test "the older claimed prebuild, lapsed first, waits with the record's queued_ref, and the newer, lapsed later, gives way",
+         ctx do
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
+
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+      list(ctx, 2, %{environment_ref: "env-2"})
+      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+
+      later = DateTime.add(older_dispatch.lease_until, 3600, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^newer_dispatch.id),
+          set: [lease_until: later]
+        )
+
+      Dispatches.sweep(older_dispatch.lease_until)
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} =
+               Repo.get!(DispatchRun, older.id)
+
+      Dispatches.sweep(later)
+
+      assert %DispatchRun{state: :ended, end_cause: :superseded} =
+               Repo.get!(DispatchRun, newer.id)
+
+      assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+
+      # Named again, env-2 queues nothing more: the one that waits is for it.
+      list(ctx, 3, %{environment_ref: "env-2"})
+      assert waiting(shop) == [{ctx.pool.id, "env-2"}]
+      assert length(prebuilds(shop)) == 2
+    end
+
+    test "an environment_ref removed ends the prebuild that waits, collection_ended, and leaves a claimed one",
+         ctx do
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now(), 2)
+      list(ctx, 2, %{environment_ref: "env-2"})
+
+      [%DispatchRun{} = queued] =
+        Repo.all(
+          from r in DispatchRun, where: r.source_collection_id == ^shop.id and r.state == :waiting
+        )
+
+      list(ctx, 3, %{})
+
+      assert %DispatchRun{state: :ended, end_cause: :collection_ended} =
+               Repo.get!(DispatchRun, queued.id)
+
+      assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, claimed.id)
+      assert waiting(shop) == []
+      assert %Record{retired_at: %DateTime{}} = Environments.fetch(ctx.pool.id, shop.id)
+      assert Dispatches.claim(key, Dispatches.now(), 2) == {:ok, :none}
     end
 
     test "an environment_ref removed and named again queues each time it comes back", ctx do

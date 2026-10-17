@@ -251,6 +251,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                  "REFERENCES work_items(id, organisation_id) ON DELETE CASCADE"
     end
 
+    @tag needs: :factory
     test "a prebuild: no work item nor take in, a collection and a pool of its workspace",
          %{scope: scope} do
       %{pool: pool} = pool!(scope)

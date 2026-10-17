@@ -25,19 +25,25 @@ defmodule Apiary.Environments do
   # collections as they now stand, for every live pool of each one's workspace: a
   # listing's part calls it for the collections it made or updated, and an assign for
   # those it assigned or moved to a workspace (`Apiary.Adapters.Collections`). A collection
-  # without an `environment_ref` queues nothing, and its records not retired since they
-  # were last queued are retired at `now`: the image goes from new runs, and the record
-  # keeps the rest. A collection assigned to no workspace, or without a target, queues
-  # nothing.
+  # without an `environment_ref` queues nothing, its records not retired since they were
+  # last queued are retired at `now`, and its prebuilds that wait end, `collection_ended`
+  # (`Apiary.Dispatches.end_waiting_prebuilds/2`): the image goes from new runs, nothing
+  # is left to build, and the record keeps the rest. A collection assigned to no
+  # workspace, or without a target, queues nothing.
   #
   # `trigger_for_pool(pool, now)` applies it, inside the caller's transaction, to a new
   # node pool, for every collection assigned to its workspace (`Apiary.Nodes.create_node/2`).
   #
-  # The record is written by one statement that decides, under the row's lock, whether it
-  # is due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the
-  # same pool and collection take turns, and the second sees the first's `queued_ref`;
-  # and the prebuild that waits is one per pool and collection in the database too
-  # (`Apiary.Dispatches.queue_prebuild/3`).
+  # `trigger/2` first locks every record of its collections, of every pool, `FOR UPDATE`,
+  # in one statement, by collection and then pool, whatever order its caller names them
+  # in; the lapse of a claimed prebuild locks its record in the same order before it
+  # decides which prebuild waits (`Apiary.Dispatches.Slots`, which names the order of
+  # every lock). The record is then written by one statement that decides whether it is
+  # due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the same
+  # pool and collection take turns, and the second sees the first's `queued_ref`; and the
+  # prebuild that waits is one per pool and collection in the database too
+  # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
+  # transaction: two calls would lock in two orders.
   #
   # ## A run's image: `image_for/2`
   #
@@ -105,6 +111,7 @@ defmodule Apiary.Environments do
   def trigger(collections, %DateTime{} = now) when is_list(collections) do
     in_transaction!("trigger/2")
 
+    :ok = lock_records(collections)
     {absent, present} = Enum.split_with(collections, &is_nil(&1.environment_ref))
     :ok = retire(absent, now)
     due = Enum.filter(present, &due?/1)
@@ -156,8 +163,27 @@ defmodule Apiary.Environments do
     |> Enum.group_by(& &1.workspace_id)
   end
 
+  # Locks the records of `collections`, of every pool, `FOR UPDATE`, by collection and
+  # then pool, in one statement, before any of them is written (the moduledoc).
+  defp lock_records([]), do: :ok
+
+  defp lock_records(collections) do
+    ids = Enum.map(collections, & &1.id)
+
+    _locked =
+      Repo.all(
+        from r in Record,
+          where: r.source_collection_id in ^ids,
+          order_by: [r.source_collection_id, r.pool_id],
+          lock: "FOR UPDATE",
+          select: r.id
+      )
+
+    :ok
+  end
+
   # Retires, at `now`, the records of `collections` not retired since they were last
-  # queued.
+  # queued, and ends their prebuilds that wait, `collection_ended`.
   defp retire([], _now), do: :ok
 
   defp retire(collections, now) do
@@ -172,7 +198,7 @@ defmodule Apiary.Environments do
         set: [retired_at: now, updated_at: now]
       )
 
-    :ok
+    Dispatches.end_waiting_prebuilds(ids, now)
   end
 
   # Writes the record of `collection` for each of `pools` that is due, in one statement,

@@ -23,7 +23,13 @@ defmodule Apiary.Dispatches do
   # `environment_ref` set to the newer one and its place in the queue kept; a claimed or
   # handed-over one is left as it is. It has no work item and counts toward no take in;
   # like any run, it takes a slot of the pool when it is claimed. `Apiary.Environments`
-  # decides when one is due.
+  # decides when one is due, and writes it under the lock of the pool's environment record
+  # of the collection (`Apiary.Dispatches.Slots` names the order of every lock).
+  #
+  # `end_waiting_prebuilds(collection_ids, now)` ends, inside the caller's transaction,
+  # which holds their environment records, the waiting prebuilds of collections that no
+  # longer name an `environment_ref`, `collection_ended`: nothing is left to build for
+  # them. A claimed or handed-over one is left as it is.
   #
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
@@ -60,8 +66,10 @@ defmodule Apiary.Dispatches do
   #      `{:error, :unauthorized}`;
   #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
-  #   3. the pool's row locked `FOR UPDATE`, so two claims of one pool, and a claim and a
-  #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`), take turns;
+  #   3. the pool's row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim
+  #      and a registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which
+  #      locks it `FOR UPDATE`), take turns, while a trigger's writes, whose foreign keys
+  #      to the pool take `FOR KEY SHARE`, never wait on it (`Apiary.Dispatches.Slots`);
   #   4. the pool's choice of gateway, as it resolves now (`Apiary.Gateways.resolve/1`):
   #      one that leads to no gateway is `{:error, :no_gateway}`;
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/2`), then the pool's limit
@@ -75,9 +83,9 @@ defmodule Apiary.Dispatches do
   #      declined, undone, its connection ended, or gone) or no longer in the run's
   #      workspace is not handed out: it ends, `undone` for a work item undone and
   #      `closed` otherwise; nor is a prebuild whose collection ended, is assigned to no
-  #      workspace or another one, has no target or whose connection ended: it ends,
-  #      `collection_ended`. A stale dispatch of a run ended so ends with it
-  #      (`run_ended`), and the next is taken, up to 100 per claim;
+  #      workspace or another one, has no target or no `environment_ref`, or whose
+  #      connection ended: it ends, `collection_ended`. A stale dispatch of a run ended
+  #      so ends with it (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
@@ -246,6 +254,37 @@ defmodule Apiary.Dispatches do
 
     with {:ok, _run} <- result, do: broadcast([workspace_id])
     result
+  end
+
+  # end_waiting_prebuilds/2 ends the waiting prebuilds of the collections
+  # `collection_ids`, `collection_ended`, with any stale dispatch of them (`run_ended`),
+  # inside the caller's transaction, which holds their environment records (the
+  # moduledoc).
+  @doc false
+  @spec end_waiting_prebuilds([Ecto.UUID.t()], DateTime.t()) :: :ok
+  def end_waiting_prebuilds(collection_ids, %DateTime{} = now) when is_list(collection_ids) do
+    in_transaction!("end_waiting_prebuilds/2")
+
+    {_count, ended} =
+      Repo.update_all(
+        from(r in DispatchRun,
+          where: r.source_collection_id in ^collection_ids and r.step == ^@prebuild,
+          where: fragment("? = 'waiting'", r.state),
+          select: r.id
+        ),
+        set: [state: :ended, end_cause: :collection_ended, updated_at: now]
+      )
+
+    {_count, _rows} =
+      Repo.update_all(
+        from(d in Dispatch,
+          where: d.dispatch_run_id in ^ended,
+          where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+        ),
+        set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+      )
+
+    :ok
   end
 
   # cancel_for_undo/1 ends the waiting runs of the current take in of `work_item`, or
@@ -424,7 +463,7 @@ defmodule Apiary.Dispatches do
         from n in Node,
           where: n.id == ^pool_id and n.workspace_id == ^workspace_id and n.kind == :pool,
           where: is_nil(n.deleted_at),
-          lock: "FOR UPDATE"
+          lock: "FOR NO KEY UPDATE"
       )
 
     if pool, do: {:ok, pool}, else: {:error, :unauthorized}
@@ -493,8 +532,9 @@ defmodule Apiary.Dispatches do
   end
 
   # A prebuild's collection when it is live, assigned to the run's workspace, has a target
-  # and its connection has not ended; else the run ends, `collection_ended`. Read without
-  # a lock, as a work item is: the run is locked, and its pool too.
+  # and an `environment_ref`, and its connection has not ended; else the run ends,
+  # `collection_ended`. Read without a lock, as a work item is: the run is locked, and its
+  # pool too.
   defp collection_of(%DispatchRun{
          source_collection_id: collection_id,
          workspace_id: workspace_id
@@ -509,9 +549,13 @@ defmodule Apiary.Dispatches do
       )
 
     case found do
-      {%Collection{ended_at: nil, workspace_id: ^workspace_id, target_system: system} =
-           collection, connection}
-      when is_binary(system) and connection in [:pending, :connected] ->
+      {%Collection{
+         ended_at: nil,
+         workspace_id: ^workspace_id,
+         target_system: system,
+         environment_ref: ref
+       } = collection, connection}
+      when is_binary(system) and is_binary(ref) and connection in [:pending, :connected] ->
         {:ok, collection}
 
       _ended_moved_or_without_target ->
