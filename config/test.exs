@@ -125,3 +125,7 @@ config :apiary, Oban, testing: :manual
 config :apiary, Apiary.Integrations.Fetch,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
+
+# An adapter's read of its change feed answers at once when the feed holds nothing new;
+# the test of the hold sets its own.
+config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0

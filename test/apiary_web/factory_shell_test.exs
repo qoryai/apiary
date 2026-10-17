@@ -32,7 +32,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
-    ApiaryWeb.AdapterRedirectController
+    ApiaryWeb.AdapterRedirectController,
+    ApiaryWeb.AdapterInstallController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -56,12 +57,13 @@ defmodule ApiaryWeb.FactoryShellTest do
   # `{verb, path, module}` with its parameters filled in: the scope's organisation and
   # workspace, the adapter, a connection's id that names none, a work item's number, and
   # a made-up id for the rest. The signed requests of an adapter are no page of the shell:
-  # `ApiaryWeb.Contract.AdapterRequestTest` and its fixtures' test answer for them.
+  # `ApiaryWeb.Contract.AdapterRequestTest`, `ApiaryWeb.Contract.ChangesControllerTest`
+  # and their fixtures' tests answer for them.
   defp factory_routes(scope, adapter) do
     for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(ApiaryWeb.Router),
         function_exported?(Code.ensure_loaded!(module), :__feature__, 0),
         module.__feature__() == :factory,
-        module != ApiaryWeb.Contract.AdapterController do
+        module not in [ApiaryWeb.Contract.AdapterController, ApiaryWeb.Contract.ChangesController] do
       {verb, fill(path, scope, adapter), module}
     end
   end
@@ -133,6 +135,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/integrations"},
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
+                 # Install, which connects the organisation to it.
+                 {:post, integration <> "/install"},
                  # The instance admins': the list, Add for one entry of the catalogue, and
                  # an adapter's Overview, its keys and its settings.
                  {:get, "/instance/adapters"},
