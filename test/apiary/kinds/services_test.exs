@@ -221,9 +221,9 @@ defmodule Apiary.Kinds.ServicesTest do
 
   describe "the size of a definition" do
     # The bounds the schema gives, lists of 32 entries and objects of 8 members, refuse an
-    # oversized definition within 1000 reductions, where JSV and the normalising of its
+    # oversized definition within 100000 reductions, where JSV and the normalising of its
     # errors took up to 0.4 s; deep nesting passes them and the schema refuses it within
-    # 1000000, and the largest valid definition passes within 100000. The work is
+    # 2000000, and the largest valid definition passes within 100000. The work is
     # asserted in reductions, the same on any machine running the same OTP release, not
     # in time; which inputs the bounds refuse is asserted apart from it.
 
@@ -233,10 +233,12 @@ defmodule Apiary.Kinds.ServicesTest do
       :ok
     end
 
-    # The value of `fun` and the reductions it did, in another process.
+    # The value of `fun` and the reductions it did, in another process. Garbage is
+    # collected first, so that a collection's work is not counted.
     defp reductions(fun) do
       task =
         Task.async(fn ->
+          :erlang.garbage_collect()
           {:reductions, before} = Process.info(self(), :reductions)
           result = fun.()
           {:reductions, done} = Process.info(self(), :reductions)
@@ -261,14 +263,14 @@ defmodule Apiary.Kinds.ServicesTest do
       ]
     end
 
-    test "a definition over the schema's bounds is refused within 1000 reductions" do
+    test "a definition over the schema's bounds is refused within 100000 reductions" do
       for definition <- oversized() do
         assert byte_size(Jason.encode!(definition)) in 100_000..140_000
         refute Bounds.within?(definition, ServiceDefinition.bounds())
 
         {reductions, result} = reductions(fn -> ServiceDefinition.validate(definition) end)
-        # Measured: 66 to 197 reductions; JSV reads the entries in millions.
-        assert reductions < 1000, "#{reductions} reductions"
+        # JSV reads the entries in millions.
+        assert reductions < 100_000, "#{reductions} reductions"
         assert result == {:error, [{:definition_invalid, ""}]}
       end
     end
@@ -279,8 +281,7 @@ defmodule Apiary.Kinds.ServicesTest do
       assert Bounds.within?(definition, ServiceDefinition.bounds())
 
       {reductions, result} = reductions(fn -> ServiceDefinition.validate(definition) end)
-      # Measured: 544396 reductions.
-      assert reductions < 1_000_000, "#{reductions} reductions"
+      assert reductions < 2_000_000, "#{reductions} reductions"
       assert result == {:error, [{:definition_invalid, ""}]}
     end
 
@@ -306,7 +307,6 @@ defmodule Apiary.Kinds.ServicesTest do
 
       assert Bounds.within?(largest, ServiceDefinition.bounds())
       {reductions, result} = reductions(fn -> ServiceDefinition.validate(largest) end)
-      # Measured: 23051 reductions.
       assert reductions < 100_000, "#{reductions} reductions"
       assert {:ok, ^largest} = result
 

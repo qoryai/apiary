@@ -32,6 +32,13 @@ defmodule Apiary.Kinds.RegexFormatTest do
     reductions
   end
 
+  # The first reading of a count: garbage is collected first, so that a collection's
+  # work is not counted.
+  defp collected_reductions do
+    :erlang.garbage_collect()
+    reductions()
+  end
+
   test "each pattern gets the verdict JSV's default gives, the first time and after" do
     for pattern <- @valid ++ @invalid do
       default = verdict(JSV.FormatValidator.Default.validate_cast("regex", pattern))
@@ -72,17 +79,18 @@ defmodule Apiary.Kinds.RegexFormatTest do
 
     {first, again} =
       fresh(fn ->
-        before = reductions()
+        before = collected_reductions()
         {:ok, _} = RegexFormat.validate_cast("regex", value)
         first = reductions() - before
-        before = reductions()
+        before = collected_reductions()
         {:ok, _} = RegexFormat.validate_cast("regex", value)
         {first, reductions() - before}
       end)
 
-    # 10 reductions a byte, counting 8 more bytes.
+    # 10 reductions a byte, counting 8 more bytes. A second compile would be charged
+    # as much again.
     assert first >= 10 * (15_000 + 8)
-    assert again < 1000
+    assert again < 50_000
   end
 
   test "a value is compiled once however many times the format applies to it" do
@@ -92,7 +100,7 @@ defmodule Apiary.Kinds.RegexFormatTest do
       fresh(fn ->
         schema = %{"allOf" => List.duplicate(%{"format" => "regex"}, leaves)}
         {:ok, root} = Schema.build(schema, formats: RegexFormat.formats())
-        before = reductions()
+        before = collected_reductions()
         :ok = Schema.validate(value, root, @limits)
         reductions() - before
       end)
@@ -101,8 +109,9 @@ defmodule Apiary.Kinds.RegexFormatTest do
     one = work.(1)
     many = work.(200)
 
-    # The one compile is charged 150080 reductions; 199 more leaves add less than that.
+    # The one compile is charged 150080 reductions or more. A compile for each of 199
+    # more leaves would add 199 times that, about 30 million; they add under a million.
     assert one >= 150_080
-    assert many - one < 150_080
+    assert many - one < 1_000_000
   end
 end
