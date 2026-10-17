@@ -2,24 +2,24 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # An adapter's Access key tab in Instance settings › Adapters, at `…/keys`, for the
   # instance's admins: its keys and enrolment codes, with the acts on them that a node's
   # Access key tab has (`ApiaryWeb.NodeLive.AccessKey`); and Add for one entry of the
-  # catalogue (`:new`, by the entry), which makes the adapter and its first enrolment
-  # code, and patches to the command (`:new_code`), the code held by this page's process
-  # alone. A page of the Instance level, with no organisation: its gate asks the instance
-  # whether the feature is on (`use ApiaryWeb.Features, instance: :factory`), and anyone
-  # but an instance admin is answered as a path that does not exist, as on the Instance's
-  # other pages. The keys, the codes and their topic are an instance admin's
-  # (`Apiary.Adapters.subscribe_keys/2`).
+  # catalogue (`:new`, by the entry), which makes nothing: it answers Not Found at mount
+  # until the catalogue exists. A page of the Instance level, with no organisation: its
+  # gate asks the instance whether the feature is on (`use ApiaryWeb.Features, instance:
+  # :factory`), and anyone but an instance admin is answered as a path that does not
+  # exist, as on the Instance's other pages. The keys, the codes and their topic are an
+  # instance admin's (`Apiary.Adapters.subscribe_keys/2`).
   #
   # An adapter's key is enrolled with a code alone, never made in a browser, so the tab
   # offers one way: Get the command makes a code at once and opens `…/keys/new-code`,
   # which waits for the key the code brings, says the adapter is connected once it
   # arrives, and says the code no longer works once it was cancelled or expired.
   #
-  # **A code is shown once.** It lives in the page's process alone, wrapped in a function
-  # so no inspection of the process's state prints it, until the reader leaves the
-  # command's page by any way, or the adapter has used it: every path starts without it,
-  # but for the one patch from Get the command to its page; no path, flash or title
-  # carries it, and nothing logs it. A page opened again starts without it.
+  # **The page holds the code in its process only, and never shows it until the command
+  # is drawn.** It is wrapped in a function so no inspection of the process's state prints
+  # it, and held until the reader leaves the command's page by any way, or the adapter has
+  # used it: every path starts without it, but for the one patch from Get the command to
+  # its page; no path, flash or title carries it, and nothing logs it. A page opened again
+  # starts without it.
   #
   # A key's revocation and a waiting code's cancelling are confirmed in place, each at its
   # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`, by
@@ -516,7 +516,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             </.inline_confirm>
           </SettingsComponents.part>
 
-          <%!-- A key in use: the same way, for moving to a new key, but at the limit. --%>
+          <%!-- A key in use: the same way, for moving to a new key, but at the
+               limit. --%>
           <SettingsComponents.part :if={@active > 0} id="adapter-add" title={gettext("Add a key")}>
             <p id="adapter-add-intro" class="text-[13px]/5 text-muted">
               {gettext(

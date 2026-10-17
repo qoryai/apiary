@@ -148,7 +148,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{date} pruned %{runs}; not finished, the next night goes on."
+msgid "%{date} pruned %{runs}; not finished, the next daily job goes on."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -670,6 +670,11 @@ msgstr ""
 msgid "%{name} fails its integrity check: its record is not as it was saved."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} filed this %{filed_ago} · updated %{updated_ago}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it."
@@ -981,10 +986,24 @@ msgid_plural "%{number} chunks"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} comment"
+msgid_plural "%{number} comments"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} connection while this call was open"
 msgid_plural "%{number} connections while this call was open"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} d"
+msgid_plural "%{number} d"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1124,6 +1143,13 @@ msgid_plural "%{number} gone quiet"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} h"
+msgid_plural "%{number} h"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -1218,6 +1244,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} member"
 msgid_plural "%{number} members"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} min"
+msgid_plural "%{number} min"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1811,6 +1844,11 @@ msgstr ""
 msgid "%{rate}, bursts of %{burst}"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{ref} · by %{who} · %{ago}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{rule} is locked. No target can override it."
@@ -2284,7 +2322,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "A change applies at the next daily job, at 02:40 UTC. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgid "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -2311,6 +2349,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "A command is waiting to be run on %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "A command is waiting to be run."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3633,6 +3676,7 @@ msgstr ""
 msgid "Background tasks"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
@@ -3646,6 +3690,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Behind v%{n}"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Brings back work item #%{number}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4114,6 +4163,7 @@ msgstr ""
 msgid "Clearing"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -4125,6 +4175,11 @@ msgstr ""
 msgid "Close menu"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Close the ticket"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when a new policy denied the host."
@@ -4134,6 +4189,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
 msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket"
+msgid "Collection"
+msgstr "Repository"
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4514,11 +4575,6 @@ msgstr ""
 msgid "Day"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Days in UTC."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Decided by %{name}'s policy"
@@ -4537,6 +4593,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Declared by the harness"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Declined by %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -5371,7 +5432,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Every day, %{from}–%{to} UTC"
+msgid "Every day, %{from}–%{to} %{zone}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -5595,6 +5656,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Fetching the release's description.json and checksums.txt…"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Filed by"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Filed by %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -7130,6 +7201,12 @@ msgstr ""
 msgid "Labels"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "ticket"
+msgid "Labels"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Lanes"
@@ -7211,16 +7288,6 @@ msgstr ""
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "Last hour"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Last night pruned %{runs}."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Last night pruned %{runs}; not finished, the next night goes on."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8335,7 +8402,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "No prune has run yet. The job runs nightly."
+msgid "No prune has run yet. The job runs every day."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -8903,7 +8970,7 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Nothing has been pruned yet. The pruning job runs every night."
+msgid "Nothing has been pruned yet. The pruning job runs every day."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -8978,11 +9045,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing was old enough to prune last night."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -9106,6 +9168,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "On since %{day}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "On the machine that ran the command; never shown"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -9357,6 +9424,11 @@ msgstr ""
 msgid "Open menu"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open on %{integration}"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Open on %{system}"
@@ -9370,6 +9442,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open run"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open the full ticket"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -11647,6 +11724,21 @@ msgctxt "ticket table"
 msgid "Table in the ticket"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in again"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Taken in: work item #%{number}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
@@ -12363,12 +12455,12 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The page of the first run started on or after that day, in UTC."
+msgid "The page of the first run started on or after that day."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The page of the first run started on or before that day, in UTC."
+msgid "The page of the first run started on or before that day."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -13167,6 +13259,11 @@ msgstr ""
 msgid "This workspace's default gateway."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ticket"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
@@ -13847,6 +13944,11 @@ msgstr ""
 msgid "Work"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work item #%{number}, declined by %{name}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item comment added"
@@ -14028,6 +14130,7 @@ msgstr ""
 msgid "Yes, suspend"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Yesterday"
@@ -14794,6 +14897,11 @@ msgstr ""
 msgid "is taken out of the paths in force for the host."
 msgstr ""
 
+#: lib/apiary_web/format.ex
+#, elixir-autogen, elixir-format
+msgid "just now"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "lane (%{tip})"
@@ -15034,6 +15142,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "not seen"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "now"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15480,6 +15593,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "yesterday"
+msgstr ""
+
+#: lib/apiary_web/format.ex
+#, elixir-autogen, elixir-format
+msgid "yesterday, %{time}"
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex

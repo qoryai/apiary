@@ -106,12 +106,16 @@ defmodule Apiary.Runs.ListingTest do
       assert filters.since == nil
       assert {filters.from, filters.to} == {~D[2026-09-14], ~D[2026-09-16]}
 
-      assert Filters.bounds(filters, @now) ==
+      assert Filters.bounds(filters, @now, "Etc/UTC") ==
                {~U[2026-09-14 00:00:00.000000Z], ~U[2026-09-17 00:00:00.000000Z]}
+
+      # The dates are the reader's days: in Los Angeles (PDT, UTC-7) they start at 07:00 UTC.
+      assert Filters.bounds(filters, @now, "America/Los_Angeles") ==
+               {~U[2026-09-14 07:00:00.000000Z], ~U[2026-09-17 07:00:00.000000Z]}
 
       assert Filters.range_label(filters) == "14 Sept 2026 to 16 Sept 2026"
       assert parse(%{"from" => "yesterday"}).since == "all"
-      assert Filters.bounds(parse(%{}), @now) == {nil, nil}
+      assert Filters.bounds(parse(%{}), @now, "Etc/UTC") == {nil, nil}
     end
 
     test "a refused value is dropped and named, so the page can say so" do
@@ -282,7 +286,7 @@ defmodule Apiary.Runs.ListingTest do
       assert %{sort: "denied", dropped: ["sort"]} = cx.(%{"sort" => "newest"})
 
       assert {~U[2026-06-22 14:00:00.000000Z], nil} =
-               Filters.bounds(cx.(%{"since" => "90d"}), @now)
+               Filters.bounds(cx.(%{"since" => "90d"}), @now, "Etc/UTC")
 
       wide = cx.(%{"from" => "2020-01-01", "to" => "2026-09-20"})
       assert {wide.from, wide.to} == {~D[2026-06-23], ~D[2026-09-20]}

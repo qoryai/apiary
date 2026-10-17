@@ -990,6 +990,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <time
       data-tick="seconds"
+      data-time-zone={Format.time_zone()}
       data-since={iso(@at)}
       data-now={iso(@now)}
       aria-live="off"
@@ -1502,8 +1503,6 @@ defmodule ApiaryWeb.OverviewComponents do
     required: true,
     doc: "nil while loading, else the last retention run or none"
 
-  attr :now, :any, required: true
-
   def guard(assigns) do
     ~H"""
     <section id={@id} class="q-blk q-ov-grd" aria-labelledby={"#{@id}-h"}>
@@ -1570,11 +1569,11 @@ defmodule ApiaryWeb.OverviewComponents do
               <% not retention_set?(@workspace) -> %>
                 {gettext("Nothing is pruned: runs, events and log output stay.")}
               <% @retention == [] -> %>
-                {gettext("No prune has run yet. The job runs nightly.")}
+                {gettext("No prune has run yet. The job runs every day.")}
               <% match?([%{runs_pruned: 0} | _], @retention) -> %>
-                {nothing_pruned(hd(@retention), @now)}
+                {nothing_pruned(hd(@retention))}
               <% true -> %>
-                <.rich text={pruned(hd(@retention), @now)} />
+                <.rich text={pruned(hd(@retention))} />
             <% end %>
           </span>
         </div>
@@ -1691,42 +1690,22 @@ defmodule ApiaryWeb.OverviewComponents do
   defp retention_set?(workspace),
     do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
 
-  # Last night when the job finished since yesterday's evening, else the date.
-  defp last_night?(run, now) do
-    at = run.finished_at || run.started_at
-    Format.days_back(at, now) <= 1
-  end
-
   defp prune_day(run), do: Format.short_date(run.finished_at || run.started_at)
 
-  defp nothing_pruned(run, now) do
-    if last_night?(run, now),
-      do: gettext("Nothing was old enough to prune last night."),
-      else: gettext("Nothing was old enough to prune on %{date}.", date: prune_day(run))
-  end
+  defp nothing_pruned(run),
+    do: gettext("Nothing was old enough to prune on %{date}.", date: prune_day(run))
 
   # The last prune: when, how many runs, and whether it finished.
-  defp pruned(run, now) do
+  defp pruned(run) do
     runs = runs_count(run.runs_pruned)
 
-    case {last_night?(run, now), run.complete} do
-      {true, true} ->
-        rich_gettext("Last night pruned %{runs}.", runs: runs)
-
-      {true, _} ->
-        rich_gettext("Last night pruned %{runs}; not finished, the next night goes on.",
-          runs: runs
-        )
-
-      {false, true} ->
-        rich_gettext("%{date} pruned %{runs}.", date: prune_day(run), runs: runs)
-
-      {false, _} ->
-        rich_gettext("%{date} pruned %{runs}; not finished, the next night goes on.",
+    if run.complete,
+      do: rich_gettext("%{date} pruned %{runs}.", date: prune_day(run), runs: runs),
+      else:
+        rich_gettext("%{date} pruned %{runs}; not finished, the next daily job goes on.",
           date: prune_day(run),
           runs: runs
         )
-    end
   end
 
   defp not_loaded,

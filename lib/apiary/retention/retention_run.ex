@@ -2,9 +2,9 @@ defmodule Apiary.Retention.RetentionRun do
   @moduledoc """
   What one run of the retention job did to one workspace: the settings and cut-offs it ran
   under, and how many runs it pruned, events, log chunks, log bytes and deliveries it
-  deleted. `trigger` is `schedule` for the nightly job and `manual` for `mix apiary.prune`.
+  deleted. `trigger` is `schedule` for the daily job and `manual` for `mix apiary.prune`.
   `complete` is false when the job stopped before it was through the workspace, by its
-  bound on the runs of one night or by a failure; the next night goes on from there.
+  bound on the runs of one job or by a failure; the next daily job goes on from there.
   """
   use Ecto.Schema
 

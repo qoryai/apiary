@@ -665,9 +665,10 @@ words say so. The workspace's window is **fourteen days**:
   The default window is no filter: the Filter menu does not count it. Its views count
   destinations, and a destination with attempts of both kinds counts in each, which a
   line under the views says when it happens.
-- **The overview's summary** counts the chart's fourteen UTC days, and each number leads
-  to its list over the same days (`?from=` the first of them; the denied attempts to
-  Network access, whose Denied view counts the destinations the summary names). **To
+- **The overview's summary** counts the chart's fourteen days, in the reader's time zone,
+  and each number leads to its list over the same days (`?from=` the first of them; the
+  denied attempts to Network access, whose Denied view counts the destinations the summary
+  names). **To
   review** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact on the mode card and the enforce preview read fourteen days,
@@ -1375,8 +1376,9 @@ never holds more than 600 items.
 `clock`, `duration`, `seconds`) and the server's now in `data-now`; `<.relative_time>`
 and `<.duration>` render them. The `Ticker` hook re-renders every one from a single
 interval, once a second, paused while the tab is hidden, and counts on the server's clock
-rather than the browser's. It writes in the words, locale and time zone the server put on
-`<body>`, so the server never re-renders for a clock. The full time with its zone is the
+rather than the browser's. It writes in the words and locale the server put on `<body>`,
+and in the time zone the element names (`data-time-zone`, the one the server rendered it
+in), else the body's, so the server never re-renders for a clock. The full time with its zone is the
 `title`. Everything else a person reads as a date, time or number goes through
 `ApiaryWeb.Format`.
 

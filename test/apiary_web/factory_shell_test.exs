@@ -34,8 +34,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterRedirectController
   ]
 
-  # The modules of the feature's pages of the Instance level not built yet, which answer an
-  # instance admin as a path that does not exist.
+  # The modules of the feature's pages of the Instance level not built yet, which answer
+  # an instance admin as a path that does not exist.
   @unbuilt []
 
   # The modules of the feature's pages of the Instance level.
@@ -347,10 +347,25 @@ defmodule ApiaryWeb.FactoryShellTest do
       routes = instance_routes(scope, adapter)
       assert length(routes) == 10
 
+      keys = "/instance/adapters/#{adapter.public_id}/keys"
+
       for {path, module} <- routes do
         # The answer of the page as it mounts: not the door's, nor the gate's.
-        if Enum.member?(@unbuilt, module),
-          do: assert_raise(ApiaryWeb.NotFound, fn -> live(admin_conn, path) end)
+        cond do
+          Enum.member?(@unbuilt, module) ->
+            assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # Add, not found until the catalogue exists.
+          String.starts_with?(path, "/instance/adapters/new/") ->
+            assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # No code just made, no such key, no such code: the page leads to the tab.
+          path in [keys <> "/new-code", keys <> "/x1/revoke", keys <> "/codes/x1/revoke"] ->
+            assert {:error, {:live_redirect, %{to: ^keys}}} = live(admin_conn, path), path
+
+          true ->
+            assert {:ok, _view, _html} = live(admin_conn, path), path
+        end
 
         assert ApiaryWeb.Features.gate(module) == :factory
       end
@@ -632,11 +647,19 @@ defmodule ApiaryWeb.FactoryShellTest do
 
   # A page a live navigation to `path` starts from, in the same live session: an Instance
   # page, opened by an instance admin, for a page of the Instance level, else a page of
-  # the workspace.
-  defp navigable(_conn, _scope, "/instance/" <> _),
+  # the workspace. The async reads it starts (the runs page's) finish first
+  # (`render_async/1`): the refused navigation ends the page, and a task still reading
+  # would be killed holding the test's sandbox connection.
+  defp navigable(conn, scope, path) do
+    {:ok, view, html} = start_page(conn, scope, path)
+    render_async(view)
+    {:ok, view, html}
+  end
+
+  defp start_page(_conn, _scope, "/instance/" <> _),
     do: live(log_in_user(build_conn(), instance_admin_scope().user), ~p"/instance/general")
 
-  defp navigable(conn, scope, _path),
+  defp start_page(conn, scope, _path),
     do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
   # Where ⌘K's Go to leads, as `ApiaryWeb.JumpController` answers it from the

@@ -459,6 +459,13 @@ defmodule Apiary.RuntimeConfigTest do
       assert oban[:testing] == :manual
     end
 
+    test "names the time of day a daily job runs at, as Oban runs it" do
+      oban = Application.get_env(:apiary, Oban)
+      assert {"40 2 * * *", _} = List.keyfind(oban[:crontab], Apiary.Audit.PruneSweep, 1)
+      assert Apiary.Application.daily_at(Apiary.Audit.PruneSweep) == ~T[02:40:00]
+      assert Apiary.Application.daily_at(Apiary.Deletion.PurgeSweep) == ~T[03:20:00]
+    end
+
     test "is not in the configuration, so an edition never restates Oban's" do
       config = Config.Reader.read!("config/config.exs", env: :prod, target: :host)
       assert get_in(config, [:apiary, Oban, :repo]) == Apiary.Repo

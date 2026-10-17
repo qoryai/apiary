@@ -42,7 +42,12 @@ defmodule ApiaryWeb.CrashReportLogTest do
   # The page's process is sent a frame's event with `payload` (and the message's `fields`),
   # and fails on it: what it logged, as the captured text and as the events a handler is
   # given.
+  #
+  # The page's async tasks finish first (`render_async/1`). A task still reading when the
+  # page fails is killed with it, holding the test's sandbox connection: the connection is
+  # closed, and the test's next query finds no owner (`DBConnection.OwnershipError`).
   defp crash(view, payload, level \\ :error, fields \\ []) do
+    render_async(view)
     {_ref, topic, _proxy} = view.proxy
     pid = view.pid
     ref = Process.monitor(pid)

@@ -153,6 +153,24 @@ defmodule ApiaryWeb.FormatTest do
       assert Format.zone(~U[2026-12-01 00:00:00Z]) == "CET"
     end
 
+    test "today and the days back are the reader's days" do
+      Format.put_time_zone("Pacific/Auckland")
+
+      # 11:00 UTC is midnight in Auckland on 17 October 2026: UTC is still on the 16th.
+      assert Format.today(~U[2026-10-16 11:30:00Z]) == ~D[2026-10-17]
+      assert Format.days_back(~U[2026-10-16 10:30:00Z], ~U[2026-10-16 11:30:00Z]) == 1
+
+      Format.put_time_zone("America/Los_Angeles")
+      assert Format.today(~U[2026-10-17 06:30:00Z]) == ~D[2026-10-16]
+      assert Format.days_back(~U[2026-10-16 08:00:00Z], ~U[2026-10-17 06:30:00Z]) == 0
+    end
+
+    test "a time of day names its zone with zone: true" do
+      Format.put_time_zone("Europe/Berlin")
+      assert Format.time(~U[2026-10-17 02:40:00Z], zone: true) == "04:40 CEST"
+      assert Format.time(~U[2026-12-17 02:40:00Z], zone: true) == "03:40 CET"
+    end
+
     test "a zone without an abbreviation is named by its offset" do
       Format.put_time_zone("America/Lima")
       assert Format.datetime(@at, zone: true) == "26 Sept 2026, 09:03 GMT-05:00"

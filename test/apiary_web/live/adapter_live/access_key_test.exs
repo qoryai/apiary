@@ -312,6 +312,13 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       # Asked anyway, no code is made.
       render_click(lv, "create_code", %{})
       assert Adapters.list_codes(admin, adapter) == []
+
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert_patch(lv, tab_path(adapter))
+      assert words(lv, "#flash-group") =~ "tracker-01 is revoked."
+
+      assert [%AccessKey{label: "tracker-02", revoked_at: nil}] =
+               Enum.filter(Adapters.list_keys(admin, adapter), &is_nil(&1.revoked_at))
     end
 
     test "a revoked key's path says so, and an unknown one leads back to the tab",

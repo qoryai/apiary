@@ -10437,3 +10437,943 @@
     text-align: right;
   }
 }
+
+/* ==== Backlog: a workspace's tickets, and one ticket (`BacklogComponents`) ==================
+   The page holds the list and the open ticket in `.q-bl`: the list in `.q-bl-main` (its bar
+   a `.q-bar`, its rows `ticket_row/1`s in a `.q-blk` > `.q-rows`), then the ticket's scrim
+   and panel (`ticket/1`, frame `:list`). One markup, three forms by width: from 1280 px a
+   panel beside the list, from 768 to 1279 a dialog over it, below 768 a sheet from the foot
+   of the screen with the list's first rows above it. The full ticket (`ticket/1`, frame
+   `:full`) is `.q-bl-tk`. On a row everything but the title is small and muted; nothing on
+   a row is a box. ==== */
+@layer qory {
+  /* ---- A row: one line, the title the only strong text ---- */
+  .q-bl-row {
+    display: flex;
+    height: 44px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px 0 14px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-bl-row[phx-click] {
+    cursor: pointer;
+  }
+  .q-bl-row:hover {
+    background-color: var(--color-base-200);
+  }
+  /* The ticket open: the honey fill and a line on its left. Faint text is under 4.5:1 on
+     the fill, so the row draws it muted. */
+  .q-bl-row:has([aria-current="true"]) {
+    --q-faint: var(--q-muted);
+    background-color: var(--q-primary-soft);
+    box-shadow: inset 2px 0 0 var(--color-primary);
+  }
+  .q-bl-row > * {
+    flex: none;
+  }
+  .q-bl-row > .q-bl-ttl {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 0%;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .q-bl-no {
+    width: 56px;
+    color: var(--q-faint);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .q-bl-t {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-bl-t:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-field);
+    text-underline-offset: 3px;
+  }
+  .q-bl-w {
+    flex: none;
+    color: var(--q-faint);
+    white-space: nowrap;
+  }
+  /* The ref, the filer and the time under the title, where the row is too narrow for
+     their columns. */
+  .q-bl-sub {
+    display: none;
+  }
+  .q-bl-rp {
+    width: 180px;
+    overflow: hidden;
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-bl-by {
+    display: flex;
+    width: 112px;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .q-bl-cm {
+    display: flex;
+    width: 36px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    color: var(--q-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .q-bl-upd {
+    width: 64px;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-bl-act {
+    position: relative;
+    display: flex;
+    width: 96px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  /* ---- Who filed a ticket: a person's mark, or a bot's tile with its initial ---- */
+  .q-bl-filer {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+  }
+  .q-bl-filer > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .q-bl-by-i {
+    color: var(--q-faint);
+  }
+  .q-bl-bot-av {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    place-items: center;
+    border: 1px solid var(--q-border-strong);
+    border-radius: 4px;
+    color: var(--q-muted);
+    font-size: 9.5px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  /* Qory: the bee in a round honey avatar, 16 px on a row and 24 px beside its words. */
+  .q-bl-bee {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    place-items: center;
+    border-radius: 9999px;
+    background-color: var(--q-primary-soft);
+    color: var(--q-primary-soft-content);
+  }
+  .q-bl-bee > * {
+    width: 12px;
+    height: 12px;
+  }
+  .q-bl-bee.q-bl-bee-lg {
+    width: 24px;
+    height: 24px;
+  }
+  .q-bl-bee.q-bl-bee-lg > * {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* ---- The integration's tile: a neutral outlined square with its initial, never a state
+     of the ticket ---- */
+  .q-bl-tile {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    place-items: center;
+    border: 1.25px solid currentColor;
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: 8.5px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  .q-bl-mk {
+    color: var(--q-faint);
+  }
+  .q-bl-src {
+    color: var(--q-muted);
+  }
+
+  /* ---- A row's action: Take in, a text action shown on hover, focus or selection ---- */
+  .q-bl-take {
+    height: 24px;
+    margin-right: -6px;
+    padding: 0 6px;
+    border-radius: var(--radius-selector);
+    color: var(--color-accent);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  .q-bl-take:hover {
+    background-color: var(--color-base-300);
+  }
+  .q-bl-row:is(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take:not(.q-bl-again) {
+    opacity: 1;
+  }
+  /* A declined ticket: Take in again takes the place of its work item's number on hover
+     or focus. Hidden, it lies over the number's place, unseen and out of the pointer's way,
+     and stays in the tab order: a Tab onto it shows it. The number, hidden in its turn,
+     stays focusable as well, and shows again while it has the keyboard's focus. */
+  .q-bl-take.q-bl-again {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    translate: 0 -50%;
+    pointer-events: none;
+  }
+  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-take.q-bl-again {
+    position: static;
+    translate: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .q-bl-row:is(:hover, :focus-within):not(:has(.q-bl-wi-declined:focus-visible)) .q-bl-wi-declined {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    translate: 0 -50%;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* The work item a ticket became: its number, always there; declined, the number faint. */
+  .q-bl-wi {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  a.q-bl-wi:hover {
+    color: var(--color-base-content);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .q-bl-wi > span {
+    color: var(--q-faint);
+  }
+  .q-bl-wi.q-bl-wi-declined {
+    color: var(--q-faint);
+  }
+  /* With the ticket open beside the list, its Take in is the panel's block. */
+  @media (min-width: 1280px) {
+    .q-bl:has(> .q-bl-prev) .q-bl-row:has([aria-current="true"]):not(:hover, :focus-within) .q-bl-take {
+      opacity: 0;
+    }
+  }
+
+  /* ---- A narrower list drops columns before the title drops below about 40 characters;
+     the row's container is the list's box (`.q-blk`) ---- */
+  @container (max-width: 1299.98px) {
+    .q-bl-cm {
+      display: none;
+    }
+  }
+  @container (max-width: 1039.98px) {
+    .q-bl-rp {
+      display: none;
+    }
+  }
+  @container (max-width: 699.98px) {
+    .q-bl-by {
+      display: none;
+    }
+  }
+  @container (max-width: 519.98px) {
+    .q-bl-row {
+      height: auto;
+      min-height: 56px;
+      align-items: flex-start;
+      padding-block: 7px;
+    }
+    .q-bl-mk {
+      margin-top: 2px;
+    }
+    .q-bl-no,
+    .q-bl-upd,
+    .q-bl-w {
+      display: none;
+    }
+    .q-bl-row > .q-bl-ttl {
+      display: grid;
+      gap: 1px;
+    }
+    .q-bl-sub {
+      display: block;
+      overflow: hidden;
+      color: var(--q-faint);
+      font-size: 0.75rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .q-bl-act {
+      width: auto;
+      padding-top: 1px;
+    }
+    /* Take in takes no width here until the row is read, and stays in the tab order: a
+       zero-size clip, which a Tab onto the button lifts. */
+    .q-bl-row:not(:hover, :focus-within, :has([aria-current="true"])) .q-bl-take {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+  }
+
+  /* ---- The page: the list, and the ticket beside it or over it ---- */
+  .q-bl-main {
+    min-width: 0;
+    container: q-bl-main / inline-size;
+  }
+  /* Beside the ticket the list is narrower: the search moves to a separate line under the
+     views. */
+  @container q-bl-main (max-width: 760px) {
+    .q-bl-main .q-bar > .q-grow {
+      display: none;
+    }
+    .q-bl-main .q-bar > .q-views {
+      margin-right: auto;
+    }
+    .q-bl-main .q-bar > .q-find {
+      order: 5;
+      width: 100%;
+      flex: 1 1 100%;
+    }
+  }
+  /* With a ticket open, the list page takes the whole width: the list keeps its 1680 px and
+     the ticket the rest. */
+  .q-page-list > .q-bl:has(> .q-bl-prev) {
+    max-width: none;
+  }
+  .q-bl:has(> .q-bl-prev) > .q-bl-main {
+    max-width: 105rem;
+  }
+  .q-bl-prev-scrim {
+    display: none;
+  }
+  .q-bl-prev {
+    overscroll-behavior: contain;
+  }
+  .q-bl-prev .q-bl-tb {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--color-base-100);
+  }
+  /* From 1280 px: a panel beside the list, 34% of the window between 440 and 760 px, as
+     tall as the window under the top bar, with a separate scroll. */
+  @media (min-width: 1280px) {
+    .q-bl:has(> .q-bl-prev) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) clamp(440px, 34vw, 760px);
+      align-items: start;
+      gap: 24px;
+    }
+    .q-bl-prev {
+      position: sticky;
+      top: calc(var(--q-bar) + 1.5rem);
+      height: calc(100dvh - var(--q-bar) - 1.5rem);
+      overflow: auto;
+      padding: 0 4px 40px 24px;
+      border-left: 1px solid var(--q-border-subtle);
+    }
+  }
+  /* From 768 to 1279 px: a dialog over the list, at most 760 px wide, on a scrim. */
+  @media (max-width: 1279.98px) {
+    .q-bl-prev-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      background-color: var(--q-overlay);
+      animation: q-bl-fade 160ms var(--q-ease-out);
+    }
+    .q-bl-prev {
+      position: fixed;
+      inset: 24px 0;
+      z-index: 56;
+      width: min(760px, calc(100vw - 48px));
+      margin-inline: auto;
+      overflow: auto;
+      padding: 0 24px 32px;
+      border-radius: 12px;
+      background-color: var(--color-base-100);
+      box-shadow: var(--q-shadow-modal);
+      animation: q-bl-rise 180ms var(--q-ease-out);
+    }
+    .q-bl-prev .q-bl-tb {
+      height: 52px;
+      margin: 0 -24px;
+      padding: 0 12px 0 24px;
+      border-bottom: 1px solid var(--q-border-subtle);
+    }
+    .q-bl-prev .q-bl-h {
+      margin-top: 16px;
+    }
+  }
+  /* Below 768 px: a sheet from the foot of the screen, from min(472 px, 56% of the window)
+     down, so the list's first rows show above it. While the Take in block is in view, its
+     button sticks to the sheet's foot. */
+  @media (max-width: 767.98px) {
+    .q-bl-prev {
+      inset: min(472px, 56dvh) 0 0;
+      width: 100%;
+      padding: 0 16px;
+      border-radius: 12px 12px 0 0;
+      animation-name: q-bl-sheet;
+    }
+    .q-bl-prev > :last-child {
+      margin-bottom: 32px;
+    }
+    .q-bl-prev .q-bl-tb {
+      margin: 0 -16px;
+      padding: 0 6px 0 16px;
+    }
+    .q-bl-prev .q-bl-ti-act {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      margin: 0 -16px -16px;
+      padding: 10px 16px 12px;
+      border-top: 1px solid var(--q-border-subtle);
+      border-radius: 0 0 var(--radius-box) var(--radius-box);
+      background-color: var(--color-base-200);
+    }
+  }
+  @keyframes q-bl-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes q-bl-rise {
+    from {
+      opacity: 0;
+      translate: 0 8px;
+    }
+  }
+  @keyframes q-bl-sheet {
+    from {
+      translate: 0 100%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .q-bl-prev,
+    .q-bl-prev-scrim {
+      animation: none;
+    }
+  }
+
+  /* ---- The ticket: its bar, head, facts, text and comments, as the integration sent them ---- */
+  .q-bl-tb {
+    display: flex;
+    height: 32px;
+    align-items: center;
+    gap: 8px;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+  }
+  .q-bl-key {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-bl-grow {
+    min-width: 0;
+    flex: 1;
+  }
+  /* Open on the integration, as an icon button: `external_link/1` draws a link, here in
+     the bar's ghost buttons' size and colour. */
+  .q-bl-out-icon {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    background-color: transparent;
+    color: var(--q-muted);
+    text-decoration: none;
+  }
+  .q-bl-out-icon:hover {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  .q-bl-out-icon .q-ext-icon {
+    width: 14px;
+    height: 14px;
+    color: inherit;
+  }
+  .q-bl-h {
+    max-width: 60ch;
+    margin-top: 8px;
+    font-size: 1.125rem;
+    line-height: 1.625rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .q-bl-meta {
+    margin-top: 4px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-bl-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 16px;
+    margin: 14px 0 0;
+    font-size: 0.78125rem;
+  }
+  .q-bl-facts dt {
+    color: var(--q-faint);
+  }
+  .q-bl-facts dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--q-muted);
+  }
+  .q-bl-facts dd.q-bl-lb {
+    color: var(--q-faint);
+  }
+  .q-bl-repo {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The ticket's text (`SourceComponents.body/1`): Show as written above it, on the left. */
+  .q-bl-text {
+    max-width: 72ch;
+    margin-top: 24px;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+  .q-bl-text .q-ticket-switch {
+    justify-content: flex-start;
+    margin-bottom: 4px;
+    font-size: 0.78125rem;
+  }
+  /* The comments: a quiet heading, which labels and does not compete with the text's. */
+  .q-bl-thread {
+    max-width: 72ch;
+    margin-top: 36px;
+  }
+  .q-bl-thread > h3 {
+    margin-bottom: 14px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+    font-weight: 500;
+  }
+  .q-bl-cmt + .q-bl-cmt {
+    margin-top: 20px;
+  }
+  .q-bl-who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-bl-who b {
+    font-weight: 500;
+  }
+  .q-bl-who .avatar > div {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  .q-bl-when {
+    color: var(--q-faint);
+  }
+  .q-bl-txt {
+    margin: 4px 0 0 28px;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+
+  /* ---- Take in: a block inside the ticket, in the panel, the dialog, the sheet and the
+     full ticket; never a separate dialog. The page fills it (`ticket/1`'s `take_in`):
+     `.q-bl-ti` > `.q-bl-ti-h`, a `<.notice>` where there is one, `.q-bl-ti-facts`, the
+     first instruction's field, `.q-bl-ti-note`, `.q-bl-ti-act`. ---- */
+  .q-bl-ti {
+    display: grid;
+    max-width: 72ch;
+    gap: 14px;
+    margin-top: 18px;
+    padding: 14px 16px 16px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
+  }
+  .q-bl-ti-h {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+    font-weight: 600;
+  }
+  .q-bl-ti-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 16px;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .q-bl-ti-facts dt {
+    color: var(--q-muted);
+  }
+  .q-bl-ti-facts dd {
+    min-width: 0;
+    margin: 0;
+  }
+  .q-bl-ti :is(.input, .select, .textarea) {
+    background-color: var(--color-base-100);
+  }
+  .q-bl-ti .select {
+    max-width: 300px;
+  }
+  .q-bl-ti .textarea {
+    min-height: 64px;
+  }
+  .q-bl-ti-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 1.25rem;
+  }
+  .q-bl-ti-note > .q-bl-bee {
+    margin-top: -2px;
+  }
+  .q-bl-ti-act {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  /* A first instruction over the limit: its count, beside the field's error. */
+  .q-bl-ti-count {
+    flex: none;
+    color: var(--color-error);
+    font-size: 0.78125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Taken in: the block on the success fill, the work item's number and Undo. */
+  .q-bl-ti.q-bl-ti-ok {
+    border-color: transparent;
+    background-color: var(--q-success-soft);
+  }
+  .q-bl-ti-done {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .q-bl-ti-done-i {
+    flex: none;
+    margin-top: 1px;
+    color: var(--color-success);
+  }
+  .q-bl-ti-l1 {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .q-bl-ti-l1 a {
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .q-bl-ti-l2 {
+    margin-top: 2px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-bl-ti-ok .q-bl-ti-l2 {
+    color: var(--q-success-soft-content);
+  }
+
+  /* ---- The full ticket: a page of the Backlog; the text and comments on the left, the
+     facts, the link out and Take in on the right ---- */
+  .q-page-list > .q-bl-tk {
+    max-width: 80rem;
+  }
+  .q-bl-crumb-back {
+    margin-left: -8px;
+  }
+  .q-bl-tk-head {
+    margin-top: 10px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  .q-bl-tk-head .q-bl-key {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .q-bl-tk-head h1 {
+    margin-top: 6px;
+    font-size: 1.375rem;
+    line-height: 1.875rem;
+    font-weight: 600;
+  }
+  .q-bl-tk-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    align-items: start;
+    gap: 40px;
+    margin-top: 20px;
+  }
+  .q-bl-tk-main {
+    min-width: 0;
+  }
+  .q-bl-tk-main > .q-bl-text {
+    margin-top: 0;
+  }
+  .q-bl-tk-side {
+    position: sticky;
+    top: calc(var(--q-bar) + 1.5rem);
+    display: grid;
+    min-width: 0;
+    gap: 16px;
+  }
+  .q-bl-tk-side .q-bl-facts {
+    gap: 6px 16px;
+    margin: 0;
+  }
+  .q-bl-tk-side .q-bl-ti {
+    margin-top: 0;
+  }
+  .q-bl-out {
+    justify-self: start;
+    font-size: 0.78125rem;
+  }
+  @media (max-width: 1023.98px) {
+    .q-bl-tk-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 20px;
+    }
+    .q-bl-tk-side {
+      position: static;
+      order: -1;
+    }
+  }
+}
+
+/* ==== Integrations: an organisation's integration (Organisation settings › Integrations)
+   and the instance's adapters (Instance settings › Adapters) ===============================
+   The pages are settings sections, tables (`.q-tbl`), parts (`.q-part-h`) and code blocks
+   (`code_block/1`). What they add: the Repositories list's selection bar and its Assign to
+   workspace menu, the block of lines in the adapter's words with its caption, and the
+   placeholder in a command that the person replaces. ==== */
+@layer qory {
+  /* ---- The selection bar: how many are selected, the one action, Clear selection; it
+     takes the place of the list's views and search in its `.q-bar` ---- */
+  .q-int-selbar {
+    display: flex;
+    min-height: 32px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px 0 12px;
+    border-radius: var(--radius-field);
+    background-color: var(--q-primary-soft);
+    color: var(--q-primary-soft-content);
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .q-int-selbar .btn {
+    --size: 28px;
+  }
+  .q-int-clear {
+    font-weight: 400;
+  }
+  .q-int-count {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* A selected row: the honey fill and a line on its left, as a selected ticket. */
+  .q-int-pick tbody tr:is([aria-selected="true"], :has(> .q-int-cb input:checked)) {
+    --q-faint: var(--q-muted);
+    background-color: var(--q-primary-soft);
+    box-shadow: inset 2px 0 0 var(--color-primary);
+  }
+  .q-int-pick :is(th, td).q-int-cb {
+    width: 36px;
+    padding-right: 0;
+  }
+  .q-int-cb input {
+    margin: 0;
+    vertical-align: middle;
+  }
+  /* A repository with no workspace: the word Unassigned, behind a warning mark. */
+  .q-int-un {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--q-primary-soft-content);
+    white-space: nowrap;
+  }
+  .q-int-un > span:first-child {
+    color: var(--color-warning);
+  }
+  /* A phone: the bar on one line, Clear selection as its icon (the label stays for a screen
+     reader in `aria-label`), and the count on the line above. */
+  @media (max-width: 599.98px) {
+    .q-int-selbar {
+      width: 100%;
+      flex-wrap: nowrap;
+      gap: 8px;
+      padding-left: 10px;
+    }
+    .q-int-clear {
+      width: 28px;
+      margin-left: auto;
+      justify-content: center;
+      padding: 0;
+    }
+    .q-int-clear-l {
+      display: none;
+    }
+    .q-bar:has(> .q-int-selbar) > .q-int-count {
+      order: -1;
+      width: 100%;
+    }
+    .q-bar:has(> .q-int-selbar) > .q-grow {
+      display: none;
+    }
+  }
+
+  /* ---- Assign to workspace: a list menu (`.q-rowmenu-list`) under the bar's button, its
+     heading (`menu_heading/1`), a workspace per item with its count on the right, a rule
+     and a faint line on what moves with them ---- */
+  .q-int-assign {
+    width: 18.75rem;
+  }
+  .q-int-assign .q-mi-t {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .q-int-assign .q-mi-t > span {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .q-int-assign-foot {
+    padding: 4px 8px 6px;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1.0625rem;
+    white-space: normal;
+  }
+
+  /* ---- The adapter's words: lines from its description, under a rule on the left, with
+     the caption that says whose they are ("From the GitHub adapter") ---- */
+  .q-int-words {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+    padding-left: 12px;
+    border-left: 2px solid var(--q-border-strong);
+  }
+  .q-int-words-from {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  /* ---- A placeholder in a command, which the person replaces (FILE) ---- */
+  .q-int-ph {
+    color: var(--color-accent);
+    text-decoration: underline dotted;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+}
+
+/* ==== Qory's bee: two mask icons, drawn in the text colour =================================
+   The design's two symbols, as data: `q-icon-bee` (24 px, the head, two wings and a striped
+   body) and `q-icon-bee-sm` (16 px and below: no head, round wings behind the body, a heavier
+   line). In the small one the body hides the wings behind it; a mask has no fill colour, so
+   the wings are cut out inside the body and the fill under the icon shows there. A Backlog
+   bee avatar (`.q-bl-bee`, `.q-bl-bee-lg`) left empty draws the bee in its place. ==== */
+@layer qory {
+  :root {
+    --q-icon-bee: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='6.9' cy='9.2' rx='3.7' ry='2.4' transform='rotate(-28 6.9 9.2)'/%3E%3Cellipse cx='17.1' cy='9.2' rx='3.7' ry='2.4' transform='rotate(28 17.1 9.2)'/%3E%3Ccircle cx='12' cy='5.4' r='1.9'/%3E%3Cellipse cx='12' cy='14.8' rx='4.1' ry='5.8'/%3E%3Cpath d='M8.3 13h7.4M8.4 16.6h7.2'/%3E%3C/svg%3E");
+    --q-icon-bee-sm: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cdefs%3E%3Cmask id='b'%3E%3Crect width='24' height='24' fill='white' stroke='none'/%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6' fill='black' stroke='none'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23b)'%3E%3Ccircle cx='7' cy='8' r='4'/%3E%3Ccircle cx='17' cy='8' r='4'/%3E%3C/g%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6'/%3E%3Cpath d='M7.8 12.6h8.4M7.8 16.4h8.4'/%3E%3C/svg%3E");
+  }
+  .q-icon-bee,
+  .q-icon-bee-sm,
+  .q-bl-bee:empty::before {
+    display: inline-block;
+    flex: none;
+    background-color: currentColor;
+    vertical-align: middle;
+    -webkit-mask: var(--q-icon) center / contain no-repeat;
+    mask: var(--q-icon) center / contain no-repeat;
+  }
+  .q-icon-bee {
+    --q-icon: var(--q-icon-bee);
+    width: 24px;
+    height: 24px;
+  }
+  .q-icon-bee-sm {
+    --q-icon: var(--q-icon-bee-sm);
+    width: 16px;
+    height: 16px;
+  }
+  .q-bl-bee:empty::before {
+    --q-icon: var(--q-icon-bee-sm);
+    content: "";
+    width: 12px;
+    height: 12px;
+  }
+  .q-bl-bee.q-bl-bee-lg:empty::before {
+    --q-icon: var(--q-icon-bee);
+    width: 18px;
+    height: 18px;
+  }
+}

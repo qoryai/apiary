@@ -20,12 +20,13 @@ defmodule Apiary.Targets do
   **The index** (`page/3`) is read in one query, bounded by a window of fourteen days:
   the runs of the window grouped by target and day, which a range of the runs list's
   index yields, and each target's last run, one probe of the index of a target's runs by
-  when they started (`runs_workspace_id_target_id_started_index`). Days are UTC days, as
-  every count per day is (`docs/lingo.md`). The views' counts (`view_counts/2`) are the
+  when they started (`runs_workspace_id_target_id_started_index`). Days are the reader's,
+  in the scope's time zone, as every count per day is (`docs/lingo.md`). The views' counts (`view_counts/2`) are the
   workspace's, whatever the query.
   """
 
   import Ecto.Query, warn: false
+  import Apiary.Days, only: [sql_day: 2]
 
   alias Apiary.Access
   alias Apiary.Accounts.{Scope, User}
@@ -133,14 +134,15 @@ defmodule Apiary.Targets do
         }
   def page(%Scope{} = scope, query, now \\ DateTime.utc_now()) do
     query = normalise(query)
-    {from, day0} = window(now)
+    zone = Scope.time_zone(scope)
+    {from, day0} = window(now, zone)
     week = DateTime.add(now, -7 * 86_400, :second)
     pinned = if query.pinned, do: MapSet.to_list(pinned_ids(scope)), else: []
 
     base =
       from t in in_scope(scope),
         as: :target,
-        left_join: s in subquery(window_stats(scope, from, day0)),
+        left_join: s in subquery(window_stats(scope, from, day0, zone)),
         as: :stats,
         on: s.target_id == t.id,
         left_lateral_join: l in subquery(last_run()),
@@ -260,18 +262,18 @@ defmodule Apiary.Targets do
     }
   end
 
-  # The window: from the start of the UTC day thirteen days before `now`'s, so that its
-  # fourteen days end with today.
-  defp window(now) do
-    day0 = now |> DateTime.to_date() |> Date.add(1 - @window_days)
-    {DateTime.new!(day0, ~T[00:00:00.000000], "Etc/UTC"), day0}
+  # The window: from the start of the day thirteen days before `now`'s in `zone`, so that
+  # its fourteen days end with today there.
+  defp window(now, zone) do
+    {[day0 | _days], {from, _to}} = Apiary.Days.window(@window_days, zone, now)
+    {from, day0}
   end
 
   # The window's runs of each target: in all, ended well, cancelled and ended badly, their
   # denied attempts (over the same fourteen days, so the columns count one window), and the
   # runs of each day as `[day, runs]` pairs, day 0 the window's first. Two levels, by target
   # and day and then by target, over the range of the runs list's index the window is.
-  defp window_stats(scope, from, day0) do
+  defp window_stats(scope, from, day0, zone) do
     by_day =
       from r in Run,
         where: r.organisation_id == ^scope.organisation.id,
@@ -283,7 +285,7 @@ defmodule Apiary.Targets do
           target_id: r.target_id,
           day:
             selected_as(
-              fragment("(?)::date", coalesce(r.started_at, r.inserted_at)),
+              sql_day(coalesce(r.started_at, r.inserted_at), ^zone),
               :day
             ),
           runs: count(r.id),
@@ -425,7 +427,8 @@ defmodule Apiary.Targets do
   """
   @spec summary(Scope.t(), Target.t(), DateTime.t()) :: map
   def summary(%Scope{} = scope, %Target{} = target, now \\ DateTime.utc_now()) do
-    {from, day0} = window(now)
+    zone = Scope.time_zone(scope)
+    {from, day0} = window(now, zone)
     runs = target_runs(scope, target)
 
     edge = fn direction ->
@@ -452,7 +455,7 @@ defmodule Apiary.Targets do
           select: %{
             day:
               selected_as(
-                fragment("(?)::date", coalesce(r.started_at, r.inserted_at)),
+                sql_day(coalesce(r.started_at, r.inserted_at), ^zone),
                 :day
               ),
             runs: count(r.id),

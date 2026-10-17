@@ -137,7 +137,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         {:noreply,
          socket
          |> assign(:adapter, %{renamed | created_by: adapter.created_by})
-         |> put_flash(:info, gettext("%{name} is renamed.", name: renamed.name))
+         |> renamed_flash(adapter, renamed)
          |> push_patch(to: paths.settings)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -208,6 +208,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
   defp refused(socket, _forbidden),
     do: push_navigate(socket, to: socket.assigns.paths.overview)
+
+  # A rename is said only when the name changed.
+  defp renamed_flash(socket, %{name: name}, %{name: name}), do: socket
+
+  defp renamed_flash(socket, _adapter, renamed),
+    do: put_flash(socket, :info, gettext("%{name} is renamed.", name: renamed.name))
 
   ## Render
 
@@ -393,6 +399,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           <span aria-hidden="true">·</span>
           {gettext("organisations can install it once it is connected and running")}
         </span>
+        <span :if={!@connected} class="text-faint" aria-hidden="true">·</span>
         <.link
           :if={!@connected}
           id="adapter-connect-it"

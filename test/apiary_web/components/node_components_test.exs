@@ -34,6 +34,135 @@ defmodule ApiaryWeb.NodeComponentsTest do
     end
   end
 
+  describe "enrol_parts/3" do
+    @program "qory-example-server"
+    @adapter_code Apiary.AccessKeys.EnrolmentCode.prefix(:adapter) <>
+                    "0123456789ABCDEFGHJKMNPQRS.fingerprint"
+
+    # The command the pieces make: each text as it is, each placeholder as its name.
+    defp joined(parts),
+      do:
+        Enum.map_join(parts, fn
+          {:text, text} -> text
+          {:placeholder, name} -> name
+        end)
+
+    # Text and placeholder alternate: no two neighbours are of one kind.
+    defp alternate?(parts),
+      do:
+        parts
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.all?(fn [a, b] -> a != b end)
+
+    test "qory's command is one piece of text, the joined command" do
+      for opts <- [
+            [],
+            [via: nil],
+            [replace: true],
+            [replace: false],
+            [via: "https://edge.example.com"],
+            [replace: true, via: "https://edge.example.com"],
+            [adapter: nil]
+          ] do
+        command = NodeComponents.enrol_command(@server, @code, opts)
+        assert NodeComponents.enrol_parts(@server, @code, opts) == [{:text, command}]
+      end
+
+      assert NodeComponents.enrol_parts(@server, @code) ==
+               [{:text, "qory access-key enrol https://apiary.example.com #{@code}"}]
+    end
+
+    test "a program's command has FILE for its secret file, and no --replace or --via" do
+      parts = NodeComponents.enrol_parts(@server, @adapter_code, adapter: @program)
+
+      assert parts == [
+               {:text, "qory-example-server access-key enrol --secret-file "},
+               {:placeholder, "FILE"},
+               {:text, " https://apiary.example.com #{@adapter_code}"}
+             ]
+
+      assert NodeComponents.enrol_command(@server, @adapter_code, adapter: @program) ==
+               "qory-example-server access-key enrol --secret-file FILE https://apiary.example.com #{@adapter_code}"
+
+      assert joined(parts) ==
+               NodeComponents.enrol_command(@server, @adapter_code, adapter: @program)
+
+      assert alternate?(parts)
+    end
+
+    test "a program's command refuses --replace and --via, and takes their absence" do
+      for opts <- [
+            [replace: true],
+            [via: "https://edge.example.com"],
+            [replace: true, via: "https://edge.example.com"],
+            [replace: false, via: "https://edge.example.com"],
+            [replace: true, via: nil]
+          ] do
+        assert_raise ArgumentError, fn ->
+          NodeComponents.enrol_parts(@server, @adapter_code, [adapter: @program] ++ opts)
+        end
+
+        assert_raise ArgumentError, fn ->
+          NodeComponents.enrol_command(@server, @adapter_code, opts ++ [adapter: @program])
+        end
+      end
+
+      plain = NodeComponents.enrol_parts(@server, @adapter_code, adapter: @program)
+
+      for opts <- [[replace: false], [via: nil], [replace: false, via: nil]] do
+        assert NodeComponents.enrol_parts(@server, @adapter_code, [adapter: @program] ++ opts) ==
+                 plain
+
+        assert NodeComponents.enrol_command(@server, @adapter_code, opts ++ [adapter: @program]) ==
+                 NodeComponents.enrol_command(@server, @adapter_code, adapter: @program)
+      end
+    end
+
+    test "the pieces and the command agree for every option, and FILE is a program's alone" do
+      ipv6 = "https://[2001:db8::1]:8443"
+
+      for server <- [@server, ipv6, "https://apiary.example.com/a b"],
+          code <- [@code, "it's code"],
+          opts <- [
+            [],
+            [replace: true],
+            [via: ipv6],
+            [via: "https://edge.example.com/it's"],
+            [replace: true, via: "https://edge.example.com"],
+            [adapter: @program],
+            [adapter: "/opt/example tools/server"],
+            [adapter: "it's-server"]
+          ] do
+        parts = NodeComponents.enrol_parts(server, code, opts)
+        assert joined(parts) == NodeComponents.enrol_command(server, code, opts)
+        assert alternate?(parts)
+
+        assert Enum.all?(
+                 parts,
+                 &match?(
+                   {kind, value} when kind in [:text, :placeholder] and is_binary(value),
+                   &1
+                 )
+               )
+
+        placeholders = for {:placeholder, name} <- parts, do: name
+
+        if Keyword.has_key?(opts, :adapter),
+          do: assert(placeholders == ["FILE"]),
+          else: assert(placeholders == [])
+
+        # Every address, the code and the program are each one word as a shell reads it.
+        command = NodeComponents.enrol_command(server, code, opts)
+
+        assert command |> words_in_shell() |> Enum.take(-2) == [server, code]
+
+        if program = opts[:adapter],
+          do: assert(command |> words_in_shell() |> hd() == program)
+      end
+    end
+  end
+
   describe "the command's words in a shell" do
     # What a POSIX shell makes of `command`: its words, each as the program receives it.
     defp words_in_shell(command) do

@@ -171,7 +171,12 @@ defmodule ApiaryWeb.SettingsLiveTest do
                "Log output is pruned after 14 days, events after 90 days."
              )
 
-      assert has_element?(lv, "#retention-runs-empty", "Nothing has been pruned yet.")
+      assert has_element?(
+               lv,
+               "#retention-runs-empty",
+               "Nothing has been pruned yet. The pruning job runs every day."
+             )
+
       # No pass of the job yet: no line counting none of them.
       refute has_element?(lv, "#retention-runs-note")
 
