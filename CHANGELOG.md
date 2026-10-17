@@ -16,6 +16,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Checking an integration's settings, and any other JSON Schema check, no longer creates
   atoms or runs a cast a schema names: every schema is built without atom casts, and
   values are only checked.
+- An integration description is refused before its schema is checked when it holds a
+  list of more than 1024 entries, an object of more than 1024 members, more than 4096
+  values, a string of more than 16 KiB or more than 64 levels of nesting, and an
+  integration's settings are held to the same limits apart from the string length: a
+  deeply nested description no longer keeps a processor busy for seconds.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
