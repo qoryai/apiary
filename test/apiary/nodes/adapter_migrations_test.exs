@@ -2,9 +2,9 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # The three migrations that make an adapter a kind of node of the instance, connect an
   # organisation to one, and validate their checks, run down and up again inside the test's
   # transaction, which rolls it all back, with the later ones that rest on the connections
-  # (`@listing`, `@again`, `@items`, `@collections`, then `@ticket`), down first and up
-  # last. They change `nodes`, `access_keys` and `access_key_enrolment_codes` under every
-  # other test, so this is not async.
+  # (`@listed`, `@listing`, `@again`, `@items`, `@collections`, then `@ticket`), down first
+  # and up last. They change `nodes`, `access_keys` and `access_key_enrolment_codes` under
+  # every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   import Apiary.NodesFixtures
@@ -28,6 +28,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
           "take_work_items_in_again"}
   @listing {20_261_017_190_500, Apiary.Repo.Migrations.KeepWhenAConnectionSListingCompleted,
             "keep_when_a_connection_s_listing_completed"}
+  @listed {20_261_017_191_000, Apiary.Repo.Migrations.KeepWhenAnItemWasLastListed,
+           "keep_when_an_item_was_last_listed"}
 
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)
   @checks ~w(access_keys_place_check access_key_enrolment_codes_place_check
@@ -43,7 +45,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
           @collections,
           @items,
           @again,
-          @listing
+          @listing,
+          @listed
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -63,6 +66,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
   defp down_all! do
+    down!(@listed)
     down!(@listing)
     down!(@again)
     down!(@items)
@@ -82,6 +86,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@items)
     up!(@again)
     up!(@listing)
+    up!(@listed)
   end
 
   # Each table's `organisation_id`, whether it may be NULL.
@@ -153,6 +158,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   test "rolled back, the adapter's kind refuses to go while an adapter row is there" do
     adapter_fixture()
 
+    down!(@listed)
     down!(@listing)
     down!(@again)
     down!(@items)
@@ -173,5 +179,6 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@items)
     up!(@again)
     up!(@listing)
+    up!(@listed)
   end
 end
