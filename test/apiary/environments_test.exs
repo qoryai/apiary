@@ -3,16 +3,18 @@ defmodule Apiary.EnvironmentsTest do
   # (one record per pool and collection, the last good build set together, the image
   # pinned by its digest, the bounds of the refs, a failure's cause and reason), the
   # composite keys that hold a record to its pool's workspace and its collection's
-  # organisation, and the purges of a workspace and of an organisation.
+  # organisation, the purges of a workspace and of an organisation, and the trigger that
+  # queues a prebuild per node pool from a listing, an assign and a new pool.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{AccessKeys, Deletion, Environments, Repo}
+  alias Apiary.{AccessKeys, Deletion, Environments, Nodes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Organisations.{Organisation, Workspace}
 
@@ -20,34 +22,65 @@ defmodule Apiary.EnvironmentsTest do
 
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
+  # Two collections without an `environment_ref`, so that no pool made here queues a
+  # prebuild for them, and a connection whose listings the trigger's tests post.
   setup do
     %{scope: scope} = sign_up_fixture()
+    pool = pool_fixture(scope)
     connectable = connectable_adapter_fixture()
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
     {:ok, verified} = AccessKeys.fetch_for_verification(connectable.access_key.key_id)
-    key_scope = Scope.for_access_key(verified)
 
-    listing = %{
-      time: DateTime.utc_now(:second),
-      connection_id: connection.public_id,
-      collections:
-        for ref <- ["APP", "DOCS"] do
-          %{
-            ref: ref,
-            url: "https://code.example.com/acme/" <> ref,
-            title: ref,
-            target: %{system: "code.example.com", path: "acme/" <> ref},
-            environment_ref: "env-1"
-          }
-        end,
-      listing: %{id: "l", part: 1, started_at: ~U[2026-10-15 11:00:00Z], complete: true}
+    %{
+      scope: scope,
+      pool: pool,
+      connection: connection,
+      key_scope: Scope.for_access_key(verified),
+      app: collection_fixture(scope, external_ref: "APP", environment_ref: nil),
+      docs: collection_fixture(scope, external_ref: "DOCS", environment_ref: nil)
     }
-
-    {:ok, :accepted} = Collections.post_listing(key_scope, listing)
-    app = Repo.get_by!(Collection, external_ref: "APP")
-    docs = Repo.get_by!(Collection, external_ref: "DOCS")
-    %{scope: scope, app: app, docs: docs, pool: pool_fixture(scope)}
   end
+
+  # Posts a part of a listing, started at `minute`, naming SHOP with `item`'s fields.
+  defp list(ctx, minute, item) do
+    collection =
+      Map.merge(
+        %{
+          ref: "SHOP",
+          url: "https://code.example.com/acme/shop",
+          title: "shop",
+          target: %{system: "code.example.com", path: "acme/shop"}
+        },
+        item
+      )
+
+    {:ok, :accepted} =
+      Collections.post_listing(ctx.key_scope, %{
+        time: DateTime.utc_now(:second),
+        connection_id: ctx.connection.public_id,
+        collections: [collection],
+        listing: %{
+          id: "l-#{minute}",
+          part: 1,
+          started_at: DateTime.add(~U[2026-10-15 11:00:00Z], minute, :minute),
+          complete: false
+        }
+      })
+
+    Repo.get_by!(Collection, external_ref: "SHOP")
+  end
+
+  # The prebuilds queued, `{pool_id, environment_ref}` in the order they were queued.
+  defp prebuilds(collection) do
+    Repo.all(
+      from r in DispatchRun,
+        where: r.step == ^DispatchRun.prebuild() and r.source_collection_id == ^collection.id,
+        order_by: [asc: r.queued_at, asc: r.pool_id],
+        select: {r.pool_id, r.environment_ref}
+    )
+  end
+
+  defp sorted(pools), do: pools |> Enum.map(& &1.id) |> Enum.sort()
 
   defp record(ctx, attrs \\ %{}) do
     struct(
@@ -218,6 +251,141 @@ defmodule Apiary.EnvironmentsTest do
 
       assert Repo.aggregate(Record, :count) == 0
       assert Repo.aggregate(Collection, :count) == 0
+    end
+  end
+
+  describe "the trigger" do
+    test "a listing queues one prebuild per node pool, held for it, once per environment_ref",
+         ctx do
+      other = pool_fixture(ctx.scope)
+      pools = sorted([ctx.pool, other])
+
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      assert shop.workspace_id == ctx.scope.workspace.id
+      assert prebuilds(shop) == Enum.map(pools, &{&1, "env-1"})
+
+      for record <- Environments.for_collection(shop.id) do
+        assert %Record{queued_ref: "env-1", retired_at: nil, image: nil} = record
+        assert record.workspace_id == ctx.scope.workspace.id
+      end
+
+      assert Enum.sort(Enum.map(Environments.for_collection(shop.id), & &1.pool_id)) == pools
+
+      run = Repo.get_by!(DispatchRun, source_collection_id: shop.id, pool_id: other.id)
+      assert %DispatchRun{state: :waiting, work_item_id: nil} = run
+      assert run.organisation_id == ctx.scope.organisation.id
+
+      # The same environment_ref named again queues nothing.
+      list(ctx, 2, %{environment_ref: "env-1"})
+      assert length(prebuilds(shop)) == 2
+
+      # Another queues one more for each pool, the waiting ones left as they are.
+      list(ctx, 3, %{environment_ref: "env-2"})
+      assert Enum.drop(prebuilds(shop), 2) == Enum.map(pools, &{&1, "env-2"})
+      assert Enum.map(Environments.for_collection(shop.id), & &1.queued_ref) == ~w(env-2 env-2)
+
+      # None retires the records and queues nothing.
+      list(ctx, 4, %{})
+      assert length(prebuilds(shop)) == 4
+
+      for record <- Environments.for_collection(shop.id) do
+        assert %Record{queued_ref: "env-2", retired_at: %DateTime{}} = record
+      end
+
+      # Named again, even as it was, it queues again, once.
+      list(ctx, 5, %{environment_ref: "env-2"})
+      list(ctx, 6, %{environment_ref: "env-2"})
+      assert Enum.drop(prebuilds(shop), 4) == Enum.map(pools, &{&1, "env-2"})
+
+      # A listing that leaves it out changes nothing.
+      list(ctx, 7, %{ref: "OTHER", target: nil, environment_ref: "env-9"})
+      assert length(prebuilds(shop)) == 6
+    end
+
+    test "an older listing queues nothing", ctx do
+      shop = list(ctx, 5, %{environment_ref: "env-2"})
+      assert prebuilds(shop) == [{ctx.pool.id, "env-2"}]
+
+      list(ctx, 1, %{environment_ref: "env-1"})
+      list(ctx, 2, %{})
+      assert prebuilds(shop) == [{ctx.pool.id, "env-2"}]
+
+      assert %Record{queued_ref: "env-2", retired_at: nil} =
+               Environments.fetch(ctx.pool.id, shop.id)
+    end
+
+    test "a collection without a target, or linked to no workspace, queues nothing", ctx do
+      shop = list(ctx, 1, %{target: nil, environment_ref: "env-1"})
+      assert shop.workspace_id == ctx.scope.workspace.id
+      assert prebuilds(shop) == []
+      assert Environments.for_collection(shop.id) == []
+
+      # With a second workspace, a new collection is linked to none.
+      empty = workspace_fixture(ctx.scope.organisation)
+      list(ctx, 2, %{ref: "NEW", environment_ref: "env-1"})
+      new = Repo.get_by!(Collection, external_ref: "NEW")
+      assert new.workspace_id == nil
+      assert prebuilds(new) == []
+      assert Environments.for_collection(new.id) == []
+
+      # Assigned to a workspace, it queues for that workspace's pools; moved to one with
+      # none, nothing.
+      {:ok, 1} =
+        Collections.assign_collections(ctx.scope, ctx.connection, [new.id], ctx.scope.workspace)
+
+      assert prebuilds(new) == [{ctx.pool.id, "env-1"}]
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, [new.id], empty)
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, [new.id], nil)
+      assert prebuilds(new) == [{ctx.pool.id, "env-1"}]
+    end
+
+    test "a move to another workspace queues for its pools", ctx do
+      workspace = workspace_fixture(ctx.scope.organisation)
+      theirs = pool_fixture(%{ctx.scope | workspace: workspace})
+      list(ctx, 1, %{environment_ref: "env-1"})
+      shop = Repo.get_by!(Collection, external_ref: "SHOP")
+      assert shop.workspace_id == nil
+
+      {:ok, 1} =
+        Collections.assign_collections(ctx.scope, ctx.connection, [shop.id], ctx.scope.workspace)
+
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, [shop.id], workspace)
+      assert prebuilds(shop) == [{ctx.pool.id, "env-1"}, {theirs.id, "env-1"}]
+
+      run = Repo.get_by!(DispatchRun, source_collection_id: shop.id, pool_id: theirs.id)
+      assert run.workspace_id == workspace.id
+      assert Environments.fetch(theirs.id, shop.id).workspace_id == workspace.id
+    end
+
+    test "a new node pool queues for the collections of its workspace, a deleted one is left out",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      bare = collection_fixture(ctx.scope, target_system: nil, target_path: nil)
+
+      new = pool_fixture(ctx.scope)
+      assert prebuilds(shop) == [{ctx.pool.id, "env-1"}, {new.id, "env-1"}]
+      assert prebuilds(bare) == []
+      assert prebuilds(ctx.app) == []
+      assert Environments.for_collection(ctx.app.id) == []
+
+      # A node and a gateway queue nothing.
+      node_fixture(ctx.scope)
+      gateway_fixture(ctx.scope)
+      assert length(prebuilds(shop)) == 2
+
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, new)
+      list(ctx, 2, %{environment_ref: "env-2"})
+      assert Enum.drop(prebuilds(shop), 2) == [{ctx.pool.id, "env-2"}]
+    end
+
+    test "runs only inside the caller's transaction", ctx do
+      assert_raise ArgumentError, ~r/caller's transaction/, fn ->
+        Environments.trigger([ctx.app], DateTime.utc_now())
+      end
+
+      assert_raise ArgumentError, ~r/caller's transaction/, fn ->
+        Environments.trigger_for_pool(ctx.pool, DateTime.utc_now())
+      end
     end
   end
 end

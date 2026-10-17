@@ -30,6 +30,12 @@ defmodule Apiary.Adapters.Collections do
   # With two workspaces or more, a new collection is linked to none, until a person
   # assigns it.
   #
+  # **Prebuilds**: a part applies the trigger of `Apiary.Environments.trigger/2` to the
+  # collections it made or updated, and an assign to those it linked or moved to a
+  # workspace, in its transaction: a prebuild is queued for each live node pool of the
+  # collection's workspace whose record of it is missing or was queued for another
+  # `environment_ref`, and a collection named without one retires its records.
+  #
   # **The end of a collection** is final: by `POST /v1/sources/disconnect`
   # (`disconnect/2`), by a complete listing that leaves it out, or with its connection
   # (`end_for_connections/2`, which `Apiary.Adapters.Connections` calls in each end's
@@ -65,15 +71,16 @@ defmodule Apiary.Adapters.Collections do
   #     first listing that names it and each listing of it that completes.
   #
   # Locks: the connection, then the workspace a collection is linked to (`FOR SHARE`), then
-  # the collections, by id for an assign and by ref for a listing's part, then the
-  # adapter's feed counter, which is the last.
+  # the collections, by id for an assign and by ref for a listing's part, then their
+  # environment records and the runs the trigger queues, then the adapter's feed counter,
+  # which is the last.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo}
+  alias Apiary.{Access, Audit, Environments, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Wire}
   alias Apiary.Nodes.Node
@@ -293,8 +300,19 @@ defmodule Apiary.Adapters.Collections do
       Repo.insert_all(Collection, rows,
         on_conflict: newer,
         conflict_target: {:unsafe_fragment, @live_index},
-        returning: [:id, :adapter_id, :external_ref, :workspace_id]
+        returning: [
+          :id,
+          :organisation_id,
+          :adapter_id,
+          :external_ref,
+          :workspace_id,
+          :target_system,
+          :environment_ref,
+          :ended_at
+        ]
       )
+
+    _queued = Environments.trigger(put, now)
 
     # The update of one live already leaves its link as it was: only one made here is
     # linked by it.
@@ -924,6 +942,11 @@ defmodule Apiary.Adapters.Collections do
       )
 
     if workspace_id do
+      _queued =
+        changed
+        |> Enum.map(&%{&1 | workspace_id: workspace_id, updated_at: now})
+        |> Environments.trigger(now)
+
       tell(Enum.filter(changed, &is_nil(&1.workspace_id)), "linked")
     else
       tell_unlinked(changed)
