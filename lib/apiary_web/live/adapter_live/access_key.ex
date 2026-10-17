@@ -21,11 +21,17 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # its page; no path, flash or title carries it, and nothing logs it. A page opened again
   # starts without it.
   #
+  # Each key is a node's key card in its adapter mode, and each waiting code a node's
+  # waiting command in the same mode (`ApiaryWeb.NodeLive.AccessKey.key_card/1`,
+  # `waiting/1`): without Forager's rows, its secret on the machine that ran the command.
+  # The people they name are looked up by their accounts' ids (`with_people/2`).
+  #
   # A key's revocation and a waiting code's cancelling are confirmed in place, each at its
   # path: `…/keys/:key_id/revoke`, by the key's id, and `…/keys/codes/:code_id/revoke`, by
-  # the code's row id, never the code. Revoking the adapter's last active key says that no
-  # tickets arrive for any organisation until it has a new one. Every act is asked again
-  # by the context function.
+  # the code's row id, never the code. A key's is drawn under its card, whose Revoke… it
+  # takes the place of; a code's, by `waiting/1`, in place of its Cancel the command….
+  # Revoking the adapter's last active key says that no tickets arrive for any
+  # organisation until it has a new one. Every act is asked again by the context function.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -36,7 +42,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.{AccessKeys, Adapters}
+  alias Apiary.{Accounts, AccessKeys, Adapters}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{AdapterComponents, SettingsComponents}
@@ -67,18 +73,39 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     end
   end
 
-  # The adapter's keys, those in use first, and its outstanding codes.
+  # The adapter's keys, those in use first, and its outstanding codes, with the people
+  # they name, and whether each key's record matches its integrity code.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
 
+    {keys, codes} =
+      with_people(Adapters.list_keys(scope, adapter), Adapters.list_codes(scope, adapter))
+
     socket
     |> assign(
-      keys: Adapters.list_keys(scope, adapter),
-      codes: Adapters.list_codes(scope, adapter),
+      keys: keys,
+      codes: codes,
+      intact: Map.new(keys, &{&1.id, AccessKey.verify_integrity(&1) == :ok}),
       now: DateTime.utc_now()
     )
     |> note_arrival()
     |> schedule_expiry()
+  end
+
+  # Who made each key and code, and who revoked a key, as the key card and the waiting
+  # command name them: their accounts, looked up by id in one read. An id no account has
+  # is nobody, which the card says as a former member where it names who made it.
+  defp with_people(keys, codes) do
+    users =
+      (Enum.flat_map(keys, &[&1.created_by_id, &1.revoked_by_id]) ++
+         Enum.map(codes, & &1.created_by_id))
+      |> Accounts.list_users_by_id()
+      |> Map.new(&{&1.id, &1})
+
+    {Enum.map(
+       keys,
+       &%{&1 | created_by: users[&1.created_by_id], revoked_by: users[&1.revoked_by_id]}
+     ), Enum.map(codes, &%{&1 | created_by: users[&1.created_by_id]})}
   end
 
   # The command's code, once the key it brings is among the adapter's: the page says the
@@ -335,6 +362,10 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   defp command_state(%{row: %EnrolmentCode{id: id}}, codes),
     do: if(Enum.any?(codes, &(&1.id == id)), do: :waiting, else: :spent)
 
+  # Whether `key`'s revocation is the one asked.
+  defp asked?(%AccessKey{id: id}, %AccessKey{id: id}), do: true
+  defp asked?(_asked, _key), do: false
+
   defp way_button([]), do: gettext("Get the command")
   defp way_button(_waiting), do: gettext("Get a new command")
 
@@ -461,12 +492,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 "The adapter connects to Qory Apiary with a key that it makes on its machine. Until it has one, organisations can't install it."
               )}
             </p>
-            <.way id="adapter-way" primary codes={@codes}>
+            <.way
+              id="adapter-way"
+              primary
+              adapter={@adapter}
+              codes={@codes}
+              code={@code}
+              paths={@paths}
+            >
               {gettext(
                 "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
               )}
               {gettext("The adapter makes the key there and sends Qory Apiary only its public half.")}
-              <:confirm :if={@code}><.cancel_confirm code={@code} paths={@paths} /></:confirm>
             </.way>
           </SettingsComponents.part>
 
@@ -481,39 +518,65 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 "The adapter signs every request with its key. Qory Apiary keeps only the public half."
               )}
             </p>
-            <.inline_confirm
-              :if={@key}
-              id={"key-#{@key.key_id}-confirm"}
-              question={gettext("Revoke %{label}?", label: @key.label)}
-              cancel={@paths.keys}
-            >
-              {gettext(
-                "It is revoked at once, and its public key can never be used again. This cannot be undone."
-              )}
-              <span
-                :if={@last}
-                id={"key-#{@key.key_id}-last"}
-                class="mt-1 flex items-start gap-1.5 text-base-content"
-              >
-                <.icon name="hero-exclamation-triangle-micro" class="mt-0.5 size-4 flex-none" />
-                <span>
-                  {gettext(
-                    "It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
-                  )}
-                </span>
-              </span>
-              <:action>
-                <.button
-                  id={"key-#{@key.key_id}-confirm-button"}
-                  variant="danger"
-                  size="xs"
-                  phx-click="revoke"
-                  loading_text={gettext("Revoking")}
-                >
-                  {gettext("Yes, revoke")}
-                </.button>
-              </:action>
-            </.inline_confirm>
+            <%!-- Each key as a node's card, in its adapter mode. Its Revoke… leads to
+                 `…/keys/:key_id/revoke` (`AdapterComponents.act_path/2`), which the card
+                 writes as `access_key/keys/:key_id/revoke`, so it is given the adapter's
+                 Overview as `access_key`. The card's confirmation (`confirming`) is not
+                 used: this tab's says what revoking the adapter's last key means, and
+                 goes back to the tab. --%>
+            <ul id="adapter-keys-list" class="grid gap-3">
+              <%= for key <- @keys do %>
+                <ApiaryWeb.NodeLive.AccessKey.key_card
+                  key={key}
+                  node={@adapter}
+                  scope={@current_scope}
+                  paths={%{access_key: @paths.overview}}
+                  may={%{revoke: !asked?(@key, key), revoke_code: false}}
+                  intact={@intact[key.id]}
+                  last_run={nil}
+                  hosts={nil}
+                  confirming={false}
+                  adapter
+                />
+                <li :if={asked?(@key, key)} id={"key-#{key.key_id}-asked"}>
+                  <.inline_confirm
+                    id={"key-#{key.key_id}-confirm"}
+                    question={gettext("Revoke %{label}?", label: key.label)}
+                    cancel={@paths.keys}
+                  >
+                    {gettext(
+                      "It is revoked at once, and its public key can never be used again. This cannot be undone."
+                    )}
+                    <span
+                      :if={@last}
+                      id={"key-#{key.key_id}-last"}
+                      class="mt-1 flex items-start gap-1.5 text-base-content"
+                    >
+                      <.icon
+                        name="hero-exclamation-triangle-micro"
+                        class="mt-0.5 size-4 flex-none"
+                      />
+                      <span>
+                        {gettext(
+                          "It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
+                        )}
+                      </span>
+                    </span>
+                    <:action>
+                      <.button
+                        id={"key-#{key.key_id}-confirm-button"}
+                        variant="danger"
+                        size="xs"
+                        phx-click="revoke"
+                        loading_text={gettext("Revoking")}
+                      >
+                        {gettext("Yes, revoke")}
+                      </.button>
+                    </:action>
+                  </.inline_confirm>
+                </li>
+              <% end %>
+            </ul>
           </SettingsComponents.part>
 
           <%!-- A key in use: the same way, for moving to a new key, but at the
@@ -524,11 +587,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 "To move the adapter to a new key, get a new command and run it, then revoke the old key once the new one is in use. An adapter holds two keys at most."
               )}
             </p>
-            <.way id="adapter-way" primary={false} offered={!@full} codes={@codes}>
+            <.way
+              id="adapter-way"
+              primary={false}
+              offered={!@full}
+              adapter={@adapter}
+              codes={@codes}
+              code={@code}
+              paths={@paths}
+            >
               {gettext(
                 "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
               )}
-              <:confirm :if={@code}><.cancel_confirm code={@code} paths={@paths} /></:confirm>
             </.way>
           </SettingsComponents.part>
         </div>
@@ -540,12 +610,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   attr :id, :string, required: true
   attr :primary, :boolean, required: true
   attr :offered, :boolean, default: true, doc: "whether Get the command is offered"
-  attr :codes, :list, required: true
+  attr :adapter, Node, required: true
+  attr :codes, :list, required: true, doc: "the adapter's codes still waiting to be run"
+  attr :code, :any, required: true, doc: "the code whose cancelling is asked, or nil"
+  attr :paths, :map, required: true, doc: "the adapter's `paths/1`"
   slot :inner_block, required: true, doc: "what happens, in sentences"
-  slot :confirm, doc: "a waiting code's cancelling, confirmed in place"
 
-  # The one way to connect the adapter: its title, what happens, a waiting code's
-  # cancelling where one is asked, and its button.
+  # The one way to connect the adapter: its title, what happens, each command still
+  # waiting to be run, as a node's waiting command in its adapter mode, with its
+  # cancelling confirmed in place where it is asked, and its button. The waiting command
+  # writes its paths as `access_key/codes/:code_id/revoke` and goes back to `access_key`,
+  # so it is given the adapter's Access key tab as `access_key`
+  # (`AdapterComponents.act_path/2`).
   defp way(assigns) do
     ~H"""
     <div
@@ -557,7 +633,14 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
         {gettext("Connect with a command")}
       </h3>
       <p id={"#{@id}-happens"} class="text-muted">{render_slot(@inner_block)}</p>
-      {render_slot(@confirm)}
+      <ApiaryWeb.NodeLive.AccessKey.waiting
+        codes={@codes}
+        code={@code}
+        node={@adapter}
+        may={%{revoke_code: true}}
+        paths={%{access_key: @paths.keys}}
+        adapter
+      />
       <div :if={@offered}>
         <.button
           id="code-new-button"
@@ -569,34 +652,6 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
         </.button>
       </div>
     </div>
-    """
-  end
-
-  attr :code, EnrolmentCode, required: true
-  attr :paths, :map, required: true
-
-  # A waiting code's cancelling, confirmed in place.
-  defp cancel_confirm(assigns) do
-    ~H"""
-    <.inline_confirm
-      id={"code-#{@code.id}-confirm"}
-      question={gettext("Cancel the command from %{time}?", time: Format.time(@code.inserted_at))}
-      cancel={@paths.keys}
-      cancel_label={gettext("Keep it")}
-    >
-      {gettext("It stops working at once. A machine that runs it after this is refused.")}
-      <:action>
-        <.button
-          id={"code-#{@code.id}-confirm-button"}
-          variant="danger"
-          size="xs"
-          phx-click="revoke_code"
-          loading_text={gettext("Cancelling")}
-        >
-          {gettext("Yes, cancel it")}
-        </.button>
-      </:action>
-    </.inline_confirm>
     """
   end
 end

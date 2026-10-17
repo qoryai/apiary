@@ -2,9 +2,11 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
   # An adapter's Access key tab in Instance settings › Adapters
   # (`ApiaryWeb.AdapterLive.AccessKey`), for an instance admin: Connect it with no key
   # yet, Get the command and the command's page, which holds the code once, hears the key
-  # arrive and says when the code no longer works; a waiting code's cancelling and a key's
-  # revocation, each confirmed in place; the limit of two keys; a stale sign-in; and a
-  # path that does not exist for anyone else, Add for every entry included.
+  # arrive and says when the code no longer works; each key as a node's key card and each
+  # waiting code as a node's waiting command, both in their adapter mode; a waiting code's
+  # cancelling and a key's revocation, each confirmed in place; the limit of two keys; a
+  # stale sign-in; and a path that does not exist for anyone else, Add for every entry
+  # included.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -104,6 +106,30 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(adapter))
       assert has_element?(lv, "#code-new-button", "Get a new command")
     end
+
+    test "a command waiting says who got it, until when it works, and leads to its cancelling",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      {:ok, row, code} = Adapters.create_code(admin, adapter)
+      {:ok, lv, html} = live(conn, tab_path(adapter))
+
+      assert has_element?(lv, "#adapter-way #code-#{row.id}")
+
+      assert words(lv, "#code-#{row.id} > p:first-child") == "A command is waiting to be run."
+
+      assert words(lv, "#code-#{row.id}") =~
+               "#{admin.user.email} got it at #{Format.time(row.inserted_at)}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+
+      refute words(lv, "#code-#{row.id}") =~ adapter.name
+      refute html =~ code
+
+      cancel = tab_path(adapter, "/codes/#{row.id}/revoke")
+      assert has_element?(lv, ~s{#code-#{row.id}-revoke[href="#{cancel}"]}, "Cancel the command…")
+
+      lv |> element("#code-#{row.id}-revoke") |> render_click()
+      assert_patch(lv, cancel)
+      assert has_element?(lv, "#code-#{row.id}-confirm")
+      refute has_element?(lv, "#code-#{row.id}-revoke")
+    end
   end
 
   describe "the command's page" do
@@ -133,6 +159,11 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       lv |> element("#code-issued-done-button") |> render_click()
       assert_patch(lv, tab_path(adapter))
       assert %{issued: nil} = :sys.get_state(lv.pid).socket.assigns
+
+      # The tab draws the command waiting to be run, and never its code.
+      assert has_element?(lv, "#code-#{row.id}")
+      refute render(lv) =~ code
+      refute page_title(lv) =~ code
 
       {:ok, lv, _html} =
         live(conn, tab_path(adapter, "/new-code"))
@@ -270,6 +301,72 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
 
       assert has_element?(lv, "#code-new-button", "Get the command")
       refute has_element?(lv, "#code-new-button.btn-primary")
+    end
+
+    test "draws each key as its card, with where its secret is and none of Forager's rows",
+         %{conn: conn, admin: admin, adapter: adapter, key: key} do
+      {:ok, lv, html} = live(conn, tab_path(adapter))
+      card = "#adapter-keys-list > li#key-#{key.key_id}"
+
+      assert has_element?(lv, card)
+      assert words(lv, "#key-#{key.key_id}-label") == "tracker-01"
+      assert words(lv, "#key-#{key.key_id}-state") == "Active"
+      assert words(lv, "#key-#{key.key_id}-id") == key.key_id
+
+      assert has_element?(
+               lv,
+               ~s{#key-#{key.key_id}-id-copy[aria-label="Copy the key ID of tracker-01"]}
+             )
+
+      assert words(lv, "#key-#{key.key_id}-added") ==
+               "Connected with a command by #{admin.user.email}, #{Format.datetime(key.received_at)}"
+
+      assert words(lv, "#key-#{key.key_id}-secret") ==
+               "On the machine that ran the command; never shown"
+
+      assert words(lv, "#key-#{key.key_id}-used") == "Not yet"
+      assert words(lv, "#key-#{key.key_id}-fingerprint") == AccessKey.fingerprint(key)
+
+      refute has_element?(lv, "#key-#{key.key_id}-stored-secrets")
+      refute has_element?(lv, "#key-#{key.key_id}-forager-file")
+      refute html =~ "Forager"
+      refute has_element?(lv, "#key-#{key.key_id}-integrity")
+    end
+
+    test "a card's Revoke… opens its confirmation under it, in place of Revoke…",
+         %{conn: conn, adapter: adapter, key: key} do
+      {:ok, lv, _html} = live(conn, tab_path(adapter))
+      revoke = tab_path(adapter, "/#{key.key_id}/revoke")
+
+      assert has_element?(lv, ~s{#key-#{key.key_id}-revoke[href="#{revoke}"]}, "Revoke…")
+      lv |> element("#key-#{key.key_id}-revoke") |> render_click()
+      assert_patch(lv, revoke)
+
+      assert has_element?(lv, "#key-#{key.key_id} + li#key-#{key.key_id}-asked")
+      assert has_element?(lv, "#key-#{key.key_id}-asked #key-#{key.key_id}-confirm")
+      refute has_element?(lv, "#key-#{key.key_id}-revoke")
+
+      lv |> element("#key-#{key.key_id}-confirm-cancel") |> render_click()
+      assert_patch(lv, tab_path(adapter))
+      assert has_element?(lv, "#key-#{key.key_id}-revoke")
+    end
+
+    test "draws two keys as two cards, and a revoked one says who revoked it",
+         %{conn: conn, admin: admin, adapter: adapter, key: key} do
+      %{access_key: second} = enrolled_key_fixture(admin, adapter, %{label: "tracker-02"})
+      {:ok, revoked} = Adapters.revoke_key(admin, key)
+      {:ok, lv, _html} = live(conn, tab_path(adapter))
+
+      assert has_element?(lv, "#adapter-keys-list > li#key-#{second.key_id}")
+      assert has_element?(lv, "#adapter-keys-list > li#key-#{key.key_id}")
+      assert words(lv, "#key-#{second.key_id}-state") == "Active"
+      assert words(lv, "#key-#{key.key_id}-state") == "Revoked"
+
+      assert words(lv, "#key-#{key.key_id}") =~
+               "Revoked by #{admin.user.email}, #{Format.datetime(revoked.revoked_at)}"
+
+      assert has_element?(lv, "#key-#{second.key_id}-revoke")
+      refute has_element?(lv, "#key-#{key.key_id}-revoke")
     end
 
     test "its last active key is revoked once confirmed, with what that means",
