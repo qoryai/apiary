@@ -250,6 +250,14 @@ defmodule ApiaryWeb.Routes do
         post "/sources/disconnect", SourcesDisconnectController, :create
       end
 
+      # An adapter's items of a collection, and its comments of an item.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/source-items", SourceItemsController, :create
+        post "/source-items/comments", SourceItemCommentsController, :create
+      end
+
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
       # and styles carry the request's nonce (`ApiaryWeb.ContentSecurityPolicy`), and they
       # may frame their own pages, as the mailbox frames a message.
@@ -623,12 +631,12 @@ defmodule ApiaryWeb.Routes do
               live "/network", ConnectionLive.Index, :index
               # The work, with the `factory` feature: the work items, one by its number in
               # the workspace, with its ticket and its thread; and the Backlog, the tickets
-              # it takes in from, with the Take in dialog over the list at a separate path.
+              # it takes in from, and one ticket by its public id (`tk_…`).
               live "/work", WorkItemLive.Index, :index
               live "/work/:number", WorkItemLive.Show, :ticket
               live "/work/:number/thread", WorkItemLive.Show, :thread
               live "/backlog", BacklogLive.Index, :index
-              live "/backlog/:item_id/take-in", BacklogLive.Index, :take_in
+              live "/backlog/:item_id", BacklogLive.Ticket, :show
               # The targets the workspace's runs changed, and one target's page. `:target_id`
               # is the target's public id (`tg_…`), never its system or its path
               # (`ApiaryWeb.TargetComponents.target_path/3`). Its Overview is the bare
