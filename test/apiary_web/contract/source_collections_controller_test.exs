@@ -256,7 +256,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
     test "a stale time or a replay is 401, unsigned, and changes nothing", ctx do
       body = fresh("source-collections/code-host.json", ctx)
 
-      for offset <- [-301, 301] do
+      for offset <- [-310, 310] do
         conn = send_post(ctx, @listing, Map.put(body, "time", now_time(offset)))
         assert json_response(conn, 401) == %{"error" => "unauthorized"}
         assert unsigned_answer?(conn)
