@@ -3,7 +3,7 @@ defmodule Apiary.Integrations.Description do
   Description reads an integration's `description.json`, what its program's `describe`
   prints and its release publishes, and checks it as the integrations contract says
   (`priv/contract/integration/description.schema.json`, vendored from the contract at the
-  commit `.integration-contract-ref` names for it).
+  commit `.integration-contract-ref` names).
 
   `parse/1` refuses a document in which an object repeats a member, at any depth, the
   names compared once their escapes are read: Jason keeps the first value of a repeated
@@ -16,14 +16,15 @@ defmodule Apiary.Integrations.Description do
       it, and no secret is nested in another setting;
     * the credential role's `argument` compiles.
 
-  A role other than `credential` is read as it is and never refused. A refusal is
+  A role other than `credential` is read as it is: the `source` role once the schema has
+  checked its shape, and a role the schema does not name never refused. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
-  The schema bounds no list, and its `settings` and `roles` take objects of any members.
-  So a description is refused before the schema when it holds a list of more than 1024
+  A description is refused before the schema when it holds a list of more than 1024
   entries, an object of more than 1024 members, more than 4096 values in all, a string of
   more than 16 KiB or more than 64 lists and objects nested in one another
-  (`Apiary.Kinds.Bounds.within?/2`).
+  (`Apiary.Kinds.Bounds.within?/2`). The schema states some of these bounds too, the
+  string's in characters rather than bytes, but a value past them is never given to JSV.
 
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
