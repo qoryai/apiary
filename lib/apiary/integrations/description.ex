@@ -8,8 +8,8 @@ defmodule Apiary.Integrations.Description do
   `parse/1` refuses a document in which an object repeats a member, at any depth, the
   names compared once their escapes are read: Jason keeps the first value of a repeated
   name, and a reader that keeps the last would read another document. It then
-  validates the bytes with JSV against the vendored schema, its patterns read as the
-  contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within the
+  validates the decoded document with JSV against the vendored schema, its patterns read
+  as the contract reads them (`Apiary.Kinds.Pattern`), once the document is within the
   limits below, and checks what the schema cannot:
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
@@ -17,14 +17,17 @@ defmodule Apiary.Integrations.Description do
     * the credential role's `argument` compiles.
 
   A role other than `credential` is read as it is: the `source` role once the schema has
-  checked its shape, and a role the schema does not name never refused. A refusal is
+  checked its shape, and a role the schema does not name whatever it holds, once its name
+  matches the schema's pattern and its value is within the bounds. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
   A description is refused before the schema when it holds a list of more than 1024
   entries, an object of more than 1024 members, more than 4096 values in all, a string of
   more than 16 KiB or more than 64 lists and objects nested in one another
-  (`Apiary.Kinds.Bounds.within?/2`). The schema states some of these bounds too, the
-  string's in characters rather than bytes, but a value past them is never given to JSV.
+  (`Apiary.Kinds.Bounds.within?/2`). The schema's keywords state three of these bounds,
+  the entries of a list, the members of an object and the length of a string, this one in
+  characters rather than bytes, and its description states the rest; a value past any of
+  them is never given to JSV.
 
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.

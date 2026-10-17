@@ -158,6 +158,28 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert tracker.document["roles"]["acme_role"] == %{"events" => ["issue.opened"]}
     end
 
+    test "is refused with a role the schema does not name whose name breaks its pattern" do
+      with_role = fn name ->
+        update_in(tracker_description(), ["roles"], &Map.put(&1, name, %{"events" => []}))
+      end
+
+      assert {:ok, %Description{}} = parse(with_role.("acme_other"))
+
+      for name <- ["Bad-Role", "acme-role", "1role", "Acme"] do
+        assert {:error, {:description_invalid, [{:schema, summary}]}} = parse(with_role.(name)),
+               name
+
+        assert %{kind: :propertyNames, instanceLocation: "#/roles"} in summary.errors, name
+      end
+    end
+
+    test "is refused with a role the schema does not name whose value is past a bound" do
+      description =
+        put_in(tracker_description(), ["roles", "acme_role", "events"], List.duplicate("e", 1025))
+
+      assert {:error, {:description_invalid, [{:schema, %{limits: _}}]}} = parse(description)
+    end
+
     test "takes its plain settings from the top level: neither a secret nor a secret's _file" do
       assert {:ok, tracker} = parse(tracker_description())
       assert tracker.settings == ["url"]
