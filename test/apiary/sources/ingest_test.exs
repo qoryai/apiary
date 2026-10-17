@@ -1,10 +1,11 @@
 defmodule Apiary.Sources.IngestTest do
   # The items and comments an adapter posts, kept as tickets (`Apiary.Sources`): the
   # refusals in the contract's order; an item written when it is newer than the one kept or
-  # as new; complete and partial listings, and the purge of their bookkeeping; comments,
-  # with `complete.since` and `deleted`; a `comment_count` past what a bigint holds; a ref
-  # another live collection of the adapter holds; another adapter's key; and the ids the
-  # Backlog is sent.
+  # as new; complete and partial listings, a listing's close counting as a write at its
+  # `started_at`, and the purge of their bookkeeping; comments, with `complete.since`, its
+  # mark counting as a write at that time, and `deleted`; a `comment_count` past what a
+  # bigint holds; a ref another live collection of the adapter holds, and the collection
+  # that answers for comments; another adapter's key; and the ids the Backlog is sent.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
@@ -69,6 +70,20 @@ defmodule Apiary.Sources.IngestTest do
         where: i.collection_id == ^collection_id and i.state == :open,
         order_by: i.external_ref,
         select: i.external_ref
+    )
+  end
+
+  # The items that hold the ref of `work_item` in its adapter: of a live collection, not
+  # ended.
+  defp holders(work_item) do
+    Repo.all(
+      from i in Item,
+        join: c in assoc(i, :collection),
+        where: i.organisation_id == ^work_item.organisation_id,
+        where: i.adapter_id == ^work_item.adapter_id,
+        where: i.external_ref == ^work_item.external_ref,
+        where: is_nil(i.disconnected_at) and is_nil(c.ended_at),
+        select: i.id
     )
   end
 
@@ -185,7 +200,7 @@ defmodule Apiary.Sources.IngestTest do
                {:error, :not_linked}
 
       # A collection of that adapter holds the same ref apart: this adapter's ticket keeps it.
-      own = source_collection_fixture(ctx.scope, theirs, %{external_ref: "THEIRS"})
+      their_collection = source_collection_fixture(ctx.scope, theirs, %{external_ref: "THEIRS"})
 
       assert Sources.post_items(
                other_key,
@@ -193,7 +208,7 @@ defmodule Apiary.Sources.IngestTest do
              ) ==
                {:ok, :accepted}
 
-      assert ticket(own, "R").disconnected_at == nil
+      assert ticket(their_collection, "R").disconnected_at == nil
       assert Repo.get!(Item, kept.id) == kept
       assert count(Comment) == 0
     end
@@ -300,6 +315,32 @@ defmodule Apiary.Sources.IngestTest do
       # Written again, an item is no longer one a listing closed.
       {:ok, :accepted} = post(ctx, "TRK", [item("LEFT", updated_at: later(7200))])
       assert %Item{state: :open, closed_by_listing_at: nil} = ticket(ctx.trk, "LEFT")
+    end
+
+    test "its close counts as a write at its started_at: only a write at or after it reopens",
+         ctx do
+      started = later(600)
+      {:ok, :accepted} = post(ctx, "TRK", [item("SAME"), item("AFTER")])
+      {:ok, :accepted} = post(ctx, "TRK", [], listing: %{id: "l", started_at: started})
+
+      for ref <- ["SAME", "AFTER"] do
+        assert %Item{state: :closed, closed_by_listing_at: closed_at} = ticket(ctx.trk, ref)
+        assert DateTime.compare(closed_at, started) == :eq
+      end
+
+      # The event sent again at the same updated_at, and one between that and started_at.
+      for updated_at <- [at(), later(300)] do
+        {:ok, :accepted} = post(ctx, "TRK", [item("SAME", updated_at: updated_at)])
+        assert %Item{state: :closed, source_updated_at: kept} = ticket(ctx.trk, "SAME")
+        assert kept == at()
+      end
+
+      # At started_at, and after it: written, open, and no longer one the listing closed.
+      {:ok, :accepted} = post(ctx, "TRK", [item("SAME", updated_at: started)])
+      {:ok, :accepted} = post(ctx, "TRK", [item("AFTER", updated_at: later(601))])
+
+      for ref <- ["SAME", "AFTER"],
+          do: assert(%Item{state: :open, closed_by_listing_at: nil} = ticket(ctx.trk, ref))
     end
 
     test "a partial listing only upserts", ctx do
@@ -447,6 +488,36 @@ defmodule Apiary.Sources.IngestTest do
 
       assert Repo.all(from c in Comment, where: is_nil(c.deleted_at)) == []
     end
+
+    test "complete's mark counts as a write at since: only a write at or after it brings one back",
+         ctx do
+      since = later(600)
+      {:ok, :accepted} = post_comments(ctx, "R", [comment("SAME"), comment("AFTER")])
+      {:ok, :accepted} = post_comments(ctx, "R", [], since: since)
+
+      for ref <- ["SAME", "AFTER"] do
+        assert %Comment{deleted_at: %DateTime{}, deleted_by_complete_at: ^since} =
+                 comment_of(ctx.item, ref)
+      end
+
+      # The comment sent again at the same updated_at, and one between that and since.
+      for updated_at <- [at(), later(300)] do
+        {:ok, :accepted} =
+          post_comments(ctx, "R", [comment("SAME", body: "again", updated_at: updated_at)])
+
+        assert %Comment{deleted_at: %DateTime{}, body: "A comment, SAME"} =
+                 comment_of(ctx.item, "SAME")
+      end
+
+      # At since, and after it: written, and no longer marked.
+      {:ok, :accepted} = post_comments(ctx, "R", [comment("SAME", updated_at: since)])
+      {:ok, :accepted} = post_comments(ctx, "R", [comment("AFTER", updated_at: later(601))])
+
+      for ref <- ["SAME", "AFTER"] do
+        assert %Comment{deleted_at: nil, deleted_by_complete_at: nil} =
+                 comment_of(ctx.item, ref)
+      end
+    end
   end
 
   describe "a ref another live collection of the adapter holds" do
@@ -460,7 +531,7 @@ defmodule Apiary.Sources.IngestTest do
       %{ops: ops}
     end
 
-    test "a moved item arriving closed: the old ticket ends where it is, the new collection has a new one",
+    test "a moved item: the new collection's write takes the ref, the old one's closed after it does not",
          ctx do
       {:ok, :accepted} = post(ctx, "TRK", [item("R")])
       old = ticket(ctx.trk, "R")
@@ -472,8 +543,7 @@ defmodule Apiary.Sources.IngestTest do
           external_ref: "R"
         })
 
-      moved = later(60)
-      assert post(ctx, "OPS", [item("R", state: "closed", updated_at: moved)]) == {:ok, :accepted}
+      assert post(ctx, "OPS", [item("R", updated_at: later(60))]) == {:ok, :accepted}
 
       # The old record stays on its collection, ended.
       ended = Repo.get!(Item, old.id)
@@ -486,33 +556,50 @@ defmodule Apiary.Sources.IngestTest do
       new = ticket(ctx.ops, "R")
       assert new.id != old.id
       assert new.public_id != old.public_id and Item.public_id?(new.public_id)
-      assert {new.state, new.disconnected_at} == {:closed, nil}
+      assert {new.state, new.disconnected_at} == {:open, nil}
 
       # The work item is untouched; its key finds the ticket that holds the ref now.
       kept = [:item_id, :connection_id, :adapter_id, :external_ref, :state, :updated_at]
       assert Map.take(Repo.get!(WorkItem, work_item.id), kept) == Map.take(work_item, kept)
+      assert holders(work_item) == [new.id]
 
-      assert Repo.all(
-               from i in Item,
-                 join: c in assoc(i, :collection),
-                 where: i.organisation_id == ^work_item.organisation_id,
-                 where: i.adapter_id == ^work_item.adapter_id,
-                 where: i.external_ref == ^work_item.external_ref,
-                 where: is_nil(i.disconnected_at) and is_nil(c.ended_at),
-                 select: i.id
-             ) == [new.id]
+      # The "closed" the source sends to the collection it moved out of, with a later
+      # updated_at, is kept there, ended; the new ticket stays open and live, in the Backlog
+      # of the workspace its collection is linked to.
+      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: later(120))]) ==
+               {:ok, :accepted}
 
-      # The "closed" the source sends to the collection it moved out of, at the same time,
-      # leaves both where they are.
-      assert post(ctx, "TRK", [item("R", state: "closed", updated_at: moved)]) == {:ok, :accepted}
       assert %Item{state: :closed, disconnected_at: at} = Repo.get!(Item, old.id)
       assert at == ended.disconnected_at
-      assert Repo.get!(Item, new.id).disconnected_at == nil
+      assert %Item{state: :open, disconnected_at: nil} = Repo.get!(Item, new.id)
+      assert holders(work_item) == [new.id]
+      assert Repo.get!(Collection, ctx.ops.id).workspace_id == ctx.other_workspace.id
 
       # Its comments go to the ticket that holds the ref.
       {:ok, :accepted} = post_comments(ctx, "R", [comment("C")])
       assert comment_of(new, "C")
       refute Repo.get_by(Comment, item_id: old.id)
+    end
+
+    test "a closed write never takes the ref from an open item; an open one with a later updated_at does",
+         ctx do
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(60))])
+
+      # Closed, later: kept in its collection, ended there.
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(120))])
+      assert %Item{state: :closed, disconnected_at: %DateTime{}} = ticket(ctx.trk, "R")
+      assert %Item{state: :open, disconnected_at: nil} = ticket(ctx.ops, "R")
+
+      # Open, later still: it takes the ref, on the record there.
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(180))])
+      assert %Item{state: :open, disconnected_at: nil} = ticket(ctx.trk, "R")
+      assert %DateTime{} = ticket(ctx.ops, "R").disconnected_at
+
+      # A closed write takes it from a closed item, when it is newer.
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(240))])
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", state: "closed", updated_at: later(300))])
+      assert ticket(ctx.ops, "R").disconnected_at == nil
+      assert %DateTime{} = ticket(ctx.trk, "R").disconnected_at
     end
 
     test "at the same time an open item takes the ref from a closed one; an older one never does",
@@ -545,6 +632,55 @@ defmodule Apiary.Sources.IngestTest do
       {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(-60))])
       assert ticket(ctx.trk, "R").disconnected_at == nil
       assert ticket(ctx.ops, "R").disconnected_at == nil
+    end
+
+    test "comments, with no item holding the ref: the collection that ended last answers, and no ended item is written to",
+         ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      old = ticket(ctx.trk, "R")
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(60))])
+
+      # The collection of the item that holds it is disconnected: the old one, ended in a
+      # live collection, answers for nothing, and the one that ended last is not linked.
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "OPS"})
+      assert post_comments(ctx, "R", [comment("C")]) == {:error, :not_linked}
+
+      # The connection's end ends the old one's collection after it: connection ended.
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      assert post_comments(ctx, "R", [comment("C")]) == {:error, :ended}
+
+      assert %DateTime{} = Repo.get!(Item, old.id).disconnected_at
+      assert count(Comment) == 0
+    end
+
+    test "comments, the organisation out of use: the collection of the item that holds the ref is suspended",
+         ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(60))])
+
+      Edition.put_test_stub(EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [ctx.scope.organisation.id])
+
+      assert post_comments(ctx, "R", [comment("C")]) == {:error, :suspended}
+      assert count(Comment) == 0
+    end
+
+    test "comments, the only item with the ref ended: not linked, and nothing is written", ctx do
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"})
+      assert post_comments(ctx, "R", [comment("C")]) == {:error, :not_linked}
+
+      # An item ended in a live collection answers for nothing, even with no other item
+      # with its ref, which the rules above never leave.
+      {:ok, :accepted} = post(ctx, "OPS", [item("S")])
+      Repo.update_all(Item, set: [disconnected_at: DateTime.utc_now()])
+      assert post_comments(ctx, "S", [comment("C")]) == {:error, :not_linked}
+      assert count(Comment) == 0
+
+      # A write of the ref to a live collection holds it again, and takes its comments.
+      {:ok, :accepted} = post(ctx, "OPS", [item("R")])
+      assert {:ok, :accepted} = post_comments(ctx, "R", [comment("C")])
+      assert comment_of(ticket(ctx.ops, "R"), "C")
     end
   end
 

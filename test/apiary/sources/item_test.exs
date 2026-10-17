@@ -393,6 +393,30 @@ defmodule Apiary.Sources.ItemTest do
       set!("source_item_comments", comment.id, "deleted_at", DateTime.utc_now())
     end
 
+    test "only a comment marked deleted was left out by a complete set", %{item: item} do
+      comment = comment!(item)
+
+      refused!(
+        "source_item_comments",
+        comment.id,
+        "deleted_by_complete_at",
+        now(),
+        "source_item_comments_deleted_by_complete_check"
+      )
+
+      assert %{num_rows: 1} =
+               update!(
+                 "source_item_comments",
+                 comment.id,
+                 "deleted_at = now(), deleted_by_complete_at = $2",
+                 [now()]
+               )
+
+      refused("source_item_comments_deleted_by_complete_check", fn ->
+        update!("source_item_comments", comment.id, "deleted_at = NULL")
+      end)
+    end
+
     test "a ref is once on its item, and a comment is of its item's organisation",
          %{scope: scope, item: item} do
       comment = comment!(item)

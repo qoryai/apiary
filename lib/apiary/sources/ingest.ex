@@ -9,32 +9,38 @@ defmodule Apiary.Sources.Ingest do
   # key and the action alone; then `:ended`, `:suspended` and `:not_linked`, as
   # `Apiary.Adapters.Collections.resolve/3` decides them for items, by the body's
   # `collection_ref`, and `Apiary.Adapters.Collections.verdict/3` for comments, of the
-  # collection of the item the body's `item_ref` names: an `item_ref` the adapter has
-  # no item for is `:not_linked`. A ref that is not a text of 1 to 200 characters names
-  # nothing, and is not looked up. Before all of these, `:invalid` for an entry the
-  # tables would not hold (`Apiary.Sources.Item.changeset/2`,
-  # `Apiary.Sources.Comment.changeset/2`), which a body `Apiary.Sources.Wire` read never
-  # is; and, after them, for a listing's part that disagrees with the parts before it.
+  # collection that answers for the body's `item_ref`: the collection of the item that
+  # holds the ref, or, when none does, the collection that ended last of those with an
+  # item with that ref; an `item_ref` the adapter has no item for is `:not_linked`. A ref
+  # that is not a text of 1 to 200 characters names nothing, and is not looked up. Before
+  # all of these, `:invalid` for an entry the tables would not hold
+  # (`Apiary.Sources.Item.changeset/2`, `Apiary.Sources.Comment.changeset/2`), which a
+  # body `Apiary.Sources.Wire` read never is; and, after them, for a listing's part that
+  # disagrees with the parts before it.
   #
   # **Items.** Each is upserted on its collection and its ref, and is written when its
-  # `updated_at` is at or after the one kept (`source_updated_at`): of two with the same
-  # time the later post wins, as the decoder keeps the last named of two in one body. A
-  # `comment_count` past what a bigint holds is kept as that most: the contract bounds it
-  # by nothing, so a body it allows is not refused, and no source has so many. A written
-  # item is no longer one a listing closed (`closed_by_listing_at`).
+  # `updated_at` is at or after the time kept: the later of its `source_updated_at` and,
+  # for an item a complete listing closed, that listing's `started_at`
+  # (`closed_by_listing_at`). The close counts as a write at `started_at`, so an event
+  # sent again, or one updated before the listing began, leaves the item closed. Of two
+  # with the same time the later post wins, as the decoder keeps the last named of two in
+  # one body. A `comment_count` past what a bigint holds is kept as that most: the
+  # contract bounds it by nothing, so a body it allows is not refused, and no source has
+  # so many. A written item is no longer one a listing closed.
   #
   # **A ref held in another collection.** An item's ref is unique among the items of the
   # adapter's live collections, which no index holds: it is held here. Where an item
   # written to a collection has a ref that an item of another live collection of the same
-  # adapter holds, the newer one keeps it: the item that held it ends where it is, in its
-  # collection (`disconnected_at`), and leaves every Backlog; the one written is a ticket
-  # of the collection it was written to, a new row with a new `tk_` id where that
-  # collection had none. Nothing moves between collections, and no work item changes.
-  # Newer means a later `updated_at`; at the same time, an open item takes the ref from a
-  # closed one, and otherwise the item that holds it keeps it, so the "closed" a source
-  # sends to the collection an item moved out of never takes the ref back. An item that
-  # does not take the ref is kept in its collection, ended there. One that ended so takes
-  # the ref back when a newer write of it to its collection wins.
+  # adapter holds, the write takes the ref when it is newer: a later `updated_at`, or, at
+  # the same time, open against closed. A closed write never takes the ref from an open
+  # item: the contract sends an item moved out of a collection as closed, so a "closed"
+  # says the item is no longer in that collection. When the write takes the ref, the
+  # item that held it ends where it is, in its collection (`disconnected_at`), and leaves
+  # every Backlog; the one written is a ticket of the collection it was written to, a new
+  # row with a new `tk_` id where that collection had none. Nothing moves between
+  # collections, and no work item changes. An item whose write does not take the ref is
+  # kept in its collection, ended there. One that ended so takes the ref back when a later
+  # write of it to its collection takes the ref.
   #
   # **Listings.** A part of a listing adds its number to the listing's bookkeeping
   # (`Apiary.Sources.Listing`), as `Apiary.Adapters.Collections` keeps a listing of
@@ -43,24 +49,36 @@ defmodule Apiary.Sources.Ingest do
   # listing's `started_at` (`last_listed_at`, the newest). Once every part from 1 to the
   # last has arrived, and only then, the listing is complete: every open item of the
   # collection that it left out, whose `last_listed_at` and `source_updated_at` are before
-  # its `started_at`, and that has not ended, is closed (`closed_by_listing_at`). A
-  # partial listing only upserts. The bookkeeping goes a day after its first part
-  # (`purge_listings/1`).
+  # its `started_at`, and that has not ended, is closed, and keeps that `started_at`
+  # (`closed_by_listing_at`). A partial listing only upserts. The bookkeeping goes a day
+  # after its first part (`purge_listings/1`).
   #
-  # **Comments.** Each is upserted on its item and its ref, newer or as new winning, as
-  # items do. One sent `deleted` keeps the time it was first marked (`deleted_at`); one
-  # sent again without it is no longer marked. With `complete`, every other comment of
-  # the item that is not marked and was updated before `complete.since` is marked
-  # deleted.
+  # **Comments** go to the item that holds the body's `item_ref`, of a live collection
+  # and not ended, decided under the locks below; never to an item that ended. Each is
+  # upserted on its item and its ref, and is written when its `updated_at` is at or after
+  # the time kept: the later of its `source_updated_at` and, for a comment a complete set
+  # marked deleted, that set's `complete.since` (`deleted_by_complete_at`). The mark
+  # counts as a write at `complete.since`, as a listing's close does for items. One sent
+  # `deleted` keeps the time it was first marked (`deleted_at`); one sent again without
+  # it is no longer marked. With `complete`, every other comment of the item that is not
+  # marked and was updated before `complete.since` is marked deleted, and keeps
+  # `complete.since`.
   #
-  # **Locks**, in this order: the collection's connection, `FOR UPDATE`, so that one
-  # connection's posts and listings of collections are taken one at a time and never beside
-  # its end; the collection, `FOR SHARE`, so that it does not end meanwhile, and the
-  # answer is decided again on it as it is held; for items, a transaction lock on each ref
+  # **Locks.** For items, in this order: the collection's connection, `FOR UPDATE`, so
+  # that one connection's posts and listings of collections are taken one at a time and
+  # never beside its end; the collection, `FOR SHARE`, so that it does not end meanwhile,
+  # and the answer is decided again on it as it is held; a transaction lock on each ref
   # the body names, in the adapter (`pg_advisory_xact_lock`), by key, so that two
-  # connections never hold one ref at once, then the items of the adapter's live
-  # collections with those refs, and those a completing listing may close, by ref, then
-  # id; for comments, the item; then the comments. Nothing here writes the adapter's feed.
+  # connections never hold one ref at once; then the items of the adapter's live
+  # collections with those refs, and those a completing listing may close, `FOR UPDATE`,
+  # by ref, then id. For comments, in this order: the lock on the `item_ref` in the
+  # adapter, so that no write takes the ref meanwhile, under which the item that holds it
+  # is looked up; its collection, `FOR SHARE`, so that it does not end meanwhile, and the
+  # answer is decided again on it as it is held, or, should it have ended, decided again
+  # from the start; the item; then the comments. Comments take no connection's row: they
+  # take the ref's lock first, and a post of items holds its connection's row while it
+  # waits for that lock, so each would wait on the other. Nothing here writes the
+  # adapter's feed.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -328,14 +346,26 @@ defmodule Apiary.Sources.Ingest do
     )
   end
 
-  # The write is at or after the one kept, or none is kept.
+  # The write is at or after the time kept (`kept_at/1`), or none is kept: as
+  # `upsert_items/1` decides it.
   defp newer_or_same?(_row, nil), do: true
 
-  defp newer_or_same?(row, %Item{source_updated_at: kept}),
-    do: DateTime.compare(row.source_updated_at, kept) != :lt
+  defp newer_or_same?(row, %Item{} = kept),
+    do: DateTime.compare(row.source_updated_at, kept_at(kept)) != :lt
 
-  # The write takes its ref from `holder`, an item of another live collection: it is
-  # newer, or, at the same time, it is open and the holder closed.
+  # The time an item is kept at: the later of its `source_updated_at` and, for one a
+  # complete listing closed, that listing's `started_at` (`closed_by_listing_at`), as
+  # `GREATEST`, which passes over NULL, takes them in `upsert_items/1`.
+  defp kept_at(%Item{source_updated_at: updated_at, closed_by_listing_at: nil}), do: updated_at
+
+  defp kept_at(%Item{source_updated_at: updated_at, closed_by_listing_at: closed_at}),
+    do: if(DateTime.compare(closed_at, updated_at) == :gt, do: closed_at, else: updated_at)
+
+  # The write takes its ref from `holder`, an item of another live collection: never a
+  # closed write from an open holder; otherwise when it is newer, or, at the same time,
+  # when it is open and the holder closed.
+  defp takes_ref?(%Item{state: :closed}, %Item{state: :open}), do: false
+
   defp takes_ref?(row, %Item{} = holder) do
     case DateTime.compare(row.source_updated_at, holder.source_updated_at) do
       :gt -> true
@@ -392,13 +422,18 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # One statement for the body's items: each made, or written over the one kept when it
-  # is at or after it. The public ids of those written.
+  # is at or after the time kept (`kept_at/1`). The public ids of those written.
   defp upsert_items([]), do: []
 
   defp upsert_items(rows) do
     newer =
       from i in Item,
-        where: fragment("EXCLUDED.source_updated_at >= ?", i.source_updated_at),
+        where:
+          fragment(
+            "EXCLUDED.source_updated_at >= GREATEST(?, ?)",
+            i.source_updated_at,
+            i.closed_by_listing_at
+          ),
         update: [
           set: [
             key: fragment("EXCLUDED.key"),
@@ -451,13 +486,17 @@ defmodule Apiary.Sources.Ingest do
     :ok
   end
 
-  # Closes what the complete `listing` left out (`closable/2`), and marks the listing
-  # complete: the public ids of those closed.
+  # Closes what the complete `listing` left out (`closable/2`), each keeping the listing's
+  # `started_at`, and marks the listing complete: the public ids of those closed.
   defp close_left_out(%Collection{} = collection, %Listing{} = listing, now) do
     {_count, closed} =
       Repo.update_all(
         from(i in Item, where: ^closable(collection, listing.started_at), select: i.public_id),
-        set: [state: :closed, closed_by_listing_at: now, updated_at: now]
+        set: [
+          state: :closed,
+          closed_by_listing_at: %{listing.started_at | microsecond: {0, 6}},
+          updated_at: now
+        ]
       )
 
     {1, _} =
@@ -482,11 +521,7 @@ defmodule Apiary.Sources.Ingest do
     with {:ok, rows} <- comment_rows(comments) do
       Repo.transact(fn ->
         with {:ok, adapter_id} <- Connections.key_rights(key_scope, @action),
-             item = lookup_item(adapter_id, bounded(ref)),
-             {:ok, _collection, _scope} <-
-               Collections.verdict(key_scope, item && item.collection, @action),
-             {:ok, collection} <- hold(key_scope, item.collection),
-             %Item{} = item <- lock_item(item) do
+             {:ok, collection, item} <- hold_item(key_scope, adapter_id, bounded(ref)) do
           {:ok, put_comments(collection, item, rows, complete)}
         end
       end)
@@ -522,24 +557,51 @@ defmodule Apiary.Sources.Ingest do
       else: {:error, :invalid}
   end
 
-  # The item of the adapter `adapter_id` that `ref` names, with its collection: of a live
-  # collection before an ended one, one that has not ended before one that has, then the
-  # one that ended last; nil for none.
-  defp lookup_item(_adapter_id, nil), do: nil
+  # Under the lock on `ref` in the adapter `adapter_id` (`lock_refs/2`): `{:ok,
+  # collection, item}`, the item that holds `ref` and its collection, both held, the
+  # answer decided again on the collection as it is held; or the refusal of the
+  # collection that answers (`answering_item/2`). A ref that names nothing is not linked.
+  defp hold_item(_key_scope, _adapter_id, nil), do: {:error, :not_linked}
 
-  defp lookup_item(adapter_id, ref) do
+  defp hold_item(key_scope, adapter_id, ref) do
+    :ok = lock_refs(adapter_id, [ref])
+    hold_answering(key_scope, adapter_id, ref)
+  end
+
+  # While the ref's lock is held, no write takes the ref, and no item comes to hold it;
+  # only the collection of the one that holds it may end, until it is held `FOR SHARE`.
+  # Should it have ended meanwhile, the answer is decided again from the start: by the
+  # collection that ended last, as no item holds the ref now.
+  defp hold_answering(key_scope, adapter_id, ref) do
+    item = answering_item(adapter_id, ref)
+
+    with {:ok, _collection, _scope} <-
+           Collections.verdict(key_scope, item && item.collection, @action) do
+      case Repo.one(from c in Collection, where: c.id == ^item.collection_id, lock: "FOR SHARE") do
+        %Collection{ended_at: nil} = held ->
+          with {:ok, collection, _scope} <- Collections.verdict(key_scope, held, @action),
+               %Item{} = item <- lock_item(item),
+               do: {:ok, collection, item}
+
+        %Collection{} ->
+          hold_answering(key_scope, adapter_id, ref)
+      end
+    end
+  end
+
+  # The item of the adapter `adapter_id` with the ref `ref` whose collection answers for
+  # it, with that collection: the one that holds the ref, of a live collection and not
+  # ended; or, when none does, the one of the collection that ended last; nil for none.
+  # An item that ended in a live collection answers for nothing: the item that took its
+  # ref holds it, or is of a collection that ended since.
+  defp answering_item(adapter_id, ref) do
     Repo.one(
       from i in Item,
         join: c in assoc(i, :collection),
         where: c.adapter_id == ^adapter_id and i.adapter_id == ^adapter_id,
         where: i.external_ref == ^ref,
-        order_by: [
-          desc_nulls_first: c.ended_at,
-          desc_nulls_first: i.disconnected_at,
-          desc: c.inserted_at,
-          desc: i.inserted_at,
-          desc: i.id
-        ],
+        where: not is_nil(c.ended_at) or is_nil(i.disconnected_at),
+        order_by: [desc_nulls_first: c.ended_at, desc: c.inserted_at, desc: c.id],
         limit: 1,
         preload: [collection: c]
     )
@@ -562,7 +624,8 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # One statement for the body's comments: each made, or written over the one kept when
-  # it is at or after it. How many were written.
+  # it is at or after the time kept, the later of its `source_updated_at` and
+  # `deleted_by_complete_at`. How many were written.
   defp upsert_comments(_item, [], _now), do: 0
 
   defp upsert_comments(%Item{} = item, rows, now) do
@@ -589,7 +652,12 @@ defmodule Apiary.Sources.Ingest do
 
     newer =
       from c in Comment,
-        where: fragment("EXCLUDED.source_updated_at >= ?", c.source_updated_at),
+        where:
+          fragment(
+            "EXCLUDED.source_updated_at >= GREATEST(?, ?)",
+            c.source_updated_at,
+            c.deleted_by_complete_at
+          ),
         update: [
           set: [
             url: fragment("EXCLUDED.url"),
@@ -605,6 +673,7 @@ defmodule Apiary.Sources.Ingest do
                 "CASE WHEN EXCLUDED.deleted_at IS NULL THEN NULL ELSE COALESCE(?, EXCLUDED.deleted_at) END",
                 c.deleted_at
               ),
+            deleted_by_complete_at: nil,
             updated_at: fragment("EXCLUDED.updated_at")
           ]
         ]
@@ -619,7 +688,7 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # Marks deleted every comment of `item` the body did not name, not marked yet, and
-  # updated before `since`. How many were marked.
+  # updated before `since`, each keeping `since`. How many were marked.
   defp mark_others(%Item{id: item_id}, rows, since, now) do
     refs = Enum.map(rows, fn {row, _deleted} -> row.external_ref end)
 
@@ -629,7 +698,7 @@ defmodule Apiary.Sources.Ingest do
           where: c.item_id == ^item_id and is_nil(c.deleted_at),
           where: c.source_updated_at < ^since and c.external_ref not in ^refs
         ),
-        set: [deleted_at: now, updated_at: now]
+        set: [deleted_at: now, deleted_by_complete_at: since, updated_at: now]
       )
 
     count

@@ -1,16 +1,20 @@
 defmodule Apiary.Sources.IngestRacesTest do
-  # The items an adapter posts, racing: two writes of one ref, a listing beside an event,
-  # a complete listing beside a disconnect of its collection, and two connections'
-  # listings naming one ref. Each side runs on a separate connection, outside the SQL
-  # sandbox, so each commits and each waits on the other's locks as it would in
-  # production. Not async: what these tests commit is visible to every other test while
-  # they run, and they delete it again before they end.
+  # The items and comments an adapter posts, racing: two writes of one ref, a listing
+  # beside an event, a complete listing beside a disconnect of its collection, two
+  # connections' listings naming one ref, a complete listing beside another connection's
+  # write of a ref it leaves out, and comments beside a write that takes their item's ref
+  # and beside the end of their collection. Each side runs on a separate connection,
+  # outside the SQL sandbox, so each commits and each waits on the other's locks as it
+  # would in production. Not async: what these tests commit is visible to every other test
+  # while they run, and they delete it again before they end.
   #
   # The rules under test (`Apiary.Sources.Ingest`): one connection's posts are taken one
   # at a time, under its row; a post decides its answer again on its collection as it holds
   # it, so it never writes to a collection that ended meanwhile; two posts naming one ref
   # in the adapter, of any connections, are taken one at a time, and the newer item holds
-  # the ref.
+  # the ref; a write of a ref reads the items it may take it from as they are held, so it
+  # waits for a listing closing one; comments go to the item that holds their ref once
+  # the ref and its collection are held, never to one that ended.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -21,9 +25,9 @@ defmodule Apiary.Sources.IngestRacesTest do
   alias Apiary.{Edition, Repo, Sources}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Audit.Entry
-  alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Adapters.{Collection, Collections, Connection, Connections}
   alias Apiary.Nodes.Node
-  alias Apiary.Sources.{Item, Listing}
+  alias Apiary.Sources.{Comment, Item, Listing}
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag needs: :factory
@@ -112,6 +116,13 @@ defmodule Apiary.Sources.IngestRacesTest do
 
   defp posting(key_scope, collection_ref, items, opts \\ []),
     do: fn -> Sources.post_items(key_scope, items_body(collection_ref, items, opts)) end
+
+  defp commenting(key_scope, item_ref, comments),
+    do: fn -> Sources.post_comments(key_scope, comments_body(item_ref, comments)) end
+
+  # The refs of the comments on `item`.
+  defp comments_on(%Item{id: item_id}),
+    do: Repo.all(from c in Comment, where: c.item_id == ^item_id, select: c.external_ref)
 
   defp ticket(%Collection{id: collection_id}, ref),
     do: Repo.get_by!(Item, collection_id: collection_id, external_ref: ref)
@@ -264,5 +275,80 @@ defmodule Apiary.Sources.IngestRacesTest do
     assert answers == [{:ok, :accepted}, {:ok, :accepted}]
     assert holders(ctx.adapter, "S") == [ctx.trk.id]
     assert holders(ctx.adapter, "T") == [ops.id]
+  end
+
+  test "a complete listing beside another connection's write of a ref it leaves out: the write waits, and reads what it closed",
+       ctx do
+    %{scope: other} = sign_up()
+    {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+    ops = collection(other, theirs, "OPS")
+    {:ok, :accepted} = posting(ctx.key_scope, "TRK", [item("R")]).()
+
+    # The listing names nothing, so the two meet only on the row of the item it closes.
+    {listed, listed_pid} =
+      hold(posting(ctx.key_scope, "TRK", [], listing: %{id: "l", started_at: later(60)}))
+
+    assert listed.result == {:ok, :accepted}
+
+    waiting = start(posting(ctx.key_scope, "OPS", [item("R")]))
+    await_blocked(waiting.backend, listed_pid)
+    commit(listed)
+
+    # At the same time, open against what the listing closed: it takes the ref.
+    assert Task.await(waiting.task) == {:ok, :accepted}
+    assert holders(ctx.adapter, "R") == [ops.id]
+    assert %Item{state: :closed, disconnected_at: %DateTime{}} = ticket(ctx.trk, "R")
+  end
+
+  test "comments waiting on a write that takes their item's ref go to the item that holds it now",
+       ctx do
+    ops = collection(ctx.scope, ctx.connection, "OPS")
+    {:ok, :accepted} = posting(ctx.key_scope, "TRK", [item("R")]).()
+    old = ticket(ctx.trk, "R")
+
+    {taken, taken_pid} = hold(posting(ctx.key_scope, "OPS", [item("R", updated_at: later(60))]))
+    assert taken.result == {:ok, :accepted}
+
+    waiting = start(commenting(ctx.key_scope, "R", [comment("C")]))
+    await_blocked(waiting.backend, taken_pid)
+    commit(taken)
+
+    assert Task.await(waiting.task) == {:ok, :accepted}
+    assert %DateTime{} = Repo.get!(Item, old.id).disconnected_at
+    assert comments_on(old) == []
+    assert comments_on(ticket(ops, "R")) == ["C"]
+  end
+
+  test "comments waiting on the end of their item's collection write nothing, and answer as it ended",
+       ctx do
+    ops = collection(ctx.scope, ctx.connection, "OPS")
+    {:ok, :accepted} = posting(ctx.key_scope, "TRK", [item("R")]).()
+    {:ok, :accepted} = posting(ctx.key_scope, "OPS", [item("S")]).()
+
+    # Its collection disconnected: not linked.
+    {disconnected, disconnect_pid} =
+      hold(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+
+    assert disconnected.result == {:ok, :disconnected}
+
+    waiting = start(commenting(ctx.key_scope, "R", [comment("C")]))
+    await_blocked(waiting.backend, disconnect_pid)
+    commit(disconnected)
+
+    assert Task.await(waiting.task) == {:error, :not_linked}
+    assert comments_on(ticket(ctx.trk, "R")) == []
+
+    # Its connection ended: connection ended.
+    {ended, end_pid} =
+      hold(fn -> Connections.end_connection(ctx.key_scope, ctx.connection.public_id) end)
+
+    assert {:ok, _connection} = ended.result
+
+    waiting = start(commenting(ctx.key_scope, "S", [comment("C")]))
+    await_blocked(waiting.backend, end_pid)
+    commit(ended)
+
+    assert Task.await(waiting.task) == {:error, :ended}
+    assert comments_on(ticket(ops, "S")) == []
   end
 end
