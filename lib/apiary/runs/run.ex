@@ -175,6 +175,10 @@ defmodule Apiary.Runs.Run do
     field :attach_answer_digest, :string
     field :gateway_instance_id, :string
 
+    # The run of a workspace's queue this run is, set when its dispatch is handed over and
+    # the run registered for it, unique; nil for every other run.
+    belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
+
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
     has_many :connections, Apiary.Runs.Connection
