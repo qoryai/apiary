@@ -4,8 +4,8 @@ defmodule Apiary.PublicId do
   an underscore, then 16 lowercase Crockford base32 characters, 80 random bits, as
   `ak_0123456789abcdef`. Crockford's alphabet leaves out `i`, `l`, `o` and `u`, so an id
   read aloud or copied by hand is not mistaken. The prefix says what the id names:
-  `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool and `ws` a
-  workspace.
+  `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool, `rn` a run
+  and `ws` a workspace.
   """
 
   # Crockford base32 without the ambiguous letters i, l, o, u.
@@ -24,8 +24,10 @@ defmodule Apiary.PublicId do
     size = byte_size(prefix)
 
     case id do
+      # Byte by byte: the alphabet is ASCII, so a byte outside it, the first byte of a
+      # character that takes more than one, or bytes that are not UTF-8 at all, is refused.
       <<^prefix::binary-size(^size), "_", rest::binary-size(16)>> ->
-        rest |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet))
+        for <<byte <- rest>>, reduce: true, do: (ok -> ok and byte in @alphabet)
 
       _other ->
         false

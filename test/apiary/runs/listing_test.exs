@@ -555,6 +555,12 @@ defmodule Apiary.Runs.ListingTest do
       assert by.("data/etl") == [c.id]
       assert by.(String.slice(b.run_id, 0, 8)) == [b.id]
       assert by.(String.upcase(String.slice(c.run_id, 0, 6))) == [c.id]
+      # The run's `rn_` id: its start, `rn_` and eight characters as a list shows it, and
+      # whole; a run page's address names it.
+      assert by.(String.slice(a.public_id, 0, 11)) == [a.id]
+      assert by.(String.upcase(b.public_id)) == [b.id]
+      assert by.("https://qory.example/acme/main/runs/#{c.public_id}/network") == [c.id]
+      assert by.("rn_") == []
       assert by.("' OR 1=1 --") == []
       # A task is an ordinary label: the free text does not read it.
       assert by.("nightly") == []
@@ -1006,16 +1012,25 @@ defmodule Apiary.Runs.ListingTest do
     %{scope | workspace: %{scope.workspace | id: Ecto.UUID.generate()}}
   end
 
-  describe "get_run_by_run_id!/2" do
-    test "by the subject, in the scope's workspace only; a malformed id is not found", %{
+  describe "get_run_by_public_id!/2" do
+    test "by the `rn_` id, in the scope's workspace only; the node's run id is not found", %{
       scope: scope,
       other: other
     } do
       run = run_fixture(scope)
-      assert Runs.get_run_by_run_id!(scope, run.run_id).id == run.id
-      assert_raise Ecto.NoResultsError, fn -> Runs.get_run_by_run_id!(other, run.run_id) end
-      assert_raise Ecto.NoResultsError, fn -> Runs.get_run_by_run_id!(scope, run.id) end
-      assert_raise Ecto.NoResultsError, fn -> Runs.get_run_by_run_id!(scope, "not-a-uuid") end
+      assert Runs.get_run_by_public_id!(scope, run.public_id).id == run.id
+
+      for {scope, id} <- [
+            {other, run.public_id},
+            {scope, run.run_id},
+            {scope, run.id},
+            {scope, "rn_0000000000000000"},
+            {scope, "rn_000000000000000u"},
+            {scope, String.upcase(run.public_id)},
+            {scope, nil}
+          ] do
+        assert_raise Ecto.NoResultsError, fn -> Runs.get_run_by_public_id!(scope, id) end
+      end
     end
   end
 

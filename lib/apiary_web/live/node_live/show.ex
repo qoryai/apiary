@@ -595,7 +595,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@live_action != :overview && @paths.overview}>
+      <:crumb navigate={@live_action != :overview && @paths.overview} title={@node.name}>
         {@node.name}
       </:crumb>
 
@@ -720,15 +720,19 @@ defmodule ApiaryWeb.NodeLive.Show do
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
-              <span>{instance.name || instance.instance_id}</span>
-              <span :if={instance.name} class="q-side q-mono">{instance.instance_id}</span>
+              <span class="q-cut" title={instance.name || instance.instance_id}>
+                {instance.name || instance.instance_id}
+              </span>
+              <span :if={instance.name} class="q-side q-mono" title={instance.instance_id}>
+                {instance.instance_id}
+              </span>
             </span>
           </:col>
           <:col :let={instance} label={gettext("Running since")}>
             <.relative_time format="clock" at={instance.since} />
           </:col>
           <:col :let={instance} label={gettext("Run")} from="sm">
-            <.run_link scope={@scope} run_id={instance.run_id} may_runs={@may_runs} />
+            <.run_link scope={@scope} public_id={instance.run_public_id} may_runs={@may_runs} />
           </:col>
           <:col :let={instance} label={gettext("Forager")} kind="faint" from="md">
             {instance.forager_version || gettext("n/a")}
@@ -1016,7 +1020,7 @@ defmodule ApiaryWeb.NodeLive.Show do
             <i aria-hidden="true"></i><span>{gettext("Running since")}</span>
           </span>
           <.relative_time format="clock" at={@running.since} />
-          <.run_link scope={@scope} run_id={@running.run_id} may_runs={@may_runs} />
+          <.run_link scope={@scope} public_id={@running.run_public_id} may_runs={@may_runs} />
           <span :if={@running.forager_version} class="text-muted">
             {gettext("Forager %{version}", version: @running.forager_version)}
           </span>
@@ -1095,7 +1099,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp clear_place(_clearing, _node, _activity), do: :part
 
   attr :scope, :map, required: true
-  attr :run_id, :string, required: true
+  attr :public_id, :string, required: true
   attr :may_runs, :boolean, required: true
 
   # An instance's current run: a link to its page for a reader of the record.
@@ -1103,12 +1107,12 @@ defmodule ApiaryWeb.NodeLive.Show do
     ~H"""
     <.link
       :if={@may_runs}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@public_id}"}
       class="q-mono text-accent hover:underline"
     >
-      {gettext("run %{id}", id: short_id(@run_id))}
+      {gettext("run %{id}", id: short_id(@public_id))}
     </.link>
-    <span :if={!@may_runs} class="q-mono">{short_id(@run_id)}</span>
+    <span :if={!@may_runs} class="q-mono">{short_id(@public_id)}</span>
     """
   end
 

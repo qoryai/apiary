@@ -579,8 +579,9 @@ else is retried with backoff until the run ends.
   order of `sequence`, never of arrival.
 - **What a run is about.** `about` of `dev.qory.run.started`, its kind, title, subjects
   and details, is read within its bounds and shown in the console: its title is the run's
-  title. Without one, the run page says "Run" and the run's short id, the lists the short
-  id, and the Overview the run's command line, else its short id. A kind, title or
+  title. Without one, the run page's heading says "Run" and the run's whole `rn_` id, its
+  breadcrumb and title "Run" and the run's short id, the lists the short id, and the
+  Overview the run's command line, else its short id. A kind, title or
   details past its bound is dropped, never cut, and a subject past its bound is dropped
   alone.
 - **The rate** is per access key and per server node: 50 batches a second, 100 at once.

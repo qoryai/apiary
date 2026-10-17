@@ -33,7 +33,9 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
   } do
     zone = reader_at_noon(scope.user)
     run = pruned(scope, %{events_retention_days: 30})
-    {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+    {:ok, lv, html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
     # The header, from the row.
     assert html =~ "Completed"
@@ -55,21 +57,21 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     run = pruned(scope, %{events_retention_days: 30})
 
     {:ok, lv, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal")
 
     assert has_element?(lv, ".q-limits", "This run's events were pruned on #{today(zone)}")
     refute render(lv) =~ "This run wrote no output"
 
     {:ok, _lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
     assert html =~ "api.example.com"
     assert html =~ "tracker.example.net"
 
     {:ok, lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-    assert has_element?(lv, "#run-id", run.run_id)
+    assert has_element?(lv, "#run-id", run.public_id)
 
     # the policy card is `security`'s
     if Apiary.Features.on?(:security),
@@ -81,13 +83,15 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
   test "a run that lost only its log keeps its timeline", %{conn: conn, scope: scope} do
     run = pruned(scope, %{log_retention_days: 30})
 
-    {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+    {:ok, lv, html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
     assert has_element?(lv, "#timeline")
     assert html =~ "Run started"
     refute html =~ "Events pruned"
 
     {:ok, lv, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal")
 
     assert has_element?(lv, ".q-limits", "Log output pruned")
     assert has_element?(lv, ".q-limits", "The timeline and the connections are whole.")

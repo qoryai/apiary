@@ -527,7 +527,7 @@ defmodule Apiary.Audit do
           nodes: %{Ecto.UUID.t() => String.t()},
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
-          runs: %{Ecto.UUID.t() => Ecto.UUID.t()},
+          runs: %{Ecto.UUID.t() => String.t()},
           organisations: %{Ecto.UUID.t() => String.t()}
         }
 
@@ -623,7 +623,10 @@ defmodule Apiary.Audit do
       runs:
         lookup(
           runs,
-          from(r in Run, where: r.organisation_id == ^organisation_id, select: {r.id, r.run_id})
+          from(r in Run,
+            where: r.organisation_id == ^organisation_id,
+            select: {r.id, r.public_id}
+          )
         ),
       organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name}))
     }

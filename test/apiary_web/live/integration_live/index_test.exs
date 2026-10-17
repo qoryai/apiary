@@ -386,6 +386,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
              ]
 
       assert has_element?(lv, "#set-up-part thead th", "Applies to")
+
+      # Kind shows from 600 px of the table; on a phone the name leads to the page that
+      # names it.
+      assert has_element?(lv, "#set-up-part thead th.q-from-sm", "Kind")
+      refute has_element?(lv, "#set-up-part thead th.q-from-sm", "Applies to")
       refute render(lv) =~ "For runs in"
 
       assert has_element?(lv, "#set-up-part .q-part-n", "3")
@@ -396,6 +401,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#{row} a", "Claude Code")
       assert has_element?(lv, "#{row} a .q-mono", "(claude)")
       assert has_element?(lv, row, "Agent")
+      assert has_element?(lv, "#{row} td.q-from-sm", "Agent")
       refute has_element?(lv, row, "Runtime")
 
       row = "#connections #connection-#{integration.public_id}"

@@ -705,9 +705,9 @@ defmodule ApiaryWeb.RunComponents do
 
   def middle(value, _max), do: value
 
-  @doc "The first eight characters of a run id, as Forager prints it."
-  def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
-  def short_id(_run_id), do: gettext("n/a")
+  @doc "A run's `public_id` short: `rn_` and its first eight characters."
+  def short_id(public_id) when is_binary(public_id), do: String.slice(public_id, 0, 11)
+  def short_id(_public_id), do: gettext("n/a")
 
   ## A run's title
 
@@ -716,7 +716,7 @@ defmodule ApiaryWeb.RunComponents do
   id. Every page that names a run calls it this; a row that shows the short id alone when
   there is no title asks `given_title/1`.
   """
-  def run_title(run), do: given_title(run) || gettext("Run %{id}", id: short_id(run.run_id))
+  def run_title(run), do: given_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
 
   @doc "The title a run gave in its `about`, or nil when it gave none."
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
@@ -733,7 +733,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns = assign(assigns, :title, given_title(assigns.run))
 
     ~H"""
-    <bdi :if={@title}>{@title}</bdi>{if !@title, do: short_id(@run.run_id)}
+    <bdi :if={@title}>{@title}</bdi>{if !@title, do: short_id(@run.public_id)}
     """
   end
 
@@ -1783,7 +1783,7 @@ defmodule ApiaryWeb.RunComponents do
   columns join by the table's width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
-  Every row's id is the run's (`run-<run_id>`); its title is a link to the run's page that
+  Every row's id is the run's (`run-<public_id>`); its title is a link to the run's page that
   covers the row. `selected` marks the row a preview beside the list shows
   (`aria-current`). `target={false}` leaves the target out, for a list of one target.
   `nodes`, the nodes the runs ran on by id (`Apiary.Nodes.names/2`), adds the Node column
@@ -1798,7 +1798,7 @@ defmodule ApiaryWeb.RunComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :quiet_ids, :any, default: nil
-  attr :selected, :string, default: nil, doc: "the run_id of the row the preview shows"
+  attr :selected, :string, default: nil, doc: "the public_id of the row the preview shows"
   attr :loading, :boolean, default: false
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :target, :boolean, default: true
@@ -1868,7 +1868,7 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
             nodes={@nodes}
             quiet={MapSet.member?(@quiet_ids, run.id)}
-            selected={@selected == run.run_id}
+            selected={@selected == run.public_id}
           />
         </tbody>
       </table>
@@ -1923,10 +1923,10 @@ defmodule ApiaryWeb.RunComponents do
   defp run_row(assigns) do
     ~H"""
     <tr
-      id={"run-#{@run.run_id}"}
+      id={"run-#{@run.public_id}"}
       class="q-rl-row"
       role="row"
-      data-run={@run.run_id}
+      data-run={@run.public_id}
       aria-current={@selected && "true"}
     >
       <td class="q-rl-st" role="cell">
@@ -2095,7 +2095,7 @@ defmodule ApiaryWeb.RunComponents do
             {@preview.run.runtime} {@preview.run.runtime_version}
           </span>
           <span :if={@preview.run.host} class="font-mono text-[12px]">{@preview.run.host}</span>
-          <span class="font-mono text-[12px]">{short_id(@preview.run.run_id)}</span>
+          <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
         </p>
         <dl class="q-pv-kv">
           <dt>{gettext("Started")}</dt>
@@ -2210,7 +2210,8 @@ defmodule ApiaryWeb.RunComponents do
       else: "$" <> Format.number(cost, digits: 2)
   end
 
-  defp run_page(scope, run), do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+  defp run_page(scope, run),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
 
   ## Tabs
 
@@ -2591,15 +2592,15 @@ defmodule ApiaryWeb.RunComponents do
           <div class="q-hits">
             <.link
               :for={hit <- @open.runs}
-              id={"#{@id}-run-#{hit.run.run_id}"}
+              id={"#{@id}-run-#{hit.run.public_id}"}
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
-              <span class="truncate">
+              <span class="truncate" title={given_title(hit.run)}>
                 <b :if={given_title(hit.run)} class="font-medium"><bdi>{given_title(hit.run)}</bdi></b>
                 <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
-                  {short_id(hit.run.run_id)}
+                  {short_id(hit.run.public_id)}
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">

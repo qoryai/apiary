@@ -246,7 +246,7 @@ defmodule ApiaryWeb.JumpController do
           item(
             run_label(run),
             run.target_path || ApiaryWeb.RunComponents.state_label(run.state),
-            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.run_id}",
+            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.public_id}",
             "hero-play-circle"
           )
         end
@@ -260,7 +260,7 @@ defmodule ApiaryWeb.JumpController do
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
   defp run_label(run) do
-    short_id = ApiaryWeb.RunComponents.short_id(run.run_id)
+    short_id = ApiaryWeb.RunComponents.short_id(run.public_id)
 
     case ApiaryWeb.RunComponents.given_title(run) do
       nil -> short_id

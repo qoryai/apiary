@@ -23,7 +23,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
   defp runs(scope, query \\ ""), do: workspace_path(scope, "/runs") <> query
 
-  defp row(run), do: "#run-#{run.run_id}"
+  defp row(run), do: "#run-#{run.public_id}"
 
   # The log lines the page holds for its preview, whatever it renders.
   defp preview_lines(view) do
@@ -210,7 +210,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "#{row(run)} a.q-rowlink[href='#{workspace_path(scope)}/runs/#{run.run_id}']",
+               "#{row(run)} a.q-rowlink[href='#{workspace_path(scope)}/runs/#{run.public_id}']",
                "checkout-tax"
              )
 
@@ -333,7 +333,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(
                view,
                "#{row(untitled)} .q-rowlink.q-rl-id",
-               String.slice(untitled.run_id, 0, 8)
+               String.slice(untitled.public_id, 0, 11)
              )
 
       assert text(view, "#{row(untitled)} .q-rl-about-wide") ==
@@ -376,13 +376,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       pending = run_fixture(scope)
       view = open(conn, scope)
 
-      assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.run_id, 0, 8)
+      assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.public_id, 0, 11)
       assert has_element?(view, "#{row(plain)} .q-rl-c3", "n/a")
 
       assert has_element?(
                view,
                "#{row(task)} .q-rowlink.q-rl-id",
-               String.slice(task.run_id, 0, 8)
+               String.slice(task.public_id, 0, 11)
              )
 
       refute has_element?(view, "#{row(task)} .q-rl-about")
@@ -390,7 +390,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       cells = text(view, row(pending))
       assert cells =~ "Pending"
-      assert cells =~ String.slice(pending.run_id, 0, 8)
+      assert cells =~ String.slice(pending.public_id, 0, 11)
       assert cells =~ "n/a n/a"
     end
 
@@ -534,12 +534,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
-      render_hook(view, "select", %{"id" => refused.run_id})
+      render_hook(view, "select", %{"id" => refused.public_id})
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "refused")
       refute has_element?(view, "#runs-preview dt", "Duration")
 
-      render_hook(view, "select", %{"id" => silent.run_id})
+      render_hook(view, "select", %{"id" => silent.public_id})
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "silent")
       assert has_element?(view, "#runs-preview dt", "Duration")
@@ -664,7 +664,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, row(failed))
 
       view
-      |> form("#runs-query", %{"q" => String.slice(failed.run_id, 0, 8)})
+      |> form("#runs-query", %{"q" => String.slice(failed.public_id, 0, 11)})
       |> render_submit()
 
       render_async(view)
@@ -926,7 +926,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         |> LazyHTML.query("#runs tr[data-run]")
         |> Enum.flat_map(&LazyHTML.attribute(&1, "data-run"))
 
-      assert ids == [failed.run_id, running.run_id]
+      assert ids == [failed.public_id, running.public_id]
       assert has_element?(view, "#runs-sort-oldest[aria-checked=true]", "Oldest")
 
       view |> element("#runs-sort-denials") |> render_click()
@@ -1642,8 +1642,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#runs-preview h2", "newer")
       assert has_element?(view, "#runs-preview-log", "No log recorded.")
 
-      render_hook(view, "select", %{"id" => older.run_id})
-      assert_patch(view, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "select", %{"id" => older.public_id})
+      assert_patch(view, runs(scope, "?run=#{older.public_id}"))
       render_async(view)
 
       assert has_element?(view, "#{row(older)}[aria-current=true]")
@@ -1654,7 +1654,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "#runs-preview a[href='#{workspace_path(scope)}/runs/#{older.run_id}/terminal']",
+               "#runs-preview a[href='#{workspace_path(scope)}/runs/#{older.public_id}/terminal']",
                "Full log"
              )
 
@@ -1663,12 +1663,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "#runs-preview-open[href='#{workspace_path(scope)}/runs/#{older.run_id}']"
+               "#runs-preview-open[href='#{workspace_path(scope)}/runs/#{older.public_id}']"
              )
 
       # Enter, or a second click, opens the run.
-      render_hook(view, "open", %{"id" => older.run_id})
-      assert_redirect(view, "#{workspace_path(scope)}/runs/#{older.run_id}")
+      render_hook(view, "open", %{"id" => older.public_id})
+      assert_redirect(view, "#{workspace_path(scope)}/runs/#{older.public_id}")
     end
 
     test "a run stopped where it was started is Cancelled in its row, and interrupted in the preview, whatever its exit",
@@ -1686,7 +1686,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           )
 
         run = started_run(scope, shop(), about: %{"title" => "stopped here"}, exit: data)
-        view = open(conn, runs(scope, "?run=#{run.run_id}"))
+        view = open(conn, runs(scope, "?run=#{run.public_id}"))
         render_hook(view, "viewport", %{"wide" => true})
         render_async(view)
         case_ = inspect(exit)
@@ -1707,7 +1707,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       event_fixture(older, 60, "run.log", log)
       {:ok, _} = Projector.project(older)
 
-      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
       assert text(view, "#runs-preview-log") == "first line"
@@ -1732,7 +1732,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           egress: [%{"decision" => "denied", "rule" => "", "host" => host}]
         )
 
-      view = open(conn, runs(scope, "?run=#{run.run_id}"))
+      view = open(conn, runs(scope, "?run=#{run.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
@@ -1749,7 +1749,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       event_fixture(older, 60, "run.log", log)
       {:ok, _} = Projector.project(older)
 
-      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
@@ -1783,14 +1783,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Shown, the box and its lines are there; hidden, the part or its feature, none.
       :ok = Apiary.EditionStubs.HidesNamed.put([])
-      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
       assert text(view, "#runs-preview-log") == "first build output"
       assert has_element?(view, "#runs-preview a[href$='/terminal']", "Full log")
 
       :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
-      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
@@ -1808,23 +1808,36 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
     test "a link with a run shows it; a run of another workspace or no run at all is not shown",
          %{conn: conn, older: older, scope: scope} do
-      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "older")
 
       theirs = started_run(scope_fixture(), shop())
-      view = open(conn, runs(scope, "?run=#{theirs.run_id}"))
+      view = open(conn, runs(scope, "?run=#{theirs.public_id}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
       refute has_element?(view, "#runs-preview h2")
 
       # A run of another page cannot be chosen from this one.
-      render_hook(view, "select", %{"id" => theirs.run_id})
+      render_hook(view, "select", %{"id" => theirs.public_id})
       refute_patched(view)
 
       assert {:error, {:live_redirect, %{to: to}}} = live(conn, runs(scope, "?run=nope"))
       assert to == runs(scope)
+    end
+
+    test "`?run=` takes the run's `rn_` id only: the node's run id is dropped as any bad value is",
+         %{conn: conn, older: older, scope: scope} do
+      for bad <- [older.run_id, older.id, String.slice(older.public_id, 0, 11)] do
+        assert {:error, {:live_redirect, %{to: to}}} = live(conn, runs(scope, "?run=#{bad}"))
+        assert to == runs(scope)
+      end
+
+      # Chosen by a row's event, the node's run id chooses nothing either.
+      view = open(conn, scope)
+      render_hook(view, "select", %{"id" => older.run_id})
+      refute_patched(view)
     end
   end
 

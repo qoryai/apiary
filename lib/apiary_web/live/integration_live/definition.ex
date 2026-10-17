@@ -48,7 +48,11 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb :if={@definition} navigate={Common.definition_path(@current_scope, @definition)}>
+      <:crumb
+        :if={@definition}
+        navigate={Common.definition_path(@current_scope, @definition)}
+        title={@definition.title}
+      >
         {@definition.title}
       </:crumb>
       <:crumb>{form_title(@live_action)}</:crumb>
@@ -113,7 +117,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb>{@definition.title}</:crumb>
+      <:crumb title={@definition.title}>{@definition.title}</:crumb>
 
       <.settings_page
         section={:integrations}

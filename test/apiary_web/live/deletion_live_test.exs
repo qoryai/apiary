@@ -18,6 +18,12 @@ defmodule ApiaryWeb.DeletionLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
 
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
+
+      # The name and the slug are cut to the column, each whole in its title.
+      row = "#workspace-#{scope.workspace.id}"
+      assert has_element?(lv, ~s{#{row} .q-nm > a.q-title[title="#{scope.workspace.name}"]})
+      assert has_element?(lv, ~s{#{row} .q-nm > .q-side.q-mono[title="#{scope.workspace.slug}"]})
+
       refute has_element?(lv, "#workspaces a", "Delete")
       assert has_element?(lv, "#workspaces-note", "delete the organisation instead")
 

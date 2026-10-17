@@ -919,16 +919,19 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
 
     # Registers runs through the gateway with these ids, all at one time, so they are
     # named in the order of their run ids.
+    # The runs' `rn_` ids, in the order of `run_ids`.
     defp register(%{node_key: key}, run_ids) do
-      ids =
+      runs =
         for run_id <- run_ids do
           {:ok, %{run: run}} = register_run(key, gateway_registration(run_id), instance_id())
-          run.id
+          run
         end
 
-      Repo.update_all(from(r in Run, where: r.id in ^ids),
+      Repo.update_all(from(r in Run, where: r.id in ^Enum.map(runs, & &1.id)),
         set: [registered_at: DateTime.utc_now()]
       )
+
+      Enum.map(runs, & &1.public_id)
     end
 
     # The node goes directly from now on; the runs it registered keep their gateway.
@@ -949,16 +952,16 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       text(lv, "#delete-node-refused")
     end
 
-    test "is not deleted while runs go through it, which are named by run id", %{
+    test "is not deleted while runs go through it, which are named by their `rn_` id", %{
       conn: conn,
       scope: scope
     } do
       through = through(scope)
-      register(through, [run_id(1)])
+      [one] = register(through, [run_id(1)])
       :ok = go_direct(scope, through)
 
       assert refused(conn, scope, through.gateway) ==
-               "Runs are going through this gateway: #{run_id(1)}. Delete it once they end."
+               "Runs are going through this gateway: #{one}. Delete it once they end."
     end
 
     test "is not deleted while nodes point to it and runs go through it, both named", %{
@@ -966,22 +969,22 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       scope: scope
     } do
       through = through(scope)
-      register(through, [run_id(1), run_id(2)])
+      [one, two] = register(through, [run_id(1), run_id(2)])
 
       assert refused(conn, scope, through.gateway) ==
                "Nodes use this gateway: build-01. Runs are going through it: " <>
-                 "#{run_id(1)}, #{run_id(2)}. " <>
+                 "#{one}, #{two}. " <>
                  "Delete it once the nodes point elsewhere and the runs end."
     end
 
     test "names the first five runs, then and N more", %{conn: conn, scope: scope} do
       through = through(scope)
-      register(through, Enum.map(1..7, &run_id/1))
+      ids = register(through, Enum.map(1..7, &run_id/1))
       :ok = go_direct(scope, through)
 
       assert refused(conn, scope, through.gateway) ==
                "Runs are going through this gateway: " <>
-                 Enum.map_join(1..5, ", ", &run_id/1) <>
+                 Enum.join(Enum.take(ids, 5), ", ") <>
                  " and 2 more. Delete it once they end."
     end
   end
@@ -997,9 +1000,9 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         workspace_id: scope.workspace.id
       }
 
-    defp run_here(scope, run_id),
+    defp run_here(scope, public_id),
       do: %Run{
-        run_id: run_id,
+        public_id: public_id,
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id
       }

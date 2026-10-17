@@ -234,7 +234,7 @@ defmodule ApiaryWeb.TargetComponents do
       </:col>
       <:col :let={run} label={gettext("Run")} kind="title" class="q-tgt-run">
         <.link
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.public_id}"}
           class="q-tgt-title"
         >
           <.run_name run={run} />

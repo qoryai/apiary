@@ -6,6 +6,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
+  alias Apiary.Adapters.Connection
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   defp refused(constraint, fun), do: assert_raise(Postgrex.Error, ~r/#{constraint}/, fun)
@@ -24,7 +25,8 @@ defmodule Apiary.WorkItems.WorkItemTest do
   # A snapshot within every bound, with `attrs` over it.
   defp snapshot(attrs) do
     Enum.into(attrs, %{
-      ref: "acme/shop#12",
+      connection_id: Ecto.UUID.generate(),
+      external_ref: "acme/shop#12",
       title: "The checkout keeps the old price",
       collection_title: "acme/shop",
       owner_id: Ecto.UUID.generate()
@@ -46,7 +48,13 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, work_item: work_item_fixture(scope)}
+    connection = ticket_connection_fixture(scope)
+
+    %{
+      scope: scope,
+      connection: connection,
+      work_item: work_item_fixture(scope, connection_id: connection.id)
+    }
   end
 
   describe "work_items" do
@@ -124,8 +132,8 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
     test "the snapshot keeps to its bounds", %{work_item: item} do
       for {column, value, constraint} <- [
-            {"ref", "", "work_items_ref_check"},
-            {"ref", String.duplicate("r", 256), "work_items_ref_check"},
+            {"external_ref", "", "work_items_external_ref_check"},
+            {"external_ref", String.duplicate("r", 256), "work_items_external_ref_check"},
             {"title", "", "work_items_title_check"},
             {"title", String.duplicate("t", 1025), "work_items_title_check"},
             {"collection_title", "", "work_items_collection_title_check"},
@@ -140,7 +148,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
 
       for {column, value} <- [
-            {"ref", String.duplicate("r", 255)},
+            {"external_ref", String.duplicate("r", 255)},
             {"title", String.duplicate("t", 1024)},
             {"collection_title", String.duplicate("c", 1024)},
             {"first_instruction", String.duplicate("é", 4000)},
@@ -182,6 +190,77 @@ defmodule Apiary.WorkItems.WorkItemTest do
       refused("work_items_workspace_id_fkey", fn ->
         update!("work_items", item.id, "organisation_id = $2", [Ecto.UUID.dump!(other.id)])
       end)
+    end
+
+    test "a work item's connection is one of its organisation", %{work_item: item} do
+      %{scope: other} = sign_up_fixture()
+      elsewhere = ticket_connection_fixture(other)
+
+      for id <- [elsewhere.id, Ecto.UUID.generate()] do
+        refused("work_items_connection_id_fkey", fn ->
+          update!("work_items", item.id, "connection_id = $2", [Ecto.UUID.dump!(id)])
+        end)
+      end
+
+      refused("connection_id", fn ->
+        update!("work_items", item.id, "connection_id = NULL")
+      end)
+    end
+
+    test "the same ticket may be taken in again, through the same connection", ctx do
+      %{scope: scope, connection: connection, work_item: first} = ctx
+
+      again =
+        work_item_fixture(scope,
+          connection_id: connection.id,
+          external_ref: first.external_ref
+        )
+
+      assert {again.connection_id, again.external_ref} ==
+               {first.connection_id, first.external_ref}
+
+      assert again.id != first.id
+      assert again.number == first.number + 1
+    end
+
+    test "stays when its connection ends", %{connection: connection, work_item: item} do
+      assert {1, _} =
+               Repo.update_all(from(c in Connection, where: c.id == ^connection.id),
+                 set: [
+                   state: :ended,
+                   ended_at: DateTime.utc_now(),
+                   ended_reason: :adapter_reported
+                 ]
+               )
+
+      assert %WorkItem{connection_id: id} = Repo.get!(WorkItem, item.id)
+      assert id == connection.id
+
+      # A connection is never deleted alone; while a work item names it, nothing may.
+      refused("work_items_connection_id_fkey", fn ->
+        Repo.query!("DELETE FROM adapter_connections WHERE id = $1", [
+          Ecto.UUID.dump!(connection.id)
+        ])
+      end)
+    end
+
+    test "goes with its organisation, with its connection", ctx do
+      %{scope: scope, connection: connection, work_item: item} = ctx
+
+      # The key is NO ACTION ("a"), checked at the end of the statement, so the delete
+      # does not depend on the order its cascades run in.
+      assert %{rows: [["a"]]} =
+               Repo.query!(
+                 "SELECT confdeltype::text FROM pg_constraint " <>
+                   "WHERE conname = 'work_items_connection_id_fkey'"
+               )
+
+      Repo.query!("DELETE FROM organisations WHERE id = $1", [
+        Ecto.UUID.dump!(scope.organisation.id)
+      ])
+
+      assert Repo.get(WorkItem, item.id) == nil
+      assert Repo.get(Connection, connection.id) == nil
     end
   end
 
@@ -274,12 +353,18 @@ defmodule Apiary.WorkItems.WorkItemTest do
       changeset = WorkItem.take_in_changeset(%WorkItem{}, %{})
       refute changeset.valid?
 
-      assert %{ref: [_], title: [_], collection_title: [_], owner_id: [_]} =
-               errors_on(changeset)
+      assert %{
+               connection_id: [_],
+               external_ref: [_],
+               title: [_],
+               collection_title: [_],
+               owner_id: [_]
+             } = errors_on(changeset)
 
       changeset =
         WorkItem.take_in_changeset(%WorkItem{}, %{
-          ref: String.duplicate("r", 256),
+          connection_id: Ecto.UUID.generate(),
+          external_ref: String.duplicate("r", 256),
           url: "https://forge.example.com/" <> String.duplicate("a", 2023),
           title: String.duplicate("t", 1025),
           collection_title: String.duplicate("c", 1025),
@@ -288,13 +373,14 @@ defmodule Apiary.WorkItems.WorkItemTest do
         })
 
       assert errors_on(changeset) |> Map.keys() |> Enum.sort() ==
-               [:collection_title, :first_instruction, :ref, :title, :url]
+               [:collection_title, :external_ref, :first_instruction, :title, :url]
     end
 
     test "gives a fresh public id, and leaves no first instruction empty" do
       changeset =
         WorkItem.take_in_changeset(%WorkItem{}, %{
-          ref: "acme/shop#12",
+          connection_id: Ecto.UUID.generate(),
+          external_ref: "acme/shop#12",
           title: "The checkout keeps the old price",
           collection_title: "acme/shop",
           owner_id: Ecto.UUID.generate()
@@ -313,7 +399,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert {String.length(combining), String.length(zwj)} == {1, 1}
 
       over = %{
-        ref: String.duplicate(combining, 128),
+        external_ref: String.duplicate(combining, 128),
         title: String.duplicate(zwj, 342),
         collection_title: String.duplicate(combining, 513),
         first_instruction: String.duplicate(zwj, 1334)
@@ -322,10 +408,10 @@ defmodule Apiary.WorkItems.WorkItemTest do
       changeset = WorkItem.take_in_changeset(%WorkItem{}, snapshot(over))
 
       assert errors_on(changeset) |> Map.keys() |> Enum.sort() ==
-               [:collection_title, :first_instruction, :ref, :title]
+               [:collection_title, :external_ref, :first_instruction, :title]
 
       at_most = %{
-        ref: String.duplicate(combining, 127) <> "r",
+        external_ref: String.duplicate(combining, 127) <> "r",
         title: String.duplicate(zwj, 341) <> "t",
         collection_title: String.duplicate(combining, 512),
         first_instruction: String.duplicate(zwj, 1333) <> "f"
@@ -336,7 +422,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
     test "a value the database refuses is an error on its field, not a raise", ctx do
       for {field, value} <- [
-            ref: String.duplicate("r", 256),
+            external_ref: String.duplicate("r", 256),
             url: "https://user@forge.example.com/acme/shop/issues/12",
             title: String.duplicate("t", 1025),
             collection_title: String.duplicate("c", 1025),
@@ -345,12 +431,23 @@ defmodule Apiary.WorkItems.WorkItemTest do
         # Past the changeset's own checks, as a value they count apart would be.
         assert {:error, changeset} =
                  new_work_item(ctx.scope)
-                 |> WorkItem.take_in_changeset(snapshot(%{owner_id: ctx.scope.user.id}))
+                 |> WorkItem.take_in_changeset(
+                   snapshot(%{owner_id: ctx.scope.user.id, connection_id: ctx.connection.id})
+                 )
                  |> put_change(field, value)
                  |> Repo.insert()
 
         assert Map.keys(errors_on(changeset)) == [field]
       end
+    end
+
+    test "a connection that is not there is an error on it, not a raise", ctx do
+      assert {:error, changeset} =
+               new_work_item(ctx.scope)
+               |> WorkItem.take_in_changeset(snapshot(%{owner_id: ctx.scope.user.id}))
+               |> Repo.insert()
+
+      assert Map.keys(errors_on(changeset)) == [:connection_id]
     end
   end
 

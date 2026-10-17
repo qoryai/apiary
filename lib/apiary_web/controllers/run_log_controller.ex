@@ -141,12 +141,13 @@ defmodule ApiaryWeb.RunLogController do
 
   defp size_header(conn, nil), do: conn
 
-  # The file name is made of the first eight characters of a UUID the database matched.
+  # The file name is the run's `public_id`, which the database matched and holds to its
+  # shape, `rn_` and sixteen characters of an alphabet that needs no quoting.
   defp disposition(conn, run, %{download?: true}) do
     put_resp_header(
       conn,
       "content-disposition",
-      ~s(attachment; filename="#{String.slice(run.run_id, 0, 8)}.log")
+      ~s(attachment; filename="#{run.public_id}.log")
     )
   end
 
