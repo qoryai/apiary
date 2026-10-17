@@ -26,7 +26,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     and runtimes. Last, where the target's collection is assigned to the workspace, and
     it and its adapter have items, the Backlog card: one switch, whether its tickets come
     into the workspace's Backlog, named with its source's word for them, which owners and
-    admins turn at once (`Apiary.Adapters.Collections.set_backlog/3`)
+    admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
     and anyone else reads, disabled, with who may change it.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
