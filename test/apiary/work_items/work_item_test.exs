@@ -7,6 +7,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.Adapters.Connection
+  alias Apiary.Sources.Item
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   defp refused(constraint, fun), do: assert_raise(Postgrex.Error, ~r/#{constraint}/, fun)
@@ -26,11 +27,28 @@ defmodule Apiary.WorkItems.WorkItemTest do
   defp snapshot(attrs) do
     Enum.into(attrs, %{
       connection_id: Ecto.UUID.generate(),
-      external_ref: "acme/shop#12",
+      adapter_id: Ecto.UUID.generate(),
+      item_id: Ecto.UUID.generate(),
+      external_ref: "acme/shop#13",
+      url: "https://forge.example.com/acme/shop/issues/13",
       title: "The checkout keeps the old price",
       collection_title: "acme/shop",
+      target_system: "forge.example.com",
+      target_path: "acme/shop",
       owner_id: Ecto.UUID.generate()
     })
+  end
+
+  # The snapshot of a ticket of the setup's connection that no work item names yet.
+  defp fresh_snapshot(ctx, attrs \\ %{}) do
+    snapshot(
+      Enum.into(attrs, %{
+        owner_id: ctx.scope.user.id,
+        connection_id: ctx.connection.id,
+        adapter_id: ctx.connection.adapter_id,
+        item_id: ctx.item.id
+      })
+    )
   end
 
   # A work item of the scope's workspace before its snapshot, with a number no fixture
@@ -53,6 +71,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
     %{
       scope: scope,
       connection: connection,
+      item: source_item_fixture(scope, connection: connection, external_ref: "acme/shop#13"),
       work_item: work_item_fixture(scope, connection_id: connection.id)
     }
   end
@@ -96,7 +115,8 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert %WorkItem{number: 1} = work_item_fixture(elsewhere)
     end
 
-    test "the state is exploring, closed or undone; only a closed one has its closing", ctx do
+    test "the state is exploring, declined, closed or undone; only a closed one has its closing",
+         ctx do
       %{scope: scope, work_item: item} = ctx
       closer = Ecto.UUID.dump!(scope.user.id)
 
@@ -118,6 +138,14 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
       assert %{num_rows: 1} = update!("work_items", item.id, "state = 'undone'")
 
+      refused("work_items_closed_check", fn ->
+        update!(
+          "work_items",
+          item.id,
+          "state = 'declined', declined_at = now(), closed_at = now()"
+        )
+      end)
+
       assert %{num_rows: 1} =
                update!(
                  "work_items",
@@ -133,7 +161,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
     test "the snapshot keeps to its bounds", %{work_item: item} do
       for {column, value, constraint} <- [
             {"external_ref", "", "work_items_external_ref_check"},
-            {"external_ref", String.duplicate("r", 256), "work_items_external_ref_check"},
+            {"external_ref", String.duplicate("é", 201), "work_items_external_ref_check"},
             {"title", "", "work_items_title_check"},
             {"title", String.duplicate("t", 1025), "work_items_title_check"},
             {"collection_title", "", "work_items_collection_title_check"},
@@ -148,7 +176,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
 
       for {column, value} <- [
-            {"external_ref", String.duplicate("r", 255)},
+            {"external_ref", String.duplicate("é", 200)},
             {"title", String.duplicate("t", 1024)},
             {"collection_title", String.duplicate("c", 1024)},
             {"first_instruction", String.duplicate("é", 4000)},
@@ -158,11 +186,13 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
     end
 
-    test "an address is http or https, with no user or blank, 2,048 characters at most", ctx do
+    test "an address is https alone, with no user or blank, 2,048 characters at most", ctx do
       %{work_item: item} = ctx
 
       for url <- [
             "ftp://forge.example.com/acme/shop/issues/12",
+            "http://forge.example.com/acme/shop/issues/12",
+            "HTTPS://forge.example.com/acme/shop/issues/12",
             "https://",
             "https://user@forge.example.com/acme/shop/issues/12",
             "https://forge.example.com/acme shop",
@@ -174,14 +204,96 @@ defmodule Apiary.WorkItems.WorkItemTest do
         end)
       end
 
+      refused("url", fn -> update!("work_items", item.id, "url = NULL") end)
+
       for url <- [
-            nil,
-            "http://forge.example.com/acme/shop/issues/12",
             "https://forge.example.com:8443/acme/shop/-/issues/12?tab=notes#note_3",
+            "https://forge.example.com?issue=12",
             "https://forge.example.com/" <> String.duplicate("a", 2022)
           ] do
         assert %{num_rows: 1} = update!("work_items", item.id, "url = $2", [url])
       end
+    end
+
+    test "a target is a host name to the contract's pattern and a path of 1 to 200", ctx do
+      %{work_item: item} = ctx
+
+      for {assignments, params} <- [
+            {"target_system = $2", ["Forge.example.com"]},
+            {"target_system = $2", ["forge example"]},
+            {"target_system = $2", [""]},
+            {"target_system = $2", [String.duplicate("a", 254)]},
+            {"target_path = $2", [""]},
+            {"target_path = $2", [String.duplicate("é", 201)]}
+          ] do
+        refused("work_items_target_check", fn ->
+          update!("work_items", item.id, assignments, params)
+        end)
+      end
+
+      for column <- ~w(target_system target_path) do
+        refused(column, fn -> update!("work_items", item.id, "#{column} = NULL") end)
+      end
+
+      for {column, value} <- [
+            {"target_system", String.duplicate("a", 253)},
+            {"target_system", "git.forge-1.example"},
+            {"target_path", String.duplicate("é", 200)},
+            {"target_path", "p"}
+          ] do
+        assert %{num_rows: 1} = update!("work_items", item.id, "#{column} = $2", [value])
+      end
+    end
+
+    test "a take in is counted from 1", %{work_item: item} do
+      assert item.take_in == 1
+
+      refused("work_items_take_in_check", fn ->
+        update!("work_items", item.id, "take_in = 0")
+      end)
+
+      refused("take_in", fn -> update!("work_items", item.id, "take_in = NULL") end)
+      assert %{num_rows: 1} = update!("work_items", item.id, "take_in = 2")
+    end
+
+    test "only a declined one has its declining, and the person only with the time", ctx do
+      %{scope: scope, work_item: item} = ctx
+      decliner = Ecto.UUID.dump!(scope.user.id)
+
+      for {assignments, params} <- [
+            {"state = 'declined'", []},
+            {"declined_at = now()", []},
+            {"declined_by_id = $2", [decliner]},
+            {"state = 'declined', declined_by_id = $2", [decliner]}
+          ] do
+        refused("work_items_declined_check", fn ->
+          update!("work_items", item.id, assignments, params)
+        end)
+      end
+
+      assert %{num_rows: 1} =
+               update!(
+                 "work_items",
+                 item.id,
+                 "state = 'declined', declined_at = now(), declined_by_id = $2",
+                 [decliner]
+               )
+
+      # Declined by no person: the time alone.
+      assert %{num_rows: 1} = update!("work_items", item.id, "declined_by_id = NULL")
+
+      assert %WorkItem{state: :declined, declined_at: %DateTime{}} =
+               Repo.get!(WorkItem, item.id)
+
+      refused("work_items_declined_check", fn ->
+        update!("work_items", item.id, "state = 'exploring'")
+      end)
+
+      refused("work_items_declined_by_id_fkey", fn ->
+        update!("work_items", item.id, "declined_by_id = $2", [
+          Ecto.UUID.dump!(Ecto.UUID.generate())
+        ])
+      end)
     end
 
     test "a work item's workspace is of its organisation", %{work_item: item} do
@@ -207,20 +319,156 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end)
     end
 
-    test "the same ticket may be taken in again, through the same connection", ctx do
+    test "a ticket has one work item in its organisation, live or not", ctx do
       %{scope: scope, connection: connection, work_item: first} = ctx
 
-      again =
-        work_item_fixture(scope,
-          connection_id: connection.id,
-          external_ref: first.external_ref
+      # Ended, the work item still holds the ticket: a take in again reuses it.
+      assert %{num_rows: 1} =
+               update!("work_items", first.id, "state = 'closed', closed_at = now()")
+
+      for place <- [scope, workspace_scope(scope.user, workspace_fixture(scope.organisation))] do
+        assert_raise Ecto.InvalidChangesetError,
+                     ~r/external_ref: \{"has already been taken"/,
+                     fn ->
+                       work_item_fixture(place,
+                         connection_id: connection.id,
+                         external_ref: first.external_ref
+                       )
+                     end
+      end
+
+      # Past the changeset, the database refuses it all the same.
+      refused("work_items_organisation_id_adapter_id_external_ref_index", fn ->
+        update!(
+          "work_items",
+          work_item_fixture(scope, connection_id: connection.id, external_ref: "other").id,
+          "external_ref = 'acme/shop#12'"
         )
+      end)
 
-      assert {again.connection_id, again.external_ref} ==
-               {first.connection_id, first.external_ref}
+      # The changeset names the field.
+      assert {:error, changeset} =
+               scope
+               |> new_work_item()
+               |> WorkItem.take_in_changeset(
+                 fresh_snapshot(ctx, %{external_ref: first.external_ref})
+               )
+               |> Repo.insert()
 
-      assert again.id != first.id
-      assert again.number == first.number + 1
+      assert %{external_ref: ["has already been taken"]} = errors_on(changeset)
+
+      # Another ref of the adapter, the same ref through another adapter, or in another
+      # organisation, is another ticket.
+      assert %WorkItem{} =
+               work_item_fixture(scope, connection_id: connection.id, external_ref: "r")
+
+      assert %WorkItem{} = work_item_fixture(scope, external_ref: first.external_ref)
+
+      %{scope: other} = sign_up_fixture()
+      assert %WorkItem{} = work_item_fixture(other, external_ref: first.external_ref)
+    end
+
+    test "the index is the whole table, not a partial one" do
+      assert %{rows: [[definition]]} =
+               Repo.query!(
+                 "SELECT indexdef FROM pg_indexes " <>
+                   "WHERE indexname = 'work_items_organisation_id_adapter_id_external_ref_index'"
+               )
+
+      assert definition =~ "UNIQUE INDEX"
+      assert definition =~ "(organisation_id, adapter_id, external_ref)"
+      refute definition =~ "WHERE"
+    end
+
+    test "nothing is unique on the ticket a work item names", ctx do
+      %{scope: scope, connection: connection, work_item: first} = ctx
+
+      assert %WorkItem{item_id: item_id} =
+               work_item_fixture(scope,
+                 connection_id: connection.id,
+                 item_id: first.item_id,
+                 external_ref: "acme/shop#12 renamed"
+               )
+
+      assert item_id == first.item_id
+    end
+
+    test "a work item's ticket is one of its organisation and its adapter", ctx do
+      %{scope: scope, work_item: item} = ctx
+      %{scope: other} = sign_up_fixture()
+      theirs = source_item_fixture(other)
+      another_adapter = source_item_fixture(scope)
+
+      for id <- [theirs.id, another_adapter.id, Ecto.UUID.generate()] do
+        refused("work_items_item_id_fkey", fn ->
+          update!("work_items", item.id, "item_id = $2", [Ecto.UUID.dump!(id)])
+        end)
+      end
+    end
+
+    test "a work item's adapter is its connection's", ctx do
+      %{scope: scope, work_item: item} = ctx
+      elsewhere = ticket_connection_fixture(scope)
+
+      refused("work_items_connection_id_fkey", fn ->
+        update!("work_items", item.id, "adapter_id = $2", [Ecto.UUID.dump!(elsewhere.adapter_id)])
+      end)
+
+      refused("adapter_id", fn -> update!("work_items", item.id, "adapter_id = NULL") end)
+    end
+
+    test "stays when its ticket's row goes, with no ticket", %{work_item: item} do
+      # SET NULL of item_id alone ("n"), so the organisation and the adapter stay.
+      assert %{rows: [["n", definition]]} =
+               Repo.query!(
+                 "SELECT confdeltype::text, pg_get_constraintdef(oid) FROM pg_constraint " <>
+                   "WHERE conname = 'work_items_item_id_fkey'"
+               )
+
+      assert definition =~ "ON DELETE SET NULL (item_id)"
+
+      Repo.delete!(%Item{id: item.item_id})
+
+      assert %WorkItem{item_id: nil, adapter_id: adapter_id, external_ref: ref} =
+               Repo.get!(WorkItem, item.id)
+
+      assert {adapter_id, ref} == {item.adapter_id, item.external_ref}
+    end
+
+    test "stays when its ticket's collection ends and its ticket is disconnected", ctx do
+      %{work_item: item} = ctx
+      ticket = Repo.get!(Item, item.item_id)
+
+      Repo.query!(
+        "UPDATE source_collections SET ended_at = now(), ended_reason = 'disconnected' " <>
+          "WHERE id = $1",
+        [Ecto.UUID.dump!(ticket.collection_id)]
+      )
+
+      update!("source_items", ticket.id, "disconnected_at = now()")
+
+      assert %WorkItem{item_id: item_id} = Repo.get!(WorkItem, item.id)
+      assert item_id == ticket.id
+    end
+
+    test "moves to another workspace of its organisation, and its events follow it", ctx do
+      %{scope: scope, work_item: item} = ctx
+      elsewhere = workspace_fixture(scope.organisation)
+      %{scope: other} = sign_up_fixture()
+
+      assert %{num_rows: 1} =
+               update!("work_items", item.id, "workspace_id = $2", [
+                 Ecto.UUID.dump!(elsewhere.id)
+               ])
+
+      assert %WorkItemEvent{workspace_id: workspace_id} = event_of(item)
+      assert workspace_id == elsewhere.id
+
+      refused("work_items_workspace_id_fkey", fn ->
+        update!("work_items", item.id, "workspace_id = $2", [
+          Ecto.UUID.dump!(other.workspace.id)
+        ])
+      end)
     end
 
     test "stays when its connection ends", %{connection: connection, work_item: item} do
@@ -236,7 +484,14 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert %WorkItem{connection_id: id} = Repo.get!(WorkItem, item.id)
       assert id == connection.id
 
-      # A connection is never deleted alone; while a work item names it, nothing may.
+      # A connection is never deleted alone; while a work item names it, nothing may, its
+      # tickets and collections gone or not.
+      for table <- ~w(source_items source_collections) do
+        Repo.query!("DELETE FROM #{table} WHERE organisation_id = $1", [
+          Ecto.UUID.dump!(item.organisation_id)
+        ])
+      end
+
       refused("work_items_connection_id_fkey", fn ->
         Repo.query!("DELETE FROM adapter_connections WHERE id = $1", [
           Ecto.UUID.dump!(connection.id)
@@ -265,14 +520,14 @@ defmodule Apiary.WorkItems.WorkItemTest do
   end
 
   describe "work_item_events" do
-    test "the kind is taken_in, closed or undone", %{work_item: item} do
+    test "the kind is taken_in, declined, closed or undone", %{work_item: item} do
       event = event_of(item)
 
       refused("work_item_events_kind_check", fn ->
         update!("work_item_events", event.id, "kind = 'answered'")
       end)
 
-      for kind <- ~w(closed undone) do
+      for kind <- ~w(declined closed undone) do
         assert %{num_rows: 1} = update!("work_item_events", event.id, "kind = $2", [kind])
       end
     end
@@ -362,32 +617,46 @@ defmodule Apiary.WorkItems.WorkItemTest do
              } = errors_on(changeset)
 
       changeset =
-        WorkItem.take_in_changeset(%WorkItem{}, %{
-          connection_id: Ecto.UUID.generate(),
-          external_ref: String.duplicate("r", 256),
-          url: "https://forge.example.com/" <> String.duplicate("a", 2023),
-          title: String.duplicate("t", 1025),
-          collection_title: String.duplicate("c", 1025),
-          owner_id: Ecto.UUID.generate(),
-          first_instruction: String.duplicate("é", 4001)
-        })
+        WorkItem.take_in_changeset(
+          %WorkItem{},
+          snapshot(%{
+            external_ref: String.duplicate("r", 201),
+            url: "https://forge.example.com/" <> String.duplicate("a", 2023),
+            title: String.duplicate("t", 1025),
+            collection_title: String.duplicate("c", 1025),
+            target_system: "Forge.example.com",
+            target_path: String.duplicate("p", 201),
+            first_instruction: String.duplicate("é", 4001)
+          })
+        )
 
       assert errors_on(changeset) |> Map.keys() |> Enum.sort() ==
-               [:collection_title, :external_ref, :first_instruction, :title, :url]
+               [
+                 :collection_title,
+                 :external_ref,
+                 :first_instruction,
+                 :target_path,
+                 :target_system,
+                 :title,
+                 :url
+               ]
+
+      for url <- [
+            "http://forge.example.com/acme/shop/issues/12",
+            "https://user@forge.example.com/acme/shop/issues/12",
+            "https://forge.example.com/acme shop"
+          ] do
+        changeset = WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{url: url}))
+        assert %{url: [_]} = errors_on(changeset)
+      end
     end
 
-    test "gives a fresh public id, and leaves no first instruction empty" do
-      changeset =
-        WorkItem.take_in_changeset(%WorkItem{}, %{
-          connection_id: Ecto.UUID.generate(),
-          external_ref: "acme/shop#12",
-          title: "The checkout keeps the old price",
-          collection_title: "acme/shop",
-          owner_id: Ecto.UUID.generate()
-        })
+    test "gives a fresh public id, the first take in, and leaves no first instruction empty" do
+      changeset = WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{}))
 
       assert changeset.valid?
       assert Apiary.PublicId.valid?("wi", get_change(changeset, :public_id))
+      assert get_change(changeset, :take_in) == 1
       assert get_field(changeset, :first_instruction) == ""
     end
 
@@ -399,7 +668,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert {String.length(combining), String.length(zwj)} == {1, 1}
 
       over = %{
-        external_ref: String.duplicate(combining, 128),
+        external_ref: String.duplicate(combining, 100) <> "r",
         title: String.duplicate(zwj, 342),
         collection_title: String.duplicate(combining, 513),
         first_instruction: String.duplicate(zwj, 1334)
@@ -411,7 +680,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
                [:collection_title, :external_ref, :first_instruction, :title]
 
       at_most = %{
-        external_ref: String.duplicate(combining, 127) <> "r",
+        external_ref: String.duplicate(combining, 100),
         title: String.duplicate(zwj, 341) <> "t",
         collection_title: String.duplicate(combining, 512),
         first_instruction: String.duplicate(zwj, 1333) <> "f"
@@ -422,32 +691,40 @@ defmodule Apiary.WorkItems.WorkItemTest do
 
     test "a value the database refuses is an error on its field, not a raise", ctx do
       for {field, value} <- [
-            external_ref: String.duplicate("r", 256),
+            external_ref: String.duplicate("r", 201),
             url: "https://user@forge.example.com/acme/shop/issues/12",
             title: String.duplicate("t", 1025),
             collection_title: String.duplicate("c", 1025),
+            target_system: "Forge.example.com",
             first_instruction: String.duplicate("\u{1F469}\u200D\u{1F4BB}", 1334)
           ] do
-        # Past the changeset's own checks, as a value they count apart would be.
+        # Past the changeset's checks, as a value they count apart would be.
         assert {:error, changeset} =
                  new_work_item(ctx.scope)
-                 |> WorkItem.take_in_changeset(
-                   snapshot(%{owner_id: ctx.scope.user.id, connection_id: ctx.connection.id})
-                 )
+                 |> WorkItem.take_in_changeset(fresh_snapshot(ctx))
                  |> put_change(field, value)
                  |> Repo.insert()
 
         assert Map.keys(errors_on(changeset)) == [field]
       end
+
+      assert {:ok, %WorkItem{take_in: 1}} =
+               new_work_item(ctx.scope)
+               |> WorkItem.take_in_changeset(fresh_snapshot(ctx))
+               |> Repo.insert()
     end
 
-    test "a connection that is not there is an error on it, not a raise", ctx do
-      assert {:error, changeset} =
-               new_work_item(ctx.scope)
-               |> WorkItem.take_in_changeset(snapshot(%{owner_id: ctx.scope.user.id}))
-               |> Repo.insert()
+    test "a connection or a ticket that is not there is an error on it, not a raise", ctx do
+      for field <- [:connection_id, :item_id] do
+        assert {:error, changeset} =
+                 new_work_item(ctx.scope)
+                 |> WorkItem.take_in_changeset(
+                   fresh_snapshot(ctx, %{field => Ecto.UUID.generate()})
+                 )
+                 |> Repo.insert()
 
-      assert Map.keys(errors_on(changeset)) == [:connection_id]
+        assert Map.keys(errors_on(changeset)) == [field]
+      end
     end
   end
 
