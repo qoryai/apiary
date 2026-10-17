@@ -4,19 +4,25 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # organisations' listings naming one ref at once, two assigns of the same collections
   # in opposite orders, an assign against a listing's part, a Backlog switch and a
   # workspace's unlink against a listing's part over collections whose refs run against
-  # their ids, and a listing's part against a restore and a marking of workspaces. Each
-  # side runs on a separate
-  # connection, outside the SQL sandbox, so each commits and each waits on the other's
-  # locks as it would in production. Not async: what these tests commit is visible to
-  # every other test while they run, and they delete it again before they end.
+  # their ids, a Backlog switch against a part of another connection of the adapter that
+  # names the switch's refs, a disconnect against a part that completes its listing, and
+  # a listing's part against a restore and a marking of workspaces. Each side runs on a
+  # separate connection, outside the SQL sandbox, so each commits and each waits on the
+  # other's locks as it would in production. Not async: what these tests commit is
+  # visible to every other test while they run, and they delete it again before they
+  # end.
   #
   # The rules under test (`Apiary.Adapters.Collections`): one connection's parts are taken
   # one at a time, under its row; a listing never makes a collection live under a
   # connection that ended; a collection ends once, with one `unlinked` entry; one live
   # collection per adapter and ref; an assign, a switch and an unlink hold the collections
   # by id, after their connections, so none of them and a listing's part, which holds the
-  # collections by ref under its connection, wait on each other in turn; a listing's part
-  # holds every workspace it holds in one statement, by id, as a marking holds them.
+  # live collections of its connection by ref under that connection, wait on each other
+  # in turn; a listing's part holds no collection of another connection, so a ref live
+  # under another connection stays with it and its row is never held by the part; a
+  # listing's part writes every collection it writes, its ends included, before it takes
+  # the adapter's feed counter; a listing's part holds every workspace it holds in one
+  # statement, by id, as a marking holds them.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -525,6 +531,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
        ctx do
     rows = against_ids(ctx)
     ids = [rows.a, rows.b, rows.c]
+    # A part of another connection of the adapter names the same refs each round.
+    theirs = other_side(ctx)
 
     answers =
       for round <- 1..20 do
@@ -533,15 +541,17 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
         changes = [
           targeted(ctx, "round #{round}", started),
           switch(ctx, rows.target, rem(round, 2) == 0),
+          targeted(theirs, "theirs #{round}", started),
           if(rem(round, 3) == 0, do: unlink(ctx), else: switch(ctx, rows.target, true)),
           assign(ctx, Enum.shuffle(ids), ctx.scope.workspace)
         ]
 
-        together(Enum.map(Enum.take(changes, sides(4)), &safely/1))
+        together(Enum.map(Enum.take(changes, sides(5)), &safely/1))
       end
       |> List.flatten()
 
     assert for({:raised, message} <- answers, do: message) == []
+    assert live(theirs.connection) == []
 
     # Each link and unlink wrote its entry: they alternate, per ref, and the last says
     # how the collection stands.
@@ -555,6 +565,107 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
       linked? = Collection.linked?(Repo.get!(Collection, id))
       assert List.last(statuses) == if(linked?, do: "linked", else: "unlinked")
     end
+  end
+
+  test "a disconnect holding a linked collection, then a part that completes the listing and links another: neither waits on the other in turn",
+       ctx do
+    # One workspace in use, so a part links what it makes.
+    {:ok, _marked} =
+      Deletion.delete_workspace(ctx.scope, ctx.other_workspace.id, ctx.other_workspace.slug)
+
+    {:ok, :accepted} = listing(ctx, ["Z"], "first", @started).()
+    [z] = ids(ctx.connection, ["Z"])
+
+    # The disconnect's first step: it holds `Z`, by adapter and ref, without its
+    # connection.
+    {held, held_pid} = hold(lock_row(z))
+
+    # The part makes `N`, linked, and ends `Z`, which the first listing named: it waits
+    # on `Z`. A part that took the feed counter for `N` before it ended `Z` would keep
+    # the disconnect's entry waiting on it in turn.
+    listed = start(safely(listing(ctx, ["N"], "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, held_pid)
+
+    disconnect = fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "Z"}) end
+    assert continue(held, safely(disconnect)) == {:ok, :disconnected}
+    commit(held)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert Repo.get!(Collection, z).ended_reason == :disconnected
+    assert live(ctx.connection) == ["N"]
+
+    assert collection_entries(ctx.adapter) == [
+             %{"collection_ref" => "Z", "status" => "linked"},
+             %{"collection_ref" => "Z", "status" => "unlinked"},
+             %{"collection_ref" => "N", "status" => "linked"}
+           ]
+  end
+
+  ## A switch against a part of another connection of the adapter
+
+  # The same adapter's connection in another organisation, which has two workspaces, so
+  # nothing is linked as it is made: the context as that organisation's owner sees it.
+  defp other_side(ctx) do
+    %{scope: scope} = sign_up()
+    other_workspace = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
+    {connection, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+    %{ctx | scope: scope, other_workspace: other_workspace, connection: connection}
+  end
+
+  test "a part naming refs live under another connection, beside a switch holding them by id: the part does not wait on a row only held, and each answers",
+       ctx do
+    theirs = other_side(ctx)
+    rows = against_ids(theirs)
+
+    # The middle collection held. A part that held `A` by ref would wait on `B`; the
+    # switch, holding `C`, would wait on `B` too, and once `B` is let go the two would
+    # wait on each other in turn. The part holds none of them, and answers at once.
+    {held, held_pid} = hold(lock_row(rows.b))
+    listed = start(safely(targeted(ctx, "mine", @started)))
+    assert done_or_blocked(listed, held_pid) == {:done, {:ok, :accepted}}
+
+    switched = start(safely(switch(theirs, rows.target, false)))
+    await_blocked(switched.backend, held_pid)
+    commit(held)
+
+    assert Task.await(switched.task) == {:ok, 3}
+    assert live(ctx.connection) == []
+    assert live(theirs.connection) == ["A", "B", "C"]
+  end
+
+  test "a part held naming refs live under another connection, then a switch of those: the switch does not wait for the part",
+       ctx do
+    theirs = other_side(ctx)
+    rows = against_ids(theirs)
+
+    {listed, listed_pid} = hold(targeted(ctx, "mine", @started))
+    assert listed.result == {:ok, :accepted}
+
+    switched = start(safely(switch(theirs, rows.target, false)))
+    assert done_or_blocked(switched, listed_pid) == {:done, {:ok, 3}}
+    commit(listed)
+
+    assert live(ctx.connection) == []
+    assert live(theirs.connection) == ["A", "B", "C"]
+  end
+
+  test "a switch held on another connection's collections, then a part naming their refs: the part makes none of them, and each answers",
+       ctx do
+    theirs = other_side(ctx)
+    rows = against_ids(theirs)
+
+    {switched, switch_pid} = hold(switch(theirs, rows.target, false))
+    assert switched.result == {:ok, 3}
+
+    # The part's insert meets rows the switch wrote: it waits for the switch to end, and
+    # holds none of them.
+    listed = start(safely(targeted(ctx, "mine", @started)))
+    assert done_or_blocked(listed, switch_pid) == :blocked
+    commit(switched)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert live(ctx.connection) == []
+    assert live(theirs.connection) == ["A", "B", "C"]
   end
 
   ## A listing's part against a restore and a marking
