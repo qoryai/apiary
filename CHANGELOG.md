@@ -48,6 +48,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The organisation slug `integrations` is reserved as well: a slug made from a name skips
   it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
   the slug `integrations-2`.
+<!-- feature: secrets -->
+- An integration description is refused when it goes past the limits the integration
+  contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
+  16 KiB, 64 levels of nesting) or when an object in it repeats a member. An integration's
+  settings are checked within a time and memory limit, and schemas no longer create atoms
+  or apply casts.
+<!-- /feature -->
 
 ### Migrations
 
