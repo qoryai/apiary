@@ -44,10 +44,20 @@ defmodule Apiary.Adapters do
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Dispatches, Features, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
-  alias Apiary.Adapters.{Collections, ConnectPass, Connections, Feed, Wire}
+
+  alias Apiary.Adapters.{
+    Collection,
+    Collections,
+    Connection,
+    ConnectPass,
+    Connections,
+    Feed,
+    Wire
+  }
+
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.Organisation
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   ## Who may
 
@@ -130,6 +140,70 @@ defmodule Apiary.Adapters do
       where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
       where: n.kind == :adapter and is_nil(n.deleted_at)
   end
+
+  ## The words for a source's items
+
+  @doc false
+  # item_noun/1 is what `adapter` calls one of its items and many, as its description's
+  # source role names them (`Apiary.Nodes.Node`'s `item_noun_one` and `item_noun_other`):
+  # `%{one: one, other: other}`, lower case, shown as plain text; nil where it names none,
+  # for the default, ticket, which the pages word themselves. A page or a sentence about
+  # one item uses its source's.
+  @spec item_noun(Node.t()) :: %{one: String.t(), other: String.t()} | nil
+  def item_noun(%Node{kind: :adapter, item_noun_one: one, item_noun_other: other})
+      when is_binary(one) and is_binary(other),
+      do: %{one: one, other: other}
+
+  def item_noun(%Node{kind: :adapter}), do: nil
+
+  @doc false
+  # items?/1 says whether `adapter` reports items: false for a source whose description
+  # says `items: false`, which reports collections and no items, so none of its
+  # collections is ever linked.
+  @spec items?(Node.t()) :: boolean
+  def items?(%Node{kind: :adapter, items: items}), do: items
+
+  @doc false
+  # shared_item_noun/1 is the words a page about the items of many sources uses, of
+  # `adapters`: those of the adapters with items (`items?/1`), when every one of them names
+  # the same (`item_noun/1`); nil, the default, ticket, otherwise, and when none has items.
+  @spec shared_item_noun([Node.t()]) :: %{one: String.t(), other: String.t()} | nil
+  def shared_item_noun(adapters) when is_list(adapters) do
+    case adapters |> Enum.filter(&items?/1) |> Enum.map(&item_noun/1) |> Enum.uniq() do
+      [%{} = noun] -> noun
+      _none_or_several -> nil
+    end
+  end
+
+  @doc false
+  # workspace_item_noun/1 is `shared_item_noun/1` of the sources of the scope's workspace,
+  # to a person who may read its work items (`work_item.read`): the adapters, in use, of
+  # the live collections of a connected connection assigned to it. nil to anyone else.
+  @spec workspace_item_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
+  def workspace_item_noun(
+        %Scope{
+          organisation: %Organisation{id: organisation_id},
+          workspace: %Workspace{organisation_id: organisation_id} = workspace
+        } = scope
+      ) do
+    if Access.can?(scope, :"work_item.read", workspace) do
+      live_query()
+      |> join(:inner, [n], c in Collection, on: c.adapter_id == n.id)
+      |> join(:inner, [n, c], k in Connection,
+        on: k.id == c.connection_id and k.organisation_id == c.organisation_id
+      )
+      |> where(
+        [n, c, k],
+        c.organisation_id == ^organisation_id and c.workspace_id == ^workspace.id and
+          is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at)
+      )
+      |> distinct(true)
+      |> Repo.all()
+      |> shared_item_noun()
+    end
+  end
+
+  def workspace_item_noun(%Scope{}), do: nil
 
   ## Changes
 

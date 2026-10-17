@@ -90,6 +90,27 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
                Repo.get_by!(Collection, external_ref: "R_1001")
     end
 
+    test "a collection that says it has no items, and one that says nothing", ctx do
+      body = fresh("source-collections/code-host-items-false.json", ctx)
+
+      # The core reads no environment, so the fixture's other collection goes without it.
+      body =
+        Map.update!(body, "collections", fn [with_environment, without_items] ->
+          [Map.delete(with_environment, "environment_ref"), without_items]
+        end)
+
+      conn = send_post(ctx, @listing, body)
+      assert conn.status == 204
+      assert Repo.get_by!(Collection, external_ref: "C_2001").items
+      refute Repo.get_by!(Collection, external_ref: "C_2002").items
+
+      for name <- ~w(null string true) do
+        body = fresh("invalid/source-collections-items-#{name}.json", ctx)
+        conn = send_post(ctx, @listing, body)
+        assert {conn.status, Jason.decode!(conn.resp_body)} == {400, @invalid}, name
+      end
+    end
+
     test "the contract's invalid listing, and each bound past its limit, is 400 invalid_request",
          ctx do
       body = fresh("source-collections/code-host.json", ctx)

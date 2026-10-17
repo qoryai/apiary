@@ -125,6 +125,51 @@ defmodule Apiary.WorkItems do
       select: %{key: i.key, title: c.title}
   end
 
+  @doc false
+  # backlog_off/2 is the ids of those of `work_items` whose ticket the Backlog of their
+  # workspace leaves out while it is still assigned there: the ticket's live record (not
+  # disconnected, its collection not ended, its connection connected) is of a collection
+  # assigned to the work item's workspace that is not linked, its Backlog turned off, or
+  # with no items, it or its adapter (`Apiary.Adapters.Collection.linked?/1`). So its work
+  # item cannot be taken in again from there. A work item whose ticket has no live record
+  # there is not among them. Only work items of the scope's workspace are read, and only
+  # when the scope's person may read its work items (`work_item.read`); none otherwise.
+  @spec backlog_off(Scope.t(), [WorkItem.t()]) :: MapSet.t(Ecto.UUID.t())
+  def backlog_off(%Scope{} = scope, work_items) when is_list(work_items) do
+    ids = for %WorkItem{id: id} when is_binary(id) <- work_items, uniq: true, do: id
+
+    case {ids, workspace(scope)} do
+      {[_ | _], {:ok, organisation_id, workspace_id}} ->
+        from(w in WorkItem,
+          join: i in Item,
+          on:
+            i.organisation_id == w.organisation_id and i.adapter_id == w.adapter_id and
+              i.external_ref == w.external_ref and is_nil(i.disconnected_at),
+          join: c in Collection,
+          on:
+            c.id == i.collection_id and c.organisation_id == i.organisation_id and
+              c.workspace_id == w.workspace_id and is_nil(c.ended_at),
+          join: k in Connection,
+          on:
+            k.id == c.connection_id and k.organisation_id == c.organisation_id and
+              k.state == :connected and is_nil(k.ended_at),
+          join: n in Node,
+          on: n.id == c.adapter_id,
+          where:
+            w.id in ^ids and w.organisation_id == ^organisation_id and
+              w.workspace_id == ^workspace_id,
+          where: not (c.backlog and c.items and n.items),
+          distinct: true,
+          select: w.id
+        )
+        |> Repo.all()
+        |> MapSet.new()
+
+      _none ->
+        MapSet.new()
+    end
+  end
+
   # The scope's organisation's id and its workspace's id, when the scope's person may read
   # the workspace's work items; `:error` otherwise.
   defp workspace(

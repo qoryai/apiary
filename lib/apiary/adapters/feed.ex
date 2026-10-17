@@ -21,7 +21,8 @@ defmodule Apiary.Adapters.Feed do
   #     `http://` to a loopback address alone (`localhost`, `127.0.0.1` or `[::1]`, with
   #     a port or not), then nothing or a path (`work_item_url?/1`).
   #   * `%{kind: "collection", collection_ref: ref, status: status}`: one of the adapter's
-  #     collections linked to a workspace (`"linked"`), or unlinked (`"unlinked"`). `ref`
+  #     collections linked (`"linked"`, `Apiary.Adapters.Collection.linked?/1`), or
+  #     unlinked (`"unlinked"`). `ref`
   #     is the collection's ref as the adapter listed it.
   #   * `%{kind: "sync", interval: seconds | nil}`: the adapter's interval, 60 to 86,400
   #     seconds, or nil for the default the adapter declared.

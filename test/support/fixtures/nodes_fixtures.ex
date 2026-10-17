@@ -64,6 +64,22 @@ defmodule Apiary.NodesFixtures do
     adapter
   end
 
+  @descriptions Path.expand("../../fixtures/integration-contract", __DIR__)
+
+  @doc """
+  Records on `adapter` what the source role of the integrations contract's description
+  fixture `name` says of its items (`Apiary.Nodes.Node.source_role_changeset/2`), as
+  nothing in the product does: `example-tracker.json` names them issue and issues,
+  `example-projects.json` says it has none, `acme-tracker.json` says neither. Returns the
+  adapter as it now is.
+  """
+  def describe_source(%Node{kind: :adapter} = adapter, name) do
+    {:ok, description} =
+      @descriptions |> Path.join(name) |> File.read!() |> Apiary.Integrations.Description.parse()
+
+    adapter |> Node.source_role_changeset(description) |> Repo.update!()
+  end
+
   @connect_url "https://tracker.example.com/connect"
 
   @doc """

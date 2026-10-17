@@ -12,9 +12,13 @@ defmodule Apiary.Adapters.Collection do
   # and ref is live at a time. `workspace_id` is the one workspace it is assigned to, or
   # none. `backlog` is whether its items come into that workspace's Backlog, on unless a
   # person turned it off (`Apiary.Adapters.Collections.set_backlog/3`); it stays with the
-  # collection when it moves to another workspace. A collection is linked while it is
-  # assigned to a workspace and `backlog` is on (`linked?/1`): the adapter mirrors it, and
-  # its items and comments are taken.
+  # collection when it moves to another workspace. `items` is false while the latest
+  # listing that named it said it has no items; a listing that names it without `items`
+  # makes it true, and one that leaves it out keeps it. A collection is linked while it is
+  # assigned to a workspace, `backlog` is on, it has items and so does its adapter
+  # (`Apiary.Nodes.Node`'s `items`) (`linked?/1`): the adapter mirrors it, and its items
+  # and comments are taken. `backlog` keeps its value while the collection or its adapter
+  # has no items.
   #
   # `public_id` is its name outside the database: `sc_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -48,6 +52,7 @@ defmodule Apiary.Adapters.Collection do
     field :last_listed_at, :utc_datetime
     field :ended_at, :utc_datetime_usec
     field :backlog, :boolean, default: true
+    field :items, :boolean, default: true
 
     field :ended_reason, Ecto.Enum, values: [:disconnected, :not_listed, :connection_ended]
 
@@ -64,12 +69,15 @@ defmodule Apiary.Adapters.Collection do
   @spec prefix() :: String.t()
   def prefix, do: @prefix
 
-  # Whether `collection` is linked: assigned to a workspace, with its items coming into
-  # that workspace's Backlog. An ended one is told apart by its `ended_at`.
+  # Whether `collection`, with its adapter loaded, is linked: assigned to a workspace,
+  # with its Backlog on, and with items, it and its adapter. An ended one is told apart by
+  # its `ended_at`.
   @doc false
   @spec linked?(t) :: boolean
-  def linked?(%__MODULE__{workspace_id: workspace_id, backlog: backlog}),
-    do: is_binary(workspace_id) and backlog == true
+  def linked?(%__MODULE__{adapter: %Node{items: adapter_items}} = collection),
+    do:
+      is_binary(collection.workspace_id) and collection.backlog == true and
+        collection.items == true and adapter_items == true
 
   # Whether `id` is a collection's public id, in the shape `Apiary.PublicId` makes.
   @doc false

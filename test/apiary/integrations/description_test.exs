@@ -111,6 +111,58 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert tracker.document["roles"]["source"]["program"] == "qory-example-server"
     end
 
+    test "a source role's words for its items, and whether it reports any" do
+      assert {:ok, tracker} = parse_fixture("example-tracker.json")
+      assert Description.item_noun(tracker) == %{one: "issue", other: "issues"}
+      assert Description.items?(tracker)
+
+      assert {:ok, projects} = parse_fixture("example-projects.json")
+      assert Description.item_noun(projects) == nil
+      refute Description.items?(projects)
+
+      # No source role, or one that says neither: no words, and items.
+      for name <- ~w(acme-tracker.json unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        assert Description.item_noun(description) == nil, name
+        assert Description.items?(description), name
+      end
+    end
+
+    test "item_noun's words: lower-case words joined by one space or hyphen, never work item" do
+      {:ok, tracker} = parse_fixture("example-tracker.json")
+
+      with_noun = fn noun ->
+        tracker.document
+        |> put_in(["roles", "source", "item_noun"], noun)
+        |> Jason.encode!()
+        |> Description.parse()
+      end
+
+      for word <- ["a", "user story", "merge-request", String.duplicate("z", 32), "works"] do
+        assert {:ok, read} = with_noun.(%{"one" => word, "other" => word}), word
+        assert Description.item_noun(read) == %{one: word, other: word}
+      end
+
+      for word <- [
+            "",
+            "Issue",
+            "issue ",
+            "user  story",
+            "-issue",
+            "issue2",
+            "tâche",
+            "work item",
+            "work-item",
+            "work items",
+            "work-items",
+            String.duplicate("z", 33)
+          ] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 with_noun.(%{"one" => "issue", "other" => word}),
+               word
+      end
+    end
+
     test "github.json: a connection holds its plain settings, every top-level one" do
       assert {:ok, github} =
                @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()

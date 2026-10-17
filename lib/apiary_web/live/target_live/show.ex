@@ -23,8 +23,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
     plain text, what it is, the same path in other systems, its runs a day, its machines
-    and runtimes. Last, where the target's collection is assigned to the workspace, the
-    Backlog card: one switch, whether its tickets come into the workspace's Backlog,
+    and runtimes. Last, where the target's collection is assigned to the workspace, and
+    it and its adapter have items, the Backlog card: one switch, whether its tickets come into the workspace's Backlog,
     which owners and admins turn at once (`Apiary.Adapters.Collections.set_backlog/3`)
     and anyone else reads, disabled, with who may change it.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).

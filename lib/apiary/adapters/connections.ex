@@ -33,7 +33,7 @@ defmodule Apiary.Adapters.Connections do
   # connections are suspended instead, and come back with it. Each end ends the
   # connection's live collections in the same transaction
   # (`Apiary.Adapters.Collections.end_for_connections/2`), with the feed's `unlinked`
-  # entry for each one linked to a workspace.
+  # entry for each one linked (`Apiary.Adapters.Collection.linked?/1`).
   #
   # The lock order: the adapter's row, then its connections.
   #

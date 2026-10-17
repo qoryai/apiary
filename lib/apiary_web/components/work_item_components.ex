@@ -471,7 +471,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :backlog_off, :boolean,
     default: false,
-    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+    doc:
+      "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
   attr :can_undo, :boolean, default: false, doc: "whether the reader may undo the take in"
 
@@ -1216,7 +1217,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :backlog_off, :boolean,
     default: false,
-    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+    doc:
+      "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
   attr :cancel, :any, default: nil, doc: "what Cancel does"
 
@@ -1280,7 +1282,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :backlog_off, :boolean,
     default: false,
-    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+    doc:
+      "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
   attr :again_path, :string, default: nil, doc: "the ticket's panel in the Backlog"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -1622,7 +1625,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :backlog_off, :boolean,
     default: false,
-    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+    doc:
+      "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
   attr :answers, :map, default: %{}, doc: "the form's draft, by question `public_id`"
   attr :errors, :map, default: %{}, doc: "the form's errors, by question `public_id`"

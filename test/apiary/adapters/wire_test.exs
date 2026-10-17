@@ -228,7 +228,8 @@ defmodule Apiary.Adapters.WireTest do
                     ref: "R_1001",
                     url: "https://github.com/acme/shop",
                     title: "acme/shop",
-                    target: %{system: "github.com", path: "acme/shop"}
+                    target: %{system: "github.com", path: "acme/shop"},
+                    items: true
                   }
                 ],
                 listing: %{
@@ -260,6 +261,30 @@ defmodule Apiary.Adapters.WireTest do
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
+    end
+
+    test "a collection's items is false when given, and true when not; any other value is refused" do
+      {:ok, body} = Wire.decode(fixture("source-collections/code-host-items-false.json"))
+      [with_environment, without_items] = body["collections"]
+
+      # The fixture's other collection names an environment, which the core does not read.
+      assert Wire.listing(body) == :error
+
+      assert {:ok,
+              %{collections: [%{ref: "C_2001", items: true}, %{ref: "C_2002", items: false}]}} =
+               Wire.listing(
+                 Map.put(body, "collections", [
+                   Map.delete(with_environment, "environment_ref"),
+                   without_items
+                 ])
+               )
+
+      for value <- [true, nil, "false", 0, %{}] do
+        assert Wire.listing(
+                 Map.put(body, "collections", [Map.put(without_items, "items", value)])
+               ) == :error,
+               inspect(value)
+      end
     end
 
     test "a ref named twice in one part is taken as named last" do
