@@ -884,7 +884,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   is not a batch.
 - `time` may carry any RFC 3339 offset and is stored in UTC, to the microsecond.
 - `X-Qory-Delivery` that is absent or not a UUID does not fail the delivery: the batch is
-  stored and its delivery is recorded under an id the server makes up, so such a delivery is
+  stored and its delivery is recorded with no delivery id (null), so such a delivery is
   deduplicated by event id only.
 - `X-Qory-Timestamp` sent twice on a POST is `400` `bad_request`, as on a GET, though a
   POST's timestamp is not read.

@@ -12,15 +12,19 @@ defmodule Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS do
   #   `events.run_id` is the run's row, Qory's id, and keeps its name.
   # - `deliveries.delivery_id`, `deliveries.run_id` and `deliveries.instance_id` are
   #   `node_delivery_id`, `node_run_id` and `node_instance_id`. `node_delivery_id` is the
-  #   delivery id the node gave the batch, or one the server made up when the batch gave
-  #   none or gave one that is not a UUID.
+  #   node's delivery id for the batch, or null when the batch gave none or gave one that is
+  #   not a UUID: it holds only what the node gave, so it is no longer NOT NULL. A null
+  #   never conflicts in the unique index on (`access_key_id`, `node_delivery_id`), so such
+  #   a batch is deduplicated by its events' ids alone, as before.
   # - `node_instances.instance_id` is `node_instance_id`.
   #
   # The server contract's words stay as they are: a body, a path, a header and a signed
   # subject still say `run_id`, `instance_id`, `event_id` and `delivery_id`. The indexes
   # and the constraints named after a column are renamed with it, so each name still says
   # what it holds. Postgres 18 names a column's NOT NULL constraint after it; one that is
-  # there is renamed too. Renames change the catalogue alone and rewrite no row.
+  # there is renamed too. Renames change the catalogue alone and rewrite no row. Rolled
+  # back, `delivery_id` is NOT NULL again, and a delivery stored with none is given a
+  # fresh UUID first, as the server made one up before.
   #
   # `runs_public_id_pattern_index` is a btree on `public_id` with `text_pattern_ops`, so a
   # search for a prefix of a run's `rn_` id (`LIKE 'rn_…%'`) can use an index whatever the
@@ -60,7 +64,6 @@ defmodule Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS do
   @not_nulls [
     {"runs", "runs_run_id_not_null", "runs_node_run_id_not_null"},
     {"events", "events_event_id_not_null", "events_node_event_id_not_null"},
-    {"deliveries", "deliveries_delivery_id_not_null", "deliveries_node_delivery_id_not_null"},
     {"deliveries", "deliveries_run_id_not_null", "deliveries_node_run_id_not_null"},
     {"node_instances", "node_instances_instance_id_not_null",
      "node_instances_node_instance_id_not_null"}
@@ -72,6 +75,7 @@ defmodule Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS do
     for {table, from, to} <- @checks, do: rename_constraint(table, from, to)
     for {table, from, to} <- @not_nulls, do: rename_not_null(table, from, to)
 
+    execute("ALTER TABLE deliveries ALTER COLUMN node_delivery_id DROP NOT NULL")
     execute("CREATE INDEX runs_public_id_pattern_index ON runs (public_id text_pattern_ops)")
   end
 
@@ -82,6 +86,10 @@ defmodule Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS do
     for {table, from, to} <- Enum.reverse(@checks), do: rename_constraint(table, to, from)
     for {from, to} <- Enum.reverse(@indexes), do: rename_index(to, from)
     for {table, from, to} <- Enum.reverse(@columns), do: rename_column(table, to, from)
+
+    # After the rename, so that Postgres 18 names the constraint after `delivery_id`.
+    execute("UPDATE deliveries SET delivery_id = gen_random_uuid() WHERE delivery_id IS NULL")
+    execute("ALTER TABLE deliveries ALTER COLUMN delivery_id SET NOT NULL")
   end
 
   defp rename_column(table, from, to),

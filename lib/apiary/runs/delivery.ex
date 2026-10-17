@@ -2,9 +2,9 @@ defmodule Apiary.Runs.Delivery do
   @moduledoc """
   One batch as the receiver answered it: which key delivered it, for which
   subject, how many events it held and how many were new, and the status
-  answered. `node_delivery_id` is the delivery id the node gave the batch
-  (`X-Qory-Delivery`), or one the server made up when the batch gave none or gave one that
-  is not a UUID; `node_run_id` is the node's run id, the subject of the batch, not a row of
+  answered. `node_delivery_id` is the node's delivery id for the batch
+  (`X-Qory-Delivery`), or null when the batch gave none or gave one that is not a UUID;
+  `node_run_id` is the node's run id, the subject of the batch, not a row of
   `runs`. `run_configuration_digest` is what the batch's
   `X-Qory-Run-Configuration` said the run holds, nil when it said nothing or no digest.
   `node_instance_id` is the node's instance id the request claimed

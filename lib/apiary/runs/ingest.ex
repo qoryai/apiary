@@ -68,8 +68,8 @@ defmodule Apiary.Runs.Ingest do
   @typedoc """
   What the request said beside its body: `contract_version`, the revision of
   `X-Qory-Contract-Version`, which the gateway sends on every request and the events
-  endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
-  absent or not a UUID), `forager_version`, `run_configuration`
+  endpoint has checked; `delivery_id` (`X-Qory-Delivery`; read as none when it is
+  not a UUID in its text form), `forager_version`, `run_configuration`
   (`X-Qory-Run-Configuration`) and `instance_id` (`X-Qory-Instance-Id`, as the request
   verified it), each nil when not sent.
   """
@@ -197,6 +197,10 @@ defmodule Apiary.Runs.Ingest do
   end
 
   defp stored(run, access_key, batch, meta, delivery_id, now) do
+    # The delivery's row, by Qory's id: a batch that named no delivery id has none to
+    # find it by.
+    row_id = Ecto.UUID.generate()
+
     cond do
       # A run through a gateway is held to its own place, as a key of it would be.
       (refused = place_refusal(run, access_key)) != :ok ->
@@ -213,14 +217,14 @@ defmodule Apiary.Runs.Ingest do
       not is_nil(run.events_pruned_at) ->
         {:ok, gone(access_key, run, batch, meta, delivery_id, now)}
 
-      not new_delivery?(access_key, run, batch, meta, delivery_id, now) ->
+      not new_delivery?(row_id, access_key, run, batch, meta, delivery_id, now) ->
         {:ok, %{result(202, run) | repeated: true, end: run_end(run, batch)}}
 
       true ->
         {stored_batch, pruned} = without_pruned_log(run, batch)
         instance_id = placement(access_key, meta).node_instance_id
         {inserted, duplicates, conflicts} = insert_events(run, stored_batch, instance_id, now)
-        record_delivery(access_key, delivery_id, inserted)
+        record_delivery(row_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
         {:ok,
@@ -261,7 +265,9 @@ defmodule Apiary.Runs.Ingest do
   # Retention has pruned the run's events: the delivery is recorded, nothing else is
   # kept.
   defp gone(access_key, run, batch, meta, delivery_id, now) do
-    repeated = not new_delivery?(access_key, run, batch, meta, delivery_id, now, 410)
+    repeated =
+      not new_delivery?(Ecto.UUID.generate(), access_key, run, batch, meta, delivery_id, now, 410)
+
     %{result(410, nil) | repeated: repeated}
   end
 
@@ -352,14 +358,15 @@ defmodule Apiary.Runs.Ingest do
 
   # The delivery is inserted first with nothing counted, so a delivery id seen
   # before is known before any event is touched. It is the run's workspace's, whichever
-  # key posted it.
-  defp new_delivery?(access_key, run, batch, meta, delivery_id, now, status \\ 202) do
+  # key posted it. A batch that named no delivery id is stored with none, and never
+  # conflicts: its events are deduplicated by their ids alone.
+  defp new_delivery?(row_id, access_key, run, batch, meta, delivery_id, now, status \\ 202) do
     {count, _} =
       Repo.insert_all(
         Delivery,
         [
           %{
-            id: Ecto.UUID.generate(),
+            id: row_id,
             organisation_id: run.organisation_id,
             workspace_id: run.workspace_id,
             access_key_id: access_key.id,
@@ -380,15 +387,10 @@ defmodule Apiary.Runs.Ingest do
     count == 1
   end
 
-  defp record_delivery(_access_key, _delivery_id, 0), do: :ok
+  defp record_delivery(_row_id, 0), do: :ok
 
-  defp record_delivery(access_key, delivery_id, inserted) do
-    Repo.update_all(
-      from(d in Delivery,
-        where: d.access_key_id == ^access_key.id and d.node_delivery_id == ^delivery_id
-      ),
-      set: [inserted_count: inserted]
-    )
+  defp record_delivery(row_id, inserted) do
+    Repo.update_all(from(d in Delivery, where: d.id == ^row_id), set: [inserted_count: inserted])
   end
 
   defp insert_events(run, batch, instance_id, now) do
@@ -481,12 +483,14 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
+  # The node's delivery id when it is a UUID in its text form, 36 characters; nil when the
+  # batch gave none or another value, a UUID's 16 raw bytes among them.
   defp delivery_id(meta) do
-    with id when is_binary(id) <- meta[:delivery_id],
+    with id when byte_size(id) == 36 <- meta[:delivery_id],
          {:ok, id} <- Ecto.UUID.cast(id) do
       id
     else
-      _ -> Ecto.UUID.generate()
+      _ -> nil
     end
   end
 

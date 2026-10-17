@@ -73,7 +73,6 @@ defmodule Apiary.Runs.NodeIdsMigrationTest do
   )
 
   @constraints_after ~w(
-    deliveries_node_delivery_id_not_null
     deliveries_node_instance_id_check
     deliveries_node_run_id_not_null
     events_node_event_id_not_null
@@ -135,6 +134,48 @@ defmodule Apiary.Runs.NodeIdsMigrationTest do
       else: Enum.reject(names, &String.ends_with?(&1, "_not_null"))
   end
 
+  defp nullable?(table, column) do
+    %{rows: [[nullable]]} =
+      Repo.query!(
+        "SELECT is_nullable FROM information_schema.columns " <>
+          "WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2",
+        [table, column]
+      )
+
+    nullable == "YES"
+  end
+
+  # A delivery row written in SQL, the migration up, with the given delivery id, which may
+  # be null.
+  defp insert_delivery!(delivery_id) do
+    %{scope: scope} = Apiary.OrganisationsFixtures.sign_up_fixture()
+    key = Apiary.AccessKeysFixtures.access_key_fixture(scope).access_key
+    id = Ecto.UUID.generate()
+
+    Repo.query!(
+      "INSERT INTO deliveries (id, organisation_id, workspace_id, access_key_id, " <>
+        "node_delivery_id, node_run_id, received_at, status) " <>
+        "VALUES ($1, $2, $3, $4, $5, $6, now(), 202)",
+      [
+        Ecto.UUID.dump!(id),
+        Ecto.UUID.dump!(scope.organisation.id),
+        Ecto.UUID.dump!(scope.workspace.id),
+        Ecto.UUID.dump!(key.id),
+        delivery_id && Ecto.UUID.dump!(delivery_id),
+        Ecto.UUID.dump!(Ecto.UUID.generate())
+      ]
+    )
+
+    id
+  end
+
+  defp delivery_id_of(column, id) do
+    %{rows: [[value]]} =
+      Repo.query!("SELECT #{column}::text FROM deliveries WHERE id = $1", [Ecto.UUID.dump!(id)])
+
+    value
+  end
+
   defp pattern_index do
     %{rows: rows} =
       Repo.query!(
@@ -161,6 +202,28 @@ defmodule Apiary.Runs.NodeIdsMigrationTest do
     assert indexes(@indexes_before) == []
     assert named_constraints(@constraints_after) == expected(@constraints_after)
     assert named_constraints(@constraints_before) == []
+  end
+
+  test "up lets a delivery have no delivery id; down requires one again and fills those without" do
+    assert nullable?("deliveries", "node_delivery_id")
+    refute nullable?("deliveries", "node_run_id")
+    without = insert_delivery!(nil)
+    given = Ecto.UUID.generate()
+    with_id = insert_delivery!(given)
+
+    down!()
+    refute nullable?("deliveries", "delivery_id")
+    assert {:ok, _filled} = Ecto.UUID.cast(delivery_id_of("delivery_id", without))
+    assert delivery_id_of("delivery_id", with_id) == given
+
+    if not_nulls_named?(),
+      do: assert(named_constraints(["deliveries_delivery_id_not_null"]) != [])
+
+    up!()
+    assert nullable?("deliveries", "node_delivery_id")
+    assert named_constraints(["deliveries_node_delivery_id_not_null"]) == []
+    assert named_constraints(["deliveries_delivery_id_not_null"]) == []
+    assert delivery_id_of("node_delivery_id", with_id) == given
   end
 
   test "up keeps the unique index on a run's public id and adds one a prefix search can use" do
