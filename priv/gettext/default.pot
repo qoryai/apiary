@@ -3992,6 +3992,7 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
 msgstr ""
@@ -4584,6 +4585,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
 msgstr ""
 
@@ -5062,6 +5068,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Decline"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Decline the work item if it is not wanted, or close it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7043,6 +7054,11 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "If its tickets only track bugs, turn this off. Work items already taken in stay."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -10081,6 +10097,7 @@ msgid "Only owners and admins change these settings."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change this."
 msgstr ""
@@ -12894,6 +12911,11 @@ msgstr ""
 msgid "Take in from the Backlog"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Take its tickets into the Backlog"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Taken in"
@@ -12917,6 +12939,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Taking tickets into the Backlog turned on or off"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -13979,6 +14006,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
 msgstr ""
 
@@ -14409,6 +14441,13 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "This take in has used its %{of} run, so Qory runs no more for these questions here."
+msgid_plural "This take in has used its %{of} runs, so Qory runs no more for these questions here."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "This take in has used its %{of} run, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again."
 msgid_plural "This take in has used its %{of} runs, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again."
 msgstr[0] ""
@@ -14515,6 +14554,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tickets %{workspace} took in from the Backlog, by stage."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Tickets of %{target} no longer come into the Backlog."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Tickets of %{target} now come into the Backlog."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -14638,6 +14687,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Turned mail on, by the test link"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned off taking a collection's items into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned on taking a collection's items into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

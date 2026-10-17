@@ -549,6 +549,17 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       refute html =~ "Run Explore again"
     end
 
+    test "while the repository keeps its tickets out of the Backlog, the ways on say no Take in again" do
+      html = used(%{}, can_close: true, backlog_off: true)
+
+      assert text(html, "#work-item-step-ways") ==
+               "Decline the work item if it is not wanted, or close it."
+
+      assert count(html, "#work-item-step-decline") == 1
+      assert count(html, "#work-item-step-close") == 1
+      refute html =~ "Take in again"
+    end
+
     test "two questions left; the last run without a result" do
       two = used(%{questions: Enum.take(questions(), 2)})
 
@@ -1105,6 +1116,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(html, "#work-item-explore-earlier-rn_01aa40b29e71c6d3-body-h") ==
                "Qory's question, and the answer"
+    end
+
+    test "the note, while the repository keeps its tickets out of the Backlog, without Take in again" do
+      html = tab(used_item(), can_act: true, backlog_off: true)
+
+      assert text(html, "#work-item-explore-limit") ==
+               "This take in has used its 3 runs, so Qory runs no more for these questions here."
+
+      one = used_item(:used_up, %{run: %{used_item().run | attempt: 1, of: 1}})
+
+      assert text(tab(one, can_act: true, backlog_off: true), "#work-item-explore-limit") ==
+               "This take in has used its 1 run, so Qory runs no more for these questions here."
     end
 
     test "declined at Explore: the last questions read-only, no note" do

@@ -23,7 +23,10 @@ defmodule ApiaryWeb.TargetLive.Show do
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
     plain text, what it is, the same path in other systems, its runs a day, its machines
-    and runtimes.
+    and runtimes. Last, where the target's collection is assigned to the workspace, the
+    Backlog card: one switch, whether its tickets come into the workspace's Backlog,
+    which owners and admins turn at once (`Apiary.Adapters.Collections.set_backlog/3`)
+    and anyone else reads, disabled, with who may change it.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
   A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
@@ -38,6 +41,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   import ApiaryWeb.TargetComponents
 
   alias Apiary.{Access, Runs, Targets}
+  alias Apiary.Adapters.Collections
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.PolicyLive
 
@@ -71,6 +75,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       runs: nil,
       new_runs: 0
     )
+    |> load_backlog()
     |> load_summary()
     |> mount_tab(tab)
   end
@@ -141,6 +146,31 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
+  # The Backlog card's switch: turned the other way from what the page shows, with a
+  # toast that says what is so now. A refusal says who may change it; a target whose
+  # collection went meanwhile loses its card.
+  def handle_event("set_backlog", _params, %{assigns: %{tab: :overview}} = socket) do
+    %{current_scope: scope, target: target, shared: shared, backlog: backlog} = socket.assigns
+    on = !(backlog && backlog.on)
+
+    case Collections.set_backlog(scope, target, on) do
+      {:ok, _count} ->
+        {:noreply,
+         socket
+         |> assign(:backlog, %{on: on})
+         |> put_flash(:info, backlog_words(on, name(target, shared)))}
+
+      {:error, :not_found} ->
+        {:noreply, load_backlog(socket)}
+
+      {:error, _refused} ->
+        {:noreply,
+         socket
+         |> load_backlog()
+         |> put_flash(:error, only_admins_change(scope))}
+    end
+  end
+
   def handle_event("show_new_runs", _params, %{assigns: %{tab: :overview}} = socket),
     do: {:noreply, socket |> assign(:new_runs, 0) |> load_summary() |> load_overview()}
 
@@ -187,6 +217,33 @@ defmodule ApiaryWeb.TargetLive.Show do
   def handle_async(:target_summary, {:exit, _reason}, socket), do: {:noreply, socket}
 
   ## Reads
+
+  # Whether the target's tickets come into the Backlog, where its collection is assigned
+  # to the workspace and the reader may read its work items, and whether the reader may
+  # turn it.
+  defp load_backlog(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+
+    assign(socket,
+      backlog: Collections.backlog_switch(scope, target),
+      may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation)
+    )
+  end
+
+  defp backlog_words(true, target),
+    do: gettext("Tickets of %{target} now come into the Backlog.", target: target)
+
+  defp backlog_words(false, target),
+    do: gettext("Tickets of %{target} no longer come into the Backlog.", target: target)
+
+  # Who may turn the switch, in the edition's words where it has some.
+  defp only_admins_change(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"collection.set_backlog",
+        gettext("Only owners and admins change this.")
+      )
 
   defp load_summary(socket) do
     if connected?(socket) do
@@ -301,6 +358,8 @@ defmodule ApiaryWeb.TargetLive.Show do
         facts={@facts}
         new_runs={@new_runs}
         scope={@current_scope}
+        backlog={@backlog}
+        may_set_backlog={@may_set_backlog}
       />
 
       <PolicyLive.Target.content :if={@tab == :policy} {assigns} />
@@ -383,6 +442,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   attr :facts, :any, required: true
   attr :new_runs, :integer, required: true
   attr :scope, :any, required: true
+  attr :backlog, :map, default: nil
+  attr :may_set_backlog, :boolean, default: false
 
   defp overview(assigns) do
     assigns =
@@ -464,6 +525,33 @@ defmodule ApiaryWeb.TargetLive.Show do
               </span>
             </li>
           </ul>
+        </section>
+
+        <section
+          :if={@backlog}
+          id="target-backlog"
+          class="q-tgt-card"
+          aria-labelledby="target-backlog-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-backlog-h">{gettext("Backlog")}</h2>
+          </div>
+          <div class="q-tgt-card-b">
+            <.switch
+              id="target-backlog-switch"
+              label={gettext("Take its tickets into the Backlog")}
+              checked={@backlog.on}
+              disabled={!@may_set_backlog}
+              phx-click={@may_set_backlog && "set_backlog"}
+            >
+              {gettext(
+                "If its tickets only track bugs, turn this off. Work items already taken in stay."
+              )}
+            </.switch>
+            <p :if={!@may_set_backlog} id="target-backlog-read-only" class="q-tgt-card-ro">
+              {only_admins_change(@scope)}
+            </p>
+          </div>
         </section>
       </div>
 

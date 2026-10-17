@@ -19,10 +19,11 @@ defmodule ApiaryWeb.RefusalsRows do
 
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
-  locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an active key and an outstanding enrolment code, a node pool with a limit, a
-  gateway, the workspace's default, and a second gateway, a run that has not ended, and a
-  pending invitation; and another organisation, with its owner.
+  locked rule, a stored secret, a variable, a target with a collection assigned to the
+  workspace, an access key, a node with a running instance, an active key and an
+  outstanding enrolment code, a node pool with a limit, a gateway, the workspace's
+  default, and a second gateway, a run that has not ended, and a pending invitation; and
+  another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -188,6 +189,13 @@ defmodule ApiaryWeb.RefusalsRows do
        "mode_open", %{"mode" => "enforce"}},
       {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/policy",
        "mode_set", %{"mode" => "enforce"}},
+      # A target's Backlog card: its switch, which a member sees disabled.
+      {:"collection.set_backlog", :member, "/:org/:workspace/targets/:target_page", "set_backlog",
+       %{}},
+      {:"collection.set_backlog", :demoted_admin, "/:org/:workspace/targets/:target_page",
+       "set_backlog", %{}},
+      {:"collection.set_backlog", :removed_member, "/:org/:workspace/targets/:target_page",
+       "set_backlog", %{}},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
        %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.
@@ -456,7 +464,6 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.delete",
         :"adapter.connect",
         :"collection.assign",
-        :"collection.set_backlog",
         :"work_item.take_in",
         :"work_item.undo",
         :"work_item.close",
@@ -504,6 +511,17 @@ defmodule ApiaryWeb.RefusalsRows do
         path: "acme/site",
         first_seen_at: DateTime.utc_now()
       })
+
+    # The target's collection, assigned to the workspace, for its Backlog card: the
+    # `factory` feature's.
+    if :factory in Apiary.Features.enabled() do
+      connection = Apiary.WorkItemsFixtures.ticket_connection_fixture(owner)
+
+      Apiary.WorkItemsFixtures.source_collection_fixture(owner, connection, %{
+        target_system: target.system,
+        target_path: target.path
+      })
+    end
 
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")

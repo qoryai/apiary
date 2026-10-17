@@ -453,6 +453,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   With `asking: :decline`, the Decline question takes the place of the card's words and
   buttons, wherever Decline is offered: its line, Decline (`"decline"`) and Cancel.
 
+  While its ticket's repository keeps its tickets out of the Backlog (`backlog_off`),
+  Take in again cannot be reached there, so no line says it can.
+
   `:run` is the latest run of the take in: `:attempt` (its place, from 1) and `:of` (the
   most a take in has), `:id` and `:path`, `:started_at`, `:answers_by` (the members whose
   answers it reads, people), `:questions` (what it asked, a list) and `:outcome` (`:error`,
@@ -465,6 +468,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :work_item, :map, required: true, doc: "the work item"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
+
+  attr :backlog_off, :boolean,
+    default: false,
+    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+
   attr :can_undo, :boolean, default: false, doc: "whether the reader may undo the take in"
 
   attr :can_act, :boolean,
@@ -525,6 +533,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         number={@number}
         integration={@integration}
         uninstalled={@uninstalled}
+        backlog_off={@backlog_off}
         can_undo={@can_undo}
         can_act={@can_act}
         can_close={@can_close}
@@ -587,6 +596,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :number, :integer, required: true
   attr :integration, :string, required: true
   attr :uninstalled, :boolean, required: true
+  attr :backlog_off, :boolean, required: true
   attr :can_undo, :boolean, required: true
   attr :can_act, :boolean, required: true
   attr :can_close, :boolean, required: true
@@ -606,16 +616,22 @@ defmodule ApiaryWeb.WorkItemComponents do
       question={gettext("Decline work item #%{number}?", number: @number)}
       cancel={@cancel}
     >
-      <%= if @uninstalled do %>
-        {gettext(
-          "%{integration} is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, declined.",
-          integration: @integration
-        )}
-      <% else %>
-        {gettext(
-          "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
-          integration: @integration
-        )}
+      <%= cond do %>
+        <% @uninstalled -> %>
+          {gettext(
+            "%{integration} is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, declined.",
+            integration: @integration
+          )}
+        <% @backlog_off -> %>
+          {gettext(
+            "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+            integration: @integration
+          )}
+        <% true -> %>
+          {gettext(
+            "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+            integration: @integration
+          )}
       <% end %>
       <:action>
         <.button
@@ -810,7 +826,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p id={"#{@id}-line"}><.rich text={@line} /></p>
-    <p :if={@can_act} id={"#{@id}-ways"}>
+    <p :if={@can_act && @backlog_off} id={"#{@id}-ways"}>
+      {gettext("Decline the work item if it is not wanted, or close it.")}
+    </p>
+    <p :if={@can_act && !@backlog_off} id={"#{@id}-ways"}>
       {gettext(
         "Decline the work item if it is not wanted. To explore again, close it: Take in again from the Backlog then starts a fresh count, and answers from this take in are not carried over."
       )}
@@ -1194,6 +1213,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
+
+  attr :backlog_off, :boolean,
+    default: false,
+    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+
   attr :cancel, :any, default: nil, doc: "what Cancel does"
 
   def close_question(assigns) do
@@ -1208,16 +1232,22 @@ defmodule ApiaryWeb.WorkItemComponents do
         question={gettext("Close work item #%{number}?", number: @number)}
         cancel={@cancel}
       >
-        <%= if @uninstalled do %>
-          {gettext(
-            "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the ticket.",
-            integration: @integration
-          )}
-        <% else %>
-          {gettext(
-            "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
-            integration: @integration
-          )}
+        <%= cond do %>
+          <% @uninstalled -> %>
+            {gettext(
+              "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the ticket.",
+              integration: @integration
+            )}
+          <% @backlog_off -> %>
+            {gettext(
+              "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+              integration: @integration
+            )}
+          <% true -> %>
+            {gettext(
+              "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+              integration: @integration
+            )}
         <% end %>
         <:action>
           <.button
@@ -1240,12 +1270,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   The notice of an ended work item: who closed, declined or undid it and when (and where
   it was declined, its `:stage`, at Explore or at Confirm), what that left on the ticket, and Take in again, a link to the ticket's panel in the Backlog
   (`again_path`). After the integration's uninstall (`uninstalled`) the ticket is in no
-  Backlog: the first line alone. Nothing for a live work item.
+  Backlog, nor while its repository keeps its tickets out of it (`backlog_off`): the
+  first line alone. Nothing for a live work item.
   """
   attr :id, :string, default: "work-item-ended"
   attr :work_item, :map, required: true, doc: "the work item: `:status`, `:ended_by`, `:ended_at`"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
+
+  attr :backlog_off, :boolean,
+    default: false,
+    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+
   attr :again_path, :string, default: nil, doc: "the ticket's panel in the Backlog"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -1260,7 +1296,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(assigns,
         status: work_item.status,
         first: end_line(work_item, now),
-        second: !assigns.uninstalled && end_second(work_item.status, assigns.integration)
+        second:
+          !(assigns.uninstalled or assigns.backlog_off) &&
+            end_second(work_item.status, assigns.integration)
       )
 
     ~H"""
@@ -1537,8 +1575,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     * questions: Qory's questions, with the form for a reader who may act (`can_act`):
       one answer for each, Answer and explore again (`"answer"`);
     * the run limit, and questions or a run without a result at the last run of the take
-      in: the note that the take in used its runs over the last questions, read-only, or
-      what happened to the last run;
+      in: the note that the take in used its runs over the last questions, read-only, and
+      that Take in again from the Backlog starts the count again, unless its ticket's
+      repository keeps its tickets out of the Backlog (`backlog_off`); or what happened to
+      the last run;
     * no result, lost or cancelled: what happened, and the run's page;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
@@ -1579,6 +1619,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :earlier_take_ins, :list, default: [], doc: "the earlier take ins, oldest first"
   attr :changes, :map, default: %{}, doc: "what a member changed before confirming, by field"
   attr :can_act, :boolean, default: false, doc: "whether the reader may answer"
+
+  attr :backlog_off, :boolean,
+    default: false,
+    doc: "whether its ticket's repository keeps its tickets out of the Backlog"
+
   attr :answers, :map, default: %{}, doc: "the form's draft, by question `public_id`"
   attr :errors, :map, default: %{}, doc: "the form's errors, by question `public_id`"
 
@@ -1630,7 +1675,15 @@ defmodule ApiaryWeb.WorkItemComponents do
         class="q-xp-note"
       >
         <.icon name="hero-exclamation-triangle-micro" class="q-xp-note-i size-4" />
-        <p>
+        <p :if={@backlog_off}>
+          {ngettext(
+            "This take in has used its %{of} run, so Qory runs no more for these questions here.",
+            "This take in has used its %{of} runs, so Qory runs no more for these questions here.",
+            @run.of,
+            of: Format.number(@run.of)
+          )}
+        </p>
+        <p :if={!@backlog_off}>
           {ngettext(
             "This take in has used its %{of} run, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",
             "This take in has used its %{of} runs, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",

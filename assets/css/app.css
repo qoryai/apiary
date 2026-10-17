@@ -10178,6 +10178,18 @@
     color: var(--q-muted);
     font-size: 0.8125rem;
   }
+  /* A card's body of a setting: its switch, and, for a reader who may not change it, who
+     may, under the description. */
+  .q-tgt-card-b {
+    padding: 14px 16px;
+  }
+  .q-tgt-card-ro {
+    margin-top: 6px;
+    padding-left: calc(2.25rem + 12px);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
   /* A table inside a card is the card's list, not a box of its own, and its columns
      are named for a screen reader only. */
   .q-tgt-card .q-tgt-inset {
