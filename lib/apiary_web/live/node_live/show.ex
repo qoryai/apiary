@@ -18,8 +18,9 @@ defmodule ApiaryWeb.NodeLive.Show do
     pool's, either turning that line or row into its confirmation in place, never a
     dialog, at `/nodes/:node_id/instances/:instance/clear`, `:instance` the id of the
     instance's row in `node_instances`, or, for an instance with no row, at
-    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of its newest
-    open run. Neither address carries the node's instance id.
+    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
+    run: the page links its newest open run, and the address accepts any open run of that
+    instance. Neither address, nor any DOM id, carries the node's instance id.
   - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
@@ -739,8 +740,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-running"
           label={gettext("Running instances")}
           rows={@activity.running}
-          row_id={&instance_dom_id(&1.instance_id)}
-          confirming={@clear_at == :row && instance_dom_id(@clearing.instance_id)}
+          row_id={&instance_dom_id/1}
+          confirming={@clear_at == :row && clearing_dom_id(@clearing, @activity.running)}
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
@@ -763,7 +764,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           </:col>
           <:action :let={instance} :if={@may_clear}>
             <.row_menu
-              id={"#{instance_dom_id(instance.instance_id)}-menu"}
+              id={"#{instance_dom_id(instance)}-menu"}
               label={
                 gettext("Actions for %{instance}",
                   instance: instance.name || instance.instance_id
@@ -771,7 +772,7 @@ defmodule ApiaryWeb.NodeLive.Show do
               }
             >
               <.menu_item
-                id={"#{instance_dom_id(instance.instance_id)}-clear"}
+                id={"#{instance_dom_id(instance)}-clear"}
                 patch={clear_path(@scope, @node, instance)}
               >
                 {gettext("Clear instance…")}
@@ -1140,9 +1141,19 @@ defmodule ApiaryWeb.NodeLive.Show do
     """
   end
 
-  # A running instance's row's DOM id: its instance id is a claim, any characters.
-  defp instance_dom_id(instance_id),
-    do: "node-instance-" <> Integer.to_string(:erlang.phash2(instance_id))
+  # A running instance's row's DOM id: by the id of its row in `node_instances`, or, with
+  # no row, by its newest open run's public id. Never by the node's instance id.
+  defp instance_dom_id(%{row_id: row_id}) when is_binary(row_id), do: "node-instance-" <> row_id
+  defp instance_dom_id(%{run_public_id: run_id}), do: "node-instance-" <> run_id
+
+  # The DOM id of the row the confirmation takes the place of: the row of the running
+  # instance the clearing names.
+  defp clearing_dom_id(%{instance_id: id}, running) do
+    case Enum.find(running, &(&1.instance_id == id)) do
+      %{} = instance -> instance_dom_id(instance)
+      nil -> nil
+    end
+  end
 
   attr :scope, Apiary.Accounts.Scope, required: true
   attr :node, Node, required: true

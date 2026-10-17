@@ -307,7 +307,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       pool = pool_fixture(scope, name: "spot-runners", instance_limit: 20)
       node_run_fixture(running, "i_1")
       instance_fixture(idle, instance_id: "i_2", seen_at: ago(7200))
-      instance_fixture(pool, instance_id: "p_1", name: "spot-1")
+      spot = instance_fixture(pool, instance_id: "p_1", name: "spot-1")
       for n <- 1..12, do: node_run_fixture(pool, "p_#{n}")
 
       {:ok, lv, _html} = live(conn, nodes_path(scope))
@@ -318,7 +318,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert has_element?(lv, "#node-#{pool.public_id}-state", "12 of 20 running")
 
       # Ten instances under the pool, then the rest as a count that leads to its page.
-      assert has_element?(lv, "#nodes tr[id^='node-#{pool.public_id}-instance-']", "spot-1")
+      assert has_element?(lv, "#nodes tr#node-#{pool.public_id}-instance-#{spot.id}", "spot-1")
 
       # An instance's name is cut, whole in its title, its id beside it titled too; its
       # state breaks between its parts, "Running since", the time and the run.
@@ -336,6 +336,29 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert has_element?(lv, "#node-#{pool.public_id}-more-link", "and 2 more")
       refute has_element?(lv, "#nodes tr[id^='node-#{running.public_id}-instance-']")
+    end
+
+    test "an instance's row is named by its row's id or its newest open run's, never by the node's instance id",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      spot = instance_fixture(pool, instance_id: "i-alpha-41", name: "spot-1")
+      node_run_fixture(pool, "i-alpha-41")
+      run = node_run_fixture(pool, "i-beta-42")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "#nodes tr#node-#{pool.public_id}-instance-#{spot.id}", "spot-1")
+
+      assert has_element?(
+               lv,
+               "#nodes tr#node-#{pool.public_id}-instance-#{run.public_id}",
+               "i-beta-42"
+             )
+
+      ids = lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query("[id]")
+      ids = LazyHTML.attribute(ids, "id")
+      assert ids != []
+      refute Enum.any?(ids, &(&1 =~ "alpha-41" or &1 =~ "beta-42"))
     end
 
     test "the views count and keep the running and the rest", %{conn: conn, scope: scope} do

@@ -547,6 +547,18 @@ defmodule Apiary.Nodes.InstancesTest do
       assert Nodes.get_instance_by_id(stranger, node, instance.id) == nil
       assert Nodes.get_instance_run(stranger, node, run.public_id) == nil
     end
+
+    test "a row's id only in its 36-character text form, in either case", %{scope: scope} do
+      node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1")
+
+      # Ecto.UUID.cast/1 takes the 16 raw bytes as the same id; the address does not.
+      assert {:ok, _} = Ecto.UUID.cast(Ecto.UUID.dump!(instance.id))
+      assert Nodes.get_instance_by_id(scope, node, Ecto.UUID.dump!(instance.id)) == nil
+      assert Nodes.get_instance_by_id(scope, node, String.replace(instance.id, "-", "")) == nil
+
+      assert Nodes.get_instance_by_id(scope, node, String.upcase(instance.id)).id == instance.id
+    end
   end
 
   describe "activity/3" do

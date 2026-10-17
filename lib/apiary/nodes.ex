@@ -1081,11 +1081,13 @@ defmodule Apiary.Nodes do
   @doc """
   get_instance_by_id/3 is the instance of `node`, a node of the scope's workspace or a
   gateway of its organisation, whose row in `node_instances` has the id `id`: the id a
-  page addresses an instance by. nil for an id that is not a UUID, and for a row of
+  page addresses an instance by. It takes only the 36-character text form of a UUID, in
+  either case. nil for any other id (a 16-byte binary among them), and for a row of
   another node, workspace or organisation.
   """
   @spec get_instance_by_id(Scope.t(), Node.t(), term) :: Instance.t() | nil
-  def get_instance_by_id(%Scope{} = scope, %Node{id: node_id} = node, id) do
+  def get_instance_by_id(%Scope{} = scope, %Node{id: node_id} = node, id)
+      when is_binary(id) and byte_size(id) == 36 do
     case Ecto.UUID.cast(id) do
       {:ok, id} ->
         place = if is_nil(node.workspace_id), do: :organisation, else: nil
@@ -1100,12 +1102,14 @@ defmodule Apiary.Nodes do
     end
   end
 
+  def get_instance_by_id(%Scope{}, %Node{}, _id), do: nil
+
   @doc """
   get_instance_run/3 is the open run, pending or running, of the scope's workspace whose
   `public_id` is `public_id`, a run of `node` that names its instance: the address of an
-  instance with no row in `node_instances`, by its newest open run. nil for a malformed
-  id, a run of another node or workspace, a run that names no instance, and one that has
-  ended.
+  instance with no row in `node_instances`. The page links its newest open run, and the
+  address accepts any open run of that instance. nil for a malformed id, a run of another
+  node or workspace, a run that names no instance, and one that has ended.
   """
   @spec get_instance_run(Scope.t(), Node.t(), term) :: Run.t() | nil
   def get_instance_run(

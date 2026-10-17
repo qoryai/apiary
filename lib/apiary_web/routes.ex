@@ -600,8 +600,9 @@ defmodule ApiaryWeb.Routes do
               # Settings, its deletion confirmed in place in Settings, and clearing an
               # instance in place in Overview. `:node_id` is the node's public id; an
               # instance is named by the id of its row in `node_instances`, or, with no row,
-              # by its newest open run's public id (`rn_…`), never by the node's instance id.
-              # The sidebar's Nodes leads here.
+              # by an open run's public id (`rn_…`): the page links its newest open run, and
+              # the address accepts any open run of that instance. Never by the node's
+              # instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool
