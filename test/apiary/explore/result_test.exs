@@ -476,6 +476,14 @@ defmodule Apiary.Explore.ResultTest do
       end
     end
 
+    test "1 written with more than 34 digits fails decoding and is refused" do
+      assert {:ok, %{"version" => 1}} =
+               Result.parse(with_version("1." <> String.duplicate("0", 33)))
+
+      assert Result.parse(with_version("1." <> String.duplicate("0", 34))) == :none
+      assert Result.parse(with_version("1." <> String.duplicate("0", 40))) == :none
+    end
+
     test "a number with a fraction anywhere else is refused" do
       document = understood()
       [entry | _] = document["knowledge"]
@@ -487,10 +495,9 @@ defmodule Apiary.Explore.ResultTest do
   end
 
   describe "the size of lists and objects" do
-    # A document's check takes less than this many milliseconds. On the inputs below,
-    # reading every refusal's errors costs one to three seconds and JSV alone 330 to
-    # 500 ms; with the walk of the bounds first they take a few milliseconds. The budget
-    # leaves room for a slow machine and still fails without the walk.
+    # A document's check takes less than this many milliseconds: each input below is read
+    # in a few, and the budget leaves room for a slow machine. Which inputs the walk of
+    # the bounds refuses is asserted apart from the time, with `within_bounds?/1`.
     @budget_ms 150
 
     setup do
@@ -508,64 +515,41 @@ defmodule Apiary.Explore.ResultTest do
 
     defp entries(entry, count), do: Enum.join(List.duplicate(entry, count), ",")
 
-    test "the bounds are the largest list and the largest object result.schema.json allows" do
-      assert Result.bounds() == {50, 8}
+    defp walked?(text), do: text |> Jason.decode!() |> Result.within_bounds?()
 
-      assert Result.bounds(%{"type" => "array", "maxItems" => 3}) == {3, 0}
-
-      assert_raise ArgumentError, fn -> Result.bounds(%{"type" => "array"}) end
-
-      assert_raise ArgumentError, fn ->
-        Result.bounds(%{"type" => "object", "properties" => %{"a" => %{}}})
-      end
-    end
-
-    test "40000 empty objects as questions are refused at once" do
-      text =
+    defp many_questions,
+      do:
         ~s({"version":1,"verdict":"not_understood","questions":[) <>
           entries("{}", 40_000) <> "]}"
 
-      assert timed(text) == :none
-    end
-
-    test "60000 numbers as one knowledge entry's sources are refused at once" do
-      text =
+    defp many_sources,
+      do:
         ~s({"version":1,"verdict":"not_understood","questions":["q"],"knowledge":[{"text":"t","sources":[) <>
           entries("1", 60_000) <> "]}]}"
 
-      assert timed(text) == :none
+    defp many_members do
+      members = Enum.map_join(1..11_000, ",", &~s("k#{&1}":{}))
+      ~s({#{members},"version":1,"verdict":"not_understood","questions":["q"]})
     end
 
-    test "50 knowledge entries of 50 sources each are refused at once" do
+    defp fifty_by_fifty do
       entry = ~s({"text":"t","sources":[) <> entries("1", 50) <> "]}"
 
-      text =
-        ~s({"version":1,"verdict":"not_understood","questions":["q"],"knowledge":[) <>
-          entries(entry, 50) <> "]}"
-
-      assert timed(text) == :none
+      ~s({"version":1,"verdict":"not_understood","questions":["q"],"knowledge":[) <>
+        entries(entry, 50) <> "]}"
     end
 
-    test "an object with thousands of members is refused at once" do
-      members = Enum.map_join(1..11_000, ",", &~s("k#{&1}":{}))
-      text = ~s({#{members},"version":1,"verdict":"not_understood","questions":["q"]})
-
-      assert timed(text) == :none
-    end
-
-    test "deep nesting is refused at once" do
-      text =
+    defp deep,
+      do:
         ~s({"version":1,"verdict":"not_understood","questions":[) <>
           String.duplicate("[", 65_000) <> String.duplicate("]", 65_000) <> "]}"
 
-      assert timed(text) == :none
-    end
-
-    test "a valid document with every list at its largest is a result" do
+    # A valid document with every list at its largest, over 100 KB.
+    defp largest do
       text = fn n -> String.duplicate("t", n) end
       source = fn i -> "https://docs#{i}.example.com/" <> String.duplicate("p", 170) end
 
-      document = %{
+      %{
         "version" => 1,
         "verdict" => "understood",
         "complexity" => %{"level" => "complex", "reason" => text.(100)},
@@ -584,7 +568,42 @@ defmodule Apiary.Explore.ResultTest do
             do: %{"text" => text.(40), "sources" => Enum.map(1..10, &source.(i * 10 + &1))}
           )
       }
+    end
 
+    test "the walk refuses a list or an object over the bounds, and passes what the schema takes" do
+      refute walked?(many_questions())
+      refute walked?(many_sources())
+      refute walked?(many_members())
+
+      assert walked?(fifty_by_fifty())
+      assert walked?(deep())
+      assert Result.within_bounds?(largest())
+
+      for file <- fixtures("result"), do: assert(walked?(fixture("result/" <> file)), file)
+    end
+
+    test "40000 empty objects as questions are refused by the walk, at once" do
+      assert timed(many_questions()) == :none
+    end
+
+    test "60000 numbers as one knowledge entry's sources are refused by the walk, at once" do
+      assert timed(many_sources()) == :none
+    end
+
+    test "an object with thousands of members is refused by the walk, at once" do
+      assert timed(many_members()) == :none
+    end
+
+    test "50 knowledge entries of 50 sources each pass the walk, and the schema refuses them at once" do
+      assert timed(fifty_by_fifty()) == :none
+    end
+
+    test "deep nesting passes the walk in constant stack, and the schema refuses it at once" do
+      assert timed(deep()) == :none
+    end
+
+    test "a valid document with every list at its largest is a result" do
+      document = largest()
       encoded = Jason.encode!(document)
       assert byte_size(encoded) > 100_000
       assert timed(encoded) == {:ok, document}
@@ -594,12 +613,65 @@ defmodule Apiary.Explore.ResultTest do
                  Jason.encode!(%{
                    "version" => 1,
                    "verdict" => "not_understood",
-                   "understanding" => text.(20_000),
-                   "questions" => List.duplicate(text.(2000), 20)
+                   "understanding" => String.duplicate("t", 20_000),
+                   "questions" => List.duplicate(String.duplicate("t", 2000), 20)
                  })
                )
 
       refute ok?(Jason.encode!(put_in(document, ["scope", "in"], List.duplicate("t", 51))))
+    end
+  end
+
+  describe "the bounds come from the schema" do
+    test "the vendored result.schema.json allows lists of 50 and objects of 8 members" do
+      assert Result.bounds() == {50, 8}
+    end
+
+    test "a schema whose arrays and objects are all bounded gives the largest" do
+      schema = %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => %{
+          "a" => %{"type" => "array", "maxItems" => 3, "items" => %{"$ref" => "#/$defs/b"}},
+          "default" => %{"type" => "array", "maxItems" => 7, "items" => %{"const" => 1}}
+        },
+        "$defs" => %{"b" => %{"type" => "string"}},
+        "allOf" => [%{"if" => %{"properties" => %{"a" => %{"const" => 1}}}, "then" => false}]
+      }
+
+      assert Result.bounds(schema) == {7, 2}
+    end
+
+    test "a schema whose bounds cannot be told raises" do
+      object = &%{"type" => "object", "additionalProperties" => false, "properties" => &1}
+
+      for schema <- [
+            %{"type" => "array"},
+            %{"type" => "array", "maxItems" => "50"},
+            %{"type" => "object", "properties" => %{"a" => %{"type" => "string"}}},
+            %{"type" => "object", "additionalProperties" => %{"type" => "string"}},
+            %{"type" => ["array", "null"], "maxItems" => 3},
+            %{"items" => %{}},
+            %{"properties" => %{}},
+            %{"additionalProperties" => false},
+            %{"$ref" => "#/$defs/a", "items" => %{"type" => "string"}},
+            %{"type" => "object", "additionalProperties" => false, "patternProperties" => %{}},
+            %{"type" => "array", "maxItems" => 3, "prefixItems" => []},
+            object.(%{"default" => %{"type" => "array"}}),
+            object.(%{"enum" => %{"type" => "array"}}),
+            object.(%{"const" => %{"type" => "object"}}),
+            object.(%{"examples" => %{"type" => "array"}}),
+            object.(%{"a" => true}),
+            object.(%{"a" => %{}}),
+            object.(%{"a" => %{"description" => "anything"}}),
+            object.(%{"a" => %{"$ref" => "https://example.com/other.schema.json"}}),
+            object.(%{"a" => %{"const" => [1, 2]}}),
+            object.(%{"a" => %{"enum" => [%{}]}}),
+            %{"type" => "string", "allOf" => [%{"type" => "array"}]},
+            %{"type" => "string", "$defs" => %{"a" => %{"type" => "object"}}}
+          ] do
+        assert_raise ArgumentError, fn -> Result.bounds(schema) end
+      end
     end
   end
 

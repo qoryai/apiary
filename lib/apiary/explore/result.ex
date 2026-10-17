@@ -17,7 +17,8 @@ defmodule Apiary.Explore.Result do
   #     the event is read, not on the escaped form the event's JSON writes it in;
   #   * valid UTF-8, checked before any function that assumes it;
   #   * one JSON object, its numbers with a fraction or an exponent read exactly;
-  #   * a `version` that is exactly 1, however it is written;
+  #   * a `version` that is exactly 1, written with at most 34 digits; a longer spelling
+  #     fails decoding and is refused;
   #   * no list longer, and no object with more members, than the schema allows anywhere,
   #     checked in one walk of the decoded document before the schema, so a document of
   #     tens of thousands of entries costs its reading, not a check of each entry;
@@ -41,7 +42,7 @@ defmodule Apiary.Explore.Result do
   #
   # A result is the decoded document: a map with string keys, as the schema has them,
   # such as `%{"version" => 1, "verdict" => "not_understood", "questions" => [...]}`;
-  # `version` is the integer 1 however the text wrote it.
+  # `version` is the integer 1 however the text wrote it, within those 34 digits.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -88,7 +89,7 @@ defmodule Apiary.Explore.Result do
     with true <- String.valid?(text),
          {:ok, %{} = document} <- Jason.decode(text, floats: :decimals),
          {:ok, document} <- version(document),
-         true <- within_bounds?(document, bounds()),
+         true <- within_bounds?(document),
          {:ok, _document} <- JSV.validate(document, root()) do
       {:ok, document}
     else
@@ -99,33 +100,41 @@ defmodule Apiary.Explore.Result do
   def parse(_text), do: :none
 
   # A number with a fraction or an exponent is decoded as a `Decimal`, so 1.0000000000000001
-  # stays itself and is not rounded to 1.0. The schema holds one number, `version`, which
-  # is `const` 1: a version that is exactly 1, written 1, 1.0, 1e0 or 10e-1, is the
-  # integer 1 in the result, and any other is refused. A `Decimal` anywhere else is
-  # refused by `within_bounds?/2`: the schema takes no other number.
+  # stays itself and is not rounded to 1.0. Decimal parses at most 34 digits and an
+  # exponent of at most 6144 by default, a limit kept against numbers that cost too much
+  # to read: a longer number fails decoding, and the document is refused. The schema holds
+  # one number, `version`, which is `const` 1: a version that is exactly 1, written 1,
+  # 1.0, 1e0 or 10e-1 in at most 34 digits, is the integer 1 in the result, and any other
+  # is refused, 1. followed by 40 zeros among them. A `Decimal` anywhere else is refused
+  # by `within_bounds?/1`: the schema takes no other number.
   defp version(%{"version" => %Decimal{} = number} = document) do
     if one?(number), do: {:ok, %{document | "version" => 1}}, else: :none
   end
 
   defp version(document), do: {:ok, document}
 
-  # Exactly 1 is a coefficient of 10^k with the exponent -k. The exponent is bounded
-  # first, by the digits 128 KiB can hold, so no power of ten larger than that is made.
+  # Exactly 1 is a coefficient of 10^k with the exponent -k. Decimal has already bounded
+  # the exponent; the guard on it here is a backstop, so no power of ten larger than the
+  # digits 128 KiB can hold is ever made.
   defp one?(%Decimal{sign: 1, coef: coef, exp: exp})
        when is_integer(coef) and exp <= 0 and exp >= -@max_bytes,
        do: coef == Integer.pow(10, -exp)
 
   defp one?(_number), do: false
 
-  # within_bounds?/2 walks the decoded document once, before the schema is applied, and
-  # refuses a list longer than `max_list` or an object with more members than
-  # `max_members`, at any depth, and any struct. The bounds are the largest the schema
-  # allows anywhere (`bounds/0`), so a document the schema accepts is never refused; a
-  # document with tens of thousands of entries is refused here at the cost of reading
+  # within_bounds?/1 walks the decoded `document` once, before the schema is applied, and
+  # is false for a list longer than `max_list` or an object with more members than
+  # `max_members`, at any depth, and for any struct. The bounds are the largest the
+  # schema allows anywhere (`bounds/0`), so a document the schema accepts always passes;
+  # a document with tens of thousands of entries is refused here at the cost of reading
   # it, where JSV would check each entry. The walk keeps the values still to read in a
   # list and calls itself last, so nesting of any depth runs in constant stack.
-  defp within_bounds?(document, {max_list, max_members}),
-    do: walk([document], max_list, max_members)
+  @doc false
+  @spec within_bounds?(term) :: boolean
+  def within_bounds?(document) do
+    {max_list, max_members} = bounds()
+    walk([document], max_list, max_members)
+  end
 
   defp walk([], _max_list, _max_members), do: true
 
@@ -156,7 +165,7 @@ defmodule Apiary.Explore.Result do
   # bounds/0 is `{max_list, max_members}` read from `result.schema.json` (`bounds/1`),
   # read once and kept in `:persistent_term`.
   @doc false
-  @spec bounds() :: {pos_integer, pos_integer}
+  @spec bounds() :: {non_neg_integer, non_neg_integer}
   def bounds do
     key = {__MODULE__, :bounds}
 
@@ -178,45 +187,115 @@ defmodule Apiary.Explore.Result do
 
   # bounds/1 is `{max_list, max_members}` of a decoded JSON Schema: the largest `maxItems`
   # of a schema of type array, and the most `properties` of a schema of type object. It
-  # holds only when every array has a `maxItems` and every object refuses a member it
-  # does not define; a schema where one does not raises, so a bound is never guessed.
+  # reads the keywords `result.schema.json` uses, and raises on a schema whose bounds it
+  # cannot tell, so a bound is never guessed:
+  #
+  #   * a keyword outside those it reads, `patternProperties` among them;
+  #   * a `type` that is not one string;
+  #   * an array without an integer `maxItems`, or an object without
+  #     `additionalProperties: false`;
+  #   * `true`, or a map without a string `type`, a local `$ref`, a `const` or an `enum`,
+  #     where a value is described: the schema itself, a member of `properties`, `items` or
+  #     `$defs`; or `items`, `properties` or `additionalProperties` in such a map;
+  #   * a `$ref` outside the schema's `$defs`, or a `const` or `enum` that holds a list or
+  #     an object.
+  #
+  # The members of `allOf`, `if`, `then` and `else` narrow the value their schema
+  # describes, which that schema bounds: they need no `type`. The members of `properties`
+  # and `$defs` are read by name, never as keywords.
   @doc false
-  @spec bounds(map) :: {pos_integer, pos_integer}
-  def bounds(schema) when is_map(schema) do
-    schema
-    |> schema_nodes()
-    |> Enum.reduce({0, 0}, fn
-      %{"type" => "array", "maxItems" => max}, {lists, members} when is_integer(max) ->
-        {max(lists, max), members}
+  @spec bounds(map) :: {non_neg_integer, non_neg_integer}
+  def bounds(schema) when is_map(schema), do: bounds(schema, :value, {0, 0})
 
-      %{"type" => "array"} = node, _bounds ->
-        raise ArgumentError, "an array without maxItems: #{inspect(node)}"
+  @read ~w($schema $id $ref $defs title description type const enum required properties
+           additionalProperties items minItems maxItems minLength maxLength pattern allOf if
+           then else)
+  @described ~w(items properties additionalProperties)
 
-      %{"type" => "object", "additionalProperties" => false} = node, {lists, members} ->
-        {lists, max(members, map_size(Map.get(node, "properties", %{})))}
+  # `place` is `:value` where the schema describes a value, `:narrowing` in `allOf`, `if`,
+  # `then` and `else`, and below them.
+  defp bounds(false, _place, acc), do: acc
+  defp bounds(true, :narrowing, acc), do: acc
+  defp bounds(true, :value, _acc), do: refuse("true, which takes any value", true)
 
-      %{"type" => "object"} = node, _bounds ->
-        raise ArgumentError, "an object that takes any member: #{inspect(node)}"
-
-      _node, bounds ->
-        bounds
+  defp bounds(schema, place, acc) when is_map(schema) do
+    Enum.each(Map.keys(schema), fn keyword ->
+      if keyword not in @read, do: refuse("a keyword bounds/1 does not read", keyword)
     end)
+
+    type = Map.get(schema, "type")
+
+    cond do
+      Map.has_key?(schema, "type") and not is_binary(type) ->
+        refuse("a type that is not one string", schema)
+
+      place == :value and type == nil and not described?(schema) ->
+        refuse("a value described by no type", schema)
+
+      place == :value and type == nil and Enum.any?(@described, &Map.has_key?(schema, &1)) ->
+        refuse("items, properties or additionalProperties with no type", schema)
+
+      Map.has_key?(schema, "$ref") and not local_ref?(schema["$ref"]) ->
+        refuse("a $ref outside the schema's $defs", schema)
+
+      Enum.any?([schema["const"] | List.wrap(schema["enum"])], &(is_list(&1) or is_map(&1))) ->
+        refuse("a const or an enum that holds a list or an object", schema)
+
+      true ->
+        :ok
+    end
+
+    acc =
+      case type do
+        "array" ->
+          case schema do
+            %{"maxItems" => max} when is_integer(max) -> put_elem(acc, 0, max(elem(acc, 0), max))
+            _no_max -> refuse("an array without maxItems", schema)
+          end
+
+        "object" ->
+          case schema do
+            %{"additionalProperties" => false} ->
+              put_elem(acc, 1, max(elem(acc, 1), map_size(Map.get(schema, "properties", %{}))))
+
+            _open ->
+              refuse("an object that takes any member", schema)
+          end
+
+        _other ->
+          acc
+      end
+
+    acc
+    |> bounds_each(Map.get(schema, "properties", %{}), place)
+    |> bounds_each(Map.get(schema, "$defs", %{}), :value)
+    |> bounds_list([Map.get(schema, "items", false)], place)
+    |> bounds_list(Map.get(schema, "allOf", []), :narrowing)
+    |> bounds_list(
+      for(key <- ~w(if then else), Map.has_key?(schema, key), do: schema[key]),
+      :narrowing
+    )
   end
 
-  # Every map of `schema`, itself included, at any depth, leaving out the values of the
-  # data keywords.
-  defp schema_nodes(schema) when is_map(schema) do
-    [
-      schema
-      | Enum.flat_map(schema, fn
-          {keyword, _value} when keyword in @data_keywords -> []
-          {_keyword, value} -> schema_nodes(value)
-        end)
-    ]
-  end
+  defp bounds(schema, _place, _acc), do: refuse("a schema that bounds/1 cannot read", schema)
 
-  defp schema_nodes(list) when is_list(list), do: Enum.flat_map(list, &schema_nodes/1)
-  defp schema_nodes(_other), do: []
+  defp described?(schema), do: Enum.any?(~w($ref const enum), &Map.has_key?(schema, &1))
+
+  defp local_ref?("#/$defs/" <> _name), do: true
+  defp local_ref?(_ref), do: false
+
+  # The members of a map of named schemas, `properties` or `$defs`, by name.
+  defp bounds_each(acc, named, place) when is_map(named),
+    do: Enum.reduce(named, acc, fn {_name, schema}, acc -> bounds(schema, place, acc) end)
+
+  defp bounds_each(_acc, named, _place), do: refuse("named schemas that are not a map", named)
+
+  defp bounds_list(acc, schemas, place) when is_list(schemas),
+    do: Enum.reduce(schemas, acc, &bounds(&1, place, &2))
+
+  defp bounds_list(_acc, schemas, _place), do: refuse("schemas that are not a list", schemas)
+
+  defp refuse(what, schema), do: raise(ArgumentError, "#{what}: #{inspect(schema)}")
 
   # code_point_lengths/1 is `schema` with each object that has an integer `minLength` or
   # `maxLength` given the bounds as a pattern instead, `^[\s\S]{min,max}$`, which PCRE in
