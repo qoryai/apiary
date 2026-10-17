@@ -179,7 +179,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
     defp press(scope, adapter, now) do
       assert {:ok, {connection, pass}} =
                Repo.transact(fn ->
-                 with {:ok, connection, pass} <-
+                 with {:ok, connection, pass, _replaced} <-
                         Connections.start(scope, adapter, ConnectPass.new_nonce(), now: now),
                       do: {:ok, {connection, pass}}
                end)

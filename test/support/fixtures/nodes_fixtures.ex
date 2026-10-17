@@ -90,6 +90,18 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  Links `collection` (`Apiary.Adapters.Collection`) to `workspace`, of the same
+  organisation, or to none, as nothing in the product does: it asks no one and writes no
+  feed entry. For tests that need a linked collection without the assign's entries
+  (`Apiary.Adapters.Collections.assign_collections/4`). `{:ok, collection}`.
+  """
+  def set_collection_workspace(collection, workspace) do
+    collection
+    |> Ecto.Changeset.change(workspace_id: workspace && workspace.id)
+    |> Repo.update()
+  end
+
+  @doc """
   The connection of the scope's organisation to `adapter`, connectable
   (`connectable_adapter_fixture/1`), started by the scope's person, an owner or an admin
   (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:connected`,

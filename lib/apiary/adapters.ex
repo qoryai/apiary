@@ -44,7 +44,7 @@ defmodule Apiary.Adapters do
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
-  alias Apiary.Adapters.{ConnectPass, Connections, Feed, Wire}
+  alias Apiary.Adapters.{Collections, ConnectPass, Connections, Feed, Wire}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -235,7 +235,9 @@ defmodule Apiary.Adapters do
   # `{connection_public_id, nonce}`, the nonce in base64url, which the person's session
   # keeps (`ApiaryWeb.ConnectSession`), so the return comes back in their browser. The
   # entry is the organisation's, about the organisation, naming the adapter and the
-  # connection, never the pass or its nonce.
+  # connection, never the pass or its nonce. Once it commits, the organisation hears that
+  # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`), and,
+  # first, that the one it replaced ended, when it replaced one.
   #
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection;
@@ -255,7 +257,7 @@ defmodule Apiary.Adapters do
                  {:error, :not_found},
              :ok <- connectable(current),
              nonce = ConnectPass.new_nonce(),
-             {:ok, connection, pass} <- Connections.start(scope, current, nonce),
+             {:ok, connection, pass, replaced} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"adapter.connect", scope.organisation, %{
                  details:
@@ -264,13 +266,18 @@ defmodule Apiary.Adapters do
                    |> Map.put(:connection_id, connection.public_id)
                }) do
           {:ok,
-           {with_state(current.connect_url, pass), {connection.public_id, Ed25519.encode(nonce)}}}
+           {with_state(current.connect_url, pass), {connection.public_id, Ed25519.encode(nonce)},
+            Enum.reject([replaced, connection], &is_nil/1)}}
         end
       end)
 
     case result do
-      {:ok, {url, session}} -> {:ok, url, session}
-      {:error, _reason} = error -> error
+      {:ok, {url, session, changed}} ->
+        Enum.each(changed, &(:ok = Collections.broadcast_connection(&1)))
+        {:ok, url, session}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -306,7 +313,8 @@ defmodule Apiary.Adapters do
   # outstanding codes cancelled (`Apiary.AccessKeys.revoke_node_keys/3`, each key with
   # its entry of `access_key.revoke`), and every connection to it that has not ended ends
   # (`integration_deleted`), which the entry records (`ended_connection_ids`, their public
-  # ids).
+  # ids), and once that commits, each one's organisation hears of it
+  # (`Apiary.Adapters.Connections.broadcast_ended_with/1`).
   # `{:ok, adapter}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
   @spec delete_adapter(Scope.t(), Node.t()) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
@@ -332,6 +340,10 @@ defmodule Apiary.Adapters do
              }) do
         {:ok, deleted}
       end
+    end)
+    |> tap(fn
+      {:ok, deleted} -> :ok = Connections.broadcast_ended_with(deleted)
+      _refused -> :ok
     end)
   end
 

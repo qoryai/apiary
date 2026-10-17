@@ -47,10 +47,20 @@ defmodule Apiary.Adapters.Connections do
   #     also takes the organisation's and the person's rows `FOR KEY SHARE` (its
   #     references); `Apiary.Access.authorize/3` locks neither, and only a deletion of
   #     either row, or a change of its key, waits on that lock or keeps it waiting.
-  #   * The return (`complete_return/4`) and `mark_listed/1` hold the connection
-  #     `FOR UPDATE`, and nothing else. An end (`end_connection/2`,
+  #   * The return (`complete_return/4`) holds the connection `FOR UPDATE`, and nothing
+  #     else. `mark_listed/1` holds it `FOR UPDATE` inside the transaction of a listing's
+  #     part, which goes on to hold the organisation's only workspace `FOR SHARE`, the
+  #     collections the part names, then the adapter's feed counter
+  #     (`Apiary.Adapters.Collections.post_listing/2`). An assign holds the connection
+  #     `FOR SHARE`, then the workspace, the collections and the feed counter
+  #     (`Apiary.Adapters.Collections.assign_collections/4`). An end (`end_connection/2`,
   #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
   #     then its collections, then the adapter's feed counter.
+  #
+  # Once each change commits, the organisation hears of it on its topic
+  # (`Apiary.Adapters.Collections.broadcast_connection/1`): a press of Install, for the
+  # connection it takes or makes and for the one it replaces, the return that connects,
+  # and each end.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -150,7 +160,8 @@ defmodule Apiary.Adapters.Connections do
   # it connected as they were, and a new pending connection is made in its place, with a
   # new public id, as above. One pending is replaced so too when its next pass would
   # expire too far ahead, below.
-  # `{:ok, connection, pass}`;
+  # `{:ok, connection, pass, replaced}`, `replaced` the connection this press ended in its
+  # place, or nil;
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
   # cannot be made, which the caller's transaction rolls back.
@@ -182,7 +193,8 @@ defmodule Apiary.Adapters.Connections do
   # connection, or finds the one that replaced it. Each try after the first follows a
   # commit of another transaction that ended the live row.
   @spec start(Scope.t(), Node.t(), <<_::128>>, keyword) ::
-          {:ok, Connection.t(), String.t()} | {:error, :connected | :invalid | :too_long}
+          {:ok, Connection.t(), String.t(), Connection.t() | nil}
+          | {:error, :connected | :invalid | :too_long}
   def start(
         %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}},
         %Node{kind: :adapter} = adapter,
@@ -229,7 +241,7 @@ defmodule Apiary.Adapters.Connections do
                    updated_at: now
                  )
                  |> Repo.update() do
-            {:ok, connection, pass}
+            {:ok, connection, pass, nil}
           end
         end
 
@@ -247,16 +259,17 @@ defmodule Apiary.Adapters.Connections do
   # person who started it and the time it connected as they are; then makes a new pending
   # connection in its place, with a new public id, started by the person who pressed,
   # whose pass, with `nonce`, is its first and expires `validity/0` seconds after now.
+  # `{:ok, connection, pass, ended}`.
   defp replace(live, organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
     fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
 
     with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
-         {:ok, _ended} <- end_live(live, :replaced, now),
+         {:ok, ended} <- end_live(live, :replaced, now),
          {:ok, connection} <-
            Connection
            |> struct!(%{fields | pass_expires_at: expires_at})
            |> Repo.insert() do
-      {:ok, connection, pass}
+      {:ok, connection, pass, ended}
     end
   end
 
@@ -359,6 +372,14 @@ defmodule Apiary.Adapters.Connections do
         _refused -> {:error, :not_found}
       end
     end)
+    |> case do
+      {:ok, {:linked, connected}} ->
+        :ok = Collections.broadcast_connection(connected)
+        {:ok, :linked}
+
+      answer ->
+        answer
+    end
   end
 
   def complete_return(_scope, _public_id, _token, _session_nonce), do: {:error, :not_found}
@@ -420,7 +441,7 @@ defmodule Apiary.Adapters.Connections do
   end
 
   defp returned(connection, %{outcome: :linked}, now) do
-    with {:ok, _connected} <-
+    with {:ok, connected} <-
            connection
            |> Ecto.Changeset.change(
              state: :connected,
@@ -429,7 +450,7 @@ defmodule Apiary.Adapters.Connections do
              updated_at: now
            )
            |> Repo.update(),
-         do: {:ok, :linked}
+         do: {:ok, {:linked, connected}}
   end
 
   defp returned(connection, %{outcome: outcome, reason: reason}, now) do
@@ -638,6 +659,10 @@ defmodule Apiary.Adapters.Connections do
         end_live(connection, :adapter_reported, DateTime.utc_now())
       end
     end)
+    |> tap(fn
+      {:ok, ended} -> :ok = Collections.broadcast_connection(ended)
+      _refused -> :ok
+    end)
   end
 
   # Ends `connection`, held `FOR UPDATE` and live, for `reason`, and its collections with
@@ -661,7 +686,7 @@ defmodule Apiary.Adapters.Connections do
   # Inside `Apiary.Adapters.delete_adapter/2`'s transaction, which holds the adapter's row
   # `FOR NO KEY UPDATE`: ends every connection of `adapter` that has not ended
   # (`integration_deleted`), and their collections. The public ids of those ended, in
-  # order.
+  # order. `broadcast_ended_with/1` tells their organisations once that commits.
   @spec end_for_adapter(Node.t(), DateTime.t()) :: [String.t()]
   def end_for_adapter(%Node{kind: :adapter, id: adapter_id}, %DateTime{} = now) do
     {_count, ended} =
@@ -678,6 +703,19 @@ defmodule Apiary.Adapters.Connections do
   end
 
   @doc false
+  # After the deletion of `adapter` commits (`end_for_adapter/2`): tells the organisation
+  # of each connection that ended with it (`integration_deleted`) that it changed. An
+  # adapter is deleted once, so these are the ones its deletion ended.
+  @spec broadcast_ended_with(Node.t()) :: :ok
+  def broadcast_ended_with(%Node{kind: :adapter, id: adapter_id}) do
+    from(c in Connection,
+      where: c.adapter_id == ^adapter_id and c.ended_reason == :integration_deleted
+    )
+    |> Repo.all()
+    |> Enum.each(&(:ok = Collections.broadcast_connection(&1)))
+  end
+
+  @doc false
   # end_for_organisation/1 ends every connection of the organisation `organisation_id`
   # that has not ended (`organisation_deleted`), and their collections, in one
   # transaction: once the organisation's purge has claimed it, and its deletion can no
@@ -686,13 +724,13 @@ defmodule Apiary.Adapters.Connections do
   def end_for_organisation(organisation_id) do
     now = DateTime.utc_now()
 
-    {:ok, count} =
+    {:ok, ended} =
       Repo.transact(fn ->
-        {count, ids} =
+        {_count, ended} =
           Repo.update_all(
             from(c in Connection,
               where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
-              select: c.id
+              select: c
             ),
             set: [
               state: :ended,
@@ -702,10 +740,11 @@ defmodule Apiary.Adapters.Connections do
             ]
           )
 
-        _collections = Collections.end_for_connections(ids, now)
-        {:ok, count}
+        _collections = Collections.end_for_connections(Enum.map(ended, & &1.id), now)
+        {:ok, ended}
       end)
 
-    count
+    Enum.each(ended, &(:ok = Collections.broadcast_connection(&1)))
+    length(ended)
   end
 end

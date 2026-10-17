@@ -352,18 +352,19 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers the work item comments by their words, and no other action of the feature",
+    test "the Activity filter offers the work item comments and the assigning of repositories by their words, and no other action of the feature",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
+      assert {"collection.assign", "Repositories assigned"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
           Apiary.Access.feature(action) == :factory,
-          action not in [:"work_item.comment", :"work_item.comment_delete"],
+          action not in [:"work_item.comment", :"work_item.comment_delete", :"collection.assign"],
           do: refute(action in offered, "#{action}")
     end
 

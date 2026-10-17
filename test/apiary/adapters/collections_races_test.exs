@@ -1,7 +1,8 @@
 defmodule Apiary.Adapters.CollectionsRacesTest do
   # The collections of a connection, racing: two listings of one connection, a listing
-  # against the connection's end, a disconnect against the connection's end, and two
-  # organisations' listings naming one ref at once. Each side runs on a separate
+  # against the connection's end, a disconnect against the connection's end, two
+  # organisations' listings naming one ref at once, two assigns of the same collections
+  # in opposite orders, and an assign against a listing's part. Each side runs on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to
   # every other test while they run, and they delete it again before they end.
@@ -9,7 +10,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # The rules under test (`Apiary.Adapters.Collections`): one connection's parts are taken
   # one at a time, under its row; a listing never makes a collection live under a
   # connection that ended; a collection ends once, with one `unlinked` entry; one live
-  # collection per adapter and ref.
+  # collection per adapter and ref; an assign holds the collections by id, after the
+  # connection, so two never wait on each other in turn.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -62,12 +64,15 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     end)
 
     %{scope: scope} = sign_up()
+    # A second workspace, so a collection is linked to none as it is made.
+    other_workspace = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
     made = connectable_adapter_fixture(%{name: name("adapter")})
     Agent.update(Process.get(:race_adapters), &[made.adapter.id | &1])
     {connection, _nonce} = connection_fixture(scope, made.adapter, :connected)
 
     %{
       scope: scope,
+      other_workspace: other_workspace,
       adapter: made.adapter,
       key_scope: key_scope(made.access_key),
       connection: connection
@@ -139,7 +144,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
     assert live(ctx.connection) == ["BOTH", "NEW"]
 
-    # The older listing, last: it ends nothing a newer listing named, and makes its own.
+    # The older listing, last: it ends nothing a newer listing named, and makes the one it names.
     {older, older_pid} = hold(listing(ctx, ["NEW"], "newest", DateTime.add(later, 60)))
     stale = start(listing(ctx, ["OLD"], "stale", @started))
     await_blocked(stale.backend, older_pid)
@@ -183,7 +188,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   test "a disconnect waiting on the connection's end: one end, one unlinked entry", ctx do
     {:ok, :accepted} = listing(ctx, ["TRK"], "first", @started).()
     trk = Repo.one!(from c in Collection, where: c.connection_id == ^ctx.connection.id)
-    {:ok, _} = Collections.set_workspace(trk, ctx.scope.workspace)
+    {:ok, _} = set_collection_workspace(trk, ctx.scope.workspace)
 
     {ended, ended_pid} =
       hold(fn -> Connections.end_connection(ctx.key_scope, ctx.connection.public_id) end)
@@ -200,7 +205,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   test "the connection's end waiting on a disconnect: one end, one unlinked entry", ctx do
     {:ok, :accepted} = listing(ctx, ["TRK"], "first", @started).()
     trk = Repo.one!(from c in Collection, where: c.connection_id == ^ctx.connection.id)
-    {:ok, _} = Collections.set_workspace(trk, ctx.scope.workspace)
+    {:ok, _} = set_collection_workspace(trk, ctx.scope.workspace)
 
     {disconnected, disconnect_pid} =
       hold(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
@@ -237,5 +242,103 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
                  where: c.adapter_id == ^ctx.adapter.id and c.external_ref == "TRK",
                  where: is_nil(c.ended_at)
              )
+  end
+
+  defp ids(connection, refs) do
+    for ref <- refs do
+      Repo.one!(
+        from c in Collection,
+          where: c.connection_id == ^connection.id and c.external_ref == ^ref,
+          where: is_nil(c.ended_at),
+          select: c.id
+      )
+    end
+  end
+
+  defp collection_entries(adapter),
+    do: for(%{kind: "collection", data: data} <- Feed.entries(adapter), do: data)
+
+  defp assign(ctx, ids, workspace),
+    do: fn -> Collections.assign_collections(ctx.scope, ctx.connection, ids, workspace) end
+
+  test "two assigns of the same collections in opposite orders: the second waits, neither deadlocks",
+       ctx do
+    {:ok, :accepted} = listing(ctx, ["X", "Y"], "first", @started).()
+    [x, y] = ids(ctx.connection, ["X", "Y"])
+
+    {first, first_pid} = hold(assign(ctx, [y, x], ctx.scope.workspace))
+    assert first.result == {:ok, 2}
+
+    second = start(assign(ctx, [x, y], ctx.other_workspace))
+    await_blocked(second.backend, first_pid)
+    commit(first)
+    assert Task.await(second.task) == {:ok, 2}
+
+    workspaces =
+      Repo.all(
+        from c in Collection, where: c.id in ^[x, y], select: c.workspace_id, distinct: true
+      )
+
+    assert workspaces == [ctx.other_workspace.id]
+
+    # Let go at once, again and again: every one answers.
+    for _round <- 1..5 do
+      answers =
+        together([
+          assign(ctx, [x, y], ctx.scope.workspace),
+          assign(ctx, [y, x], nil)
+        ])
+
+      assert Enum.all?(answers, &match?({:ok, _count}, &1)), inspect(answers)
+    end
+
+    # Each link and unlink wrote its entry: they alternate, per ref.
+    for ref <- ["X", "Y"] do
+      statuses =
+        for %{"collection_ref" => ^ref, "status" => status} <- collection_entries(ctx.adapter),
+            do: status
+
+      assert statuses |> Enum.chunk_every(2, 1, :discard) |> Enum.all?(fn [a, b] -> a != b end)
+      assert hd(statuses) == "linked"
+    end
+  end
+
+  test "an assign waiting on a listing's part that ends the collection is refused, and links nothing",
+       ctx do
+    {:ok, :accepted} = listing(ctx, ["X", "Y"], "first", @started).()
+    [x] = ids(ctx.connection, ["X"])
+
+    {listed, listed_pid} = hold(listing(ctx, ["Y"], "second", DateTime.add(@started, 60)))
+    assert listed.result == {:ok, :accepted}
+
+    assigned = start(assign(ctx, [x], ctx.scope.workspace))
+    await_blocked(assigned.backend, listed_pid)
+    commit(listed)
+
+    assert Task.await(assigned.task) == {:error, :not_found}
+    assert Repo.get!(Collection, x).ended_reason == :not_listed
+    assert Repo.get!(Collection, x).workspace_id == nil
+    assert collection_entries(ctx.adapter) == []
+  end
+
+  test "a listing's part waiting on an assign ends the collection it linked, with its unlinked entry",
+       ctx do
+    {:ok, :accepted} = listing(ctx, ["X", "Y"], "first", @started).()
+    [x] = ids(ctx.connection, ["X"])
+
+    {assigned, assigned_pid} = hold(assign(ctx, [x], ctx.scope.workspace))
+    assert assigned.result == {:ok, 1}
+
+    listed = start(listing(ctx, ["Y"], "second", DateTime.add(@started, 60)))
+    await_blocked(listed.backend, assigned_pid)
+    commit(assigned)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert Repo.get!(Collection, x).ended_reason == :not_listed
+
+    assert collection_entries(ctx.adapter) == [
+             %{"collection_ref" => "X", "status" => "linked"},
+             %{"collection_ref" => "X", "status" => "unlinked"}
+           ]
   end
 end
