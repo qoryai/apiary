@@ -730,6 +730,166 @@ defmodule Apiary.Sources.BacklogTest do
     end
   end
 
+  describe "the Updated window" do
+    # The windows the runs list offers, by their values, and the seconds each covers.
+    @windows [
+      {"1h", 3600},
+      {"24h", 86_400},
+      {"7d", 604_800},
+      {"14d", 1_209_600},
+      {"30d", 2_592_000}
+    ]
+
+    # A ticket changed at the source `seconds` before `@at`.
+    defp changed(collection, seconds, attrs \\ %{}) do
+      at = DateTime.add(@at, -seconds, :second)
+      ticket(collection, Map.merge(%{source_updated_at: at, source_created_at: at}, attrs))
+    end
+
+    defp list_at(scope, params, now), do: Backlog.list_tickets(scope, params, now)
+
+    test "offers the runs list's windows, by their values" do
+      assert Enum.map(Apiary.Runs.Filters.windows(), &elem(&1, 1)) ==
+               Enum.map(@windows, &elem(&1, 0))
+
+      assert Apiary.Runs.Filters.windows() == tl(Apiary.Runs.Filters.ranges(:runs))
+    end
+
+    test "each window keeps the tickets changed at or after its start, to the second", ctx do
+      # On each window's start, a second before it, and at the read's moment.
+      edges =
+        for {_value, seconds} <- @windows, offset <- [seconds, seconds + 1] do
+          changed(ctx.collection, offset)
+        end
+
+      now_ticket = changed(ctx.collection, 0)
+      tickets = [now_ticket | edges]
+      # The read's moment counts to the second: its microseconds move no start.
+      now = DateTime.add(@at, 999_999, :microsecond)
+
+      for {value, seconds} <- @windows do
+        start = DateTime.add(@at, -seconds, :second)
+
+        expected =
+          tickets
+          |> Enum.filter(&(DateTime.compare(&1.source_updated_at, start) != :lt))
+          |> sorted({:updated, :desc})
+          |> Enum.map(& &1.public_id)
+
+        page = list_at(ctx.scope, [updated: value], now)
+        assert ids(page) == expected, value
+        assert page.counts.total == length(expected), value
+        assert length(expected) == 2 * Enum.find_index(@windows, &(&1 == {value, seconds})) + 2
+        assert ids(list_at(ctx.scope, %{"updated" => value}, now)) == expected, value
+      end
+
+      # The default moment is now.
+      recent = ticket(ctx.collection, source_updated_at: DateTime.utc_now(:second))
+      assert ids(list(ctx.scope, updated: "1h")) == [recent.public_id]
+
+      # No window, or an empty one, is none.
+      assert length(list_at(ctx.scope, [updated: nil], now).rows) == length(tickets) + 1
+      assert length(list_at(ctx.scope, %{"updated" => ""}, now).rows) == length(tickets) + 1
+    end
+
+    test "the counts and first are of the window, page by page", ctx do
+      %{scope: scope, collection: collection} = ctx
+
+      # 55 open tickets in the last day, a closed one, a taken one and a declined one;
+      # 10 more open ones, and a closed one, changed before it.
+      inside = for n <- 1..55, do: changed(collection, n * 60)
+      closed = changed(collection, 3600, %{state: :closed})
+      taken = changed(collection, 7200)
+      declined = changed(collection, 7300)
+      work_item(scope, taken)
+      work_item(scope, declined, :declined)
+      for n <- 1..10, do: changed(collection, 86_400 + n)
+      changed(collection, 90_000, %{state: :closed})
+
+      params = [updated: "24h"]
+      first = list_at(scope, params, @at)
+      second = list_at(scope, Keyword.put(params, :after, first.next), @at)
+
+      assert first.counts == %{open: 57, taken: 1, declined: 1, closed: 1, total: 58}
+      assert second.counts == first.counts
+      assert {first.first, length(first.rows)} == {1, 50}
+      assert {second.first, length(second.rows), second.next} == {51, 7, nil}
+
+      expected = (inside ++ [taken, declined]) |> sorted({:updated, :desc})
+      assert ids(first) ++ ids(second) == Enum.map(expected, & &1.public_id)
+
+      # Newer from the second page is the first, read again under the window.
+      assert list_at(scope, Keyword.put(params, :before, second.prev), @at) == first
+
+      # The closed view under the window holds the one closed in it.
+      assert ids(list_at(scope, [updated: "24h", view: :closed], @at)) == [closed.public_id]
+
+      # Without the window, every ticket.
+      assert list_at(scope, [], @at).counts.total == 69
+    end
+
+    test "holds with a label, a sort and the other filters", ctx do
+      %{scope: scope, collection: collection} = ctx
+
+      old_ui = changed(collection, 8 * 86_400, %{labels: ["ui"], comment_count: 9})
+
+      week_ui =
+        changed(collection, 3 * 86_400, %{
+          labels: ["ui"],
+          comment_count: 1,
+          source_created_at: DateTime.add(@at, -20 * 86_400, :second)
+        })
+
+      day_ui = changed(collection, 600, %{labels: ["ui", "bug"], comment_count: 4})
+      day_bug = changed(collection, 300, %{labels: ["bug"], comment_count: 7})
+
+      closed_ui =
+        changed(collection, 900, %{labels: ["ui"], state: :closed, filed_by_name: "Lea"})
+
+      assert ids(list_at(scope, [updated: "7d", label: "ui"], @at)) ==
+               [day_ui.public_id, week_ui.public_id]
+
+      assert ids(list_at(scope, [updated: "7d", label: "ui", sort: :created, order: :asc], @at)) ==
+               [week_ui.public_id, day_ui.public_id]
+
+      assert ids(list_at(scope, [updated: "30d", label: "ui", sort: :comments], @at)) ==
+               [old_ui.public_id, day_ui.public_id, week_ui.public_id]
+
+      assert ids(list_at(scope, [updated: "24h", sort: :comments, view: :all], @at)) ==
+               [day_bug.public_id, day_ui.public_id, closed_ui.public_id]
+
+      page = list_at(scope, [updated: "24h", label: "ui", filed_by: "Lea", view: :all], @at)
+      assert ids(page) == [closed_ui.public_id]
+      assert page.counts == %{open: 0, taken: 0, declined: 0, closed: 1, total: 1}
+
+      assert ids(list_at(scope, [updated: "1h", search: "#", label: "bug"], @at)) ==
+               [day_bug.public_id, day_ui.public_id]
+    end
+
+    test "a value it does not offer matches nothing", ctx do
+      changed(ctx.collection, 60)
+
+      for value <- [
+            "all",
+            "90d",
+            "2h",
+            "1H",
+            " 1h",
+            "1h ",
+            :"1h",
+            1,
+            ["1h"],
+            %{},
+            String.duplicate("1h", 600)
+          ] do
+        page = list_at(ctx.scope, [updated: value, view: :all], @at)
+        assert page.rows == [], inspect(value)
+        assert page.counts.total == 0, inspect(value)
+        assert page.first == 0, inspect(value)
+      end
+    end
+  end
+
   describe "filter values" do
     test "every filer by name, with their tickets in every view, and a name search", ctx do
       ticket(ctx.collection, filed_by_name: "Lea")
