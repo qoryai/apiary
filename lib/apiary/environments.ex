@@ -16,7 +16,7 @@ defmodule Apiary.Environments do
   # for another `environment_ref`, or was retired after it was last queued. Queuing sets
   # the record's `queued_ref` and `queued_at`, making the record when there was none. So
   # the same `environment_ref` named again queues nothing, and a change while a build waits
-  # or runs queues its own build, never folded into that one.
+  # or runs queues a build for it, never folded into that one.
   #
   # `trigger(collections, now)` applies it, inside the caller's transaction, to
   # collections as they now stand, for every live pool of each one's workspace: a

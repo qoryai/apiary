@@ -454,7 +454,7 @@ defmodule Apiary.EnvironmentsTest do
 
       assert Environments.image_for(ctx.pool, @shop) == image("2")
 
-      # Another pool's builds are its own.
+      # Another pool has no build of the target.
       other = pool_fixture(ctx.scope)
       assert Environments.image_for(other, @shop) == nil
     end

@@ -194,7 +194,8 @@ defmodule Apiary.DispatchesTest do
       assert Dispatches.claim(other_key, Dispatches.now(), 2) == {:ok, :none}
       assert run!(run).state == :waiting
 
-      # Its pool, at revision 2, takes the oldest of its own and the workspace's runs.
+      # Its pool, at revision 2, takes the oldest of the prebuilds held for it and the
+      # workspace's other runs.
       later = queued!(ctx.scope)
       run_id = run.id
       assert {:ok, %{run: %{id: ^run_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
