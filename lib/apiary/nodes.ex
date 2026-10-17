@@ -66,6 +66,7 @@ defmodule Apiary.Nodes do
   alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Dispatches.Slots
   alias Apiary.Nodes.{Instance, Node, Throttle}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Liveness, Run}
@@ -899,10 +900,11 @@ defmodule Apiary.Nodes do
   admits any, with neither a lock nor a count. Otherwise it locks the node's row
   `FOR UPDATE`, so two checks for one node take turns, reads the limit as it is now (1 for
   a Node), and counts the distinct instance ids of the node's runs alive at `now`
-  (`Apiary.Runs.Liveness.alive/2`):
+  (`Apiary.Runs.Liveness.alive/2`) that were not dispatched, and the slots the node's
+  claims hold, which count its dispatched runs (`instances_in_use/2`):
 
-  - `:already_counted` when `instance_id` is among them: it runs already, and a second
-    run of it takes no slot;
+  - `:already_counted` when `instance_id` is among those instance ids: it runs already,
+    and a second run of it takes no slot;
   - `{:error, :instance_limit}` when they are as many as the limit or more: the caller
     rolls back and stores nothing;
   - `:ok` otherwise: the run the caller then creates, in the same transaction, is the
@@ -930,18 +932,28 @@ defmodule Apiary.Nodes do
     cond do
       instance_id in running -> :already_counted
       is_nil(limit) -> :ok
-      length(running) >= limit -> {:error, :instance_limit}
+      length(running) + Slots.held(id) >= limit -> {:error, :instance_limit}
       true -> :ok
     end
   end
 
-  # The distinct instance ids of the node's runs alive at `now`, read from the partial
-  # index on the runs alive by node and instance.
+  # instances_in_use/2 is what counts against the instance limit of `node` at `now`: the
+  # distinct instance ids of its runs alive that were not dispatched, and the slots its
+  # claims hold (`Apiary.Dispatches.Slots.held/1`), which count its dispatched runs. The
+  # caller holds the node's row locked, as `check_instance_limit/3` does.
+  @doc false
+  @spec instances_in_use(Node.t(), DateTime.t()) :: non_neg_integer
+  def instances_in_use(%Node{id: id} = node, %DateTime{} = now),
+    do: length(running_instance_ids(node, now)) + Slots.held(id)
+
+  # The distinct instance ids of the node's runs alive at `now` that were not dispatched,
+  # read from the partial index on the runs alive by node and instance. A dispatched run
+  # counts by the slot its dispatch holds, not here.
   defp running_instance_ids(%Node{id: id, workspace_id: workspace_id}, now) do
     from(r in Run,
       as: :run,
       where: r.node_id == ^id and r.workspace_id == ^workspace_id,
-      where: not is_nil(r.node_instance_id),
+      where: not is_nil(r.node_instance_id) and is_nil(r.dispatch_run_id),
       distinct: true,
       select: r.node_instance_id
     )
