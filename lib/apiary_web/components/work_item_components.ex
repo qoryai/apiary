@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.WorkItemComponents do
-  # The parts of a work item's page (`/:org/:workspace/work/:number`, its Ticket tab, and
-  # `…/thread`, its Thread), and the status words and marks the Work items list shares
+  # The parts of a work item's page (`/:org/:workspace/work/:number`, its Ticket tab,
+  # `…/explore`, its Explore tab, `…/explore/edit`, the page that changes Qory's proposal,
+  # and `…/thread`, its Thread), and the status words and marks the Work items list shares
   # (`ApiaryWeb.WorkItemListComponents`).
   #
   # Every component takes plain assigns: strings, numbers, times and maps with the keys
@@ -13,8 +14,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     show, never an id, a path or an event's value;
   #   * `:url` - the ticket's page at the source, or `nil`;
   #   * `:repository` - the repository as the source names it, `"acme/shop"`;
-  #   * `:status` - `:queued` or `:running` (Explore), `:confirm`, `:shape`, `:declined`,
-  #     `:closed` or `:undone`;
+  #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory asked), `:used_up`
+  #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
+  #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
+  #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
+  #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
+  #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`) and what it gave;
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
@@ -27,14 +32,21 @@ defmodule ApiaryWeb.WorkItemComponents do
   # Two people are the same person by `:id`, never by name.
   #
   # Every DOM id, `phx-value-*` and path is Qory Apiary's: the work item's number, a
-  # comment's `public_id`, and the paths the page gives. The ticket's ref and its number
+  # comment's `public_id`, a question's `public_id`, a run's `rn_` id, and the paths the
+  # page gives. A source Qory learned from is a link only when it is an https address
+  # core allows; any other is its address as text. The ticket's ref and its number
   # at the source are text only. The page gives every path (`again_path`, `ticket_path`,
   # the run's `path`); a component builds none.
   #
   # The events a component sends, for the page to handle:
   #
-  #   * `"undo"`, `"confirm"`, `"ask_decline"`, `"decline"`, `"ask_close"`, `"close"` -
-  #     with `phx-value-number`, the work item's number;
+  #   * `"undo"`, `"confirm"`, `"ask_decline"`, `"decline"`, `"ask_close"`, `"close"`,
+  #     `"explore_again"` - with `phx-value-number`, the work item's number;
+  #   * `"answer"` - the questions form: `number`, and `answers`, a map of each question's
+  #     `public_id` to its answer;
+  #   * `"change_proposal"`, `"confirm_changes"` - the edit page's form, on change and on
+  #     submit: `number`, `complexity` (`level`, `reason`), `understanding`, `scope_in`,
+  #     `scope_out` (one entry for each line) and `approach`;
   #   * `"ask_delete_comment"`, `"delete_comment"` - with `phx-value-comment`, the
   #     comment's `public_id`;
   #   * `"comment"` - the composer's form, its text as `body`;
