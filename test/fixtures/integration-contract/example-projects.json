@@ -18,6 +18,7 @@
       "connect": "Example Tracker asks you to sign in and to choose the projects the adapter may read.",
       "access": "In Example Tracker, open Settings, then Connected adapters, to change which projects the adapter reads.",
       "disconnect": "In Example Tracker, open Settings, then Connected adapters, and remove the adapter.",
+      "collection_noun": {"one": "project", "other": "projects"},
       "items": false
     }
   }

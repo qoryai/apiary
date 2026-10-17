@@ -29,14 +29,14 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert names ==
                ~w(acme-chat.json acme-tracker.json example-projects.json example-tracker.json
-                  github.json unknown-role.json)
+                  example-work-items.json github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 38
+      assert length(names) == 46
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -55,7 +55,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 23
+      assert length(names) == 31
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -80,7 +80,16 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"item-noun-work-item", :not, "#/roles/source/item_noun/one"},
             {"item-noun-work-items-hyphen", :not, "#/roles/source/item_noun/other"},
             {"items-false-with-item-noun", :jsv@if, "#/roles/source"},
-            {"items-true", :const, "#/roles/source/items"}
+            {"items-true", :const, "#/roles/source/items"},
+            {"collection-noun-33-characters", :maxLength, "#/roles/source/collection_noun/one"},
+            {"collection-noun-double-space", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-empty", :minLength, "#/roles/source/collection_noun/other"},
+            {"collection-noun-leading-hyphen", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-no-other", :required, "#/roles/source/collection_noun"},
+            {"collection-noun-non-ascii", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-undefined-member", :additionalProperties,
+             "#/roles/source/collection_noun"},
+            {"collection-noun-upper-case", :pattern, "#/roles/source/collection_noun/one"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
