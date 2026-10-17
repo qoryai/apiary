@@ -493,11 +493,11 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, ".q-settings-head-sub") == "This happens at once:"
 
       assert words(lv, "#adapter-remove-follows") ==
-               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
+               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Its open work items, in every organisation, are closed as a member would close them. If it is added again, taking in one of its tickets makes a new work item. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
 
       # The close of its work items is the second line, after the keys.
       assert words(lv, "#adapter-remove-follows li:nth-child(2)") ==
-               "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
+               "Its open work items, in every organisation, are closed as a member would close them. If it is added again, taking in one of its tickets makes a new work item."
 
       assert has_element?(lv, "#adapter-remove-button", "Remove Platform tracker")
 

@@ -400,8 +400,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       ]
     end
 
-    defp list_frame(ticket, comments) do
-      assigns = %{ticket: ticket, comments: comments, now: @now}
+    defp list_frame(ticket, comments, item_noun \\ nil) do
+      assigns = %{ticket: ticket, comments: comments, now: @now, item_noun: item_noun}
 
       rendered_to_string(~H"""
       <BacklogComponents.ticket
@@ -410,6 +410,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         integration="GitHub"
         comments={@comments}
         now={@now}
+        item_noun={@item_noun}
         full_path="/acme/shop/backlog/tk_01"
         close_patch="/acme/shop/backlog"
       >
@@ -495,6 +496,15 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
       assert text(html, "h2#tk-title") == "Discount codes are case-sensitive at checkout"
       assert text(html, ".q-bl-meta") == "Lea filed this 2 days ago · updated 3 minutes ago"
+    end
+
+    test "over the list: its name and actions take its source's word for its items" do
+      html = list_frame(ticket(), comments(), %{one: "bug", other: "bugs"})
+
+      assert attr(html, "div#tk", "aria-label") == ["Bug"]
+      assert attr(html, "a#tk-full", "aria-label") == ["Open the full bug"]
+      assert attr(html, "a#tk-full", "title") == ["Open the full bug"]
+      assert attr(html, "a#tk-close", "aria-label") == ["Close the bug"]
     end
 
     test "over the list: Repository and Labels, the block, the text, the comments" do

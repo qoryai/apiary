@@ -2,9 +2,10 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
   @moduledoc """
   The Backlog card of a target's Overview (`ApiaryWeb.TargetLive.Show`): where the
   target's collection is assigned to the workspace, one switch, whether its tickets come
-  into the Backlog; on by default; turned by an owner or an admin, with a toast that says
+  into the Backlog, in its source's word for them; on by default; turned by an owner or an admin, with a toast that says
   what is so now; read-only, disabled, for a member, with who may change it; and no card
-  where the target has no collection there, or the reader is not shown the feature.
+  where the target has no collection there, where its collection or its adapter has no
+  items, or where the reader is not shown the feature.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -91,14 +92,20 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
     assert has_element?(
              view,
              "#flash-info",
-             "Tickets of acme/shop no longer come into the Backlog."
+             "The tickets of acme/shop no longer come into the Backlog."
            )
 
     refute backlog_of(collection)
 
     view |> element("#target-backlog-switch") |> render_click()
     assert has_element?(view, "#target-backlog-switch[aria-checked=true]")
-    assert has_element?(view, "#flash-info", "Tickets of acme/shop now come into the Backlog.")
+
+    assert has_element?(
+             view,
+             "#flash-info",
+             "The tickets of acme/shop now come into the Backlog."
+           )
+
     assert backlog_of(collection)
 
     assert [false, true] =
@@ -122,6 +129,42 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
     assert html =~ "Turned off taking a repository&#39;s tickets into the Backlog"
     assert html =~ "Turned on taking a repository&#39;s tickets into the Backlog"
     assert html =~ "acme/shop"
+  end
+
+  test "a source that names its items: the card, the toast and Activity say its word",
+       %{conn: conn, scope: scope, path: path, collection: collection} do
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^collection.adapter_id),
+      set: [item_noun_one: "story", item_noun_other: "stories"]
+    )
+
+    view = open(conn, path)
+
+    assert has_element?(
+             view,
+             "label[for=target-backlog-switch]",
+             "Take its stories into the Backlog"
+           )
+
+    assert has_element?(
+             view,
+             "#target-backlog-switch-description",
+             "If its stories only track bugs, turn this off. Work items already taken in stay."
+           )
+
+    view |> element("#target-backlog-switch") |> render_click()
+
+    assert has_element?(
+             view,
+             "#flash-info",
+             "The stories of acme/shop no longer come into the Backlog."
+           )
+
+    {:ok, activity, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
+    render_async(activity)
+    html = render(activity)
+
+    assert html =~ "Turned off taking a repository&#39;s stories into the Backlog"
+    assert html =~ "Taking stories into the Backlog turned on or off"
   end
 
   test "off, it shows off", %{conn: conn, path: path, collection: collection} do
@@ -178,6 +221,40 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
     |> Repo.update!()
 
     refute has_element?(open(conn, path), "#target-backlog")
+  end
+
+  test "no card for a collection with no items, or of an adapter with none; the page otherwise the same",
+       %{conn: conn, path: path, collection: collection} do
+    with_card = open(conn, path)
+    assert has_element?(with_card, "#target-backlog")
+    others = parts(with_card)
+    assert "target-last-runs" in others and "target-about" in others
+
+    collection = collection |> Ecto.Changeset.change(items: false) |> Repo.update!()
+    view = open(conn, path)
+    refute has_element?(view, "#target-backlog")
+    assert parts(view) == others
+
+    collection |> Ecto.Changeset.change(items: true) |> Repo.update!()
+
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^collection.adapter_id),
+      set: [items: false]
+    )
+
+    view = open(conn, path)
+    refute has_element?(view, "#target-backlog")
+    assert parts(view) == others
+    assert backlog_of(collection)
+  end
+
+  # The ids of the Overview's parts, the Backlog card's left out.
+  defp parts(view) do
+    html = view |> element("#target-overview") |> render()
+
+    for [_, id] <- Regex.scan(~r/ id="([^"]+)"/, html),
+        not String.starts_with?(id, "target-backlog"),
+        uniq: true,
+        do: id
   end
 
   test "no card where the reader is not shown the feature", %{conn: conn, path: path} do

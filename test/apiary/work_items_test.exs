@@ -204,4 +204,60 @@ defmodule Apiary.WorkItemsTest do
       end
     end
   end
+
+  describe "backlog_off/2" do
+    defp put(record, fields), do: record |> Ecto.Changeset.change(fields) |> Repo.update!()
+
+    test "while its ticket's collection is assigned and not linked: its switch off, or no items",
+         ctx do
+      w = work_item(ctx, ticket(ctx, ctx.collection, %{}))
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new()
+
+      collection = put(ctx.collection, backlog: false)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new([w.id])
+
+      collection = put(collection, backlog: true, items: false)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new([w.id])
+
+      put(collection, items: true)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new()
+
+      adapter = Repo.get!(Apiary.Nodes.Node, ctx.connection.adapter_id)
+      put(adapter, items: false)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new([w.id])
+    end
+
+    test "not while its ticket has no live record in a collection of the workspace", ctx do
+      item = ticket(ctx, ctx.collection, %{})
+      w = work_item(ctx, item)
+      collection = put(ctx.collection, items: false)
+
+      item = disconnect(item, DateTime.utc_now())
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new()
+
+      put(item, disconnected_at: nil)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new([w.id])
+
+      other = workspace_fixture(ctx.scope.organisation, "Second")
+      collection = put(collection, workspace_id: other.id)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new()
+
+      collection = put(collection, workspace_id: ctx.scope.workspace.id)
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new([w.id])
+      end_collection(collection, DateTime.utc_now())
+      assert WorkItems.backlog_off(ctx.scope, [w]) == MapSet.new()
+    end
+
+    test "nothing for another workspace, or a person who may not read its work items", ctx do
+      w = work_item(ctx, ticket(ctx, ctx.collection, %{}))
+      put(ctx.collection, backlog: false)
+
+      %{scope: stranger} = sign_up_fixture()
+      assert WorkItems.backlog_off(stranger, [w]) == MapSet.new()
+
+      other = workspace_fixture(ctx.scope.organisation, "Second")
+      assert WorkItems.backlog_off(workspace_scope(ctx.scope.user, other), [w]) == MapSet.new()
+      assert WorkItems.backlog_off(ctx.scope, []) == MapSet.new()
+    end
+  end
 end

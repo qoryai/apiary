@@ -23,9 +23,10 @@ defmodule ApiaryWeb.TargetLive.Show do
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
     plain text, what it is, the same path in other systems, its runs a day, its machines
-    and runtimes. Last, where the target's collection is assigned to the workspace, the
-    Backlog card: one switch, whether its tickets come into the workspace's Backlog,
-    which owners and admins turn at once (`Apiary.Adapters.Collections.set_backlog/3`)
+    and runtimes. Last, where the target's collection is assigned to the workspace, and
+    it and its adapter have items, the Backlog card: one switch, whether its tickets come
+    into the workspace's Backlog, named with its source's word for them, which owners and
+    admins turn at once (`Apiary.Adapters.Collections.set_backlog/3`)
     and anyone else reads, disabled, with who may change it.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
@@ -43,7 +44,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   alias Apiary.{Access, Runs, Targets}
   alias Apiary.Adapters.Collections
   alias Apiary.Runs.{Filters, Target}
-  alias ApiaryWeb.PolicyLive
+  alias ApiaryWeb.{PolicyLive, SourceComponents}
 
   @recent 5
   @window_days 14
@@ -157,8 +158,8 @@ defmodule ApiaryWeb.TargetLive.Show do
       {:ok, _count} ->
         {:noreply,
          socket
-         |> assign(:backlog, %{on: on})
-         |> put_flash(:info, backlog_words(on, name(target, shared)))}
+         |> assign(:backlog, %{on: on, item_noun: backlog && backlog.item_noun})
+         |> put_flash(:info, backlog_words(on, name(target, shared), backlog))}
 
       {:error, :not_found} ->
         {:noreply, load_backlog(socket)}
@@ -230,11 +231,22 @@ defmodule ApiaryWeb.TargetLive.Show do
     )
   end
 
-  defp backlog_words(true, target),
-    do: gettext("Tickets of %{target} now come into the Backlog.", target: target)
+  # `backlog` is the card's, with what the target's sources call their items.
+  defp backlog_words(true, target, backlog),
+    do:
+      gettext("The %{items} of %{target} now come into the Backlog.",
+        items: backlog_items(backlog),
+        target: target
+      )
 
-  defp backlog_words(false, target),
-    do: gettext("Tickets of %{target} no longer come into the Backlog.", target: target)
+  defp backlog_words(false, target, backlog),
+    do:
+      gettext("The %{items} of %{target} no longer come into the Backlog.",
+        items: backlog_items(backlog),
+        target: target
+      )
+
+  defp backlog_items(backlog), do: SourceComponents.items(backlog && backlog.item_noun)
 
   # Who may turn the switch, in the edition's words where it has some.
   defp only_admins_change(scope),
@@ -539,13 +551,14 @@ defmodule ApiaryWeb.TargetLive.Show do
           <div class="q-tgt-card-b">
             <.switch
               id="target-backlog-switch"
-              label={gettext("Take its tickets into the Backlog")}
+              label={gettext("Take its %{items} into the Backlog", items: backlog_items(@backlog))}
               checked={@backlog.on}
               disabled={!@may_set_backlog}
               phx-click={@may_set_backlog && "set_backlog"}
             >
               {gettext(
-                "If its tickets only track bugs, turn this off. Work items already taken in stay."
+                "If its %{items} only track bugs, turn this off. Work items already taken in stay.",
+                items: backlog_items(@backlog)
               )}
             </.switch>
             <p :if={!@may_set_backlog} id="target-backlog-read-only" class="q-tgt-card-ro">

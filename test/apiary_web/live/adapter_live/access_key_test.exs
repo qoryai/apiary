@@ -376,7 +376,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       assert words(lv, "#key-#{key.key_id}-confirm-question") == "Revoke tracker-01?"
 
       assert words(lv, "#key-#{key.key_id}-confirm-sub") ==
-               "It is revoked at once, and its public key can never be used again. This cannot be undone. It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
+               "It is revoked at once, and its public key can never be used again. This cannot be undone. It is the adapter's only key: until it gets a new one, nothing it sends reaches any organisation."
 
       assert has_element?(lv, "#key-#{key.key_id}-confirm-button", "Yes, revoke")
 

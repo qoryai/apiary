@@ -1,6 +1,6 @@
 defmodule Apiary.Sources.BodyTest do
   @moduledoc """
-  A ticket's text as the console shows it (`Apiary.Sources.Body.render/2`): Markdown
+  A ticket's text as the console shows it (`Apiary.Sources.Body.render/3`): Markdown
   formatted, to a fixed allowlist, every link `https`, no image and no raw HTML; any other
   format as written, unchanged.
   """
@@ -45,7 +45,7 @@ defmodule Apiary.Sources.BodyTest do
   ]
 
   defp html(markdown) do
-    assert {:safe, html} = Body.render(markdown, "markdown")
+    assert {:safe, html} = Body.render(markdown, "markdown", "ticket")
     html = IO.iodata_to_binary(html)
     assert_allowed(html)
     html
@@ -138,6 +138,12 @@ defmodule Apiary.Sources.BodyTest do
       cells = LazyHTML.query(doc, "table > tbody > tr > td")
       assert Enum.map(cells, &LazyHTML.text/1) == ~w(one 1 two 2)
       assert doc |> LazyHTML.query("td[scope]") |> Enum.empty?()
+    end
+
+    test "a table is named with its source's word for one of its items" do
+      assert {:safe, html} = Body.render("| a |\n|---|\n| 1 |", "markdown", "bug")
+      table = html |> IO.iodata_to_binary() |> LazyHTML.from_fragment() |> LazyHTML.query("table")
+      assert LazyHTML.attribute(table, "aria-label") == ["Table in the bug"]
     end
 
     test "a task box is no form field: a hidden mark, and Done or Not done in words" do
@@ -435,44 +441,44 @@ defmodule Apiary.Sources.BodyTest do
       text = "# Not a heading\n  <script>alert(1)</script>\r\n\ttabbed  **x** é\n"
 
       for format <- ["text", nil, "html", "Markdown", "markdown "] do
-        assert Body.render(text, format) == {:as_written, text}
+        assert Body.render(text, format, "ticket") == {:as_written, text}
       end
     end
 
     test "an empty or nil text is the empty text, as written" do
       for format <- ["markdown", "text", nil] do
-        assert Body.render(nil, format) == {:as_written, ""}
-        assert Body.render("", format) == {:as_written, ""}
+        assert Body.render(nil, format, "ticket") == {:as_written, ""}
+        assert Body.render("", format, "ticket") == {:as_written, ""}
       end
     end
 
     test "markdown longer than max_length/0 characters is shown as written, whole" do
       at_most = String.duplicate("é", Body.max_length())
-      assert {:safe, _} = Body.render(at_most, "markdown")
+      assert {:safe, _} = Body.render(at_most, "markdown", "ticket")
 
       longer = at_most <> "x"
-      assert Body.render(longer, "markdown") == {:as_written, longer}
+      assert Body.render(longer, "markdown", "ticket") == {:as_written, longer}
     end
 
     test "a character is a code point, so combining marks count one each" do
       # One grapheme each: e and a combining acute accent are two code points.
       at_most = String.duplicate("e\u0301", div(Body.max_length(), 2))
-      assert {:safe, _} = Body.render(at_most, "markdown")
-      assert Body.render(at_most <> "x", "markdown") == {:as_written, at_most <> "x"}
+      assert {:safe, _} = Body.render(at_most, "markdown", "ticket")
+      assert Body.render(at_most <> "x", "markdown", "ticket") == {:as_written, at_most <> "x"}
 
       # One grapheme of 70,001 code points
       long = "a" <> String.duplicate("\u0301", 70_000)
       assert String.length(long) == 1
-      assert Body.render(long, "markdown") == {:as_written, long}
+      assert Body.render(long, "markdown", "ticket") == {:as_written, long}
     end
 
     test "invalid UTF-8 is as written, its invalid bytes replaced with U+FFFD" do
       for format <- ["markdown", "text", nil] do
         bad = <<"# x ", 0xFF, " y">>
-        assert Body.render(bad, format) == {:as_written, "# x \uFFFD y"}
+        assert Body.render(bad, format, "ticket") == {:as_written, "# x \uFFFD y"}
 
         # The first two bytes of a three-byte character are one sequence
-        assert Body.render(<<0xE2, 0x82, ?a>>, format) == {:as_written, "\uFFFDa"}
+        assert Body.render(<<0xE2, 0x82, ?a>>, format, "ticket") == {:as_written, "\uFFFDa"}
       end
     end
 
@@ -484,21 +490,21 @@ defmodule Apiary.Sources.BodyTest do
       header = header <> "|" <> String.duplicate("-|", c) <> "\n"
       body = header <> String.duplicate("a\n", div(65_536 - 4 * c - 4, 2))
 
-      {microseconds, result} = :timer.tc(fn -> Body.render(body, "markdown") end)
+      {microseconds, result} = :timer.tc(fn -> Body.render(body, "markdown", "ticket") end)
       assert result == {:as_written, body}
       # A ceiling against a hang, not a measure: the bound answers in milliseconds.
       assert microseconds < 10_000_000
 
       # Lines end with a carriage return as well
       cr = String.replace(body, "\n", "\r")
-      assert Body.render(cr, "markdown") == {:as_written, cr}
+      assert Body.render(cr, "markdown", "ticket") == {:as_written, cr}
     end
 
     test "a table within max_cells/0 is formatted, and so is a long text with no |" do
       body = "| a | b |\n|---|---|\n" <> String.duplicate("| 1 | 2 |\n", 100)
-      assert {:safe, _} = Body.render(body, "markdown")
+      assert {:safe, _} = Body.render(body, "markdown", "ticket")
 
-      assert {:safe, _} = Body.render(String.duplicate("a\n", 30_000), "markdown")
+      assert {:safe, _} = Body.render(String.duplicate("a\n", 30_000), "markdown", "ticket")
     end
 
     test "text that nests deeper than max_depth/0 is as written" do
@@ -512,7 +518,7 @@ defmodule Apiary.Sources.BodyTest do
             String.duplicate("- ", 1000) <> "x",
             String.duplicate("*", 600) <> "a" <> String.duplicate("*", 600)
           ] do
-        {microseconds, result} = :timer.tc(fn -> Body.render(body, "markdown") end)
+        {microseconds, result} = :timer.tc(fn -> Body.render(body, "markdown", "ticket") end)
         assert result == {:as_written, body}
         # A ceiling against a hang, not a measure: the bound answers in milliseconds.
         assert microseconds < 10_000_000

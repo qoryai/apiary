@@ -3,8 +3,9 @@ defmodule Apiary.Sources.Body do
   # it, and that is what an agent reads; this only decides how a page shows it. Kept out
   # of the generated documentation, which every instance serves.
   #
-  # `render/2` takes the text and its format, `"markdown"` or `"text"`. Markdown comes
-  # back as safe HTML, formatted. Any other format, nil included, comes back as
+  # `render/3` takes the text, its format, `"markdown"` or `"text"`, and the word for one
+  # of its source's items (`ApiaryWeb.SourceComponents.item/1`). Markdown comes back as
+  # safe HTML, formatted. Any other format, nil included, comes back as
   # `{:as_written, text}`, the text unchanged, which a page interpolates, so HEEx escapes
   # it.
   #
@@ -35,8 +36,9 @@ defmodule Apiary.Sources.Body do
   #     (`ApiaryWeb.CoreComponents.external_link/1`), with
   #     `rel="nofollow noopener noreferrer"`, the faint mark of a link out, hidden from a
   #     screen reader, and, for a screen reader, that it opens a new tab.
-  #   * A table is named for a screen reader, "Table in the ticket", by an `aria-label`
-  #     the sanitiser sets; its header cells are `th` with `scope="col"`.
+  #   * A table is named for a screen reader, "Table in the ticket", with its source's
+  #     word in place of "ticket", by an `aria-label` the sanitiser sets; its header
+  #     cells are `th` with `scope="col"`.
   #
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `https` the one URL scheme and no relative URL; nothing changes it
@@ -102,46 +104,48 @@ defmodule Apiary.Sources.Body do
     strip_comments: true
   ]
 
-  # The longest text, in characters (Unicode code points), that `render/2` formats.
+  # The longest text, in characters (Unicode code points), that `render/3` formats.
   @doc false
   @spec max_length() :: pos_integer()
   def max_length, do: @max_length
 
-  # The most table cells a text that `render/2` formats may ask for, counted before it is
+  # The most table cells a text that `render/3` formats may ask for, counted before it is
   # parsed: one more than the most `|` on one line, times its lines.
   @doc false
   @spec max_cells() :: pos_integer()
   def max_cells, do: @max_cells
 
-  # How deep the blocks and inlines of a text that `render/2` formats may nest.
+  # How deep the blocks and inlines of a text that `render/3` formats may nest.
   @doc false
   @spec max_depth() :: pos_integer()
   def max_depth, do: @max_depth
 
-  # The ticket's text `body` in the format `format`: safe HTML for `"markdown"`, and
-  # `{:as_written, text}` for any other format, nil included, and for a Markdown text
-  # `render/2` does not format: longer than `max_length/0`, asking for more table cells
+  # The ticket's text `body` in the format `format`, `item` being its source's word for
+  # one of its items, which names a table for a screen reader: safe HTML for
+  # `"markdown"`, and `{:as_written, text}` for any other format, nil included, and for a Markdown text
+  # `render/3` does not format: longer than `max_length/0`, asking for more table cells
   # than `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or
   # nil text is `{:as_written, ""}`: there is nothing to format. The text as written is
   # the text unchanged where it is valid UTF-8; otherwise its invalid bytes are replaced
   # with U+FFFD, so a page can send it.
   @doc false
-  @spec render(String.t() | nil, String.t() | nil) ::
+  @spec render(String.t() | nil, String.t() | nil, String.t()) ::
           Phoenix.HTML.safe() | {:as_written, String.t()}
-  def render(body, format)
-  def render(nil, _format), do: {:as_written, ""}
-  def render("", _format), do: {:as_written, ""}
+  def render(body, format, item)
+  def render(nil, _format, _item), do: {:as_written, ""}
+  def render("", _format, _item), do: {:as_written, ""}
 
-  def render(body, "markdown") when is_binary(body) do
+  def render(body, "markdown", item) when is_binary(body) and is_binary(item) do
     with true <- formattable?(body),
-         {:ok, html} <- markdown(body) do
+         {:ok, html} <- markdown(body, item) do
       Phoenix.HTML.raw(html)
     else
       _ -> as_written(body)
     end
   end
 
-  def render(body, _format) when is_binary(body), do: as_written(body)
+  def render(body, _format, item) when is_binary(body) and is_binary(item),
+    do: as_written(body)
 
   defp as_written(body) do
     if String.valid?(body),
@@ -173,11 +177,11 @@ defmodule Apiary.Sources.Body do
     end
   end
 
-  defp markdown(body) do
+  defp markdown(body, item) do
     document = MDEx.parse_document!(body, @parse_options)
 
     case walk_document(document.nodes) do
-      {:ok, nodes} -> {:ok, html(%{document | nodes: nodes})}
+      {:ok, nodes} -> {:ok, html(%{document | nodes: nodes}, item)}
       :too_deep -> :too_deep
     end
   end
@@ -188,21 +192,22 @@ defmodule Apiary.Sources.Body do
     :too_deep -> :too_deep
   end
 
-  defp html(document) do
+  defp html(document, item) do
     document
     |> MDEx.to_html!()
     |> String.replace(@box_done, box("☑", pgettext("ticket task", "Done")))
     |> String.replace(@box_open, box("☐", pgettext("ticket task", "Not done")))
     |> String.replace(@link_end, link_end())
     |> MDEx.safe_html(
-      sanitize: sanitize(),
+      sanitize: sanitize(item),
       escape: [content: false, curly_braces_in_code: false]
     )
   end
 
-  # The allowlist, with the name every table is given for a screen reader.
-  defp sanitize do
-    table = %{"aria-label" => pgettext("ticket table", "Table in the ticket")}
+  # The allowlist, with the name every table is given for a screen reader, `item` being
+  # the source's word for one of its items.
+  defp sanitize(item) do
+    table = %{"aria-label" => pgettext("ticket table", "Table in the %{item}", item: item)}
     update_in(@sanitize[:set_tag_attribute_values], &Map.put(&1, "table", table))
   end
 
@@ -290,7 +295,7 @@ defmodule Apiary.Sources.Body do
   # writes it, so a host outside ASCII has a `%`. Anything that is not a binary, nil
   # included, is refused.
   #
-  # `render/2` links a URL only where this is true.
+  # `render/3` links a URL only where this is true.
   @doc false
   @spec https?(term()) :: boolean()
   def https?(url) when is_binary(url) do

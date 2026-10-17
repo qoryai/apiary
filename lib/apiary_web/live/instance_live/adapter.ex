@@ -31,7 +31,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
   alias Apiary.{AccessKeys, Adapters}
   alias Apiary.Nodes.Node
-  alias ApiaryWeb.{AdapterComponents, SettingsComponents}
+  alias ApiaryWeb.{AdapterComponents, SettingsComponents, SourceComponents}
 
   @impl true
   def mount(%{"adapter_id" => public_id}, _session, socket) do
@@ -300,7 +300,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           </li>
           <li>
             {gettext(
-              "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
+              "Its open work items, in every organisation, are closed as a member would close them. If it is added again, taking in one of its %{items} makes a new work item.",
+              items: SourceComponents.items(Adapters.item_noun(@adapter))
             )}
           </li>
           <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>

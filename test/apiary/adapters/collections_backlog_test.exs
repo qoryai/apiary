@@ -109,7 +109,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
       target = shop(ctx)
 
       assert collection(ctx, "SHOP").backlog
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: true}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: true, item_noun: nil}
       assert feed(ctx) == [{"SHOP", "linked"}]
     end
 
@@ -119,7 +119,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
 
       assert Collections.set_backlog(ctx.scope, target, false) == {:ok, 1}
       refute collection(ctx, "SHOP").backlog
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: false}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: false, item_noun: nil}
 
       # Off again changes nothing, and writes nothing.
       assert Collections.set_backlog(ctx.scope, target, false) == {:ok, 0}
@@ -159,7 +159,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
         set: [backlog: true]
       )
 
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: true}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: true, item_noun: nil}
       assert Collections.set_backlog(ctx.scope, target, false) == {:ok, 1}
     end
 
@@ -205,7 +205,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
       {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
 
       refute collection(ctx, "SHOP").backlog
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: false}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: false, item_noun: nil}
       assert feed(ctx) == [{"SHOP", "linked"}, {"SHOP", "unlinked"}]
     end
 
@@ -271,7 +271,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
       %{scope: member} = member_fixture(ctx.scope, :member)
       %{scope: admin} = member_fixture(ctx.scope, :admin)
 
-      assert Collections.backlog_switch(member, target) == %{on: true}
+      assert Collections.backlog_switch(member, target) == %{on: true, item_noun: nil}
       assert {:error, _refused} = Collections.set_backlog(member, target, false)
       assert collection(ctx, "SHOP").backlog
       assert switch_entries() == []

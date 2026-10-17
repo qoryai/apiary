@@ -562,7 +562,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
       assert statuses |> Enum.chunk_every(2, 1, :discard) |> Enum.all?(fn [a, b] -> a != b end)
 
-      linked? = Collection.linked?(Repo.get!(Collection, id))
+      linked? = Collection |> Repo.get!(id) |> Repo.preload(:adapter) |> Collection.linked?()
       assert List.last(statuses) == if(linked?, do: "linked", else: "unlinked")
     end
   end

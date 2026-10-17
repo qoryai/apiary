@@ -1814,4 +1814,36 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
   end
+
+  describe "a source's words for its items" do
+    @bug %{one: "bug", other: "bugs"}
+
+    test "Explore reads the item by its source's word, or the ticket where it names none" do
+      queued = work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}})
+
+      assert text(tab(queued, item_noun: @bug), "#work-item-explore-wait p:last-child") ==
+               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
+
+      asked =
+        work_item(%{
+          number: 94,
+          status: :questions,
+          run: run(%{outcome: :questions, questions: questions()})
+        })
+
+      assert tab(asked, can_act: true, item_noun: @bug) =~
+               "Qory runs Explore again from the start, with the bug, its comments, the first instruction and the answers of this take in. It is run 2 of 3."
+
+      assert tab(asked, can_act: true) =~
+               "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run 2 of 3."
+
+      running = run(%{state: :running, outcome: nil, ended_at: nil, answers_by: []})
+
+      assert text(
+               card(work_item(%{status: :running, run: running}), item_noun: @bug),
+               ".q-wi-bee-line"
+             ) ==
+               "Qory is exploring. It reads the bug and the code, and proposes how to build it."
+    end
+  end
 end

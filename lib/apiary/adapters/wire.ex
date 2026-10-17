@@ -30,8 +30,9 @@ defmodule Apiary.Adapters.Wire do
   # `listing/1` reads the body of `POST /v1/source-collections`
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters), `collections`, at most 100, each exactly `ref`,
-  # `url` and `title`, and `target` when given, which holds exactly `system` and `path`;
-  # and `listing`, exactly `id`, `part`, `started_at` and `complete`. A ref named twice in
+  # `url` and `title`, `target` when given, which holds exactly `system` and `path`, and
+  # `items` when given, which is `false` (`items: true` when it is not given); and
+  # `listing`, exactly `id`, `part`, `started_at` and `complete`. A ref named twice in
   # one part is taken as the last time it is named.
   #
   # `source_disconnect/1` reads the body of `POST /v1/sources/disconnect`
@@ -81,7 +82,8 @@ defmodule Apiary.Adapters.Wire do
           ref: String.t(),
           url: String.t(),
           title: String.t(),
-          target: target | nil
+          target: target | nil,
+          items: boolean
         }
 
   @type listing :: %{
@@ -265,17 +267,25 @@ defmodule Apiary.Adapters.Wire do
 
   defp collection(%{} = item) do
     with {:ok, target} <- target(item),
-         true <- Enum.sort(Map.keys(Map.delete(item, "target"))) == @collection_keys,
+         {:ok, items} <- items(item),
+         true <- Enum.sort(Map.keys(Map.drop(item, ["target", "items"]))) == @collection_keys,
          true <- text?(item["ref"], 1, @max_ref),
          true <- url?(item["url"]),
          true <- text?(item["title"], 1, @max_title) do
-      {:ok, %{ref: item["ref"], url: item["url"], title: item["title"], target: target}}
+      {:ok,
+       %{ref: item["ref"], url: item["url"], title: item["title"], target: target, items: items}}
     else
       _ -> :error
     end
   end
 
   defp collection(_item), do: :error
+
+  # A collection's `items`: `false` when given, the only value the contract has; true when
+  # it is not.
+  defp items(%{"items" => false}), do: {:ok, false}
+  defp items(%{"items" => _other}), do: :error
+  defp items(%{}), do: {:ok, true}
 
   # The `target` of `item`, a collection or an item (`$defs/target`): `{:ok, target}`,
   # `{:ok, nil}` when `item` has none, or `:error`.

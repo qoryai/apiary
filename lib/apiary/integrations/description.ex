@@ -21,6 +21,12 @@ defmodule Apiary.Integrations.Description do
   matches the schema's pattern and its value is within the bounds. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
+  Of the `source` role, two members are read out (`item_noun/1`, `items?/1`): its words
+  for one item and for many, `item_noun`, `one` and `other`, each 1 to 32 lower-case
+  letters in words joined by single spaces or hyphens, never "work item" or "work items";
+  and `items`, which, when there, is `false`: the source reports collections and no items,
+  and names no words for them. The schema holds both to that.
+
   A description is refused before the schema when it holds a list of more than 1024
   entries, an object of more than 1024 members, more than 4096 values in all, a string of
   more than 16 KiB or more than 64 lists and objects nested in one another
@@ -48,12 +54,16 @@ defmodule Apiary.Integrations.Description do
             roles: [],
             secrets: [],
             settings: [],
+            item_noun: nil,
+            items: true,
             document: nil
 
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
   `domains`, `program_version`, every role it names, its secrets (each `name`, and `title`,
-  the secret's title or else its name), the names of its plain settings, and the decoded document.
+  the secret's title or else its name), the names of its plain settings, its source
+  role's words for its items (`item_noun`, nil where it names none) and whether that
+  source reports items (`items`, true without a source role), and the decoded document.
   """
   @type t :: %__MODULE__{
           name: String.t(),
@@ -64,8 +74,13 @@ defmodule Apiary.Integrations.Description do
           roles: [String.t()],
           secrets: [%{name: String.t(), title: String.t()}],
           settings: [String.t()],
+          item_noun: item_noun | nil,
+          items: boolean,
           document: map
         }
+
+  @typedoc "A source's words for one of its items and for many, as its description gives them."
+  @type item_noun :: %{one: String.t(), other: String.t()}
 
   @settings_max 65_536
 
@@ -220,9 +235,30 @@ defmodule Apiary.Integrations.Description do
       secrets: for(name <- secrets, do: %{name: name, title: title(properties[name], name)}),
       settings:
         properties |> Map.keys() |> Enum.reject(&(&1 in secrets or &1 in files)) |> Enum.sort(),
+      item_noun: read_item_noun(get_in(document, ["roles", "source", "item_noun"])),
+      items: get_in(document, ["roles", "source", "items"]) != false,
       document: document
     }
   end
+
+  defp read_item_noun(%{"one" => one, "other" => other}), do: %{one: one, other: other}
+  defp read_item_noun(nil), do: nil
+
+  @doc """
+  item_noun/1 is the source role's words for one of its items and for many,
+  `%{one: one, other: other}`, or nil when it names none, as for a description with no
+  source role.
+  """
+  @spec item_noun(t) :: item_noun | nil
+  def item_noun(%__MODULE__{item_noun: item_noun}), do: item_noun
+
+  @doc """
+  items?/1 says whether the source of `description` reports items: false when its source
+  role says `items: false`, a source that reports collections and no items; true
+  otherwise.
+  """
+  @spec items?(t) :: boolean
+  def items?(%__MODULE__{items: items}), do: items
 
   defp title(%{"title" => title}, name) when is_binary(title),
     do: if(String.trim(title) == "", do: name, else: title)

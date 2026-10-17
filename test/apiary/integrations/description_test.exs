@@ -28,15 +28,15 @@ defmodule Apiary.Integrations.DescriptionTest do
       names = fixture_names("*.json")
 
       assert names ==
-               ~w(acme-chat.json acme-tracker.json example-tracker.json github.json
-                  unknown-role.json)
+               ~w(acme-chat.json acme-tracker.json example-projects.json example-tracker.json
+                  github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 26
+      assert length(names) == 38
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -55,7 +55,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 11
+      assert length(names) == 23
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -68,7 +68,19 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"program-upper-case", :pattern, "#/roles/source/program"},
             {"setup-no-help", :required, "#/roles/source/setup"},
             {"undefined-member", :additionalProperties, "#/roles/source"},
-            {"zero-width-space", :pattern, "#/roles/source/description"}
+            {"zero-width-space", :pattern, "#/roles/source/description"},
+            {"item-noun-33-characters", :maxLength, "#/roles/source/item_noun/one"},
+            {"item-noun-double-space", :pattern, "#/roles/source/item_noun/one"},
+            {"item-noun-empty", :minLength, "#/roles/source/item_noun/other"},
+            {"item-noun-leading-hyphen", :pattern, "#/roles/source/item_noun/one"},
+            {"item-noun-no-other", :required, "#/roles/source/item_noun"},
+            {"item-noun-non-ascii", :pattern, "#/roles/source/item_noun/one"},
+            {"item-noun-undefined-member", :additionalProperties, "#/roles/source/item_noun"},
+            {"item-noun-upper-case", :pattern, "#/roles/source/item_noun/one"},
+            {"item-noun-work-item", :not, "#/roles/source/item_noun/one"},
+            {"item-noun-work-items-hyphen", :not, "#/roles/source/item_noun/other"},
+            {"items-false-with-item-noun", :jsv@if, "#/roles/source"},
+            {"items-true", :const, "#/roles/source/items"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -97,6 +109,58 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert {:ok, tracker} = parse_fixture("example-tracker.json")
       assert tracker.roles == ["source"]
       assert tracker.document["roles"]["source"]["program"] == "qory-example-server"
+    end
+
+    test "a source role's words for its items, and whether it reports any" do
+      assert {:ok, tracker} = parse_fixture("example-tracker.json")
+      assert Description.item_noun(tracker) == %{one: "issue", other: "issues"}
+      assert Description.items?(tracker)
+
+      assert {:ok, projects} = parse_fixture("example-projects.json")
+      assert Description.item_noun(projects) == nil
+      refute Description.items?(projects)
+
+      # No source role, or one that says neither: no words, and items.
+      for name <- ~w(acme-tracker.json unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        assert Description.item_noun(description) == nil, name
+        assert Description.items?(description), name
+      end
+    end
+
+    test "item_noun's words: lower-case words joined by one space or hyphen, never work item" do
+      {:ok, tracker} = parse_fixture("example-tracker.json")
+
+      with_noun = fn noun ->
+        tracker.document
+        |> put_in(["roles", "source", "item_noun"], noun)
+        |> Jason.encode!()
+        |> Description.parse()
+      end
+
+      for word <- ["a", "user story", "merge-request", String.duplicate("z", 32), "works"] do
+        assert {:ok, read} = with_noun.(%{"one" => word, "other" => word}), word
+        assert Description.item_noun(read) == %{one: word, other: word}
+      end
+
+      for word <- [
+            "",
+            "Issue",
+            "issue ",
+            "user  story",
+            "-issue",
+            "issue2",
+            "tâche",
+            "work item",
+            "work-item",
+            "work items",
+            "work-items",
+            String.duplicate("z", 33)
+          ] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 with_noun.(%{"one" => "issue", "other" => word}),
+               word
+      end
     end
 
     test "github.json: a connection holds its plain settings, every top-level one" do

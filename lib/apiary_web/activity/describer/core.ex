@@ -15,8 +15,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   import ApiaryWeb.RichText, only: [rich_gettext: 2, rich_ngettext: 4]
   import ApiaryWeb.Activity.Describer, only: [text: 1, from_to: 2]
 
-  alias Apiary.{Access, Features}
-  alias ApiaryWeb.Format
+  alias Apiary.{Access, Adapters, Features}
+  alias ApiaryWeb.{Format, SourceComponents}
 
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
@@ -61,12 +61,25 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(:"collection.assign"), do: gettext("Collections assigned")
 
-  def label(:"collection.set_backlog"),
-    do: gettext("Taking tickets into the Backlog turned on or off")
+  def label(:"collection.set_backlog"), do: backlog_label(nil)
 
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(_action), do: nil
+
+  # Turning a target's Backlog on or off names the items of the organisation's sources:
+  # the words they share (`Apiary.Adapters.organisation_item_noun/1`), else tickets.
+  @impl true
+  def label(:"collection.set_backlog", scope),
+    do: backlog_label(Adapters.organisation_item_noun(scope))
+
+  def label(action, _scope), do: label(action)
+
+  defp backlog_label(item_noun),
+    do:
+      gettext("Taking %{items} into the Backlog turned on or off",
+        items: SourceComponents.items(item_noun)
+      )
 
   # The core offers every action it has in the filter, but the stored secrets', variables'
   # and integrations' only where the reader is shown them, and the nodes' and their access
@@ -96,7 +109,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  # A target's Backlog turned on or off, for its collections: the entry is the target's,
+  # and names its sources' items (`Apiary.Audit.names/2`'s `item_nouns`), else tickets.
   @impl true
+  def sentence(:"collection.set_backlog", %{details: %{"backlog" => on}} = entry, names)
+      when is_boolean(on) do
+    items = SourceComponents.items(names[:item_nouns][entry.subject_id])
+
+    if on,
+      do: gettext("Turned on taking a collection's %{items} into the Backlog", items: items),
+      else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
+  end
+
   def sentence(action, entry, _names) do
     details = entry.details || %{}
 
@@ -242,13 +266,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
            "Unassigned %{count} collections from their workspaces",
            count
          )
-
-  # A target's Backlog turned on or off, for its collections: the entry is the target's.
-  defp said(:"collection.set_backlog", %{"backlog" => true}, _actor),
-    do: gettext("Turned on taking a collection's items into the Backlog")
-
-  defp said(:"collection.set_backlog", %{"backlog" => false}, _actor),
-    do: gettext("Turned off taking a collection's items into the Backlog")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
