@@ -2,8 +2,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # The three migrations that make an adapter a kind of node of the instance, connect an
   # organisation to one, and validate their checks, run down and up again inside the test's
   # transaction, which rolls it all back, with the later ones that rest on the connections
-  # (`@left_out`, `@listed`, `@listing`, `@again`, `@items`, `@collections`, then
-  # `@ticket`), down first and up last. They change `nodes`, `access_keys` and
+  # (`@environments`, `@environment_ref`, `@left_out`, `@listed`, `@listing`, `@again`,
+  # `@items`, `@collections`, then `@ticket`), down first and up last. They change `nodes`, `access_keys` and
   # `access_key_enrolment_codes` under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
@@ -33,6 +33,10 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   @left_out {20_261_017_191_500, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
              "keep_when_a_complete_set_left_a_comment_out"}
 
+  @environment_ref {20_261_017_200_000, Apiary.Repo.Migrations.KeepACollectionSEnvironmentRef,
+                    "keep_a_collection_s_environment_ref"}
+  @environments {20_261_017_200_100, Apiary.Repo.Migrations.KeepEnvironments, "keep_environments"}
+
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)
   @checks ~w(access_keys_place_check access_key_enrolment_codes_place_check
              access_keys_node_fkey access_keys_enrolment_code_fkey
@@ -49,7 +53,9 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
           @again,
           @listing,
           @listed,
-          @left_out
+          @left_out,
+          @environment_ref,
+          @environments
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -69,6 +75,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
   defp down_all! do
+    down!(@environments)
+    down!(@environment_ref)
     down!(@left_out)
     down!(@listed)
     down!(@listing)
@@ -92,6 +100,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@listing)
     up!(@listed)
     up!(@left_out)
+    up!(@environment_ref)
+    up!(@environments)
   end
 
   # Each table's `organisation_id`, whether it may be NULL.
@@ -163,6 +173,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   test "rolled back, the adapter's kind refuses to go while an adapter row is there" do
     adapter_fixture()
 
+    down!(@environments)
+    down!(@environment_ref)
     down!(@left_out)
     down!(@listed)
     down!(@listing)
@@ -187,5 +199,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@listing)
     up!(@listed)
     up!(@left_out)
+    up!(@environment_ref)
+    up!(@environments)
   end
 end
