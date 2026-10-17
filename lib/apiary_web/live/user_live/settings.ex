@@ -329,7 +329,7 @@ defmodule ApiaryWeb.UserLive.Settings do
       |> assign(:languages, Preferences.languages())
       |> assign(:preferences_form, preferences_form(Accounts.change_user_preferences(user)))
       |> assign_new(:memberships, fn -> [] end)
-      # This page's own session, which deleting the account ends by redirecting, rather
+      # The session this page runs in, which deleting the account ends by redirecting, rather
       # than by the disconnect the other sessions get.
       |> assign(:session_token, session["user_token"])
       |> assign(sole_owned: nil, marked_alone: [])
@@ -525,7 +525,7 @@ defmodule ApiaryWeb.UserLive.Settings do
         |> Enum.reject(&(&1.token == socket.assigns.session_token))
         |> UserAuth.disconnect_sessions()
 
-        # This page's own session ends where it is sent, which disconnects it as a
+        # The session this page runs in ends where it is sent, which disconnects it as a
         # log-out does.
         {:noreply, redirect(socket, to: ~p"/users/account-deleted")}
 

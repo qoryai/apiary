@@ -34,6 +34,18 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-made", scope.user.email)
       assert has_element?(lv, "#breadcrumb", "Nodes")
 
+      # The node's name, cut where the segment is short, is whole in its title; the fixed
+      # words before it carry none.
+      titled =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#breadcrumb .q-trail-link .truncate[title]")
+        |> LazyHTML.attribute("title")
+
+      assert titled == ["build-01"]
+      refute has_element?(lv, "#breadcrumb .truncate[title='Nodes']")
+
       assert has_element?(lv, ~s{nav#node-tabs[aria-label="Node"]})
       assert has_element?(lv, ~s{#node-tabs-overview[aria-current="page"]}, "Overview")
 
@@ -416,6 +428,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-running tr", "spot-1")
       assert has_element?(lv, "#node-running tr", "i_2")
       refute has_element?(lv, "#node-running tr", "i_3")
+
+      # An instance's name is cut, whole in its title, and its id beside it titled too.
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='spot-1']", "spot-1")
+      assert has_element?(lv, "#node-running .q-nm > .q-side.q-mono[title='i_1']", "i_1")
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_2']", "i_2")
       assert has_element?(lv, "#node-refused", "4 starts were refused at the instance limit")
 
       {:ok, _} = Nodes.update_node(scope, pool, %{instance_limit: ""})

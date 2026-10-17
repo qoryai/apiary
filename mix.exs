@@ -134,7 +134,9 @@ defmodule Apiary.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
-        "gettext.extract --check-up-to-date",
+        # In a separate VM, still in test: the check recompiles the project, and in this VM
+        # that writes protocol consolidation warnings the next run's first compile fails on.
+        "cmd env MIX_ENV=test mix gettext.extract --check-up-to-date",
         # In dev, as CI builds the documentation: the test env compiles test/support,
         # whose docs name modules the documentation leaves out.
         "cmd env MIX_ENV=dev mix docs --warnings-as-errors",

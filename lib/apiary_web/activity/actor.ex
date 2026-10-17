@@ -89,13 +89,13 @@ defmodule ApiaryWeb.Activity.Actor do
     <span id={@id} class="inline-flex min-w-0 items-center gap-2">
       <%= case @actor.kind do %>
         <% :person -> %>
-          <span class="truncate">{@actor.text}</span>
+          <span class="q-cut" title={@actor.text}>{@actor.text}</span>
           <span :if={@actor.you?} class="q-faint">{gettext("you")}</span>
         <% :gone -> %>
-          <span class="q-faint truncate">{@actor.text}</span>
+          <span class="q-faint q-cut" title={@actor.text}>{@actor.text}</span>
         <% :access_key -> %>
           <.icon name="hero-key" class="size-3.5 flex-none text-faint" />
-          <span :if={@actor.text} class="truncate">{@actor.text}</span>
+          <span :if={@actor.text} class="q-cut" title={@actor.text}>{@actor.text}</span>
           <span class="q-faint q-mono">{@actor.detail}</span>
         <% :instance -> %>
           <.icon name="hero-cpu-chip" class="size-3.5 flex-none text-faint" />

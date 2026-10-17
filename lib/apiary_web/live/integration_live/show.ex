@@ -53,7 +53,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
+      <:crumb navigate={Common.connection_path(@current_scope, @connection)} title={elem(@names, 0)}>
         {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Add workspace")}</:crumb>
@@ -138,7 +138,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
+      <:crumb navigate={Common.connection_path(@current_scope, @connection)} title={elem(@names, 0)}>
         {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Change version")}</:crumb>
@@ -201,7 +201,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb patch={@tab != :overview && Common.connection_path(@current_scope, @connection)}>
+      <:crumb
+        patch={@tab != :overview && Common.connection_path(@current_scope, @connection)}
+        title={elem(@names, 0)}
+      >
         {elem(@names, 0)}
       </:crumb>
 
@@ -453,7 +456,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.link
           :if={row.workspace}
           navigate={~p"/#{@current_scope.organisation}/#{row.workspace}"}
-          class="hover:underline"
+          class="q-cut hover:underline"
+          title={row.workspace.name}
         >
           {row.workspace.name}
         </.link>

@@ -102,6 +102,17 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       refute has_element?(lv, "#gateway-#{second.public_id}-default")
       assert has_element?(lv, "#gateway-#{first.public_id}-connected", "Yes")
       assert has_element?(lv, "#gateway-#{second.public_id}-connected", "No")
+
+      # The name, the id and the URL are cut to their columns, each whole in its title.
+      row = "#gateway-#{first.public_id}"
+      assert has_element?(lv, "#{row} .q-nm > .q-title[title='edge-1']", "edge-1")
+      assert has_element?(lv, "#{row} .q-nm > .q-side.q-mono[title='#{first.public_id}']")
+
+      assert has_element?(
+               lv,
+               "#{row} .q-mono.q-cut[title='https://edge-1.example']",
+               "https://edge-1.example"
+             )
     end
 
     test "an owner adds one on its own page, and lands on its Access key tab", %{
@@ -348,6 +359,12 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
                lv,
                "#node-#{gateway.public_id}-level",
                "Set for #{scope.organisation.name}"
+             )
+
+      # Cut where the column is short, the whole of it in its title.
+      assert has_element?(
+               lv,
+               "#node-#{gateway.public_id}-level.q-side[title='Set for #{scope.organisation.name}']"
              )
 
       assert has_element?(lv, "#node-#{gateway.public_id}-default", "Default")

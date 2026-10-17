@@ -2596,7 +2596,7 @@ defmodule ApiaryWeb.RunComponents do
               class="q-hit"
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
-              <span class="truncate">
+              <span class="truncate" title={given_title(hit.run)}>
                 <b :if={given_title(hit.run)} class="font-medium"><bdi>{given_title(hit.run)}</bdi></b>
                 <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
                   {short_id(hit.run.run_id)}

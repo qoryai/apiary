@@ -151,7 +151,9 @@ defmodule ApiaryWeb.SettingsLive do
             name={owner.user.email}
             kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
           />
-          <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
+          <span class="min-w-0 truncate font-medium" title={owner.user.email}>
+            {owner.user.email}
+          </span>
           <span :if={owner.user_id == @current_scope.user.id} class="text-[12.5px] text-faint">
             {gettext("you")}
           </span>

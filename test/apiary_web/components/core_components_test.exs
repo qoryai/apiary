@@ -326,6 +326,57 @@ defmodule ApiaryWeb.CoreComponentsTest do
       assert doc |> LazyHTML.query("tr#key-1 > td") |> Enum.count() == 3
       assert doc |> LazyHTML.query("tr#key-1 .q-confirm-view") |> Enum.to_list() == []
     end
+
+    # The classes a cell's words take to fit the table's box: each scoped to a list table,
+    # so it outranks a nowrap a word's class sets and reaches no other part of a page.
+    test "a cell's words fit the box: q-cut, q-parts, q-stw-wrap and a titled q-side" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      rule = fn selector ->
+        [body] =
+          Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+        body
+      end
+
+      # One line, cut with an ellipsis down to a floor.
+      cut = rule.(".q-tbl .q-cut")
+
+      for declaration <- [
+            "display: -webkit-box;",
+            "-webkit-line-clamp: 1;",
+            "overflow: hidden;",
+            "white-space: normal;",
+            "word-break: break-all;",
+            "min-width: 5ch;"
+          ] do
+        assert cut =~ declaration
+      end
+
+      # A line that breaks between its parts, never inside one.
+      assert rule.(".q-tbl .q-parts") =~ "white-space: normal;"
+      assert rule.(".q-tbl .q-parts > *") =~ "white-space: nowrap;"
+
+      # The one state word that breaks onto further lines.
+      assert rule.(".q-stw.q-stw-wrap") =~ "white-space: normal;"
+
+      # A word beside a title that carries a title gives way, down to its floor; a cut
+      # title gives way last.
+      side = rule.(".q-tbl .q-nm > .q-side[title]")
+      assert side =~ "flex: 0 1 auto;"
+      assert side =~ "min-width: min(10ch, 14cqi);"
+      assert rule.(".q-tbl .q-nm > .q-cut") =~ "flex: 0 1 auto;"
+      assert rule.(".q-tbl .q-nm > .q-title.q-cut") =~ "min-width: min(24ch, 32cqi);"
+
+      # An id beside a title hides below 600 px of table, a titled one too.
+      assert css =~
+               ~r/@container \(max-width: 599px\) \{\s*\.q-tbl \.q-side\.q-mono,\s*\.q-tbl \.q-nm > \.q-side\.q-mono\[title\] \{\s*display: none;/
+
+      # None of them reaches outside a list table.
+      for unscoped <- [".q-cut", ".q-parts", ".q-stw-wrap", ".q-nm > .q-side[title]"] do
+        refute css =~ "\n  #{unscoped} {"
+      end
+    end
   end
 
   describe "a menu's trigger, as the Menu hook finds it" do
