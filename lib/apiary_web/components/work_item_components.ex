@@ -54,18 +54,31 @@ defmodule ApiaryWeb.WorkItemComponents do
   use ApiaryWeb, :html
 
   alias ApiaryWeb.BacklogComponents
+  alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
 
   @stages [:explore, :confirm, :shape]
   @ended [:declined, :closed, :undone]
+  @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
+  @no_result [:no_result, :lost, :cancelled]
+  @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
 
   ## The status and its mark
 
   @doc """
   A work item's status: its mark and its words, the row's and the meta line's. Waits for
-  you to confirm is the one strong status (`q-wi-hot`).
+  you to confirm is the one strong status (`q-wi-hot`). Questions and a take in that used
+  its runs wait for any member who may act: their mark is the reader's with `can_act`,
+  another member's without.
   """
-  attr :work_item, :map, required: true, doc: "the work item: `:status`, `:owner`, `:ended_by`"
+  attr :work_item, :map,
+    required: true,
+    doc: "the work item: `:status`, `:owner`, `:ended_by`, and `:run` (`:of`) at the run limit"
+
+  attr :can_act, :boolean,
+    default: false,
+    doc: "whether the reader may answer, confirm or decline"
+
   attr :class, :any, default: nil
 
   def work_item_status(assigns) do
@@ -74,7 +87,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <span class={["q-wi-st", @hot && "q-wi-hot", @class]}>
-      <.work_item_mark kind={mark(@work_item)} />{@words}
+      <.work_item_mark kind={mark(@work_item, @can_act)} />{@words}
     </span>
     """
   end
@@ -82,12 +95,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   A status's mark, the one colour of a row: `:todo` (Explore is queued), `:run` (Qory is
   exploring), `:wait` (waits for the reader), `:wait_other` (waits for another member),
-  `:ready` (Ready for Shape), `:declined` and `:closed` (closed or undone). Decorative:
-  its words are always beside it.
+  `:err` (Explore's run gave no result: a red ring), `:ready` (Ready for Shape),
+  `:declined` and `:closed` (closed or undone). Decorative: its words are always beside
+  it.
   """
   attr :kind, :atom,
     required: true,
-    values: [:todo, :run, :wait, :wait_other, :ready, :declined, :closed]
+    values: [:todo, :run, :wait, :wait_other, :err, :ready, :declined, :closed]
 
   attr :class, :any, default: nil
 
@@ -107,6 +121,17 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: gettext("Waits for %{name} to confirm", name: owner.name)
   end
 
+  def status_words(%{status: :questions}), do: gettext("Waits for answers")
+
+  def status_words(%{status: :used_up, run: %{of: of}}),
+    do:
+      ngettext("Explore used its %{of} run", "Explore used its %{of} runs", of,
+        of: Format.number(of)
+      )
+
+  def status_words(%{status: :no_result}), do: gettext("Explore ended without a result")
+  def status_words(%{status: :lost}), do: gettext("Explore's run was lost")
+  def status_words(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
   def status_words(%{status: :shape}), do: gettext("Ready for Shape")
 
   def status_words(%{status: :declined, ended_by: by}) do
@@ -124,12 +149,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc false
-  def mark(%{status: :queued}), do: :todo
-  def mark(%{status: :running}), do: :run
-  def mark(%{status: :confirm, owner: owner}), do: if(you?(owner), do: :wait, else: :wait_other)
-  def mark(%{status: :shape}), do: :ready
-  def mark(%{status: :declined}), do: :declined
-  def mark(%{status: status}) when status in [:closed, :undone], do: :closed
+  def mark(work_item, can_act \\ false)
+  def mark(%{status: :queued}, _can_act), do: :todo
+  def mark(%{status: :running}, _can_act), do: :run
+
+  def mark(%{status: :confirm, owner: owner}, _can_act),
+    do: if(you?(owner), do: :wait, else: :wait_other)
+
+  def mark(%{status: status}, can_act) when status in [:questions, :used_up],
+    do: if(can_act, do: :wait, else: :wait_other)
+
+  def mark(%{status: status}, _can_act) when status in [:no_result, :lost, :cancelled], do: :err
+  def mark(%{status: :shape}, _can_act), do: :ready
+  def mark(%{status: :declined}, _can_act), do: :declined
+  def mark(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
   def hot?(%{status: :confirm, owner: owner}), do: you?(owner)
@@ -166,7 +199,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp day(at, now), do: time_tag(at, Format.day(at, now))
   defp now(assigns), do: assigns[:now] || DateTime.utc_now()
 
-  defp stage_of(%{status: status}) when status in [:queued, :running], do: :explore
+  defp stage_of(%{status: status}) when status in @exploring, do: :explore
   defp stage_of(%{status: :confirm}), do: :confirm
   defp stage_of(%{status: :shape}), do: :shape
   defp stage_of(work_item), do: Map.get(work_item, :stage) || :explore
@@ -214,6 +247,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :link, :string, required: true, doc: "the work item's address, for Copy link"
   attr :can_close, :boolean, default: false, doc: "whether the reader may close it"
 
+  attr :can_act, :boolean,
+    default: false,
+    doc: "whether the reader may answer, confirm or decline"
+
   def work_item_header(assigns) do
     work_item = assigns.work_item
 
@@ -237,7 +274,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </h1>
         <div class="q-wi-meta-wrap">
           <p id={"#{@id}-meta"} class="q-wi-meta">
-            <.work_item_status work_item={@work_item} />
+            <.work_item_status work_item={@work_item} can_act={@can_act} />
             <span>
               <.external_link href={@href} class="q-wi-ref" title={@href && @open_title}>
                 <BacklogComponents.integration_tile name={@integration} />{@work_item.external_ref}
@@ -279,8 +316,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc """
   The stages, Explore, Confirm and Shape, in order: those before the work item's stage
-  done, its stage the current step (`aria-current="step"`), amber while it waits at
-  Confirm. An ended work item has no current step: a declined one's stage is marked with
+  done, its stage the current step (`aria-current="step"`), amber while it waits for a
+  member: at Confirm, for answers, or at the run limit. An ended work item has no current step: a declined one's stage is marked with
   a cross, and the end mark beside the stages says how it ended: Closed, Declined or
   Undone.
   """
@@ -309,7 +346,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(assigns,
         stages: stages,
         ended: ended,
-        wait: work_item.status == :confirm,
+        wait: work_item.status in [:confirm, :questions, :used_up],
         status: work_item.status
       )
 
@@ -360,29 +397,68 @@ defmodule ApiaryWeb.WorkItemComponents do
   What the work item needs now, from whom: one card, with at most one primary button, for
   a live work item; nothing for an ended one.
 
-    * Explore, queued: what Qory does when the run starts, with Qory's bee; who took it in
-      and when (the work item's `:taken_in_by` and `:taken_in_at`). With `can_undo`, that
-      the reader can undo this until a run starts, Undo (`"undo"`), and what undoing does
-      to the ticket; after the integration's uninstall (`uninstalled`), that nothing
-      changes on the ticket, which keeps Qory's label and comment.
-    * Explore, running: what Qory does, and with whose answers on a second run (`:run`,
-      `%{id:, path:, started_at:, answers_by:}`, `answers_by` a name or `nil`), and when
-      the run started; the run's id links its page where `path` is given.
-    * Confirm: Qory's proposal waits; Confirm (`"confirm"`) and Decline (`"ask_decline"`).
-      With `asking: :decline`, the Decline question in their place: its line, Decline
-      (`"decline"`) and Cancel. Without `can_act`, whose turn it is: the work item's
-      `:owner`, by name, or "you" where the owner is the reader.
+    * Explore, queued, the first run of a take in: what Qory does when the run starts,
+      with Qory's bee; who took it in and when (the work item's `:taken_in_by` and
+      `:taken_in_at`). With `can_undo`, that the reader can undo this until a run starts,
+      Undo (`"undo"`), and what undoing does: a first take in's, or an undone work item's
+      taken in again, takes Qory's label off the ticket; a declined or closed one's taken
+      in again (`previous`) goes back to declined or closed, and nothing is sent to the
+      ticket. After the integration's uninstall (`uninstalled`), that nothing changes on
+      the ticket, which keeps Qory's label and comment.
+    * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
+      reads, with whose answers, and which run of the take in is queued. No Undo.
+    * Explore, running: what Qory does, and with whose answers from a second run (`:run`,
+      `%{id:, path:, started_at:, answers_by:}`), and when the run started; the run's id
+      links its page where `path` is given.
+    * Explore, questions (`:questions`): how many questions Qory asked; with `can_act`,
+      that answering them explores again, Answer the questions (a link to Explore's tab,
+      `explore_path`, where it is given) and Decline (`"ask_decline"`); without, that it
+      waits for a member to answer.
+    * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
+      with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
+      the take in, and Decline.
+    * Explore, the run limit (`:used_up`): that the take in used its runs, and why Qory
+      cannot explore again; with `can_act`, the two ways on, Decline and, with
+      `can_close`, Close work item… (`"ask_close"`).
+    * Confirm: Qory's proposal waits; Read Qory's proposal (`explore_path`), Confirm
+      (`"confirm"`), Change (the edit page, `edit_path`) and Decline (`"ask_decline"`).
+      Without `can_act`, whose turn it is: the work item's `:owner`, by name, or "you"
+      where the owner is the reader.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
-  Undo is there only with `can_undo`; Confirm, Decline and the Decline question only with
-  `can_act`.
+  With `asking: :decline`, the Decline question takes the place of the card's words and
+  buttons, wherever Decline is offered: its line, Decline (`"decline"`) and Cancel.
+
+  `:run` is the latest run of the take in: `:attempt` (its place, from 1) and `:of` (the
+  most a take in has), `:id` and `:path`, `:started_at`, `:answers_by` (the members whose
+  answers it reads, people), `:questions` (what it asked, a list) and `:outcome` (`:error`,
+  `:none` or `:refused` for a run without a result; `:questions` for one that asked).
+
+  Undo is there only with `can_undo`; Confirm, Change, Decline, Run Explore again and the
+  Decline question only with `can_act`.
   """
   attr :id, :string, default: "work-item-step"
   attr :work_item, :map, required: true, doc: "the work item"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
   attr :can_undo, :boolean, default: false, doc: "whether the reader may undo the take in"
-  attr :can_act, :boolean, default: false, doc: "whether the reader may confirm or decline"
+
+  attr :can_act, :boolean,
+    default: false,
+    doc: "whether the reader may answer, confirm or decline, or run Explore again"
+
+  attr :can_close, :boolean, default: false, doc: "whether the reader may close it"
+
+  attr :previous, :atom,
+    default: nil,
+    values: [nil, :declined, :closed, :undone],
+    doc: "how the work item ended before it was taken in again; nil for a first take in"
+
+  attr :explore_path, :string,
+    default: nil,
+    doc: "Explore's tab, linked from the Ticket and Thread tabs; nil on Explore's tab"
+
+  attr :edit_path, :string, default: nil, doc: "the edit page, `/work/:number/explore/edit`"
   attr :asking, :atom, default: nil, values: [nil, :decline], doc: "the question showing"
   attr :cancel, :any, default: nil, doc: "what the question's Cancel does"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -391,38 +467,46 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def step_card(assigns) do
     work_item = assigns.work_item
+    status = work_item.status
 
     assigns =
       assign(assigns,
         now: now(assigns),
         number: work_item.number,
-        status: work_item.status,
+        status: status,
         stage: stage_of(work_item),
-        mark: mark(work_item),
+        mark: mark(work_item, assigns.can_act),
         mine: hot?(work_item),
+        ask: hot?(work_item) or (status in [:questions, :used_up] and assigns.can_act),
+        run: work_item[:run],
         cancel: assigns.cancel || JS.push("cancel_question")
       )
 
     ~H"""
     <section
       id={@id}
-      class={["q-wi-step", @mine && "q-wi-step-ask"]}
+      class={["q-wi-step", @ask && "q-wi-step-ask"]}
       aria-labelledby={"#{@id}-h"}
     >
       <div class="q-wi-step-h">
         <.work_item_mark kind={@mark} />
         <h2 id={"#{@id}-h"}>{stage_name(@stage)}</h2>
-        <.step_badge status={@status} mine={@mine} />
+        <.step_badge status={@status} mine={@mine} run={@run} />
       </div>
       <.step_body
         id={@id}
         work_item={@work_item}
+        run={@run}
         status={@status}
         number={@number}
         integration={@integration}
         uninstalled={@uninstalled}
         can_undo={@can_undo}
         can_act={@can_act}
+        can_close={@can_close}
+        previous={@previous}
+        explore_path={@explore_path}
+        edit_path={@edit_path}
         asking={@asking}
         cancel={@cancel}
         now={@now}
@@ -433,12 +517,36 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :status, :atom, required: true
   attr :mine, :boolean, required: true
+  attr :run, :map, default: nil
 
   defp step_badge(%{status: :queued} = assigns),
     do: ~H|<.badge class="q-wi-badge">{gettext("Queued")}</.badge>|
 
   defp step_badge(%{status: :running} = assigns),
     do: ~H|<.badge color="success" class="q-wi-badge">{gettext("Running")}</.badge>|
+
+  defp step_badge(%{status: :questions} = assigns),
+    do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for answers")}</.badge>|
+
+  defp step_badge(%{status: :used_up} = assigns) do
+    ~H"""
+    <.badge color="warning" class="q-wi-badge">
+      {ngettext("%{attempt} of %{of} run used", "%{attempt} of %{of} runs used", @run.of,
+        attempt: Format.number(@run.attempt),
+        of: Format.number(@run.of)
+      )}
+    </.badge>
+    """
+  end
+
+  defp step_badge(%{status: :no_result} = assigns),
+    do: ~H|<.badge color="error" class="q-wi-badge">{gettext("No result")}</.badge>|
+
+  defp step_badge(%{status: :lost} = assigns),
+    do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Lost")}</.badge>|
+
+  defp step_badge(%{status: :cancelled} = assigns),
+    do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Cancelled")}</.badge>|
 
   defp step_badge(%{status: :confirm, mine: true} = assigns),
     do: ~H|<.badge color="warning" class="q-wi-badge">{gettext("Waits for you")}</.badge>|
@@ -450,71 +558,23 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :work_item, :map, required: true
+  attr :run, :map, required: true
   attr :status, :atom, required: true
   attr :number, :integer, required: true
   attr :integration, :string, required: true
   attr :uninstalled, :boolean, required: true
   attr :can_undo, :boolean, required: true
   attr :can_act, :boolean, required: true
+  attr :can_close, :boolean, required: true
+  attr :previous, :atom, required: true
+  attr :explore_path, :string, required: true
+  attr :edit_path, :string, required: true
   attr :asking, :atom, required: true
   attr :cancel, :any, required: true
   attr :now, :any, required: true
 
-  defp step_body(%{status: :queued} = assigns) do
-    assigns = assign(assigns, :undo_line, undo_line(assigns))
-
-    ~H"""
-    <p class="q-wi-bee-line">
-      <.bee />
-      <span>
-        {gettext(
-          "Qory reads the ticket and the code when the run starts, and proposes how to build it."
-        )}
-      </span>
-    </p>
-    <div id={"#{@id}-undo"} class="q-wi-undo">
-      <p id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
-      <div :if={@can_undo} class="q-wi-acts">
-        <.button type="button" phx-click="undo" phx-value-number={@number}>
-          <.icon name="hero-arrow-uturn-left-micro" class="size-3.5" />{gettext("Undo")}
-        </.button>
-      </div>
-    </div>
-    """
-  end
-
-  defp step_body(%{status: :running} = assigns) do
-    run = assigns.work_item.run
-    answers_by = run[:answers_by]
-
-    assigns =
-      assign(assigns,
-        line:
-          if(answers_by,
-            do:
-              gettext(
-                "Qory is exploring again, with %{name}'s answers. It reads the ticket and the code, and proposes how to build it.",
-                name: answers_by
-              ),
-            else:
-              gettext(
-                "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
-              )
-          ),
-        started:
-          rich_gettext("Run %{run} started %{when}.",
-            run: run_ref(run),
-            when: inline_ago(run.started_at, assigns.now)
-          )
-      )
-
-    ~H"""
-    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
-    <p id={"#{@id}-run"}><.rich text={@started} /></p>
-    """
-  end
-
-  defp step_body(%{status: :confirm, asking: :decline, can_act: true} = assigns) do
+  defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
+       when status in @declinable do
     ~H"""
     <.inline_confirm
       id={"#{@id}-decline"}
@@ -549,6 +609,242 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # A later run of the take in: what it reads, with whose answers, and which run is
+  # queued. Undo is only until the first run of a take in starts.
+  defp step_body(%{status: :queued, run: %{attempt: attempt}} = assigns) when attempt > 1 do
+    run = assigns.run
+
+    assigns =
+      assign(assigns,
+        line:
+          case answers_of(run[:answers_by]) do
+            :none ->
+              gettext(
+                "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+              )
+
+            :you ->
+              gettext(
+                "Qory reads the ticket, the code and your answers when the run starts, and proposes how to build it."
+              )
+
+            {:name, name} ->
+              gettext(
+                "Qory reads the ticket, the code and %{name}'s answers when the run starts, and proposes how to build it.",
+                name: name
+              )
+
+            :several ->
+              gettext(
+                "Qory reads the ticket, the code and the answers of this take in when the run starts, and proposes how to build it."
+              )
+          end,
+        queued:
+          gettext("Run %{attempt} of %{of} is queued.",
+            attempt: Format.number(run.attempt),
+            of: Format.number(run.of)
+          )
+      )
+
+    ~H"""
+    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p id={"#{@id}-run"}>{@queued}</p>
+    """
+  end
+
+  defp step_body(%{status: :queued} = assigns) do
+    assigns = assign(assigns, :undo_line, undo_line(assigns))
+
+    ~H"""
+    <p class="q-wi-bee-line">
+      <.bee />
+      <span>
+        {gettext(
+          "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+        )}
+      </span>
+    </p>
+    <div id={"#{@id}-undo"} class="q-wi-undo">
+      <p id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
+      <div :if={@can_undo} class="q-wi-acts">
+        <.button type="button" phx-click="undo" phx-value-number={@number}>
+          <.icon name="hero-arrow-uturn-left-micro" class="size-3.5" />{gettext("Undo")}
+        </.button>
+      </div>
+    </div>
+    """
+  end
+
+  defp step_body(%{status: :running} = assigns) do
+    run = assigns.run
+
+    assigns =
+      assign(assigns,
+        line:
+          case answers_of(run[:answers_by]) do
+            :none ->
+              gettext(
+                "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
+              )
+
+            :you ->
+              gettext(
+                "Qory is exploring again, with your answers. It reads the ticket and the code, and proposes how to build it."
+              )
+
+            {:name, name} ->
+              gettext(
+                "Qory is exploring again, with %{name}'s answers. It reads the ticket and the code, and proposes how to build it.",
+                name: name
+              )
+
+            :several ->
+              gettext(
+                "Qory is exploring again, with the answers of this take in. It reads the ticket and the code, and proposes how to build it."
+              )
+          end,
+        started:
+          rich_gettext("Run %{run} started %{when}.",
+            run: run_ref(run),
+            when: inline_ago(run.started_at, assigns.now)
+          )
+      )
+
+    ~H"""
+    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p id={"#{@id}-run"}><.rich text={@started} /></p>
+    """
+  end
+
+  defp step_body(%{status: :questions} = assigns) do
+    n = length(assigns.run.questions)
+    number = Format.number(n)
+
+    assigns =
+      assign(assigns,
+        line:
+          if(assigns.can_act,
+            do:
+              ngettext(
+                "Qory asked %{number} question before it can propose how to build it. Answer it, and Qory explores again with your answer. Or decline the work item.",
+                "Qory asked %{number} questions before it can propose how to build it. Answer them, and Qory explores again with your answers. Or decline the work item.",
+                n,
+                number: number
+              ),
+            else:
+              ngettext(
+                "Qory asked %{number} question before it can propose how to build it.",
+                "Qory asked %{number} questions before it can propose how to build it.",
+                n,
+                number: number
+              )
+          ),
+        waits:
+          ngettext(
+            "Waits for a member to answer Qory's question.",
+            "Waits for a member to answer Qory's questions.",
+            n
+          ),
+        go: ngettext("Answer the question", "Answer the questions", n)
+      )
+
+    ~H"""
+    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
+    <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
+    <div :if={@can_act} class="q-wi-acts">
+      <.decline_button id={@id} number={@number} />
+    </div>
+    """
+  end
+
+  defp step_body(%{status: :used_up} = assigns) do
+    run = assigns.run
+
+    assigns =
+      assign(assigns,
+        line:
+          if(run[:outcome] == :questions,
+            do:
+              ngettext(
+                "Qory still has %{number} question after run %{attempt} of %{of}, the most one take in has, so it cannot explore again in this take in.",
+                "Qory still has %{number} questions after run %{attempt} of %{of}, the most one take in has, so it cannot explore again in this take in.",
+                length(run.questions),
+                number: Format.number(length(run.questions)),
+                attempt: Format.number(run.attempt),
+                of: Format.number(run.of)
+              ),
+            else:
+              rich_gettext(
+                "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
+                run: run_ref(run),
+                attempt: Format.number(run.attempt),
+                of: Format.number(run.of)
+              )
+          )
+      )
+
+    ~H"""
+    <p id={"#{@id}-line"}><.rich text={@line} /></p>
+    <p :if={@can_act} id={"#{@id}-ways"}>
+      {gettext(
+        "Decline the work item if it is not wanted. To explore again, close it: Take in again from the Backlog then starts a fresh count, and answers from this take in are not carried over."
+      )}
+    </p>
+    <div :if={@can_act} class="q-wi-acts">
+      <.button
+        id={"#{@id}-decline"}
+        type="button"
+        phx-click="ask_decline"
+        phx-value-number={@number}
+      >
+        {gettext("Decline")}
+      </.button>
+      <.button
+        :if={@can_close}
+        id={"#{@id}-close"}
+        type="button"
+        variant="ghost"
+        phx-click="ask_close"
+        phx-value-number={@number}
+      >
+        {gettext("Close work item…")}
+      </.button>
+    </div>
+    """
+  end
+
+  defp step_body(%{status: status} = assigns) when status in @no_result do
+    run = assigns.run
+
+    assigns =
+      assign(assigns,
+        line: no_result_line(status, run),
+        next:
+          gettext("It starts run %{attempt} of %{of} of this take in.",
+            attempt: Format.number(run.attempt + 1),
+            of: Format.number(run.of)
+          )
+      )
+
+    ~H"""
+    <p id={"#{@id}-line"}><.rich text={@line} /></p>
+    <div :if={@can_act} class="q-wi-acts">
+      <.button
+        id={"#{@id}-again"}
+        type="button"
+        variant="primary"
+        phx-click="explore_again"
+        phx-value-number={@number}
+      >
+        <.icon name="hero-arrow-path-micro" class="size-3.5" />{gettext("Run Explore again")}
+      </.button>
+      <.decline_button id={@id} number={@number} />
+    </div>
+    <p :if={@can_act} id={"#{@id}-next"} class="q-wi-hint">{@next}</p>
+    """
+  end
+
   # A reader who may act reads what to do; one who may not, whose turn it is. Without an
   # owner there is no one to name: no line.
   defp step_body(%{status: :confirm} = assigns) do
@@ -560,7 +856,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           cond do
             assigns.can_act ->
               gettext(
-                "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+                "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
               )
 
             you?(owner) ->
@@ -578,6 +874,12 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p :if={@line} class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <.go_link
+      :if={@can_act}
+      id={"#{@id}-explore"}
+      path={@explore_path}
+      words={gettext("Read Qory's proposal")}
+    />
     <div :if={@can_act} class="q-wi-acts">
       <.button
         id={"#{@id}-confirm"}
@@ -588,15 +890,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       >
         <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm")}
       </.button>
-      <.button
-        id={"#{@id}-decline"}
-        type="button"
-        variant="ghost"
-        phx-click="ask_decline"
-        phx-value-number={@number}
-      >
-        {gettext("Decline")}
+      <.button :if={@edit_path} id={"#{@id}-change"} navigate={@edit_path}>
+        <.icon name="hero-pencil-square-micro" class="size-3.5" />{pgettext("action", "Change")}
       </.button>
+      <.decline_button id={@id} number={@number} />
     </div>
     """
   end
@@ -631,9 +928,113 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+
+  defp decline_button(assigns) do
+    ~H"""
+    <.button
+      id={"#{@id}-decline"}
+      type="button"
+      variant="ghost"
+      phx-click="ask_decline"
+      phx-value-number={@number}
+    >
+      {gettext("Decline")}
+    </.button>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :path, :string, default: nil
+  attr :words, :string, required: true
+
+  # A link to Explore's tab from the Ticket and Thread tabs; nothing on Explore's tab.
+  defp go_link(assigns) do
+    ~H"""
+    <.link :if={@path} id={@id} patch={@path} class="q-wi-golink">
+      {@words}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+    </.link>
+    """
+  end
+
+  # What happened to a run that gave no result, as one sentence with its id.
+  defp no_result_line(:no_result, run) do
+    case run[:outcome] do
+      :none ->
+        rich_gettext("Run %{run} ended without a result.", run: run_ref(run))
+
+      :refused ->
+        rich_gettext(
+          "Run %{run} returned a result that did not pass Qory's check, so Explore has no result.",
+          run: run_ref(run)
+        )
+
+      _error ->
+        rich_gettext("Run %{run} ended with an error, so Explore has no result.",
+          run: run_ref(run)
+        )
+    end
+  end
+
+  defp no_result_line(:lost, run),
+    do:
+      rich_gettext("Run %{run} was lost before it ended, so Explore has no result.",
+        run: run_ref(run)
+      )
+
+  defp no_result_line(:cancelled, run),
+    do:
+      rich_gettext("Run %{run} was cancelled before it ended, so Explore has no result.",
+        run: run_ref(run)
+      )
+
   # Who took the work item in and when; for a reader who may undo it, that they can until
   # a run starts and what undoing does to the ticket. After an uninstall, that nothing
-  # changes on the ticket. Each line is one whole sentence for each case.
+  # changes on the ticket. A declined or closed work item taken in again goes back to how
+  # it ended, and nothing is sent to the ticket; an undone one taken in again reads as a
+  # first take in, since undoing it takes the label off again. Each line is one whole
+  # sentence for each case.
+  defp undo_line(%{work_item: work_item, previous: previous, uninstalled: false} = assigns)
+       when previous in [:declined, :closed] do
+    by = work_item.taken_in_by
+    at = inline_ago(work_item.taken_in_at, assigns.now)
+
+    case {previous, you?(by), assigns.can_undo} do
+      {:declined, true, true} ->
+        rich_gettext(
+          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was.",
+          when: at
+        )
+
+      {:declined, false, true} ->
+        rich_gettext(
+          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was.",
+          name: by.name,
+          when: at
+        )
+
+      {:closed, true, true} ->
+        rich_gettext(
+          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was.",
+          when: at
+        )
+
+      {:closed, false, true} ->
+        rich_gettext(
+          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was.",
+          name: by.name,
+          when: at
+        )
+
+      {_previous, true, false} ->
+        rich_gettext("You took this in again %{when}.", when: at)
+
+      {_previous, false, false} ->
+        rich_gettext("%{name} took this in again %{when}.", name: by.name, when: at)
+    end
+  end
+
   defp undo_line(%{work_item: work_item} = assigns) do
     by = work_item.taken_in_by
     at = inline_ago(work_item.taken_in_at, assigns.now)
@@ -691,9 +1092,25 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  # A run's id, as a link to its page where the page gives one.
-  defp run_ref(%{path: path, id: id}) when is_binary(path), do: {:link, path, id, "q-wi-run"}
-  defp run_ref(%{id: id}), do: {:m, id, "q-wi-run-id"}
+  # Whose answers a run reads: none, the reader's, one other member's (by name), or
+  # several members'. Two people are one by id, never by name.
+  defp answers_of(people) do
+    case Enum.uniq_by(people || [], &person_key/1) do
+      [] -> :none
+      [person] -> if you?(person), do: :you, else: {:name, person.name}
+      _several -> :several
+    end
+  end
+
+  defp person_key(%{you: true}), do: :you
+  defp person_key(person), do: person[:id] || make_ref()
+
+  # A run's id, `short_id/1` of its public id (`rn_` and 8 hex), as a link to its page
+  # where the page gives one.
+  defp run_ref(%{path: path, id: id}) when is_binary(path),
+    do: {:link, path, RunComponents.short_id(id), "q-wi-run"}
+
+  defp run_ref(%{id: id}), do: {:m, RunComponents.short_id(id), "q-wi-run-id"}
 
   attr :class, :any, default: "q-bl-bee q-bl-bee-lg"
 

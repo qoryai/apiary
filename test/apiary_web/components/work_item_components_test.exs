@@ -358,14 +358,14 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "again, with a member's answers; a run without a page is its id" do
-      run = %{id: "01a9e3c7", path: nil, started_at: ago(6 * 60), answers_by: "Priya"}
+      run = %{id: "rn_01a9e3c7", path: nil, started_at: ago(6 * 60), answers_by: [@priya]}
       html = card(work_item(%{status: :running, run: run}))
 
       assert text(html, ".q-wi-bee-line") ==
                "Qory is exploring again, with Priya's answers. It reads the ticket and the code, and proposes how to build it."
 
       assert count(html, "#work-item-step-run a") == 0
-      assert text(html, "#work-item-step-run .q-wi-run-id") == "01a9e3c7"
+      assert text(html, "#work-item-step-run .q-wi-run-id") == "rn_01a9e3c7"
     end
   end
 
@@ -378,7 +378,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, ".q-wi-step-ask") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+               "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
 
       refute html =~ "Mock-up"
       assert text(html, "#work-item-step-confirm") == "Confirm"
@@ -430,7 +430,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       acts = card(work_item(%{owner: @priya}), can_act: true)
 
       assert text(acts, ".q-wi-bee-line") ==
-               "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+               "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
 
       assert count(acts, "#work-item-step-confirm") == 1
     end
