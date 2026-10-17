@@ -125,11 +125,12 @@ defmodule Apiary.Repo.Migrations.KeepDispatches do
              check: "attempt >= 1 AND attempt <= of"
            )
 
-    create constraint(:dispatch_runs, :dispatch_runs_state_check, check: "state IN (#{list(@states)})")
+    create constraint(:dispatch_runs, :dispatch_runs_state_check,
+             check: "state IN (#{list(@states)})"
+           )
 
     create constraint(:dispatch_runs, :dispatch_runs_end_cause_check,
-             check:
-               "end_cause IS NULL OR end_cause IN (#{list(@end_causes)})"
+             check: "end_cause IS NULL OR end_cause IN (#{list(@end_causes)})"
            )
 
     create constraint(:dispatch_runs, :dispatch_runs_ended_check,
