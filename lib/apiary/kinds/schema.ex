@@ -9,7 +9,9 @@ defmodule Apiary.Kinds.Schema do
   `:persistent_term`. Nothing is fetched over the network: a reference outside the file
   resolves to the Forager contract's `auth.schema.json`, vendored under `priv/contract/`,
   which a service definition's `auth` refers to by its URL, or through JSV's local
-  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules.
+  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules. A
+  settings schema reaches no module it names: `Apiary.Kinds.SettingsResolver` answers its
+  `jsv:` references first.
   """
 
   @behaviour JSV.Resolver
