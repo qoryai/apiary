@@ -532,7 +532,8 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert values(settings) == 4096
 
       # Valid settings pass however slow or busy the machine: the budget decides by
-      # reductions, the same on any machine, so the time is not asserted.
+      # reductions, the same on any machine running the same OTP release, so the time is
+      # not asserted.
       assert Description.check_settings(description, settings) == :ok
 
       for over <- [
@@ -558,15 +559,16 @@ defmodule Apiary.Integrations.DescriptionTest do
     # the check's work grow exponentially, which no limit on the settings bounds. The check
     # runs in another process within 5000000 reductions and 16 MiB of heap, which count
     # the work and not the time, so which one each check runs out of is the same on any
-    # machine; one over that budget is refused as invalid settings, `budget: :exceeded`,
-    # and the warning it logs says which. Without the budget, measured: 1.2 s to 1.7 s at 20
-    # levels of allOf and for 1000 patterns against 1024 strings, 5 s to 5.7 s and 1.19 GB
-    # at 20 levels of allOf whose leaf refuses the value, 5.6 s at 20 levels of anyOf, 33 s
-    # at 24 levels of allOf and over 30 s in draft-07; 24 s to 28 s for 1000 backtracking
-    # patterns against a string of 60001 bytes, 15 s against 128 settings, 9.5 s against a
-    # list of 100 strings, and 13.3 s for 1000 email formats against a string of 60 KB.
-    # With it, each ran out within 350 ms. The time asserted leaves room for a slow
-    # machine; the time of the budget, 10 s, decides none of them.
+    # machine running the same OTP release; one over that budget is refused as invalid
+    # settings, `budget: :exceeded`, and the warning it logs says which. Without the
+    # budget, measured: 1.2 s to 1.7 s at 20 levels of allOf and for 1000 patterns against
+    # 1024 strings, 5 s to 5.7 s and 1.19 GB at 20 levels of allOf whose leaf refuses the
+    # value, 5.6 s at 20 levels of anyOf, 33 s at 24 levels of allOf and over 30 s in
+    # draft-07; 24 s to 28 s for 1000 backtracking patterns against a string of 60001
+    # bytes, 15 s against 128 settings, 9.5 s against a list of 100 strings, and 13.3 s for
+    # 1000 email formats against a string of 60 KB. With it, each ran out within 350 ms.
+    # The time asserted leaves room for a slow machine; the time of the budget, 10 s,
+    # decides none of them.
     @refused_within_ms 1000
 
     defp with_settings_schema(schema) do

@@ -31,7 +31,7 @@ defmodule Apiary.Integrations.Description do
 
   require Logger
 
-  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, Schema}
+  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, RegexFormat, Schema}
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -71,8 +71,9 @@ defmodule Apiary.Integrations.Description do
   # The budget of the settings check, the build of the schema and the validation
   # (`Apiary.Kinds.Budget`): 5000000 reductions, 2097152 words of heap (16 MiB on a
   # 64-bit machine), and 10 s, a bound only on a check that runs away while it counts few
-  # reductions. The reductions and the heap decide, and neither depends on the machine.
-  # Measured: settings at the limits above do 1519366 reductions, 3.3 times fewer than
+  # reductions. The reductions and the heap decide, and neither depends on the machine:
+  # the same check does the same reductions on any machine running the same OTP release.
+  # Measured: settings at the limits above do 1518186 reductions, 3.3 times fewer than
   # the budget, with 271839 words of heap; 1000 settings of 1000 properties 650000
   # reductions and 439685 words, the most heap of any measured; the settings of the
   # fixtures under 7000 reductions. The slowest, the settings at the limits, took 527 ms
@@ -81,7 +82,11 @@ defmodule Apiary.Integrations.Description do
   # backtracking patterns count about 17 million reductions a second where the rest of
   # the check counts about 100 million, so at 5000000 they take about 300 ms to stop,
   # while Connections holds the organisation's integrations lock
-  # (`Apiary.Connections.lock/1`).
+  # (`Apiary.Connections.lock/1`). So valid settings against an extreme schema are refused
+  # by the cap, the same way on every run: a list of 1000 strings, each checked against
+  # 200 alternative patterns, does 7857408 reductions. A compile for `"format": "regex"`
+  # is charged in reductions (`Apiary.Kinds.RegexFormat`): the check of one such setting
+  # of 15000 bytes does 151176.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
 
   @doc """
@@ -276,7 +281,7 @@ defmodule Apiary.Integrations.Description do
       })
 
     check = fn ->
-      with {:ok, root} <- Schema.build(schema),
+      with {:ok, root} <- Schema.build(schema, formats: RegexFormat.formats()),
            do: Schema.validate(settings, root, @settings_limits)
     end
 

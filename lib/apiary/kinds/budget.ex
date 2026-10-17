@@ -7,10 +7,11 @@ defmodule Apiary.Kinds.Budget do
   nesting.
 
   The work is counted in reductions, the units of work the runtime counts for each
-  process: the same function on the same input does the same reductions on any machine,
-  however fast or busy, so whether it fits does not depend on the machine. The heap is
-  counted in words. The time is only a bound on a process that runs away while it counts
-  few reductions; it is set far above what the work allows.
+  process: the same function on the same input does the same reductions on any machine
+  running the same OTP release, however fast or busy, so whether it fits does not depend
+  on the machine. The heap is counted in words. The time is only a bound on a process
+  that runs away while it counts few reductions; it is set far above what the work
+  allows.
 
   `run/2` starts the process unlinked and monitored, with a `max_heap_size`, and waits for
   its answer, reading the process's reductions every few milliseconds:
