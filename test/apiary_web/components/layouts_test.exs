@@ -687,6 +687,12 @@ defmodule ApiaryWeb.LayoutsTest do
                other.organisation.name
              )
 
+      # A name cut to the panel keeps the whole of it in its title.
+      assert has_element?(
+               view,
+               ~s{a#switch-#{other.organisation.slug} .truncate[title="#{other.organisation.name}"]}
+             )
+
       # Its ›, which shows its workspaces in the right panel.
       for {organisation, expanded} <- [
             {scope.organisation, "true"},
@@ -802,6 +808,11 @@ defmodule ApiaryWeb.LayoutsTest do
                "#workspace-menu a#workspace-menu-switch-#{platform.slug}:not([aria-current])[href='/#{org}/#{platform.slug}/switch/nodes']"
              )
 
+      assert has_element?(
+               view,
+               ~s{a#workspace-menu-switch-#{platform.slug} .truncate[title="#{platform.name}"]}
+             )
+
       refute text(html, "#workspace-menu") =~ other.organisation.name
 
       # Its foot holds the edition's entries for it, and is absent without one.
@@ -825,6 +836,11 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#organisation-menu-of-#{org} #switch-#{org}_#{platform.slug}")
+
+      assert has_element?(
+               view,
+               ~s{#switch-#{org}_#{platform.slug} .truncate[title="#{platform.name}"]}
+             )
 
       assert has_element?(
                view,
@@ -865,6 +881,17 @@ defmodule ApiaryWeb.LayoutsTest do
                view,
                "#drawer-place button#drawer-workspace-menu-button[data-switcher-open][data-switcher-back='nav-drawer-open'][aria-controls='workspace-menu'][aria-expanded='false'][aria-label='Switch workspace, current: #{scope.workspace.name}']",
                scope.workspace.name
+             )
+
+      # Each name cut to the drawer's head keeps the whole of it in its title.
+      assert has_element?(
+               view,
+               ~s{#drawer-organisation-menu-button .truncate[title="#{scope.organisation.name}"]}
+             )
+
+      assert has_element?(
+               view,
+               ~s{#drawer-workspace-menu-button .truncate[title="#{scope.workspace.name}"]}
              )
 
       assert has_element?(
@@ -1123,10 +1150,10 @@ defmodule ApiaryWeb.LayoutsTest do
       scope: scope
     } do
       run = Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop())
-      short = String.slice(run.run_id, 0, 8)
+      short = String.slice(run.public_id, 0, 11)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
@@ -1142,7 +1169,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # A run: Runs is its parent, marked to stay on a phone, with the back chevron.
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       html = render(view)
       assert has_element?(view, "#breadcrumb li.q-trail-up a[href='#{runs}'] .q-trail-back")

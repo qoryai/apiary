@@ -344,7 +344,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               <span class="q-vlist-v">v{item.version}</span>
               <span class="min-w-0 truncate">
                 {item.words}
-                <small class="block">
+                <small class="block" title={Common.local(item.who)}>
                   {Enum.join(
                     Enum.reject(
                       [Common.local(item.who), Format.relative(item.at, @now)],

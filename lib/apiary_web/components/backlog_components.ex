@@ -27,8 +27,10 @@ defmodule ApiaryWeb.BacklogComponents do
 
   `ticket` is a map with these keys:
 
-    * `:ref` - the ticket's ref at the source, `"acme/shop#1231"`;
-    * `:number` - its number there, `1231`;
+    * `:id` - Qory Apiary's id for the ticket, `"tkt_01"`: the key it is sent and
+      addressed by, as sources' refs and numbers may overlap within a workspace;
+    * `:ref` - the ticket's ref at the source, `"acme/shop#1231"`, shown only;
+    * `:number` - its number there, `1231`, shown only;
     * `:title`, `:repository` - strings, the repository as the source names it
       (`"acme/shop"`);
     * `:filer` - who filed it, `%{name: "Lea", kind: :person}`, `filer/1`'s `name` and
@@ -50,7 +52,7 @@ defmodule ApiaryWeb.BacklogComponents do
   item, if any.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
-  `Phoenix.LiveView.JS`), sent with the ticket's ref as `phx-value-ref`.
+  `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
   """
   attr :id, :string, required: true, doc: "the row's DOM id"
   attr :ticket, :map, required: true, doc: "the ticket, as above"
@@ -101,7 +103,7 @@ defmodule ApiaryWeb.BacklogComponents do
           variant="link"
           class="q-bl-take"
           phx-click={@take_in}
-          phx-value-ref={@ticket.ref}
+          phx-value-id={@ticket.id}
         >
           {gettext("Take in")}
         </.button>
@@ -112,7 +114,7 @@ defmodule ApiaryWeb.BacklogComponents do
           class={["q-bl-take", @link == :declined && "q-bl-again"]}
           title={gettext("Brings back work item #%{number}", number: @ticket.work_item.number)}
           phx-click={@take_in_again}
-          phx-value-ref={@ticket.ref}
+          phx-value-id={@ticket.id}
         >
           {gettext("Take in again")}
         </.button>

@@ -141,8 +141,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     # Its page, by its public id.
     assert target["href"] == target_page_path(scope, "github.example", "acme/shop")
 
-    short = String.slice(run.run_id, 0, 8)
-    href = workspace_path(scope, "/runs/#{run.run_id}")
+    short = String.slice(run.public_id, 0, 11)
+    href = workspace_path(scope, "/runs/#{run.public_id}")
 
     for q <- [short, String.slice(run.run_id, 0, 4), run.run_id, "https://x.example#{href}"] do
       answer = jump(conn, workspace_path(scope, "/jump"), q)
@@ -156,12 +156,21 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), "nightly"), "Runs")
 
     # A run without a title is its short id.
-    task_short = String.slice(task.run_id, 0, 8)
+    task_short = String.slice(task.public_id, 0, 11)
     answer = jump(conn, workspace_path(scope, "/jump"), task_short)
     assert [%{"label" => ^task_short}] = group(answer, "Runs")["items"]
 
-    # three characters are not an id
+    # three characters are not an id, nor is `rn_` and three
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
+
+    refute group(
+             jump(conn, workspace_path(scope, "/jump"), String.slice(run.public_id, 0, 6)),
+             "Runs"
+           )
+
+    # An old address, by the node's run id, is no run page's address.
+    old = "https://x.example" <> workspace_path(scope, "/runs/#{run.run_id}")
+    refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
   test "a run with no target is said by its state's word, an old name by its new state's",
@@ -187,9 +196,9 @@ defmodule ApiaryWeb.JumpControllerTest do
     detail = Map.new(group(answer, "Runs")["items"], &{&1["href"], &1["detail"]})
 
     assert detail == %{
-             workspace_path(scope, "/runs/#{completed.run_id}") => "Completed",
-             workspace_path(scope, "/runs/#{cancelled.run_id}") => "Cancelled",
-             workspace_path(scope, "/runs/#{older.run_id}") => "Cancelled"
+             workspace_path(scope, "/runs/#{completed.public_id}") => "Completed",
+             workspace_path(scope, "/runs/#{cancelled.public_id}") => "Cancelled",
+             workspace_path(scope, "/runs/#{older.public_id}") => "Cancelled"
            }
   end
 

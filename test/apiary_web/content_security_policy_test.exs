@@ -561,7 +561,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       instance: "i_1",
       key_id: key.key_id,
       code_id: code.id,
-      run_id: run.run_id,
+      run_id: run.public_id,
       target_id: target.id,
       workspace_id: scope.workspace.id,
       target_public_id: target.public_id,

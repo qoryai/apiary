@@ -604,6 +604,10 @@ defmodule ApiaryWeb.Layouts do
     attr :patch, :string,
       doc:
         "where the segment leads within the page's LiveView, as its tabs do; in place of `navigate`"
+
+    attr :title, :string,
+      doc:
+        "the whole of a name the segment shows, as its title where the segment is cut; none for fixed words"
   end
 
   slot :inner_block, required: true
@@ -1277,14 +1281,16 @@ defmodule ApiaryWeb.Layouts do
         patch={crumb[:patch]}
         class="q-trail-link"
       >
-        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate">{render_slot(crumb)}</span>
+        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate" title={crumb[:title]}>{render_slot(
+          crumb
+        )}</span>
       </.link>
       <span
         :if={!link?(crumb)}
         class="q-trail-link q-trail-page"
         aria-current={i == length(@crumb) - 1 && "page"}
       >
-        <span class="truncate">{render_slot(crumb)}</span>
+        <span class="truncate" title={crumb[:title]}>{render_slot(crumb)}</span>
       </span>
     </li>
     """
@@ -1394,7 +1400,7 @@ defmodule ApiaryWeb.Layouts do
                   data-fold
                 >
                   <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
-                  <span class="truncate">{heading}</span>
+                  <span class="truncate" title={heading}>{heading}</span>
                   <span class="q-switcher-n">{Format.number(length(places))}</span>
                 </button>
               <% else %>
@@ -1422,7 +1428,9 @@ defmodule ApiaryWeb.Layouts do
                   data-switch
                 >
                   <.avatar name={place.organisation.name} kind="organisation" size="xs" />
-                  <span class="truncate">{place.organisation.name}</span>
+                  <span class="truncate" title={place.organisation.name}>
+                    {place.organisation.name}
+                  </span>
                   <.icon
                     :if={current_organisation?(place, @organisation)}
                     name="hero-check-micro"
@@ -1489,7 +1497,7 @@ defmodule ApiaryWeb.Layouts do
                   data-switch
                   data-search={search_text([w.name, w.slug])}
                 >
-                  <span class="truncate">{w.name}</span>
+                  <span class="truncate" title={w.name}>{w.name}</span>
                   <.icon
                     :if={current_workspace?(w, @workspace)}
                     name="hero-check-micro"
@@ -1573,7 +1581,7 @@ defmodule ApiaryWeb.Layouts do
               data-switch
               data-search={search_text([w.name, w.slug])}
             >
-              <span class="truncate">{w.name}</span>
+              <span class="truncate" title={w.name}>{w.name}</span>
               <.icon
                 :if={current_workspace?(w, @workspace)}
                 name="hero-check-micro"
@@ -1939,7 +1947,7 @@ defmodule ApiaryWeb.Layouts do
         label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
       >
         <.avatar name={@organisation.name} kind="organisation" size="xs" />
-        <span class="truncate">{@organisation.name}</span>
+        <span class="truncate" title={@organisation.name}>{@organisation.name}</span>
       </.drawer_switch>
       <span :if={!@menus.organisation_menu?} class="q-drawer-switch" title={@organisation.name}>
         <.avatar name={@organisation.name} kind="organisation" size="xs" />
@@ -1952,7 +1960,7 @@ defmodule ApiaryWeb.Layouts do
         controls="workspace-menu"
         label={gettext("Switch workspace, current: %{name}", name: @menus.workspace.name)}
       >
-        <span class="truncate">{@menus.workspace.name}</span>
+        <span class="truncate" title={@menus.workspace.name}>{@menus.workspace.name}</span>
       </.drawer_switch>
       <span
         :if={@menus.workspace && !@menus.workspace_menu?}

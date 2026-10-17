@@ -54,7 +54,7 @@ defmodule ApiaryWeb.RunLive.Index do
   alias Apiary.Nodes
   alias Apiary.Runs
   alias Apiary.Runs.Filters
-  alias Apiary.Runs.Record
+  alias Apiary.Runs.{Record, Run}
   alias ApiaryWeb.Narrowing
 
   @quiet_tick 5_000
@@ -759,7 +759,7 @@ defmodule ApiaryWeb.RunLive.Index do
   @impl true
   def handle_params(params, _uri, socket) do
     {chosen, rest} = Map.pop(params, "run")
-    chosen = run_id(chosen)
+    chosen = chosen_id(chosen)
     filters = Filters.parse(rest, :runs)
     bad_run? = Map.has_key?(params, "run") and is_nil(chosen)
 
@@ -887,7 +887,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, filters: filters, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.run_id == id)),
+    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
       do: {:noreply, push_patch(socket, to: page_path(scope, filters, id), replace: true)},
       else: {:noreply, socket}
   end
@@ -897,7 +897,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("open", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.run_id == id)),
+    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
       do:
         {:noreply,
          push_navigate(socket, to: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}")},
@@ -1224,7 +1224,7 @@ defmodule ApiaryWeb.RunLive.Index do
       cond do
         not wide -> nil
         chosen -> chosen
-        listing && listing.runs != [] -> hd(listing.runs).run_id
+        listing && listing.runs != [] -> hd(listing.runs).public_id
         true -> nil
       end
 
@@ -1246,7 +1246,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp reload_preview(socket) do
     %{current_scope: scope, preview_id: id, listing: listing} = socket.assigns
-    on_page = listing && Enum.find(listing.runs, &(&1.run_id == id))
+    on_page = listing && Enum.find(listing.runs, &(&1.public_id == id))
 
     start_async(socket, :preview, fn ->
       # A row's run can be a moment behind the record: the preview reads it again.
@@ -1351,15 +1351,8 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp loaded_total(_loaded, _filters, _listing), do: nil
 
-  # A run's id as the URL may carry it, the id Forager prints.
-  defp run_id(value) when is_binary(value) do
-    case Ecto.UUID.cast(value) do
-      {:ok, id} -> id
-      :error -> nil
-    end
-  end
-
-  defp run_id(_value), do: nil
+  # A run's id as the URL may carry it, its `public_id`, `rn_…`; nil for anything else.
+  defp chosen_id(value), do: if(Run.public_id?(value), do: value)
 
   # No run in the workspace at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{total: 0}, filters), do: not Filters.any?(filters)

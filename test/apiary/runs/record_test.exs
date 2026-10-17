@@ -28,19 +28,21 @@ defmodule Apiary.Runs.RecordTest do
   end
 
   describe "fetch_run/2" do
-    test "finds a run of the workspace by its subject", %{scope: scope} do
+    test "finds a run of the workspace by its `rn_` id", %{scope: scope} do
       run = run_fixture(scope)
-      assert {:ok, %Run{id: id}} = Record.fetch_run(scope, run.run_id)
+      assert {:ok, %Run{id: id}} = Record.fetch_run(scope, run.public_id)
       assert id == run.id
     end
 
-    test "a run of another workspace, an unknown subject and a malformed id are not found", %{
-      scope: scope
-    } do
+    test "a run of another workspace, an unknown id, the node's run id and a malformed id are not found",
+         %{scope: scope} do
       other = run_fixture(scope_fixture())
+      run = run_fixture(scope)
 
-      assert Record.fetch_run(scope, other.run_id) == :error
-      assert Record.fetch_run(scope, Ecto.UUID.generate()) == :error
+      assert Record.fetch_run(scope, other.public_id) == :error
+      assert Record.fetch_run(scope, Run.new_public_id()) == :error
+      assert Record.fetch_run(scope, run.run_id) == :error
+      assert Record.fetch_run(scope, String.slice(run.public_id, 0, 11)) == :error
       assert Record.fetch_run(scope, "0191f2a4") == :error
       assert Record.fetch_run(scope, <<0::128>>) == :error
       assert Record.fetch_run(scope, nil) == :error

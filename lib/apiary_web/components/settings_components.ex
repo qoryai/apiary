@@ -501,10 +501,14 @@ defmodule ApiaryWeb.SettingsComponents do
     >
       <:col :let={workspace} label={gettext("Workspace")} kind="title">
         <span class="q-nm">
-          <.link navigate={~p"/#{@scope.organisation}/#{workspace}"} class="q-title hover:underline">
+          <.link
+            navigate={~p"/#{@scope.organisation}/#{workspace}"}
+            class="q-title hover:underline"
+            title={workspace.name}
+          >
             {workspace.name}
           </.link>
-          <span class="q-side q-mono">{workspace.slug}</span>
+          <span class="q-side q-mono" title={workspace.slug}>{workspace.slug}</span>
         </span>
       </:col>
       <:col :let={workspace} :if={@targets} label={gettext("Targets")} kind="num" from="sm">

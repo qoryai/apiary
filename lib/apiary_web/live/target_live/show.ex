@@ -485,10 +485,10 @@ defmodule ApiaryWeb.TargetLive.Show do
                   <:part name={:id}>
                     <.link
                       navigate={
-                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.run_id}"
+                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.public_id}"
                       }
                       class="font-mono text-xs hover:underline"
-                    >{short_id(@facts.first.run_id)}</.link>
+                    >{short_id(@facts.first.public_id)}</.link>
                   </:part>
                 </.rich>
               </span>

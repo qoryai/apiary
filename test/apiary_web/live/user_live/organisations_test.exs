@@ -24,6 +24,18 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
                "#organisation-#{scope.organisation.id} a[href='/#{scope.organisation.slug}/#{scope.workspace.slug}']",
                scope.organisation.name
              )
+
+      # The name and the workspaces are cut to their columns, each whole in its title.
+      row = "#organisation-#{scope.organisation.id}"
+      assert has_element?(lv, ~s{#{row} .q-nm > a.q-title[title="#{scope.organisation.name}"]})
+
+      assert has_element?(
+               lv,
+               ~s{#{row}-workspaces.q-cut[title="#{scope.workspace.name}"]},
+               scope.workspace.name
+             )
+
+      refute has_element?(lv, "#{row} .truncate")
     end
 
     refute has_element?(lv, "#pending-deletions")
@@ -38,6 +50,14 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
 
     assert has_element?(lv, "#pending-#{scope.organisation.id}", scope.organisation.name)
     assert has_element?(lv, "#pending-#{scope.organisation.id}", "Purged on")
+
+    # The name is cut, whole in its title, and "Purged on" breaks between its words.
+    assert has_element?(
+             lv,
+             ~s{#pending-#{scope.organisation.id} .q-nm > .q-title.q-cut[title="#{scope.organisation.name}"]}
+           )
+
+    assert has_element?(lv, "#pending-#{scope.organisation.id} span.q-parts", "Purged on")
 
     assert has_element?(
              lv,
@@ -63,6 +83,11 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
                lv,
                "#suspended-memberships #suspended-#{owner.organisation.id}",
                owner.organisation.name
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#suspended-#{owner.organisation.id} .q-nm > .q-title[title="#{owner.organisation.name}"]}
              )
 
       assert has_element?(lv, "#suspended-memberships", "An owner or an admin of each")

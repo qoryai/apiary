@@ -1597,7 +1597,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <td role="cell" class="q-c-target">
                 <.link
                   navigate={ApiaryWeb.TargetComponents.target_path(@scope, row, ["policy"])}
-                  class="q-target-name q-rowlink"
+                  class="q-target-name q-rowlink q-cut"
                   title={"#{row.system}/#{row.path}"}
                 >
                   <span :if={MapSet.member?(@shared, row.path)} class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>

@@ -44,7 +44,11 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb :if={@moving} navigate={Common.connection_path(@current_scope, @moving)}>
+      <:crumb
+        :if={@moving}
+        navigate={Common.connection_path(@current_scope, @moving)}
+        title={elem(Common.names(@moving), 0)}
+      >
         {elem(Common.names(@moving), 0)}
       </:crumb>
       <:crumb>{act(@moving)}</:crumb>

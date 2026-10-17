@@ -682,7 +682,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#onboarding-landed a[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
+               "#onboarding-landed a[href='#{workspace_path(scope, "/runs/#{run.public_id}")}']",
                "Open it"
              )
 
@@ -1401,30 +1401,30 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "Open the rule"
              )
 
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+      assert text(view, "#att-run-#{lost.public_id}") =~ "Lost, never posted its exit"
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']",
+               "#att-run-#{lost.public_id}-act[aria-label='Open nightly-mirror']",
                "Open"
              )
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id} a[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
+               "#att-run-#{lost.public_id} a[href='#{workspace_path(scope, "/runs/#{lost.public_id}")}']",
                "nightly-mirror"
              )
 
-      assert text(view, "#att-run-#{quiet.run_id}") =~ "No heartbeat for"
+      assert text(view, "#att-run-#{quiet.public_id}") =~ "No heartbeat for"
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.run_id} .q-ar-why[title='Heartbeats are due every 30 s; after 1 m 30 s of silence it is marked lost.']"
+               "#att-run-#{quiet.public_id} .q-ar-why[title='Heartbeats are due every 30 s; after 1 m 30 s of silence it is marked lost.']"
              )
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.run_id}-act[href='#{workspace_path(scope, "/runs/#{quiet.run_id}")}']",
+               "#att-run-#{quiet.public_id}-act[href='#{workspace_path(scope, "/runs/#{quiet.public_id}")}']",
                "Open"
              )
 
@@ -1496,7 +1496,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               ~s(#att-run-#{run.run_id}-act[href="#{compare}"]),
+               ~s(#att-run-#{run.public_id}-act[href="#{compare}"]),
                "What changed"
              )
     end
@@ -1611,16 +1611,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       for run <- runs do
-        assert text(view, "#att-run-#{run.run_id}") =~ "Lost, never posted its exit"
+        assert text(view, "#att-run-#{run.public_id}") =~ "Lost, never posted its exit"
 
         assert has_element?(
                  view,
-                 "a#att-run-#{run.run_id}-act[aria-label='Open #{run.about_title}']" <>
-                   "[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
+                 "a#att-run-#{run.public_id}-act[aria-label='Open #{run.about_title}']" <>
+                   "[href='#{workspace_path(scope, "/runs/#{run.public_id}")}']",
                  "Open"
                )
 
-        refute has_element?(view, "button#att-run-#{run.run_id}-act")
+        refute has_element?(view, "button#att-run-#{run.public_id}-act")
       end
 
       refute render(view) =~ ~r/>\s*Close\s*</
@@ -1646,24 +1646,24 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert %Run{state: "lost", lost_at: %DateTime{}} = Repo.reload!(silent)
       view = open(conn, scope)
 
-      assert text(view, "#att-run-#{own.run_id}") =~ "Lost, never posted its exit"
+      assert text(view, "#att-run-#{own.public_id}") =~ "Lost, never posted its exit"
 
       assert has_element?(
                view,
-               "#att-run-#{own.run_id} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
+               "#att-run-#{own.public_id} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
              )
 
       for {run, words} <- [
             {silent, "Lost, stopped responding"},
             {unrecorded, "Lost, end not recorded"}
           ] do
-        assert has_element?(view, "#att-run-#{run.run_id}[data-kind=lost]", "Lost")
-        assert text(view, "#att-run-#{run.run_id}") =~ words
-        refute text(view, "#att-run-#{run.run_id}") =~ "never posted its exit"
+        assert has_element?(view, "#att-run-#{run.public_id}[data-kind=lost]", "Lost")
+        assert text(view, "#att-run-#{run.public_id}") =~ words
+        refute text(view, "#att-run-#{run.public_id}") =~ "never posted its exit"
 
         assert has_element?(
                  view,
-                 ~s(#att-run-#{run.run_id} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
+                 ~s(#att-run-#{run.public_id} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
                )
       end
     end
@@ -1674,9 +1674,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       lost = lost_run(scope, %{about_title: title})
       view = open(conn, scope)
 
-      assert has_element?(view, "#att-run-#{lost.run_id} .q-ar-t > bdi", title)
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", title)
       # The label for a screen reader stays plain text.
-      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Open #{title}"]))
+      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{title}"]))
     end
 
     test "a lost run whose heartbeats are sent late keeps its row until its exit arrives",
@@ -1685,7 +1685,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Its heartbeats had set its clock offset, a second behind, before it was lost.
       lost = lost_run(scope, %{clock_offset_ms: 1000})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
+      assert has_element?(view, "#att-run-#{lost.public_id}[data-kind=lost]", "Lost")
 
       # The heartbeats of the hour it was lost for, sent now.
       for k <- 1..20 do
@@ -1701,8 +1701,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert {:ok, %Run{state: "lost"}} = Projector.project(lost)
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
-      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
+      assert has_element?(view, "#att-run-#{lost.public_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{lost.public_id}.q-resolved")
 
       event_fixture(
         lost,
@@ -1714,7 +1714,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       )
 
       assert {:ok, %Run{state: "failed"}} = Projector.project(lost)
-      refute has_element?(open(conn, scope), "#att-run-#{lost.run_id}")
+      refute has_element?(open(conn, scope), "#att-run-#{lost.public_id}")
     end
 
     @tag needs: :security
@@ -2058,7 +2058,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=quiet]")
 
       event_fixture(
         quiet,
@@ -2071,8 +2071,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       {:ok, _} = Projector.project(quiet)
       render_async(view, 5_000)
-      assert text(view, "#att-run-#{quiet.run_id}") =~ "Heartbeats resumed."
-      assert has_element?(view, "#att-run-#{quiet.run_id}.q-resolved")
+      assert text(view, "#att-run-#{quiet.public_id}") =~ "Heartbeats resumed."
+      assert has_element?(view, "#att-run-#{quiet.public_id}.q-resolved")
       assert text(view, "#attention-n") =~ ~r/^\d$/
 
       other = started_run(scope, shop())
@@ -2087,7 +2087,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert [_] = Liveness.check(DateTime.utc_now())
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
+      assert has_element?(view, "#att-run-#{other.public_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item to review."
     end
 
@@ -2105,7 +2105,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       for {run, _exit} <- runs,
-          do: assert(has_element?(view, "#att-run-#{run.run_id}[data-kind=quiet]"))
+          do: assert(has_element?(view, "#att-run-#{run.public_id}[data-kind=quiet]"))
 
       for {run, exit} <- runs do
         event_fixture(run, 41, "run.exited", Map.put(exit, "duration_ms", 1000),
@@ -2119,8 +2119,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
 
       for {{run, _exit}, words} <- Enum.zip(runs, ["Completed.", "Failed.", "Cancelled."]) do
-        assert has_element?(view, "#att-run-#{run.run_id}.q-resolved")
-        assert text(view, "#att-run-#{run.run_id}") =~ words
+        assert has_element?(view, "#att-run-#{run.public_id}.q-resolved")
+        assert text(view, "#att-run-#{run.public_id}") =~ words
       end
 
       # Nothing arrived, so the announcer says nothing.
@@ -2134,15 +2134,15 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Silent for four intervals: quiet on the page, and lost at the check's three.
       quiet = started_run(scope, shop(), heartbeat: {120, 100, 30})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=quiet]")
 
       assert [_] = Liveness.check(DateTime.utc_now())
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=lost]", "Lost")
-      refute has_element?(view, "#att-run-#{quiet.run_id}.q-resolved")
-      refute text(view, "#att-run-#{quiet.run_id}") =~ "Heartbeats resumed."
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{quiet.public_id}.q-resolved")
+      refute text(view, "#att-run-#{quiet.public_id}") =~ "Heartbeats resumed."
       # The same row, patched: nothing arrived.
-      refute has_element?(view, "#att-run-#{quiet.run_id}.q-arrived")
+      refute has_element?(view, "#att-run-#{quiet.public_id}.q-arrived")
       assert text(view, "#overview-announcer") == ""
     end
 

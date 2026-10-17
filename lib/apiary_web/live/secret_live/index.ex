@@ -341,7 +341,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <%= case row do %>
           <% {:secret, secret} -> %>
             <span class="q-nm">
-              <span class="q-title font-mono">{secret.name}</span>
+              <span class="q-title font-mono" title={secret.name}>{secret.name}</span>
               <span :if={secret.note} class="q-side" title={secret.note}>{secret.note}</span>
             </span>
           <% {:value, _secret, value} -> %>
@@ -371,8 +371,13 @@ defmodule ApiaryWeb.SecretLive.Index do
             <span :if={Map.get(@uses, secret.id, []) == []} class="q-faint">
               {gettext("Not used")}
             </span>
-            <span :if={Map.get(@uses, secret.id, []) != []}>
-              {@uses |> Map.get(secret.id) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")}
+            <span
+              :if={Map.get(@uses, secret.id, []) != []}
+              id={"#{row_id(row)}-used-by"}
+              class="q-cut"
+              title={used_by(@uses, secret.id)}
+            >
+              {used_by(@uses, secret.id)}
             </span>
           <% {:value, _secret, _value} -> %>
         <% end %>
@@ -402,6 +407,11 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp row_id({:secret, secret}), do: "secret-#{secret.public_id}"
   defp row_id({:value, secret, value}), do: "secret-#{secret.public_id}-#{value.value_id}"
+
+  # The names of what uses a secret, as its Used by cell shows them and as its title holds
+  # them whole.
+  defp used_by(uses, secret_id),
+    do: uses |> Map.get(secret_id, []) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")
 
   # Who changed what the row shows last, and when: a value's own change, or for a secret
   # of one value that value's, else the secret's.
@@ -645,7 +655,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     >
       <:col :let={variable} label={gettext("Name")} kind="title">
         <span class="q-nm">
-          <span class="q-title font-mono">{variable.name}</span>
+          <span class="q-title q-cut font-mono" title={variable.name}>{variable.name}</span>
           <.state_word
             :if={warned?(variable.name)}
             id={"variable-#{variable.id}-denied"}
@@ -658,7 +668,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <:col :let={variable} label={gettext("Value")}>
         <span
           id={"variable-#{variable.id}-value"}
-          class="block max-w-[28ch] truncate font-mono text-[12.5px]"
+          class="q-cut max-w-[28ch] font-mono text-[12.5px]"
           title={variable.value}
         >
           {variable.value}
@@ -751,7 +761,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     ~H"""
     <%= cond do %>
       <% @entry && :workspace in @entry.ignored -> %>
-        <.state_word id={@id} hot>{gettext("Set aside: locked above the workspace")}</.state_word>
+        <.state_word id={@id} hot class="q-stw-wrap">
+          {gettext("Set aside: locked above the workspace")}
+        </.state_word>
       <% @variable.locked -> %>
         <span id={@id} class="inline-flex items-center gap-1">
           <.icon name="hero-lock-closed-micro" class="size-3.5 text-faint" />{gettext("Locked")}
@@ -776,7 +788,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     ~H"""
     <span :if={@targets == []} id={@id} class="q-faint">{gettext("No overrides")}</span>
-    <.link :if={@targets != []} id={@id} patch={@path} class="hover:underline">
+    <.link :if={@targets != []} id={@id} patch={@path} class="q-parts hover:underline">
       <span :if={@own > 0}>
         {ngettext("%{number} target overrides it", "%{number} targets override it", @own,
           number: Format.number(@own)
@@ -1144,13 +1156,15 @@ defmodule ApiaryWeb.SecretLive.Index do
           navigate={ApiaryWeb.TargetComponents.target_path(@current_scope, target)}
           class="hover:underline"
         >
-          <.target_name system={target.system} path={target.path} shared={@shared} />
+          <.target_name system={target.system} path={target.path} shared={@shared} class="q-cut" />
         </.link>
       </:col>
       <:col :let={%{state: state}} label={gettext("Its value")}>
-        {if state == :own,
-          do: gettext("Overrides the workspace's value"),
-          else: gettext("Its value set aside by the lock")}
+        <span class="q-parts">
+          {if state == :own,
+            do: gettext("Overrides the workspace's value"),
+            else: gettext("Its value set aside by the lock")}
+        </span>
       </:col>
     </.table>
     <SettingsComponents.save id="variable-targets-foot">

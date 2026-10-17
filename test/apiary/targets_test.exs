@@ -288,8 +288,8 @@ defmodule Apiary.TargetsTest do
       summary = Targets.summary(scope, shop, @now)
 
       assert summary.runs == 3
-      assert summary.first.run_id == first.run_id
-      assert summary.last.run_id == last.run_id
+      assert summary.first.public_id == first.public_id
+      assert summary.last.public_id == last.public_id
       assert summary.window == %{runs: 2, ended_well: 1, cancelled: 0, ended_badly: 1, denied: 2}
       assert List.last(summary.days) == 2
 

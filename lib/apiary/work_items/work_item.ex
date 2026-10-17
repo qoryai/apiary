@@ -2,11 +2,15 @@ defmodule Apiary.WorkItems.WorkItem do
   # A work item of a workspace: something its members took in to work on, numbered from 1
   # in the workspace (`number`, `Apiary.WorkItems.Number`), never twice.
   #
-  # What it was taken in from is kept as it was at that moment: `ref`, the item's
-  # reference at its source, 1 to 255 characters; `url`, its address, `http://` or
-  # `https://`, 2,048 characters at most, or nil; `title`, 1 to 1,024 characters; and
-  # `collection_title`, the title of the repository or project that holds it, 1 to 1,024
-  # characters. A later change at the source does not change it. `owner_id` is the person
+  # What it was taken in from is kept as it was at that moment: `connection_id`, the
+  # organisation's connection to an adapter the ticket came through
+  # (`Apiary.Adapters.Connection`), which says what system it is of; `external_ref`, the
+  # ticket's ref at its source, an external id, 1 to 255 characters; `url`, its address,
+  # `http://` or `https://`, 2,048 characters at most, or nil; `title`, 1 to 1,024
+  # characters; and `collection_title`, the title of the repository or project that holds
+  # it, 1 to 1,024 characters. A later change at the source does not change it. Nothing
+  # is unique on the connection and the ref: the same ticket may be taken in again as a
+  # new work item. A work item stays when its connection ends. `owner_id` is the person
   # who owns it, and `first_instruction` what a person said first, 0 to 4,000 characters.
   #
   # `state` is where it stands (`Apiary.WorkItems.State`): `:exploring`, `:closed` or
@@ -30,7 +34,7 @@ defmodule Apiary.WorkItems.WorkItem do
   @type t :: %__MODULE__{}
 
   @prefix "wi"
-  @max_ref 255
+  @max_external_ref 255
   @max_url 2048
   @max_title 1024
   @max_instruction 4000
@@ -41,7 +45,7 @@ defmodule Apiary.WorkItems.WorkItem do
   schema "work_items" do
     field :public_id, :string
     field :number, :integer
-    field :ref, :string
+    field :external_ref, :string
     field :url, :string
     field :title, :string
     field :collection_title, :string
@@ -52,6 +56,7 @@ defmodule Apiary.WorkItems.WorkItem do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
+    belongs_to :connection, Apiary.Adapters.Connection
     belongs_to :owner, Apiary.Accounts.User
     belongs_to :taken_in_by, Apiary.Accounts.User
     belongs_to :closed_by, Apiary.Accounts.User
@@ -69,8 +74,9 @@ defmodule Apiary.WorkItems.WorkItem do
   @spec max_instruction() :: pos_integer
   def max_instruction, do: @max_instruction
 
-  # take_in_changeset/2 is the changeset of a new work item's snapshot, its owner and its
-  # first instruction, each within the bounds above, counted in code points as the
+  # take_in_changeset/2 is the changeset of a new work item's snapshot, the connection
+  # its ticket came through among it, its owner and its first instruction, each within the
+  # bounds above, counted in code points as the
   # database counts them, with a fresh public id. A value the database refuses all the
   # same is an error on its field. The workspace, the number, the state and who took it
   # in, and when, are the caller's to put.
@@ -78,22 +84,33 @@ defmodule Apiary.WorkItems.WorkItem do
   @spec take_in_changeset(t, map) :: Ecto.Changeset.t()
   def take_in_changeset(%__MODULE__{} = work_item, attrs) do
     work_item
-    |> cast(attrs, [:ref, :url, :title, :collection_title, :owner_id, :first_instruction],
+    |> cast(
+      attrs,
+      [
+        :connection_id,
+        :external_ref,
+        :url,
+        :title,
+        :collection_title,
+        :owner_id,
+        :first_instruction
+      ],
       empty_values: [nil]
     )
-    |> validate_required([:ref, :title, :collection_title, :owner_id])
-    |> validate_length(:ref, min: 1, max: @max_ref, count: :codepoints)
+    |> validate_required([:connection_id, :external_ref, :title, :collection_title, :owner_id])
+    |> validate_length(:external_ref, min: 1, max: @max_external_ref, count: :codepoints)
     |> validate_length(:url, max: @max_url, count: :codepoints)
     |> validate_length(:title, min: 1, max: @max_title, count: :codepoints)
     |> validate_length(:collection_title, min: 1, max: @max_title, count: :codepoints)
     |> validate_length(:first_instruction, max: @max_instruction, count: :codepoints)
     |> put_change(:public_id, Apiary.PublicId.generate(@prefix))
-    |> check_constraint(:ref, name: :work_items_ref_check)
+    |> check_constraint(:external_ref, name: :work_items_external_ref_check)
     |> check_constraint(:url, name: :work_items_url_check)
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:collection_title, name: :work_items_collection_title_check)
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
+    |> foreign_key_constraint(:connection_id, name: :work_items_connection_id_fkey)
   end
 end

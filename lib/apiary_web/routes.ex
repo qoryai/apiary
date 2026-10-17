@@ -631,9 +631,9 @@ defmodule ApiaryWeb.Routes do
                    :revoke_code
 
               # One run: three tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's subject, the id Forager prints, not the row's id. `/details` lands old
-              # links to the Details tab: the Timeline with Details open, the address
-              # rewritten to the Timeline's.
+              # run's `public_id`, `rn_…`, neither the node's run id nor the row's id.
+              # `/details` lands old links to the Details tab: the Timeline with Details
+              # open, the address rewritten to the Timeline's.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/network", RunLive.Show, :connections

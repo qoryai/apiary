@@ -544,7 +544,7 @@ defmodule Apiary.Nodes.InstancesTest do
 
       assert %{instance_id: "i_1", name: "spot-1", forager_version: "0.7.1"} = one
       assert one.since == first.inserted_at
-      assert one.run_id == newest.run_id
+      assert one.run_public_id == newest.public_id
       assert %{instance_id: "i_2", name: nil} = two
 
       assert %{running: [], last: %Instance{instance_id: "i_4"}} = activity[idle.id]

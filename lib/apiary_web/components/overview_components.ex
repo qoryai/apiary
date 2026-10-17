@@ -433,14 +433,14 @@ defmodule ApiaryWeb.OverviewComponents do
        when kind in [:quiet, :lost, :behind] do
     ~H"""
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
       class="q-ar-t"
       title={row_title(@item.run)}
     >
       <bdi :if={given_title(@item.run)}>{given_title(@item.run)}</bdi>
       {if !given_title(@item.run), do: row_title(@item.run)}
     </.link>
-    <span class="q-ar-id">{short_id(@item.run.run_id)}</span>
+    <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
     """
   end
 
@@ -872,7 +872,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -899,7 +899,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -1047,7 +1047,7 @@ defmodule ApiaryWeb.OverviewComponents do
     if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
   end
 
-  defp command_title(%{run_id: run_id}), do: short_id(run_id)
+  defp command_title(%{public_id: public_id}), do: short_id(public_id)
 
   ## Active targets
 
@@ -1867,7 +1867,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.run_id}"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.public_id}"}
             class="q-link"
           >{gettext("Open it")}</.link>
         </p>

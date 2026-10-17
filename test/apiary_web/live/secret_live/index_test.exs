@@ -668,6 +668,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert reveal(scope, secret, "bot-app") == {:ok, "second"}
 
       assert has_element?(lv, "#secret-#{secret.public_id}", "2 values")
+
+      # The name, cut to its column, keeps the whole of it in its title.
+      assert has_element?(
+               lv,
+               "#secret-#{secret.public_id} .q-nm > .q-title[title='GITHUB_APP_PRIVATE_KEY']"
+             )
+
       assert has_element?(lv, "#secret-#{secret.public_id}-main-app-value-id", "main-app")
       assert has_element?(lv, "#secret-#{secret.public_id}-bot-app-value-id", "bot-app")
 
@@ -1055,6 +1062,22 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#variable-#{variable.id}-value", "https://registry.example.com")
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
       assert has_element?(lv, "#variable-#{variable.id}-targets", "No overrides")
+
+      # The name and the value are cut to their columns, each whole in its title; the name
+      # is the last to give way.
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id} .q-nm > .q-title.q-cut[title='NPM_REGISTRY']",
+               "NPM_REGISTRY"
+             )
+
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id}-value.q-cut[title='https://registry.example.com']"
+             )
+
+      refute has_element?(lv, "#variable-#{variable.id}-value.truncate")
+      refute has_element?(lv, "#variable-#{variable.id}-lock.q-stw-wrap")
     end
 
     test "a QORY_ name is refused, and a name already set too", %{conn: conn, scope: scope} do
@@ -1122,6 +1145,8 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, variables_path(scope))
       assert has_element?(lv, "#variable-#{variable.id}-targets", "2 repositories override it")
+      # Its counts are parts of one line, which breaks between them only.
+      assert has_element?(lv, "a#variable-#{variable.id}-targets.q-parts")
 
       lv |> element("#variable-#{variable.id}-change") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
@@ -1268,6 +1293,21 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       for target <- targets, do: assert(has_element?(lv, "#variable-target-#{target.id}"))
       assert has_element?(lv, "#variable-targets", "Overrides the workspace's value")
+
+      # A repository's name is cut to its column, whole in its title; its value's words
+      # break between them.
+      [first | _] = targets
+
+      assert has_element?(
+               lv,
+               "#variable-target-#{first.id} .q-tname.q-cut[title='github.example/acme/site-01']"
+             )
+
+      assert has_element?(
+               lv,
+               "#variable-target-#{first.id} td > span.q-parts",
+               "Overrides the workspace's value"
+             )
 
       # The table's region is named apart from the page's.
       assert has_element?(lv, "[role=region][aria-label=Repositories] #variable-targets")

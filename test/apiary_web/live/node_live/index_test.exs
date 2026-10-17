@@ -30,6 +30,20 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert has_element?(lv, "#node-#{node.public_id}", "build-01")
       assert has_element?(lv, "#node-#{node.public_id}", node.public_id)
+
+      # The name and the id are cut to the column, each whole in its title; the id hides on
+      # a phone, title or not.
+      assert has_element?(
+               lv,
+               "#node-#{node.public_id} .q-nm > .q-title.q-cut[title='build-01']",
+               "build-01"
+             )
+
+      assert has_element?(
+               lv,
+               "#node-#{node.public_id} .q-nm > .q-side.q-mono[title='#{node.public_id}']"
+             )
+
       assert has_element?(lv, "#node-#{pool.public_id}-kind", "Pool")
       refute has_element?(lv, "#node-#{node.public_id}-kind")
       assert has_element?(lv, "#node-#{node.public_id}-state", "Never seen")
@@ -305,6 +319,14 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       # Ten instances under the pool, then the rest as a count that leads to its page.
       assert has_element?(lv, "#nodes tr[id^='node-#{pool.public_id}-instance-']", "spot-1")
+
+      # An instance's name is cut, whole in its title, its id beside it titled too; its
+      # state breaks between its parts, "Running since", the time and the run.
+      instance = "#nodes tr[id^='node-#{pool.public_id}-instance-']"
+      assert has_element?(lv, "#{instance} .q-nm > .q-cut[title='spot-1']", "spot-1")
+      assert has_element?(lv, "#{instance} .q-nm > .q-side.q-mono[title='p_1']", "p_1")
+      assert has_element?(lv, "#{instance} td > span.q-parts", "Running since")
+      assert has_element?(lv, "#{instance} td > span.q-parts > time")
 
       assert lv
              |> render()

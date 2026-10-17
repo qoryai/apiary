@@ -27,7 +27,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   then the workspace, each a link to its home, and the page's segments, a target or a
   record, the last one the page with `aria-current="page"`. A page of a workspace or an
   organisation starts them with its section's name as the sidebar words it: a link to the
-  section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
+  section's page on a page under it (`Acme / Main / Runs / Run rn_7k3m9q2x`, also where that
   run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
   itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
@@ -187,7 +187,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
   above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
-  (`‹ Runs / Run 0191f2a4`): the item of the one
+  (`‹ Runs / Run rn_7k3m9q2x`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
   Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
   parent keeps up to 8rem. A section's page shows its name alone. On a core
@@ -567,7 +567,9 @@ version in force is exported; another version's path sends on to it.
   (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
-  case (a run's id, title or target; a destination's host or path). `state:` takes a
+  case (a run's id, title or target; a destination's host or path). A run's id is the start
+  of its `rn_` id, four characters after `rn_` at least, or of the node's run id, four
+  hexadecimal characters at least; a run page's address finds that run. `state:` takes a
   state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
@@ -644,7 +646,8 @@ version in force is exported; another version's path sends on to it.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
-  card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
+  card, of the run chosen (`?run=`, its `rn_` id; another value is dropped with a notice;
+  the first row until the reader chooses one), with the
   last lines of its log as plain text for a reader who may read the log (`run.read_log`;
   without it, no line is read and the preview has no terminal). The `RunList` hook tells
   the page the width, turns a row's click into a choice there, and moves it with ↑ and ↓;
@@ -1416,11 +1419,18 @@ width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, 
 separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
 under the header. The terminal takes the whole window through Focus (The terminal,
 below). The top bar's breadcrumb ends with Runs, a link to the list,
-and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
+A run's address, `/:org/:workspace/runs/:run_id`, carries the id Qory Apiary gives the
+run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the node's run id,
+or any other value, is not found, and nothing redirects it. The header, Details and Copy
+run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
+eight characters. Details' Record shows the node's run id on the next row, "Node's run id",
+and the search finds a run by either id.
+
 - **The header** is the title (the one the run gave in its `about`, else "Run" and the
-  run's short id, `Run 0191f2a4`) alone; then, when the run names a kind or subjects, one
+  run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one
   line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
@@ -1431,7 +1441,7 @@ page draws no other breadcrumb.
   page), the runtime, the host, when it
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
-  (Copy run id, Raw log, Download log), and no
+  (Copy run id, which copies the `rn_` id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the

@@ -71,14 +71,14 @@ defmodule Apiary.Targets do
         }
 
   @typedoc """
-  A row of the index: the target, its last run (`state`, `at`, `run_id`) or nil, its runs
+  A row of the index: the target, its last run (`state`, `at`, `public_id`) or nil, its runs
   a day over fourteen days (oldest first, today last), how many of those ended well, were
   cancelled and ended badly, its denied attempts in those fourteen days, and whether its
   path is in another system too.
   """
   @type row :: %{
           target: Target.t(),
-          last: %{state: String.t(), at: DateTime.t(), run_id: Ecto.UUID.t()} | nil,
+          last: %{state: String.t(), at: DateTime.t(), public_id: String.t()} | nil,
           days: [non_neg_integer],
           runs: non_neg_integer,
           ended_well: non_neg_integer,
@@ -176,7 +176,7 @@ defmodule Apiary.Targets do
             target: t,
             last_state: l.state,
             last_at: l.at,
-            last_run_id: l.run_id,
+            last_public_id: l.public_id,
             runs: s.runs,
             ended_well: s.ended_well,
             cancelled: s.cancelled,
@@ -244,7 +244,7 @@ defmodule Apiary.Targets do
         select: %{
           all: count(t.id),
           active: filter(count(t.id), l.at >= ^week),
-          never: filter(count(t.id), is_nil(l.run_id))
+          never: filter(count(t.id), is_nil(l.public_id))
         }
     )
   end
@@ -342,7 +342,7 @@ defmodule Apiary.Targets do
       select: %{
         state: r.state,
         at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-        run_id: r.run_id
+        public_id: r.public_id
       }
   end
 
@@ -361,7 +361,7 @@ defmodule Apiary.Targets do
 
   defp view_filter(:all, _week), do: nil
   defp view_filter(:active, week), do: dynamic([last: l], l.at >= ^week)
-  defp view_filter(:never, _week), do: dynamic([last: l], is_nil(l.run_id))
+  defp view_filter(:never, _week), do: dynamic([last: l], is_nil(l.public_id))
 
   defp text_filter(nil), do: nil
 
@@ -413,8 +413,8 @@ defmodule Apiary.Targets do
     %{
       target: found.target,
       last:
-        found.last_run_id &&
-          %{state: found.last_state, at: found.last_at, run_id: found.last_run_id},
+        found.last_public_id &&
+          %{state: found.last_state, at: found.last_at, public_id: found.last_public_id},
       days: days(found.days),
       runs: found.runs || 0,
       ended_well: found.ended_well || 0,
@@ -437,7 +437,7 @@ defmodule Apiary.Targets do
 
   @doc """
   summary/3 is what a target's header and its About say of it: how many runs it has
-  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, run_id:}` or
+  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, public_id:}` or
   nil), and the fourteen days of the window as `page/3` counts them (`days`, `window`:
   runs, ended well, cancelled and ended badly, denied attempts, over the fourteen days).
   """
@@ -458,7 +458,7 @@ defmodule Apiary.Targets do
           select: %{
             state: r.state,
             at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-            run_id: r.run_id
+            public_id: r.public_id
           }
       )
     end

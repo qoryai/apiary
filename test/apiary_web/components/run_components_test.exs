@@ -1380,20 +1380,20 @@ defmodule ApiaryWeb.RunComponentsTest do
   end
 
   describe "a run's title and what it is about" do
-    @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
+    @public_id "rn_7f3e9b205b1d4c7e"
 
     test "the title is the one the run gave, else Run and its short id" do
-      titled = %{run_id: @run_id, about_title: "Fix the login redirect"}
+      titled = %{public_id: @public_id, about_title: "Fix the login redirect"}
       assert RunComponents.run_title(titled) == "Fix the login redirect"
       assert RunComponents.given_title(titled) == "Fix the login redirect"
 
       for untitled <- [
-            %{run_id: @run_id, about_title: nil},
-            %{run_id: @run_id, about_title: ""},
+            %{public_id: @public_id, about_title: nil},
+            %{public_id: @public_id, about_title: ""},
             # A task is an ordinary label, never the title.
-            %{run_id: @run_id, about_title: nil, labels: %{"task" => "fix-login"}}
+            %{public_id: @public_id, about_title: nil, labels: %{"task" => "fix-login"}}
           ] do
-        assert RunComponents.run_title(untitled) == "Run 7f3e9b20"
+        assert RunComponents.run_title(untitled) == "Run rn_7f3e9b20"
         assert RunComponents.given_title(untitled) == nil
       end
     end

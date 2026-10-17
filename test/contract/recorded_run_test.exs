@@ -67,6 +67,7 @@ defmodule Apiary.Contract.RecordedRunTest do
         |> Map.drop([
           :__meta__,
           :id,
+          :public_id,
           :inserted_at,
           :updated_at,
           :registered_at,

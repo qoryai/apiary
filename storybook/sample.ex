@@ -121,6 +121,7 @@ defmodule ApiaryWeb.Storybook.Sample do
     Map.merge(
       %{
         id: n,
+        public_id: "rn_8f3c2a#{n}e05b1d4c7",
         run_id: "8f3c2a#{n}e0-5b1d-4c7e-9a10-2f6d0c4b7e1#{n}",
         state: state,
         about_title: title,

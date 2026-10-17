@@ -83,7 +83,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       scope: scope
     } do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute_policy(render(lv))
 
@@ -100,7 +100,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
       # a link to the policy's item is no way to it: the sequence is dropped
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=2")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=2")
 
       refute has_element?(lv, "ol#timeline[data-target]")
       refute_policy(render(lv))
@@ -112,7 +112,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       run: run
     } do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
       html = render(lv)
       refute_policy(html)
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope, run: run} do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
       %{rows: rows} = Record.connections(scope, run)
       refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
@@ -162,12 +162,12 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "the terminal and the details are the record", %{conn: conn, run: run, scope: scope} do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal")
 
       refute_policy(render(lv))
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       html = render(lv)
       refute_policy(html)
@@ -175,7 +175,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#run-details #rail-command")
       assert has_element?(lv, "#run-details #rail-record")
       refute has_element?(lv, "#run-details #rail-policy")
-      assert has_element?(lv, "#run-id", run.run_id)
+      assert has_element?(lv, "#run-id", run.public_id)
       refute html =~ "Policy in force"
     end
   end
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       html = render(lv)
       refute_policy(html)
 
-      assert has_element?(lv, "#run-#{run.run_id} .q-rl-denied", "1")
+      assert has_element?(lv, "#run-#{run.public_id} .q-rl-denied", "1")
       refute has_element?(lv, "#runs-page a[href*='/policy']")
     end
   end

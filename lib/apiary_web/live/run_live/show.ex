@@ -12,8 +12,10 @@ defmodule ApiaryWeb.RunLive.Show do
   `/runs/:run_id/details` (the live action `:details`) lands on the Timeline with Details
   open.
 
-  `:run_id` in the URL is the run's subject, the id Forager prints. A run that is not
-  in the caller's workspace renders the not-found state, whatever else it may be.
+  `:run_id` in the URL is the run's `public_id`, `rn_…`, the id Qory Apiary gives it; the
+  node's run id, the run's subject, is on Details. A run that is not in the caller's
+  workspace renders the not-found state, whatever else it may be, and so does the node's
+  run id in the URL.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
   either end, never more than 600 in the DOM); the layout of the whole run comes from
@@ -105,7 +107,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {gettext("Runs")}
       </:crumb>
       <:crumb patch={@tab != :timeline && tab_path(@current_scope, @run, :timeline)}>
-        {gettext("Run %{id}", id: short_id(@run.run_id))}
+        {gettext("Run %{id}", id: short_id(@run.public_id))}
       </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
@@ -121,9 +123,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <bdi>{given_title(@run)}</bdi>
           </h1>
           <h1 :if={!given_title(@run)} id="run-title" tabindex="-1">
-            <.rich text={
-              rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
-            } />
+            <.rich text={rich_gettext("Run %{id}", id: {:m, @run.public_id, "font-mono text-[18px]"})} />
           </h1>
           <.about_header run={@run} />
           <div class="q-run-sub">
@@ -213,7 +213,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 run={@run}
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.run_id}/log"
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/log"
                 }
               />
             </div>
@@ -410,7 +410,7 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
             phx-hook="CopyToClipboard"
-            data-copy={@run.run_id}
+            data-copy={@run.public_id}
             data-copied-words={gettext("Copied")}
             data-menu-close
           >
@@ -608,7 +608,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.terminal
         :if={@log.chunks > 0}
         id="terminal"
-        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}/log"}
+        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.public_id}/log"}
         script={~p"/assets/js/terminal.js"}
         stylesheet={~p"/assets/js/terminal.css"}
         streams={@log.streams}
@@ -933,7 +933,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl class="q-rail-kv">
           <dt>{gettext("Run id")}</dt>
           <dd class="font-mono">
-            <span id="run-id">{@run.run_id}</span>
+            <span id="run-id">{@run.public_id}</span>
             <.copy_button
               id="copy-run-id"
               target="#run-id"
@@ -941,6 +941,8 @@ defmodule ApiaryWeb.RunLive.Show do
               label={gettext("Copy the run id")}
             />
           </dd>
+          <dt>{gettext("Node's run id")}</dt>
+          <dd id="run-node-run-id" class="font-mono">{@run.run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
             <.rich text={
@@ -1502,13 +1504,13 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp tab_path(scope, run, tab, query \\ %{})
 
-  defp tab_path(scope, %Run{run_id: id}, :timeline, query),
+  defp tab_path(scope, %Run{public_id: id}, :timeline, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}?#{query}"
 
-  defp tab_path(scope, %Run{run_id: id}, :terminal, query),
+  defp tab_path(scope, %Run{public_id: id}, :terminal, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/terminal?#{query}"
 
-  defp tab_path(scope, %Run{run_id: id}, :connections, query),
+  defp tab_path(scope, %Run{public_id: id}, :connections, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/network?#{query}"
 
   # A label that names the target, by the workspace's domain, links to the target's page.
@@ -1521,12 +1523,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The short form of the id a run that is not here was asked by, when it is a run's id at
   # all; nil for an address that is none, whose breadcrumb ends with Runs.
-  defp missing_id(run_id) do
-    case Ecto.UUID.cast(run_id) do
-      {:ok, id} -> short_id(id)
-      :error -> nil
-    end
-  end
+  defp missing_id(run_id), do: if(Run.public_id?(run_id), do: short_id(run_id))
 
   # The page of the target the run names, by the target's public id: `{target_id, path}`,
   # read again only when the run names another target.
