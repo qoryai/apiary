@@ -3040,6 +3040,39 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "the announcer counts no heartbeat for a run lost at its backstop", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+
+      heard = fn at ->
+        [
+          {1, "run.started", started_data(), time: at, received_at: at},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 1, "interval_seconds" => 30},
+           time: at, received_at: at}
+        ]
+      end
+
+      # Beating still, past the backstop its attach set; silent for 200 s, with none.
+      beating = projected(scope, heard.(DateTime.add(now, -5, :second)))
+
+      beating =
+        beating
+        |> Ecto.Changeset.change(backstop_at: DateTime.add(now, -1, :second))
+        |> Apiary.Repo.update!()
+
+      silent = projected(scope, heard.(DateTime.add(now, -200, :second)))
+      pages = for run <- [beating, silent], do: elem(run_page(conn, scope, run), 1)
+
+      assert length(Apiary.Runs.Liveness.check(now)) == 2
+
+      for {lv, sentence} <- Enum.zip(pages, ["Run lost.", "Run lost. No heartbeat for 90 s."]) do
+        flush(lv)
+        assert words_of(lv, "#run-announcer") == sentence
+      end
+    end
+
     test "no end reason's words, nor the Exit row, nor the timeline, say issuer on the page", %{
       conn: conn,
       scope: scope
