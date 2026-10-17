@@ -697,7 +697,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     Mix.shell().info("""
 
-    A run alive now: #{ApiaryWeb.Endpoint.url()}/acme/main/runs/#{run.run_id}
+    A run alive now: #{ApiaryWeb.Endpoint.url()}/acme/main/runs/#{run.public_id}
     Sign in as #{@owner}: see `mix help apiary.demo.console`.\
     """)
   end

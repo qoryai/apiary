@@ -751,11 +751,11 @@ defmodule ApiaryWeb.NodeLive.Index do
                   <.link
                     :if={@may_runs}
                     navigate={
-                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_id}"
+                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_public_id}"
                     }
                     class="q-mono text-accent hover:underline"
                   >
-                    {gettext("run %{id}", id: short_id(instance.run_id))}
+                    {gettext("run %{id}", id: short_id(instance.run_public_id))}
                   </.link>
                 </span>
               <% _more -> %>

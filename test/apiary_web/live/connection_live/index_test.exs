@@ -339,20 +339,20 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "##{id}-runs") =~ "2 runs reached this destination"
 
       # Each run names its target as it is addressed: acme/shop is on two systems.
-      first = view |> text("##{id}-run-#{b.run_id}") |> String.replace(" / ", "/")
+      first = view |> text("##{id}-run-#{b.public_id}") |> String.replace(" / ", "/")
       assert first =~ "Running"
       assert first =~ "gitlab.example/acme/shop"
       assert first =~ "1 denied"
 
-      second = text(view, "##{id}-run-#{a.run_id}")
-      assert second =~ "checkout-tax #{String.slice(a.run_id, 0, 8)}"
+      second = text(view, "##{id}-run-#{a.public_id}")
+      assert second =~ "checkout-tax #{String.slice(a.public_id, 0, 11)}"
       # The run's title, cut to the line, is whole in its title.
-      assert has_element?(view, "##{id}-run-#{a.run_id} > span.truncate[title='checkout-tax']")
+      assert has_element?(view, "##{id}-run-#{a.public_id} > span.truncate[title='checkout-tax']")
       assert second =~ "1 allowed"
 
       assert has_element?(
                view,
-               "##{id}-run-#{a.run_id}[href='#{workspace_path(scope)}/runs/#{a.run_id}/network']"
+               "##{id}-run-#{a.public_id}[href='#{workspace_path(scope)}/runs/#{a.public_id}/network']"
              )
 
       view |> element("##{id}-toggle") |> render_click()
@@ -366,7 +366,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view = open(conn, scope)
       view |> element("##{id}-toggle") |> render_click()
-      named = text(view, "##{id}-run-#{api.run_id}")
+      named = text(view, "##{id}-run-#{api.public_id}")
       assert named =~ "acme/api"
       refute named =~ "github.example"
     end

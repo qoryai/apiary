@@ -578,7 +578,7 @@ defmodule ApiaryWeb.NodeComponents do
   @spec in_use_words(Scope.t(), map, MapSet.t() | nil) :: String.t() | nil
   def in_use_words(scope, blockers, reached \\ nil) do
     nodes = listed(scope, reached, Map.get(blockers, :nodes, []), & &1.name, :nodes)
-    runs = listed(scope, reached, Map.get(blockers, :runs, []), & &1.run_id, :runs)
+    runs = listed(scope, reached, Map.get(blockers, :runs, []), & &1.public_id, :runs)
 
     cond do
       nodes && runs ->

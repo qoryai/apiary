@@ -113,15 +113,14 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its subject, the id Forager prints and the run's
-  URL carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run
-  of another workspace and a malformed id both are.
+  One run of the scope's workspace by its `public_id`, `rn_…`, the id the run's URL
+  carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run of
+  another workspace and a malformed id both are, the node's run id among them.
   """
-  def get_run_by_run_id!(%Scope{} = scope, run_id) do
-    case Ecto.UUID.cast(run_id) do
-      {:ok, run_id} -> Repo.one!(from r in in_scope(scope), where: r.run_id == ^run_id)
-      :error -> raise Ecto.NoResultsError, queryable: Run
-    end
+  def get_run_by_public_id!(%Scope{} = scope, public_id) do
+    if Run.public_id?(public_id),
+      do: Repo.one!(from r in in_scope(scope), where: r.public_id == ^public_id),
+      else: raise(Ecto.NoResultsError, queryable: Run)
   end
 
   @doc "The workspace's runs, newest first. `limit:` defaults to #{@default_limit}, at most #{@max_limit}."
@@ -722,16 +721,16 @@ defmodule Apiary.Runs do
     where(query, [r], r.node_id in subquery(nodes))
   end
 
-  # The free text: the start of the run's id (four hexadecimal characters at least, or a
-  # run page's address), or its title or its target, `system/path`, holding it anywhere.
+  # The free text: the run's id (`id_condition/1`), or its title or its target,
+  # `system/path`, holding it anywhere.
   defp where_query(query, nil), do: query
 
   defp where_query(query, q) do
-    case {like(q), run_id_prefix(q)} do
-      {nil, _prefix} ->
+    case {like(q), id_condition(q)} do
+      {nil, _id} ->
         query
 
-      {pattern, prefix} ->
+      {pattern, id} ->
         text =
           dynamic(
             [r],
@@ -739,10 +738,7 @@ defmodule Apiary.Runs do
               ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^pattern)
           )
 
-        condition =
-          if prefix,
-            do: dynamic([r], ^text or fragment("?::text LIKE ?", r.run_id, ^prefix)),
-            else: text
+        condition = if id, do: dynamic([r], ^text or ^id), else: text
 
         where(query, ^condition)
     end
@@ -1673,32 +1669,20 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
-  Forager prints it (four hexadecimal characters at least, a whole id or the address
-  of a run's page too), or by their title, which holds it anywhere; newest first, at most
-  `limit`. What the palette finds (`ApiaryWeb.JumpController`).
+  search_runs/3 is the workspace's runs that `text` names: by their id, the start of the
+  `rn_` id (four characters after `rn_` at least, a whole id or the address of a run's page
+  too) or the start of the node's run id (four hexadecimal characters at least), or by
+  their title, which holds it anywhere; newest first, at most `limit`. What the palette
+  finds (`ApiaryWeb.JumpController`).
   """
   @spec search_runs(Scope.t(), String.t(), pos_integer) :: [Run.t()]
   def search_runs(%Scope{} = scope, text, limit \\ 8) when is_binary(text) do
-    prefix = run_id_prefix(text)
-    pattern = like(text)
-
     condition =
-      case {prefix, pattern} do
-        {nil, nil} ->
-          nil
-
-        {nil, pattern} ->
-          dynamic([r], ilike(r.about_title, ^pattern))
-
-        {prefix, nil} ->
-          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix))
-
-        {prefix, pattern} ->
-          dynamic(
-            [r],
-            fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.about_title, ^pattern)
-          )
+      case {id_condition(text), like(text)} do
+        {nil, nil} -> nil
+        {nil, pattern} -> dynamic([r], ilike(r.about_title, ^pattern))
+        {id, nil} -> id
+        {id, pattern} -> dynamic([r], ^id or ilike(r.about_title, ^pattern))
       end
 
     if condition do
@@ -1713,18 +1697,29 @@ defmodule Apiary.Runs do
     end
   end
 
-  # The start of a run's id in what was typed, as the operand of LIKE: a run page's
-  # address gives its id; otherwise four to thirty-six hexadecimal characters and hyphens.
-  defp run_id_prefix(text) do
-    text = String.trim(text)
+  # The run that what was typed names by an id, as a condition; nil when it names none. A
+  # run page's address gives its `public_id`; `rn_` and four to sixteen characters are the
+  # start of one; four to thirty-six hexadecimal characters and hyphens are the start of
+  # the node's run id.
+  defp id_condition(text) do
+    text = text |> String.trim() |> String.downcase()
 
-    case Regex.run(~r"/runs/([0-9a-fA-F-]{36})(?:[/?#]|$)", text) do
-      [_, run_id] ->
-        String.downcase(run_id)
+    case Regex.run(~r"/runs/(rn_[0-9a-z]{16})(?:[/?#]|$)", text, capture: :all_but_first) do
+      [public_id] ->
+        dynamic([r], r.public_id == ^public_id)
 
       nil ->
-        if Regex.match?(~r/\A[0-9a-fA-F-]{4,36}\z/, text),
-          do: String.downcase(text) <> "%"
+        cond do
+          Regex.match?(~r/\Arn_[0-9a-hjkmnp-tv-z]{4,16}\z/, text) ->
+            prefix = "rn\\_" <> binary_part(text, 3, byte_size(text) - 3) <> "%"
+            dynamic([r], like(r.public_id, ^prefix))
+
+          Regex.match?(~r/\A[0-9a-f-]{4,36}\z/, text) ->
+            dynamic([r], fragment("?::text LIKE ?", r.run_id, ^(text <> "%")))
+
+          true ->
+            nil
+        end
     end
   end
 

@@ -8686,6 +8686,11 @@ msgstr ""
 msgid "Node pool: short-lived instances that share one access key."
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Node's run id"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node: one permanent machine."

@@ -32,7 +32,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
   defp page(conn, scope, run, tab \\ "") do
     {:ok, lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}" <> tab)
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <> tab)
 
     {lv, html}
   end

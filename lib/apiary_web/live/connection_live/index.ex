@@ -1553,7 +1553,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   end
 
   defp run_path(scope, run),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network"
 
   defp narrowed?(%Filters{} = f),
     do: f.decision != nil or f.target != nil or f.host != nil or f.tools or f.q != nil

@@ -22,6 +22,7 @@ defmodule Apiary.Runs.ProjectorTest do
         Map.drop(run, [
           :__meta__,
           :id,
+          :public_id,
           :run_id,
           :organisation_id,
           :workspace_id,

@@ -147,21 +147,20 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's workspace whose subject is `run_id`, the id Forager prints,
-  with its access key and its node (a deleted node's too). `:error` for a subject the
-  workspace has not seen and for anything that is not a UUID.
+  The run of the scope's workspace whose `public_id` is `public_id`, `rn_…`, the id the
+  run's URL carries, with its access key and its node (a deleted node's too). `:error` for
+  an id the workspace has not got and for anything that is not of that shape, the node's
+  run id among them.
   """
-  def fetch_run(%Scope{} = scope, run_id) do
-    with {:ok, run_id} <- cast_uuid(run_id) do
-      {:ok, scope |> Runs.get_run_by_run_id!(run_id) |> Repo.preload([:access_key, :node])}
+  def fetch_run(%Scope{} = scope, public_id) do
+    if Run.public_id?(public_id) do
+      {:ok, scope |> Runs.get_run_by_public_id!(public_id) |> Repo.preload([:access_key, :node])}
+    else
+      :error
     end
   rescue
     Ecto.NoResultsError -> :error
   end
-
-  # `Ecto.UUID.cast/1` takes sixteen raw bytes too; a URL never means those.
-  defp cast_uuid(<<_::binary-size(36)>> = id), do: Ecto.UUID.cast(id)
-  defp cast_uuid(_other), do: :error
 
   @doc """
   The run again, as the database has it now, with what `fetch_run/2` reads beside it; nil
@@ -580,6 +579,10 @@ defmodule Apiary.Runs.Record do
       _ -> :error
     end
   end
+
+  # `Ecto.UUID.cast/1` takes sixteen raw bytes too; a URL never means those.
+  defp cast_uuid(<<_::binary-size(36)>> = id), do: Ecto.UUID.cast(id)
+  defp cast_uuid(_other), do: :error
 
   defp connections_of(scope, run) do
     from c in Connection,
