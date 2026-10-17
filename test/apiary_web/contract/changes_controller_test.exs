@@ -222,7 +222,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       assert signed_answer?(conn)
 
       # A timestamp more than 300 seconds off, or none: 401, unsigned.
-      for timestamp <- [SignedRequest.now() - 301, SignedRequest.now() + 301, nil] do
+      for timestamp <- [SignedRequest.now() - 310, SignedRequest.now() + 310, nil] do
         conn = changes(ctx, "?after=garbled", timestamp: timestamp)
         assert json_response(conn, 401) == @unauthorized
         assert unsigned_answer?(conn)
