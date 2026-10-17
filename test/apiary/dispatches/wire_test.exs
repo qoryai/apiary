@@ -50,7 +50,7 @@ defmodule Apiary.Dispatches.WireTest do
 
   test "the vendored contract is the commit its ref names" do
     assert File.read!(Path.join(@contract, ".contract-ref")) ==
-             "b92cafbeaa4927943b914112449e60491b4930d3\n"
+             "738d7293c67701cdbc453bc652ae124625ce62e7\n"
   end
 
   test "every fixture is a request read here, an answer, or a refusal" do
