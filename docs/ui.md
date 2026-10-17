@@ -976,7 +976,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   address", Needs "This page open over HTTPS", then Generate a key. A node lists the
   command first, its button primary; a pool lists Generate a key in the browser first. A
   member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
-  to Qory. An owner or admin connects it." A command not yet run shows
+  to Qory Apiary. An owner or admin connects it." A command not yet run shows
   in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
   on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
