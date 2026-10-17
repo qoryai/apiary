@@ -59,6 +59,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
+  def label(:"collection.assign"), do: gettext("Collections assigned")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(_action), do: nil
@@ -68,14 +69,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only the work item comments'
-  # have labels yet, so the filter offers those alone, where the reader is shown the
-  # feature (the page asks it); the others' entries show as any change.
+  # and the assigning of collections have labels yet, so the filter offers those alone,
+  # where the reader is shown the feature (the page asks it); the others' entries show as
+  # any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
-      :factory -> action in [:"work_item.comment", :"work_item.comment_delete"]
-      shown_as when shown_as in [:secrets, :nodes] -> Features.visible?(scope, shown_as)
-      _shown_as -> true
+      :factory ->
+        action in [:"work_item.comment", :"work_item.comment_delete", :"collection.assign"]
+
+      shown_as when shown_as in [:secrets, :nodes] ->
+        Features.visible?(scope, shown_as)
+
+      _shown_as ->
+        true
     end
   end
 
@@ -205,6 +212,16 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
   defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
+
+  # Collections linked to a workspace; those linked to none say no more than any change.
+  defp said(:"collection.assign", %{"count" => count, "workspace_id" => id}, _actor)
+       when is_integer(count) and is_binary(id),
+       do:
+         ngettext(
+           "Assigned %{count} collection to a workspace",
+           "Assigned %{count} collections to a workspace",
+           count
+         )
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 

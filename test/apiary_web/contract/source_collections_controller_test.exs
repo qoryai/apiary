@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Edition, EditionStubs, Repo}
-  alias Apiary.Adapters.{Collection, Collections, Connection, Connections, Feed}
+  alias Apiary.Adapters.{Collection, Connection, Connections, Feed}
   alias ApiaryWeb.Contract.{RawBody, SignedRequest}
 
   @moduletag needs: :factory
@@ -24,6 +24,8 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
+    # A second workspace, so a collection is linked to none as it is made.
+    workspace_fixture(scope.organisation)
     %{adapter: adapter, access_key: key, pair: pair} = connectable_adapter_fixture()
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     %{scope: scope, adapter: adapter, key: key, seed: pair.secret, connection: connection}
@@ -277,7 +279,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
     test "the contract's disconnect ends the collection, then is a signed 204 that changes nothing",
          ctx do
-      {:ok, _} = Collections.set_workspace(Repo.one!(Collection), ctx.scope.workspace)
+      {:ok, _} = set_collection_workspace(Repo.one!(Collection), ctx.scope.workspace)
 
       conn = send_post(ctx, @disconnect, fresh("sources-disconnect/code-host.json", ctx))
       assert conn.status == 204

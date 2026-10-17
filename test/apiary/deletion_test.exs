@@ -11,6 +11,7 @@ defmodule Apiary.DeletionTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Deletion, Features, Organisations, Policy, Retention}
+  alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
 
@@ -306,6 +307,54 @@ defmodule Apiary.DeletionTest do
                  "organisation_id" => scope.organisation.id,
                  "workspace_id" => workspace.id
                })
+    end
+
+    @tag needs: :factory
+    test "a workspace's leaves the organisation's collections in place, linked to none", ctx do
+      %{scope: scope} = ctx
+      workspace = workspace_fixture(scope.organisation)
+      %{adapter: adapter, access_key: key} = Apiary.NodesFixtures.connectable_adapter_fixture()
+      {connection, _nonce} = Apiary.NodesFixtures.connection_fixture(scope, adapter, :connected)
+      {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+      {:ok, :accepted} =
+        Collections.post_listing(Scope.for_access_key(key), %{
+          time: DateTime.utc_now(:second),
+          connection_id: connection.public_id,
+          collections:
+            for ref <- ["GOES", "STAYS"] do
+              %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: ref, target: nil}
+            end,
+          listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+        })
+
+      ids = Map.new(Repo.all(from c in Collection, select: {c.external_ref, c.id}))
+
+      {:ok, 1} =
+        Collections.assign_collections(scope, connection, [ids["GOES"]], workspace)
+
+      {:ok, 1} =
+        Collections.assign_collections(scope, connection, [ids["STAYS"]], scope.workspace)
+
+      refute "source_collections" in Tables.workspace_tables()
+      assert "source_collections" in Tables.tables()
+
+      {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
+      overdue!(Workspace, workspace.id)
+      instance = Scope.for_instance(scope.organisation, workspace)
+      assert {:ok, :purged} = Deletion.purge_workspace(instance)
+
+      assert Repo.get(Workspace, workspace.id) == nil
+      assert %Collection{workspace_id: nil, ended_at: nil} = Repo.get!(Collection, ids["GOES"])
+      stays = Repo.get!(Collection, ids["STAYS"])
+      assert stays.workspace_id == scope.workspace.id
+
+      assert [%{"collection_ref" => "GOES", "status" => "unlinked"}] =
+               for(
+                 %{kind: "collection", data: %{"status" => "unlinked"} = data} <-
+                   Apiary.Adapters.Feed.entries(adapter),
+                 do: data
+               )
     end
 
     test "an organisation's: every row, its trail, and one line at the instance", ctx do

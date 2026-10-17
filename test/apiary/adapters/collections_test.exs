@@ -24,6 +24,9 @@ defmodule Apiary.Adapters.CollectionsTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
+    # A second workspace, so a collection is linked to none as it is made
+    # (`Apiary.Adapters.CollectionsAssignTest` has the organisation with one).
+    workspace_fixture(scope.organisation)
     connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
 
@@ -87,7 +90,7 @@ defmodule Apiary.Adapters.CollectionsTest do
   end
 
   defp link(connection, ref, %Workspace{} = workspace) do
-    {:ok, linked} = Collections.set_workspace(collection(connection, ref), workspace)
+    {:ok, linked} = set_collection_workspace(collection(connection, ref), workspace)
     linked
   end
 
@@ -551,6 +554,7 @@ defmodule Apiary.Adapters.CollectionsTest do
 
     test "the end of a replaced connection, and the end of another's leaves these", ctx do
       %{scope: other} = sign_up_fixture()
+      workspace_fixture(other.organisation)
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["THEIRS"]))
       {:ok, _} = Connections.end_connection(ctx.key_scope, theirs.public_id)
@@ -624,6 +628,7 @@ defmodule Apiary.Adapters.CollectionsTest do
       link(ctx.connection, "LINKED", ctx.scope.workspace)
 
       %{scope: other} = sign_up_fixture()
+      workspace_fixture(other.organisation)
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["THEIRS"]))
 

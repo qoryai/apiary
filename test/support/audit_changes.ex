@@ -30,6 +30,7 @@ defmodule Apiary.AuditChanges do
   }
 
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
 
   @mail_attrs %{
@@ -41,12 +42,11 @@ defmodule Apiary.AuditChanges do
     "mail_from" => ""
   }
 
-  # The audited actions of the work items and of what an adapter reports, whose changes
-  # have no context function yet: each is made here as its function will make it, the
-  # same question of `Apiary.Access` and the one entry in one transaction
-  # (`stand_in/3`), until that function makes it instead.
+  # The audited actions of the work items, whose changes have no context function yet:
+  # each is made here as its function will make it, the same question of
+  # `Apiary.Access` and the one entry in one transaction (`stand_in/3`), until that
+  # function makes it instead.
   @stand_ins [
-    :"collection.assign",
     :"work_item.take_in",
     :"work_item.undo",
     :"work_item.close",
@@ -108,7 +108,8 @@ defmodule Apiary.AuditChanges do
       :"adapter.set_interval",
       :"adapter.delete",
       :"adapter.connect",
-      :"adapter.declare"
+      :"adapter.declare",
+      :"collection.assign"
     ] ++ @stand_ins ++ @pool_stand_ins
   end
 
@@ -444,6 +445,15 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An owner assigns a collection of their organisation's connection to a workspace, in
+  # the organisation's trail, about the workspace.
+  def make(:"collection.assign", ctx) do
+    {connection, collection, workspace} = prepare(:"collection.assign", ctx)
+    before = entries()
+    {:ok, 1} = Collections.assign_collections(ctx.scope, connection, [collection.id], workspace)
+    %{scope: ctx.scope, subject: {"workspace", workspace.id}, before: before}
+  end
+
   # An adapter's key declares, in the trail of the instance's organisation, and the
   # entry's actor is the key.
   def make(:"adapter.declare", _ctx) do
@@ -752,7 +762,26 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
   defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
   defp prepare(:"adapter.connect", _ctx), do: adapter_fixture()
-  defp prepare(:"collection.assign", %{scope: scope}), do: scope.organisation
+  # A collection the adapter listed for the organisation's connection, and a workspace
+  # made after it, so assigning it there changes its link.
+  defp prepare(:"collection.assign", %{scope: scope}) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+        ],
+        listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+    {connection, collection, workspace_fixture(scope.organisation)}
+  end
 
   defp prepare(action, %{scope: scope}) when action in @stand_ins,
     do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
@@ -867,6 +896,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"adapter.connect", scope, adapter),
     do: Adapters.connect(scope, adapter)
+
+  defp attempt(:"collection.assign", scope, {connection, collection, workspace}),
+    do: Collections.assign_collections(scope, connection, [collection.id], workspace)
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)
@@ -988,6 +1020,5 @@ defmodule Apiary.AuditChanges do
     end)
   end
 
-  defp subject_of(%Organisation{id: id}), do: {"organisation", id}
   defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
 end

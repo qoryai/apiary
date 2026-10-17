@@ -21,8 +21,11 @@ defmodule Apiary.Deletion.Tables do
   `workspace_tables/0` lists those, in the same order, the tables a workspace's purge
   walks. A table marked `:organisation` holds the organisation's rows: `memberships`
   has no workspace, since a person stays in the organisation when a workspace goes, and
-  only their access to it goes with it. `organisations` itself is not on the list: its row
-  is deleted last, after them all. Nor are the instance's tables, `users` and
+  only their access to it goes with it. A few such tables have a `workspace_id` all the
+  same, a link to a workspace that their rows outlive (`outliving_tables/0`): the
+  workspace's purge links them to none before it walks, and the organisation's purge
+  deletes them. `organisations` itself is not on the list: its row is deleted last, after
+  them all. Nor are the instance's tables, `users` and
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
   instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
   keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`) and Oban's.
@@ -72,7 +75,7 @@ defmodule Apiary.Deletion.Tables do
     {"access_keys", :workspace},
     {"access_key_enrolment_codes", :workspace},
     {"source_collection_listings", :organisation},
-    {"source_collections", :workspace},
+    {"source_collections", :organisation},
     {"adapter_connections", :organisation},
     {"nodes", :workspace},
     {"invitations", :workspace},
@@ -95,6 +98,14 @@ defmodule Apiary.Deletion.Tables do
   """
   @spec workspace_tables() :: [String.t()]
   def workspace_tables, do: for({table, :workspace} <- walk(), do: table)
+
+  @doc """
+  outliving_tables/0 is the core's tables marked `:organisation` that have a
+  `workspace_id`: their rows stay with the organisation when the workspace they link to is
+  purged, which links them to none first (`Apiary.Deletion.purge_workspace/1`).
+  """
+  @spec outliving_tables() :: [String.t()]
+  def outliving_tables, do: ["source_collections"]
 
   @doc """
   boot!/0 checks the walk once at boot, so an edition's list that names a table twice, one
