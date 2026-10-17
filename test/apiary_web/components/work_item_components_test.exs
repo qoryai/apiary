@@ -706,6 +706,21 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-details-runs") == "01a9e3c7 · 2 runs, 1 running"
     end
 
+    test "Taken in and the end row are one line: the time and the words after it in one element" do
+      w = work_item(%{status: :declined, ended_by: @dana, ended_at: ~U[2026-10-12 10:07:00Z]})
+      html = details(w, work_item: %{w | taken_in_by: @dana})
+
+      for {id, line} <- [
+            {"#work-item-details-taken-in", "14 Oct, by you"},
+            {"#work-item-details-ended", "12 Oct, by you"}
+          ] do
+        assert count(html, "#{id} > *") == 1, id
+        assert count(html, "#{id} > span > time") == 1, id
+        assert text(html, "#{id} > span") == line, id
+        assert html |> query(id) |> LazyHTML.text() |> String.trim() == line, id
+      end
+    end
+
     test "an empty or blank first instruction is none" do
       for blank <- ["", "   ", "\n\t "] do
         html = details(work_item(%{first_instruction: blank}))

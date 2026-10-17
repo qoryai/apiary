@@ -971,7 +971,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dt>{pgettext("work item", "Repository")}</dt>
         <dd id={"#{@id}-repository"} class="q-mono">{@work_item.repository}</dd>
         <dt>{gettext("Taken in")}</dt>
-        <dd id={"#{@id}-taken-in"}><.rich text={@taken_in} /></dd>
+        <dd id={"#{@id}-taken-in"}><span><.rich text={@taken_in} /></span></dd>
         <dt>{gettext("First instruction")}</dt>
         <dd id={"#{@id}-instruction"}>
           <span :if={@instruction} class="q-wi-q">{@instruction}</span>
@@ -984,7 +984,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </dd>
         <%= if @ended do %>
           <dt>{elem(@ended, 0)}</dt>
-          <dd id={"#{@id}-ended"}><.rich text={elem(@ended, 1)} /></dd>
+          <dd id={"#{@id}-ended"}><span><.rich text={elem(@ended, 1)} /></span></dd>
         <% end %>
       </dl>
     </section>
