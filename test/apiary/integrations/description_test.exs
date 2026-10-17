@@ -11,22 +11,91 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   defp parse(description), do: description |> encode() |> Description.parse()
 
+  # The fixtures that match `pattern` under the contract's fixtures, each by its path there.
+  defp fixture_names(pattern) do
+    @fixtures
+    |> Path.join(pattern)
+    |> Path.wildcard()
+    |> Enum.map(&Path.relative_to(&1, @fixtures))
+  end
+
+  defp parse_fixture(name),
+    do: @fixtures |> Path.join(name) |> File.read!() |> Description.parse()
+
   describe "the integrations contract's fixtures" do
     test "every accepted fixture is read" do
-      for file <- Path.wildcard(Path.join(@fixtures, "*.json")) do
-        assert {:ok, %Description{}} = file |> File.read!() |> Description.parse(),
-               Path.basename(file)
+      names = fixture_names("*.json")
+
+      assert names ==
+               ~w(acme-chat.json acme-tracker.json example-tracker.json github.json
+                  unknown-role.json)
+
+      for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
+    end
+
+    test "every refused fixture is refused, those a reader refuses included" do
+      names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
+      assert length(names) == 26
+
+      for name <- names do
+        assert {:error, {:description_invalid, _}} = parse_fixture(name), name
       end
     end
 
-    test "every refused fixture is refused" do
-      files = Path.wildcard(Path.join(@fixtures, "invalid/*.json"))
-      assert files != []
+    test "a fixture past a bound is refused before the schema is applied" do
+      for name <- ~w(settings-enum-1025-entries settings-properties-1025-members
+                     string-16385-characters) do
+        name = "invalid/description-#{name}.json"
 
-      for file <- files do
-        assert {:error, {:description_invalid, _}} = file |> File.read!() |> Description.parse(),
-               Path.basename(file)
+        assert {:error, {:description_invalid, [{:schema, %{limits: _}}]}} = parse_fixture(name),
+               name
       end
+    end
+
+    test "a source role is refused where the schema refuses its shape" do
+      names = fixture_names("invalid/description-source-*.json")
+      assert length(names) == 11
+
+      for {name, kind, location} <- [
+            {"arabic-letter-mark", :pattern, "#/roles/source/access"},
+            {"bidi-override", :pattern, "#/roles/source/connect"},
+            {"byte-order-mark", :pattern, "#/roles/source/setup/help"},
+            {"command-non-ascii", :pattern, "#/roles/source/start"},
+            {"line-feed", :pattern, "#/roles/source/connect"},
+            {"line-separator", :pattern, "#/roles/source/disconnect"},
+            {"line-too-long", :maxLength, "#/roles/source/access"},
+            {"program-upper-case", :pattern, "#/roles/source/program"},
+            {"setup-no-help", :required, "#/roles/source/setup"},
+            {"undefined-member", :additionalProperties, "#/roles/source"},
+            {"zero-width-space", :pattern, "#/roles/source/description"}
+          ] do
+        name = "invalid/description-source-#{name}.json"
+        assert name in names
+        assert {:error, {:description_invalid, [{:schema, summary}]}} = parse_fixture(name)
+        assert %{kind: kind, instanceLocation: location} in summary.errors, name
+      end
+    end
+
+    test "a fixture a reader refuses is refused for its cause" do
+      assert fixture_names("refused-by-reader/*.json") == [
+               "refused-by-reader/description-member-repeated.json",
+               "refused-by-reader/description-string-invalid-utf-8.json",
+               "refused-by-reader/description-string-lone-surrogate.json"
+             ]
+
+      assert parse_fixture("refused-by-reader/description-member-repeated.json") ==
+               {:error, {:description_invalid, [:member_repeated]}}
+
+      for name <- ~w(invalid-utf-8 lone-surrogate) do
+        assert parse_fixture("refused-by-reader/description-string-#{name}.json") ==
+                 {:error, {:description_invalid, [:not_json]}}
+      end
+    end
+
+    test "example-tracker.json: a source role is read once the schema has checked its shape" do
+      assert {:ok, tracker} = parse_fixture("example-tracker.json")
+      assert tracker.roles == ["source"]
+      assert tracker.document["roles"]["source"]["program"] == "qory-example-server"
     end
 
     test "github.json: a connection holds its plain settings, every top-level one" do
@@ -87,6 +156,28 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert tracker.roles == ["acme_role", "credential"]
 
       assert tracker.document["roles"]["acme_role"] == %{"events" => ["issue.opened"]}
+    end
+
+    test "is refused with a role the schema does not name whose name breaks its pattern" do
+      with_role = fn name ->
+        update_in(tracker_description(), ["roles"], &Map.put(&1, name, %{"events" => []}))
+      end
+
+      assert {:ok, %Description{}} = parse(with_role.("acme_other"))
+
+      for name <- ["Bad-Role", "acme-role", "1role", "Acme"] do
+        assert {:error, {:description_invalid, [{:schema, summary}]}} = parse(with_role.(name)),
+               name
+
+        assert %{kind: :propertyNames, instanceLocation: "#/roles"} in summary.errors, name
+      end
+    end
+
+    test "is refused with a role the schema does not name whose value is past a bound" do
+      description =
+        put_in(tracker_description(), ["roles", "acme_role", "events"], List.duplicate("e", 1025))
+
+      assert {:error, {:description_invalid, [{:schema, %{limits: _}}]}} = parse(description)
     end
 
     test "takes its plain settings from the top level: neither a secret nor a secret's _file" do
@@ -502,12 +593,20 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "every fixture is within the limits" do
-      files = Path.wildcard(Path.join(@fixtures, "*.json"))
-      invalid = Path.wildcard(Path.join(@fixtures, "invalid/*.json"))
+    test "every fixture is within the limits, but those that pass a bound" do
+      over =
+        ~w(invalid/description-settings-enum-1025-entries.json
+           invalid/description-settings-properties-1025-members.json
+           invalid/description-string-16385-characters.json)
 
-      for file <- files ++ invalid do
-        refute limited?(file |> File.read!() |> Description.parse()), Path.basename(file)
+      names =
+        fixture_names("*.json") ++
+          fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
+
+      assert Enum.all?(over, &(&1 in names))
+
+      for name <- names do
+        assert limited?(parse_fixture(name)) == name in over, name
       end
     end
 
