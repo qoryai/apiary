@@ -80,11 +80,24 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
   defp apply_action(socket, _action), do: assign(socket, :form, nil)
 
-  # The interval choice, on how often the adapter pulls now.
-  defp interval_form(sync) do
-    every = AdapterComponents.pulls_every(sync)
-    to_form(%{"sync_interval" => every && to_string(every)}, as: "sync")
-  end
+  # The interval choice, on how often the adapter pulls now: the default's choice, ""
+  # (no setting), while none is set or the one set is the default; else the one set.
+  defp interval_form(sync), do: to_form(%{"sync_interval" => chosen(sync)}, as: "sync")
+
+  defp chosen(%{interval: interval, default: default})
+       when is_nil(interval) or interval == default,
+       do: ""
+
+  defp chosen(%{interval: interval}), do: to_string(interval)
+
+  # The interval to save from the choice: the default's choice sets none, but leaves an
+  # interval set to the default as it is; any other, as chosen.
+  defp to_save(%{"sync_interval" => ""}, %{interval: interval, default: interval})
+       when is_integer(interval),
+       do: %{"sync_interval" => interval}
+
+  defp to_save(%{"sync_interval" => ""}, _sync), do: %{"sync_interval" => nil}
+  defp to_save(params, _sync), do: Map.take(params, ["sync_interval"])
 
   # How often the adapter pulls, read again, with the choice on it.
   defp read_sync(%{assigns: %{current_scope: scope, adapter: adapter}} = socket) do
@@ -169,9 +182,9 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         %{assigns: %{live_action: :settings}} = socket
       )
       when is_map(params) do
-    %{current_scope: scope, adapter: adapter} = socket.assigns
+    %{current_scope: scope, adapter: adapter, sync: sync} = socket.assigns
 
-    case Adapters.update_sync_interval(scope, adapter, Map.take(params, ["sync_interval"])) do
+    case Adapters.update_sync_interval(scope, adapter, to_save(params, sync)) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -529,17 +542,24 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     """
   end
 
-  # The intervals an instance admin may choose, each in words, the adapter's default
-  # marked.
-  defp interval_options(%{choices: choices, default: default}) do
-    for seconds <- choices do
+  # The intervals an instance admin may choose, each in words, in order: the adapter's
+  # default marked, as no setting (""); and an interval set that is no longer among them,
+  # so the choice shows it.
+  defp interval_options(%{choices: choices, default: default} = sync) do
+    for seconds <- Enum.sort(set_apart(sync) ++ choices) do
       label = AdapterComponents.interval_label(seconds)
 
       if seconds == default,
-        do: {gettext("%{interval} (its default)", interval: label), seconds},
+        do: {gettext("%{interval} (its default)", interval: label), ""},
         else: {label, seconds}
     end
   end
+
+  defp set_apart(%{interval: interval, choices: choices}) when is_integer(interval) do
+    if interval in choices, do: [], else: [interval]
+  end
+
+  defp set_apart(_sync), do: []
 
   # What the choice is for, with what the adapter declared, in a sentence's words.
   defp interval_hint(%{sends_changes: true} = sync) do
