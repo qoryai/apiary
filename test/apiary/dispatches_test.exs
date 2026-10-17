@@ -14,6 +14,7 @@ defmodule Apiary.DispatchesTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Dispatches, Nodes}
+  alias Apiary.Adapters.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
@@ -36,6 +37,11 @@ defmodule Apiary.DispatchesTest do
     {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, now)
     dispatch
   end
+
+  # A work item's columns as it stands in an ended `state`, with the time it ended.
+  defp ended_state(:closed), do: [state: :closed, closed_at: Dispatches.now()]
+  defp ended_state(:declined), do: [state: :declined, declined_at: Dispatches.now()]
+  defp ended_state(:undone), do: [state: :undone]
 
   defp undo(work_item), do: Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
 
@@ -231,6 +237,74 @@ defmodule Apiary.DispatchesTest do
 
       assert dispatch.lease_until == Dispatches.lease_until(now)
       assert Dispatch.public_id?(dispatch.public_id)
+    end
+
+    test "ends a waiting run whose work item's connection ended, and takes the next", ctx do
+      gone = work_item_fixture(ctx.scope)
+      gone_run = queue!(gone)
+      next = queued!(ctx.scope)
+
+      Repo.update_all(from(c in Connection, where: c.id == ^gone.connection_id),
+        set: [state: :ended, ended_at: Dispatches.now(), ended_reason: :adapter_reported]
+      )
+
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert id == next.id
+      assert %DispatchRun{state: :ended, end_cause: :closed} = run!(gone_run)
+      refute Repo.exists?(from d in Dispatch, where: d.dispatch_run_id == ^gone_run.id)
+      assert_received {Dispatches, :changed}
+    end
+
+    test "ends a waiting run whose work item moved to another workspace; with no other, takes none",
+         ctx do
+      moved = work_item_fixture(ctx.scope)
+      run = queue!(moved)
+      other = workspace_fixture(ctx.scope.organisation)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^moved.id),
+        set: [workspace_id: other.id]
+      )
+
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
+      assert Repo.aggregate(Dispatch, :count) == 0
+    end
+
+    test "ends the waiting runs of work items closed, declined or undone, each with its cause",
+         ctx do
+      ended =
+        for {state, cause} <- [closed: :closed, declined: :closed, undone: :undone] do
+          work_item = work_item_fixture(ctx.scope)
+          run = queue!(work_item)
+
+          Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+            set: ended_state(state)
+          )
+
+          {run, cause}
+        end
+
+      next = queued!(ctx.scope)
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert id == next.id
+
+      for {run, cause} <- ended,
+          do: assert(%DispatchRun{state: :ended, end_cause: ^cause} = run!(run))
+    end
+
+    test "at the pool's limit ends nothing", ctx do
+      pool = pool_fixture(ctx.scope, instance_limit: 1)
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      queued!(ctx.scope)
+      claimed!(key)
+
+      gone = work_item_fixture(ctx.scope)
+      run = queue!(gone)
+      Repo.update_all(from(w in WorkItem, where: w.id == ^gone.id), set: ended_state(:closed))
+
+      assert Dispatches.claim(key, Dispatches.now()) == {:ok, :none}
+      assert run!(run).state == :waiting
     end
 
     test "takes no run of another workspace", ctx do

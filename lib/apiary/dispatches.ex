@@ -47,13 +47,17 @@ defmodule Apiary.Dispatches do
   #      `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, locked
   #      `FOR UPDATE SKIP LOCKED`, so two claims never take one run and neither waits on
-  #      the other; none is `{:ok, :none}`;
+  #      the other; none is `{:ok, :none}`. A run whose work item is no longer live (closed,
+  #      declined, undone, its connection ended, or gone) or no longer in the run's
+  #      workspace is not handed out: it ends, `undone` for a work item undone and `closed`
+  #      otherwise, and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item and the pool. The
-  # workspaces whose queue the freed slots changed are told once the transaction commits.
+  # workspaces whose queue the freed slots or the ended runs changed are told once the
+  # transaction commits.
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -79,6 +83,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Adapters.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
@@ -89,6 +94,8 @@ defmodule Apiary.Dispatches do
   @of 3
   # How long a dispatch is the starter's, from its claim, in seconds.
   @lease_seconds 600
+  # The waiting runs of work items no longer live one claim ends at most.
+  @max_ended 100
 
   @typedoc "What a claim took: the dispatch, its run, the run's work item and the pool."
   @type claimed :: %{
@@ -230,7 +237,8 @@ defmodule Apiary.Dispatches do
              {:ok, pool} <- lock_pool(key),
              :ok <- gateway(pool) do
           freed = Slots.free(pool.id, now)
-          {:ok, {take(key, pool, now), freed}}
+          {taken, ended} = take(key, pool, now)
+          {:ok, {taken, freed ++ ended}}
         end
       end)
 
@@ -293,31 +301,86 @@ defmodule Apiary.Dispatches do
     end
   end
 
+  # The oldest waiting run the pool may take, claimed, with the workspaces whose queue
+  # it ended runs of; `:none` at the limit or with none to take.
   defp take(key, pool, now) do
-    with :ok <- below_limit(pool, now),
-         %DispatchRun{} = run <- oldest_waiting(key) do
-      {1, _rows} =
-        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
-          set: [state: :claimed, updated_at: now]
-        )
-
-      dispatch =
-        %Dispatch{organisation_id: key.organisation_id, workspace_id: key.workspace_id}
-        |> Dispatch.claim_changeset(%{
-          dispatch_run_id: run.id,
-          pool_id: key.node_id,
-          access_key_id: key.id,
-          claimed_at: now,
-          lease_until: lease_until(now)
-        })
-        |> Repo.insert!()
-
-      work_item = Repo.get!(WorkItem, run.work_item_id)
-
-      %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: work_item, pool: pool}
-    else
-      _none -> :none
+    case below_limit(pool, now) do
+      :ok -> pick(key, pool, now, @max_ended, [])
+      :at_limit -> {:none, []}
     end
+  end
+
+  # A waiting run whose work item is no longer live, or no longer in the run's
+  # workspace, is ended, and the next one looked at, `max` at most per claim.
+  defp pick(_key, _pool, _now, 0, ended), do: {:none, ended}
+
+  defp pick(key, pool, now, max, ended) do
+    case oldest_waiting(key) do
+      nil ->
+        {:none, ended}
+
+      %DispatchRun{} = run ->
+        case work_item_of(run) do
+          {:ok, work_item} ->
+            {claim_run(key, pool, run, work_item, now), ended}
+
+          {:end, cause} ->
+            {1, _rows} =
+              Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+                set: [state: :ended, end_cause: cause, updated_at: now]
+              )
+
+            pick(key, pool, now, max - 1, [run.workspace_id | ended])
+        end
+    end
+  end
+
+  # The run's work item when it is live, in the run's workspace, and its connection has
+  # not ended; else the cause the run ends for: `undone` for a work item undone, `closed`
+  # for any other (closed, declined, its connection ended, moved to another workspace,
+  # or gone). Read without a lock: the run is locked, and a close or an undo that commits
+  # meanwhile ends the dispatch as it would end any claimed run.
+  defp work_item_of(%DispatchRun{work_item_id: work_item_id, workspace_id: workspace_id}) do
+    found =
+      Repo.one(
+        from w in WorkItem,
+          left_join: c in Connection,
+          on: c.id == w.connection_id,
+          where: w.id == ^work_item_id,
+          select: {w, c.state}
+      )
+
+    case found do
+      {%WorkItem{state: :exploring, workspace_id: ^workspace_id} = work_item, connection}
+      when connection in [:pending, :connected] ->
+        {:ok, work_item}
+
+      {%WorkItem{state: :undone}, _connection} ->
+        {:end, :undone}
+
+      _ended_moved_or_gone ->
+        {:end, :closed}
+    end
+  end
+
+  defp claim_run(key, pool, run, work_item, now) do
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [state: :claimed, updated_at: now]
+      )
+
+    dispatch =
+      %Dispatch{organisation_id: key.organisation_id, workspace_id: key.workspace_id}
+      |> Dispatch.claim_changeset(%{
+        dispatch_run_id: run.id,
+        pool_id: key.node_id,
+        access_key_id: key.id,
+        claimed_at: now,
+        lease_until: lease_until(now)
+      })
+      |> Repo.insert!()
+
+    %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: work_item, pool: pool}
   end
 
   # The pool's held slots and its live runs that were not dispatched, against its limit;

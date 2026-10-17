@@ -172,19 +172,22 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       %URI{path: path} = URI.parse(url)
       assert path == "/work-items/" <> id
 
-      # Moved to another workspace before the claim, it has the same address.
+      answer = Jason.decode!(claim(ctx, body()).resp_body)
+      expected = ApiaryWeb.Endpoint.url() <> "/work-items/" <> work_item.public_id
+      assert answer["work_item"]["url"] == expected
+      assert %URI{path: "/work-items/" <> public_id} = URI.parse(expected)
+      assert public_id == work_item.public_id
+
+      # Moved to another workspace after the claim, it has the same address.
       other = workspace_fixture(ctx.scope.organisation)
 
       Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
         set: [workspace_id: other.id]
       )
 
-      answer = Jason.decode!(claim(ctx, body()).resp_body)
-      expected = ApiaryWeb.Endpoint.url() <> "/work-items/" <> work_item.public_id
-      assert answer["work_item"]["url"] == expected
-      assert %URI{path: "/work-items/" <> public_id} = URI.parse(expected)
-      assert public_id == work_item.public_id
-      assert Apiary.WorkItems.stable_url(work_item) == expected
+      moved = Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+      assert moved.workspace_id == other.id
+      assert Apiary.WorkItems.stable_url(moved) == expected
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",
