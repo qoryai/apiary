@@ -1670,6 +1670,7 @@ defmodule ApiaryWeb.CoreComponents do
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the trigger's accessible name, naming the row"
+  attr :title, :string, default: nil, doc: "the trigger's tooltip, where it has one"
   attr :class, :any, default: nil
   slot :inner_block
 
@@ -1692,6 +1693,7 @@ defmodule ApiaryWeb.CoreComponents do
         aria-haspopup="menu"
         aria-expanded="false"
         aria-label={@label}
+        title={@title}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
