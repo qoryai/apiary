@@ -4,8 +4,9 @@ defmodule Apiary.Connections.SettingsBudgetTest do
   # check's work grow exponentially, and the writes of Connections, which check settings
   # while they hold the organisation's integrations lock. Each is refused as invalid
   # settings within the budget, the warning it logs says which it ran out of, reductions
-  # or heap, the caller lives on and the next write takes the lock. Not async: the time
-  # asserted is the write's alone.
+  # or heap, the caller lives on and the next write takes the lock. The budget counts
+  # work, not time, so the reason is asserted and the time is not: a check its time
+  # stopped, 10 s, would log `reason=time`.
   use Apiary.DataCase, async: false
 
   import Apiary.DescriptionFixtures
@@ -17,9 +18,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
 
   @moduletag needs: :secrets
 
-  # Each write is refused within 350 ms; this leaves room for a slow machine. Without the
-  # budget, the checks of the writes below took 33 s, 5.7 s and 1.19 GB, and 24.5 s.
-  @refused_within_ms 1000
+  # Without the budget, the checks of the writes below took 33 s, 5.7 s and 1.19 GB, and
+  # 24.5 s.
 
   @url "https://downloads.example.com/acme/tracker/description.json"
 
@@ -81,12 +81,11 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     flush()
     monitors = Process.info(self(), :monitors)
 
-    {{microseconds, result}, log} = with_log(fn -> :timer.tc(write) end)
+    {result, log} = with_log(write)
 
     assert result == @refused
     assert log =~ "settings check was stopped name=acme-tracker"
     assert log =~ ~r/reason=#{reason}$/m
-    assert div(microseconds, 1000) < @refused_within_ms, "took #{div(microseconds, 1000)} ms"
     assert Process.info(self(), :monitors) == monitors
     refute_received _any
   end

@@ -503,10 +503,9 @@ defmodule Apiary.Explore.ResultTest do
   end
 
   describe "the size of lists and objects" do
-    # A document's check takes less than this many milliseconds: each input below is read
-    # in a few, and the budget leaves room for a slow machine. Which inputs the walk of
-    # the bounds refuses is asserted apart from the time, with `within_bounds?/1`.
-    @budget_ms 150
+    # Which inputs the walk of the bounds refuses is asserted with `within_bounds?/1`, and
+    # the refusal of each, not the time; that JSV never reads an input the walk refuses is
+    # asserted by tracing (`Apiary.Kinds.BoundsCallersTest`).
 
     setup do
       # The schema and the bounds are built once; the first check pays for it.
@@ -514,11 +513,9 @@ defmodule Apiary.Explore.ResultTest do
       :ok
     end
 
-    defp timed(text) do
+    defp parsed(text) do
       assert byte_size(text) <= @max
-      {microseconds, result} = :timer.tc(fn -> Result.parse(text) end)
-      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
-      result
+      Result.parse(text)
     end
 
     defp entries(entry, count), do: Enum.join(List.duplicate(entry, count), ",")
@@ -590,34 +587,39 @@ defmodule Apiary.Explore.ResultTest do
       for file <- fixtures("result"), do: assert(walked?(fixture("result/" <> file)), file)
     end
 
-    test "40000 empty objects as questions are refused by the walk, at once" do
-      assert timed(many_questions()) == :none
+    test "40000 empty objects as questions are refused by the walk" do
+      refute walked?(many_questions())
+      assert parsed(many_questions()) == :none
     end
 
-    test "60000 numbers as one knowledge entry's sources are refused by the walk, at once" do
-      assert timed(many_sources()) == :none
+    test "60000 numbers as one knowledge entry's sources are refused by the walk" do
+      refute walked?(many_sources())
+      assert parsed(many_sources()) == :none
     end
 
-    test "an object with thousands of members is refused by the walk, at once" do
-      assert timed(many_members()) == :none
+    test "an object with thousands of members is refused by the walk" do
+      refute walked?(many_members())
+      assert parsed(many_members()) == :none
     end
 
-    test "50 knowledge entries of 50 sources each pass the walk, and the schema refuses them at once" do
-      assert timed(fifty_by_fifty()) == :none
+    test "50 knowledge entries of 50 sources each pass the walk, and the schema refuses them" do
+      assert walked?(fifty_by_fifty())
+      assert parsed(fifty_by_fifty()) == :none
     end
 
-    test "deep nesting passes the walk in constant stack, and the schema refuses it at once" do
-      assert timed(deep()) == :none
+    test "deep nesting passes the walk in constant stack, and the schema refuses it" do
+      assert walked?(deep())
+      assert parsed(deep()) == :none
     end
 
     test "a valid document with every list at its largest is a result" do
       document = largest()
       encoded = Jason.encode!(document)
       assert byte_size(encoded) > 100_000
-      assert timed(encoded) == {:ok, document}
+      assert parsed(encoded) == {:ok, document}
 
       assert {:ok, _} =
-               timed(
+               parsed(
                  Jason.encode!(%{
                    "version" => 1,
                    "verdict" => "not_understood",
