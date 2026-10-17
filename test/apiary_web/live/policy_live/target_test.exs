@@ -264,6 +264,33 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert redirected_to(get(conn, old)) == path
     assert redirected_to(get(conn, old <> "/history?page=2")) == path <> "/history?page=2"
     assert redirected_to(get(conn, old <> "/versions/3/export")) == path <> "/versions/3/export"
+
+    # Each path of the tab goes on whole.
+    for rest <- ["/history", "/document", "/versions/3", "/versions/12/export"] do
+      assert redirected_to(get(conn, old <> rest)) == path <> rest, rest
+    end
+
+    # Anything else goes to the bare tab, the query kept.
+    for rest <- [
+          "/..",
+          "/../../settings",
+          "/history/..",
+          "/%2E%2E",
+          "/members",
+          "/history/extra",
+          "/document/x",
+          "/versions",
+          "/versions/0",
+          "/versions/03",
+          "/versions/-1",
+          "/versions/x",
+          "/versions/3/x",
+          "/versions/3/export/x",
+          "/versions/1234567890123456789012"
+        ] do
+      assert redirected_to(get(conn, old <> rest)) == path, rest
+      assert redirected_to(get(conn, old <> rest <> "?view=denied")) == path <> "?view=denied"
+    end
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
