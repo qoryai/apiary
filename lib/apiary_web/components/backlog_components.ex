@@ -207,11 +207,15 @@ defmodule ApiaryWeb.BacklogComponents do
 
   # A ticket's full form: its repository followed directly by its key ("acme/shop#1231"),
   # or the repository alone where the ticket has no key. Plain text, which HEEx escapes
-  # where it is interpolated; the key is never parsed.
-  defp full_form(%{repository: repository, key: key}) when is_binary(key),
+  # where it is interpolated; the key is never parsed. The work item pages name their
+  # ticket by it too (`ApiaryWeb.WorkItemComponents`).
+  @doc false
+  @spec full_form(%{required(:repository) => String.t(), optional(:key) => String.t() | nil}) ::
+          String.t()
+  def full_form(%{repository: repository, key: key}) when is_binary(key),
     do: repository <> key
 
-  defp full_form(%{repository: repository}), do: repository
+  def full_form(%{repository: repository}), do: repository
 
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the
