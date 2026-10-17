@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connection_id": "ac_acmetracker00000",
+  "collections": [
+    {
+      "ref": "TRK",
+      "url": "https://tracker.acme.example/TRK",
+      "title": "Tracker"
+    }
+  ],
+  "listing": {
+    "id": "collections-1",
+    "started_at": "2026-10-15T11:59:50Z",
+    "part": 10001,
+    "complete": false
+  }
+}

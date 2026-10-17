@@ -99,6 +99,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
       bodies = [
         fresh("invalid/source-collections-no-listing.json", ctx),
+        fresh("invalid/source-collections-part-10001.json", ctx),
         Map.put(body, "version", 2),
         Map.put(body, "connection_id", "ac_short"),
         Map.put(body, "connection_id", "na_0000000000000000"),

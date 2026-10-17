@@ -251,6 +251,7 @@ defmodule Apiary.Adapters.WireTest do
 
     test "the contract's invalid ones are refused" do
       assert listing("invalid/source-collections-no-listing.json") == :error
+      assert listing("invalid/source-collections-part-10001.json") == :error
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error

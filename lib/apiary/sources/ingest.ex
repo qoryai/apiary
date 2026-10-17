@@ -24,9 +24,7 @@ defmodule Apiary.Sources.Ingest do
   # (`closed_by_listing_at`). The close counts as a write at `started_at`, so an event
   # sent again, or one updated before the listing began, leaves the item closed. Of two
   # with the same time the later post wins, as the decoder keeps the last named of two in
-  # one body. A `comment_count` past what a bigint holds is kept as that most: the
-  # contract bounds it by nothing, so a body it allows is not refused, and no source has
-  # so many. A written item is no longer one a listing closed.
+  # one body. A written item is no longer one a listing closed.
   #
   # **A ref held in another collection.** An item's ref is unique among the items of the
   # adapter's live collections, which no index holds: it is held here. Where an item
@@ -93,8 +91,6 @@ defmodule Apiary.Sources.Ingest do
 
   @action :"source_item.post"
   @max_ref 200
-  # The most a bigint column holds.
-  @max_count 9_223_372_036_854_775_807
   # How long a listing's bookkeeping is kept after its first part, in seconds.
   @listing_seconds 24 * 60 * 60
 
@@ -143,7 +139,7 @@ defmodule Apiary.Sources.Ingest do
         target_system: item.target && item.target.system,
         target_path: item.target && item.target.path,
         truncated: item.truncated,
-        comment_count: min(item.comment_count, @max_count),
+        comment_count: item.comment_count,
         source_created_at: item.created_at,
         source_updated_at: item.updated_at
       })

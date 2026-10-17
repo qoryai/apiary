@@ -103,7 +103,10 @@ defmodule Apiary.Sources.WireTest do
   describe "the contract's fixtures" do
     test "every body of source-items/ is accepted and read as written, raw or decoded" do
       paths = fixtures("source-items/*.json")
-      assert length(paths) == 12
+      assert length(paths) == 15
+
+      for name <- ~w(url-empty-port url-port-leading-zeros url-ip-literal),
+          do: assert("source-items/acme-tracker-event-#{name}.json" in paths)
 
       for path <- paths do
         expected = expected_items(json(path))
@@ -183,8 +186,12 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 13
+      assert length(items) == 20
       assert length(comments) == 2
+
+      for name <- ~w(comment-count-above-maximum title-nul created-at-leap-second
+                     url-user-information url-bad-percent-escape url-port-0 url-port-65536),
+          do: assert("invalid/source-items-#{name}.json" in items)
 
       for path <- items do
         assert Wire.items(fixture(path)) == :error, path
@@ -577,13 +584,13 @@ defmodule Apiary.Sources.WireTest do
       end
     end
 
-    test "comment_count is an integer from 0" do
-      for count <- [0, 1, 4_000_000_000] do
+    test "comment_count is an integer from 0 to 2^53 - 1" do
+      for count <- [0, 1, 4_000_000_000, 9_007_199_254_740_991] do
         assert {:ok, %{items: [%{comment_count: ^count}]}} =
                  Wire.items(event_of(Map.put(item(), "comment_count", count)))
       end
 
-      for count <- [-1, 1.0, "1", nil, true] do
+      for count <- [-1, 9_007_199_254_740_992, 9_223_372_036_854_775_808, 1.0, "1", nil, true] do
         refute item_ok?(Map.put(item(), "comment_count", count)), inspect(count)
       end
 
@@ -613,11 +620,24 @@ defmodule Apiary.Sources.WireTest do
             "tracker.acme.example",
             "https://a b.example/",
             "https://user@tracker.acme.example/",
+            "https://tracker.acme.example/TRK%2G1",
+            "https://tracker.acme.example:0/TRK-1",
+            "https://tracker.acme.example:65536/TRK-1",
             "",
             nil
           ] do
         refute item_ok?(Map.put(item(), "url", url)), inspect(url)
         refute comment_ok?(Map.put(comment(), "url", url)), inspect(url)
+      end
+
+      for url <- [
+            "https://tracker.acme.example:/TRK-1",
+            "https://tracker.acme.example:0443/TRK-1",
+            "https://tracker.acme.example:65535/TRK-1",
+            "https://[2001:db8::1]/TRK-1"
+          ] do
+        assert item_ok?(Map.put(item(), "url", url)), inspect(url)
+        assert comment_ok?(Map.put(comment(), "url", url)), inspect(url)
       end
     end
 

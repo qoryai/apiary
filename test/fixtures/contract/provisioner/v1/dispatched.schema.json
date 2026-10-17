@@ -34,7 +34,9 @@
         },
         "ref": {
           "description": "The job's ref in the system `type` names.",
-          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
         },
         "url": {
           "description": "The job's page at the provider.",

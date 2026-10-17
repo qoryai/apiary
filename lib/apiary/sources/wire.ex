@@ -12,8 +12,9 @@ defmodule Apiary.Sources.Wire do
   # exactly `version` (1), `time`, `collection_ref` and `items`, and `listing` when given.
   # Without `listing` the body is an event, with 1 to 100 items; with it, a part of a
   # listing, with 0 to 100. Each item holds exactly `ref`, `url`, `title`, `body`,
-  # `body_format`, `filed_by`, `labels`, `state`, `state_reason`, `comment_count`,
-  # `created_at` and `updated_at`, and `key`, `type`, `target` and `truncated` when given.
+  # `body_format`, `filed_by`, `labels`, `state`, `state_reason`, `comment_count`, an
+  # integer from 0 to 9,007,199,254,740,991 (2^53 - 1), `created_at` and `updated_at`, and
+  # `key`, `type`, `target` and `truncated` when given.
   #
   # `comments/1` reads the body of `POST /v1/source-items/comments`
   # (`source-item-comments.schema.json`): exactly `version` (1), `time`, `item_ref` and
@@ -27,12 +28,10 @@ defmodule Apiary.Sources.Wire do
   # before they are compared. Text is counted in code points, as the contract's lengths
   # are, its size in bytes bounded first, and none of it may hold U+0000, which the
   # database cannot keep. Times, URLs, a target and a listing part are read as
-  # `Apiary.Adapters.Wire` reads them for a listing of collections, which holds some of
-  # them tighter than the contract, among them: a part numbered past
-  # `Apiary.Adapters.Wire.max_part/0` is refused; a time with a leap second (`:60`) is
-  # refused; and a URL may hold only RFC 3986's characters, every `%` followed by two
-  # hexadecimal digits, a host, a port from 1 to 65,535 when one is written, and no user
-  # information.
+  # `Apiary.Adapters.Wire` reads them for a listing of collections: a part is numbered from
+  # 1 to `Apiary.Adapters.Wire.max_part/0`; a time with a leap second (`:60`) is refused;
+  # and a URL may hold only RFC 3986's characters, every `%` followed by two hexadecimal
+  # digits, a host, a port from 1 to 65,535 when one is written, and no user information.
   #
   # An entry whose ref the body names twice is taken once: the one with the later
   # `updated_at`, and of two with the same `updated_at` the one named last, as the newer
@@ -51,6 +50,8 @@ defmodule Apiary.Sources.Wire do
   @max_label 100
   @max_state_reason 64
   @max_word 40
+  # `$defs/item/comment_count`'s maximum, 2^53 - 1.
+  @max_comment_count 9_007_199_254_740_991
 
   @items_required ~w(collection_ref items time version)
   @items_optional ~w(listing)
@@ -242,7 +243,8 @@ defmodule Apiary.Sources.Wire do
          true <- labels?(item["labels"]),
          true <- item["state"] in @states,
          true <- state_reason?(item["state_reason"]),
-         count when is_integer(count) and count >= 0 <- item["comment_count"],
+         count when is_integer(count) and count in 0..@max_comment_count <-
+           item["comment_count"],
          {:ok, created_at} <- Wire.time(item["created_at"]),
          {:ok, updated_at} <- Wire.time(item["updated_at"]),
          {:ok, target} <- target(item),

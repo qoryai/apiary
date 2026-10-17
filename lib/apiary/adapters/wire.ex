@@ -14,7 +14,7 @@ defmodule Apiary.Adapters.Wire do
   # accepts, so `900.0` and `9e2` are refused where an integer is due.
   #
   # `time/1` reads a time as the contract writes it (`$defs/time`): RFC 3339 in UTC with
-  # whole seconds, `2026-10-15T12:00:00Z`, and nothing else.
+  # whole seconds, `2026-10-15T12:00:00Z`, never a leap second (`:60`), and nothing else.
   #
   # `url?/1` holds a URL to the contract's `$defs/url` (`https://`, at most 2,048
   # characters, an RFC 3986 URI) and to what the instance stores and sends a person to
@@ -39,8 +39,9 @@ defmodule Apiary.Adapters.Wire do
   # `collection_ref`.
   #
   # Their text is counted in code points, as the contract's lengths are, and none of it
-  # may hold U+0000, which the database cannot keep. A part numbered past `max_part/0` is
-  # refused: the parts of a listing are kept until it completes.
+  # may hold U+0000, which the database cannot keep. A part numbered past `max_part/0`,
+  # `$defs/listing`'s maximum, is refused: the parts of a listing are kept until it
+  # completes.
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
   # RFC 3986's characters: unreserved, reserved, and `%` of a percent-encoding.
