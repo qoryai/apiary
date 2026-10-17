@@ -62,6 +62,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
+  @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
   ## The status and its mark
 
@@ -1497,6 +1498,1288 @@ defmodule ApiaryWeb.WorkItemComponents do
     </.page_tabs>
     """
   end
+
+  ## Explore's tab
+
+  @doc """
+  Explore's tab (`/work/:number/explore`): the run line, which run of the take in it is,
+  its id (linked to its page), its state and its time; then what the run gave, as the
+  work item's status says:
+
+    * queued or running: what Qory does next, with whose answers from a second run, and
+      the answers that run reads, grouped by the run that asked them;
+    * questions: Qory's questions, with the form for a reader who may act (`can_act`):
+      one answer for each, Answer and explore again (`"answer"`);
+    * the run limit: the note that the take in used its runs, then the last questions,
+      read-only, or what happened to the last run;
+    * no result, lost or cancelled: what happened, and the run's page;
+    * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
+      (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
+      with Qory's words under Show Qory's words;
+    * an ended work item: what its last run gave, read-only.
+
+  Then the earlier runs of this take in (`earlier_runs`, oldest first), each folded, and
+  the earlier take ins (`earlier_take_ins`), each folded with its runs, which counted
+  apart.
+
+  A run is a map: `:id` (its `rn_` public id) and `:path`, `:attempt` and `:of`, `:state`
+  (`:pending`, `:running`, `:completed`, `:failed`, `:cancelled` or `:lost`),
+  `:started_at`, `:ended_at`, `:duration` (how long it took, in words), `:outcome`
+  (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), and what it gave:
+  `:proposal`, or `:understanding` and `:questions` (each `%{public_id:, text:, answer:}`)
+  with `:answered_by` (a person) and `:answered_at` once a member answered them.
+
+  A proposal is a map: `:complexity` (`%{level: :simple | :standard | :complex, reason:}`),
+  `:understanding`, `:scope_in` and `:scope_out` (lists), `:approach`, `:alternatives`
+  (each `%{text:, reason:}`) and `:knowledge` (each `%{text:, sources:}`, the sources
+  urls). A change is `%{value:, by:}` under the field's key (`:complexity`,
+  `:understanding`, `:scope_in`, `:scope_out` or `:approach`), the value as the proposal
+  has it. A take in is `%{taken_in_by:, taken_in_at:, ended:, ended_by:, ended_at:, runs:}`,
+  `ended` being `:declined`, `:closed` or `:undone`.
+
+  Every word a run wrote is plain text in a frame that names the run: escaped, its line
+  breaks kept, isolated from the text around it. A source is a link only where it is an
+  https url core allows as a link out; else its address is text, every character outside
+  printable ASCII percent-encoded.
+
+  The form's draft is `answers` (by question `public_id`), and `errors` its errors, by
+  question `public_id`: `:blank` or `{:too_long, limit}`.
+  """
+  attr :id, :string, default: "work-item-explore"
+  attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
+  attr :earlier_runs, :list, default: [], doc: "the take in's earlier runs, oldest first"
+  attr :earlier_take_ins, :list, default: [], doc: "the earlier take ins, oldest first"
+  attr :changes, :map, default: %{}, doc: "what a member changed before confirming, by field"
+  attr :can_act, :boolean, default: false, doc: "whether the reader may answer"
+  attr :answers, :map, default: %{}, doc: "the form's draft, by question `public_id`"
+  attr :errors, :map, default: %{}, doc: "the form's errors, by question `public_id`"
+  attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+
+  def explore_tab(assigns) do
+    work_item = assigns.work_item
+    status = work_item.status
+    run = work_item[:run]
+    groups = Enum.filter(assigns.earlier_runs, &answered?/1)
+
+    assigns =
+      assign(assigns,
+        now: now(assigns),
+        status: status,
+        run: run,
+        groups: groups,
+        view: explore_view(status, run),
+        confirmed:
+          status == :shape &&
+            %{by: work_item.confirmed_by, at: work_item.confirmed_at},
+        mode: if(status == :questions and assigns.can_act, do: :form, else: :read)
+      )
+
+    ~H"""
+    <div id={@id} class="q-xp">
+      <.run_line :if={@run} id={"#{@id}-run"} run={@run} now={@now} />
+      <.explore_wait
+        :if={@view == :wait}
+        id={"#{@id}-wait"}
+        status={@status}
+        run={@run}
+        groups={@groups}
+      />
+      <.answers_read
+        :if={@view == :wait && @groups != []}
+        id={"#{@id}-read"}
+        run={@run}
+        groups={@groups}
+        now={@now}
+      />
+      <div :if={@status == :used_up} id={"#{@id}-limit"} class="q-xp-note">
+        <.icon name="hero-exclamation-triangle-micro" class="q-xp-note-i size-4" />
+        <p>
+          {ngettext(
+            "This take in has used its %{of} run, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",
+            "This take in has used its %{of} runs, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again.",
+            @run.of,
+            of: Format.number(@run.of)
+          )}
+        </p>
+      </div>
+      <.questions_frame
+        :if={@view == :questions}
+        id={"#{@id}-questions"}
+        number={@work_item.number}
+        run={@run}
+        mode={@mode}
+        answers={@answers}
+        errors={@errors}
+      />
+      <.proposal_frame
+        :if={@view == :proposal}
+        id={"#{@id}-proposal"}
+        run={@run}
+        changes={@changes}
+        confirmed={@confirmed}
+        now={@now}
+      />
+      <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
+      <.earlier_runs :if={@earlier_runs != []} id={"#{@id}-earlier"} runs={@earlier_runs} now={@now} />
+      <.earlier_take_ins
+        :if={@earlier_take_ins != []}
+        id={"#{@id}-take-ins"}
+        take_ins={@earlier_take_ins}
+        now={@now}
+      />
+    </div>
+    """
+  end
+
+  # What the tab shows for the latest run: what comes next while it is queued or running,
+  # else what the run gave.
+  defp explore_view(status, _run) when status in [:queued, :running], do: :wait
+  defp explore_view(_status, nil), do: nil
+  defp explore_view(_status, %{outcome: :proposal}), do: :proposal
+  defp explore_view(_status, %{outcome: :questions}), do: :questions
+  defp explore_view(_status, _run), do: :no_result
+
+  defp answered?(run), do: run[:outcome] == :questions and run[:answered_by] != nil
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :now, :any, required: true
+
+  # Which run of the take in, its id, its state, its time. Before a run exists, and while
+  # it is pending, it is Queued, Explore's word.
+  defp run_line(assigns) do
+    run = assigns.run
+    state = run[:state]
+
+    assigns =
+      assign(assigns,
+        place: run_place(run),
+        state_word:
+          if(state in [nil, :pending],
+            do: gettext("Queued"),
+            else: RunComponents.state_label(state)
+          ),
+        state_class:
+          cond do
+            state == :running -> "q-xp-run-on"
+            state in [:failed, :cancelled, :lost] -> "q-xp-run-bad"
+            true -> nil
+          end,
+        time: run_time(run, assigns.now)
+      )
+
+    ~H"""
+    <p id={@id} class="q-xp-run">
+      <span><b>{@place}</b></span>
+      <span :if={@run[:id]}><.rich text={run_ref(@run)} /></span>
+      <span class={@state_class}>{@state_word}</span>
+      <span :if={@time}><.rich text={@time} /></span>
+    </p>
+    """
+  end
+
+  defp run_place(run),
+    do:
+      gettext("Run %{attempt} of %{of}",
+        attempt: Format.number(run.attempt),
+        of: Format.number(run.of)
+      )
+
+  defp run_time(%{state: :running, started_at: %DateTime{} = at}, now),
+    do: rich_gettext("started %{when}", when: inline_ago(at, now))
+
+  defp run_time(%{state: :lost, ended_at: %DateTime{} = at}, now),
+    do: rich_gettext("lost %{when}", when: inline_ago(at, now))
+
+  defp run_time(%{state: :cancelled, ended_at: %DateTime{} = at}, now),
+    do: rich_gettext("cancelled %{when}", when: inline_ago(at, now))
+
+  defp run_time(%{state: state, ended_at: %DateTime{} = at, duration: duration}, now)
+       when state in [:completed, :failed] and is_binary(duration),
+       do:
+         rich_gettext("ended %{when}, after %{duration}",
+           when: inline_ago(at, now),
+           duration: duration
+         )
+
+  defp run_time(_run, _now), do: nil
+
+  attr :id, :string, required: true
+  attr :status, :atom, required: true
+  attr :run, :map, required: true
+  attr :groups, :list, required: true
+
+  # Queued or running: what Qory does next, with whose answers.
+  defp explore_wait(assigns) do
+    run = assigns.run
+    whose = answers_of(Enum.map(assigns.groups, & &1.answered_by))
+    attempt = Format.number(run.attempt)
+    of = Format.number(run.of)
+
+    {heading, line} =
+      case {assigns.status, whose} do
+        {:queued, :none} ->
+          {gettext("Explore is queued."),
+           gettext(
+             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know.",
+             attempt: attempt,
+             of: of
+           )}
+
+        {:queued, whose} ->
+          {queued_heading(whose),
+           gettext(
+             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start.",
+             attempt: attempt,
+             of: of
+           )}
+
+        {:running, :none} ->
+          {gettext("Qory is exploring."),
+           gettext(
+             "Run %{attempt} of %{of} reads the ticket and the code. It proposes how to build it, or asks what it needs to know.",
+             attempt: attempt,
+             of: of
+           )}
+
+        {:running, whose} ->
+          {running_heading(whose),
+           gettext(
+             "Run %{attempt} of %{of} reads the ticket, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know.",
+             attempt: attempt,
+             of: of
+           )}
+      end
+
+    assigns = assign(assigns, heading: heading, line: line)
+
+    ~H"""
+    <div id={@id} class="q-xp-wait">
+      <.bee />
+      <div>
+        <p id={"#{@id}-h"}><b>{@heading}</b></p>
+        <p>{@line}</p>
+      </div>
+    </div>
+    """
+  end
+
+  defp queued_heading(:you), do: gettext("Explore is queued again, with your answers.")
+
+  defp queued_heading({:name, name}),
+    do: gettext("Explore is queued again, with %{name}'s answers.", name: name)
+
+  defp queued_heading(:several),
+    do: gettext("Explore is queued again, with the answers of this take in.")
+
+  defp running_heading(:you), do: gettext("Qory is exploring again, with your answers.")
+
+  defp running_heading({:name, name}),
+    do: gettext("Qory is exploring again, with %{name}'s answers.", name: name)
+
+  defp running_heading(:several),
+    do: gettext("Qory is exploring again, with the answers of this take in.")
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :groups, :list, required: true
+  attr :now, :any, required: true
+
+  # The answers a run reads: every answer of the take in, one group for each earlier run
+  # that asked, under its run and who answered it.
+  defp answers_read(assigns) do
+    n = length(assigns.groups)
+
+    assigns =
+      assign(assigns,
+        heading:
+          gettext("The answers run %{attempt} reads", attempt: Format.number(assigns.run.attempt)),
+        caption:
+          ngettext(
+            "Explore asked these in %{number} earlier run of this take in, shown as plain text.",
+            "Explore asked these in %{number} earlier runs of this take in, shown as plain text.",
+            n,
+            number: Format.number(n)
+          )
+      )
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <h2 id={"#{@id}-h"}>{@heading}</h2>
+      </div>
+      <p class="q-xp-cap">
+        <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+        <span>{@caption}</span>
+      </p>
+      <div class="q-xp-body">
+        <section
+          :for={run <- @groups}
+          id={"#{@id}-#{run.id}"}
+          class="q-xp-grp"
+          aria-labelledby={"#{@id}-#{run.id}-h"}
+        >
+          <h3 id={"#{@id}-#{run.id}-h"}>
+            <span>{run_place(run)}</span>
+            <.rich text={run_ref(run)} />
+          </h3>
+          <.answered id={"#{@id}-#{run.id}-qa"} run={run} now={@now} />
+        </section>
+      </div>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :now, :any, required: true
+
+  # One run's questions and their answers, under who answered them, once: one member sends
+  # a run's answers together.
+  defp answered(assigns) do
+    by = assigns.run.answered_by
+    at = inline_ago(assigns.run.answered_at, assigns.now)
+
+    assigns =
+      assign(
+        assigns,
+        :who,
+        if(you?(by),
+          do: rich_gettext("You answered %{when}", when: at),
+          else: rich_gettext("%{name} answered %{when}", name: by.name, when: at)
+        )
+      )
+
+    ~H"""
+    <p id={"#{@id}-who"} class="q-xp-who"><.rich text={@who} /></p>
+    <ol class="q-xp-qs">
+      <li :for={question <- @run.questions} id={"#{@id}-#{question.public_id}"}>
+        <span class="q-xp-n" aria-hidden="true"></span>
+        <div>
+          <div class="q-xp-val" phx-no-format>{question.text}</div>
+          <div class="q-xp-ans" phx-no-format>{question.answer}</div>
+        </div>
+      </li>
+    </ol>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :run, :map, required: true
+  attr :mode, :atom, required: true, values: [:form, :read]
+  attr :answers, :map, default: %{}
+  attr :errors, :map, default: %{}
+
+  # Qory's questions, in a frame that names the run; with the form for a member who may
+  # answer them.
+  defp questions_frame(assigns) do
+    run = assigns.run
+    n = length(run.questions)
+
+    first_error =
+      assigns.mode == :form &&
+        Enum.find(run.questions, &Map.has_key?(assigns.errors, &1.public_id))
+
+    assigns =
+      assign(assigns,
+        n: n,
+        first_error: first_error,
+        heading: ngettext("Qory's question", "Qory's questions", n),
+        next:
+          gettext(
+            "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
+            attempt: Format.number(run.attempt + 1),
+            of: Format.number(run.of)
+          )
+      )
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <.bee class="q-bl-bee" />
+        <h2 id={"#{@id}-h"}>{@heading}</h2>
+      </div>
+      <.wrote_caption run={@run} />
+      <div class="q-xp-body">
+        <div :if={present?(@run[:understanding])} class="q-xp-sec">
+          <h3>{gettext("What Qory understood so far")}</h3>
+          <div class="q-xp-val" phx-no-format>{@run.understanding}</div>
+        </div>
+        <div class="q-xp-sec">
+          <h3>{gettext("What Qory needs to know")}</h3>
+          <%= if @mode == :form do %>
+            <form
+              id={"#{@id}-form"}
+              phx-submit="answer"
+              novalidate
+              aria-labelledby={"#{@id}-h"}
+            >
+              <input type="hidden" name="number" value={@number} />
+              <ol class="q-xp-qs">
+                <.question_field
+                  :for={{question, i} <- Enum.with_index(@run.questions, 1)}
+                  id={@id}
+                  question={question}
+                  i={i}
+                  value={@answers[question.public_id]}
+                  error={@errors[question.public_id]}
+                />
+              </ol>
+              <span
+                :if={@first_error}
+                id={"#{@id}-focus-#{@first_error.public_id}"}
+                hidden
+                phx-mounted={JS.focus(to: "##{@id}-answer-#{@first_error.public_id}")}
+              ></span>
+              <div class="q-xp-form-foot">
+                <p id={"#{@id}-next"}>{@next}</p>
+                <.button id={"#{@id}-go"} type="submit" variant="primary">
+                  <.icon name="hero-paper-airplane-micro" class="size-3.5" />{gettext(
+                    "Answer and explore again"
+                  )}
+                </.button>
+              </div>
+            </form>
+          <% else %>
+            <ol class="q-xp-qs">
+              <li :for={question <- @run.questions} id={"#{@id}-q-#{question.public_id}"}>
+                <span class="q-xp-n" aria-hidden="true"></span>
+                <div>
+                  <div class="q-xp-val" phx-no-format>{question.text}</div>
+                </div>
+              </li>
+            </ol>
+          <% end %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :question, :map, required: true
+  attr :i, :integer, required: true
+  attr :value, :string, default: nil
+  attr :error, :any, default: nil
+
+  # A question and its answer's field, labelled for a screen reader and described by the
+  # question, and by its error where it has one.
+  defp question_field(assigns) do
+    pid = assigns.question.public_id
+    field = "#{assigns.id}-answer-#{pid}"
+
+    assigns =
+      assign(assigns,
+        q_id: "#{assigns.id}-q-#{pid}",
+        field: field,
+        error_id: "#{field}-error",
+        name: "answers[#{pid}]",
+        message: answer_error(assigns.error)
+      )
+
+    ~H"""
+    <li id={"#{@id}-item-#{@question.public_id}"}>
+      <span class="q-xp-n" aria-hidden="true"></span>
+      <div>
+        <div id={@q_id} class="q-xp-val" phx-no-format>{@question.text}</div>
+        <label for={@field} class="sr-only">
+          {gettext("Answer to question %{number}", number: Format.number(@i))}
+        </label>
+        <textarea
+          id={@field}
+          name={@name}
+          rows="2"
+          placeholder={gettext("Your answer")}
+          aria-describedby={if @message, do: "#{@q_id} #{@error_id}", else: @q_id}
+          aria-invalid={@message && "true"}
+        >{@value}</textarea>
+        <p :if={@message} id={@error_id} class="q-xp-err">
+          <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@message}
+        </p>
+      </div>
+    </li>
+    """
+  end
+
+  defp answer_error(nil), do: nil
+
+  defp answer_error(:blank),
+    do: gettext("Answer this question. If nobody knows, say so: Qory reads that too.")
+
+  defp answer_error({:too_long, limit}),
+    do: gettext("Write at most %{number} characters.", number: Format.number(limit))
+
+  attr :run, :map, required: true
+
+  defp wrote_caption(assigns) do
+    ~H"""
+    <p class="q-xp-cap">
+      <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+      <span>
+        <.rich text={
+          rich_gettext(
+            "Explore wrote this in run %{run}. Qory shows it as plain text, as the run wrote it.",
+            run: run_ref(@run)
+          )
+        } />
+      </span>
+    </p>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :changes, :map, default: %{}
+  attr :confirmed, :any, default: nil
+  attr :now, :any, required: true
+
+  # Qory's proposal, in a frame that names the run. Confirmed, who confirmed it; each
+  # section a member changed shows their words, marked, and Qory's under a toggle.
+  defp proposal_frame(assigns) do
+    proposal = assigns.run.proposal
+    changes = assigns.changes || %{}
+
+    assigns =
+      assign(assigns,
+        proposal: proposal,
+        changes: changes,
+        caption: proposal_caption(assigns.run, assigns.confirmed, changes != %{}, assigns.now)
+      )
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <.bee class="q-bl-bee" />
+        <h2 id={"#{@id}-h"}>{gettext("Qory's proposal")}</h2>
+        <.badge :if={@confirmed} color="info" class="q-xp-frame-b">{gettext("Confirmed")}</.badge>
+      </div>
+      <p :if={@caption} class="q-xp-cap">
+        <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
+        <span><.rich text={@caption} /></span>
+      </p>
+      <.wrote_caption :if={!@caption} run={@run} />
+      <div class="q-xp-body">
+        <.proposal_section
+          id={"#{@id}-complexity"}
+          label={gettext("Complexity")}
+          value={@proposal.complexity}
+          change={@changes[:complexity]}
+        >
+          <:draw :let={complexity}>
+            <div class="q-xp-cx">
+              <.badge>{level_word(complexity.level)}</.badge>
+              <div class="q-xp-val" phx-no-format>{complexity.reason}</div>
+            </div>
+          </:draw>
+        </.proposal_section>
+        <.proposal_section
+          id={"#{@id}-understanding"}
+          label={gettext("Understanding")}
+          value={@proposal.understanding}
+          change={@changes[:understanding]}
+        >
+          <:draw :let={text}>
+            <div class="q-xp-val" phx-no-format>{text}</div>
+          </:draw>
+        </.proposal_section>
+        <.proposal_section
+          id={"#{@id}-scope-in"}
+          label={gettext("In scope")}
+          value={@proposal.scope_in}
+          change={@changes[:scope_in]}
+        >
+          <:draw :let={items}><.text_list items={items} /></:draw>
+        </.proposal_section>
+        <.proposal_section
+          id={"#{@id}-scope-out"}
+          label={gettext("Out of scope")}
+          value={@proposal.scope_out}
+          change={@changes[:scope_out]}
+        >
+          <:draw :let={items}><.text_list items={items} /></:draw>
+        </.proposal_section>
+        <.proposal_section
+          id={"#{@id}-approach"}
+          label={gettext("Approach")}
+          value={@proposal.approach}
+          change={@changes[:approach]}
+        >
+          <:draw :let={text}>
+            <div class="q-xp-val" phx-no-format>{text}</div>
+          </:draw>
+        </.proposal_section>
+        <div id={"#{@id}-alternatives"} class="q-xp-sec">
+          <h3>{gettext("Not chosen")}</h3>
+          <ul class="q-xp-list">
+            <li :for={alternative <- @proposal.alternatives || []} phx-no-format>{alternative.text}<span class="q-xp-why"><.rich text={rich_gettext("Why not: %{reason}", reason: {:bdi, alternative.reason})} /></span></li>
+            <li :if={(@proposal.alternatives || []) == []} class="q-xp-none">{gettext("None")}</li>
+          </ul>
+        </div>
+        <div id={"#{@id}-knowledge"} class="q-xp-sec">
+          <h3>{gettext("What Qory learned, and where")}</h3>
+          <ul :if={(@proposal.knowledge || []) != []} class="q-xp-know">
+            <li :for={item <- @proposal.knowledge}>
+              <div class="q-xp-val" phx-no-format>{item.text}</div>
+              <ul :if={(item.sources || []) != []} class="q-xp-src" aria-label={gettext("Sources")}>
+                <li :for={url <- item.sources}><.source url={url} /></li>
+              </ul>
+            </li>
+          </ul>
+          <ul :if={(@proposal.knowledge || []) == []} class="q-xp-list">
+            <li class="q-xp-none">{gettext("None")}</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  # Who confirmed the proposal and when, with or without their changes; nil before.
+  defp proposal_caption(_run, falsy, _changed, _now) when falsy in [nil, false], do: nil
+
+  defp proposal_caption(run, %{by: by, at: at}, changed, now) do
+    at = inline_ago(at, now)
+    run = run_ref(run)
+
+    case {you?(by), changed} do
+      {true, true} ->
+        rich_gettext(
+          "You confirmed it %{when}, with your changes. Explore wrote the rest in run %{run}, shown as plain text.",
+          when: at,
+          run: run
+        )
+
+      {false, true} ->
+        rich_gettext(
+          "%{name} confirmed it %{when}, with their changes. Explore wrote the rest in run %{run}, shown as plain text.",
+          name: by.name,
+          when: at,
+          run: run
+        )
+
+      {true, false} ->
+        rich_gettext(
+          "You confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text.",
+          when: at,
+          run: run
+        )
+
+      {false, false} ->
+        rich_gettext(
+          "%{name} confirmed it %{when}. Explore wrote it in run %{run}, shown as plain text.",
+          name: by.name,
+          when: at,
+          run: run
+        )
+    end
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :any, required: true, doc: "the run's words"
+  attr :change, :map, default: nil
+  slot :draw, required: true
+
+  # A section of the proposal: its label, and the run's words; where a member changed it,
+  # their words, marked, with Qory's words under Show Qory's words.
+  defp proposal_section(%{change: nil} = assigns) do
+    ~H"""
+    <div id={@id} class="q-xp-sec">
+      <h3>{@label}</h3>
+      {render_slot(@draw, @value)}
+    </div>
+    """
+  end
+
+  defp proposal_section(assigns) do
+    by = assigns.change.by
+
+    assigns =
+      assign(
+        assigns,
+        :by_words,
+        if(you?(by),
+          do: gettext("Changed by you"),
+          else: gettext("Changed by %{name}", name: by.name)
+        )
+      )
+
+    ~H"""
+    <div id={@id} class="q-xp-sec q-xp-changed">
+      <h3>
+        {@label}
+        <span id={"#{@id}-by"}><.badge color="info">{@by_words}</.badge></span>
+        <button
+          id={"#{@id}-toggle"}
+          type="button"
+          class="q-xp-toggle"
+          aria-expanded="false"
+          aria-controls={"#{@id}-was"}
+          phx-click={
+            JS.toggle_attribute({"aria-expanded", "true", "false"})
+            |> JS.toggle_attribute({"hidden", "hidden"}, to: "##{@id}-was")
+          }
+          phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+        >
+          <span class="q-xp-show">{gettext("Show Qory's words")}</span>
+          <span class="q-xp-hide">{gettext("Hide Qory's words")}</span>
+        </button>
+      </h3>
+      <div class="q-xp-mine">{render_slot(@draw, @change.value)}</div>
+      <div
+        id={"#{@id}-was"}
+        class="q-xp-was"
+        hidden
+        phx-mounted={JS.ignore_attributes(["hidden"])}
+      >
+        <p class="q-xp-was-l">{gettext("Qory's words")}</p>
+        {render_slot(@draw, @value)}
+      </div>
+    </div>
+    """
+  end
+
+  attr :items, :list, required: true
+
+  defp text_list(assigns) do
+    ~H"""
+    <ul class="q-xp-list">
+      <li :for={item <- @items} phx-no-format>{item}</li>
+      <li :if={@items == []} class="q-xp-none">{gettext("None")}</li>
+    </ul>
+    """
+  end
+
+  defp level_word(:simple), do: pgettext("complexity", "Simple")
+  defp level_word(:standard), do: pgettext("complexity", "Standard")
+  defp level_word(:complex), do: pgettext("complexity", "Complex")
+
+  attr :url, :string, required: true
+
+  # A source the run gave: a link only where it is an https url core allows as a link
+  # out, its host in full and the rest cut where room ends, each isolated, the whole
+  # address in its title; else the address as text, every character outside printable
+  # ASCII percent-encoded, so no look-alike passes for another.
+  defp source(assigns) do
+    url = assigns.url
+
+    assigns =
+      case out?(url) && Regex.run(~r{\Ahttps://([^/?#]+)(.*)\z}is, url) do
+        [_all, host, rest] -> assign(assigns, link: true, host: host, rest: rest)
+        _none -> assign(assigns, link: false, text: ascii(url))
+      end
+
+    ~H"""
+    <.external_link :if={@link} href={@url} class="q-xp-src-a" title={@url}>
+      <.icon name="hero-globe-alt-micro" class="q-xp-src-i size-3.5" />
+      <bdi class="q-xp-host">{@host}</bdi><bdi class="q-xp-path">{@rest}</bdi>
+    </.external_link>
+    <span :if={!@link} class="q-xp-src-t"><bdi>{@text}</bdi></span>
+    """
+  end
+
+  defp ascii(url) when is_binary(url), do: URI.encode(url, &(&1 in 33..126))
+  defp ascii(_url), do: ""
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+
+  # A run that gave no result: what happened, and its page.
+  defp no_result(assigns) do
+    {icon, heading, body} = no_result_words(assigns.run)
+    assigns = assign(assigns, icon: icon, heading: heading, body: body)
+
+    ~H"""
+    <div id={@id} class="q-xp-wait q-xp-bad">
+      <.icon name={@icon} class="q-xp-bad-i size-4" />
+      <div>
+        <p id={"#{@id}-h"}><b>{@heading}</b></p>
+        <p>{@body}</p>
+        <p>
+          <.rich text={rich_gettext("The run's page, %{run}, shows what it did.", run: run_ref(@run))} />
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  defp no_result_words(%{state: :lost}),
+    do:
+      {"hero-signal-slash-micro", gettext("The run was lost."),
+       gettext(
+         "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."
+       )}
+
+  defp no_result_words(%{state: :cancelled}),
+    do:
+      {"hero-stop-circle-micro", gettext("The run was cancelled."),
+       gettext(
+         "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."
+       )}
+
+  defp no_result_words(%{outcome: :none}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
+       gettext(
+         "It sent no result, so there is nothing for Qory to show or for a member to confirm."
+       )}
+
+  defp no_result_words(%{outcome: :refused}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run's result did not pass Qory's check."),
+       gettext(
+         "Qory reads a result only in the format Explore uses, and at most 128 KiB. This one was not, so Qory does not show it."
+       )}
+
+  defp no_result_words(_error),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended with an error."),
+       gettext(
+         "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
+       )}
+
+  attr :id, :string, required: true
+  attr :runs, :list, required: true
+  attr :now, :any, required: true
+
+  # The take in's earlier runs, each folded: its place, its id, what it gave, when.
+  defp earlier_runs(assigns) do
+    ~H"""
+    <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
+      <h3 id={"#{@id}-h"}>{gettext("Earlier runs of this take in")}</h3>
+      <details :for={run <- @runs} id={"#{@id}-#{run.id}"}>
+        <summary>
+          <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
+          <span class="q-xp-it"><b>{run_place(run)}</b></span>
+          <span class="q-xp-it q-mono">{RunComponents.short_id(run.id)}</span>
+          <span class="q-xp-it">{run_gave(run)}</span>
+          <span :if={run[:ended_at]} class="q-xp-it">
+            {time_tag(run.ended_at, Format.relative(run.ended_at, @now))}
+          </span>
+        </summary>
+        <div class="q-xp-inner">
+          <.run_body id={"#{@id}-#{run.id}-body"} run={run} now={@now} />
+        </div>
+      </details>
+    </section>
+    """
+  end
+
+  # What a run gave, in a fold's summary.
+  defp run_gave(%{outcome: :questions, questions: questions}) do
+    n = length(questions)
+    ngettext("Asked %{number} question", "Asked %{number} questions", n, number: Format.number(n))
+  end
+
+  defp run_gave(%{outcome: :proposal}), do: gettext("Proposed how to build it")
+  defp run_gave(%{state: state}), do: RunComponents.state_label(state)
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :now, :any, required: true
+
+  # Inside a run's fold: its questions and the answers, its questions nobody answered,
+  # its proposal, or what happened to it.
+  defp run_body(%{run: %{outcome: :questions}} = assigns) do
+    n = length(assigns.run.questions)
+
+    assigns =
+      assign(
+        assigns,
+        :heading,
+        ngettext("Qory's question, and the answer", "Qory's questions, and the answers", n)
+      )
+
+    ~H"""
+    <section :if={answered?(@run)} id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <h2 id={"#{@id}-h"}>{@heading}</h2>
+      </div>
+      <p class="q-xp-cap">
+        <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+        <span>
+          <.rich text={
+            rich_gettext("Explore asked these in run %{run}, shown as plain text.",
+              run: run_ref(@run)
+            )
+          } />
+        </span>
+      </p>
+      <div class="q-xp-body">
+        <.answered id={"#{@id}-qa"} run={@run} now={@now} />
+      </div>
+    </section>
+    <.questions_frame :if={!answered?(@run)} id={@id} number={0} run={@run} mode={:read} />
+    """
+  end
+
+  defp run_body(%{run: %{outcome: :proposal}} = assigns) do
+    ~H"""
+    <.proposal_frame id={@id} run={@run} now={@now} />
+    """
+  end
+
+  defp run_body(assigns) do
+    ~H"""
+    <.no_result id={@id} run={@run} />
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :take_ins, :list, required: true
+  attr :now, :any, required: true
+
+  # The earlier take ins, each folded: who took it in and when, how it ended, how many
+  # runs; inside, its runs, which counted apart from this take in.
+  defp earlier_take_ins(assigns) do
+    ~H"""
+    <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
+      <h3 id={"#{@id}-h"}>{gettext("Earlier take ins")}</h3>
+      <details :for={{take_in, i} <- Enum.with_index(@take_ins, 1)} id={"#{@id}-#{i}"}>
+        <summary>
+          <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
+          <span class="q-xp-it"><b><.rich text={taken_in_words(take_in, @now)} /></b></span>
+          <span class="q-xp-it"><.rich text={ended_words(take_in, @now)} /></span>
+          <span class="q-xp-it">
+            {ngettext("%{count} run", "%{count} runs", length(take_in.runs))}
+          </span>
+        </summary>
+        <div class="q-xp-inner">
+          <p>{gettext("Its runs counted apart from this take in.")}</p>
+          <%= for run <- take_in.runs do %>
+            <.run_line id={"#{@id}-#{i}-#{run.id}"} run={run} now={@now} />
+            <.run_body id={"#{@id}-#{i}-#{run.id}-body"} run={run} now={@now} />
+          <% end %>
+        </div>
+      </details>
+    </section>
+    """
+  end
+
+  defp taken_in_words(%{taken_in_by: by, taken_in_at: at}, now) do
+    if you?(by),
+      do: rich_gettext("Taken in %{date} by you", date: day(at, now)),
+      else: rich_gettext("Taken in %{date} by %{name}", date: day(at, now), name: by.name)
+  end
+
+  defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now) do
+    at = inline_ago(at, now)
+
+    case {ended, you?(by)} do
+      {:declined, true} -> rich_gettext("Declined by you %{when}", when: at)
+      {:declined, false} -> rich_gettext("Declined by %{name} %{when}", name: by.name, when: at)
+      {:closed, true} -> rich_gettext("Closed by you %{when}", when: at)
+      {:closed, false} -> rich_gettext("Closed by %{name} %{when}", name: by.name, when: at)
+      {:undone, true} -> rich_gettext("Undone by you %{when}", when: at)
+      {:undone, false} -> rich_gettext("Undone by %{name} %{when}", name: by.name, when: at)
+    end
+  end
+
+  defp present?(text) when is_binary(text), do: String.trim(text) != ""
+  defp present?(_text), do: false
+
+  ## The edit page
+
+  @doc false
+  def edit_title(number), do: gettext("Change Qory's proposal · #%{number}", number: number)
+
+  @doc """
+  The edit page (`/work/:number/explore/edit`), a page with its own address: Explore, the
+  way back (`explore_path`); what it is for; the fields a member may change, each starting
+  from the run's words (`proposal`, as `explore_tab/1` describes it): Complexity (its
+  level and why), Understanding, In scope and Out of scope (one line for each entry; a
+  line break inside an entry shows as a space), and Approach. A field whose value differs
+  from the run's words says Changed, in its description. Then that what Qory did not
+  choose and what it learned stay as Qory wrote them, and Confirm with your changes
+  (`"confirm_changes"`) and Cancel, back to Explore's tab.
+
+  The form sends `"change_proposal"` as a member types and `"confirm_changes"` to
+  confirm, with the work item's `number`, `complexity[level]` (`simple`, `standard` or
+  `complex`), `complexity[reason]`, `understanding`, `scope_in`, `scope_out` and
+  `approach`. `values` is what the fields hold, by those names (`:level`, `:reason`,
+  `:understanding`, `:scope_in`, `:scope_out`, `:approach`), each a string; the run's
+  words where it is not given. `errors`, by the same names, says what is wrong with a
+  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}` or
+  `{:too_many_lines, limit}`; the focus goes to the first field at fault.
+  """
+  attr :id, :string, default: "work-item-edit"
+  attr :number, :integer, required: true, doc: "the work item's number"
+  attr :proposal, :map, required: true, doc: "the run's proposal"
+  attr :values, :map, default: %{}, doc: "what the fields hold, by name"
+  attr :errors, :map, default: %{}, doc: "what is wrong, by field"
+  attr :explore_path, :string, required: true, doc: "Explore's tab"
+
+  def proposal_edit(assigns) do
+    initial = edit_values(assigns.proposal)
+    values = Map.merge(initial, assigns.values || %{})
+
+    changed =
+      for field <- @edit_fields,
+          changed?(field, values[field], initial[field]),
+          into: MapSet.new(),
+          do: field
+
+    first_error = Enum.find(@edit_fields, &Map.has_key?(assigns.errors, &1))
+
+    assigns =
+      assign(assigns,
+        values: values,
+        changed: changed,
+        first_error: first_error,
+        complexity_changed: MapSet.member?(changed, :level) or MapSet.member?(changed, :reason)
+      )
+
+    ~H"""
+    <div id={@id} class="q-xp-edit">
+      <.link id={"#{@id}-back"} navigate={@explore_path} class="q-xp-back">
+        <.icon name="hero-arrow-left-micro" class="size-3.5" />{stage_name(:explore)}
+      </.link>
+      <h2 id={"#{@id}-h"}>{gettext("Change Qory's proposal")}</h2>
+      <p class="q-xp-lead">
+        {gettext(
+          "Change what Qory got wrong, then confirm. Qory's words stay in the Explore tab beside yours."
+        )}
+      </p>
+      <form
+        id={"#{@id}-form"}
+        phx-change="change_proposal"
+        phx-submit="confirm_changes"
+        novalidate
+        aria-labelledby={"#{@id}-h"}
+      >
+        <input type="hidden" name="number" value={@number} />
+        <div
+          id={"#{@id}-complexity"}
+          class="q-xp-field"
+          role="group"
+          aria-labelledby={"#{@id}-complexity-l"}
+        >
+          <div class="q-xp-lbl-row">
+            <span id={"#{@id}-complexity-l"} class="q-xp-lbl">{gettext("Complexity")}</span>
+            <span :if={@complexity_changed} id={"#{@id}-complexity-ch"}>
+              <.badge color="info">{pgettext("field edited", "Changed")}</.badge>
+            </span>
+          </div>
+          <div class="q-xp-cx-row">
+            <span class="q-xp-sub">
+              <label for={"#{@id}-level"}>{pgettext("complexity", "Level")}</label>
+              <select
+                id={"#{@id}-level"}
+                name="complexity[level]"
+                aria-describedby={described([@complexity_changed && "#{@id}-complexity-ch"])}
+              >
+                <option
+                  :for={level <- [:simple, :standard, :complex]}
+                  value={level}
+                  selected={to_string(level) == @values.level}
+                >
+                  {level_word(level)}
+                </option>
+              </select>
+            </span>
+            <span class="q-xp-sub">
+              <label for={"#{@id}-reason"}>{gettext("Why")}</label>
+              <.edit_area
+                id={"#{@id}-reason"}
+                name="complexity[reason]"
+                value={@values.reason}
+                rows="2"
+                described={[@complexity_changed && "#{@id}-complexity-ch"]}
+                error={edit_error(:reason, @errors[:reason])}
+              />
+            </span>
+          </div>
+        </div>
+        <.edit_field
+          id={"#{@id}-understanding"}
+          name="understanding"
+          label={gettext("Understanding")}
+          value={@values.understanding}
+          rows="6"
+          changed={MapSet.member?(@changed, :understanding)}
+          error={edit_error(:understanding, @errors[:understanding])}
+        />
+        <.edit_field
+          id={"#{@id}-scope-in"}
+          name="scope_in"
+          label={gettext("In scope")}
+          hint={gettext("One line for each.")}
+          value={@values.scope_in}
+          rows="4"
+          changed={MapSet.member?(@changed, :scope_in)}
+          error={edit_error(:scope_in, @errors[:scope_in])}
+        />
+        <.edit_field
+          id={"#{@id}-scope-out"}
+          name="scope_out"
+          label={gettext("Out of scope")}
+          hint={gettext("One line for each. Leave it empty when nothing is left out.")}
+          value={@values.scope_out}
+          rows="4"
+          changed={MapSet.member?(@changed, :scope_out)}
+          error={edit_error(:scope_out, @errors[:scope_out])}
+        />
+        <.edit_field
+          id={"#{@id}-approach"}
+          name="approach"
+          label={gettext("Approach")}
+          value={@values.approach}
+          rows="3"
+          changed={MapSet.member?(@changed, :approach)}
+          error={edit_error(:approach, @errors[:approach])}
+        />
+        <span
+          :if={@first_error}
+          id={"#{@id}-focus-#{@first_error}"}
+          hidden
+          phx-mounted={JS.focus(to: "##{@id}-#{edit_dom(@first_error)}")}
+        ></span>
+        <p class="q-xp-kept">
+          <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+          <span>
+            {gettext(
+              "The approaches Qory did not choose, and what it learned, stay as Qory wrote them."
+            )}
+          </span>
+        </p>
+        <div class="q-xp-foot">
+          <p>
+            {gettext("Confirming makes work item #%{number} ready for Shape.", number: @number)}
+          </p>
+          <div class="q-wi-acts">
+            <.button id={"#{@id}-go"} type="submit" variant="primary">
+              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Confirm with your changes")}
+            </.button>
+            <.button id={"#{@id}-cancel"} variant="ghost" navigate={@explore_path}>
+              {gettext("Cancel")}
+            </.button>
+          </div>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, default: nil
+  attr :value, :string, default: nil
+  attr :rows, :string, required: true
+  attr :changed, :boolean, default: false
+  attr :error, :string, default: nil
+
+  # A field of the edit page: its label, Changed where the member changed it, its hint,
+  # the field, and its error; the hint, Changed and the error describe it.
+  defp edit_field(assigns) do
+    ~H"""
+    <div class={["q-xp-field", @error && "q-xp-field-bad"]}>
+      <div class="q-xp-lbl-row">
+        <label for={@id} class="q-xp-lbl">{@label}</label>
+        <span :if={@changed} id={"#{@id}-ch"}>
+          <.badge color="info">{pgettext("field edited", "Changed")}</.badge>
+        </span>
+      </div>
+      <span :if={@hint} id={"#{@id}-hint"} class="q-xp-hint">{@hint}</span>
+      <.edit_area
+        id={@id}
+        name={@name}
+        value={@value}
+        rows={@rows}
+        described={[@hint && "#{@id}-hint", @changed && "#{@id}-ch"]}
+        error={@error}
+      />
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, default: nil
+  attr :rows, :string, required: true
+  attr :described, :list, default: []
+  attr :error, :string, default: nil
+
+  defp edit_area(assigns) do
+    ~H"""
+    <textarea
+      id={@id}
+      name={@name}
+      rows={@rows}
+      aria-describedby={described(@described ++ [@error && "#{@id}-err"])}
+      aria-invalid={@error && "true"}
+    >{@value}</textarea>
+    <p :if={@error} id={"#{@id}-err"} class="q-xp-err">
+      <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@error}
+    </p>
+    """
+  end
+
+  defp described(ids) do
+    case Enum.filter(ids, &is_binary/1) do
+      [] -> nil
+      ids -> Enum.join(ids, " ")
+    end
+  end
+
+  # The fields as the edit page shows the run's words: a scope entry one line, its line
+  # breaks as spaces.
+  defp edit_values(proposal) do
+    %{
+      level: to_string(proposal.complexity.level),
+      reason: proposal.complexity.reason,
+      understanding: proposal.understanding,
+      scope_in: lines(proposal.scope_in),
+      scope_out: lines(proposal.scope_out),
+      approach: proposal.approach
+    }
+  end
+
+  defp lines(entries),
+    do: Enum.map_join(entries || [], "\n", &String.replace(&1, ~r/\s*[\r\n]+\s*/, " "))
+
+  # A field differs from the run's words; a scope by its non-empty lines, trimmed, as a
+  # save reads them.
+  defp changed?(field, value, initial) when field in [:scope_in, :scope_out],
+    do: scope_lines(value) != scope_lines(initial)
+
+  defp changed?(_field, value, initial), do: (value || "") != (initial || "")
+
+  defp scope_lines(text) do
+    (text || "")
+    |> String.split(~r/\r\n|\r|\n/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp edit_dom(:level), do: "level"
+  defp edit_dom(:reason), do: "reason"
+  defp edit_dom(:understanding), do: "understanding"
+  defp edit_dom(:scope_in), do: "scope-in"
+  defp edit_dom(:scope_out), do: "scope-out"
+  defp edit_dom(:approach), do: "approach"
+
+  defp edit_error(_field, nil), do: nil
+  defp edit_error(:reason, :blank), do: gettext("Write why the work is at this level.")
+  defp edit_error(:understanding, :blank), do: gettext("Write the understanding.")
+  defp edit_error(:scope_in, :blank), do: gettext("Write at least one line in scope.")
+  defp edit_error(:approach, :blank), do: gettext("Write the approach.")
+
+  defp edit_error(:understanding, {:too_long, limit}),
+    do:
+      gettext("Write the understanding in at most %{number} characters.",
+        number: Format.number(limit)
+      )
+
+  defp edit_error(_field, {:too_long, limit}),
+    do: gettext("Write at most %{number} characters.", number: Format.number(limit))
+
+  defp edit_error(_field, {:line_too_long, limit}),
+    do: gettext("Write each line in at most %{number} characters.", number: Format.number(limit))
+
+  defp edit_error(_field, {:too_many_lines, limit}),
+    do: ngettext("Write at most %{count} line.", "Write at most %{count} lines.", limit)
 
   ## The Ticket tab
 
