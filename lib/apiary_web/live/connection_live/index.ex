@@ -32,7 +32,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   under its title, "Showing acme/shop only.", the name leading to the target's page, with
   the same target's runs (the Runs list narrowed alike), its policy (the target's Policy
   tab) and "Show all destinations", which drops the target alone; the sidebar's Runs
-  carries the target meanwhile (`ApiaryWeb.Narrowing.carried/1`). Nothing else carries it.
+  carries the target meanwhile (`ApiaryWeb.Narrowing.carried/2`). Nothing else carries it.
   What the address names is read with it (`ApiaryWeb.Narrowing`), so the line, its policy
   and the rail's current target are right from the first render, and an id that names no
   target of the workspace is dropped. The targets of one path on two systems, named
@@ -88,7 +88,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       counts={@nav_counts}
       nav={:network}
       width="work"
-      narrowed={Narrowing.carried(@narrowing)}
+      narrowed={Narrowing.carried(@narrowing, @filters.target)}
     >
       <:crumb>{gettext("Network access")}</:crumb>
 
@@ -1579,9 +1579,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: [{label, value, 0} | options]
   end
 
-  # Whether the list has the line of a narrowing: the runs with no target, or the targets
-  # of one path.
+  # Whether the list has the line of a narrowing: the runs with no target, the targets of
+  # one path, or a typed name that names no target.
   defp note?(%Filters{target: :none}, _narrowing), do: true
+  defp note?(%Filters{target: {:name, _name}}, _narrowing), do: true
   defp note?(%Filters{target: [_ | _]}, narrowing), do: is_binary(Narrowing.path(narrowing))
   defp note?(%Filters{}, _narrowing), do: false
 
@@ -1620,6 +1621,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             policy:
               assigns.policy_target && TargetComponents.target_path(scope, found, ["policy"]),
             runs: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(ids)}"
+          )
+
+        {:name, name} = target ->
+          assign(assigns,
+            path: name,
+            system: nil,
+            label: name,
+            shared_alone: false,
+            page: nil,
+            policy: nil,
+            runs:
+              ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(target)}"
           )
 
         :none ->

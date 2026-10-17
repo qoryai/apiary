@@ -164,7 +164,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   node's Settings tab lists its few sections in the page.
 - **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
   and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
-  `ApiaryWeb.Narrowing.carried/1`): its id in the address, named by its path, and its
+  `ApiaryWeb.Narrowing.carried/2`): its id in the address, named by its path, and its
   system only where two systems share the path, each entry's accessible name and tooltip
   saying so ("Runs, narrowed to acme/shop",
   "Network access, narrowed to acme/shop"). Nothing else carries it, and the palette's Go
@@ -464,8 +464,9 @@ query scoped to the workspace (`ApiaryWeb.Narrowing`): an id that names no targe
 workspace is dropped, like any value the page does not know, and the page says the link's
 target filter could not be read. An address of an older release, which named a target by
 `system=` and a path in `target=`, is dropped the same way. A typed `repo:` takes a
-target's name, or its id; a name that names no target is said in the notice of words that
-could not be read.
+target's name, or its id. A name that names no target is search text, never an address: it
+stays in the query (`?q=target:acme/nowhere`), the list matches no run, and the line names
+it as typed ("Showing the runs of acme/nowhere only.").
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by

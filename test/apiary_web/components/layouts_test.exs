@@ -1264,7 +1264,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
     test "on Runs narrowed to a target, Runs and Network access carry it; every other entry links plainly",
          %{scope: scope} do
-      narrowed = %{ids: [@tg_a], system: nil, path: "acme/shop"}
+      narrowed = %{target: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:runs, :network] do
         html = narrowed_shell(scope, nav, narrowed)
@@ -1294,7 +1294,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
     test "the system is named only where two systems share the path; the ids are carried",
          %{scope: scope} do
-      shared = %{ids: [@tg_b], system: "gitlab.example", path: "acme/shop"}
+      shared = %{target: [@tg_b], system: "gitlab.example", path: "acme/shop"}
       html = narrowed_shell(scope, :runs, shared)
 
       assert attribute(html, "#nav-network", "href") ==
@@ -1304,7 +1304,7 @@ defmodule ApiaryWeb.LayoutsTest do
                "Network access, narrowed to gitlab.example/acme/shop"
 
       # The targets of one path on two systems, named by the path, carried by their ids.
-      both = %{ids: [@tg_a, @tg_b], system: nil, path: "acme/shop"}
+      both = %{target: [@tg_a, @tg_b], system: nil, path: "acme/shop"}
       html = narrowed_shell(scope, :network, both)
 
       assert attribute(html, "#nav-runs", "href") ==
@@ -1314,7 +1314,7 @@ defmodule ApiaryWeb.LayoutsTest do
     end
 
     test "nothing carries on any other page, or without a target", %{scope: scope} do
-      narrowed = %{ids: [@tg_a], system: nil, path: "acme/shop"}
+      narrowed = %{target: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:overview, :targets, :policy, :settings] do
         html = narrowed_shell(scope, nav, narrowed)
@@ -1326,7 +1326,19 @@ defmodule ApiaryWeb.LayoutsTest do
       html = narrowed_shell(scope, :runs, nil)
       assert attribute(html, "#nav-network", "href") == workspace_path(scope, "/network")
 
-      assert ApiaryWeb.Narrowing.carried(nil) == nil
+      assert ApiaryWeb.Narrowing.carried(nil, nil) == nil
+      assert ApiaryWeb.Narrowing.carried(nil, :none) == nil
+    end
+
+    test "a typed name that names no target is carried as the query keeps it", %{scope: scope} do
+      narrowed = ApiaryWeb.Narrowing.carried(nil, {:name, "acme/nowhere"})
+      html = narrowed_shell(scope, :runs, narrowed)
+
+      assert attribute(html, "#nav-network", "href") ==
+               workspace_path(scope, "/network?q=target%3Aacme%2Fnowhere")
+
+      assert attribute(html, "#nav-network", "aria-label") ==
+               "Network access, narrowed to acme/nowhere"
     end
 
     defp narrowed_shell(scope, nav, narrowed) do

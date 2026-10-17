@@ -28,6 +28,11 @@ defmodule Apiary.Runs.Filters do
   an older release and is dropped. `target_params/1` writes them, for every link to a
   filtered page.
 
+  A name a reader typed after `repo:` or `target:` that names no target is search text,
+  not an address: it stays in the query, `q=target:acme/nowhere`, and is the target filter
+  `{:name, text}`, the runs whose target's path is that text, none until a target has it.
+  The free text is the query's other words. No path is ever a `target` value.
+
   `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
@@ -120,8 +125,11 @@ defmodule Apiary.Runs.Filters do
             page: 1,
             dropped: []
 
-  @typedoc "No target, the runs that name none (`:none`), or the targets of these ids."
-  @type target :: nil | :none | [String.t()]
+  @typedoc """
+  No target, the runs that name none (`:none`), the targets of these ids, or a typed name
+  that names no target (`{:name, text}`), which the query keeps.
+  """
+  @type target :: nil | :none | [String.t()] | {:name, String.t()}
 
   @type t :: %__MODULE__{
           kind: :runs | :connections,
@@ -220,6 +228,7 @@ defmodule Apiary.Runs.Filters do
     {since, d5} = read(params, "since", &one_of(&1, @ranges[kind]))
     {page, d6} = read(params, "page", &page/1)
     {q, d7} = read(params, "q", &query_text/1)
+    {target, q, d7} = named(target, q, d7, params, kind)
     {sort, d8} = read(params, "sort", &one_of(&1, @sorts[kind]))
 
     filters = %__MODULE__{
@@ -290,7 +299,7 @@ defmodule Apiary.Runs.Filters do
       {"runtime", f.runtime},
       {"host", f.host},
       {"node", f.node},
-      {"q", f.q},
+      {"q", q_param(f)},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
       {"from", f.from && Date.to_iso8601(f.from)},
       {"to", f.to && Date.to_iso8601(f.to)},
@@ -403,35 +412,45 @@ defmodule Apiary.Runs.Filters do
   the page knows and whose value it could not read, as they were typed. Back to page 1.
 
   `resolve:` is how a `repo:` value becomes a target: a function of the text that answers
-  the ids of the targets it names, or nil (refused); without it the text is read as ids
-  (`tg_…`, several joined by commas). `ApiaryWeb.Narrowing.typed/2` is the page's.
+  the ids of the targets it names, or nil where it names none; without it the text is read
+  as ids (`tg_…`, several joined by commas). A name that names no target is the filter
+  `{:name, text}`, kept in the query as its word. `ApiaryWeb.Narrowing.typed/2` is the
+  page's.
   """
   @spec apply_query(t(), String.t(), keyword) :: {t(), [String.t()]}
   def apply_query(%__MODULE__{kind: kind} = f, text, opts \\ []) when is_binary(text) do
     resolve = Keyword.get(opts, :resolve, &ids/1)
-    current = f |> to_params() |> Map.drop(["page", "q"])
+    name = with {:name, name} <- f.target, do: name, else: (_ -> nil)
+    unnamed = if name, do: %{f | target: nil}, else: f
+    current = %{unnamed | q: nil} |> to_params() |> Map.drop(["page", "q"])
 
-    {params, free, refused} =
+    {params, free, refused, name} =
       text
       |> words()
-      |> Enum.reduce({current, [], []}, fn word, {params, free, refused} ->
+      |> Enum.reduce({current, [], [], name}, fn word, {params, free, refused, name} ->
         case qualifier(word, kind) do
           {qualifier, value} ->
             case query_params(qualifier, value, kind, resolve) do
               {:ok, drop, put} ->
-                {params |> Map.drop(drop) |> Map.merge(put), free, refused}
+                name = if "target" in drop, do: nil, else: name
+                {params |> Map.drop(drop) |> Map.merge(put), free, refused, name}
+
+              {:name, name} ->
+                {Map.delete(params, "target"), free, refused, name}
 
               :error ->
-                {params, free, [word | refused]}
+                {params, free, [word | refused], name}
             end
 
           nil ->
-            {params, [unquote_word(word) | free], refused}
+            {params, [unquote_word(word) | free], refused, name}
         end
       end)
 
     free = free |> Enum.reverse() |> Enum.reject(&(&1 == "")) |> Enum.join(" ")
-    params = if free == "", do: params, else: Map.put(params, "q", free)
+    named = if name, do: [name_word(name)], else: []
+    q = Enum.join(named ++ if(free == "", do: [], else: [free]), " ")
+    params = if q == "", do: params, else: Map.put(params, "q", q)
     filters = parse(params, kind)
 
     # The qualifiers were read as the parse reads them; what it may still refuse is free
@@ -473,6 +492,7 @@ defmodule Apiary.Runs.Filters do
     case target do
       :none -> {:ok, ["target"], target_params(:none)}
       [_ | _] = ids -> {:ok, ["target"], target_params(ids)}
+      nil -> if text(value), do: {:name, value}, else: :error
       _nothing -> :error
     end
   end
@@ -650,6 +670,7 @@ defmodule Apiary.Runs.Filters do
   defp range_without(%__MODULE__{kind: kind}),
     do: [since: @default_since[kind], from: nil, to: nil]
 
+  defp default_target_text({:name, name}), do: name
   defp default_target_text(target), do: target_param(target)
 
   defp states_text(states) do
@@ -760,13 +781,67 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The parameters of a target, for a link to a filtered page: `%{"target" => "tg_…"}` for
   the target of that id, its ids joined by commas for several, `%{"target" => "none"}` for
-  the runs without one (`:none`), none for every target (nil or no id).
+  the runs without one (`:none`), the query's word for a typed name
+  (`%{"q" => "target:acme/nowhere"}`), none for every target (nil or no id).
   """
   @spec target_params(target()) :: %{String.t() => String.t()}
+  def target_params({:name, name}), do: %{"q" => name_word(name)}
+
   def target_params(target) do
     case target_param(target) do
       nil -> %{}
       value -> %{"target" => value}
+    end
+  end
+
+  # A typed name as the query keeps it: one word, quoted when it holds a space.
+  defp name_word(name), do: "target:" <> quote_value(name)
+
+  # The query parameter: a typed name's word first, then the free text.
+  defp q_param(%__MODULE__{target: {:name, name}, q: q}),
+    do: Enum.join([name_word(name) | List.wrap(q)], " ")
+
+  defp q_param(%__MODULE__{q: q}), do: q
+
+  # A typed name in the query (`target:acme/nowhere`, `repo:` too), where the address names
+  # no target: the filter `{:name, text}`, and the other words the free text, of which a
+  # query holds 256 bytes. The first such word is the name; another stays text.
+  defp named(target, q, dropped, params, kind) do
+    {target, q} =
+      with nil <- target,
+           false <- Map.has_key?(params, "target") or Map.has_key?(params, "system"),
+           q when is_binary(q) <- q,
+           {name, rest} <- split_name(q, kind) do
+        {{:name, name}, rest}
+      else
+        _ -> {target, q}
+      end
+
+    if is_binary(q) and byte_size(q) > @max_q,
+      do: {target, nil, dropped ++ ["q"]},
+      else: {target, q, dropped}
+  end
+
+  defp split_name(q, kind) do
+    words = words(q)
+
+    case Enum.split_while(words, &is_nil(typed_name(&1, kind))) do
+      {_words, []} ->
+        nil
+
+      {before, [word | rest]} ->
+        free = Enum.join(before ++ rest, " ")
+        {typed_name(word, kind), if(free != "", do: free)}
+    end
+  end
+
+  defp typed_name(word, kind) do
+    with {:target, value} <- qualifier(word, kind),
+         true <- String.downcase(value) != "none",
+         value when is_binary(value) <- text(value) do
+      value
+    else
+      _ -> nil
     end
   end
 
@@ -854,10 +929,15 @@ defmodule Apiary.Runs.Filters do
 
   defp text(_value), do: nil
 
-  # The free text as the query field keeps it: trimmed, one line, what `Runs.like/1` reads.
+  # The query as the field keeps it: trimmed, one line, what `Runs.like/1` reads, with
+  # room for a typed name's word beside the free text (`named/5` holds the free text to
+  # 256 bytes).
   defp query_text(value) when is_binary(value) do
     value = String.trim(value)
-    if value != "" and byte_size(value) <= @max_q and fits?(value), do: value
+
+    if value != "" and byte_size(value) <= @max_q + @max_text + 16 and String.valid?(value) and
+         not String.match?(value, ~r/[\x00-\x1F\x7F]/),
+       do: value
   end
 
   defp query_text(_value), do: nil

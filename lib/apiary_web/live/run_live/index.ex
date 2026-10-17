@@ -22,7 +22,7 @@ defmodule ApiaryWeb.RunLive.Index do
   which takes the target away and keeps the rest; narrowed to a node, the same line names
   the node, with no Network access. The narrowing lives in the address alone, the target
   by its id (`?target=tg_…`): the page gives the frame its target
-  (`ApiaryWeb.Narrowing.carried/1`), so the sidebar's Runs and Network access carry it,
+  (`ApiaryWeb.Narrowing.carried/2`), so the sidebar's Runs and Network access carry it,
   and nothing else does. What the address names is read with it (`ApiaryWeb.Narrowing`),
   so all of this is right from the first render, and an id that names no target of the
   workspace is dropped. The targets of one path on two systems, named together, are the
@@ -76,7 +76,7 @@ defmodule ApiaryWeb.RunLive.Index do
       counts={@nav_counts}
       nav={:runs}
       width="work"
-      narrowed={Narrowing.carried(@narrowing)}
+      narrowed={Narrowing.carried(@narrowing, @filters.target)}
     >
       <:crumb>{gettext("Runs")}</:crumb>
 
@@ -656,9 +656,9 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # What the list is narrowed to, as its line names it: the targets of one path (`target=`
-  # with their ids; never "none"), by that path, else one node; a target goes first, and a
-  # node beside it stays a token. Targets on different paths have no line: their token
-  # names them.
+  # with their ids; never "none"), by that path, or a typed name that names no target, by
+  # the text; else one node; a target goes first, and a node beside it stays a token.
+  # Targets on different paths have no line: their token names them.
   defp narrowed_to(%Filters{target: [_ | _]} = filters, narrowing) do
     case Narrowing.path(narrowing) do
       nil -> narrowed_to(%{filters | target: nil}, nil)
@@ -666,6 +666,7 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
+  defp narrowed_to(%Filters{target: {:name, name}}, _narrowing), do: {:target, name}
   defp narrowed_to(%Filters{node: node}, _narrowing) when is_binary(node), do: {:node, node}
   defp narrowed_to(%Filters{}, _narrowing), do: nil
 

@@ -440,14 +440,64 @@ defmodule Apiary.Runs.ListingTest do
       assert {%{target: [@tg_a, @tg_b]}, []} = query("repo:both", %{}, resolve: resolve)
       assert {%{target: :none}, []} = query("target:none")
 
-      # A name that names no target is refused and named, and the target before it stays.
-      assert {%{target: [@tg_b]}, ["repo:nowhere"]} =
+      # A name that names no target is search text: read, never refused, it takes the
+      # place of the target before it and stays in the query, never in `target`.
+      assert {%{target: {:name, "nowhere"}, q: nil} = f, []} =
                query("repo:nowhere", %{"target" => @tg_b}, resolve: resolve)
 
-      # Without the page, the text is read as ids.
+      assert Filters.to_params(f) == %{"q" => "target:nowhere"}
+      assert Filters.target_params(f.target) == %{"q" => "target:nowhere"}
+      assert parse(Filters.to_params(f)) == f
+
+      # The free text beside it is kept after it; a name with a space is quoted.
+      {f, []} = query(~s(fix repo:"acme/no where" totals), %{}, resolve: resolve)
+      assert %{target: {:name, "acme/no where"}, q: "fix totals"} = f
+      assert Filters.to_params(f) == %{"q" => ~s(target:"acme/no where" fix totals)}
+      assert parse(Filters.to_params(f)) == f
+
+      # More free text keeps the name; a name or an id typed later takes its place.
+      {g, []} = Filters.apply_query(f, "mirror", resolve: resolve)
+      assert %{target: {:name, "acme/no where"}, q: "mirror"} = g
+
+      assert {%{target: [@tg_a], q: nil}, []} =
+               Filters.apply_query(f, "repo:shop", resolve: resolve)
+
+      assert {%{target: :none}, []} = Filters.apply_query(f, "target:none", resolve: resolve)
+
+      # Its token is the name, and reads back to it; taking it away keeps the free text.
+      assert [%{key: :target, value: ~s("acme/no where"), without: without}] = Filters.tokens(f)
+      assert without.target == nil and without.q == "fix totals"
+
+      # Without the page, the text is read as ids, else as a name.
       assert {%{target: [@tg_a]}, []} = query("repository:#{@tg_a}")
       assert {%{target: [@tg_a, @tg_b]}, []} = query("repo:#{@tg_a},#{@tg_b}")
-      assert {%{target: nil}, ["repo:acme/shop"]} = query("repo:acme/shop")
+      assert {%{target: {:name, "acme/shop"}}, []} = query("repo:acme/shop")
+    end
+
+    test "a name in the query is the target filter only where the address names no target" do
+      assert %{target: {:name, "acme/x"}, q: "fix", dropped: []} =
+               parse(%{"q" => "fix repo:acme/x"})
+
+      assert %{target: {:name, "acme/x"}} = Filters.parse(%{"q" => "target:acme/x"}, :connections)
+
+      # With a target in the address, or an older one, the word stays free text.
+      assert %{target: [@tg_a], q: "target:acme/x"} =
+               parse(%{"target" => @tg_a, "q" => "target:acme/x"})
+
+      assert %{target: nil, q: "target:acme/x", dropped: ["target"]} =
+               parse(%{"system" => "x", "q" => "target:acme/x"})
+
+      # none, and a word with no value, stay free text; a second name is free text too.
+      assert %{target: nil, q: "target:none"} = parse(%{"q" => "target:none"})
+      assert %{target: {:name, "a"}, q: "target:b"} = parse(%{"q" => "target:a target:b"})
+
+      # The free text beside a name holds what a query holds; the name what a label holds.
+      long = String.duplicate("x", 257)
+
+      assert %{target: {:name, "a"}, q: nil, dropped: ["q"]} =
+               parse(%{"q" => "target:a " <> long})
+
+      assert %{target: nil, dropped: ["q"]} = parse(%{"q" => long})
     end
 
     test "the connections read their own qualifiers" do
@@ -592,6 +642,10 @@ defmodule Apiary.Runs.ListingTest do
       theirs = tg(other)
       assert by.(%{"target" => theirs}) == []
       assert by.(%{"target" => "#{theirs},#{gitlab}"}) == [b.id]
+
+      # A typed name is search text: the runs whose target's path it is, here none.
+      assert by.(%{"q" => "target:acme/shop"}) == Enum.sort([a.id, b.id])
+      assert by.(%{"q" => "target:acme/nowhere"}) == []
     end
 
     test "the free text finds the start of a run's id, its title and its target, as text", %{

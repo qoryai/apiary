@@ -1621,14 +1621,43 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         assert_patch(view, runs(scope, "?target=#{shop_id}"))
       end
 
-      # A name that names no target is said, and the target before it stays.
+      # A name that names no target is search text: read, it matches no run, and the line
+      # and the token name it as typed. It stays in the query, never in `target`.
       view |> form("#runs-query", %{"q" => "repo:acme/nowhere"}) |> render_submit()
+      nowhere = "?q=target%3Aacme%2Fnowhere"
+      assert_patch(view, runs(scope, nowhere))
       render_async(view)
 
-      assert text(view, "#runs-dropped") ==
-               "repo:acme/nowhere could not be read, so it is not applied."
+      refute has_element?(view, "#runs-dropped")
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/nowhere only."
+      refute has_element?(view, "a#runs-narrowed-name")
+      refute has_element?(view, "#runs-narrowed-policy")
+      assert token(view, "target") == "repo:acme/nowhere"
+      assert text(view, "#runs-filter-value-target") == "acme/nowhere"
 
-      assert token(view, "target") == "repo:acme/shop"
+      # The query field holds the free text alone, none here.
+      value =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-query-input")
+        |> LazyHTML.attribute("value")
+
+      assert value in [[], [nil], [""]]
+
+      refute has_element?(view, "#runs-rail [aria-current=true]")
+      assert href(view, "#runs-narrowed-network", workspace_path(scope, "/network" <> nowhere))
+      assert href(view, "#nav-network", workspace_path(scope, "/network" <> nowhere))
+      assert href(view, "#runs-narrowed-all", runs(scope))
+      assert has_element?(view, "h2", "No runs match these filters")
+
+      # The address alone gives the same view, and free text typed beside it is kept.
+      view = open(conn, runs(scope, nowhere))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/nowhere only."
+      view |> form("#runs-query", %{"q" => "fix"}) |> render_submit()
+      assert_patch(view, runs(scope, "?q=target%3Aacme%2Fnowhere+fix"))
+      view |> element("#runs-token-target a") |> render_click()
+      assert_patch(view, runs(scope, "?q=fix"))
 
       # Where the path is shared, every one of them names the system.
       started_run(scope, shop("gitlab.example"))

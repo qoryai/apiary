@@ -15,7 +15,10 @@ defmodule ApiaryWeb.Narrowing do
   systems or more make one line that names each system (`shared_sentence/3`), the same on
   both lists, each system a link to the list narrowed to that system's target.
 
-  What a reader types (`repo:acme/shop`) is the ids of the targets it names (`typed/2`).
+  What a reader types (`repo:acme/shop`) is the ids of the targets it names (`typed/2`). A
+  name that names no target is search text the query keeps (`{:name, text}`,
+  `Apiary.Runs.Filters`): the list matches no run, and its line names the text as typed,
+  with no page or policy to lead to.
   """
   use ApiaryWeb, :html
 
@@ -107,10 +110,12 @@ defmodule ApiaryWeb.Narrowing do
 
   @doc """
   chosen/2 is what the rail marks: the targets named, as their rail entries
-  (`%{public_id:, system:, path:}`), `:none` for the runs with none, nil for every target.
+  (`%{public_id:, system:, path:}`), none for a typed name that names no target, `:none`
+  for the runs with none, nil for every target.
   """
   @spec chosen(t | nil, Filters.target()) :: [map] | :none | nil
   def chosen(_narrowing, :none), do: :none
+  def chosen(_narrowing, {:name, _name}), do: []
 
   def chosen(%{targets: [_ | _] = targets}, [_ | _]),
     do:
@@ -160,6 +165,7 @@ defmodule ApiaryWeb.Narrowing do
   """
   @spec text(t | nil, Filters.target()) :: String.t() | nil
   def text(_narrowing, :none), do: "none"
+  def text(_narrowing, {:name, name}), do: name
 
   def text(%{targets: [_ | _] = targets} = narrowing, [_ | _]) do
     if shared_alone?(narrowing),
@@ -173,24 +179,24 @@ defmodule ApiaryWeb.Narrowing do
   defp name(%{target: target}), do: target.path
 
   @doc """
-  carried/1 is what the sidebar's Runs and Network access carry on a list narrowed to the
-  targets of one path (`ApiaryWeb.Layouts.app/1`'s `narrowed`): their ids, and the name
-  the line gives them. Nil for no target, for `:none` and for targets on different paths.
+  carried/2 is what the sidebar's Runs and Network access carry on a list narrowed to the
+  targets of one path, or to a typed name (`ApiaryWeb.Layouts.app/1`'s `narrowed`): the
+  filters' target, which the carried links write as the list does
+  (`Apiary.Runs.Filters.target_params/1`), and the name the line gives it. Nil for no
+  target, for `:none` and for targets on different paths.
   """
-  @spec carried(t | nil) :: map | nil
-  def carried(narrowing) do
-    case path(narrowing) do
-      nil ->
-        nil
+  @spec carried(t | nil, Filters.target()) :: map | nil
+  def carried(_narrowing, {:name, name} = target),
+    do: %{target: target, system: nil, path: name}
 
-      path ->
-        %{
-          ids: Enum.map(narrowing.targets, & &1.target.public_id),
-          system: shown_system(narrowing),
-          path: path
-        }
+  def carried(narrowing, [_ | _] = target) do
+    case path(narrowing) do
+      nil -> nil
+      path -> %{target: target, system: shown_system(narrowing), path: path}
     end
   end
+
+  def carried(_narrowing, _target), do: nil
 
   @doc """
   typed/2 is the ids of the targets a typed `repo:` or `target:` names: the ids given, or

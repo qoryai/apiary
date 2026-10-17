@@ -580,7 +580,7 @@ defmodule ApiaryWeb.Layouts do
   attr :narrowed, :map,
     default: nil,
     doc:
-      "on Runs and Network access narrowed to the targets of one path, those targets, `%{ids, system, path}` (`ApiaryWeb.Narrowing.carried/1`): the sidebar's Runs and Network access carry their ids, and are named by the path and, only where another system has the path and one target is named, its system. Nil everywhere else"
+      "on Runs and Network access narrowed to the targets of one path or to a typed name, `%{target, system, path}` (`ApiaryWeb.Narrowing.carried/2`): the sidebar's Runs and Network access carry the filters' target as the lists write it, and are named by the path and, only where another system has the path and one target is named, its system. Nil everywhere else"
 
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
@@ -857,8 +857,8 @@ defmodule ApiaryWeb.Layouts do
 
   # What the sidebar's Runs and Network access carry on a list narrowed to a target: that
   # target, on Runs and on Network access alone; nothing anywhere else.
-  defp carry(%{ids: [_ | _], path: path} = narrowed, nav)
-       when nav in [:runs, :network] and is_binary(path),
+  defp carry(%{target: target, path: path} = narrowed, nav)
+       when nav in [:runs, :network] and not is_nil(target) and is_binary(path),
        do: narrowed
 
   defp carry(_narrowed, _nav), do: nil
@@ -870,10 +870,10 @@ defmodule ApiaryWeb.Layouts do
 
   defp narrowed_name(%{path: path}), do: path
 
-  # The list's path with the targets' ids, as the lists write them
-  # (`Apiary.Runs.Filters.target_params/1`).
-  defp carried_path(path, %{ids: ids}) do
-    path <> "?" <> Plug.Conn.Query.encode(Apiary.Runs.Filters.target_params(ids))
+  # The list's path with the target, as the lists write it
+  # (`Apiary.Runs.Filters.target_params/1`): its ids, or a typed name's query word.
+  defp carried_path(path, %{target: target}) do
+    path <> "?" <> Plug.Conn.Query.encode(Apiary.Runs.Filters.target_params(target))
   end
 
   defp carried_label(:runs, name), do: gettext("Runs, narrowed to %{name}", name: name)

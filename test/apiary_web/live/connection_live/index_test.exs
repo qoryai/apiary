@@ -1032,14 +1032,23 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view |> form("#connections-query", %{"q" => "repo:github.com/acme/shop"}) |> render_submit()
       assert_patch(view, workspace_path(scope, "/network?target=#{shop}"))
 
-      # A name that names no target is said, and the target before it stays.
+      # A name that names no target is search text: read, it matches no destination, and
+      # the line names it as typed. It stays in the query, never in `target`.
       view |> form("#connections-query", %{"q" => "repo:acme/nowhere"}) |> render_submit()
+      nowhere = "?q=target%3Aacme%2Fnowhere"
+      assert_patch(view, workspace_path(scope, "/network" <> nowhere))
       render_async(view, 2_000)
 
-      assert text(view, "#connections-dropped") ==
-               "repo:acme/nowhere could not be read, so it is not applied."
+      refute has_element?(view, "#connections-dropped")
+      assert note(view) == "Showing acme/nowhere only. Runs Show all destinations"
+      refute has_element?(view, "a#connections-target-name")
+      refute has_element?(view, "##{dst("registry.example")}")
+      assert text(view, "#connections-token-target") =~ "acme/nowhere"
 
-      assert note(view) == target_note("acme/shop")
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs" <> nowhere)
+
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs" <> nowhere)
 
       # Where the path is shared, the rail and the line name the system.
       started_run(scope, shop("gitlab.com"), egress: [@registry])

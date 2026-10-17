@@ -749,6 +749,11 @@ defmodule Apiary.Runs do
   defp where_target(query, _scope, nil), do: query
   defp where_target(query, _scope, :none), do: where(query, [run: r], is_nil(r.target_id))
 
+  # A typed name that names no target is search text: the runs whose target's path is
+  # that text, as the query field matches text, none until a target has it.
+  defp where_target(query, _scope, {:name, name}),
+    do: where(query, [run: r], not is_nil(r.target_id) and r.target_path == ^name)
+
   defp where_target(query, scope, ids) when is_list(ids) do
     targets = from t in targets_in(scope), where: t.public_id in ^ids, select: t.id
     where(query, [run: r], r.target_id in subquery(targets))
