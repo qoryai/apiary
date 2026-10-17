@@ -33,6 +33,17 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's signed paths served here, read the same way:
   # `POST /v1/adapter`.
   @adapter_paths [["v1", "adapter"]]
+  # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
+  # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
+  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/handover` and `/release`. Read
+  # the same way only where the instance serves them, with their feature, or where the
+  # request carries a signature, which `ApiaryWeb.Features.Routes` lets through to be
+  # verified: an unsigned one where the feature is off is parsed as any request to a
+  # path the router does not know, and answered as one.
+  @pool_max_bytes 1024 * 1024
+  @pool_claim_path ["v1", "pools", "claim"]
+  @dispatch_actions ["dispatched", "handover", "release"]
+  @pool_feature :factory
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -49,12 +60,14 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:outcome), do: @outcome_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
   def max_bytes(:adapter), do: @adapter_max_bytes
+  def max_bytes(:pool), do: @pool_max_bytes
 
   def init(opts), do: opts
 
   def call(%Plug.Conn{method: "POST", path_info: path_info} = conn, _opts) do
     case kept(path_info) do
       nil -> conn
+      :pool -> if pool_served?(conn), do: keep(conn, max_bytes(:pool)), else: conn
       endpoint -> keep(conn, max_bytes(endpoint))
     end
   end
@@ -73,12 +86,24 @@ defmodule ApiaryWeb.Contract.RawBody do
     end
   end
 
+  defp kept([_, _, _] = path_info) do
+    if Enum.map(path_info, &decode/1) == @pool_claim_path, do: :pool
+  end
+
   defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> of_a_run()
   defp kept(_path_info), do: nil
 
   defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach
   defp of_a_run(["v1", "runs", _run_id, "outcome"]), do: :outcome
+
+  defp of_a_run(["v1", "dispatches", _dispatch_id, action]) when action in @dispatch_actions,
+    do: :pool
+
   defp of_a_run(_path_info), do: nil
+
+  defp pool_served?(conn) do
+    Apiary.Features.on?(@pool_feature) or get_req_header(conn, "x-qory-signature-ed25519") != []
+  end
 
   defp decode(segment) do
     URI.decode(segment)

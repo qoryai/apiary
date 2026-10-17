@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/release.schema.json",
+  "title": "Release",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/release, application/json: the starter gives the run back, why, and whether the run should wait for another claim. A release before its handover, of a dispatch that is not stale, ends the dispatch. With retry: true, its run, with the same run_id, waits for another claim, as after a lapsed lease; with retry: false, the run ends. Any later request naming that dispatch answers 410 gone. After its handover, while the run goes on, a release ends the run, since once a dispatch's handover is answered, its run never goes back to the queue: the release is answered as a success, the signed 204, not 409, and the gateway refuses the run's key with 410 when the job attaches; for a job already attached, the Forager contract says what the run's end does to its session (The gateway's link, The end member). With retry: true it then queues a new run, with a new run_id and a new run key, since a run key is handed over at most once per run. A release is one step, before its handover as after it, as the handover is, so a release racing the handover lands either before it or after it: before it, the release ends the dispatch, and the handover is then refused 410 gone; after it, the control plane ends the run, ends the dispatch with it and queues at most one new run together. So of two concurrent releases of a dispatch that has neither ended nor gone stale, one is answered the signed 204 and acts, and the other is answered by the order below, 410 gone, the dispatch having ended, and at most one new run is queued per handed-over run. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. A release is refused for the first of these that applies, in the order handover.schema.json gives: 403 forbidden, as above; 410 gone, the dispatch ended, as refusal.schema.json describes, a release after the run's end among them, since the dispatch ends with its run; 409 lease_expired, the dispatch is stale, as handover.schema.json describes. On success the control plane answers a signed 204 with no body. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "reason",
+    "retry"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "reason": {
+      "description": "Why the starter gives the run back, display text, 1 to 200 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "retry": {
+      "description": "true when the run should wait for another claim: before its handover the same run waits again; after it, a new run, with a new run_id and a new run key. false when it should not.",
+      "type": "boolean"
+    }
+  }
+}

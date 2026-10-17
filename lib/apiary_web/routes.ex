@@ -144,6 +144,16 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.AdapterRequest
       end
 
+      # A request of a node pool's starter, signed with the pool's access key, as the
+      # provisioner contract has it: verified as an adapter's is
+      # (`ApiaryWeb.Contract.AdapterRequest`, `kind: :pool`), and spending the key's bucket
+      # for node pools. Hidden from the documentation, as its feature is.
+      @doc false
+      pipeline :contract_pool do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
+      end
+
       # First for the organisation's and the workspace's pages: a segment in the place of
       # a slug that can never be one answers as a path the router does not know.
       pipeline :path_scope do
@@ -211,6 +221,18 @@ defmodule ApiaryWeb.Routes do
         pipe_through :contract_adapter
 
         post "/adapter", AdapterController, :create
+      end
+
+      # A node pool's starter's requests, with the `factory` feature: its claim of a run
+      # waiting for the pool, and, for the dispatch that claim made, that the job started,
+      # the job's handover and the run given back.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_pool
+
+        post "/pools/claim", PoolClaimController, :create
+        post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
+        post "/dispatches/:dispatch_id/handover", HandoverController, :create
+        post "/dispatches/:dispatch_id/release", DispatchController, :release
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
