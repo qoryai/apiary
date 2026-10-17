@@ -297,8 +297,9 @@ defmodule Apiary.Nodes.Node do
   # collection and for many, or none. A description with no source role gives the
   # defaults: no words, and items. The database holds them to the same
   # (`nodes_items_check`, `nodes_collection_noun_check`). `Apiary.Adapters.declare/2`
-  # calls it at each start, on the changeset of the declaration or on the adapter, so the
-  # latest start's description replaces what an earlier one said. A change of `items`
+  # calls it at each start, on the changeset of the declaration, so the latest start's
+  # description replaces what an earlier one said; given an adapter, it starts from the
+  # adapter's changeset. A change of `items`
   # changes whether the adapter's collections are linked, and whoever writes it writes the
   # feed's entries for them in the same transaction
   # (`Apiary.Adapters.Collections.relink_adapter/2`).

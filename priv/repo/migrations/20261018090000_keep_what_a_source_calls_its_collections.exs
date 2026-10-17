@@ -5,8 +5,8 @@ defmodule Apiary.Repo.Migrations.KeepWhatASourceCallsItsCollections do
   # (`description.schema.json`, `roles.source.collection_noun`): on an adapter's node
   # (`Apiary.Nodes.Node`), `collection_noun_one` and `collection_noun_other`, its words for
   # one collection and for many, both or neither, NULL for the default, the domain's word.
-  # Each is 1 to 32 lower-case letters, a to z, in words joined by single spaces or
-  # hyphens. Unlike the words for its items, no word is refused, and they may stand beside
+  # Each is 1 to 32 characters: lower-case letters, a to z, in words joined by single
+  # spaces or hyphens. Unlike the words for its items, no word is refused, and they may stand beside
   # `items` false: a source with no items still reports collections. Every other node has
   # none (`nodes_collection_noun_check`).
   #

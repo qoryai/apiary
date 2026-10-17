@@ -23,8 +23,8 @@ defmodule Apiary.Integrations.Description do
 
   Of the `source` role, three members are read out (`item_noun/1`, `items?/1`,
   `collection_noun/1`): its words for one item and for many, `item_noun`, `one` and
-  `other`, each 1 to 32 lower-case letters in words joined by single spaces or hyphens,
-  never "work item" or "work items"; `items`, which, when there, is `false`: the source
+  `other`, each 1 to 32 characters: lower-case letters in words joined by single spaces
+  or hyphens, never "work item" or "work items"; `items`, which, when there, is `false`: the source
   reports collections and no items, and names no words for them; and its words for one
   collection and for many, `collection_noun`, `one` and `other`, the same shape as
   `item_noun`'s with no word refused, beside `items: false` too. The schema holds all

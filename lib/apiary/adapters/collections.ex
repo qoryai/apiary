@@ -102,10 +102,10 @@ defmodule Apiary.Adapters.Collections do
   # Locks, in one order for every change here, so none waits on another in turn:
   #
   #   0. the adapter's row, first, as `Apiary.Adapters.Connections` holds it before its
-  #      connections: a start that changes the adapter's `items` holds it
-  #      `FOR NO KEY UPDATE` (`Apiary.Adapters.declare/2`, `relink_adapter/2`), and a
-  #      listing's part `FOR SHARE` (`hold_adapter/1`), before its connection; no other
-  #      change here holds it;
+  #      connections: every start holds it `FOR NO KEY UPDATE` (`Apiary.Adapters.declare/2`),
+  #      before the rows `relink_adapter/2` holds when it changes the adapter's `items`,
+  #      and a listing's part `FOR SHARE` (`hold_adapter/1`), before its connection; no
+  #      other change here holds it;
   #   1. the connections: a listing's part holds its connection `FOR UPDATE`, and no other
   #      connection; an assign its connection `FOR SHARE`; a Backlog switch
   #      (`set_backlog/3`) and a workspace's unlink (`unlink_workspace/2`) the connections
