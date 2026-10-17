@@ -224,7 +224,15 @@ defmodule Apiary.Integrations.Description do
          {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
 
       true ->
-        within_budget(description, fn -> plain_schema(description, settings) end)
+        # The process is given copies of the schema it builds and of the settings, never
+        # the description: a string of the description can be a part of its bytes, which
+        # the budget would count in full for each such string (`Apiary.Kinds.Budget`).
+        # The copies are linear in the schema, a part of the description, and so bounded
+        # by the bytes a release's description may have (`Apiary.Integrations`), and in
+        # the settings, at most 65536 bytes as canonical JSON.
+        schema = copy(plain_schema(description, settings))
+        settings = copy(settings)
+        within_budget(description, fn -> check(schema, settings) end)
     end
   end
 
@@ -239,8 +247,9 @@ defmodule Apiary.Integrations.Description do
   # objects deep, do 1486870 reductions, 3.3 times fewer than the budget; 1000 settings,
   # each against a pattern, 642740; a setting of 15000 bytes against
   # `"format": "regex"`, its compile charged in reductions (`Apiary.Kinds.RegexFormat`),
-  # 151978. The valid settings of 4096 values pass within 318288 words of heap, the
-  # binaries the process refers to counted, 6.5 times fewer than the budget. Without the
+  # 151978. The valid settings of 4096 values, in a description of 261772 bytes whose
+  # definitions hold 1000 strings of 234 bytes, pass within 545508 words of heap, the
+  # binaries the process refers to counted, 3.8 times fewer than the budget. Without the
   # budget, a schema that refers twice to the next level at each of 20 levels does
   # 157253942.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
@@ -273,14 +282,25 @@ defmodule Apiary.Integrations.Description do
   defp plain_schema(description, settings) do
     document = description.document["settings"]
 
-    schema =
-      document
-      |> Map.take(["$schema", "$id", "$defs", "definitions"])
-      |> Map.merge(%{
-        "type" => "object",
-        "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
-      })
+    document
+    |> Map.take(["$schema", "$id", "$defs", "definitions"])
+    |> Map.merge(%{
+      "type" => "object",
+      "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
+    })
+  end
 
+  # `term` with every binary in it, the keys of its maps too, copied, so that none is a
+  # part of a larger binary.
+  defp copy(map) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {copy(key), copy(value)} end)
+
+  defp copy(list) when is_list(list), do: Enum.map(list, &copy/1)
+  defp copy(binary) when is_binary(binary), do: :binary.copy(binary)
+  defp copy(other), do: other
+
+  # The settings check, in the budget's process.
+  defp check(schema, settings) do
     # The answer leaves the budget's process, so a refusal is `%{valid: false}` alone.
     # JSV's errors stay in that process and end with it: they refer to the settings and
     # the schema, and the message of an error about a pattern, which `Schema.valid?/2`

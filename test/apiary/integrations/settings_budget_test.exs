@@ -342,6 +342,35 @@ defmodule Apiary.Integrations.SettingsBudgetTest do
       assert Description.check_settings(description, settings) == :ok
     end
 
+    test "valid settings pass against a description of many long strings, parts of its bytes" do
+      # `count` settings, each described in a string of `length` bytes.
+      described = fn count, length ->
+        properties =
+          Map.new(1..count, fn i ->
+            text = String.slice("d#{i}-" <> String.duplicate("x", length), 0, length)
+            {"p#{i}", %{"type" => "string", "description" => text}}
+          end)
+
+        bytes =
+          tracker_description(%{"settings" => %{"type" => "object", "properties" => properties}})
+          |> encode()
+
+        assert {:ok, description} = Description.parse(bytes)
+        text = description.document["settings"]["properties"]["p1"]["description"]
+        assert :binary.referenced_byte_size(text) == byte_size(bytes)
+        {description, byte_size(bytes)}
+      end
+
+      {four_hundred, _bytes} = described.(400, 100)
+      assert Description.check_settings(four_hundred, %{"p1" => "x"}) == :ok
+
+      # Near the 262144 bytes a release's description may have.
+      {thousand, bytes} = described.(1000, 215)
+      assert bytes in 250_000..262_144
+      assert Description.check_settings(thousand, %{"p1" => "x"}) == :ok
+      assert Description.check_settings(thousand, Map.new(1..1000, &{"p#{&1}", "x"})) == :ok
+    end
+
     test "every fixture with settings takes the settings it describes" do
       assert {:ok, fixture} =
                @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()

@@ -11,9 +11,11 @@ defmodule Apiary.Kinds.Budget do
   busy the machine is. The heap is counted in words, and with it the binaries the process
   refers to that live outside its heap (`include_shared_binaries`), a binary shared with
   other processes counted in full in each, and a part of a large binary possibly counted
-  as the whole of it: a function that makes large binaries, such as JSV's error messages
-  that copy a pattern, is held to the budget too. The time is only a bound on a process
-  that runs while it counts few reductions, such as one that waits.
+  as the whole of it, again for each part the process refers to: a function that makes
+  large binaries, such as JSV's error messages that copy a pattern, is held to the budget
+  too, and an input of many parts of one large binary is better given as copies. The
+  time is only a bound on a process that runs while it counts few reductions, such as one
+  that waits.
 
   `run/2` starts the process unlinked and monitored, with a `max_heap_size`, and waits for
   its answer, reading the process's reductions every few milliseconds:
