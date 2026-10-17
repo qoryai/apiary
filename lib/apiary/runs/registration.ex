@@ -35,8 +35,11 @@ defmodule Apiary.Runs.Registration do
   the run, which is held to it, its heartbeats' interval notwithstanding
   (`Apiary.Runs.Liveness`).
 
-  `register/3` stores the run. A key `Apiary.Access` does not let post (`run.post_events`)
-  is `{:error, :not_found}`. Then, when several answers apply, the first of these is given:
+  `register/3` stores the run. First, under any key and before anything that depends on
+  the key, a run id that names a run the instance queued is `{:error, :run_id_used}`: such
+  a run is never registered here. Then a key `Apiary.Access` does not let post
+  (`run.post_events`) is `{:error, :not_found}`. Then, when several answers apply, the
+  first of these is given:
 
     1. a repeat: a run of this id that registered with the same bytes, under any active
        key of the node or node pool that registered it (`Apiary.Runs.Sender`), so a key
@@ -100,6 +103,7 @@ defmodule Apiary.Runs.Registration do
   alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{Render, RunConfiguration, Serving}
   alias Apiary.Runs.{About, Batch, Run, RunKey, Sender}
 
@@ -341,7 +345,46 @@ defmodule Apiary.Runs.Registration do
   def register(%Scope{access_key: %AccessKey{} = access_key}, registration, meta),
     do: register(access_key, registration, meta)
 
-  def register(
+  # The moduledoc's first step, which it states without naming the queue, as the queue is
+  # left out of the documentation at `/docs` (`Apiary.Dispatches.DispatchRun`): a run id
+  # that names a run of a workspace's queue, on the whole instance and in any of its
+  # states (waiting, claimed, handed over or ended), is `{:error, :run_id_used}`, under
+  # any key, a node's, a node pool's or a gateway's alike, and whatever the key may do.
+  # The provisioner contract has it so (its `handover.schema.json`): such a run is
+  # registered only by its handover, never at the run endpoint, and its id is refused
+  # there first, before the stored answer to a repeat and before the instance limit; the
+  # Forager contract gives the other causes and their order. Asked before `may_post/1`
+  # too, so that every key is given the one answer for such an id, and the answer never
+  # depends on the key's kind or rights. The parse (`400 invalid_request`) and the `time`
+  # (`401`) come before, in the controller, as every check after the body does: nothing
+  # is looked up for a request that is not fresh. A run of the queue is given its id, a
+  # fresh UUID, when it is queued, before anyone outside the instance learns it, and the
+  # id never changes, so no registration can come between the queue and this lookup.
+  # Nothing is stored, counted or touched on the refusal.
+  def register(%AccessKey{} = access_key, %__MODULE__{} = registration, meta) do
+    with :ok <- not_queued(registration.run_id),
+         do: register_without_dispatch_lookup(access_key, registration, meta)
+  end
+
+  # For a caller that registers a run of the queue itself, whose run id names that run by
+  # design: everything `register/3` decides, but the lookup above.
+  @doc """
+  Registers the run of `registration` for the key (an access key, or its scope), as
+  `register/3` does, without the lookup `register/3` makes first on the run id. Never the
+  run endpoint's: a registration there always goes through `register/3`.
+  """
+  @spec register_without_dispatch_lookup(AccessKey.t() | Scope.t(), t, meta) ::
+          {:ok,
+           %{required(:run) => Run.t(), required(:repeated) => boolean, optional(atom) => term}}
+          | {:error, :not_found | :gone | :instance_limit | :run_id_used | :unavailable}
+  def register_without_dispatch_lookup(
+        %Scope{access_key: %AccessKey{} = access_key},
+        registration,
+        meta
+      ),
+      do: register_without_dispatch_lookup(access_key, registration, meta)
+
+  def register_without_dispatch_lookup(
         %AccessKey{} = access_key,
         %__MODULE__{} = registration,
         %{body: body, contract_version: _} = meta
@@ -363,6 +406,17 @@ defmodule Apiary.Runs.Registration do
                do: admit(held, route, access_key, registration, meta, digest, now)
       end
     end
+  end
+
+  # A run id no run of a workspace's queue has, on the whole instance (`dispatch_runs`,
+  # whose `run_id` is unique on the instance): `:ok`; one that a run of the queue has, in
+  # any state, is used.
+  defp not_queued(run_id) do
+    if Repo.exists?(from d in DispatchRun, where: d.run_id == ^run_id),
+      do: {:error, :run_id_used},
+      else: :ok
+  rescue
+    exception -> unavailable(exception)
   end
 
   # Where the run goes, by the node's recorded choice as it resolves now

@@ -694,6 +694,15 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule NoRunPosting do
+    @moduledoc """
+    No key opens a run or posts its events (`run.post_events`), whoever holds it, as an
+    edition that narrows the rights of a key may.
+    """
+    def check(_scope, :"run.post_events", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoDisconnect do
     @moduledoc """
     No adapter's key ends a connection (`adapter.disconnect`), as an edition that narrows
