@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connection_id": "ac_c0deh0st00000000",
+  "collections": [
+    {
+      "ref": "C_2001",
+      "url": "https://code.example.com/acme/shop",
+      "title": "acme/shop",
+      "target": {
+        "system": "code.example.com",
+        "path": "acme/shop"
+      },
+      "environment_ref": "env-3f2a91c4"
+    },
+    {
+      "ref": "C_2002",
+      "url": "https://code.example.com/acme/docs",
+      "title": "acme/docs",
+      "target": {
+        "system": "code.example.com",
+        "path": "acme/docs"
+      },
+      "items": "false"
+    }
+  ],
+  "listing": {
+    "id": "collections-8",
+    "part": 1,
+    "started_at": "2026-10-15T11:59:58Z",
+    "complete": true
+  }
+}

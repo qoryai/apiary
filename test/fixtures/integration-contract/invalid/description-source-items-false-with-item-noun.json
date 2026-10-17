@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "example-tracker",
+  "title": "Example Tracker",
+  "program_version": "0.1.0",
+  "settings": {
+    "type": "object"
+  },
+  "roles": {
+    "source": {
+      "description": "Reads the open items of Example Tracker projects into the control plane.",
+      "program": "qory-example-server",
+      "setup": {
+        "command": "qory-example-server setup",
+        "help": "Asks for the address of the Example Tracker site and registers the adapter with it."
+      },
+      "start": "qory-example-server serve --secret-file /etc/qory-example-server/secret",
+      "connect": "Example Tracker asks you to sign in and to choose the projects the adapter may read.",
+      "access": "In Example Tracker, open Settings, then Connected adapters, to change which projects the adapter reads.",
+      "disconnect": "In Example Tracker, open Settings, then Connected adapters, and remove the adapter.",
+      "items": false,
+      "item_noun": {"one": "issue", "other": "issues"}
+    }
+  }
+}
