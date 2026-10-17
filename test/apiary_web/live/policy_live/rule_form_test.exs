@@ -9,7 +9,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
 
   alias Apiary.Policy
 
@@ -713,7 +713,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       started_run(scope, shop())
       [%{target: target}] = Policy.list_targets(scope)
       {:ok, own} = Policy.allow(scope, target, %{host: "mcp.acme.example"})
-      path = target_path(scope, target.system, target.path, ["policy"])
+      path = target_path(scope, target, ["policy"])
       as_reader(context)
 
       for rest <- ["/rules/new", "/rules/#{own.id}/edit"] do
@@ -785,7 +785,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       own = stored_rule(scope, target, "0x7f.0.0.1")
       workspace = stored_rule(scope, nil, "010.0.0.1")
       {:ok, _} = Policy.allow(scope, target, %{host: "api.example"})
-      path = target_path(scope, target.system, target.path, ["policy"])
+      path = target_path(scope, target, ["policy"])
       {:ok, view, _html} = live(conn, path)
       render_async(view, 5_000)
 
@@ -803,7 +803,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
       {:ok, _} = Policy.deny(scope, nil, %{host: "*.paste.example", locked: true})
 
-      %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
+      %{target: target, path: target_path(scope, target, ["policy"])}
     end
 
     test "opens from Add rule, the form alone under the target's breadcrumb",
@@ -821,7 +821,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
 
       assert crumbs(view) == [
                {"Repositories", workspace_path(scope, "/targets")},
-               {target.path, String.replace_suffix(path, "/-/policy", "")},
+               {target.path, String.replace_suffix(path, "/policy", "")},
                {"Policy", path},
                {"New rule", nil}
              ]

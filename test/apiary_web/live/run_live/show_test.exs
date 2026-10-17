@@ -110,7 +110,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      target = workspace_path(scope, "/targets/acme/shop")
+      %{public_id: target_id} = Apiary.Repo.get!(Apiary.Runs.Target, run.target_id)
+      target = workspace_path(scope, "/targets/#{target_id}")
 
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -361,8 +362,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#run-target .q-tname-sys", "github.example")
 
-      # Its link lands on its page at its address, which keeps the system.
-      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      # Its link lands on its page, by its public id.
+      page = target_page_path(scope, "github.example", "acme/shop")
       assert has_element?(lv, "#run-target[href='#{page}']")
     end
 

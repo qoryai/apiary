@@ -184,9 +184,9 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"mode" => "enforce"}},
       {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_set",
        %{"mode" => "enforce"}, prelude: [{"mode_open", %{"mode" => "enforce"}}]},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/policy",
        "mode_open", %{"mode" => "enforce"}},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/policy",
        "mode_set", %{"mode" => "enforce"}},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
        %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
@@ -196,10 +196,10 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.edit", :other_owner,
-       "/:other_org/:other_ws/targets/:target_page/-/policy", "remove", %{"id" => :rule_open},
+       "/:other_org/:other_ws/targets/:other_target_page/policy", "remove", %{"id" => :rule_open},
        answer: :not_found},
       {:"security_policy.edit", :other_owner,
-       "/:other_org/:other_ws/targets/:target_page/-/policy", "change_action",
+       "/:other_org/:other_ws/targets/:other_target_page/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
@@ -229,16 +229,16 @@ defmodule ApiaryWeb.RefusalsRows do
       # A member's allow for a target under the workspace's locked deny: the New rule page
       # reads the lock and saves nothing. The workspace's rules have no act on a target's
       # page: an event naming one there is dropped.
-      {:"security_policy.lock", :member,
-       "/:org/:workspace/targets/:target_page/-/policy/rules/new", "rule_save", %{},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy/rules/new",
+       "rule_save", %{},
        prelude: [
          {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ],
        answer: :ignored},
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy",
        "change_action", %{"id" => :rule_locked}, answer: :ignored},
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "remove", %{"id" => :rule_locked}, answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy", "remove",
+       %{"id" => :rule_locked}, answer: :ignored},
 
       # The nodes. Without the page or the confirmation open, from a member: refused, as
       # the page offers them no button.
@@ -518,13 +518,14 @@ defmodule ApiaryWeb.RefusalsRows do
 
     # The same path in the other organisation, whose page its owner names this one's ids
     # from.
-    Repo.insert!(%Target{
-      organisation_id: other.organisation.id,
-      workspace_id: other.workspace.id,
-      system: target.system,
-      path: target.path,
-      first_seen_at: DateTime.utc_now()
-    })
+    other_target =
+      Repo.insert!(%Target{
+        organisation_id: other.organisation.id,
+        workspace_id: other.workspace.id,
+        system: target.system,
+        path: target.path,
+        first_seen_at: DateTime.utc_now()
+      })
 
     %{
       owner: owner,
@@ -547,6 +548,7 @@ defmodule ApiaryWeb.RefusalsRows do
       secret: secret,
       variable: variable,
       target: target,
+      other_target: other_target,
       key: key,
       node: node,
       pool: pool,
@@ -579,8 +581,9 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:secret, world), do: world.secret.public_id
   def value(:variable, world), do: {:id, world.variable.id}
   def value(:target, world), do: {:id, world.target.id}
-  # A target's page is its path alone where no other target of its workspace has it.
-  def value(:target_page, world), do: world.target.path
+  # A target's page is its public id.
+  def value(:target_page, world), do: world.target.public_id
+  def value(:other_target_page, world), do: world.other_target.public_id
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:pool, world), do: {:id, world.pool.public_id}

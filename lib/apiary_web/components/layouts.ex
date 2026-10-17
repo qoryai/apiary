@@ -559,7 +559,7 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
+      "%{members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, public_id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
 
   attr :width, :string,
     default: "list",
@@ -2381,14 +2381,7 @@ defmodule ApiaryWeb.Layouts do
       Map.put(
         pin,
         :href,
-        ApiaryWeb.TargetComponents.target_path(
-          organisation,
-          workspace,
-          pin.system,
-          pin.path,
-          [],
-          pin[:shared] == true
-        )
+        ApiaryWeb.TargetComponents.target_path(organisation, workspace, pin, [])
       )
     end
   end

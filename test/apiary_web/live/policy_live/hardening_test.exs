@@ -10,7 +10,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     %{
       target: target,
-      path: target_path(scope, target.system, target.path, ["policy"]),
+      path: target_path(scope, target, ["policy"]),
       locked: locked,
       plain: plain,
       denied: denied,

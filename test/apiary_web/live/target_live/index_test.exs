@@ -62,7 +62,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
 
     assert has_element?(
              view,
-             "#{row} a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
+             "#{row} a[href='#{workspace_path(scope, "/targets/#{shop.public_id}")}']"
            )
 
     # The last run went badly: its word shows, and so do the denied attempts.

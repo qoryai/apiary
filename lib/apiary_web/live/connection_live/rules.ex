@@ -29,40 +29,32 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The page of one version of the baseline (`nil`) or of a target (an `Apiary.Runs.Target`,
-  or anything with its `system` and `path`): the workspace's policy page, or the target's
-  Policy tab at its address (`ApiaryWeb.TargetComponents.target_path/5`), its system in it
-  only where `shared` (a boolean, or the workspace's shared paths) says its path is shared.
-  A caller that does not say writes the path alone.
+  or anything with its `public_id`): the workspace's policy page, or the target's Policy
+  tab, by its public id (`ApiaryWeb.TargetComponents.target_path/3`).
   """
-  def version_path(scope, target, n, query \\ %{}, shared \\ false)
+  def version_path(scope, target, n, query \\ %{})
 
-  def version_path(scope, nil, n, query, _shared),
+  def version_path(scope, nil, n, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(scope, %{system: system, path: path}, n, query, shared),
+  def version_path(scope, target, n, query),
     do:
-      TargetComponents.target_path(
-        scope,
-        system,
-        path,
-        ["policy", "versions", to_string(n)],
-        shared
-      ) <>
+      TargetComponents.target_path(scope, target, ["policy", "versions", to_string(n)]) <>
         query_string(query)
 
   @doc """
   The rule of `host` in the Network access section of the workspace's policy page (`nil`)
-  or of a target's Policy tab (`target`, with its `system` and `path`), which lands on the
-  page of the list that holds it. `shared` as `version_path/5` takes it.
+  or of a target's Policy tab (`target`, with its `public_id`), which lands on the page of
+  the list that holds it.
   """
-  def rule_path(scope, target, host, shared \\ false)
+  def rule_path(scope, target, host)
 
-  def rule_path(scope, nil, host, _shared),
+  def rule_path(scope, nil, host),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(scope, %{system: system, path: path}, host, shared),
+  def rule_path(scope, target, host),
     do:
-      TargetComponents.target_path(scope, system, path, ["policy"], shared) <>
+      TargetComponents.target_path(scope, target, ["policy"]) <>
         query_string(%{"rule" => host})
 
   defp query_string(query) when query == %{}, do: ""
@@ -110,15 +102,13 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
-  "workspace baseline", or the target as it is addressed when `target` is the one the
+  "workspace baseline", or the target in its notation when `target` is the one the
   configuration is of (`version_label/3`). Its `path` is in `scope`'s workspace: the
   target's Policy tab for a target's version, the target read when it is not `target`,
-  and nil when it cannot be. `shared` is said of `target`'s path (`version_label/3`); a
-  target read by its id is written by its path alone.
+  and nil when it cannot be. `shared` is said of `target`'s path (`version_label/3`).
   """
   def version_of(scope, configuration, target \\ nil, shared \\ nil) do
     holder = holder(scope, configuration.target_id, target)
-    holder_shared = if holder && target && holder.id == target.id, do: shared
 
     %{
       n: configuration.version,
@@ -130,7 +120,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       path:
         if(configuration.target_id && is_nil(holder),
           do: nil,
-          else: version_path(scope, holder, configuration.version, %{}, holder_shared)
+          else: version_path(scope, holder, configuration.version)
         )
     }
   end
@@ -147,7 +137,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The words that say whose numbering a version is in: the workspace's policy, or the
-  target as it is addressed, its path, and its system before it only where `shared` (a
+  target in its notation, its path, and its system before it only where `shared` (a
   boolean, or the workspace's shared paths) says its path is shared
   (`ApiaryWeb.TargetComponents.target_label/3`). A caller that does not say names it in
   full, `system/path`.

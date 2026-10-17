@@ -48,9 +48,11 @@ defmodule ApiaryWeb.PageComponentsTest do
     html =
       rendered_to_string(~H"""
       <.page_tabs id="target-tabs" label="Target" current={:policy}>
-        <:tab key={:overview} patch="/acme/shop/targets/acme/shop">Overview</:tab>
-        <:tab key={:policy} patch="/acme/shop/targets/acme/shop/-/policy" count={2}>Policy</:tab>
-        <:tab key={:settings} navigate="/acme/shop/targets/acme/shop/-/settings" settings>
+        <:tab key={:overview} patch="/acme/shop/targets/tg_0123456789abcdef">Overview</:tab>
+        <:tab key={:policy} patch="/acme/shop/targets/tg_0123456789abcdef/policy" count={2}>
+          Policy
+        </:tab>
+        <:tab key={:settings} navigate="/acme/shop/targets/tg_0123456789abcdef/settings" settings>
           Settings
         </:tab>
       </.page_tabs>

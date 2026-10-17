@@ -459,11 +459,13 @@ defmodule Apiary.Runs.Projector do
     run = changeset.data
     now = DateTime.utc_now()
 
+    # A target seen before keeps its row, and so its public id: the conflict writes nothing.
     Repo.insert_all(
       Target,
       [
         %{
           id: Ecto.UUID.generate(),
+          public_id: Apiary.PublicId.generate("tg"),
           organisation_id: run.organisation_id,
           workspace_id: run.workspace_id,
           system: system,

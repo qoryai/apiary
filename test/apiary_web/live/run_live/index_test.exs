@@ -1217,15 +1217,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   end
 
   describe "narrowed to a target (the narrowing ruling)" do
-    # A target's page, or a tab of it, as its address is written: the path alone, unless
-    # `system` is given for a path two systems share.
+    # The page of acme/shop, or a tab of it, by its public id: the target on `system`,
+    # github.example unless given.
     defp target_page(scope, system \\ nil, rest \\ []) do
-      tab = if rest == [], do: "", else: "/-/" <> Enum.join(rest, "/")
-
-      workspace_path(
-        scope,
-        "/targets/" <> if(system, do: system <> "/", else: "") <> "acme/shop" <> tab
-      )
+      tab = if rest == [], do: "", else: "/" <> Enum.join(rest, "/")
+      target_page_path(scope, system || "github.example", "acme/shop", tab)
     end
 
     defp href(view, selector, href), do: has_element?(view, ~s(#{selector}[href="#{href}"]))
@@ -1474,7 +1470,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       render_patch(view, runs(scope, "?target=acme/api"))
       assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/api only."
-      assert href(view, "a#runs-narrowed-name", workspace_path(scope, "/targets/acme/api"))
+
+      assert href(
+               view,
+               "a#runs-narrowed-name",
+               target_page_path(scope, "github.example", "acme/api")
+             )
 
       if Apiary.Features.on?(:security),
         do:
@@ -1482,7 +1483,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
             href(
               view,
               "#runs-narrowed-policy",
-              workspace_path(scope, "/targets/acme/api/-/policy")
+              target_page_path(scope, "github.example", "acme/api", "/policy")
             )
           )
 

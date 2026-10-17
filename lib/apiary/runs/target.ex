@@ -4,6 +4,12 @@ defmodule Apiary.Runs.Target do
   a run's labels, which the workspace's domain reads (`Apiary.Lingo.Domain`). Unique per
   workspace on system and path. The software domain calls a target a repository and its
   system a forge.
+
+  `public_id` is the id Qory Apiary gives the target, `tg_` and 16 characters
+  (`Apiary.PublicId`): its page is addressed by it, `/:org/:workspace/targets/tg_…`.
+  `system` and `path` are the labels Forager sent, named after the system they come
+  from. The projector sets the id when it creates the target; a row written without one
+  gets the column's default, of the same shape, read back on insert.
   """
   use Ecto.Schema
 
@@ -37,6 +43,7 @@ defmodule Apiary.Runs.Target do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "targets" do
+    field :public_id, :string, read_after_writes: true
     field :system, :string
     field :path, :string
     field :first_seen_at, :utc_datetime_usec

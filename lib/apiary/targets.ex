@@ -28,7 +28,7 @@ defmodule Apiary.Targets do
   import Ecto.Query, warn: false
   import Apiary.Days, only: [sql_day: 2]
 
-  alias Apiary.Access
+  alias Apiary.{Access, PublicId}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
@@ -43,7 +43,13 @@ defmodule Apiary.Targets do
   @activities ~w(quiet_30 quiet_90)a
 
   @typedoc "A pinned target as the sidebar lists it."
-  @type pinned :: %{id: Ecto.UUID.t(), system: String.t(), path: String.t(), shared: boolean}
+  @type pinned :: %{
+          id: Ecto.UUID.t(),
+          public_id: String.t(),
+          system: String.t(),
+          path: String.t(),
+          shared: boolean
+        }
 
   @typedoc """
   What the index asks for (`page/3`): the view (`:all`, `:active`, ran in the last seven
@@ -111,6 +117,16 @@ defmodule Apiary.Targets do
       {:ok, id} -> Repo.one(from t in in_scope(scope), where: t.id == ^id)
       :error -> nil
     end
+  end
+
+  @doc """
+  get_by_public_id/2 is the target of the scope's workspace with this public id (`tg_…`,
+  `Apiary.PublicId`), or nil: one indexed read, none for anything not of that shape.
+  """
+  @spec get_by_public_id(Scope.t(), term) :: Target.t() | nil
+  def get_by_public_id(%Scope{} = scope, public_id) do
+    if PublicId.valid?("tg", public_id),
+      do: Repo.one(from t in in_scope(scope), where: t.public_id == ^public_id)
   end
 
   @doc "shared?/2 says whether the target's path is also a path in another system of its workspace."
@@ -728,6 +744,7 @@ defmodule Apiary.Targets do
           limit: ^limit,
           select: %{
             id: t.id,
+            public_id: t.public_id,
             system: t.system,
             path: t.path,
             shared:

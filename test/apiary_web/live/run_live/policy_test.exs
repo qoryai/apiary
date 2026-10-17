@@ -183,7 +183,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       path =
-        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{configuration.version}")
+        workspace_path(
+          scope,
+          "/targets/#{target.public_id}/policy/versions/#{configuration.version}"
+        )
 
       assert has_element?(
                view,
@@ -243,7 +246,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute notice =~ "github.example"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")
+      path = target_page_path(scope, "github.example", "acme/shop", "/policy/versions/1")
 
       assert has_element?(
                view,
@@ -304,7 +307,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute text(view, "#run-behind") =~ "github.example"
 
       compare =
-        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{new.version}") <>
+        target_page_path(scope, "github.example", "acme/shop", "/policy/versions/#{new.version}") <>
           "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
@@ -696,7 +699,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule = workspace_path(scope, "/targets/acme/shop/-/policy?rule=files.cdn.example")
+      rule =
+        target_page_path(scope, "github.example", "acme/shop", "/policy?rule=files.cdn.example")
 
       assert has_element?(
                view,
@@ -745,8 +749,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
-      # The header's link lands on its page at its address.
-      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      # The header's link lands on its page, by its public id.
+      page = workspace_path(scope, "/targets/#{target.public_id}")
       assert has_element?(view, "#run-target[href='#{page}']")
 
       view |> element("#cx-#{id}-allow") |> render_click()
@@ -762,12 +766,12 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a[href="#{page}/-/policy/versions/#{new.version}"])
+               ~s(#cx-#{id}-after a[href="#{page}/policy/versions/#{new.version}"])
              )
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/-/policy?rule=files.cdn.example"]),
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/policy?rule=files.cdn.example"]),
                "Show the rule"
              )
 

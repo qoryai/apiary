@@ -138,8 +138,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     [target] = group(answer, "Repositories")["items"]
     assert target["label"] == "acme/shop"
     assert target["detail"] == "github.example"
-    # The path alone: no other system of the workspace has it (question 9, answer A).
-    assert target["href"] == workspace_path(scope, "/targets/acme/shop")
+    # Its page, by its public id.
+    assert target["href"] == target_page_path(scope, "github.example", "acme/shop")
 
     short = String.slice(run.run_id, 0, 8)
     href = workspace_path(scope, "/runs/#{run.run_id}")
@@ -193,7 +193,7 @@ defmodule ApiaryWeb.JumpControllerTest do
            }
   end
 
-  test "a target whose path another system has is at its address, with its system",
+  test "a target whose path another system has is found with its system, at its page",
        %{conn: conn, scope: scope} do
     started_run(scope, shop())
     started_run(scope, shop("gitlab.example"))
@@ -207,11 +207,11 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     assert hrefs == %{
              {"github.example", "acme/shop"} =>
-               workspace_path(scope, "/targets/github.example/acme/shop"),
+               target_page_path(scope, "github.example", "acme/shop"),
              {"gitlab.example", "acme/shop"} =>
-               workspace_path(scope, "/targets/gitlab.example/acme/shop"),
+               target_page_path(scope, "gitlab.example", "acme/shop"),
              {"github.example", "acme/shopfront"} =>
-               workspace_path(scope, "/targets/acme/shopfront")
+               target_page_path(scope, "github.example", "acme/shopfront")
            }
   end
 

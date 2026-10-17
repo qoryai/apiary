@@ -1,14 +1,14 @@
 defmodule ApiaryWeb.PolicyLive.Target do
   @moduledoc """
   A target's view of the workspace's policy, the Policy tab of the target's page
-  (`ApiaryWeb.TargetLive.Show`, `…/-/policy`): the effective list, one row per host in
+  (`ApiaryWeb.TargetLive.Show`, `…/tg_…/policy`): the effective list, one row per host in
   force with where it came from, the rules that lost hung under the rule that beat them;
-  the hosts the harness declared; the target's history (`…/-/policy/history`),
-  versions (`…/-/policy/versions/:n`, with `/export`) and the document in force
-  (`…/-/policy/document`: the target's version, or the workspace's while it is served the
+  the hosts the harness declared; the target's history (`…/tg_…/policy/history`),
+  versions (`…/tg_…/policy/versions/:n`, with `/export`) and the document in force
+  (`…/tg_…/policy/document`: the target's version, or the workspace's while it is served the
   workspace's, shown in place under the mode card and read again after a change); and
-  the New rule and Edit rule pages of its rules (`…/-/policy/rules/new`,
-  `…/-/policy/rules/:id/edit`, `ApiaryWeb.PolicyComponents.rule_form/1`), which go back
+  the New rule and Edit rule pages of its rules (`…/tg_…/policy/rules/new`,
+  `…/tg_…/policy/rules/:id/edit`, `ApiaryWeb.PolicyComponents.rule_form/1`), which go back
   to the list as it was left.
 
   Not a separate page: the target's page mounts it with the target it found in the current
@@ -36,8 +36,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
   @doc """
   mount/3 is the tab's assigns for `target`, a target of the scope's workspace, and the
   subscription to the policy's changes. `shared` is whether the target's path is shared
-  by another target of the workspace, as its page's address says; read once when nil.
-  The tab names and addresses the target by it. The tab is read once, by the connected
+  by another target of the workspace, as its page reads it; read once when nil. The tab
+  names the target by it, and addresses it by its public id. The tab is read once, by the connected
   mount: the first render is its skeleton.
   """
   def mount(socket, target, shared \\ nil) do
@@ -668,7 +668,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     end
   end
 
-  # The target in words, as it is addressed (`Common.holder_name/1`).
+  # The target in words, in its notation (`Common.holder_name/1`).
   defp name(socket), do: Common.holder_name(socket)
 
   # After an act on a row, focus stays on the row: its menu, when it is on the page.

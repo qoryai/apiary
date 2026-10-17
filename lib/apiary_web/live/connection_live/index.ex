@@ -1112,7 +1112,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     Map.merge(rule_option, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -1121,7 +1121,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              path: Rules.version_path(scope, holder, change.version),
               label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
@@ -1143,12 +1143,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(
-            scope,
-            if(entry.source == :target and target, do: target),
-            entry.host,
-            Narrowing.shared?(socket.assigns.narrowing)
-          ),
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end
@@ -1636,10 +1631,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             system: system,
             label: if(system, do: "#{system}/#{path}", else: path),
             shared_alone: Narrowing.shared_alone?(narrowing),
-            page: found && TargetComponents.target_path(scope, found.system, path, [], shared),
+            page: found && TargetComponents.target_path(scope, found),
             policy:
-              assigns.policy_target &&
-                TargetComponents.target_path(scope, found.system, path, ["policy"], shared),
+              assigns.policy_target && TargetComponents.target_path(scope, found, ["policy"]),
             runs:
               ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(linked, path)}"
           )

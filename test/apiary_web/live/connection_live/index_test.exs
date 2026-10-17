@@ -775,7 +775,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       # The name leads to the target's page; out of the sentence, each link is named by it.
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/acme/shop")
+               target_page_path(scope, "github.com", "acme/shop")
 
       assert attribute(view, "#connections-target-runs", "aria-label") ==
                "Runs, narrowed to acme/shop"
@@ -785,7 +785,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       if security?() do
         assert attribute(view, "#connections-target-policy", "href") ==
-                 workspace_path(scope, "/targets/acme/shop/-/policy")
+                 target_page_path(scope, "github.com", "acme/shop", "/policy")
 
         assert attribute(view, "#connections-target-policy", "aria-describedby") ==
                  "connections-target-what"
@@ -855,7 +855,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                |> LazyHTML.from_document()
                |> LazyHTML.query("#connections-target-policy")
                |> LazyHTML.attribute("href") ==
-                 [workspace_path(scope, "/targets/gitlab.com/acme/shop/-/policy")]
+                 [target_page_path(scope, "gitlab.com", "acme/shop", "/policy")]
       end
 
       view = open(conn, shared)
@@ -863,7 +863,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert note(view) == target_note("gitlab.com/acme/shop")
 
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/gitlab.com/acme/shop")
+               target_page_path(scope, "gitlab.com", "acme/shop")
 
       assert attribute(view, "#connections-target-runs", "aria-label") ==
                "Runs, narrowed to gitlab.com/acme/shop"
@@ -1009,11 +1009,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert note(view) == target_note("acme/billing")
 
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/acme/billing")
+               target_page_path(scope, "github.com", "acme/billing")
 
       if security?() do
         assert attribute(view, "#connections-target-policy", "href") ==
-                 workspace_path(scope, "/targets/acme/billing/-/policy")
+                 target_page_path(scope, "github.com", "acme/billing", "/policy")
       end
 
       # A path no target has: no page, no policy.

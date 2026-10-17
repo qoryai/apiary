@@ -58,7 +58,8 @@ reached, and what decided it, is the **Network access** page beside **Policy** i
 sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
 section links to it, and its rules link back. A repository can add rules on top,
 on the **Policy** tab of the repository's page,
-`/:org/:workspace/targets/:forge/:path/-/policy` (the old address,
+`/:org/:workspace/targets/:target_id/policy`, where `:target_id` is the id Qory Apiary
+gives the repository, `tg_…` (the old address,
 `/:org/:workspace/policy/targets/:id` and what followed it, sends on there); the list of
 repositories and their policy is `/:org/:workspace/policy/targets`. A repository appears
 there once a run names it, by the `forge` and `repository` labels Forager takes from the
@@ -80,7 +81,7 @@ deny or allow, Lock or Unlock for an owner, Remove).
 ### Adding a rule
 
 **Add rule**, in the header of the Network access section, opens the **New rule** page
-(`…/policy/rules/new`, a repository's `…/-/policy/rules/new`); the top bar's **New** offers
+(`…/policy/rules/new`, a repository's `…/tg_…/policy/rules/new`); the top bar's **New** offers
 it too, as **Network access rule**. The page asks:
 
 1. **What should runs do?** **Allow** lets runs connect to the host, and is needed under
@@ -217,7 +218,7 @@ it is stored.
   version**. The change is still in the history. A lock often does this: it holds against
   repositories and leaves the workspace's document as it was.
 - **History**, `/:org/:workspace/policy/history` and
-  `/:org/:workspace/targets/:forge/:path/-/policy/history`, has every change with who made it,
+  `/:org/:workspace/targets/:target_id/policy/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to repository rules are in that repository's history. The history is the policy's part of the organisation's audit
   trail, and is kept as long as the trail: 90 days unless the instance says otherwise
@@ -225,7 +226,7 @@ it is stored.
   [Install and configure](install.md#audit-trail)). The versions are kept whatever their
   age.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
-  `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n`, has the changes from any
+  `/:org/:workspace/targets/:target_id/policy/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.
   `/:org/:workspace/policy/document` is the document in force.
 
@@ -306,7 +307,7 @@ row: the rules decide what reaches a tool, and the tool decides what the request
 
 A machine that reports to no server can be given the same policy as files. **Export**, on
 the policy page and on a version's page, `/:org/:workspace/policy/versions/:n/export` and
-`/:org/:workspace/targets/:forge/:path/-/policy/versions/:n/export`, gives the effective
+`/:org/:workspace/targets/:target_id/policy/versions/:n/export`, gives the effective
 policy of that version as text, with **Download**:
 
 - the `egress` section for the machine's Forager file, which says a mode, the hosts

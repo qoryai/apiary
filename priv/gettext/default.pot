@@ -12700,11 +12700,6 @@ msgstr ""
 msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
 msgstr ""
 
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This address can mean more than one target. Choose one:"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine with a command."
@@ -12844,11 +12839,6 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This path cannot be written as a path rule."
-msgstr ""
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This path is in more than one system. Choose one:"
 msgstr ""
 
 #: lib/apiary/policy.ex

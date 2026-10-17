@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.TargetComponentsTest do
   @moduledoc """
-  The helpers that write a target's address and its lists' parameters given the
-  workspace's shared paths as a set (`Apiary.Runs.shared_paths/2`), as the lists pass them:
-  the system only for a path in the set.
+  The helpers that write a target's address, by its public id, and its name and its lists'
+  parameters given the workspace's shared paths as a set (`Apiary.Runs.shared_paths/2`),
+  as the lists pass them: the system only for a path in the set.
   """
   use ExUnit.Case, async: true
 
@@ -47,42 +47,38 @@ defmodule ApiaryWeb.TargetComponentsTest do
     end
   end
 
-  test "target_path/5 writes the system only for a path in the set" do
-    assert TargetComponents.target_path(@scope, "gitlab.com", "acme/shop", [], @shared) ==
-             "/acme/main/targets/gitlab.com/acme/shop"
+  test "target_path/3 writes the target's public id, never its system or its path" do
+    target = %{public_id: "tg_0123456789abcdef", system: "gitlab.com", path: "acme/shop"}
 
-    assert TargetComponents.target_path(@scope, "gitlab.com", "acme/shop", ["policy"], @shared) ==
-             "/acme/main/targets/gitlab.com/acme/shop/-/policy"
+    assert TargetComponents.target_path(@scope, target) ==
+             "/acme/main/targets/tg_0123456789abcdef"
 
-    assert TargetComponents.target_path(@scope, "github.com", "acme/billing", [], @shared) ==
-             "/acme/main/targets/acme/billing"
+    assert TargetComponents.target_path(@scope, target, ["policy"]) ==
+             "/acme/main/targets/tg_0123456789abcdef/policy"
 
-    assert TargetComponents.target_path(@scope, "github.com", "acme/billing", [], MapSet.new()) ==
-             "/acme/main/targets/acme/billing"
+    assert TargetComponents.target_path(@scope, "tg_0123456789abcdef", ["policy", "history"]) ==
+             "/acme/main/targets/tg_0123456789abcdef/policy/history"
+
+    assert TargetComponents.target_path(
+             %Organisation{slug: "acme"},
+             %Workspace{slug: "main"},
+             target,
+             ["policy", "versions", "3"]
+           ) == "/acme/main/targets/tg_0123456789abcdef/policy/versions/3"
   end
 
-  test "a target's name carries its system exactly where its address does" do
-    for {system, path, shared} <- [
-          {"gitlab.com", "acme/shop", @shared},
-          {"github.com", "acme/billing", @shared},
-          {"codeberg.org", "acme/billing", true},
-          {"codeberg.org", "acme/billing", false},
-          {"github.com", "acme/billing", nil},
-          {nil, "acme/shop", true}
+  test "a target's name carries its system only for a path in the set" do
+    for {system, path, shared, name} <- [
+          {"gitlab.com", "acme/shop", @shared, "gitlab.com/acme/shop"},
+          {"github.com", "acme/billing", @shared, "acme/billing"},
+          {"codeberg.org", "acme/billing", true, "codeberg.org/acme/billing"},
+          {"codeberg.org", "acme/billing", false, "acme/billing"},
+          {"github.com", "acme/billing", nil, "acme/billing"},
+          {nil, "acme/shop", true, "acme/shop"}
         ] do
-      with_system? = TargetComponents.with_system?(system, path, shared)
-      address = TargetComponents.target_path(@scope, system, path, [], shared)
-      name = TargetComponents.target_label(system, path, shared)
-
-      assert address == "/acme/main/targets/" <> name
-      assert with_system? == (name == "#{system}/#{path}")
-      assert with_system? == String.starts_with?(address, "/acme/main/targets/#{system}/")
+      assert TargetComponents.target_label(system, path, shared) == name
+      assert TargetComponents.with_system?(system, path, shared) == (name == "#{system}/#{path}")
     end
-
-    assert TargetComponents.target_label("codeberg.org", "acme/billing", true) ==
-             "codeberg.org/acme/billing"
-
-    assert TargetComponents.target_label("codeberg.org", "acme/billing", false) == "acme/billing"
   end
 
   test "Filters.target_params/3 gives the system only for a path in the set" do
