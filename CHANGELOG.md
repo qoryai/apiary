@@ -10,11 +10,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ## [Unreleased]
 
+<!-- feature: secrets -->
 ### Fixed
 
 - Checking an integration's settings, and any other JSON Schema check, no longer creates
   atoms or runs a cast a schema names: every schema is built without atom casts, and
   values are only checked.
+<!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
 
