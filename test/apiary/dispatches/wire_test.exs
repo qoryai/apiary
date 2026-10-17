@@ -326,6 +326,7 @@ defmodule Apiary.Dispatches.WireTest do
             &Map.put(&1, "time", "2026-10-15T12:00:00.5Z"),
             &Map.put(&1, "time", "2026-10-15T12:00:00+00:00"),
             &Map.put(&1, "time", "2026-10-15 12:00:00Z"),
+            &Map.put(&1, "time", "2026-10-15T12:00:00\u0000"),
             &Map.put(&1, "time", 1_792_065_600)
           ] do
         changed = change.(body)
@@ -456,6 +457,7 @@ defmodule Apiary.Dispatches.WireTest do
             "np_0123456789abcdef0",
             "nd_0123456789abcdef",
             "np_0123456789abcdef\n",
+            "np_0123456789abcde\u0000",
             1
           ] do
         assert claim(Map.put(@claim, "pool_id", pool_id)) == :error, inspect(pool_id)
