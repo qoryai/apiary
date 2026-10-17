@@ -707,10 +707,14 @@ defmodule Apiary.Nodes do
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
   start of its oldest run alive), its newest run alive (`run_public_id`, the run's
-  `public_id`) and the Forager version that run reported.
+  `public_id`) and the Forager version that run reported. `row_id` is the id of its row
+  in `node_instances`, nil when it has none (rows are bounded and pruned): a page
+  addresses the instance by `row_id`, and one with no row by `run_public_id`, never by
+  the node's instance id (`instance_id`).
   """
   @type running :: %{
           instance_id: String.t(),
+          row_id: Ecto.UUID.t() | nil,
           name: String.t() | nil,
           since: DateTime.t(),
           run_public_id: String.t(),
@@ -1075,6 +1079,53 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
+  get_instance_by_id/3 is the instance of `node`, a node of the scope's workspace or a
+  gateway of its organisation, whose row in `node_instances` has the id `id`: the id a
+  page addresses an instance by. nil for an id that is not a UUID, and for a row of
+  another node, workspace or organisation.
+  """
+  @spec get_instance_by_id(Scope.t(), Node.t(), term) :: Instance.t() | nil
+  def get_instance_by_id(%Scope{} = scope, %Node{id: node_id} = node, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} ->
+        place = if is_nil(node.workspace_id), do: :organisation, else: nil
+
+        scope
+        |> instances_query(place)
+        |> where([i], i.node_id == ^node_id and i.id == ^id)
+        |> Repo.one()
+
+      :error ->
+        nil
+    end
+  end
+
+  @doc """
+  get_instance_run/3 is the open run, pending or running, of the scope's workspace whose
+  `public_id` is `public_id`, a run of `node` that names its instance: the address of an
+  instance with no row in `node_instances`, by its newest open run. nil for a malformed
+  id, a run of another node or workspace, a run that names no instance, and one that has
+  ended.
+  """
+  @spec get_instance_run(Scope.t(), Node.t(), term) :: Run.t() | nil
+  def get_instance_run(
+        %Scope{organisation: %Organisation{id: organisation_id}, workspace: %Workspace{id: ws}},
+        %Node{id: node_id},
+        public_id
+      ) do
+    if Run.public_id?(public_id) do
+      Repo.one(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id == ^ws,
+          where: r.node_id == ^node_id and r.public_id == ^public_id,
+          where: not is_nil(r.node_instance_id) and r.state in ["pending", "running"]
+      )
+    end
+  end
+
+  def get_instance_run(%Scope{}, %Node{}, _public_id), do: nil
+
+  @doc """
   instance_of/2 is the row of the instance `run`, a run of the scope's workspace, ran as:
   nil for a run that names no node or no instance, and for an instance whose row was
   pruned or never recorded.
@@ -1135,6 +1186,7 @@ defmodule Apiary.Nodes do
         {node_id,
          %{
            instance_id: instance_id,
+           row_id: row && row.id,
            name: row && row.name,
            since: runs |> Enum.map(& &1.since) |> Enum.min(DateTime),
            run_public_id: newest.public_id,

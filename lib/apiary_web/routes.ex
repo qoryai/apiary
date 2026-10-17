@@ -599,13 +599,20 @@ defmodule ApiaryWeb.Routes do
               # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
               # instance in place in Overview. `:node_id` is the node's public id; an
-              # instance is named by its instance id. The sidebar's Nodes leads here.
+              # instance is named by the id of its row in `node_instances`, or, with no row,
+              # by its newest open run's public id (`rn_…`), never by the node's instance id.
+              # The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool
               live "/nodes/new-gateway", NodeLive.Index, :new_gateway
               live "/nodes/:node_id", NodeLive.Show, :overview
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
+
+              live "/nodes/:node_id/runs/:run_id/clear-instance",
+                   NodeLive.Show,
+                   :clear_instance
+
               live "/nodes/:node_id/settings", NodeLive.Show, :settings
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
               # A node's Access key tab: its keys and its outstanding enrolment codes;

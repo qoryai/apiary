@@ -1128,7 +1128,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
-  `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
+  `/nodes/:node_id/instances/:instance/clear` (the id of the instance's row in
+  `node_instances`), or, for an instance with no row, at
+  `/nodes/:node_id/runs/:run_id/clear-instance` (its newest open run's `rn_` id), never
+  the node's instance id, that line, or that row in
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
   build-01? Clear this instance if it stopped without saying so. Another instance can then
   start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
