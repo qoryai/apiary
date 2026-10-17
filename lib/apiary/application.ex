@@ -10,13 +10,15 @@ defmodule Apiary.Application do
   # (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is past
   # its grace period (`Apiary.Deletion.PurgeSweep`); then, every ten minutes, the purge of
   # the request signatures an adapter's replay check no longer needs
-  # (`Apiary.Adapters.SeenRequestsPurge`). The edition's follow
+  # (`Apiary.Adapters.SeenRequestsPurge`); then, every minute, the sweep of the claims of
+  # node pools whose lease lapsed (`Apiary.Dispatches.Sweep`). The edition's follow
   # (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
     {"20 3 * * *", Apiary.Deletion.PurgeSweep},
-    {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge}
+    {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge},
+    {"* * * * *", Apiary.Dispatches.Sweep}
   ]
 
   @doc """
@@ -89,7 +91,10 @@ defmodule Apiary.Application do
       Apiary.Nodes.Throttle,
       # The holds of adapters' reads of their change feeds, a few per key
       # (`ApiaryWeb.Contract.ChangesController`).
-      {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds}
+      {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds},
+      # The holds of node pools' claims, a few per key
+      # (`ApiaryWeb.Contract.PoolClaimController`).
+      {Registry, keys: :unique, name: ApiaryWeb.Contract.PoolClaimController.Holds}
     ] ++
       migrator() ++
       key_check() ++

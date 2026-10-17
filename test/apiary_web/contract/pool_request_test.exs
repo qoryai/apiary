@@ -3,9 +3,10 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   # through `ApiaryWeb.Contract.AdapterRequest` with `kind: :pool`: the signature under the
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
-  # the routes where the feature is off. The actions themselves are not served yet: an
-  # accepted request is answered `404` `not_found`, signed. Not async: the features are
-  # the whole node's.
+  # the routes where the feature is off. A claim accepted, with an empty queue and no
+  # wait, is answered `204`, signed; the other actions are not served yet, and an accepted
+  # request of one is answered `404` `not_found`, signed. Not async: the features are the
+  # whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
@@ -78,6 +79,11 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   defp claim(ctx, body, opts \\ []), do: signed(ctx, @claim, body, opts)
 
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
+
+  # An accepted request's answer: a claim of an empty queue with no wait, `204` with no
+  # body; any other route's, `404` `not_found`, as its action is not built yet.
+  defp accepted?(conn, @claim), do: conn.status == 204 and conn.resp_body == ""
+  defp accepted?(conn, _target), do: json_response(conn, 404) == @not_found
   defp seen_count, do: Repo.aggregate("adapter_seen_requests", :count)
 
   # The answer as it goes out, but the headers whose value differs from one answer to the
@@ -99,11 +105,11 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   describe "a verified request" do
-    test "on each route is accepted, and answered 404 not_found, signed, as the action is not built yet",
+    test "on each route is accepted: a claim of an empty queue 204, the others 404 not_found, as their actions are not built yet, signed",
          ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
-        assert json_response(conn, 404) == @not_found, target
+        assert accepted?(conn, target), target
         assert signed_answer?(conn), target
       end
 
@@ -114,14 +120,14 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     test "takes the media type whatever its case and parameters", ctx do
       conn = claim(ctx, body(@claim), content_type: "Application/JSON; charset=utf-8")
-      assert json_response(conn, 404) == @not_found
+      assert accepted?(conn, @claim)
     end
 
     test "takes a pool's key enrolled in a browser as one enrolled with a code", ctx do
       pool = pool_fixture(ctx.scope)
       %{access_key: key, pair: pair} = browser_key_fixture(ctx.scope, pool)
       conn = claim(ctx, body(@claim), key_id: key.key_id, seed: pair.secret)
-      assert json_response(conn, 404) == @not_found
+      assert accepted?(conn, @claim)
     end
 
     test "is served the provisioner contract's revisions, 1 alone", _ctx do
@@ -135,7 +141,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "a time up to 300 seconds from the clock, either way, is accepted", ctx do
       for offset <- [-300, 300] do
         conn = claim(ctx, body(@claim, offset))
-        assert json_response(conn, 404) == @not_found, "#{offset}"
+        assert accepted?(conn, @claim), "#{offset}"
       end
     end
 
@@ -155,13 +161,13 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
          ctx do
       for target <- @targets do
         raw = Jason.encode!(body(target))
-        assert json_response(signed(ctx, target, raw), 404) == @not_found
+        assert accepted?(signed(ctx, target, raw), target)
 
         conn = signed(ctx, target, raw)
         assert json_response(conn, 401) == @unauthorized, target
         assert unsigned_answer?(conn)
 
-        assert json_response(signed(ctx, target, body(target, 1)), 404) == @not_found
+        assert accepted?(signed(ctx, target, body(target, 1)), target)
       end
     end
 
@@ -171,10 +177,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       %{access_key: other, pair: pair} = enrolled_key_fixture(ctx.scope, pool)
       raw = Jason.encode!(body(@claim))
 
-      assert json_response(claim(ctx, raw), 404) == @not_found
-
-      assert json_response(claim(ctx, raw, key_id: other.key_id, seed: pair.secret), 404) ==
-               @not_found
+      assert accepted?(claim(ctx, raw), @claim)
+      assert accepted?(claim(ctx, raw, key_id: other.key_id, seed: pair.secret), @claim)
     end
   end
 
@@ -287,7 +291,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       raw = Jason.encode!(body(@claim))
       raw = raw <> String.duplicate(" ", 1024 * 1024 - byte_size(raw))
       assert byte_size(raw) == 1024 * 1024
-      assert json_response(claim(ctx, raw), 404) == @not_found
+      assert accepted?(claim(ctx, raw), @claim)
     end
 
     test "415 for a POST that is not application/json, unsigned, before a header sent twice",
@@ -337,7 +341,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     test "the bucket is the pool key's, apart from an adapter's bucket of the same id", ctx do
       for _ <- 1..200, do: RateLimit.check({:adapter, ctx.key.id}, rate: 50, burst: 100)
-      assert json_response(claim(ctx, body(@claim)), 404) == @not_found
+      assert accepted?(claim(ctx, body(@claim)), @claim)
     end
 
     test "400 bad_request for an instance id absent or malformed, signed, before the revision",

@@ -688,6 +688,18 @@ defmodule Apiary.EditionStubs do
     defdelegate who_may_sentence(about, scope), to: GatewaysWorded
   end
 
+  defmodule NoClaim do
+    @moduledoc "No node pool's key claims a run (`dispatch.claim`): `{:error, :forbidden}`."
+    def check(_scope, :"dispatch.claim", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule HidesClaim do
+    @moduledoc "The queue is not found to any node pool's key (`dispatch.claim`): `{:error, :not_found}`."
+    def check(_scope, :"dispatch.claim", _subject), do: {:error, :not_found}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLog do
     @moduledoc "Nobody reads a run's log (`run.read_log`), whoever asks."
     def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
