@@ -340,7 +340,9 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
 
       {:ok, 4} = assign(ctx, ["SHOP", "API", "OFF", "BARE"], ctx.workspace)
       {:ok, 1} = assign(ctx, ["OFF"], ctx.other_workspace)
-      {:ok, 1} = Collections.set_backlog(ctx.scope, target(ctx.other_workspace, @shop), false)
+      # A switch is turned in the workspace of its target.
+      other_scope = %{ctx.scope | workspace: ctx.other_workspace}
+      {:ok, 1} = Collections.set_backlog(other_scope, target(ctx.other_workspace, @shop), false)
       {:ok, :accepted} = Sources.post_items(ctx.key_scope, items_body("SHOP", [item("R")]))
       assert tickets(ctx) == ["Title of R"]
       Phoenix.PubSub.subscribe(Apiary.PubSub, Collections.topic(ctx.scope.organisation.id))
