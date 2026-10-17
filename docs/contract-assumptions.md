@@ -555,8 +555,9 @@ read raw up to 4 KiB (`ApiaryWeb.Contract.RawBody`), is how a run's starter says
 run went (`Apiary.Runs.Outcome`, `ApiaryWeb.Contract.OutcomeController`):
 `{"version":1, "state"?, "reason"?, "time"}`. `state` is `succeeded`, `failed` or
 `cancelled`, and none is `cancelled` with the reason `stopped`. `reason` follows the rule of
-an exit's reason (How a run ends), and one that breaks it, or is one of Forager's reserved
-codes, is dropped, the outcome kept. `time` is held to 300 seconds of the server's clock,
+an exit's reason (How a run ends), and one that breaks it, is one of Forager's reserved
+codes, or is `released`, a reason Qory sets itself (A run of the queue), is dropped, the
+outcome kept. `time` is held to 300 seconds of the server's clock,
 outside of which the answer is `401`, unsigned. A member the contract does not name is
 `400 invalid_request` with `"body"`. After the refusals every signed request gets, and the
 body's: a key `Apiary.Access` does not let post is `404`; the same outcome again under any

@@ -89,8 +89,9 @@ defmodule Apiary.Dispatches do
   # ## The end of a run handed over: `end_run_released/2` and `backstop_seconds/1`
   #
   # A run handed over ends with its registered run: by its starter's outcome or its exit,
-  # by its starter's release after the handover (`end_run_released/2`, which the release
-  # asks), or by the lost-run check, at its gateway's `attach_by` should it never attach, or
+  # by its starter's release after the handover (`end_run_released/2`, which no endpoint
+  # calls: the release endpoint answers `404`, `ApiaryWeb.Contract.DispatchController`), or
+  # by the lost-run check, at its gateway's `attach_by` should it never attach, or
   # at `backstop_seconds/1` of its step after its attach should it have neither an outcome
   # nor an exit by then (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
   # it held is freed, once.

@@ -15,13 +15,16 @@ defmodule Apiary.Dispatches.RunEnd do
   #   applies until an outcome decides, `Apiary.Runs.Fold`), and no outcome is recorded, so
   #   no `end` is sent for it: an end follows only the starter's outcome
   #   (`Apiary.Runs.Ingest`). Its gateway's attach is refused `410` from then on, as for any
-  #   run that ended (`Apiary.Runs.Attach`);
+  #   run that ended (`Apiary.Runs.Attach`). A release that finds the registered run's
+  #   outcome or exit folded and its end not yet written is too late: it changes nothing,
+  #   and that end is written `run_ended`;
   # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with neither an outcome nor an exit by
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
   #   step. The check marks the registered run lost by its rules first; this ends the run of
   #   the queue. It also ends, `run_ended`, one whose outcome or exit came and whose end was
-  #   not written, should a projection have stopped between its pass and its end.
+  #   not written, should a projection have stopped between its pass and its end, and one
+  #   whose exit its projection skipped unfolded (`Apiary.Runs.Projector`).
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
@@ -43,6 +46,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # first.
 
   import Ecto.Query, only: [from: 2]
+
+  require Logger
 
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Repo
@@ -97,8 +102,11 @@ defmodule Apiary.Dispatches.RunEnd do
   # run, changed: workspace_ids}}`, the registered run as it is now (nil should there be
   # none) for the caller to broadcast, and the workspaces whose slots changed, for the
   # caller to tell, both once its transaction commits; `{:error, :ended}` for one that
-  # ended already, whatever its cause; `{:error, :not_handed_over}` for one waiting or
-  # claimed; `{:error, :not_found}` for none. Nothing is written but on `:ok`.
+  # ended already, whatever its cause, or whose registered run has its outcome or its exit
+  # folded and its end not yet written: the first to come decides, and the projection that
+  # folded the exit, or the lost-run check, writes that end (`run_ended/1`, `lose/1`);
+  # `{:error, :not_handed_over}` for one waiting or claimed; `{:error, :not_found}` for
+  # none. Nothing is written but on `:ok`.
   @doc false
   @spec released(Ecto.UUID.t(), DateTime.t()) ::
           {:ok, %{run: Run.t() | nil, changed: [Ecto.UUID.t()]}}
@@ -111,8 +119,7 @@ defmodule Apiary.Dispatches.RunEnd do
         {:error, :not_found}
 
       %DispatchRun{state: :handed_over} = dispatch_run ->
-        run = with %Run{} = run <- registered(dispatch_run.id), do: release(run, now)
-        {:ok, %{run: run, changed: end_locked(dispatch_run, :released, now)}}
+        release_handed_over(dispatch_run, registered(dispatch_run.id), now)
 
       %DispatchRun{state: :ended} ->
         {:error, :ended}
@@ -138,6 +145,19 @@ defmodule Apiary.Dispatches.RunEnd do
             lock: "FOR UPDATE"
         )
     end
+  end
+
+  # A registered run whose outcome or exit came first: the release finds it ended, and
+  # leaves its end to the one that came (the moduledoc).
+  defp release_handed_over(%DispatchRun{} = dispatch_run, run, now) do
+    if run && outcome_or_exit?(run),
+      do: {:error, :ended},
+      else:
+        {:ok,
+         %{
+           run: run && release(run, now),
+           changed: end_locked(dispatch_run, :released, now)
+         }}
   end
 
   # Cancelled, with the reason `released`, and no outcome: the fold applies it after every
@@ -182,8 +202,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # lose/1 ends, at `now`, the runs of the queue handed over whose registered run its
   # gateway never attached by its `attach_by`, or that has neither an outcome nor an exit
   # by its `backstop_at` (`lost`), or whose outcome or exit came and whose end was not
-  # written (`run_ended`): at most `@batch`, each in a separate transaction. The ids of
-  # the workspaces whose slots changed, for the caller to tell
+  # written (`run_ended`): at most `@batch`, each in a separate transaction. One that
+  # raises is logged by its id and the exception's module, and the rest are still ended.
+  # The ids of the workspaces whose slots changed, for the caller to tell
   # (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec lose(DateTime.t()) :: [Ecto.UUID.t()]
@@ -201,11 +222,17 @@ defmodule Apiary.Dispatches.RunEnd do
       select: d.id
     )
     |> Repo.all()
-    |> Enum.flat_map(fn id ->
-      {:ok, changed} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
-      changed
-    end)
+    |> Enum.flat_map(&lose_guarded(&1, now))
     |> Enum.uniq()
+  end
+
+  defp lose_guarded(id, now) do
+    {:ok, changed} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
+    changed
+  rescue
+    error ->
+      Logger.error("run end failed dispatch_run=#{id} error=#{inspect(error.__struct__)}")
+      []
   end
 
   # The rules again, under the locks: an outcome or an exit that came meanwhile ends it as
@@ -225,18 +252,35 @@ defmodule Apiary.Dispatches.RunEnd do
     cond do
       outcome_or_exit?(run) -> :run_ended
       not is_nil(run.released_at) -> :released
-      # An exit stored and not yet folded: its projection ends the run as its exit.
-      exit_stored?(run) -> nil
-      unattached_past?(run, now) or past?(run.backstop_at, now) -> :lost
-      true -> nil
+      true -> by_exit(exit_stored(run), run, now)
     end
   end
+
+  # An exit stored and not yet projected: its projection ends the run as its exit. One
+  # projected that its fold did not take, skipped by its projection (`Apiary.Runs.Projector`):
+  # it came first, so it ends the run of the queue as its exit, and no projection will.
+  defp by_exit(:unprojected, _run, _now), do: nil
+  defp by_exit(:projected, _run, _now), do: :run_ended
+
+  defp by_exit(nil, run, now),
+    do: if(unattached_past?(run, now) or past?(run.backstop_at, now), do: :lost)
 
   defp outcome_or_exit?(%Run{} = run),
     do: not is_nil(run.outcome_state) or not is_nil(run.exited_at) or not is_nil(run.exit_state)
 
-  defp exit_stored?(%Run{id: id}),
-    do: Repo.exists?(from e in Event, where: e.run_id == ^id and e.type == @exited)
+  # :unprojected for an exit stored and not yet projected, :projected for one projected
+  # only, nil for none.
+  defp exit_stored(%Run{id: id}) do
+    from(e in Event,
+      where: e.run_id == ^id and e.type == @exited,
+      select: is_nil(e.projected_at)
+    )
+    |> Repo.all()
+    |> case do
+      [] -> nil
+      unprojected -> if true in unprojected, do: :unprojected, else: :projected
+    end
+  end
 
   defp unattached_past?(%Run{attached_at: nil, attach_by: attach_by}, now),
     do: past?(attach_by, now)

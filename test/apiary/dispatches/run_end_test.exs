@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.RunEndTest do
 
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
-  alias Apiary.Runs.{Attach, Batch, Fold, Ingest, Liveness, Outcome, Projector, Run}
+  alias Apiary.Runs.{Attach, Batch, Event, Fold, Ingest, Liveness, Outcome, Projector, Run}
 
   @moduletag needs: :factory
 
@@ -160,6 +160,30 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert {:ok, %Run{state: "completed"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
+    end
+
+    test "an exit its projection skipped unfolded ends the run as its exit, never held", ctx do
+      handed = handed_over!(ctx)
+
+      exited =
+        event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+
+      # Marked projected as a pass that raised on it leaves it: the run never folded it.
+      Repo.update_all(from(e in Event, where: e.id == ^exited.id),
+        set: [projected_at: DateTime.utc_now()]
+      )
+
+      assert %Run{exited_at: nil, exit_state: nil} = run!(handed.run)
+
+      Liveness.check(handed.run.backstop_at)
+      assert_live(handed)
+
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+      assert_ended(handed, :run_ended)
+      freed = dispatch!(handed.dispatch).slot_freed_at
+
+      Liveness.check(DateTime.add(handed.run.backstop_at, 2, :second))
+      assert dispatch!(handed.dispatch).slot_freed_at == freed
     end
 
     test "a run its gateway never attached is lost at its attach_by, and its dispatch with it",
@@ -389,6 +413,35 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :released)
       assert %Dispatch{end_cause: :run_ended, ended_at: %DateTime{}} = dispatch!(first)
       assert dispatch!(first).slot_freed_at == first_freed
+    end
+
+    test "after the run's exit folded, its end not yet written, is :ended and changes nothing",
+         ctx do
+      handed = handed_over!(ctx)
+
+      # The projection committed the exit's fold and has not written its end yet.
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      folded = run!(handed.run)
+
+      assert release(handed.dispatch_run) == {:error, :ended}
+      assert run!(handed.run) == folded
+      assert_live(handed)
+
+      # The end the projection writes next is the exit's, and frees the slot once.
+      assert [_workspace_id] = RunEnd.run_ended(folded)
+      assert_ended(handed, :run_ended)
+      freed = dispatch!(handed.dispatch).slot_freed_at
+
+      assert release(handed.dispatch_run) == {:error, :ended}
+      assert RunEnd.run_ended(folded) == []
+      assert Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) == []
+      assert %Run{state: "completed", released_at: nil, reason: nil} = run!(handed.run)
+      assert_ended(handed, :run_ended)
+      assert dispatch!(handed.dispatch).slot_freed_at == freed
+      assert Slots.held(ctx.pool.id) == 0
     end
 
     test "sends no end; the starter's outcome after it does", ctx do
