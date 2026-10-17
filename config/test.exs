@@ -127,5 +127,5 @@ config :apiary, Apiary.Integrations.Fetch,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
 
 # An adapter's read of its change feed answers at once when the feed holds nothing new;
-# the test of the hold sets its own.
+# the test of the hold sets the hold it needs.
 config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0

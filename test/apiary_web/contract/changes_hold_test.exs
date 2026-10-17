@@ -125,9 +125,15 @@ defmodule ApiaryWeb.Contract.ChangesHoldTest do
     defp hold(ms, poll),
       do: Application.put_env(:apiary, ChangesController, hold: ms, poll: poll)
 
-    defp read(ctx, query \\ ""),
+    defp read(ctx, query \\ "", opts \\ []),
       do:
-        signed_get(build_conn(), ctx.key.key_id, ctx.seed, "/v1/work-items/changes" <> query, [])
+        signed_get(
+          build_conn(),
+          ctx.key.key_id,
+          ctx.seed,
+          "/v1/work-items/changes" <> query,
+          opts
+        )
 
     test "a read with nothing after its cursor answers the entry that commits meanwhile", ctx do
       hold(5_000, 20)
@@ -177,6 +183,136 @@ defmodule ApiaryWeb.Contract.ChangesHoldTest do
       conn = read(ctx)
       assert System.monotonic_time(:millisecond) - started < 2_000
       assert [%{"kind" => "sync"}] = Jason.decode!(conn.resp_body)["changes"]
+    end
+  end
+
+  describe "the cap on holds" do
+    setup do
+      previous = Application.get_env(:apiary, ChangesController)
+      on_exit(fn -> Application.put_env(:apiary, ChangesController, previous) end)
+      Application.put_env(:apiary, ChangesController, hold: 1_500, poll: 20)
+
+      %{adapter: adapter, access_key: key, pair: pair} = connectable_adapter_fixture()
+      %{adapter: adapter, key: key, seed: pair.secret}
+    end
+
+    defp get_at(ctx, timestamp, query \\ ""),
+      do:
+        signed_get(build_conn(), ctx.key.key_id, ctx.seed, "/v1/work-items/changes" <> query,
+          timestamp: timestamp
+        )
+
+    # How many of the key's slots are held now.
+    defp slots(ctx) do
+      Enum.count(1..ChangesController.holds_per_key(), fn n ->
+        Registry.lookup(ChangesController.Holds, {ctx.key.id, n}) != []
+      end)
+    end
+
+    defp until_slots(ctx, count, tries \\ 200) do
+      cond do
+        slots(ctx) == count -> :ok
+        tries == 0 -> flunk("the key holds #{slots(ctx)} slots, not #{count}")
+        true -> Process.sleep(10) && until_slots(ctx, count, tries - 1)
+      end
+    end
+
+    defp timed(fun) do
+      started = System.monotonic_time(:millisecond)
+      result = fun.()
+      {System.monotonic_time(:millisecond) - started, result}
+    end
+
+    defp body(conn), do: Jason.decode!(conn.resp_body)
+
+    test "two reads of a key hold; the third is answered at once, empty, and another key holds",
+         ctx do
+      now = ApiaryWeb.Contract.SignedRequest.now()
+      assert ChangesController.holds_per_key() == 2
+
+      holders =
+        for offset <- [0, 1], do: Task.async(fn -> timed(fn -> get_at(ctx, now - offset) end) end)
+
+      until_slots(ctx, 2)
+
+      {took, third} = timed(fn -> get_at(ctx, now - 2) end)
+      assert took < 1_000
+      assert third.status == 200
+      assert signed_answer?(third)
+
+      assert body(third) == %{
+               "version" => 1,
+               "revision" => 1,
+               "cursor" => "c_00000000",
+               "changes" => []
+             }
+
+      # Another key's read holds while this key's two do.
+      other = connectable_adapter_fixture()
+      other = %{adapter: other.adapter, key: other.access_key, seed: other.pair.secret}
+      {other_took, other_conn} = timed(fn -> get_at(other, now) end)
+      assert other_took >= 1_400
+      assert body(other_conn)["changes"] == []
+
+      for {held, conn} <- Task.await_many(holders, 5_000) do
+        assert held >= 1_400
+        assert body(conn)["changes"] == []
+      end
+
+      # The holds over, the key's slots are free, and a read holds again.
+      until_slots(ctx, 0)
+      assert slots(other) == 0
+      {again, _conn} = timed(fn -> get_at(ctx, now - 3) end)
+      assert again >= 1_400
+    end
+
+    test "a read that finds entries is answered at once, whatever the key holds", ctx do
+      now = ApiaryWeb.Contract.SignedRequest.now()
+      append!(ctx.adapter, %{kind: "sync", interval: nil})
+
+      holders =
+        for offset <- [0, 1],
+            do: Task.async(fn -> get_at(ctx, now - offset, "?after=c_00000001") end)
+
+      until_slots(ctx, 2)
+
+      {took, conn} = timed(fn -> get_at(ctx, now - 2) end)
+      assert took < 1_000
+      assert [%{"kind" => "sync"}] = body(conn)["changes"]
+      assert slots(ctx) == 2
+
+      Task.await_many(holders, 5_000)
+      until_slots(ctx, 0)
+    end
+
+    test "a hold's slot is freed when its process is killed mid-hold", ctx do
+      # One read, then a long sleep, so the kill lands while it sleeps, not mid-query.
+      Application.put_env(:apiary, ChangesController, hold: 5_000, poll: 5_000)
+      now = ApiaryWeb.Contract.SignedRequest.now()
+      parent = self()
+
+      holder =
+        spawn(fn ->
+          receive do
+            :go -> send(parent, {:done, get_at(ctx, now)})
+          end
+        end)
+
+      Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), holder)
+      send(holder, :go)
+      until_slots(ctx, 1)
+      Process.sleep(100)
+
+      Process.exit(holder, :kill)
+      until_slots(ctx, 0)
+      refute_received {:done, _conn}
+
+      # Both slots are there to take again.
+      Application.put_env(:apiary, ChangesController, hold: 300, poll: 20)
+      holders = for offset <- [1, 2], do: Task.async(fn -> get_at(ctx, now - offset) end)
+      until_slots(ctx, 2)
+      Task.await_many(holders, 5_000)
+      until_slots(ctx, 0)
     end
   end
 end

@@ -24,7 +24,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   # (`ApiaryWeb.ContentSecurityPolicy`), which a browser applies to the redirects that
   # follow a form's POST too. So the person is not sent there by a redirect: the answer is
   # a page with no text that refreshes to it at once (`<meta http-equiv="refresh">`), a
-  # navigation of its own. It says `Referrer-Policy: no-referrer`, so the address is not
+  # new navigation, not a form's. It says `Referrer-Policy: no-referrer`, so the address is not
   # told which page sent the person, and `Cache-Control: no-store`, so the pass is kept by
   # no cache. The pass is never logged.
   #
@@ -66,8 +66,9 @@ defmodule ApiaryWeb.AdapterInstallController do
     end
   end
 
-  # The page that sends the person on to `url`, a URL of RFC 3986's characters
-  # (`Apiary.Nodes.Node.connect_url_changeset/2`) with the pass, escaped as an attribute.
+  # The page that sends the person on to `url`, the connect address the adapter declared,
+  # held to `Apiary.Adapters.Wire.url?/1` and stored under
+  # `Apiary.Nodes.Node.connect_url_changeset/2`, with the pass, escaped as an attribute.
   defp send_on(conn, url) do
     content = Phoenix.HTML.attributes_escape(content: "0;url=" <> url)
 

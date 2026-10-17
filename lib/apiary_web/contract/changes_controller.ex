@@ -23,10 +23,19 @@ defmodule ApiaryWeb.Contract.ChangesController do
   #      (`Apiary.Adapters.Feed.page_size/0`), in order, those of a kind the revision the
   #      request named (`X-Qory-Contract-Version`) does not define left out, and the
   #      cursor where the page ends, past any entry left out. A request with no `after`
-  #      reads from the start. While the feed has no entry after the cursor, the request is held, up
-  #      to 25 seconds, the feed read again every second, and answered as soon as one
-  #      commits, else with no changes and the same cursor. `revision` is the request's
-  #      revision, inside the signed body.
+  #      reads from the start. `revision` is the request's revision, inside the signed
+  #      body.
+  #
+  # **The hold.** While the feed has no entry after the cursor, the request is held, up to
+  # 25 seconds, the feed read again every second, and answered within one poll interval
+  # of an entry committing, else with no changes and the same cursor. A key holds at most
+  # `holds_per_key/0` requests at once, 2: a request that would be a third hold of its key
+  # is answered at once as a hold that ended empty, with no changes and the same cursor.
+  # A request that finds entries is answered at once and is no hold. Each hold takes a
+  # slot of the key, `{key id, n}`, in the unique `Registry` `Holds`: the hold's process
+  # gives it back when the hold ends, however it ends, and the registry frees it when the
+  # process exits, a crash or a kill included. A hold whose client went away runs to its
+  # end, at most the hold, and then gives its slot back.
   #
   # The GET names no connection and no organisation: the feed is the adapter's, one log
   # for all its connections, as the contract has it, and a key reads only the feed of its
@@ -48,6 +57,8 @@ defmodule ApiaryWeb.Contract.ChangesController do
 
   @hold 25_000
   @poll 1_000
+  @holds_per_key 2
+  @holds __MODULE__.Holds
   # The longest cursor the feed writes; a longer one is refused before it is read.
   @max_cursor 20
 
@@ -57,7 +68,7 @@ defmodule ApiaryWeb.Contract.ChangesController do
          scope = Scope.for_access_key(conn.assigns.access_key),
          {:ok, adapter} <- Adapters.for_key(scope, :"work_item.read_changes"),
          revision = conn.assigns.contract_version,
-         {:ok, page} <- hold(adapter, after_seq, revision) do
+         {:ok, page} <- hold(adapter, conn.assigns.access_key.id, after_seq, revision) do
       answer(conn, revision, page)
     else
       :error -> refuse(conn, 400, "invalid_request")
@@ -82,10 +93,50 @@ defmodule ApiaryWeb.Contract.ChangesController do
 
   defp after_cursor(_query), do: :error
 
-  defp hold(adapter, after_seq, revision) do
+  # How many requests a key holds at once.
+  @doc false
+  @spec holds_per_key() :: pos_integer
+  def holds_per_key, do: @holds_per_key
+
+  # A page that holds nothing is held, when a slot of the key is free; a page that holds
+  # entries, or a key with no free slot, is answered at once.
+  defp hold(adapter, key_id, after_seq, revision) do
     settings = Application.get_env(:apiary, __MODULE__, [])
-    deadline = now() + Keyword.get(settings, :hold, @hold)
-    poll(adapter, after_seq, revision, deadline, Keyword.get(settings, :poll, @poll))
+    hold = Keyword.get(settings, :hold, @hold)
+
+    case Feed.read(adapter, after_seq, revision) do
+      {:ok, %{seq: ^after_seq}} = nothing when hold > 0 ->
+        case take_slot(key_id) do
+          nil ->
+            nothing
+
+          slot ->
+            try do
+              poll(
+                adapter,
+                after_seq,
+                revision,
+                now() + hold,
+                Keyword.get(settings, :poll, @poll)
+              )
+            after
+              Registry.unregister(@holds, slot)
+            end
+        end
+
+      other ->
+        other
+    end
+  end
+
+  # The first free slot of the key, taken by this process, or nil when every one is held.
+  defp take_slot(key_id) do
+    Enum.find_value(1..@holds_per_key, fn n ->
+      case Registry.register(@holds, {key_id, n}, nil) do
+        {:ok, _owner} -> {key_id, n}
+        {:error, {:already_registered, _pid}} -> nil
+      end
+    end)
   end
 
   # A page that ends where it started holds nothing: read again until one does, or the

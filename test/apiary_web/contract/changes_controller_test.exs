@@ -204,7 +204,8 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
   end
 
   describe "the refusals, in order" do
-    test "the request's own refusals come first, unsigned where the contract has them", ctx do
+    test "the refusals of the request's signing come first, unsigned where the contract has them",
+         ctx do
       # A signing header twice: 400 bad_request, unsigned.
       conn = changes(ctx, "?after=garbled", headers: [{"x-qory-access-key-id", ctx.key.key_id}])
       assert json_response(conn, 400) == %{"error" => "bad_request"}
