@@ -45,10 +45,11 @@ defmodule Apiary.Dispatches do
   # (`Apiary.Dispatches.Slots.free/2`). A handed-over run is left as it is: it goes on to
   # its end, and its result and its outcome are taken as before.
   #
-  # ## Claiming: `claim/2`
+  # ## Claiming: `claim/3`
   #
-  # `claim(access_key, now)` is one try at a claim by the node pool of `access_key`, in
-  # one transaction:
+  # `claim(access_key, now, revision)` is one try at a claim by the node pool of
+  # `access_key`, for the provisioner contract's `revision` the request named, 1 unless
+  # given, in one transaction:
   #
   #   1. the key read again as a request's verification reads it
   #      (`Apiary.AccessKeys.fetch_for_verification/1`): revoked, of a pool deleted, or of a
@@ -63,18 +64,23 @@ defmodule Apiary.Dispatches do
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/2`), then the pool's limit
   #      counted: its held slots and its live runs that were not dispatched; at the limit,
   #      `{:ok, :none}`;
-  #   6. the oldest waiting run of the key's workspace, by `queued_at`, but a prebuild,
-  #      which no claim takes yet, locked `FOR UPDATE SKIP LOCKED`, so two claims never
-  #      take one run and neither waits on the other; none is `{:ok, :none}`. A run whose
-  #      work item is no longer live (closed, declined, undone, its connection ended, or
-  #      gone) or no longer in the run's workspace is not handed out: it ends, `undone` for
-  #      a work item undone and `closed` otherwise, a stale dispatch of it with it
+  #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
+  #      take, locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
+  #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by a
+  #      claim at revision 2 or later, and only by the pool it is held for; a claim at
+  #      revision 1 never sees one. A run whose work item is no longer live (closed,
+  #      declined, undone, its connection ended, or gone) or no longer in the run's
+  #      workspace is not handed out: it ends, `undone` for a work item undone and
+  #      `closed` otherwise; nor is a prebuild whose collection ended, is linked to no
+  #      workspace or another one, has no target or whose connection ended: it ends,
+  #      `collection_ended`. A stale dispatch of a run ended so ends with it
   #      (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
   #
-  # `{:ok, claimed}` carries the dispatch, its run, the run's work item and the pool. The
+  # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
+  # prebuild), the prebuild's collection (nil for any other step) and the pool. The
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
@@ -107,8 +113,10 @@ defmodule Apiary.Dispatches do
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
-  # The step every run is queued for today: the contract's `explore`.
+  # The step every run of a take in is queued for: the contract's `explore`.
   @step "explore"
+  # The step of a run that builds a collection's environment for one node pool.
+  @prebuild DispatchRun.prebuild()
   # The runs a take in has at most, the explore contract's `run.of`.
   @of 3
   # How long a dispatch is the starter's, from its claim, in seconds.
@@ -116,11 +124,15 @@ defmodule Apiary.Dispatches do
   # The waiting runs of work items no longer live one claim ends at most.
   @max_ended 100
 
-  @typedoc "What a claim took: the dispatch, its run, the run's work item and the pool."
+  @typedoc """
+  What a claim took: the dispatch, its run, the run's work item, or for a prebuild its
+  collection, and the pool.
+  """
   @type claimed :: %{
           dispatch: Dispatch.t(),
           run: DispatchRun.t(),
-          work_item: WorkItem.t(),
+          work_item: WorkItem.t() | nil,
+          collection: Collection.t() | nil,
           pool: Node.t()
         }
 
@@ -337,13 +349,15 @@ defmodule Apiary.Dispatches do
 
   ## Claiming
 
-  # claim/2 is one try at a claim by the node pool of `access_key` at `now` (the
-  # moduledoc): `{:ok, claimed}`, `{:ok, :none}` when the pool can claim nothing now, or
+  # claim/3 is one try at a claim by the node pool of `access_key` at `now`, for the
+  # provisioner contract's `revision` (the moduledoc): `{:ok, claimed}`, `{:ok, :none}`
+  # when the pool can claim nothing now, or
   # `{:error, :unauthorized | :forbidden | :no_gateway}`, after which nothing is written.
   @doc false
-  @spec claim(AccessKey.t(), DateTime.t()) ::
+  @spec claim(AccessKey.t(), DateTime.t(), pos_integer) ::
           {:ok, claimed | :none} | {:error, :unauthorized | :forbidden | :no_gateway}
-  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now) when is_binary(key_id) do
+  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now, revision \\ 1)
+      when is_binary(key_id) and is_integer(revision) and revision >= 1 do
     result =
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
@@ -351,7 +365,7 @@ defmodule Apiary.Dispatches do
              {:ok, pool} <- lock_pool(key),
              :ok <- gateway(pool) do
           freed = Slots.free(pool.id, now)
-          {taken, ended} = take(key, pool, now)
+          {taken, ended} = take(key, pool, now, revision)
           {:ok, {taken, freed ++ ended}}
         end
       end)
@@ -417,27 +431,27 @@ defmodule Apiary.Dispatches do
 
   # The oldest waiting run the pool may take, claimed, with the workspaces whose queue
   # it ended runs of; `:none` at the limit or with none to take.
-  defp take(key, pool, now) do
+  defp take(key, pool, now, revision) do
     case below_limit(pool, now) do
-      :ok -> pick(key, pool, now, @max_ended, [])
+      :ok -> pick(key, pool, now, revision, @max_ended, [])
       :at_limit -> {:none, []}
     end
   end
 
-  # A waiting run whose work item is no longer live, or no longer in the run's
-  # workspace, is ended, with any stale dispatch of it (`run_ended`), and the next one
+  # A waiting run whose work item, or a prebuild whose collection, can no longer be
+  # handed out is ended, with any stale dispatch of it (`run_ended`), and the next one
   # looked at, `max` at most per claim.
-  defp pick(_key, _pool, _now, 0, ended), do: {:none, ended}
+  defp pick(_key, _pool, _now, _revision, 0, ended), do: {:none, ended}
 
-  defp pick(key, pool, now, max, ended) do
-    case oldest_waiting(key) do
+  defp pick(key, pool, now, revision, max, ended) do
+    case oldest_waiting(key, revision) do
       nil ->
         {:none, ended}
 
       %DispatchRun{} = run ->
-        case work_item_of(run) do
-          {:ok, work_item} ->
-            {claim_run(key, pool, run, work_item, now), ended}
+        case for_run(run) do
+          {:ok, for} ->
+            {claim_run(key, pool, run, for, now), ended}
 
           {:end, cause} ->
             {1, _rows} =
@@ -455,8 +469,44 @@ defmodule Apiary.Dispatches do
                 set: [ended_at: now, end_cause: :run_ended, updated_at: now]
               )
 
-            pick(key, pool, now, max - 1, [run.workspace_id | ended])
+            pick(key, pool, now, revision, max - 1, [run.workspace_id | ended])
         end
+    end
+  end
+
+  # What the run is for: its work item, or a prebuild's collection.
+  defp for_run(%DispatchRun{step: @prebuild} = run) do
+    with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
+  end
+
+  defp for_run(%DispatchRun{} = run) do
+    with {:ok, work_item} <- work_item_of(run), do: {:ok, %{work_item: work_item}}
+  end
+
+  # A prebuild's collection when it is live, linked to the run's workspace, has a target
+  # and its connection has not ended; else the run ends, `collection_ended`. Read without
+  # a lock, as a work item is: the run is locked, and its pool too.
+  defp collection_of(%DispatchRun{
+         source_collection_id: collection_id,
+         workspace_id: workspace_id
+       }) do
+    found =
+      Repo.one(
+        from c in Collection,
+          join: n in Connection,
+          on: n.id == c.connection_id,
+          where: c.id == ^collection_id,
+          select: {c, n.state}
+      )
+
+    case found do
+      {%Collection{ended_at: nil, workspace_id: ^workspace_id, target_system: system} =
+           collection, connection}
+      when is_binary(system) and connection in [:pending, :connected] ->
+        {:ok, collection}
+
+      _ended_moved_or_without_target ->
+        {:end, :collection_ended}
     end
   end
 
@@ -488,7 +538,7 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  defp claim_run(key, pool, run, work_item, now) do
+  defp claim_run(key, pool, run, for, now) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
         set: [state: :claimed, updated_at: now]
@@ -505,7 +555,10 @@ defmodule Apiary.Dispatches do
       })
       |> Repo.insert!()
 
-    %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: work_item, pool: pool}
+    Map.merge(
+      %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: nil, collection: nil},
+      Map.put(for, :pool, pool)
+    )
   end
 
   # The pool's held slots and its live runs that were not dispatched, against its limit;
@@ -516,17 +569,38 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  defp oldest_waiting(%AccessKey{organisation_id: organisation_id, workspace_id: workspace_id}) do
+  # A prebuild goes only to a claim at revision 2 or later by the pool it is held for.
+  defp oldest_waiting(%AccessKey{organisation_id: organisation_id, workspace_id: workspace_id}, 1) do
     Repo.one(
-      from r in DispatchRun,
-        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
-        where: fragment("? = 'waiting'", r.state),
-        # A prebuild is not handed out yet.
-        where: r.step != ^DispatchRun.prebuild(),
+      from r in waiting(organisation_id, workspace_id),
+        where: r.step != ^@prebuild,
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
         lock: "FOR UPDATE SKIP LOCKED"
     )
+  end
+
+  defp oldest_waiting(
+         %AccessKey{
+           organisation_id: organisation_id,
+           workspace_id: workspace_id,
+           node_id: pool_id
+         },
+         _revision
+       ) do
+    Repo.one(
+      from r in waiting(organisation_id, workspace_id),
+        where: r.step != ^@prebuild or r.pool_id == ^pool_id,
+        order_by: [asc: r.queued_at, asc: r.id],
+        limit: 1,
+        lock: "FOR UPDATE SKIP LOCKED"
+    )
+  end
+
+  defp waiting(organisation_id, workspace_id) do
+    from r in DispatchRun,
+      where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
+      where: fragment("? = 'waiting'", r.state)
   end
 
   ## The sweep

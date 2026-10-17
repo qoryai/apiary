@@ -1,6 +1,7 @@
 defmodule Apiary.DispatchesTest do
   # The queue of a workspace and its claims (`Apiary.Dispatches`): a run queued in its
-  # work item's workspace, an undo before, during and after a claim, one try at a claim
+  # work item's workspace, a prebuild held for one pool and the claims that take it or
+  # never see it, an undo before, during and after a claim, one try at a claim
   # against the pool's limit, the slots freed once, the sweep of lapsed leases on one clock, and
   # the instance limit of a pool that counts both its dispatched and its other runs. A
   # claim asks `dispatch.claim`, of the `factory` feature.
@@ -14,7 +15,7 @@ defmodule Apiary.DispatchesTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Dispatches, Nodes}
-  alias Apiary.Adapters.Connection
+  alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
@@ -125,15 +126,6 @@ defmodule Apiary.DispatchesTest do
       assert_receive {Dispatches, :changed}
     end
 
-    test "is no work of a take in: no claim takes it yet", ctx do
-      collection = collection_fixture(ctx.scope)
-      {:ok, _run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "e") end)
-
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
-      run = queued!(ctx.scope)
-      assert claimed!(ctx.key).dispatch_run_id == run.id
-    end
-
     test "refuses a pool of another workspace, and runs only inside a transaction", ctx do
       collection = collection_fixture(ctx.scope)
 
@@ -152,6 +144,127 @@ defmodule Apiary.DispatchesTest do
                Repo.transact(fn ->
                  Dispatches.queue_prebuild(collection, ctx.pool, String.duplicate("é", 201))
                end)
+    end
+  end
+
+  describe "claim/3 and a prebuild" do
+    @describetag needs: :factory
+
+    defp prebuild!(collection, pool, ref \\ "env-1") do
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, ref) end)
+      run
+    end
+
+    test "a claim at revision 1 never takes one; the pool's at revision 2 takes it", ctx do
+      collection = collection_fixture(ctx.scope)
+      run = prebuild!(collection, ctx.pool)
+
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Dispatches.claim(ctx.key, Dispatches.now(), 1) == {:ok, :none}
+      assert run!(run).state == :waiting
+
+      # An explore run queued after it goes to the claim at revision 1.
+      explore = queued!(ctx.scope)
+      assert claimed!(ctx.key).dispatch_run_id == explore.id
+      assert run!(run).state == :waiting
+
+      assert {:ok,
+              %{dispatch: dispatch, run: taken, work_item: nil, collection: found, pool: pool}} =
+               Dispatches.claim(ctx.key, Dispatches.now(), 2)
+
+      assert {taken.id, taken.state, run!(run).state} == {run.id, :claimed, :claimed}
+      assert found.id == collection.id
+      assert pool.id == ctx.pool.id
+      assert {dispatch.dispatch_run_id, dispatch.pool_id} == {run.id, ctx.pool.id}
+    end
+
+    test "only the pool it is held for takes it, in the queue's order with every other run",
+         ctx do
+      other = pool_fixture(ctx.scope)
+      %{access_key: other_key} = enrolled_key_fixture(ctx.scope, other)
+      collection = collection_fixture(ctx.scope)
+      run = prebuild!(collection, ctx.pool)
+      explore = queued!(ctx.scope)
+
+      # Another pool of the workspace, at revision 2, passes it and takes the next run.
+      assert {:ok, %{run: %{id: id}, work_item: %{}, collection: nil}} =
+               Dispatches.claim(other_key, Dispatches.now(), 2)
+
+      assert id == explore.id
+      assert Dispatches.claim(other_key, Dispatches.now(), 2) == {:ok, :none}
+      assert run!(run).state == :waiting
+
+      # Its pool, at revision 2, takes the oldest of its own and the workspace's runs.
+      later = queued!(ctx.scope)
+      run_id = run.id
+      assert {:ok, %{run: %{id: ^run_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+
+      assert {:ok, %{run: %{id: later_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert later_id == later.id
+    end
+
+    test "ends collection_ended when its collection can no longer be built, and takes the next",
+         ctx do
+      workspace = workspace_fixture(ctx.scope.organisation)
+      ended = collection_fixture(ctx.scope)
+      unlinked = collection_fixture(ctx.scope)
+      moved = collection_fixture(ctx.scope)
+      bare = collection_fixture(ctx.scope)
+      cut = collection_fixture(ctx.scope)
+
+      runs =
+        for collection <- [ended, unlinked, moved, bare, cut], do: prebuild!(collection, ctx.pool)
+
+      kept = collection_fixture(ctx.scope)
+      next = prebuild!(kept, ctx.pool)
+
+      now = Dispatches.now()
+
+      Repo.update_all(from(c in Collection, where: c.id == ^ended.id),
+        set: [ended_at: now, ended_reason: :disconnected]
+      )
+
+      Repo.update_all(from(c in Collection, where: c.id == ^unlinked.id),
+        set: [workspace_id: nil]
+      )
+
+      Repo.update_all(from(c in Collection, where: c.id == ^moved.id),
+        set: [workspace_id: workspace.id]
+      )
+
+      Repo.update_all(from(c in Collection, where: c.id == ^bare.id),
+        set: [target_system: nil, target_path: nil]
+      )
+
+      Repo.update_all(from(c in Connection, where: c.id == ^cut.connection_id),
+        set: [state: :ended, ended_at: now, ended_reason: :adapter_reported]
+      )
+
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+
+      assert {:ok, %{run: %{id: id}, collection: %{id: kept_id}}} =
+               Dispatches.claim(ctx.key, Dispatches.now(), 2)
+
+      assert {id, kept_id} == {next.id, kept.id}
+
+      for run <- runs do
+        assert %DispatchRun{state: :ended, end_cause: :collection_ended} = run!(run)
+        refute Repo.exists?(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
+      end
+
+      assert_received {Dispatches, :changed}
+    end
+
+    test "a collection whose environment_ref went away is still built", ctx do
+      collection = collection_fixture(ctx.scope)
+      run = prebuild!(collection, ctx.pool)
+
+      Repo.update_all(from(c in Collection, where: c.id == ^collection.id),
+        set: [environment_ref: nil]
+      )
+
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert id == run.id
     end
   end
 
@@ -259,7 +372,7 @@ defmodule Apiary.DispatchesTest do
     end
   end
 
-  describe "claim/2" do
+  describe "claim/3" do
     @describetag needs: :factory
 
     test "takes the oldest waiting run of the key's workspace, with the key's pool and key",
