@@ -272,13 +272,18 @@ defmodule Apiary.AuditCase do
 
   @doc """
   organisation_id/1 is the id of the scope's organisation; for the scope of an adapter's
-  key, which has none, the instance's organisation, whose trail its entries are in.
+  key, which has none, the instance's organisation, whose trail its entries are in; for
+  the scope of another key, which carries its workspace alone, the key's organisation.
   """
   @spec organisation_id(Scope.t()) :: Ecto.UUID.t()
   def organisation_id(%Scope{organisation: %{id: id}}), do: id
 
   def organisation_id(%Scope{organisation: nil, access_key: %{organisation_id: nil}}),
     do: Apiary.Edition.instance_organisation_id()
+
+  def organisation_id(%Scope{organisation: nil, access_key: %{organisation_id: id}})
+      when is_binary(id),
+      do: id
 
   @doc """
   refute_personal/2 asserts that no email address of any account, nor its local part,

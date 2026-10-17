@@ -54,6 +54,11 @@ defmodule Apiary.AuditChanges do
     :"work_item.comment_delete"
   ]
 
+  # The audited actions of a node pool's key on the runs dispatched to its workspace,
+  # whose changes have no context function yet either: each is made by the pool's key, as
+  # `stand_in/3` makes the others, asked of the workspace, its queue.
+  @pool_stand_ins [:"dispatch.handover", :"dispatch.release"]
+
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
   def actions do
@@ -104,7 +109,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.delete",
       :"adapter.connect",
       :"adapter.declare"
-    ] ++ @stand_ins
+    ] ++ @stand_ins ++ @pool_stand_ins
   end
 
   @doc """
@@ -456,6 +461,22 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # The pool's key acts in the trail of its workspace's organisation, and the entry's actor
+  # is the key.
+  def make(action, %{scope: scope}) when action in @pool_stand_ins do
+    %{access_key: key} = access_key_fixture(scope, node: pool_fixture(scope))
+    key_scope = Scope.for_access_key(key)
+    before = entries()
+    {:ok, _workspace} = stand_in(key_scope, action, scope.workspace)
+
+    %{
+      scope: key_scope,
+      subject: {"workspace", scope.workspace.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
   def make(action, %{scope: scope} = ctx) when action in @stand_ins do
     subject = prepare(action, ctx)
     before = entries()
@@ -670,6 +691,13 @@ defmodule Apiary.AuditChanges do
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
     before = entries()
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
+  end
+
+  # A node's key, of the same workspace, holds no dispatch action.
+  def refuse(action, %{scope: scope}) when action in @pool_stand_ins do
+    %{access_key: key} = access_key_fixture(scope)
+    before = entries()
+    {before, stand_in(Scope.for_access_key(key), action, scope.workspace)}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
