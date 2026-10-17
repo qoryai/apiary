@@ -2067,7 +2067,10 @@
     align-items: center;
     gap: 6px 10px;
   }
+  /* A long name in a title or a description (a variable's, a repository's) wraps anywhere
+     rather than widen the page on a phone. */
   .q-page-h1 {
+    overflow-wrap: anywhere;
     font-size: 1.25rem;
     line-height: 1.75rem;
     font-weight: 600;
@@ -2075,6 +2078,7 @@
   }
   .q-page-desc {
     max-width: 62ch;
+    overflow-wrap: anywhere;
     color: var(--q-muted);
     font-size: 0.875rem;
     line-height: 1.25rem;
@@ -2085,9 +2089,12 @@
     align-items: center;
     gap: 8px;
   }
+  /* On a phone the actions take the whole width, and wrap onto a second row rather than
+     widen the page when they do not fit on one. */
   @media (max-width: 479px) {
     .q-page-actions {
       width: 100%;
+      flex-wrap: wrap;
     }
     .q-page-actions > .btn {
       flex: 1;
@@ -8839,8 +8846,16 @@
     letter-spacing: -0.01em;
     line-height: 24px;
   }
+  /* Whose mode it is wraps onto more lines when a long workspace's name does not fit,
+     rather than widen the page: one line keeps the badge's height. */
   .q-modecard-title > .badge {
+    max-width: 100%;
+    height: auto;
+    min-height: var(--size);
     margin-bottom: 2px;
+    padding-block: 1px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .q-modecard-p {
     max-width: 80ch;
