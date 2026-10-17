@@ -184,6 +184,35 @@ defmodule ApiaryWeb.Contract.QueuedRunEventsTest do
       assert response(deliver(ctx.gateway, ctx.run_id), 410) == ""
     end
 
+    test "a gateway that may not serve the run's workspace is 409 run_id_used, no run",
+         ctx do
+      # A gateway of another workspace of the organisation, and an organisation's gateway
+      # of another organisation.
+      workspace = workspace_fixture(ctx.scope.organisation)
+      user = ctx.scope.user
+      theirs = workspace_scope(user, workspace)
+      %{scope: other} = sign_up_fixture()
+
+      for {kind, key} <- [
+            workspace: key(theirs, gateway_fixture(theirs)),
+            organisation: key(other, organisation_gateway_fixture(other))
+          ] do
+        conn = deliver(key, ctx.run_id)
+        assert refused?(conn), "#{kind}: #{conn.status} #{conn.resp_body}"
+      end
+
+      assert stored(ctx.run_id).runs == 1
+    end
+
+    test "an organisation's gateway that may serve the run's workspace is 409 wrong_gateway",
+         ctx do
+      ours = key(ctx.scope, organisation_gateway_fixture(ctx.scope))
+      conn = deliver(ours, ctx.run_id)
+      assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
+      assert signed_answer?(conn)
+      assert stored(ctx.run_id).runs == 1
+    end
+
     test "a key of another workspace opens no run under its id", ctx do
       %{scope: other} = sign_up_fixture()
       theirs = key(other, node_fixture(other))

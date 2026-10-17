@@ -158,7 +158,7 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
-| `409` | the batch finds no run (in the key's workspace; for a gateway's key, none it attached and none of its workspace) and its subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, under any key: such a run is opened only by its handover (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
+| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the handover no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its handover (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
@@ -363,15 +363,19 @@ run of the queue is given its `run_id`, a fresh UUID, when it is queued, before 
 outside the instance learns it, and the id never changes, so no registration can come
 between the queue and the lookup.
 
-The events endpoint holds such a run the same way. A batch whose subject is its `run_id`
-and that finds no run, the run waiting, claimed, or ended before its handover, opens none:
-it is `409` `run_id_used`, under any key, decided inside the batch's transaction after the
-`404` of a key that may not post and before anything of the batch is stored. After the
-handover the run is registered, and a batch that finds it is answered as any batch of it:
-the gateway that attached it is taken, another key of its workspace, the pool's included,
-is `409` `wrong_gateway`, and a run whose events were pruned is `410`. A key of another
-workspace finds no run there, and is refused `run_id_used` rather than opening one under
-that id.
+The events endpoint holds such a run the same way. A batch whose subject is its `run_id`,
+from a key that does not reach a run under that id, is `409` `run_id_used`, before or
+after the handover, decided inside the batch's transaction after the `404` of a key that
+may not post and before anything of the batch is stored. A key reaches the run when it is
+a key of the run's workspace, or a gateway's that may serve the run's workspace
+(`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's. Before
+the handover (the run waiting, claimed, or ended before it) there is no run, so no key
+reaches one, and every key is refused. After it the run is registered, and a key that
+reaches it keeps the answer it had: the gateway that attached it is taken, another key of
+its workspace, the pool's included, and another gateway that may serve its workspace are
+`409` `wrong_gateway`, and a run whose events were pruned is `410`. A key of another
+workspace, and a gateway that may not serve the run's workspace, are refused
+`run_id_used`, and open no run under that id.
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
