@@ -58,11 +58,14 @@ defmodule ApiaryWeb.FactoryShellTest do
   # workspace, the adapter, a connection's id that names none, a work item's number, and
   # a made-up id for the rest. The signed requests of an adapter and of a node pool's
   # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
-  # `ApiaryWeb.Contract.ChangesControllerTest` and their fixtures' tests, and
+  # `ApiaryWeb.Contract.ChangesControllerTest`,
+  # `ApiaryWeb.Contract.SourceCollectionsControllerTest` and their fixtures' tests, and
   # `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
   @signed_routes [
     ApiaryWeb.Contract.AdapterController,
     ApiaryWeb.Contract.ChangesController,
+    ApiaryWeb.Contract.SourceCollectionsController,
+    ApiaryWeb.Contract.SourcesDisconnectController,
     ApiaryWeb.Contract.PoolClaimController,
     ApiaryWeb.Contract.DispatchController,
     ApiaryWeb.Contract.HandoverController

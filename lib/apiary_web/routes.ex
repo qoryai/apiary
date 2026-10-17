@@ -242,6 +242,14 @@ defmodule ApiaryWeb.Routes do
         post "/dispatches/:dispatch_id/release", DispatchController, :release
       end
 
+      # An adapter's collections: a part of its listing, and one it no longer reaches.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/source-collections", SourceCollectionsController, :create
+        post "/sources/disconnect", SourcesDisconnectController, :create
+      end
+
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
       # and styles carry the request's nonce (`ApiaryWeb.ContentSecurityPolicy`), and they
       # may frame their own pages, as the mailbox frames a message.

@@ -31,8 +31,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   # documentation does not name.
   @adapter_max_bytes 1024 * 1024
   # The integration contract's signed paths served here, read the same way:
-  # `POST /v1/adapter`.
-  @adapter_paths [["v1", "adapter"]]
+  # `POST /v1/adapter`, `POST /v1/source-collections` and `POST /v1/sources/disconnect`.
+  @adapter_paths [["v1", "adapter"], ["v1", "source-collections"]]
+  @adapter_three_paths [["v1", "sources", "disconnect"]]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/handover` and `/release`. Read
@@ -87,7 +88,11 @@ defmodule ApiaryWeb.Contract.RawBody do
   end
 
   defp kept([_, _, _] = path_info) do
-    if Enum.map(path_info, &decode/1) == @pool_claim_path, do: :pool
+    case Enum.map(path_info, &decode/1) do
+      @pool_claim_path -> :pool
+      path when path in @adapter_three_paths -> :adapter
+      _other -> nil
+    end
   end
 
   defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> of_a_run()

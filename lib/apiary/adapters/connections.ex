@@ -30,7 +30,10 @@ defmodule Apiary.Adapters.Connections do
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
-  # connections are suspended instead, and come back with it.
+  # connections are suspended instead, and come back with it. Each end ends the
+  # connection's live collections in the same transaction
+  # (`Apiary.Adapters.Collections.end_for_connections/2`), with the feed's `unlinked`
+  # entry for each one linked to a workspace.
   #
   # The lock order: the adapter's row, then its connections.
   #
@@ -46,7 +49,8 @@ defmodule Apiary.Adapters.Connections do
   #     either row, or a change of its key, waits on that lock or keeps it waiting.
   #   * The return (`complete_return/4`) and `mark_listed/1` hold the connection
   #     `FOR UPDATE`, and nothing else. An end (`end_connection/2`,
-  #     `end_for_organisation/1`) holds the connection, or all of the organisation's.
+  #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
+  #     then its collections, then the adapter's feed counter.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -56,7 +60,7 @@ defmodule Apiary.Adapters.Connections do
   alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{ConnectPass, Connection, ReturnToken}
+  alias Apiary.Adapters.{Collections, ConnectPass, Connection, ReturnToken}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -475,8 +479,7 @@ defmodule Apiary.Adapters.Connections do
          :ok <- key_may(key_scope, action),
          {:ok, connection} <- key_connection(adapter_id, public_id, :find),
          :ok <- not_ended(connection),
-         scope = Scope.for_connection(key_scope, connection),
-         :ok <- in_use(scope, connection, action) do
+         {:ok, scope} <- in_use(key_scope, connection, action) do
       {:ok, connection, scope}
     end
   end
@@ -497,6 +500,31 @@ defmodule Apiary.Adapters.Connections do
   end
 
   defp key_adapter(_scope), do: {:error, :forbidden}
+
+  @doc false
+  # key_rights/2 is the first check of every request of an adapter's key, from the key and
+  # `action` alone, before any connection or collection is looked up: `{:ok, adapter_id}`,
+  # the id of the key's adapter, when the key's role takes `action` on it where the
+  # feature is on; `{:error, :forbidden}` otherwise, as `connection_for_key/3` decides it.
+  @spec key_rights(Scope.t() | nil, Access.action()) ::
+          {:ok, Ecto.UUID.t()} | {:error, :forbidden}
+  def key_rights(key_scope, action) do
+    with {:ok, adapter_id} <- key_adapter(key_scope),
+         :ok <- key_may(key_scope, action),
+         do: {:ok, adapter_id}
+  end
+
+  @doc false
+  # in_use/3 is the key's scope narrowed to the organisation of `connection` (preloaded),
+  # once `key_rights/2` let `action`: `{:ok, scope}` while the organisation is in use;
+  # `{:error, :suspended}` while it is out of use, as `connection_for_key/3` decides it.
+  @spec in_use(Scope.t(), Connection.t(), Access.action()) ::
+          {:ok, Scope.t()} | {:error, :suspended}
+  def in_use(key_scope, %Connection{} = connection, action) do
+    scope = Scope.for_connection(key_scope, connection)
+
+    with :ok <- organisation_in_use(scope, connection, action), do: {:ok, scope}
+  end
 
   # The connection `public_id` of the adapter `adapter_id`, with its organisation: for
   # `:find`, one that is not pending (connected, or ended from either state, which
@@ -528,8 +556,8 @@ defmodule Apiary.Adapters.Connections do
   # adapter as `Apiary.Adapters.for_key/2` asks it), from the key and `action` alone,
   # before any connection is looked up. The key's scope carries no organisation here, so
   # an edition's refusal for the organisation shows only in `in_use/3`, after the
-  # connection is found. Rights therefore stay first: a disconnect, which never asks
-  # `in_use/3`, is not refused while its organisation is out of use.
+  # connection is found. Rights therefore stay first: a disconnect of a connection, which
+  # never asks `in_use/3`, is not refused while its organisation is out of use.
   defp key_may(%Scope{access_key: %AccessKey{node: %Node{} = adapter}} = key_scope, action) do
     case Access.check(key_scope, action, adapter) do
       :ok -> :ok
@@ -543,7 +571,7 @@ defmodule Apiary.Adapters.Connections do
   # The organisation is in use, as the core holds it and as the edition answers for it.
   # The narrowed scope is the key's at its organisation, whose role holds `action` there,
   # so a refusal can only be the organisation's state, which the edition holds.
-  defp in_use(scope, %Connection{organisation: organisation} = connection, action) do
+  defp organisation_in_use(scope, %Connection{organisation: organisation} = connection, action) do
     if AccessKeys.organisation_in_use?(connection.organisation_id) and
          Access.check(scope, action, organisation) == :ok,
        do: :ok,
@@ -612,58 +640,71 @@ defmodule Apiary.Adapters.Connections do
     end)
   end
 
-  # Ends `connection`, held `FOR UPDATE` and live, for `reason`. `{:ok, connection}`,
-  # ended.
+  # Ends `connection`, held `FOR UPDATE` and live, for `reason`, and its collections with
+  # it. `{:ok, connection}`, ended.
   defp end_live(%Connection{} = connection, reason, now) do
-    connection
-    |> Ecto.Changeset.change(
-      state: :ended,
-      ended_at: now,
-      ended_reason: reason,
-      updated_at: now
-    )
-    |> Repo.update()
+    with {:ok, ended} <-
+           connection
+           |> Ecto.Changeset.change(
+             state: :ended,
+             ended_at: now,
+             ended_reason: reason,
+             updated_at: now
+           )
+           |> Repo.update() do
+      _count = Collections.end_for_connections([ended.id], now)
+      {:ok, ended}
+    end
   end
 
   @doc false
   # Inside `Apiary.Adapters.delete_adapter/2`'s transaction, which holds the adapter's row
   # `FOR NO KEY UPDATE`: ends every connection of `adapter` that has not ended
-  # (`integration_deleted`). The public ids of those ended, in order.
+  # (`integration_deleted`), and their collections. The public ids of those ended, in
+  # order.
   @spec end_for_adapter(Node.t(), DateTime.t()) :: [String.t()]
   def end_for_adapter(%Node{kind: :adapter, id: adapter_id}, %DateTime{} = now) do
-    {_count, ids} =
+    {_count, ended} =
       Repo.update_all(
         from(c in Connection,
           where: c.adapter_id == ^adapter_id and is_nil(c.ended_at),
-          select: c.public_id
+          select: {c.id, c.public_id}
         ),
         set: [state: :ended, ended_at: now, ended_reason: :integration_deleted, updated_at: now]
       )
 
-    Enum.sort(ids)
+    _count = Collections.end_for_connections(Enum.map(ended, &elem(&1, 0)), now)
+    ended |> Enum.map(&elem(&1, 1)) |> Enum.sort()
   end
 
   @doc false
   # end_for_organisation/1 ends every connection of the organisation `organisation_id`
-  # that has not ended (`organisation_deleted`): once the organisation's purge has claimed
-  # it, and its deletion can no longer be cancelled (`Apiary.Deletion`). The number of
-  # connections ended.
+  # that has not ended (`organisation_deleted`), and their collections, in one
+  # transaction: once the organisation's purge has claimed it, and its deletion can no
+  # longer be cancelled (`Apiary.Deletion`). The number of connections ended.
   @spec end_for_organisation(Ecto.UUID.t()) :: non_neg_integer
   def end_for_organisation(organisation_id) do
     now = DateTime.utc_now()
 
-    {count, _} =
-      Repo.update_all(
-        from(c in Connection,
-          where: c.organisation_id == ^organisation_id and is_nil(c.ended_at)
-        ),
-        set: [
-          state: :ended,
-          ended_at: now,
-          ended_reason: :organisation_deleted,
-          updated_at: now
-        ]
-      )
+    {:ok, count} =
+      Repo.transact(fn ->
+        {count, ids} =
+          Repo.update_all(
+            from(c in Connection,
+              where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
+              select: c.id
+            ),
+            set: [
+              state: :ended,
+              ended_at: now,
+              ended_reason: :organisation_deleted,
+              updated_at: now
+            ]
+          )
+
+        _collections = Collections.end_for_connections(ids, now)
+        {:ok, count}
+      end)
 
     count
   end

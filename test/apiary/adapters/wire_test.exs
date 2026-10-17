@@ -210,4 +210,81 @@ defmodule Apiary.Adapters.WireTest do
       end
     end
   end
+
+  describe "a listing of collections and a disconnect" do
+    defp listing(path),
+      do: with({:ok, body} <- Wire.decode(fixture(path)), do: Wire.listing(body))
+
+    defp source_disconnect(path),
+      do: with({:ok, body} <- Wire.decode(fixture(path)), do: Wire.source_disconnect(body))
+
+    test "the contract's listings and disconnect are read as written" do
+      assert {:ok,
+              %{
+                time: ~U[2026-10-15 12:00:00Z],
+                connection_id: "ac_c0deh0st00000000",
+                collections: [
+                  %{
+                    ref: "R_1001",
+                    url: "https://github.com/acme/shop",
+                    title: "acme/shop",
+                    target: %{system: "github.com", path: "acme/shop"}
+                  }
+                ],
+                listing: %{
+                  id: "collections-7",
+                  part: 1,
+                  started_at: ~U[2026-10-15 11:59:58Z],
+                  complete: true
+                }
+              }} = listing("source-collections/code-host.json")
+
+      assert {:ok, %{collections: [%{ref: "TRK", target: nil}], listing: %{complete: false}}} =
+               listing("source-collections/acme-tracker-part-1.json")
+
+      assert {:ok, %{listing: %{part: 2, complete: true}}} =
+               listing("source-collections/acme-tracker-part-2.json")
+
+      assert source_disconnect("sources-disconnect/code-host.json") ==
+               {:ok, %{time: ~U[2026-10-15 12:00:00Z], collection_ref: "R_1001"}}
+    end
+
+    test "the contract's invalid ones are refused" do
+      assert listing("invalid/source-collections-no-listing.json") == :error
+      assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
+      assert Wire.listing([]) == :error
+      assert Wire.source_disconnect(nil) == :error
+    end
+
+    test "a ref named twice in one part is taken as named last" do
+      {:ok, body} = Wire.decode(fixture("source-collections/code-host.json"))
+      [one] = body["collections"]
+
+      twice =
+        Map.put(body, "collections", [
+          one,
+          %{"ref" => "B", "url" => "https://b.example", "title" => "B"},
+          Map.put(one, "title", "renamed")
+        ])
+
+      assert {:ok, %{collections: [%{ref: "B"}, %{ref: "R_1001", title: "renamed"}]}} =
+               Wire.listing(twice)
+    end
+
+    test "lengths are counted in code points" do
+      {:ok, body} = Wire.decode(fixture("sources-disconnect/code-host.json"))
+
+      # 200 code points of four bytes each, and of a base letter with a combining mark.
+      assert {:ok, _} =
+               Wire.source_disconnect(Map.put(body, "collection_ref", String.duplicate("😀", 200)))
+
+      assert {:ok, _} =
+               Wire.source_disconnect(
+                 Map.put(body, "collection_ref", String.duplicate("e\u0301", 100))
+               )
+
+      assert Wire.source_disconnect(Map.put(body, "collection_ref", String.duplicate("😀", 201))) ==
+               :error
+    end
+  end
 end
