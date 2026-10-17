@@ -1,6 +1,7 @@
 defmodule Apiary.PoolKeyRoleTest do
-  # A node pool's key acts in a role of its own, `pool_key`: what a node's key holds, and
-  # the dispatch actions besides, on its workspace's queue and the dispatches of it alone.
+  # A node pool's key acts in the role `pool_key`, apart from a node's key: what a node's
+  # key holds, and the dispatch actions besides, on its workspace's queue and the
+  # dispatches its pool claimed there alone.
   # Not async: the features are the whole node's.
   use Apiary.DataCase, async: false
 
@@ -23,7 +24,7 @@ defmodule Apiary.PoolKeyRoleTest do
     :"dispatch.release"
   ]
 
-  # What a node pool's key held before it had a role of its own, as a node's key does.
+  # What a node pool's key held before it acted in `pool_key`, as a node's key does.
   @key_actions [:"run.post_events", :"run_configuration.fetch"]
 
   # Every feature but `factory`, and those that need it.
@@ -49,7 +50,7 @@ defmodule Apiary.PoolKeyRoleTest do
   end
 
   # A dispatch of `workspace` as the key is asked of one: its organisation, its workspace,
-  # and the pool whose key claimed it, nil while it waits.
+  # and the pool whose key claimed it.
   defp dispatch(workspace, pool_id),
     do: %{
       organisation_id: workspace.organisation_id,
@@ -102,13 +103,10 @@ defmodule Apiary.PoolKeyRoleTest do
   end
 
   describe "the dispatch actions" do
-    test "are held on the key's workspace, its queue, and on a dispatch of it", ctx do
+    test "are held on the key's workspace, its queue, and on a dispatch its pool claimed",
+         ctx do
       for action <- @dispatch_actions do
-        for subject <- [
-              ctx.workspace,
-              dispatch(ctx.workspace, nil),
-              dispatch(ctx.workspace, ctx.pool.id)
-            ] do
+        for subject <- [ctx.workspace, dispatch(ctx.workspace, ctx.pool.id)] do
           assert Access.authorize(ctx.pool_scope, action, subject) == :ok,
                  "#{action} on #{inspect(subject)}"
 
@@ -125,7 +123,6 @@ defmodule Apiary.PoolKeyRoleTest do
 
       for action <- @dispatch_actions do
         assert Access.authorize(second_scope, action, ctx.workspace) == :ok
-        assert Access.authorize(second_scope, action, dispatch(ctx.workspace, nil)) == :ok
         assert Access.authorize(second_scope, action, dispatch(ctx.workspace, second.id)) == :ok
 
         assert Access.authorize(second_scope, action, dispatch(ctx.workspace, ctx.pool.id)) ==
@@ -170,6 +167,30 @@ defmodule Apiary.PoolKeyRoleTest do
       end
     end
 
+    test "are not found for a dispatch that names no pool, another pool, or no field by name",
+         ctx do
+      other_pool = pool_fixture(ctx.owner)
+
+      string_keyed = %{
+        "organisation_id" => ctx.workspace.organisation_id,
+        "workspace_id" => ctx.workspace.id,
+        "pool_id" => ctx.pool.id
+      }
+
+      for action <- @dispatch_actions,
+          subject <- [
+            dispatch(ctx.workspace, nil),
+            dispatch(ctx.workspace, other_pool.id),
+            dispatch(ctx.workspace, Ecto.UUID.generate()),
+            string_keyed
+          ] do
+        assert Access.authorize(ctx.pool_scope, action, subject) == {:error, :not_found},
+               "#{action} on #{inspect(subject)}"
+
+        refute Access.can?(ctx.pool_scope, action, subject)
+      end
+    end
+
     test "are asked of the queue or a dispatch alone: not the pool, the organisation or nothing",
          ctx do
       other_pool = pool_fixture(ctx.owner)
@@ -191,7 +212,7 @@ defmodule Apiary.PoolKeyRoleTest do
 
       for action <- @dispatch_actions do
         for scope <- [ctx.node_scope, Scope.for_access_key(gateway_key)],
-            subject <- [ctx.workspace, dispatch(ctx.workspace, nil)] do
+            subject <- [ctx.workspace, dispatch(ctx.workspace, ctx.pool.id)] do
           assert Access.authorize(scope, action, subject) == {:error, :forbidden}
           refute Access.can?(scope, action, subject)
         end
@@ -200,7 +221,7 @@ defmodule Apiary.PoolKeyRoleTest do
               Scope.for_access_key(Repo.get!(AccessKey, organisation_gateway_key.id)),
               Scope.for_access_key(adapter_key)
             ],
-            subject <- [ctx.workspace, dispatch(ctx.workspace, nil)] do
+            subject <- [ctx.workspace, dispatch(ctx.workspace, ctx.pool.id)] do
           assert {:error, _reason} = Access.authorize(scope, action, subject)
           refute Access.can?(scope, action, subject)
         end
@@ -210,7 +231,7 @@ defmodule Apiary.PoolKeyRoleTest do
     @tag with_features: @without_factory
     test "are not found without the factory feature, and the key keeps the rest", ctx do
       for action <- @dispatch_actions,
-          subject <- [ctx.workspace, dispatch(ctx.workspace, nil)] do
+          subject <- [ctx.workspace, dispatch(ctx.workspace, ctx.pool.id)] do
         assert Access.authorize(ctx.pool_scope, action, subject) == {:error, :not_found}
         refute Access.can?(ctx.pool_scope, action, subject)
       end

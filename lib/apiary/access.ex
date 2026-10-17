@@ -407,7 +407,7 @@ defmodule Apiary.Access do
     ),
     # A node pool's key at the server contract, on the runs dispatched to its workspace:
     # one queue per workspace, which any pool of the workspace claims from. Asked of the
-    # workspace, its queue, or of a dispatch of it (`key_subject/4`).
+    # workspace, its queue, or of a dispatch of it the key's pool claimed (`key_subject/4`).
     Action.new(:"dispatch.claim", "claim a run waiting in the workspace's queue",
       feature: :factory,
       roles: [:pool_key],
@@ -1126,10 +1126,10 @@ defmodule Apiary.Access do
   end
 
   # A node pool's key acts in its pool's workspace, which its place holds it to
-  # (`check_place/3`), and there on its pool and on what is not a node: on no other node,
-  # and on nothing the organisation holds beyond the workspace. A dispatch action is asked
-  # of the workspace, whose queue every pool of it claims from, or of a dispatch of it
-  # (`dispatch_subject/2`), and of nothing else.
+  # (`check_place/3`), and there on its pool: on no other node, and not on the
+  # organisation. A dispatch action is asked of the workspace, whose queue every pool of
+  # it claims from, or of a dispatch its pool claimed (`dispatch_subject/2`), and of
+  # nothing else.
   defp key_subject(:pool_key, %Scope{access_key: %AccessKey{} = key}, action, subject)
        when action in @dispatch_actions,
        do: dispatch_subject(key, subject)
@@ -1145,12 +1145,12 @@ defmodule Apiary.Access do
 
   defp key_subject(_role, _scope, _action, _subject), do: :ok
 
-  # What a dispatch action of a node pool's key is asked of: its workspace, the queue; or
-  # a dispatch of that workspace, any row or map that carries `organisation_id`,
-  # `workspace_id` and `pool_id`, the pool whose key claimed it, nil while it waits for a
-  # claim. A dispatch another pool claimed is not found to the key, as one of another
-  # workspace is. The place was asked already (`check_place/3`); it is asked again here,
-  # so this answer does not rest on that one.
+  # What a dispatch action of a node pool's key is asked of: its workspace, the queue, of
+  # which a waiting run is claimed; or a dispatch of that workspace that its pool claimed,
+  # a row or map that carries `organisation_id` and `workspace_id`, the key's, and
+  # `pool_id`, the key's pool. A dispatch another pool claimed, or one that names no pool,
+  # is not found to the key, as one of another workspace is. The place was asked already
+  # (`check_place/3`); it is asked again here, so this answer does not rest on that one.
   defp dispatch_subject(
          %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id},
          %Workspace{id: workspace_id, organisation_id: organisation_id}
@@ -1164,10 +1164,9 @@ defmodule Apiary.Access do
            organisation_id: organisation_id,
            workspace_id: workspace_id
          },
-         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: claimed_by}
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
        )
-       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id) and
-              claimed_by in [nil, pool_id],
+       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
        do: :ok
 
   defp dispatch_subject(_key, _subject), do: {:error, :not_found}

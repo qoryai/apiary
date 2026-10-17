@@ -286,9 +286,9 @@ actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover` and
 `dispatch.release`, of an opt-in feature the module's tables leave out (`docs: false`). A
 pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
-queue every pool of it claims from, or of a dispatch of that workspace, one waiting for a
-claim or one its pool claimed; another workspace's queue, or a dispatch another pool
-claimed, is not found to it. A handover and a release leave an audit entry; a claim and
+queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
+pool claimed; another workspace's queue, or a dispatch another pool claimed or that names
+no pool, is not found to it. A handover and a release leave an audit entry; a claim and
 the start of its machine do not.
 
 A gateway of an organisation, which has no workspace, is asked at the organisation: its
