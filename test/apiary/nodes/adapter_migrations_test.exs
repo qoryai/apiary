@@ -2,9 +2,9 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # The three migrations that make an adapter a kind of node of the instance, connect an
   # organisation to one, and validate their checks, run down and up again inside the test's
   # transaction, which rolls it all back, with the later ones that rest on the connections
-  # (`@listing`, `@collections`, then `@ticket`), down first and up last. They change `nodes`,
-  # `access_keys` and `access_key_enrolment_codes` under every other test, so this is not
-  # async.
+  # (`@listing`, `@again`, `@items`, `@collections`, then `@ticket`), down first and up
+  # last. They change `nodes`, `access_keys` and `access_key_enrolment_codes` under every
+  # other test, so this is not async.
   use Apiary.DataCase, async: false
 
   import Apiary.NodesFixtures
@@ -23,6 +23,9 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
            "name_a_work_item_s_ticket_by_its_connection"}
   @collections {20_261_017_170_300, Apiary.Repo.Migrations.KeepAnAdapterSCollections,
                 "keep_an_adapter_s_collections"}
+  @items {20_261_017_190_000, Apiary.Repo.Migrations.KeepSourceItems, "keep_source_items"}
+  @again {20_261_017_190_100, Apiary.Repo.Migrations.TakeWorkItemsInAgain,
+          "take_work_items_in_again"}
   @listing {20_261_017_190_500, Apiary.Repo.Migrations.KeepWhenAConnectionSListingCompleted,
             "keep_when_a_connection_s_listing_completed"}
 
@@ -32,8 +35,16 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
              access_key_enrolment_codes_node_fkey)
 
   setup_all do
-    for {version, migration, name} <-
-          [@kind, @connect, @validate, @ticket, @collections, @listing],
+    for {version, migration, name} <- [
+          @kind,
+          @connect,
+          @validate,
+          @ticket,
+          @collections,
+          @items,
+          @again,
+          @listing
+        ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -53,6 +64,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
 
   defp down_all! do
     down!(@listing)
+    down!(@again)
+    down!(@items)
     down!(@collections)
     down!(@ticket)
     down!(@validate)
@@ -66,6 +79,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@validate)
     up!(@ticket)
     up!(@collections)
+    up!(@items)
+    up!(@again)
     up!(@listing)
   end
 
@@ -139,6 +154,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     adapter_fixture()
 
     down!(@listing)
+    down!(@again)
+    down!(@items)
     down!(@collections)
     down!(@ticket)
     down!(@validate)
@@ -153,6 +170,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     up!(@validate)
     up!(@ticket)
     up!(@collections)
+    up!(@items)
+    up!(@again)
     up!(@listing)
   end
 end

@@ -41,11 +41,20 @@ defmodule Apiary.Deletion.Tables do
   # and the runs of the queue before their work items; a node's instances before the
   # access keys they name; the access keys before the enrolment codes they arrived by, and
   # the keys, the codes, the runs, the instances and the organisation's connections to
-  # adapters before the nodes they name; an adapter's collections and the bookkeeping of
-  # their listings before the connections they name; a work item's events before the work
-  # item; a connection's workspaces before the connection, and the connections before the
-  # releases and the service definitions they name; everything of a workspace before the
-  # workspace.
+  # adapters before the nodes they name; the work items before the tickets they name, a
+  # ticket's comments before the ticket, and the tickets and the bookkeeping of their
+  # listings before the collections they belong to; an adapter's collections and the
+  # bookkeeping of their listings before the connections they name; a work item's events
+  # before the work item; a connection's workspaces before the connection, and the
+  # connections before the releases and the service definitions they name; everything of
+  # a workspace before the workspace.
+  #
+  # A run of the queue names its work item by the organisation, not the workspace: it
+  # stays in the workspace it was queued in when its work item moves to another. So a
+  # workspace's purge deletes the runs of the queue of that workspace, whatever workspace
+  # their work items are in, and the work items of that workspace, whose runs of the queue
+  # in another workspace go with them (`ON DELETE CASCADE`), their dispatches with those,
+  # and the runs registered for them keep no link to them.
   @tables [
     {"log_chunks", :workspace},
     {"events", :workspace},
@@ -74,6 +83,9 @@ defmodule Apiary.Deletion.Tables do
     {"node_instances", :workspace},
     {"access_keys", :workspace},
     {"access_key_enrolment_codes", :workspace},
+    {"source_item_comments", :organisation},
+    {"source_items", :organisation},
+    {"source_item_listings", :organisation},
     {"source_collection_listings", :organisation},
     {"source_collections", :organisation},
     {"adapter_connections", :organisation},

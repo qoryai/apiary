@@ -37,10 +37,13 @@ defmodule Apiary.Repo.Migrations.KeepDispatches do
   # - `run_ended`: the run ended by its outcome or its exit, after its handover, and a
   #   stale dispatch ends with its run, handover.schema.json.
   # - `lost`: a handed-over run whose job never attached or went silent, ended by the
-  #   liveness check (plan 2.2, P7).
+  #   liveness check.
   #
-  # Every table is held to its workspace's organisation by the composite key, a work item
-  # and a dispatch's run to their workspace, and a dispatch's node pool to its workspace.
+  # Every table is held to its workspace's organisation by the composite key, a dispatch's
+  # run to its workspace, and a dispatch's node pool to its workspace. A run of the queue
+  # names its work item by its workspace here; 20261017190100 names it by the
+  # organisation instead, so that the run stays in its workspace when the work item moves
+  # to another.
   # The workspace's rows go with it (`ON DELETE CASCADE`). The node pool and the access key
   # are NO ACTION, as a work item's connection is: a node and a key are deleted softly,
   # and their rows go only with the purge, which deletes the dispatches first.

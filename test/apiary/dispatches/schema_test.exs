@@ -19,16 +19,25 @@ defmodule Apiary.Dispatches.SchemaTest do
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.Run
+  alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   @format ~r/\Adp_[0-9a-hjkmnp-tv-z]{16}\z/
 
   @version 20_261_017_180_000
   @migration Apiary.Repo.Migrations.KeepDispatches
+  # The later migration that names a run's work item by the organisation: down first, up
+  # last.
+  @again_version 20_261_017_190_100
+  @again Apiary.Repo.Migrations.TakeWorkItemsInAgain
 
   setup_all do
-    unless Code.ensure_loaded?(@migration) do
+    for {version, migration, name} <- [
+          {@version, @migration, "keep_dispatches"},
+          {@again_version, @again, "take_work_items_in_again"}
+        ],
+        not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join("#{@version}_keep_dispatches.exs")
+      |> Path.join("#{version}_#{name}.exs")
       |> Code.require_file()
     end
 
@@ -218,12 +227,41 @@ defmodule Apiary.Dispatches.SchemaTest do
       end)
     end
 
-    test "names a work item of its workspace alone", %{scope: scope} do
+    test "names a work item of its organisation alone", %{scope: scope} do
       %{scope: elsewhere} = sign_up_fixture()
       theirs = work_item_fixture(elsewhere)
 
       assert {:error, changeset} = queue(scope, work_item_id: theirs.id)
       assert {"does not exist", _} = changeset.errors[:work_item_id]
+
+      # By the organisation, MATCH FULL, so that it stays where it was queued when its
+      # work item moves to another workspace.
+      assert %{rows: [[definition]]} =
+               Repo.query!(
+                 "SELECT pg_get_constraintdef(oid) FROM pg_constraint " <>
+                   "WHERE conname = 'dispatch_runs_work_item_id_fkey'"
+               )
+
+      assert definition ==
+               "FOREIGN KEY (work_item_id, organisation_id) " <>
+                 "REFERENCES work_items(id, organisation_id) MATCH FULL ON DELETE CASCADE"
+    end
+
+    test "stays in its workspace when its work item moves to another", %{scope: scope} do
+      run = queued!(scope)
+      claimed!(scope, run, pool!(scope))
+      elsewhere = workspace_fixture(scope.organisation)
+
+      move!(run.work_item_id, elsewhere)
+
+      assert %WorkItem{workspace_id: moved_to} = Repo.get!(WorkItem, run.work_item_id)
+      assert moved_to == elsewhere.id
+      assert %DispatchRun{workspace_id: stayed} = Repo.get!(DispatchRun, run.id)
+      assert stayed == scope.workspace.id
+
+      # Its events follow it (ON UPDATE CASCADE).
+      assert [%WorkItemEvent{workspace_id: ^moved_to}] =
+               Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^run.work_item_id)
     end
 
     test "waits in its workspace's queue, which a partial index keeps" do
@@ -555,6 +593,47 @@ defmodule Apiary.Dispatches.SchemaTest do
     :ok
   end
 
+  # Closes the work item `id` and moves it to `workspace`, with a number no fixture takes,
+  # as a take in again from another workspace moves one that is not live.
+  defp move!(id, %Workspace{id: workspace_id}) do
+    assert %{num_rows: 1} =
+             update!(
+               "work_items",
+               id,
+               "state = 'closed', closed_at = now(), number = 1000, workspace_id = $2",
+               [Ecto.UUID.dump!(workspace_id)]
+             )
+  end
+
+  defp purge!(%Scope{} = scope, %Workspace{} = workspace) do
+    {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
+
+    Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
+      set: [purge_after: DateTime.add(DateTime.utc_now(), -60, :second)]
+    )
+
+    assert {:ok, :purged} =
+             Deletion.purge_workspace(Scope.for_instance(scope.organisation, workspace))
+  end
+
+  # A work item of `from` with a run of the queue, a dispatch and a registered run there,
+  # then moved to `to`.
+  defp moved!(scope, from, to) do
+    inside = workspace_scope(scope.user, from)
+    dispatch_run = queued!(inside)
+    claimed!(inside, dispatch_run, pool!(inside))
+    run = run_fixture(inside, %{dispatch_run_id: dispatch_run.id})
+    move!(dispatch_run.work_item_id, to)
+    %{work_item_id: dispatch_run.work_item_id, run: run}
+  end
+
+  defp work_item_rows(id) do
+    for table <- ~w(work_items work_item_events dispatch_runs) do
+      column = if table == "work_items", do: "id", else: "work_item_id"
+      count(table, column, id)
+    end
+  end
+
   defp count(table, column, id) do
     %{rows: [[n]]} =
       Repo.query!("SELECT count(*) FROM #{table} WHERE #{column} = $1", [Ecto.UUID.dump!(id)])
@@ -589,6 +668,41 @@ defmodule Apiary.Dispatches.SchemaTest do
       assert counts("workspace_id", scope.workspace.id) == kept
     end
 
+    test "of a moved work item's old workspace, then its new one, removes it all",
+         %{scope: scope} do
+      from = workspace_fixture(scope.organisation)
+      to = workspace_fixture(scope.organisation)
+      %{work_item_id: id} = moved!(scope, from, to)
+
+      assert counts("workspace_id", from.id) == [1, 1, 1]
+      assert work_item_rows(id) == [1, 1, 1]
+
+      # The old workspace's runs of the queue go, whatever workspace their work item is in.
+      purge!(scope, from)
+      assert counts("workspace_id", from.id) == [0, 0, 0]
+      assert work_item_rows(id) == [1, 1, 0]
+
+      purge!(scope, to)
+      assert work_item_rows(id) == [0, 0, 0]
+    end
+
+    test "of a moved work item's new workspace, then its old one, removes it all",
+         %{scope: scope} do
+      from = workspace_fixture(scope.organisation)
+      to = workspace_fixture(scope.organisation)
+      %{work_item_id: id, run: run} = moved!(scope, from, to)
+
+      # The work item goes with its new workspace, and its run of the queue in the old one
+      # with it, the dispatch with that; the registered run stays, with no link to it.
+      purge!(scope, to)
+      assert work_item_rows(id) == [0, 0, 0]
+      assert counts("workspace_id", from.id) == [0, 0, 1]
+      assert %Run{dispatch_run_id: nil} = Repo.get!(Run, run.id)
+
+      purge!(scope, from)
+      assert counts("workspace_id", from.id) == [0, 0, 0]
+    end
+
     test "of an organisation removes them all, and no other's", %{scope: scope} do
       fill!(scope)
       %{scope: other} = sign_up_fixture()
@@ -607,8 +721,15 @@ defmodule Apiary.Dispatches.SchemaTest do
 
   @options [log: false, migration_lock: false]
 
-  defp down!, do: assert(:ok = Ecto.Migrator.down(Repo, @version, @migration, @options))
-  defp up!, do: assert(:ok = Ecto.Migrator.up(Repo, @version, @migration, @options))
+  defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @again_version, @again, @options)
+    assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
+  end
+
+  defp up! do
+    assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @again_version, @again, @options)
+  end
 
   defp exists?(sql) do
     %{rows: [[count]]} = Repo.query!(sql)

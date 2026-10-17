@@ -2,13 +2,13 @@ defmodule Apiary.WorkItems.WorkItemEvent do
   # A work item event: one thing that happened to a work item, at `at`, kept in the order
   # it happened.
   #
-  # `kind` is what happened: `:taken_in`, `:closed` or `:undone`. Who did it is
-  # `actor_kind`, `:person`, `:adapter` or `:instance`, with `actor_id`, the person's
+  # `kind` is what happened: `:taken_in`, `:declined`, `:closed` or `:undone`. Who did it
+  # is `actor_kind`, `:person`, `:adapter` or `:instance`, with `actor_id`, the person's
   # account or the adapter's node, and none for the instance. `data` is what else the
   # event says, a JSON object of 16,384 bytes at most as the database encodes it.
   #
-  # An event is of its work item's workspace, held to it by the composite key, and goes
-  # with it.
+  # An event is of its work item's workspace, held to it by the composite key, follows it
+  # to another workspace of its organisation, and goes with it.
   @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
@@ -17,12 +17,12 @@ defmodule Apiary.WorkItems.WorkItemEvent do
   @type t :: %__MODULE__{}
 
   @typedoc "What happened to a work item."
-  @type kind :: :taken_in | :closed | :undone
+  @type kind :: :taken_in | :declined | :closed | :undone
 
   @typedoc "Who did it: a person, an adapter or the instance."
   @type actor_kind :: :person | :adapter | :instance
 
-  @kinds [:taken_in, :closed, :undone]
+  @kinds [:taken_in, :declined, :closed, :undone]
   @actor_kinds [:person, :adapter, :instance]
 
   @primary_key {:id, :binary_id, autogenerate: true}
