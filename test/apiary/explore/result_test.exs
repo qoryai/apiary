@@ -453,6 +453,151 @@ defmodule Apiary.Explore.ResultTest do
     end
   end
 
+  describe "the version is exactly 1" do
+    defp with_version(number),
+      do: ~s({"version":#{number},"verdict":"not_understood","questions":["Why?"]})
+
+    test "1 written as an integer, a fraction or an exponent is the integer 1" do
+      for number <- ~w(1 1.0 1e0 1E0 10e-1 0.1e1 100e-2 1.000) do
+        assert {:ok, %{"version" => version}} = Result.parse(with_version(number)), number
+        assert version === 1, number
+      end
+    end
+
+    test "a number that is not exactly 1 is refused, however close" do
+      for number <-
+            ~w(1.0000000000000001 0.9999999999999999999 1e400 1e-400 1e999999999 1e-999999999 -1 -1.0 1.5 2 0 true null "1") do
+        assert Result.parse(with_version(number)) == :none, number
+      end
+    end
+
+    test "a number with a fraction anywhere else is refused" do
+      document = understood()
+      [entry | _] = document["knowledge"]
+
+      refute ok?(String.replace(with_question("MARK"), ~s("MARK"), "1.5"))
+      refute ok?(Jason.encode!(%{document | "knowledge" => [%{entry | "sources" => [1.5]}]}))
+      refute ok?(Jason.encode!(put_in(document, ["complexity"], 1.0)))
+    end
+  end
+
+  describe "the size of lists and objects" do
+    # A document's check takes less than this many milliseconds. On the inputs below,
+    # reading every refusal's errors costs one to three seconds and JSV alone 330 to
+    # 500 ms; with the walk of the bounds first they take a few milliseconds. The budget
+    # leaves room for a slow machine and still fails without the walk.
+    @budget_ms 150
+
+    setup do
+      # The schema and the bounds are built once; the first check pays for it.
+      assert {:ok, _} = Result.parse(fixture("result/understood.json"))
+      :ok
+    end
+
+    defp timed(text) do
+      assert byte_size(text) <= @max
+      {microseconds, result} = :timer.tc(fn -> Result.parse(text) end)
+      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
+      result
+    end
+
+    defp entries(entry, count), do: Enum.join(List.duplicate(entry, count), ",")
+
+    test "the bounds are the largest list and the largest object result.schema.json allows" do
+      assert Result.bounds() == {50, 8}
+
+      assert Result.bounds(%{"type" => "array", "maxItems" => 3}) == {3, 0}
+
+      assert_raise ArgumentError, fn -> Result.bounds(%{"type" => "array"}) end
+
+      assert_raise ArgumentError, fn ->
+        Result.bounds(%{"type" => "object", "properties" => %{"a" => %{}}})
+      end
+    end
+
+    test "40000 empty objects as questions are refused at once" do
+      text =
+        ~s({"version":1,"verdict":"not_understood","questions":[) <>
+          entries("{}", 40_000) <> "]}"
+
+      assert timed(text) == :none
+    end
+
+    test "60000 numbers as one knowledge entry's sources are refused at once" do
+      text =
+        ~s({"version":1,"verdict":"not_understood","questions":["q"],"knowledge":[{"text":"t","sources":[) <>
+          entries("1", 60_000) <> "]}]}"
+
+      assert timed(text) == :none
+    end
+
+    test "50 knowledge entries of 50 sources each are refused at once" do
+      entry = ~s({"text":"t","sources":[) <> entries("1", 50) <> "]}"
+
+      text =
+        ~s({"version":1,"verdict":"not_understood","questions":["q"],"knowledge":[) <>
+          entries(entry, 50) <> "]}"
+
+      assert timed(text) == :none
+    end
+
+    test "an object with thousands of members is refused at once" do
+      members = Enum.map_join(1..11_000, ",", &~s("k#{&1}":{}))
+      text = ~s({#{members},"version":1,"verdict":"not_understood","questions":["q"]})
+
+      assert timed(text) == :none
+    end
+
+    test "deep nesting is refused at once" do
+      text =
+        ~s({"version":1,"verdict":"not_understood","questions":[) <>
+          String.duplicate("[", 65_000) <> String.duplicate("]", 65_000) <> "]}"
+
+      assert timed(text) == :none
+    end
+
+    test "a valid document with every list at its largest is a result" do
+      text = fn n -> String.duplicate("t", n) end
+      source = fn i -> "https://docs#{i}.example.com/" <> String.duplicate("p", 170) end
+
+      document = %{
+        "version" => 1,
+        "verdict" => "understood",
+        "complexity" => %{"level" => "complex", "reason" => text.(100)},
+        "understanding" => text.(2000),
+        "scope" => %{
+          "in" => List.duplicate(text.(40), 50),
+          "out" => List.duplicate(text.(40), 50)
+        },
+        "approach" => %{
+          "summary" => text.(100),
+          "alternatives" => List.duplicate(%{"summary" => text.(40), "reason" => text.(40)}, 10)
+        },
+        "knowledge" =>
+          for(
+            i <- 1..50,
+            do: %{"text" => text.(40), "sources" => Enum.map(1..10, &source.(i * 10 + &1))}
+          )
+      }
+
+      encoded = Jason.encode!(document)
+      assert byte_size(encoded) > 100_000
+      assert timed(encoded) == {:ok, document}
+
+      assert {:ok, _} =
+               timed(
+                 Jason.encode!(%{
+                   "version" => 1,
+                   "verdict" => "not_understood",
+                   "understanding" => text.(20_000),
+                   "questions" => List.duplicate(text.(2000), 20)
+                 })
+               )
+
+      refute ok?(Jason.encode!(put_in(document, ["scope", "in"], List.duplicate("t", 51))))
+    end
+  end
+
   describe "untrusted input never raises" do
     property "any bytes as the result text are no result or a result" do
       check all(
