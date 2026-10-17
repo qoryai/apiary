@@ -1082,6 +1082,43 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(ctx.scope).linked_collections == 1
     end
 
+    test "the tickets of a collection with its Backlog off, in every read; its work item stays",
+         ctx do
+      item = ticket(ctx.collection)
+      comment(item, %{})
+      work_item(ctx.scope, item)
+      on = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/api"})
+      kept = ticket(on)
+
+      ctx.collection |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
+
+      assert ids(list(ctx.scope, view: :all)) == [kept.public_id]
+      assert list(ctx.scope).counts.total == 1
+      assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
+      assert Backlog.list_comments(ctx.scope, item.public_id) == []
+      assert ids(list(ctx.scope, view: :all, repository: ctx.collection.id)) == []
+
+      assert [%{label: "acme/api"}] = Backlog.filter_values(ctx.scope, :repository, nil)
+
+      assert Backlog.backlog_facts(ctx.scope) == %{
+               connected?: true,
+               linked_collections: 1,
+               listed?: false,
+               open_tickets: 1
+             }
+
+      # Its work item stays, as it is.
+      assert %WorkItem{state: :exploring} = Repo.get_by!(WorkItem, item_id: item.id)
+
+      # On again, every read has its tickets again.
+      Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+        set: [backlog: true]
+      )
+
+      assert Backlog.get_ticket(ctx.scope, item.public_id).id == item.public_id
+      assert list(ctx.scope).counts.total == 2
+    end
+
     test "a disconnected ticket", ctx do
       item = ticket(ctx.collection)
       kept = ticket(ctx.collection)

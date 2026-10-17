@@ -456,6 +456,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.delete",
         :"adapter.connect",
         :"collection.assign",
+        :"collection.set_backlog",
         :"work_item.take_in",
         :"work_item.undo",
         :"work_item.close",

@@ -353,6 +353,14 @@ defmodule Apiary.Access do
       roles: @admins,
       asked_of: :organisation
     ),
+    # Whether the items of what an adapter reports come into its workspace's Backlog.
+    Action.new(
+      :"collection.set_backlog",
+      "choose whether the items of a collection come into its workspace's Backlog",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
     # A workspace's work items, people's actions. A comment's author may delete it too,
     # while they may still comment (`author?/3`).
     Action.new(:"work_item.read", "read the workspace's work items",

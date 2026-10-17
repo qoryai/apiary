@@ -21,6 +21,12 @@ defmodule Apiary.Adapters.Collections do
   # connection keeps the time (`listing_completed_at`, the listing-complete marker). The
   # bookkeeping is deleted a day after a listing's first part (`purge_listings/1`).
   #
+  # **Linked.** A collection is linked while it is assigned to a workspace and its items
+  # come into that workspace's Backlog (`backlog`, on unless a person turned it off;
+  # `Apiary.Adapters.Collection.linked?/1`). The feed's `linked` entry says a live
+  # collection became linked, its `unlinked` entry that it stopped being linked or ended
+  # while linked; a move from one workspace to another while it stays linked writes none.
+  #
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
   # for deletion, a collection a part makes is linked to it as it is made, with the feed's
   # `linked` entry, in the part's transaction; one the part only updates keeps its link.
@@ -30,7 +36,7 @@ defmodule Apiary.Adapters.Collections do
   # **The end of a collection** is final: by `POST /v1/sources/disconnect`
   # (`disconnect/2`), by a complete listing that leaves it out, or with its connection
   # (`end_for_connections/2`, which `Apiary.Adapters.Connections` calls in each end's
-  # transaction). Each end of a collection linked to a workspace writes the feed's entry
+  # transaction). Each end of a linked collection writes the feed's entry
   # `%{kind: "collection", collection_ref: ref, status: "unlinked"}`
   # (`Apiary.Adapters.Feed`), in the same transaction; a workspace's purge unlinks its
   # collections so too (`unlink_workspace/2`), and they stay with their organisation.
@@ -41,11 +47,15 @@ defmodule Apiary.Adapters.Collections do
   # **For people**, each read asks `adapter.read` of the scope's organisation (members), and
   # answers nothing to anyone else, and nothing of a connection of another organisation:
   # `list_collections/3`, a connection's collections a page at a time; `counts/2` and
-  # `count_unassigned/2`. `assign_collections/4` assigns collections to a workspace, or to
+  # `count_unassigned/2`; `backlog_switch/2`, whether a target's items come into the
+  # Backlog, to a person who may read the workspace's work items. `assign_collections/4` assigns collections to a workspace, or to
   # none (`collection.assign`, owners and admins), by the ids Qory Apiary gives them,
-  # never by refs, with the feed's `linked` entry for each it links from none and its
-  # `unlinked` entry for each it unlinks, in its transaction; a move from one workspace
-  # to another writes none. Each collection it links to a workspace that has a target
+  # never by refs, with the feed's `linked` entry for each it links and its `unlinked`
+  # entry for each it unlinks, in its transaction; a move from one workspace to another
+  # writes none. `set_backlog/3` turns the Backlog of a workspace's target on or off
+  # (`collection.set_backlog`, owners and admins): its live collections assigned to the
+  # workspace with that target, with the feed's `linked` or `unlinked` entry for each it
+  # changes. Each collection it links to a workspace that has a target
   # makes that target in the workspace, unless the workspace has it already
   # (`Apiary.Runs.Target.insert_new/3`), so the target is there before its first run;
   # an unlink, a move away or an end leaves the target as it is.
@@ -293,12 +303,14 @@ defmodule Apiary.Adapters.Collections do
       Repo.insert_all(Collection, rows,
         on_conflict: newer,
         conflict_target: {:unsafe_fragment, @live_index},
-        returning: [:id, :adapter_id, :external_ref, :workspace_id]
+        returning: [:id, :adapter_id, :external_ref, :workspace_id, :backlog]
       )
 
     # The update of one live already leaves its link as it was: only one made here is
     # linked by it.
-    :ok = tell(Enum.filter(put, &(&1.workspace_id && MapSet.member?(made, &1.id))), "linked")
+    :ok =
+      tell(Enum.filter(put, &(Collection.linked?(&1) and MapSet.member?(made, &1.id))), "linked")
+
     Enum.map(put, & &1.id)
   end
 
@@ -439,9 +451,10 @@ defmodule Apiary.Adapters.Collections do
   #   * `{:error, :suspended}` (`connection_suspended`) for a live collection whose
   #     organisation is out of use;
   #   * `{:error, :not_linked}` (`collection_not_linked`) for none, a collection of
-  #     another adapter, one ended otherwise, and a live one linked to no workspace;
-  #   * `{:ok, collection, scope}`, a live collection linked to a workspace, and the key's
-  #     scope narrowed to its organisation.
+  #     another adapter, one ended otherwise, and a live one not linked: assigned to no
+  #     workspace, or with its Backlog turned off;
+  #   * `{:ok, collection, scope}`, a live linked collection, and the key's scope narrowed
+  #     to its organisation.
   @spec verdict(Scope.t() | nil, Collection.t() | nil, Access.action()) ::
           {:ok, Collection.t(), Scope.t()} | {:error, refusal}
   def verdict(key_scope, collection, action) do
@@ -465,7 +478,7 @@ defmodule Apiary.Adapters.Collections do
     collection = Repo.preload(collection, connection: :organisation)
 
     with {:ok, scope} <- Connections.in_use(key_scope, collection.connection, action) do
-      if collection.workspace_id,
+      if Collection.linked?(collection),
         do: {:ok, collection, scope},
         else: {:error, :not_linked}
     end
@@ -493,8 +506,8 @@ defmodule Apiary.Adapters.Collections do
   @doc false
   # Inside the transaction of a connection's end, under the connection's row
   # (`Apiary.Adapters.Connections`): ends every live collection of the connections
-  # `connection_ids` (`connection_ended`), with the feed's `unlinked` entry for each linked
-  # to a workspace. The number ended.
+  # `connection_ids` (`connection_ended`), with the feed's `unlinked` entry for each
+  # linked. The number ended.
   @spec end_for_connections([Ecto.UUID.t()], DateTime.t()) :: non_neg_integer
   def end_for_connections([], _now), do: 0
 
@@ -515,8 +528,8 @@ defmodule Apiary.Adapters.Collections do
   @doc false
   # Before a workspace's purge deletes its rows (`Apiary.Deletion`): links every
   # collection linked to the workspace `workspace_id` of the organisation
-  # `organisation_id` to none, with the feed's `unlinked` entry for each live one. The
-  # number unlinked. Run again, it unlinks nothing more.
+  # `organisation_id` to none, with the feed's `unlinked` entry for each live one that was
+  # linked. The number unlinked. Run again, it unlinks nothing more.
   @spec unlink_workspace(Ecto.UUID.t(), Ecto.UUID.t()) :: non_neg_integer
   def unlink_workspace(organisation_id, workspace_id) do
     {:ok, count} =
@@ -555,9 +568,9 @@ defmodule Apiary.Adapters.Collections do
   end
 
   # The feed's `unlinked` entry for each of `collections`, as they were before they ended
-  # or lost their workspace, that was linked to a workspace.
+  # or lost their workspace, that was linked.
   defp tell_unlinked(collections),
-    do: tell(Enum.filter(collections, & &1.workspace_id), "unlinked")
+    do: tell(Enum.filter(collections, &Collection.linked?/1), "unlinked")
 
   # The feed's entry of `status`, `"linked"` or `"unlinked"`, for each of `collections`:
   # by adapter, then by ref.
@@ -813,9 +826,10 @@ defmodule Apiary.Adapters.Collections do
   # It holds the connection `FOR SHARE`, so the connection does not end meanwhile, and the
   # workspace `FOR SHARE`, so it is not marked nor claimed meanwhile; then the collections,
   # by id, so two assigns never wait on each other in turn; then the adapter's feed
-  # counter, last. One linked to a workspace from none writes the feed's `linked` entry,
-  # one linked to none from a workspace its `unlinked` entry; one moved from a workspace
-  # to another keeps its link state, and writes none. With a workspace, each collection
+  # counter, last. One with its Backlog on, assigned to a workspace from none, writes the
+  # feed's `linked` entry, and assigned to none from a workspace its `unlinked` entry; one
+  # moved from a workspace to another keeps its link state, and writes none, and one with
+  # its Backlog off writes none either way. With a workspace, each collection
   # asked for that has a target makes that target in the workspace, as a run of it would
   # name it, unless the workspace has it already; with none, nothing is made, and no
   # target is ever removed. The entry of `collection.assign`,
@@ -952,10 +966,147 @@ defmodule Apiary.Adapters.Collections do
       )
 
     if workspace_id do
-      tell(Enum.filter(changed, &is_nil(&1.workspace_id)), "linked")
+      tell(Enum.filter(changed, &(is_nil(&1.workspace_id) and &1.backlog)), "linked")
     else
       tell_unlinked(changed)
     end
+  end
+
+  ## The Backlog of a target
+
+  @doc false
+  # backlog_switch/2 is whether the items of `target`, a target of the scope's workspace,
+  # come into the workspace's Backlog, to a person who may read its work items
+  # (`work_item.read`): `%{on: on}`, on while any of its collections there has its
+  # Backlog on; nil for anyone else, and for a target with no collection there (none
+  # live, of a connected connection, assigned to the workspace, with the target's system
+  # and path).
+  @spec backlog_switch(Scope.t(), Target.t()) :: %{on: boolean} | nil
+  def backlog_switch(%Scope{} = scope, %Target{} = target) do
+    with true <- readable_target?(scope, target),
+         [_ | _] = switches <- Repo.all(target_collections(target, select: :backlog)) do
+      %{on: Enum.any?(switches)}
+    else
+      _none -> nil
+    end
+  end
+
+  @doc false
+  # set_backlog/3 turns the Backlog of `target`, a target of the scope's workspace, on or
+  # off (`on`), for each of its collections there (`backlog_switch/2`), in one
+  # transaction (`collection.set_backlog`, owners and admins, asked of the organisation):
+  #
+  #   * `Apiary.Access`'s refusal, before anything is read;
+  #   * `{:error, :not_found}` for a target of another workspace than the scope's, for a
+  #     workspace marked for deletion or claimed by its purge, and for a target with no
+  #     collection there;
+  #   * `{:ok, count}`, how many changed: the others are as asked already.
+  #
+  # It holds the workspace `FOR SHARE`, then the collections, by id, as an assign holds
+  # them, then the adapter's feed counter, last. Each one it turns on writes the feed's
+  # `linked` entry, each it turns off its `unlinked` entry: all are assigned to the
+  # workspace. The entry of `collection.set_backlog` is about the target, with `backlog`,
+  # the new state, and the count; none when nothing changed. After the commit, the
+  # collections changed are broadcast, by connection.
+  @spec set_backlog(Scope.t(), Target.t(), boolean) ::
+          {:ok, non_neg_integer} | {:error, Access.reason()}
+  def set_backlog(%Scope{} = scope, %Target{} = target, on) when is_boolean(on) do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"collection.set_backlog", scope.organisation),
+           true <- same_workspace?(scope, target) || {:error, :not_found},
+           workspace_id when is_binary(workspace_id) <-
+             lock_workspace(scope.organisation.id, target.workspace_id) || {:error, :not_found},
+           [_ | _] = collections <- lock_target_collections(target) do
+        changed = Enum.reject(collections, &(&1.backlog == on))
+        :ok = switch_backlog(scope, target, changed, on)
+        {:ok, changed}
+      else
+        [] -> {:error, :not_found}
+        {:error, _reason} = refused -> refused
+      end
+    end)
+    |> case do
+      {:ok, changed} ->
+        for {connection_id, of_connection} <- Enum.group_by(changed, & &1.connection_id) do
+          broadcast_collections(
+            %Connection{id: connection_id, organisation_id: target.organisation_id},
+            Enum.map(of_connection, & &1.id)
+          )
+        end
+
+        {:ok, length(changed)}
+
+      {:error, _reason} = refused ->
+        refused
+    end
+  end
+
+  defp readable_target?(%Scope{workspace: %Workspace{} = workspace} = scope, target),
+    do: same_workspace?(scope, target) and Access.can?(scope, :"work_item.read", workspace)
+
+  defp readable_target?(_scope, _target), do: false
+
+  defp same_workspace?(
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{id: workspace_id}
+         },
+         %Target{organisation_id: organisation_id, workspace_id: workspace_id}
+       ),
+       do: true
+
+  defp same_workspace?(_scope, _target), do: false
+
+  # The live collections of a connected connection, assigned to the workspace of `target`,
+  # whose target is the target's system and path. Every domain names a target by the
+  # system and path its labels carry, as they are, so a collection's are its target's.
+  defp target_collections(%Target{} = target, select: field) do
+    from c in Collection,
+      join: k in Connection,
+      on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+      where:
+        c.organisation_id == ^target.organisation_id and
+          c.workspace_id == ^target.workspace_id and c.target_system == ^target.system and
+          c.target_path == ^target.path and is_nil(c.ended_at) and k.state == :connected and
+          is_nil(k.ended_at),
+      order_by: c.id,
+      select: field(c, ^field)
+  end
+
+  # The collections of `target_collections/2`, each held `FOR UPDATE`, by id, and read
+  # again once held, so one that ended or moved meanwhile is left out.
+  defp lock_target_collections(%Target{} = target) do
+    ids = Repo.all(target_collections(target, select: :id))
+
+    Repo.all(
+      from c in Collection,
+        where: c.id in ^ids,
+        where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at),
+        order_by: c.id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  # Turns `changed`, held, on or off, with its entry, then the feed's entries, the
+  # adapter's feed counter last.
+  defp switch_backlog(_scope, _target, [], _on), do: :ok
+
+  defp switch_backlog(scope, target, changed, on) do
+    ids = Enum.map(changed, & &1.id)
+
+    {_count, _} =
+      Repo.update_all(from(c in Collection, where: c.id in ^ids),
+        set: [backlog: on, updated_at: DateTime.utc_now()]
+      )
+
+    {:ok, _entry} =
+      Audit.record(Repo, scope, :"collection.set_backlog", target, %{
+        details: %{backlog: on, count: length(changed)}
+      })
+
+    if on,
+      do: tell(changed, "linked"),
+      else: tell(changed, "unlinked")
   end
 
   ## Broadcasts

@@ -79,8 +79,8 @@ defmodule Apiary.WorkItemsFixtures do
   @doc """
   A collection of the connection, of the scope's organisation, linked to the scope's
   workspace, with a ref no other collection has, written straight to the database.
-  `attrs` overrides `external_ref`, `url`, `title`, `target_system`, `target_path` and
-  `workspace_id`.
+  `attrs` overrides `external_ref`, `url`, `title`, `target_system`, `target_path`,
+  `workspace_id` and `backlog`.
   """
   def source_collection_fixture(%Scope{} = scope, %Connection{} = connection, attrs \\ %{}) do
     unique = System.unique_integer([:positive])

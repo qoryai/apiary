@@ -109,7 +109,8 @@ defmodule Apiary.AuditChanges do
       :"adapter.delete",
       :"adapter.connect",
       :"adapter.declare",
-      :"collection.assign"
+      :"collection.assign",
+      :"collection.set_backlog"
     ] ++ @stand_ins ++ @pool_stand_ins
   end
 
@@ -454,6 +455,15 @@ defmodule Apiary.AuditChanges do
     %{scope: ctx.scope, subject: {"workspace", workspace.id}, before: before}
   end
 
+  # An owner turns off the Backlog of a target of the workspace, whose collection is
+  # assigned there, in the workspace's trail, about the target.
+  def make(:"collection.set_backlog", ctx) do
+    target = prepare(:"collection.set_backlog", ctx)
+    before = entries()
+    {:ok, 1} = Collections.set_backlog(ctx.scope, target, false)
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
   # An adapter's key declares, in the trail of the instance's organisation, and the
   # entry's actor is the key.
   def make(:"adapter.declare", _ctx) do
@@ -783,6 +793,40 @@ defmodule Apiary.AuditChanges do
     {connection, collection, workspace_fixture(scope.organisation)}
   end
 
+  # A collection with a target, listed for the organisation's connection and assigned to
+  # the scope's workspace, which makes the target there.
+  defp prepare(:"collection.set_backlog", %{scope: scope}) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{
+            ref: "SHOP",
+            url: "https://tracker.acme.example/SHOP",
+            title: "acme/shop",
+            target: %{system: "code.example.com", path: "acme/shop"}
+          }
+        ],
+        listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+
+    {:ok, _changed} =
+      Collections.assign_collections(scope, connection, [collection.id], scope.workspace)
+
+    Repo.get_by!(Apiary.Runs.Target,
+      workspace_id: scope.workspace.id,
+      system: "code.example.com",
+      path: "acme/shop"
+    )
+  end
+
   defp prepare(action, %{scope: scope}) when action in @stand_ins,
     do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
@@ -899,6 +943,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"collection.assign", scope, {connection, collection, workspace}),
     do: Collections.assign_collections(scope, connection, [collection.id], workspace)
+
+  defp attempt(:"collection.set_backlog", scope, target),
+    do: Collections.set_backlog(scope, target, false)
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)
