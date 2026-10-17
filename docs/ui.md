@@ -1130,7 +1130,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
   `/nodes/:node_id/instances/:instance/clear` (the id of the instance's row in
   `node_instances`), or, for an instance with no row, at
-  `/nodes/:node_id/runs/:run_id/clear-instance` (its newest open run's `rn_` id), never
+  `/nodes/:node_id/runs/:run_id/clear-instance` (an open run's `rn_` id: the page links
+  its newest open run, and the address accepts any open run of that instance), never
   the node's instance id, that line, or that row in
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
   build-01? Clear this instance if it stopped without saying so. Another instance can then

@@ -553,10 +553,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       {:ok, lv, _html} = live(conn, node_path(scope, pool))
 
       # An instance with no row is addressed by its newest open run's public id.
-      lv |> element("#node-running [id$='-clear']") |> render_click()
+      lv |> element("#node-instance-#{run.public_id}-clear") |> render_click()
       assert_patch(lv, node_path(scope, pool, "/runs/#{run.public_id}/clear-instance"))
       # Its row is the confirmation, in place of its cells.
-      row = "#node-running tr.q-confirming"
+      row = "#node-running tr#node-instance-#{run.public_id}.q-confirming"
       assert has_element?(lv, "#{row} #clear-instance", "Clear i_1?")
       refute has_element?(lv, "#{row} [id$='-menu']")
       lv |> element("#{row} #clear-instance-confirm") |> render_click()
@@ -626,13 +626,19 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(
                lv,
-               ~s{#node-running a[href="#{node_path(scope, pool, "/instances/#{instance.id}/clear")}"]}
+               ~s{#node-instance-#{instance.id}-clear[href="#{node_path(scope, pool, "/instances/#{instance.id}/clear")}"]}
              )
 
       refute render(lv) =~ "/instances/i_1/"
 
       {:ok, lv, _html} = live(conn, node_path(scope, pool, "/instances/#{instance.id}/clear"))
-      assert has_element?(lv, "#node-running tr.q-confirming #clear-instance", "Clear spot-1?")
+
+      assert has_element?(
+               lv,
+               "#node-running tr#node-instance-#{instance.id}.q-confirming #clear-instance",
+               "Clear spot-1?"
+             )
+
       lv |> element("#clear-instance-confirm") |> render_click()
       assert_patch(lv, node_path(scope, pool))
       assert render(lv) =~ "spot-1 is cleared: its open run is marked lost."
@@ -650,6 +656,82 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         )
 
       assert entry.details == %{"instance_id" => "i_1", "name" => "spot-1", "runs" => 1}
+    end
+
+    test "the 16 raw bytes of a row's id are not an address of the instance", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      run = node_run_fixture(node, "i_1")
+
+      # A row whose id is 16 bytes that also read as text, so the address can carry them.
+      raw = "abcdefghijklmnop"
+      {:ok, id} = Ecto.UUID.cast(raw)
+
+      Repo.update_all(from(i in Apiary.Nodes.Instance, where: i.id == ^instance.id),
+        set: [id: id]
+      )
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/instances/#{id}/clear"))
+      assert has_element?(lv, "#node-instance #clear-instance", "Clear build-01.example.com?")
+
+      encoded = for <<byte <- raw>>, into: "", do: "%" <> Base.encode16(<<byte>>)
+
+      {:ok, lv, html} =
+        live(conn, node_path(scope, node, "/instances/#{encoded}/clear"))
+        |> follow_redirect(conn)
+
+      assert html =~ "This node has no such instance."
+      refute has_element?(lv, "#clear-instance")
+      assert Repo.get!(Run, run.id).state == "pending"
+    end
+
+    test "the page's DOM ids name an instance by its row or its newest open run, never by the node's instance id",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope)
+      instance = instance_fixture(pool, instance_id: "i-alpha-41", name: "spot-1")
+      node_run_fixture(pool, "i-alpha-41")
+      run = node_run_fixture(pool, "i-beta-42")
+
+      dom_ids = fn lv ->
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id]")
+        |> LazyHTML.attribute("id")
+      end
+
+      refute_instance_ids = fn lv ->
+        ids = dom_ids.(lv)
+        assert ids != []
+        refute Enum.any?(ids, &(&1 =~ "alpha-41" or &1 =~ "beta-42"))
+      end
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+      assert has_element?(lv, "#node-running tr#node-instance-#{instance.id}", "spot-1")
+      assert has_element?(lv, "#node-instance-#{instance.id}-menu")
+      assert has_element?(lv, "#node-instance-#{instance.id}-clear")
+      assert has_element?(lv, "#node-running tr#node-instance-#{run.public_id}", "i-beta-42")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-menu")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-clear")
+      refute_instance_ids.(lv)
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool, "/instances/#{instance.id}/clear"))
+      assert has_element?(lv, "tr#node-instance-#{instance.id}.q-confirming", "Clear spot-1?")
+      refute_instance_ids.(lv)
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, pool, "/runs/#{run.public_id}/clear-instance"))
+
+      assert has_element?(
+               lv,
+               "tr#node-instance-#{run.public_id}.q-confirming",
+               "Clear i-beta-42?"
+             )
+
+      refute_instance_ids.(lv)
     end
 
     test "an instance with no row is cleared by its newest open run", %{

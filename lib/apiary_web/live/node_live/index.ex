@@ -397,8 +397,13 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp row_id({:node, node}), do: "node-#{node.public_id}"
 
+  # A running instance's row: by the id of its row in `node_instances`, or, with no row,
+  # by its newest open run's public id. Never by the node's instance id.
+  defp row_id({:instance, node, %{row_id: row_id}}) when is_binary(row_id),
+    do: "node-#{node.public_id}-instance-#{row_id}"
+
   defp row_id({:instance, node, instance}),
-    do: "node-#{node.public_id}-instance-#{:erlang.phash2(instance.instance_id)}"
+    do: "node-#{node.public_id}-instance-#{instance.run_public_id}"
 
   defp row_id({:more, node, _more}), do: "node-#{node.public_id}-more"
 
