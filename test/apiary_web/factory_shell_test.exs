@@ -616,6 +616,22 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
+    test "each route answers so with a character of its path escaped, as the router decodes it",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      unknown = workspace_path(scope, "/no-such-page")
+
+      for {:get, path, _module} <- factory_routes(scope, adapter) do
+        # The first character of the last segment, escaped: `/backlog` as `/%62acklog`.
+        {last, rest} = path |> String.split("/") |> List.pop_at(-1)
+        <<first, after_first::binary>> = last
+        hex = Base.encode16(<<first>>, case: :lower)
+        escaped = Enum.join(rest ++ ["%" <> hex <> after_first], "/")
+
+        assert answer(fn -> get(conn, escaped) end) == answer(fn -> get(conn, unknown) end),
+               escaped
+      end
+    end
+
     test "a live navigation to a page is refused the same way", %{
       conn: conn,
       scope: scope,

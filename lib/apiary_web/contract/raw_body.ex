@@ -10,7 +10,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   `POST /.well-known/qory-enrolment`, whatever the
   content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
-  endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
+  endpoint skips `Plug.Parsers` for such a request. Signed paths of other contracts, which
+  this documentation does not name, are read the same way where the instance serves them,
+  or where the request carries a signature. Every other request passes untouched.
 
   At most `max_bytes/0` of a delivery are read, 2 MiB, `max_bytes(:registration)` of a
   registration, 64 KiB, `max_bytes(:attach)` of an attach, 64 KiB, `max_bytes(:outcome)`
@@ -30,22 +32,26 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's limit, 1 MiB, for its signed paths, which this
   # documentation does not name.
   @adapter_max_bytes 1024 * 1024
-  # The integration contract's signed paths served here, read the same way:
-  # `POST /v1/adapter`, `POST /v1/source-collections`, `POST /v1/source-items`,
-  # `POST /v1/sources/disconnect` and `POST /v1/source-items/comments`.
+  # The integration contract's signed paths served here, read the same way where
+  # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
+  # `POST /v1/source-items`, `POST /v1/sources/disconnect` and
+  # `POST /v1/source-items/comments`.
   @adapter_paths [["v1", "adapter"], ["v1", "source-collections"], ["v1", "source-items"]]
   @adapter_three_paths [["v1", "sources", "disconnect"], ["v1", "source-items", "comments"]]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/handover` and `/release`. Read
-  # the same way only where the instance serves them, with their feature, or where the
-  # request carries a signature, which `ApiaryWeb.Features.Routes` lets through to be
-  # verified: an unsigned one where the feature is off is parsed as any request to a
-  # path the router does not know, and answered as one.
+  # the same way where `served?/1` holds, as below.
   @pool_max_bytes 1024 * 1024
   @pool_claim_path ["v1", "pools", "claim"]
   @dispatch_actions ["dispatched", "handover", "release"]
-  @pool_feature :factory
+  # The integration contract's paths and the provisioner contract's belong to one feature.
+  # Their bodies are read here only where the instance has it, or where the request
+  # carries a signature, which `ApiaryWeb.Features.Routes` lets through to be verified: an
+  # unsigned one where the feature is off is parsed as any request to a path the router
+  # does not know, and answered as one.
+  @gated [:adapter, :pool]
+  @gate_feature :factory
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -68,9 +74,14 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   def call(%Plug.Conn{method: "POST", path_info: path_info} = conn, _opts) do
     case kept(path_info) do
-      nil -> conn
-      :pool -> if pool_served?(conn), do: keep(conn, max_bytes(:pool)), else: conn
-      endpoint -> keep(conn, max_bytes(endpoint))
+      nil ->
+        conn
+
+      endpoint when endpoint in @gated ->
+        if served?(conn), do: keep(conn, max_bytes(endpoint)), else: conn
+
+      endpoint ->
+        keep(conn, max_bytes(endpoint))
     end
   end
 
@@ -107,8 +118,8 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp of_a_run(_path_info), do: nil
 
-  defp pool_served?(conn) do
-    Apiary.Features.on?(@pool_feature) or get_req_header(conn, "x-qory-signature-ed25519") != []
+  defp served?(conn) do
+    Apiary.Features.on?(@gate_feature) or get_req_header(conn, "x-qory-signature-ed25519") != []
   end
 
   defp decode(segment) do
