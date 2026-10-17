@@ -20,9 +20,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
   defp ticket(overrides \\ %{}) do
     Map.merge(
       %{
-        id: "tkt_01",
-        ref: "acme/shop#1231",
-        number: 1231,
+        id: "tk_01",
+        key: "#1231",
         title: "Discount codes are case-sensitive at checkout",
         repository: "acme/shop",
         filer: %{name: "Lea", kind: :person},
@@ -43,10 +42,10 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     assigns =
       Keyword.merge(
         [
-          id: "ticket-tkt_01",
+          id: "ticket-tk_01",
           ticket: ticket,
           integration: "GitHub",
-          patch: "/acme/shop/backlog?ticket=tkt_01",
+          patch: "/acme/shop/backlog?ticket=tk_01",
           now: @now,
           take_in: "take_in",
           take_in_again: "take_in_again"
@@ -98,16 +97,17 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     test "an open ticket: its parts, and Take in" do
       html = row(ticket())
 
-      assert attr(html, "li#ticket-tkt_01", "class") == ["q-bl-row"]
+      assert attr(html, "li#ticket-tk_01", "class") == ["q-bl-row"]
       assert count(html, "[aria-current]") == 0
 
       assert attr(html, ".q-bl-mk", "role") == ["img"]
       assert attr(html, ".q-bl-mk", "aria-label") == ["GitHub"]
       assert text(html, ".q-bl-mk") == "G"
       assert text(html, ".q-bl-no") == "#1231"
+      assert attr(html, ".q-bl-no", "title") == ["#1231"]
 
       assert text(html, "a.q-bl-t") == "Discount codes are case-sensitive at checkout"
-      assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=tkt_01"]
+      assert attr(html, "a.q-bl-t", "href") == ["/acme/shop/backlog?ticket=tk_01"]
       assert attr(html, "a.q-bl-t", "data-phx-link") == ["patch"]
       assert count(html, ".q-bl-w") == 0
 
@@ -120,13 +120,14 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, ".q-bl-upd time", "title") == ["3 minutes ago"]
 
       assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min"
+      assert attr(html, ".q-bl-sub", "title") == ["acme/shop#1231 · by Lea · 3 min"]
 
       [take] = html |> query(".q-bl-act button") |> Enum.to_list()
       assert LazyHTML.text(take) =~ "Take in"
       refute LazyHTML.text(take) =~ "again"
       assert LazyHTML.attribute(take, "type") == ["button"]
       assert LazyHTML.attribute(take, "phx-click") == ["take_in"]
-      assert LazyHTML.attribute(take, "phx-value-id") == ["tkt_01"]
+      assert LazyHTML.attribute(take, "phx-value-id") == ["tk_01"]
       assert LazyHTML.attribute(take, "phx-value-ref") == []
       assert count(html, ".q-bl-wi") == 0
 
@@ -136,7 +137,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     test "the open ticket is marked as the current one" do
       html = row(ticket(), selected: true)
       assert attr(html, "a.q-bl-t", "aria-current") == ["true"]
-      assert attr(html, "li#ticket-tkt_01", "aria-current") == []
+      assert attr(html, "li#ticket-tk_01", "aria-current") == []
       assert count(html, "[aria-current]") == 1
     end
 
@@ -168,6 +169,10 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, ".q-bl-w") == "Declined by Dana"
       assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min · Declined by Dana"
 
+      assert attr(html, ".q-bl-sub", "title") == [
+               "acme/shop#1231 · by Lea · 3 min · Declined by Dana"
+             ]
+
       assert text(html, "a.q-bl-wi") == "#79"
       assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi q-bl-wi-declined"]
       assert attr(html, "a.q-bl-wi", "title") == ["Work item #79, declined by Dana"]
@@ -178,7 +183,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert "q-bl-again" in String.split(class)
       assert LazyHTML.attribute(again, "title") == ["Brings back work item #79"]
       assert LazyHTML.attribute(again, "phx-click") == ["take_in_again"]
-      assert LazyHTML.attribute(again, "phx-value-id") == ["tkt_01"]
+      assert LazyHTML.attribute(again, "phx-value-id") == ["tk_01"]
       assert LazyHTML.attribute(again, "phx-value-ref") == []
     end
 
@@ -239,6 +244,59 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert count(html, ".q-bl-cm span") == 0
     end
 
+    test "the key beside the tile, as the source shows it; the full form under the title" do
+      html = row(ticket(%{key: "SHOP-12"}))
+
+      assert [tile, key | _] = html |> query("li > span") |> Enum.to_list()
+      assert LazyHTML.attribute(tile, "class") == ["q-bl-tile q-bl-mk"]
+      assert LazyHTML.attribute(key, "class") == ["q-bl-no"]
+      assert LazyHTML.text(key) == "SHOP-12"
+      assert text(html, ".q-bl-sub") == "acme/shopSHOP-12 · by Lea · 3 min"
+    end
+
+    test "no key: nothing beside the tile, no # alone, and the repository under the title" do
+      html = row(ticket(%{key: nil}))
+
+      assert text(html, ".q-bl-no") == ""
+      assert attr(html, ".q-bl-no", "title") == []
+      refute html =~ ~r/#(?!\d)/
+      assert text(html, ".q-bl-sub") == "acme/shop · by Lea · 3 min"
+      assert attr(html, ".q-bl-sub", "title") == ["acme/shop · by Lea · 3 min"]
+    end
+
+    test "a key of 64 characters: cut to its place, the whole key in its title" do
+      key = String.duplicate("k", 63) <> "9"
+      html = row(ticket(%{key: key}))
+
+      assert attr(html, ".q-bl-no", "class") == ["q-bl-no"]
+      assert attr(html, ".q-bl-no", "title") == [key]
+      assert text(html, ".q-bl-no") == key
+      assert attr(html, ".q-bl-sub", "title") == ["acme/shop#{key} · by Lea · 3 min"]
+    end
+
+    test "a ticket needs no ref and no number of its source" do
+      t = ticket()
+      refute Map.has_key?(t, :ref)
+      refute Map.has_key?(t, :number)
+
+      html = row(t)
+      assert text(html, ".q-bl-no") == "#1231"
+      assert text(html, ".q-bl-sub") =~ "acme/shop#1231"
+    end
+
+    test "markup in the key prints as text, in the row and in its titles" do
+      for markup <- ["<b>x</b>", "\"><script>alert(1)</script>"] do
+        html = row(ticket(%{key: markup}))
+
+        assert count(html, "b, script") == 0
+        assert text(html, ".q-bl-no") == markup
+        assert attr(html, ".q-bl-no", "title") == [markup]
+        assert text(html, ".q-bl-sub") == "acme/shop" <> markup <> " · by Lea · 3 min"
+        refute html =~ "<script"
+        refute html =~ "<b>"
+      end
+    end
+
     test "markup in what the source sent prints as text" do
       markup = "<b onmouseover=\"alert(1)\">x</b>"
       work_item = %{number: 79, state: :declined, path: nil, declined_by: markup}
@@ -248,7 +306,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
           ticket(%{
             title: markup,
             repository: markup,
-            ref: markup,
+            key: markup,
             filer: %{name: markup, kind: :bot},
             work_item: work_item
           })
@@ -352,7 +410,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         integration="GitHub"
         comments={@comments}
         now={@now}
-        full_path="/acme/shop/backlog/tkt_01"
+        full_path="/acme/shop/backlog/tk_01"
         close_patch="/acme/shop/backlog"
       >
         <:take_in>
@@ -417,8 +475,9 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
       assert attr(html, ".q-bl-tb .q-bl-src", "aria-label") == ["GitHub"]
       assert text(html, ".q-bl-tb .q-bl-key") == "acme/shop#1231"
+      assert attr(html, ".q-bl-tb .q-bl-key", "title") == ["acme/shop#1231"]
 
-      assert attr(html, "a#tk-full", "href") == ["/acme/shop/backlog/tkt_01"]
+      assert attr(html, "a#tk-full", "href") == ["/acme/shop/backlog/tk_01"]
       assert attr(html, "a#tk-full", "data-phx-link") == ["redirect"]
       assert attr(html, "a#tk-full", "aria-label") == ["Open the full ticket"]
       assert attr(html, "a#tk-full", "title") == ["Open the full ticket"]
@@ -482,6 +541,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
       assert attr(html, ".q-bl-tk-head .q-bl-src", "aria-label") == ["GitHub"]
       assert text(html, ".q-bl-tk-head .q-bl-key") == "G acme/shop#1231"
+      assert text(html, ".q-bl-tk-head .q-bl-key .q-bl-key-text") == "acme/shop#1231"
+      assert attr(html, ".q-bl-tk-head .q-bl-key-text", "title") == ["acme/shop#1231"]
       assert text(html, "h1#tk-title") == "Discount codes are case-sensitive at checkout"
       assert text(html, ".q-bl-meta") == "Lea filed this 2 days ago · updated 3 minutes ago"
 
@@ -496,6 +557,46 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, ".q-bl-tk-side > #block") == "the block"
 
       refute_not_drawn(html)
+    end
+
+    test "no key: the head names the ticket by its repository alone, with no # alone" do
+      t = ticket(%{key: nil})
+
+      html = list_frame(t, [])
+      assert text(html, ".q-bl-tb .q-bl-key") == "acme/shop"
+      assert attr(html, ".q-bl-tb .q-bl-key", "title") == ["acme/shop"]
+      refute html =~ ~r/#(?!\d)/
+
+      html = full_frame(t, [])
+      assert text(html, ".q-bl-tk-head .q-bl-key-text") == "acme/shop"
+      assert attr(html, ".q-bl-tk-head .q-bl-key-text", "title") == ["acme/shop"]
+      refute html =~ ~r/#(?!\d)/
+    end
+
+    test "a key of 64 characters: the head's full form cut, whole in its title" do
+      key = String.duplicate("k", 63) <> "9"
+      t = ticket(%{key: key})
+
+      assert attr(list_frame(t, []), ".q-bl-tb .q-bl-key", "title") == ["acme/shop" <> key]
+
+      html = full_frame(t, [])
+      assert attr(html, ".q-bl-tk-head .q-bl-key-text", "class") == ["q-bl-key-text"]
+      assert attr(html, ".q-bl-tk-head .q-bl-key-text", "title") == ["acme/shop" <> key]
+      assert text(html, ".q-bl-tk-head .q-bl-key-text") == "acme/shop" <> key
+    end
+
+    test "markup in the key prints as text in the head and its title" do
+      for markup <- ["<b>x</b>", "\"><script>alert(1)</script>"],
+          {html, selector} <- [
+            {list_frame(ticket(%{key: markup}), []), ".q-bl-tb .q-bl-key"},
+            {full_frame(ticket(%{key: markup}), []), ".q-bl-tk-head .q-bl-key-text"}
+          ] do
+        assert count(html, "b, script") == 0
+        refute html =~ "<script"
+        refute html =~ "<b>"
+        assert text(html, selector) == "acme/shop" <> markup
+        assert attr(html, selector, "title") == ["acme/shop" <> markup]
+      end
     end
 
     test "without labels or comments: no Labels fact and no thread" do
@@ -597,7 +698,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
 
       t =
         ticket(%{
-          ref: markup,
+          key: markup,
           title: markup,
           repository: markup,
           labels: [markup, "bug"],

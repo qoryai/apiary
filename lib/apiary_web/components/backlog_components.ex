@@ -21,18 +21,20 @@ defmodule ApiaryWeb.BacklogComponents do
   ## A row
 
   @doc """
-  A ticket's row in the Backlog's list: the integration's tile, the ticket's number, its
+  A ticket's row in the Backlog's list: the integration's tile, the ticket's key, its
   title (a patch to the ticket, `patch`), its repository, who filed it, its comment count,
   when it last changed, and its action.
 
   `ticket` is a map with these keys:
 
-    * `:id` - Qory Apiary's id for the ticket, `"tkt_01"`: the key it is sent and
-      addressed by, as sources' refs and numbers may overlap within a workspace;
-    * `:ref` - the ticket's ref at the source, `"acme/shop#1231"`, shown only;
-    * `:number` - its number there, `1231`, shown only;
+    * `:id` - Qory Apiary's id for the ticket, `"tk_…"`: the one it is sent and
+      addressed by, as sources' keys may overlap within a workspace;
+    * `:key` - the ticket's key at the source, such as `"#1231"`, or `nil`; display text
+      only, shown as it is, cut to its place with the whole key in its `title`;
     * `:title`, `:repository` - strings, the repository as the source names it
-      (`"acme/shop"`);
+      (`"acme/shop"`). The row's line under the title, where the row is narrow, names
+      the ticket by its full form: the repository followed by the key
+      (`"acme/shop#1231"`), or the repository alone without a key;
     * `:filer` - who filed it, `%{name: "Lea", kind: :person}`, `filer/1`'s `name` and
       `kind`;
     * `:comment_count` - a whole number;
@@ -64,24 +66,32 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :take_in_again, :any, default: nil, doc: "Take in again's `phx-click`"
 
   def ticket_row(assigns) do
+    ticket = assigns.ticket
+    now = assigns.now || DateTime.utc_now()
+    view = row_view(ticket)
+
+    sub =
+      gettext("%{ref} · by %{who} · %{ago}",
+        ref: full_form(ticket),
+        who: ticket.filer.name,
+        ago: compact(ticket.updated_at, now)
+      )
+
     assigns =
       assigns
-      |> assign(:now, assigns.now || DateTime.utc_now())
-      |> assign(row_view(assigns.ticket))
+      |> assign(:now, now)
+      |> assign(view)
+      |> assign(sub: sub, sub_title: if(view.word, do: sub <> " · " <> view.word, else: sub))
 
     ~H"""
     <li id={@id} class="q-bl-row">
       <.integration_tile name={@integration} class="q-bl-mk" />
-      <span class="q-bl-no">#{@ticket.number}</span>
+      <span class="q-bl-no" title={@ticket.key}>{@ticket.key}</span>
       <span class="q-bl-ttl">
         <.link patch={@patch} class="q-bl-t" aria-current={@selected && "true"}>{@ticket.title}</.link>
         <span :if={@word} class="q-bl-w">{@word}</span>
-        <span class="q-bl-sub">
-          {gettext("%{ref} · by %{who} · %{ago}",
-            ref: @ticket.ref,
-            who: @ticket.filer.name,
-            ago: compact(@ticket.updated_at, @now)
-          )}<span :if={@word}> · {@word}</span>
+        <span class="q-bl-sub" title={@sub_title}>
+          {@sub}<span :if={@word}> · {@word}</span>
         </span>
       </span>
       <span class="q-bl-rp q-mono" title={@ticket.repository}>{@ticket.repository}</span>
@@ -195,6 +205,14 @@ defmodule ApiaryWeb.BacklogComponents do
     """
   end
 
+  # A ticket's full form: its repository followed directly by its key ("acme/shop#1231"),
+  # or the repository alone where the ticket has no key. Plain text, which HEEx escapes
+  # where it is interpolated; the key is never parsed.
+  defp full_form(%{repository: repository, key: key}) when is_binary(key),
+    do: repository <> key
+
+  defp full_form(%{repository: repository}), do: repository
+
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the
   person mark; a bot (`:bot`), an account the source says is not a person, has a neutral
@@ -292,7 +310,11 @@ defmodule ApiaryWeb.BacklogComponents do
 
   `ticket` is a map with these keys:
 
-    * `:ref`, `:title`, `:repository` - strings, as in `ticket_row/1`;
+    * `:key` - the ticket's key at the source, such as `"#1231"`, or `nil`; display text
+      only. The head names the ticket by its full form, the repository followed by the
+      key (`"acme/shop#1231"`) or the repository alone, cut to its place with the whole
+      of it in its `title`;
+    * `:title`, `:repository` - strings, as in `ticket_row/1`;
     * `:url` - the ticket's page at the source, or `nil`. Open on the integration is
       drawn only for a url both the core's https rule (`Apiary.Sources.Body.https?/1`)
       and its external link (`CoreComponents.external_url?/1`) allow;
@@ -337,6 +359,7 @@ defmodule ApiaryWeb.BacklogComponents do
       assign(assigns,
         now: now,
         out: Apiary.Sources.Body.https?(ticket.url) and external_url?(ticket.url),
+        full_form: full_form(ticket),
         open_on: gettext("Open on %{integration}", integration: assigns.integration),
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
@@ -365,7 +388,7 @@ defmodule ApiaryWeb.BacklogComponents do
     <div id={@id} class="q-bl-prev" role="dialog" aria-label={gettext("Ticket")}>
       <div class="q-bl-tb">
         <.integration_tile name={@integration} class="q-bl-src" />
-        <span class="q-bl-key">{@ticket.ref}</span>
+        <span class="q-bl-key" title={@full_form}>{@full_form}</span>
         <span class="q-bl-grow"></span>
         <.button
           :if={@full_path}
@@ -423,7 +446,8 @@ defmodule ApiaryWeb.BacklogComponents do
       </.button>
       <div class="q-bl-tk-head">
         <div class="q-bl-key">
-          <.integration_tile name={@integration} class="q-bl-src" />{@ticket.ref}
+          <.integration_tile name={@integration} class="q-bl-src" />
+          <span class="q-bl-key-text" title={@full_form}>{@full_form}</span>
         </div>
         <h1 id={"#{@id}-title"}>{@ticket.title}</h1>
         <p class="q-bl-meta">{@meta}</p>
