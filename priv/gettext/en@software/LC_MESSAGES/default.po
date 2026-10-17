@@ -133,8 +133,10 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{count} comments on the ticket"
-msgstr ""
+msgid "%{count} comment on the ticket"
+msgid_plural "%{count} comments on the ticket"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
@@ -935,6 +937,21 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} took this in %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."
 msgstr ""
 
@@ -951,6 +968,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} took this in from %{ref}. You own it"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} undid this %{when}, before a run started."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11584,8 +11606,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Show %{count} earlier comments"
-msgstr ""
+msgid "Show %{count} earlier comment"
+msgid_plural "Show %{count} earlier comments"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -14631,6 +14655,31 @@ msgstr ""
 msgid "You choose the workspaces on its page, once it is set up."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You closed this work item"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You closed this work item on %{date}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You declined this work item %{when}, at Confirm."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You declined this work item at Confirm"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards."
@@ -14685,6 +14734,16 @@ msgstr ""
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "You saved the mail settings of %{name}. To turn mail on, visit the URL below while you are logged in as %{email}:"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You took this in %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

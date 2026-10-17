@@ -22,8 +22,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:updated_at` - when it last changed.
   #
   # The page's parts read more of it, each named where it is used. A person is a map with
-  # `:name` and `:you`, true when the person is the reader: a text the reader is the
-  # subject of says "you" ("You own it", "Closed by you").
+  # `:id`, Qory Apiary's id of the person, `:name` and `:you`, true when the person is the
+  # reader: a text the reader is the subject of says "you" ("You own it", "Closed by you").
+  # Two people are the same person by `:id`, never by name.
   #
   # Every DOM id, `phx-value-*` and path is Qory Apiary's: the work item's number, a
   # comment's `public_id`, and the paths the page gives. The ticket's ref and its number
@@ -279,8 +280,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The stages, Explore, Confirm and Shape, in order: those before the work item's stage
   done, its stage the current step (`aria-current="step"`), amber while it waits at
-  Confirm. An ended work item has no current step, but a declined one's stage, marked
-  with a cross, and the end mark beside the stages says how it ended: Closed, Declined or
+  Confirm. An ended work item has no current step: a declined one's stage is marked with
+  a cross, and the end mark beside the stages says how it ended: Closed, Declined or
   Undone.
   """
   attr :id, :string, default: "work-item-stages"
@@ -323,7 +324,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             "q-wi-stage-#{stage.state}",
             stage.state == :now && @wait && "q-wi-stage-wait"
           ]}
-          aria-current={stage.state in [:now, :stop] && "step"}
+          aria-current={stage.state == :now && "step"}
         >
           <span class="q-wi-stage-n" aria-hidden="true">
             <%= case stage.state do %>
@@ -360,9 +361,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   a live work item; nothing for an ended one.
 
     * Explore, queued: what Qory does when the run starts, with Qory's bee; who took it in
-      and when, Undo until a run starts (`"undo"`), and what undoing does to the ticket,
-      or, after the integration's uninstall (`uninstalled`), that nothing changes there.
-      The work item's `:taken_in_by` and `:taken_in_at` say who and when.
+      and when (the work item's `:taken_in_by` and `:taken_in_at`). With `can_undo`, that
+      the reader can undo this until a run starts, Undo (`"undo"`), and what undoing does
+      to the ticket; after the integration's uninstall (`uninstalled`), that nothing
+      changes on the ticket, which keeps Qory's label and comment.
     * Explore, running: what Qory does, and with whose answers on a second run (`:run`,
       `%{id:, path:, started_at:, answers_by:}`, `answers_by` a name or `nil`), and when
       the run started; the run's id links its page where `path` is given.
@@ -371,13 +373,15 @@ defmodule ApiaryWeb.WorkItemComponents do
       (`"decline"`) and Cancel.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
-  Undo, Confirm and Decline are there only with `can_act`.
+  Undo is there only with `can_undo`; Confirm, Decline and the Decline question only with
+  `can_act`.
   """
   attr :id, :string, default: "work-item-step"
   attr :work_item, :map, required: true, doc: "the work item"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
-  attr :can_act, :boolean, default: false, doc: "whether the reader may undo, confirm, decline"
+  attr :can_undo, :boolean, default: false, doc: "whether the reader may undo the take in"
+  attr :can_act, :boolean, default: false, doc: "whether the reader may confirm or decline"
   attr :asking, :atom, default: nil, values: [nil, :decline], doc: "the question showing"
   attr :cancel, :any, default: nil, doc: "what the question's Cancel does"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -416,6 +420,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         number={@number}
         integration={@integration}
         uninstalled={@uninstalled}
+        can_undo={@can_undo}
         can_act={@can_act}
         asking={@asking}
         cancel={@cancel}
@@ -448,6 +453,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :number, :integer, required: true
   attr :integration, :string, required: true
   attr :uninstalled, :boolean, required: true
+  attr :can_undo, :boolean, required: true
   attr :can_act, :boolean, required: true
   attr :asking, :atom, required: true
   attr :cancel, :any, required: true
@@ -465,9 +471,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         )}
       </span>
     </p>
-    <div :if={@can_act} id={"#{@id}-undo"} class="q-wi-undo">
-      <p :if={@undo_line} id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
-      <div class="q-wi-acts">
+    <div id={"#{@id}-undo"} class="q-wi-undo">
+      <p id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
+      <div :if={@can_undo} class="q-wi-acts">
         <.button type="button" phx-click="undo" phx-value-number={@number}>
           <.icon name="hero-arrow-uturn-left-micro" class="size-3.5" />{gettext("Undo")}
         </.button>
@@ -507,7 +513,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  defp step_body(%{status: :confirm, asking: :decline} = assigns) do
+  defp step_body(%{status: :confirm, asking: :decline, can_act: true} = assigns) do
     ~H"""
     <.inline_confirm
       id={"#{@id}-decline"}
@@ -576,14 +582,25 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp step_body(%{status: :shape} = assigns) do
     work_item = assigns.work_item
 
+    by = work_item.confirmed_by
+    at = inline_ago(work_item.confirmed_at, assigns.now)
+
     assigns =
       assign(
         assigns,
         :line,
-        rich_gettext(
-          "%{name} confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria.",
-          name: work_item.confirmed_by.name,
-          when: inline_ago(work_item.confirmed_at, assigns.now)
+        if(you?(by),
+          do:
+            rich_gettext(
+              "You confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria.",
+              when: at
+            ),
+          else:
+            rich_gettext(
+              "%{name} confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria.",
+              name: by.name,
+              when: at
+            )
         )
       )
 
@@ -592,35 +609,63 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # Who took the work item in, and what undoing does to the ticket. After an uninstall the
-  # line has words for the reader alone: for another person's take in, none.
-  defp undo_line(%{work_item: work_item, uninstalled: uninstalled} = assigns) do
+  # Who took the work item in and when; for a reader who may undo it, that they can until
+  # a run starts and what undoing does to the ticket. After an uninstall, that nothing
+  # changes on the ticket. Each line is one whole sentence for each case.
+  defp undo_line(%{work_item: work_item} = assigns) do
     by = work_item.taken_in_by
     at = inline_ago(work_item.taken_in_at, assigns.now)
+    integration = assigns.integration
 
-    cond do
-      uninstalled and you?(by) ->
+    case {assigns.uninstalled, you?(by), assigns.can_undo} do
+      {true, true, true} ->
         rich_gettext(
           "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
           when: at,
-          integration: assigns.integration
+          integration: integration
         )
 
-      uninstalled ->
-        nil
+      {true, true, false} ->
+        rich_gettext(
+          "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          when: at,
+          integration: integration
+        )
 
-      you?(by) ->
+      {true, false, true} ->
+        rich_gettext(
+          "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          name: by.name,
+          when: at,
+          integration: integration
+        )
+
+      {true, false, false} ->
+        rich_gettext(
+          "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          name: by.name,
+          when: at,
+          integration: integration
+        )
+
+      {false, true, true} ->
         rich_gettext(
           "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays.",
           when: at
         )
 
-      true ->
+      {false, true, false} ->
+        rich_gettext("You took this in %{when}.", when: at)
+
+      {false, false, true} ->
         rich_gettext(
           "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays.",
           name: by.name,
           when: at
         )
+
+      {false, false, false} ->
+        rich_gettext("%{name} took this in %{when}.", name: by.name, when: at)
     end
   end
 
@@ -774,26 +819,35 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  defp end_line(%{status: :closed} = work_item, now),
-    do:
-      rich_gettext("%{name} closed this work item on %{date}.",
-        name: work_item.ended_by.name,
-        date: day(work_item.ended_at, now)
-      )
+  defp end_line(%{status: :closed, ended_by: by} = work_item, now) do
+    date = day(work_item.ended_at, now)
 
-  defp end_line(%{status: :declined} = work_item, now),
-    do:
-      rich_gettext("%{name} declined this work item %{when}, at Confirm.",
-        name: work_item.ended_by.name,
-        when: inline_ago(work_item.ended_at, now)
-      )
+    if you?(by),
+      do: rich_gettext("You closed this work item on %{date}.", date: date),
+      else: rich_gettext("%{name} closed this work item on %{date}.", name: by.name, date: date)
+  end
 
-  # The words are the reader's: someone else's undo has none.
-  defp end_line(%{status: :undone} = work_item, now) do
-    if you?(work_item.ended_by),
-      do:
-        rich_gettext("You undid this %{when}, before a run started.",
-          when: inline_ago(work_item.ended_at, now)
+  defp end_line(%{status: :declined, ended_by: by} = work_item, now) do
+    at = inline_ago(work_item.ended_at, now)
+
+    if you?(by),
+      do: rich_gettext("You declined this work item %{when}, at Confirm.", when: at),
+      else:
+        rich_gettext("%{name} declined this work item %{when}, at Confirm.",
+          name: by.name,
+          when: at
+        )
+  end
+
+  defp end_line(%{status: :undone, ended_by: by} = work_item, now) do
+    at = inline_ago(work_item.ended_at, now)
+
+    if you?(by),
+      do: rich_gettext("You undid this %{when}, before a run started.", when: at),
+      else:
+        rich_gettext("%{name} undid this %{when}, before a run started.",
+          name: by.name,
+          when: at
         )
   end
 
@@ -820,9 +874,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   ticket's ref, which opens it in place.
 
   It reads the work item's `:owner`, `:external_ref`, `:url`, `:repository`,
-  `:taken_in_by`, `:taken_in_at`, `:first_instruction` (`nil` for none), `:runs` (`nil`
-  for none, or `%{latest: %{id:, path:}, count:, running:}`), `:ended_by` and `:ended_at`,
-  and its ticket's filer and when it was filed (`ticket`, `%{filer: %{name:}, filed_at:}`).
+  `:taken_in_by`, `:taken_in_at`, `:first_instruction` (`nil`, empty or blank for none),
+  `:runs` (`nil` for none, or `%{latest: %{id:, path:}, count:, running:}`), `:ended_by`
+  and `:ended_at`, and its ticket's filer and when it was filed (`ticket`,
+  `%{filer: %{name:}, filed_at:}`).
   """
   attr :id, :string, default: "work-item-details"
   attr :work_item, :map, required: true, doc: "the work item"
@@ -842,7 +897,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         owner: owner,
         href: if(out?(work_item[:url]), do: work_item.url),
         summary:
-          gettext("%{owner} · %{ref}", owner: owner_phrase(owner), ref: work_item.external_ref),
+          rich_gettext("%{owner} · %{ref}", owner: owner_phrase(owner), ref: {:part, :ref}),
+        instruction: instruction(work_item.first_instruction),
         ticket_line: ticket_line(assigns, now),
         taken_in: by_line(work_item.taken_in_at, work_item.taken_in_by, now),
         ended:
@@ -862,7 +918,15 @@ defmodule ApiaryWeb.WorkItemComponents do
       phx-mounted={JS.ignore_attributes(["aria-expanded"])}
     >
       <span class="q-wi-dtoggle-t">{gettext("Details")}</span>
-      <span class="q-wi-dtoggle-s">{@summary}</span>
+      <span class="q-wi-dtoggle-s">
+        <.rich text={@summary}>
+          <:part name={:ref}>
+            <span class="q-wi-refm">
+              <BacklogComponents.integration_tile name={@integration} />{@work_item.external_ref}
+            </span>
+          </:part>
+        </.rich>
+      </span>
       <.icon name="hero-chevron-down-micro" class="q-wi-dtoggle-i size-4" />
     </button>
     <section id={@id} class="q-wi-det" aria-labelledby={"#{@id}-h"}>
@@ -888,10 +952,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dd id={"#{@id}-taken-in"}><.rich text={@taken_in} /></dd>
         <dt>{gettext("First instruction")}</dt>
         <dd id={"#{@id}-instruction"}>
-          <span :if={@work_item.first_instruction} class="q-wi-q">
-            {@work_item.first_instruction}
-          </span>
-          <span :if={!@work_item.first_instruction} class="q-faint">{gettext("None")}</span>
+          <span :if={@instruction} class="q-wi-q">{@instruction}</span>
+          <span :if={!@instruction} class="q-faint">{gettext("None")}</span>
         </dd>
         <dt>{gettext("Runs")}</dt>
         <dd id={"#{@id}-runs"}>
@@ -1061,7 +1123,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         aria-labelledby={"#{@id}-comments-h"}
       >
         <h3 id={"#{@id}-comments-h"}>
-          {gettext("%{count} comments on the ticket", count: Format.number(@count))}
+          {ngettext("%{count} comment on the ticket", "%{count} comments on the ticket", @count)}
         </h3>
         <.button
           :if={@earlier > 0}
@@ -1071,7 +1133,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           class="q-wi-earlier"
           phx-click="show_earlier_comments"
         >
-          {gettext("Show %{count} earlier comments", count: Format.number(@earlier))}
+          {ngettext("Show %{count} earlier comment", "Show %{count} earlier comments", @earlier)}
         </.button>
         <div
           :for={comment <- @comments}
@@ -1116,9 +1178,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   One event of the Thread, a line with its time:
 
-    * `:taken_in` - who took the work item in from the ticket (`external_ref`, a link out
-      where `url` is given), who owns it where that is another person (`owner`), and the
-      first instruction under it (`first_instruction`);
+    * `:taken_in` - who took the work item in from the ticket (`external_ref`, beside the
+      mark of the integration it came from, `integration`, and a link out where `url` is
+      given), who owns it where that is another person (`owner`), and the first
+      instruction under it (`first_instruction`, none where it is empty or blank);
     * `:closed`, `:declined` - who closed or declined it;
     * `:undone` - who undid it, before a run started.
   """
@@ -1128,6 +1191,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :at, :any, required: true, doc: "when"
   attr :external_ref, :string, default: nil, doc: "`:taken_in`: the ticket's ref"
   attr :url, :string, default: nil, doc: "`:taken_in`: the ticket's page at the source"
+  attr :integration, :string, default: nil, doc: "`:taken_in`: the integration's name"
   attr :owner, :map, default: nil, doc: "`:taken_in`: who owns it, a person"
   attr :first_instruction, :string, default: nil, doc: "`:taken_in`: the first instruction"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -1138,7 +1202,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         line: event_line(assigns),
-        at_words: time_tag(assigns.at, Format.relative(assigns.at, now))
+        at_words: time_tag(assigns.at, Format.relative(assigns.at, now)),
+        href: if(out?(assigns.url), do: assigns.url),
+        instruction: assigns.kind == :taken_in && instruction(assigns.first_instruction)
       )
 
     ~H"""
@@ -1147,9 +1213,19 @@ defmodule ApiaryWeb.WorkItemComponents do
         <span><.icon name={event_icon(@kind)} class="size-3" /></span>
       </span>
       <div>
-        <p><.rich text={@line} /> <span class="q-wi-when">{@at_words}</span></p>
-        <p :if={@kind == :taken_in && @first_instruction} class="q-wi-q">
-          {gettext("First instruction: %{text}", text: @first_instruction)}
+        <p>
+          <.rich text={@line}>
+            <:part name={:ref}>
+              <span class="q-wi-ev-ref">
+                <BacklogComponents.integration_tile :if={@integration} name={@integration} />
+                <.external_link href={@href}>{@external_ref}</.external_link>
+              </span>
+            </:part>
+          </.rich>
+          <span class="q-wi-when">{@at_words}</span>
+        </p>
+        <p :if={@instruction} class="q-wi-q">
+          {gettext("First instruction: %{text}", text: @instruction)}
         </p>
       </div>
     </li>
@@ -1161,10 +1237,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_icon(:declined), do: "hero-minus-circle-micro"
   defp event_icon(:undone), do: "hero-arrow-uturn-left-micro"
 
-  defp event_line(%{kind: :taken_in, actor: actor, owner: owner} = assigns) do
-    ref = taken_in_ref(assigns)
+  defp event_line(%{kind: :taken_in, actor: actor, owner: owner}) do
+    ref = {:part, :ref}
     name = {:b, actor.name}
-    other_owner = owner && owner.name != actor.name && owner
+    other_owner = owner && !same_person?(owner, actor) && owner
 
     cond do
       !other_owner and you?(actor) ->
@@ -1191,11 +1267,17 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  defp event_line(%{kind: :closed, actor: actor}),
-    do: rich_gettext("%{name} closed this work item", name: {:b, actor.name})
+  defp event_line(%{kind: :closed, actor: actor}) do
+    if you?(actor),
+      do: gettext("You closed this work item"),
+      else: rich_gettext("%{name} closed this work item", name: {:b, actor.name})
+  end
 
-  defp event_line(%{kind: :declined, actor: actor}),
-    do: rich_gettext("%{name} declined this work item at Confirm", name: {:b, actor.name})
+  defp event_line(%{kind: :declined, actor: actor}) do
+    if you?(actor),
+      do: gettext("You declined this work item at Confirm"),
+      else: rich_gettext("%{name} declined this work item at Confirm", name: {:b, actor.name})
+  end
 
   defp event_line(%{kind: :undone, actor: actor}) do
     if you?(actor),
@@ -1203,9 +1285,16 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: rich_gettext("%{name} undid this, before a run started", name: {:b, actor.name})
   end
 
-  defp taken_in_ref(%{external_ref: ref, url: url}) do
-    if out?(url), do: {:href, url, ref, "q-wi-ev-ref"}, else: {:m, ref, "q-wi-ev-ref"}
+  # The same person: the reader both times, or the same id. Never by name: two people may
+  # share one.
+  defp same_person?(a, b), do: (you?(a) and you?(b)) or (a[:id] != nil and a[:id] == b[:id])
+
+  # A first instruction, or nil where it is none: missing, empty or blank.
+  defp instruction(text) when is_binary(text) do
+    if String.trim(text) == "", do: nil, else: text
   end
+
+  defp instruction(_none), do: nil
 
   @doc """
   A person's comment in the Thread: who wrote it and when, then its text as written,

@@ -12294,6 +12294,13 @@
     font-family: var(--font-mono);
     font-size: 0.78125rem;
   }
+  .q-wi-refm,
+  .q-wi-ev-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: middle;
+  }
   .q-wi-when {
     color: var(--q-faint);
     white-space: nowrap;
