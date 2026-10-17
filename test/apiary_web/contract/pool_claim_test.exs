@@ -150,9 +150,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "target" => %{"system" => "forge.example.com", "path" => "acme/shop"},
                "work_item" => %{
                  "id" => work_item.public_id,
-                 "url" =>
-                   "#{ApiaryWeb.Endpoint.url()}/#{ctx.scope.organisation.slug}/" <>
-                     "#{ctx.scope.workspace.slug}/work/#{work_item.number}",
+                 "url" => "#{ApiaryWeb.Endpoint.url()}/work-items/#{work_item.public_id}",
                  "title" => work_item.title
                }
              }
@@ -160,6 +158,33 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert %Dispatch{pool_id: pool_id, access_key_id: key_id} = dispatch
       assert {pool_id, key_id} == {ctx.pool.id, ctx.key.id}
       assert Repo.get!(DispatchRun, run.id).state == :claimed
+    end
+
+    test "names the work item by its address of the fixture's shape, which no workspace moves",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      queue!(work_item)
+
+      # The fixture's address, its origin and its id put aside: `/work-items/` and the id.
+      %{"work_item" => %{"id" => id, "url" => url}} =
+        @fixtures |> Path.join("claim-answer/explore.json") |> File.read!() |> Jason.decode!()
+
+      %URI{path: path} = URI.parse(url)
+      assert path == "/work-items/" <> id
+
+      # Moved to another workspace before the claim, it has the same address.
+      other = workspace_fixture(ctx.scope.organisation)
+
+      Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: other.id]
+      )
+
+      answer = Jason.decode!(claim(ctx, body()).resp_body)
+      expected = ApiaryWeb.Endpoint.url() <> "/work-items/" <> work_item.public_id
+      assert answer["work_item"]["url"] == expected
+      assert %URI{path: "/work-items/" <> public_id} = URI.parse(expected)
+      assert public_id == work_item.public_id
+      assert Apiary.WorkItems.external_url(work_item) == expected
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",

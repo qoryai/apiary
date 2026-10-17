@@ -49,9 +49,8 @@ defmodule Apiary.Dispatches do
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
   #
-  # `{:ok, claimed}` carries the dispatch, its run, the run's work item with its workspace
-  # and organisation, and the pool. The workspaces whose queue the freed slots changed are
-  # told once the transaction commits.
+  # `{:ok, claimed}` carries the dispatch, its run, the run's work item and the pool. The
+  # workspaces whose queue the freed slots changed are told once the transaction commits.
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -300,10 +299,7 @@ defmodule Apiary.Dispatches do
         })
         |> Repo.insert!()
 
-      work_item =
-        WorkItem
-        |> Repo.get!(run.work_item_id)
-        |> Repo.preload([:organisation, :workspace])
+      work_item = Repo.get!(WorkItem, run.work_item_id)
 
       %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: work_item, pool: pool}
     else

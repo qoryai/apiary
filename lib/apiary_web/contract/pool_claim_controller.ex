@@ -45,7 +45,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   use ApiaryWeb.Features, :factory
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Dispatches
+  alias Apiary.{Dispatches, WorkItems}
   alias Apiary.Dispatches.Wire
   alias ApiaryWeb.Contract.AdapterRequest
 
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
           {"work_item",
            Jason.OrderedObject.new([
              {"id", work_item.public_id},
-             {"url", work_item_url(work_item)},
+             {"url", WorkItems.external_url(work_item)},
              {"title", work_item.title}
            ])}
         ])
@@ -210,10 +210,6 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   defp access("explore"), do: "read"
 
   defp time(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-
-  # The work item's page, in the workspace it is in now.
-  defp work_item_url(%{organisation: organisation, workspace: workspace, number: number}),
-    do: url(~p"/#{organisation}/#{workspace}/work/#{number}")
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})
 end
