@@ -4036,7 +4036,6 @@ msgstr ""
 msgid "Cancel the command from %{time}"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel the command from %{time}?"
@@ -4111,7 +4110,6 @@ msgstr ""
 msgid "Cancelled."
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -7524,7 +7522,6 @@ msgstr ""
 msgid "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It stops working at once. A machine that runs it after this is refused."
@@ -7763,7 +7760,6 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep it"
@@ -15493,7 +15489,6 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, cancel it"
