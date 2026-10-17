@@ -10,6 +10,9 @@ defmodule Apiary.Sources.Comment do
   # and `source_updated_at` are its times at its source, which tell an earlier write of it
   # from a later one. `deleted_at` is for a comment deleted at its source, or left out of
   # a complete set of the item's comments: the column marks it, so that its row can stay.
+  # `deleted_by_complete_at` is for one that such a set left out and marked: the set's
+  # `complete.since`, from `20261017191500_keep_when_a_complete_set_left_a_comment_out`;
+  # only a comment marked deleted has it.
   #
   # A comment is of its item's organisation, held to it by the composite key, and goes
   # with its item. Every text is untrusted: shown as data, never followed.
@@ -59,6 +62,7 @@ defmodule Apiary.Sources.Comment do
     field :source_created_at, :utc_datetime
     field :source_updated_at, :utc_datetime
     field :deleted_at, :utc_datetime_usec
+    field :deleted_by_complete_at, :utc_datetime
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :item, Item
@@ -73,8 +77,8 @@ defmodule Apiary.Sources.Comment do
 
   # changeset/2 is the changeset of a comment as an adapter sent it, each field within
   # the bounds above, counted in code points as the database counts them. A value the
-  # database refuses all the same is an error on its field. The organisation, the item
-  # and `deleted_at` are the caller's to put.
+  # database refuses all the same is an error on its field. The organisation, the item,
+  # `deleted_at` and `deleted_by_complete_at` are the caller's to put.
   @doc false
   @spec changeset(t, map) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = comment, attrs) do
@@ -95,6 +99,9 @@ defmodule Apiary.Sources.Comment do
     |> check_constraint(:body, name: :source_item_comments_body_check)
     |> check_constraint(:body_format, name: :source_item_comments_body_format_check)
     |> check_constraint(:truncated, name: :source_item_comments_truncated_check)
+    |> check_constraint(:deleted_by_complete_at,
+      name: :source_item_comments_deleted_by_complete_check
+    )
     |> unique_constraint(:external_ref,
       name: :source_item_comments_item_id_external_ref_index
     )
