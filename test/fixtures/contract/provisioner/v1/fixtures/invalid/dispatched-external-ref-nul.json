@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:20Z",
+  "external": {
+    "type": "example-ci",
+    "ref": "run-\u00008812",
+    "url": "https://ci.example.com/acme/shop/runs/8812"
+  }
+}

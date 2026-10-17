@@ -14,10 +14,10 @@
       "pattern": "^ac_[0-9a-hjkmnp-tv-z]{16}$"
     },
     "time": {
-      "description": "RFC 3339 in UTC with whole seconds, never a leap second: the seconds are 00 to 59.",
+      "description": "RFC 3339 in UTC with whole seconds: hours 00 to 23, minutes and seconds 00 to 59, so never a leap second.",
       "type": "string",
       "format": "date-time",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]Z$"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
     },
     "ref": {
       "description": "The adapter's reference to a thing at the source, 1 to 200 characters, stable for that thing. The control plane compares it and stores it, and never reads meaning into it.",

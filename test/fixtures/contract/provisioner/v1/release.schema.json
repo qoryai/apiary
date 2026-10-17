@@ -24,7 +24,8 @@
       "description": "Why the starter gives the run back, display text, 1 to 200 characters.",
       "type": "string",
       "minLength": 1,
-      "maxLength": 200
+      "maxLength": 200,
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
     },
     "retry": {
       "description": "true when the run should wait for another claim: before its handover the same run waits again; after it, a new run, with a new run_id and a new run key. false when it should not.",
