@@ -42,6 +42,28 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "page-header-actions"
   end
 
+  test "a page's header fits a phone: a long name wraps, and so do the actions" do
+    css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+    rule = fn selector ->
+      [body] =
+        Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+      body
+    end
+
+    assert rule.(".q-page-h1") =~ "overflow-wrap: anywhere;"
+    assert rule.(".q-page-desc") =~ "overflow-wrap: anywhere;"
+
+    [phone] =
+      Regex.run(~r/@media \(max-width: 479px\) \{\s*\.q-page-actions \{([^}]*)\}/, css,
+        capture: :all_but_first
+      )
+
+    assert phone =~ "width: 100%;"
+    assert phone =~ "flex-wrap: wrap;"
+  end
+
   test "a thing's tabs: links, the current one marked, Settings last and set apart" do
     assigns = %{}
 

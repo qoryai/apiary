@@ -265,7 +265,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     <p :if={@about} id="connection-about" class="max-w-[72ch] text-[13.5px]/5">{@about}</p>
 
     <SettingsComponents.part id="connection-facts" title={gettext("About")}>
-      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
+      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5 break-words">
         <dt class="text-faint">{gettext("Kind")}</dt>
         <dd>{Common.kind_word(@connection.kind)}</dd>
         <dt class="text-faint">{gettext("Id")}</dt>

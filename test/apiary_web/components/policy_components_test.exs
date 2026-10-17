@@ -900,5 +900,22 @@ defmodule ApiaryWeb.PolicyComponentsTest do
 
       assert [_] = all(doc, "#policy-mode-change")
     end
+
+    test "whose mode it is wraps on a phone rather than widen the page" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      [badge] =
+        Regex.run(~r/\n  \.q-modecard-title > \.badge \{([^}]*)\}/, css, capture: :all_but_first)
+
+      for declaration <- [
+            "max-width: 100%;",
+            "height: auto;",
+            "min-height: var(--size);",
+            "white-space: normal;",
+            "overflow-wrap: anywhere;"
+          ] do
+        assert badge =~ declaration
+      end
+    end
   end
 end

@@ -99,6 +99,8 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
       assert has_element?(lv, "#connection-id", runtime.public_id)
       assert has_element?(lv, "#connection-facts", "Every workspace")
+      # A long value, such as the list of denied variables, wraps rather than widen the page.
+      assert has_element?(lv, "#connection-facts dl.break-words")
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
 
