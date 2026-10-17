@@ -56,12 +56,17 @@ defmodule ApiaryWeb.FactoryShellTest do
   # `{verb, path, module}` with its parameters filled in: the scope's organisation and
   # workspace, the adapter, a connection's id that names none, a work item's number, and
   # a made-up id for the rest. The signed requests of an adapter are no page of the shell:
-  # `ApiaryWeb.Contract.AdapterRequestTest` and its fixtures' test answer for them.
+  # `ApiaryWeb.Contract.AdapterRequestTest`, its fixtures' test and
+  # `ApiaryWeb.Contract.SourceCollectionsControllerTest` answer for them.
   defp factory_routes(scope, adapter) do
     for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(ApiaryWeb.Router),
         function_exported?(Code.ensure_loaded!(module), :__feature__, 0),
         module.__feature__() == :factory,
-        module != ApiaryWeb.Contract.AdapterController do
+        module not in [
+          ApiaryWeb.Contract.AdapterController,
+          ApiaryWeb.Contract.SourceCollectionsController,
+          ApiaryWeb.Contract.SourcesDisconnectController
+        ] do
       {verb, fill(path, scope, adapter), module}
     end
   end
