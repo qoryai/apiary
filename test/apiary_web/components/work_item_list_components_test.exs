@@ -94,6 +94,33 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
              ]
     end
 
+    test "Explore's line: how many explore, wait for answers and are without a result" do
+      html = strip(exploring: 2, answers: 1234, no_result: 1)
+
+      assert texts(html, "#work-items-stages-explore .q-wl-attn") == [
+               "2 exploring",
+               "1,234 wait for answers",
+               "1 without a result"
+             ]
+
+      assert attr(html, "#work-items-stages-explore .q-wi-mk", "class") == [
+               "q-wi-mk q-wi-mk-run",
+               "q-wi-mk q-wi-mk-wait",
+               "q-wi-mk q-wi-mk-err"
+             ]
+
+      for {answers, no_result, words} <- [
+            {1, 0, ["1 waits for answers"]},
+            {2, 0, ["2 wait for answers"]},
+            {0, 1234, ["1,234 without a result"]},
+            {0, 0, ["Nothing is exploring"]}
+          ] do
+        html = strip(answers: answers, no_result: no_result)
+
+        assert texts(html, "#work-items-stages-explore .q-wl-st-attn > span") == words
+      end
+    end
+
     test "nothing to say: the words for none" do
       html = strip(counts: %{explore: 0, confirm: 0, shape: 0})
 
@@ -210,7 +237,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
                "Work items that wait for you to confirm what Qory proposes. Oldest first."
 
       assert render_component(&L.view_note/1, view: :declined) =~
-               "Work items a member declined at Confirm. Their tickets stay in the Backlog, where Take in again brings one back."
+               "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
 
       for view <- [:open, :closed],
           do: assert(render_component(&L.view_note/1, view: view) |> String.trim() == "")
@@ -232,13 +259,19 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     )
   end
 
-  defp row(w) do
-    render_component(&L.work_item_row/1,
-      id: "work-item-#{w.number}",
-      work_item: w,
-      integration: "GitHub",
-      navigate: "/8wonders/main/work/#{w.number}",
-      now: @now
+  defp row(w, extra \\ []) do
+    render_component(
+      &L.work_item_row/1,
+      Keyword.merge(
+        [
+          id: "work-item-#{w.number}",
+          work_item: w,
+          integration: "GitHub",
+          navigate: "/8wonders/main/work/#{w.number}",
+          now: @now
+        ],
+        extra
+      )
     )
   end
 
@@ -282,6 +315,27 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
         assert count(html, ".q-wl-row-hot") ==
                  if(words == "Waits for you to confirm", do: 1, else: 0)
+      end
+    end
+
+    test "Explore's statuses: their words and marks, the reader's with the right to act" do
+      run = %{id: "rn_01aa47c9", attempt: 2, of: 3}
+
+      for {status, words, acts, others} <- [
+            {:questions, "Waits for answers", "wait", "wait_other"},
+            {:used_up, "Explore used its 3 runs", "wait", "wait_other"},
+            {:no_result, "Explore ended without a result", "err", "err"},
+            {:lost, "Explore's run was lost", "err", "err"},
+            {:cancelled, "Explore's run was cancelled", "err", "err"}
+          ] do
+        w = work_item(%{status: status, run: run})
+
+        for {can_act, mark} <- [{true, acts}, {false, others}] do
+          html = row(w, can_act: can_act)
+          assert text(html, ".q-wl-nx") == words
+          assert attr(html, ".q-wl-row .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-#{mark}"]
+          assert count(html, ".q-wl-row-hot") == 0
+        end
       end
     end
 
@@ -353,6 +407,15 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       html = band(stage: :confirm, count: 1, shown: 1, waiting: %{count: 1, for: "Priya"})
       assert text(html, ".q-wl-band-attn") == "1 waits for Priya"
       assert count(html, "#work-items-confirm-all") == 0
+    end
+
+    test "Explore's band: how many wait for answers and how many are without a result" do
+      html = band(stage: :explore, count: 40, shown: 8, answers: 3, no_result: 1)
+
+      assert texts(html, ".q-wl-band-attn .q-wl-attn") == [
+               "3 wait for answers",
+               "1 without a result"
+             ]
     end
 
     test "Explore says how many Qory explores; Shape's band says nothing" do

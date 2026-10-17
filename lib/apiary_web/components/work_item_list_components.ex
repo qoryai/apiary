@@ -54,8 +54,9 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc """
   Where the work is: the three stages side by side, each a link to the list of that stage
   alone (`paths`, by stage), with its count, what it is, and what in it needs a look: how
-  many Qory is exploring, how many wait at Confirm and for whom (`waiting`), and how many
-  are ready for Shape.
+  many Qory is exploring, how many wait for answers and how many Explore left without a
+  result, how many wait at Confirm and for whom (`waiting`), and how many are ready for
+  Shape.
   """
   attr :id, :string, default: "work-items-stages"
 
@@ -64,6 +65,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
     doc: "the work items in each stage: `%{explore:, confirm:, shape:}`"
 
   attr :exploring, :integer, default: 0, doc: "how many Qory is exploring"
+  attr :answers, :integer, default: 0, doc: "how many wait for answers to Qory's questions"
+  attr :no_result, :integer, default: 0, doc: "how many Explore left without a result"
   attr :waiting, :map, default: nil, doc: "what waits at Confirm, `%{count:, for:}`"
   attr :ready, :integer, default: 0, doc: "how many are ready for Shape"
   attr :paths, :map, default: %{}, doc: "each stage's list, by stage"
@@ -81,6 +84,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
           <.attention
             stage={stage}
             exploring={@exploring}
+            answers={@answers}
+            no_result={@no_result}
             waiting={@waiting}
             ready={@ready}
             none
@@ -97,20 +102,40 @@ defmodule ApiaryWeb.WorkItemListComponents do
   def stage_line(:shape), do: gettext("The plan and its acceptance criteria")
 
   @doc """
-  What in a stage needs a look, with its mark: how many Qory is exploring (Explore), how
-  many wait and for whom (Confirm), how many are ready (Shape). With `none`, the words for
-  none of them; without, nothing.
+  What in a stage needs a look, with its mark: how many Qory is exploring, how many wait
+  for answers and how many are without a result (Explore), how many wait and for whom
+  (Confirm), how many are ready (Shape). With `none`, the words for none of them;
+  without, nothing.
   """
   attr :stage, :atom, required: true, values: @stages
   attr :exploring, :integer, default: 0
+  attr :answers, :integer, default: 0
+  attr :no_result, :integer, default: 0
   attr :waiting, :map, default: nil
   attr :ready, :integer, default: 0
   attr :none, :boolean, default: false, doc: "whether to say so when there is none"
 
-  def attention(%{stage: :explore, exploring: n} = assigns) when n > 0 do
+  def attention(%{stage: :explore, exploring: e, answers: a, no_result: r} = assigns)
+      when e > 0 or a > 0 or r > 0 do
     ~H"""
-    <span class="q-wl-attn">
+    <span :if={@exploring > 0} class="q-wl-attn">
       <.work_item_mark kind={:run} />{gettext("%{count} exploring", count: Format.number(@exploring))}
+    </span>
+    <span :if={@answers > 0} class="q-wl-attn">
+      <.work_item_mark kind={:wait} />{ngettext(
+        "%{number} waits for answers",
+        "%{number} wait for answers",
+        @answers,
+        number: Format.number(@answers)
+      )}
+    </span>
+    <span :if={@no_result > 0} class="q-wl-attn">
+      <.work_item_mark kind={:err} />{ngettext(
+        "%{number} without a result",
+        "%{number} without a result",
+        @no_result,
+        number: Format.number(@no_result)
+      )}
     </span>
     """
   end
@@ -329,7 +354,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
       {gettext(
-        "Work items a member declined at Confirm. Their tickets stay in the Backlog, where Take in again brings one back."
+        "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
       )}
     </p>
     """
@@ -342,7 +367,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc """
   A stage's band and its rows (`inner_block`, `work_item_row/1`s): Fold, which folds the
   rows in the browser; the stage's name, its count, what it is, and what in it needs a
-  look (`exploring`, `waiting`, as on the strip); and, where the stage holds more than
+  look (`exploring`, `answers`, `no_result`, `waiting`, as on the strip); and, where the
+  stage holds more than
   the rows shown, Show all, a link to the stage's list (`all_path`).
   """
   attr :id, :string, required: true, doc: "the band's DOM id"
@@ -350,6 +376,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :count, :integer, required: true, doc: "the work items in the stage"
   attr :shown, :integer, required: true, doc: "how many rows the band shows"
   attr :exploring, :integer, default: 0
+  attr :answers, :integer, default: 0
+  attr :no_result, :integer, default: 0
   attr :waiting, :map, default: nil
   attr :all_path, :string, default: nil, doc: "the stage's list"
   slot :inner_block, required: true
@@ -381,7 +409,13 @@ defmodule ApiaryWeb.WorkItemListComponents do
         <span class="q-band-hint q-wl-what">{stage_line(@stage)}</span>
         <span class="q-grow"></span>
         <span class="q-wl-band-attn">
-          <.attention stage={@stage} exploring={@exploring} waiting={@waiting} />
+          <.attention
+            stage={@stage}
+            exploring={@exploring}
+            answers={@answers}
+            no_result={@no_result}
+            waiting={@waiting}
+          />
         </span>
       </div>
       <ul id={"#{@id}-rows"} class="q-rows">{render_slot(@inner_block)}</ul>
@@ -403,12 +437,17 @@ defmodule ApiaryWeb.WorkItemListComponents do
   ref with the integration's mark, its status in words (Waits for you to confirm the one
   strong status), its owner's mark, and when it last changed. The whole row is a link to
   the work item (`navigate`). In a narrow list the number and the status go under the
-  title.
+  title. Questions, and a take in that used its runs, wait for the reader with `can_act`.
   """
   attr :id, :string, required: true, doc: "the row's DOM id, with the work item's number"
   attr :work_item, :map, required: true, doc: "the work item"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :navigate, :string, required: true, doc: "the work item's page"
+
+  attr :can_act, :boolean,
+    default: false,
+    doc: "whether the reader may answer, confirm or decline"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def work_item_row(assigns) do
@@ -426,7 +465,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
     ~H"""
     <li id={@id}>
       <.link navigate={@navigate} class={["q-wl-row", @hot && "q-wl-row-hot"]}>
-        <.work_item_mark kind={ApiaryWeb.WorkItemComponents.mark(@work_item)} />
+        <.work_item_mark kind={ApiaryWeb.WorkItemComponents.mark(@work_item, @can_act)} />
         <span class="q-wl-no">#{@work_item.number}</span>
         <span class="q-wl-ttl">
           <b>{@work_item.title}</b>
