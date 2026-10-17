@@ -6,7 +6,8 @@ defmodule Apiary.Integrations.Description do
   commit in `.integration-contract-ref`).
 
   `parse/1` validates the bytes with JSV against the vendored schema, its patterns read as
-  the contract reads them (`Apiary.Kinds.Pattern`), then checks what the schema cannot:
+  the contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within
+  the limits below, then checks what the schema cannot:
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
       it, and no secret is nested in another setting;
@@ -15,11 +16,27 @@ defmodule Apiary.Integrations.Description do
   A role other than `credential` is read as it is and never refused. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
+  The schema bounds no list, and its `settings` and `roles` take objects of any members.
+  So a description is refused before the schema when it holds a list of more than 1024
+  entries, an object of more than 1024 members, more than 4096 values in all, a string of
+  more than 16 KiB or more than 64 lists and objects nested in one another
+  (`Apiary.Kinds.Bounds.within?/2`): `{:error, {:description_invalid, [{:schema,
+  %{valid: false, limits: limits}}]}}`. Its `settings`, the schema `check_settings/2`
+  builds from, is inside the description and so within the same limits.
+
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, RegexFormat, Schema, SettingsResolver}
+  alias Apiary.Kinds.{
+    Bounds,
+    Budget,
+    CanonicalJSON,
+    Pattern,
+    RegexFormat,
+    Schema,
+    SettingsResolver
+  }
 
   require Logger
 
@@ -53,6 +70,11 @@ defmodule Apiary.Integrations.Description do
 
   @settings_max 65_536
 
+  # The limits of a description, and of the plain settings checked against its schema,
+  # before a schema is applied (see the module's documentation and `check_settings/2`).
+  @limits [list: 1024, members: 1024, nodes: 4096, string: 16_384, depth: 64]
+  @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
+
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
   `{:error, {code, details}}` (see the module's documentation).
@@ -78,7 +100,7 @@ defmodule Apiary.Integrations.Description do
   end
 
   defp schema(document) do
-    case Schema.validate(document, root()) do
+    case Schema.validate(document, root(), @limits) do
       :ok -> :ok
       {:error, errors} -> {:error, {:description_invalid, [{:schema, errors}]}}
     end
@@ -166,20 +188,23 @@ defmodule Apiary.Integrations.Description do
       a secret nor a secret's `<name>_file`, else `integration_settings_not_allowed`: a
       connection never holds a secret, and a `<name>_file` is a path on the node that a
       server never sends;
+    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`;
+    * they hold no list of more than 1024 entries, no object of more than 1024 members,
+      no more than 4096 values in all and no more than 64 lists and objects nested in one
+      another (`Apiary.Kinds.Bounds.within?/2`), else `integration_settings_invalid` with
+      `%{valid: false, limits: limits}`: the schema comes from the description and need
+      bound none of them;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`;
-    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`.
+      `settings`, `integration_settings_invalid`. A few references in that schema can
+      make the work of the check grow exponentially with their nesting, which the limits
+      do not bound, so the schema is built and the settings validated in another process
+      (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its
+      work, and 2097152 words of heap (16 MiB on a 64-bit machine). A check that goes
+      over that budget is refused as `integration_settings_invalid` with
+      `%{valid: false, budget: :exceeded}`, and one that fails with
+      `%{valid: false, crashed: true}`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
-
-  The settings schema comes from the description, and a few of its references can make
-  the work of the check grow exponentially with their nesting, which no limit on the
-  settings bounds. So the schema is built and the settings validated in another process
-  (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its work,
-  and 2097152 words of heap (16 MiB on a 64-bit machine). Settings whose check goes over
-  that budget are refused as `{:integration_settings_invalid, %{valid: false, budget:
-  :exceeded}}`, and settings whose check fails as `{:integration_settings_invalid,
-  %{valid: false, crashed: true}}`.
   """
   @spec check_settings(t, term) :: :ok | {:error, {atom, term}}
   def check_settings(%__MODULE__{} = description, settings) when is_map(settings) do
@@ -191,6 +216,10 @@ defmodule Apiary.Integrations.Description do
 
       byte_size(CanonicalJSON.encode!(settings)) > @settings_max ->
         {:error, {:integration_settings_too_large, @settings_max}}
+
+      not Bounds.within?(settings, @settings_limits) ->
+        {:error,
+         {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
 
       true ->
         within_budget(description, fn -> plain_schema(description, settings) end)

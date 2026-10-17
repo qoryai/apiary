@@ -16,7 +16,7 @@ defmodule Apiary.Kinds.Schema do
 
   @behaviour JSV.Resolver
 
-  alias Apiary.Kinds.Pattern
+  alias Apiary.Kinds.{Bounds, Pattern}
 
   @forager_contract "https://qory.dev/contracts/forager/v1/"
   @vendored ~w(auth.schema.json)
@@ -74,6 +74,18 @@ defmodule Apiary.Kinds.Schema do
       {:ok, _value} -> :ok
       {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
     end
+  end
+
+  @doc """
+  validate/3 is `validate/2` once `value` is within `limits`
+  (`Apiary.Kinds.Bounds.within?/2`). A value outside the limits is never given to JSV:
+  `{:error, %{valid: false, limits: limits}}`, the limits as a map.
+  """
+  @spec validate(term, JSV.Root.t(), Bounds.limits()) :: :ok | {:error, map}
+  def validate(value, root, limits) do
+    if Bounds.within?(value, limits),
+      do: validate(value, root),
+      else: {:error, %{valid: false, limits: Map.new(limits)}}
   end
 
   # A file of ours that refers to Forager's contract gets the vendored copy, whose
