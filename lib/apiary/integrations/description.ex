@@ -28,7 +28,17 @@ defmodule Apiary.Integrations.Description do
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  alias Apiary.Kinds.{CanonicalJSON, Pattern, Schema, SettingsResolver}
+  alias Apiary.Kinds.{
+    Bounds,
+    Budget,
+    CanonicalJSON,
+    Pattern,
+    RegexFormat,
+    Schema,
+    SettingsResolver
+  }
+
+  require Logger
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -179,12 +189,20 @@ defmodule Apiary.Integrations.Description do
       connection never holds a secret, and a `<name>_file` is a path on the node that a
       server never sends;
     * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`;
+    * they hold no list of more than 1024 entries, no object of more than 1024 members,
+      no more than 4096 values in all and no more than 64 lists and objects nested in one
+      another (`Apiary.Kinds.Bounds.within?/2`), else `integration_settings_invalid` with
+      `%{valid: false, limits: limits}`: the schema comes from the description and need
+      bound none of them;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`; before that schema is applied, settings
-      that hold a list of more than 1024 entries, an object of more than 1024 members,
-      more than 4096 values in all or more than 64 lists and objects nested in one
-      another are refused so: the schema comes from the description and need bound none
-      of them.
+      `settings`, `integration_settings_invalid`. A few references in that schema can
+      make the work of the check grow exponentially with their nesting, which the limits
+      do not bound, so the schema is built and the settings validated in another process
+      (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its
+      work, and 2097152 words of heap (16 MiB on a 64-bit machine). A check that goes
+      over that budget is refused as `integration_settings_invalid` with
+      `%{valid: false, budget: :exceeded}`, and one that fails with
+      `%{valid: false, crashed: true}`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -199,13 +217,49 @@ defmodule Apiary.Integrations.Description do
       byte_size(CanonicalJSON.encode!(settings)) > @settings_max ->
         {:error, {:integration_settings_too_large, @settings_max}}
 
+      not Bounds.within?(settings, @settings_limits) ->
+        {:error,
+         {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
+
       true ->
-        plain_schema(description, settings)
+        within_budget(description, fn -> plain_schema(description, settings) end)
     end
   end
 
   def check_settings(%__MODULE__{}, _settings),
     do: {:error, {:integration_settings_invalid, :not_an_object}}
+
+  # The budget of the settings check, the build of the schema and the validation
+  # (`Apiary.Kinds.Budget`): 5000000 reductions and 2097152 words of heap, which decide,
+  # and 10 s, a bound only on a check that runs while it counts few reductions.
+  # Measured on OTP 29: valid settings of 4096 values, two lists and an object of 1024
+  # entries each, the entries of one list checked against 32 patterns, and 64 lists and
+  # objects deep, do 1486870 reductions, 3.3 times fewer than the budget; 1000 settings,
+  # each against a pattern, 642740; a setting of 15000 bytes against
+  # `"format": "regex"`, its compile charged in reductions (`Apiary.Kinds.RegexFormat`),
+  # 151978. Without the budget, a schema that refers twice to the next level at each of
+  # 20 levels does 157253942.
+  @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
+
+  defp within_budget(description, check) do
+    case Budget.run(check, @settings_budget) do
+      {:ok, result} ->
+        result
+
+      {:error, reason} ->
+        Logger.warning(
+          "an integration's settings check was stopped name=#{description.name} " <>
+            "program_version=#{description.program_version} reason=#{reason}"
+        )
+
+        {:error, {:integration_settings_invalid, budget_refusal(reason)}}
+    end
+  end
+
+  defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
+
+  defp budget_refusal(over) when over in [:reductions, :heap, :time],
+    do: %{valid: false, budget: :exceeded}
 
   # A connection holds a part of the settings document, its plain settings, so each is
   # checked against its own property's schema alone: a rule across settings, such as the
@@ -223,8 +277,11 @@ defmodule Apiary.Integrations.Description do
         "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
       })
 
-    with {:ok, root} <- schema |> without_casts() |> Schema.build(resolver: SettingsResolver),
-         :ok <- Schema.validate(settings, root, @settings_limits) do
+    with {:ok, root} <-
+           schema
+           |> without_casts()
+           |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()),
+         :ok <- Schema.validate(settings, root) do
       :ok
     else
       {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
