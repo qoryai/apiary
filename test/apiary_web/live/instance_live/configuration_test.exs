@@ -196,6 +196,21 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#config-features-source") == "Set by QORY_FEATURES"
     end
 
+    test "the daily jobs' times are in the reader's time zone, with its mark",
+         %{conn: conn, user: user} do
+      {:ok, _} = Apiary.Accounts.update_user_preferences(user, %{time_zone: "Asia/Kolkata"})
+      put_settings([{Scheduler, enabled: true, hour: 23}])
+
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+
+      # 23:00 UTC is 04:30 in Kolkata (IST, UTC+5:30); the audit trail's job at 02:40 UTC is
+      # at 08:10 there.
+      assert text(view, "#config-run-pruning-value") == "Every day, 04:30–05:30 IST"
+
+      assert text(view, "#config-retention-save > span") ==
+               "A change applies at the next daily job, at 08:10 IST. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+    end
+
     test "a part whose environment sets one setting keeps a field for the other",
          %{conn: conn} do
       put_settings(audit_address_retention_days: 14)

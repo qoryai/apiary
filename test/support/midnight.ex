@@ -11,8 +11,9 @@ defmodule Apiary.Midnight do
       midnight in their time zone: the reader's clock reads between 12:00 and 13:00, so
       the write and the read lie in one of the reader's days for any test shorter than
       eleven hours, whatever the hour in UTC. Nothing waits.
-    * `clear_of_midnight/1`, where the day is UTC's, as the overview's chart is: within
-      `seconds` of midnight UTC it waits until the day has turned.
+    * `clear_of_midnight/1`, where the day is UTC's, as every page's is for a reader whose
+      zone is UTC, the default: within `seconds` of midnight UTC it waits until the day
+      has turned.
 
   Where the test controls the time it writes, it pins it instead.
   """

@@ -21,9 +21,11 @@ defmodule Apiary.Runs do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import Ecto.Query, warn: false
+  import Apiary.Days, only: [sql_day: 2]
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Days
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -190,7 +192,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The page of the list, under the filters and in their order, that holds the first run
-  started on or before the end of `date`, a UTC day, as the filters' dates are: newest
+  started on or before the end of `date`, a day in the scope's time zone
+  (`Apiary.Accounts.Scope.time_zone/1`), as the filters' dates are: newest
   first, the runs that started after that day come before it; oldest first, the page that
   holds the first run started on or after the day's start. When no run is on that side of
   the day it is the last page; in any other order, the first. One count on the index.
@@ -198,8 +201,7 @@ defmodule Apiary.Runs do
   @spec jump_page(Scope.t(), Filters.t(), Date.t(), DateTime.t()) :: pos_integer
   def jump_page(%Scope{} = scope, %Filters{} = filters, %Date{} = date, now \\ DateTime.utc_now()) do
     query = filtered(scope, filters, now)
-    start = DateTime.new!(date, ~T[00:00:00.000000], "Etc/UTC")
-    next = DateTime.add(start, 86_400, :second)
+    {start, next} = Days.range(date, Scope.time_zone(scope))
 
     before =
       case filters.sort do
@@ -675,7 +677,7 @@ defmodule Apiary.Runs do
   end
 
   defp filtered(scope, %Filters{} = f, now) do
-    {from, to} = Filters.bounds(f, now)
+    {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     in_scope(scope)
     |> where_if(f.states != [], dynamic([r], r.state in ^Run.with_old_names(f.states)))
@@ -1115,11 +1117,11 @@ defmodule Apiary.Runs do
          %Scope{
            organisation: %Organisation{id: organisation_id},
            workspace: %Workspace{id: workspace_id}
-         },
+         } = scope,
          %Filters{} = f,
          now
        ) do
-    {from, to} = Filters.bounds(f, now)
+    {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     from(c in Connection,
       join: r in Run,
@@ -1282,15 +1284,14 @@ defmodule Apiary.Runs do
 
   # The runs are placed by when they started, or, for a run that has only registered, by when
   # the workspace first heard of it: the expression of
-  # `runs_workspace_id_started_or_first_heard_index`. A run's UTC day is that expression
-  # cast to a date as it is, since the columns hold UTC with no zone: `AT TIME ZONE 'UTC'`
-  # would make a timestamptz of it, which the cast dates in the connection's time zone, and
-  # a database not set to UTC would put the runs of the hours around midnight on the wrong
-  # day.
+  # `runs_workspace_id_started_or_first_heard_index`. A run's day is that expression taken
+  # to the scope's time zone and cut to its date (`Apiary.Days.sql_day/2`): the columns
+  # hold UTC with no zone, so the expression is read as UTC first, and the day does not
+  # depend on the time zone the database connection is set to.
   defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
 
   @typedoc """
-  One UTC day of the workspace's runs: how many (`runs`), and of them the alive, the ended
+  One day of the workspace's runs, in the scope's time zone: how many (`runs`), and of them the alive, the ended
   well, the cancelled and the ended badly (`alive`, `ended_well`, `cancelled`,
   `ended_badly`), with the denials of those runs and the cost they reported: `cost` is the
   sum of `cost_usd` over the day's runs, nil when none reported one, and `costed` how many
@@ -1309,13 +1310,17 @@ defmodule Apiary.Runs do
         }
 
   @doc """
-  The workspace's runs from `from` on, one row per UTC day they started (a pending run by
-  when it registered), oldest first; a day with no run has no row. One grouped query
+  The workspace's runs from `from` on, one row per day they started in the scope's time
+  zone (`Apiary.Accounts.Scope.time_zone/1`; a pending run by when it registered), oldest
+  first; a day with no run has no row. `from` and `to` are moments: the start of a day in
+  that zone (`Apiary.Days.start_of/2`) counts whole days. One grouped query
   over the index the runs list reads by; the caller fills the days in. `to`, when given,
   bounds the read above (exclusive), so one call can read today alone.
   """
   @spec day_facts(Scope.t(), DateTime.t(), DateTime.t() | nil) :: [day_facts]
   def day_facts(%Scope{} = scope, %DateTime{} = from, to \\ nil) do
+    zone = Scope.time_zone(scope)
+
     query =
       in_scope(scope)
       |> where(^dynamic([r], ^by_start() >= ^from))
@@ -1323,14 +1328,10 @@ defmodule Apiary.Runs do
 
     Repo.all(
       from r in query,
-        group_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
-        order_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
+        group_by: selected_as(:day),
+        order_by: selected_as(:day),
         select: %{
-          day:
-            type(
-              fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
-              :date
-            ),
+          day: selected_as(sql_day(coalesce(r.started_at, r.inserted_at), ^zone), :day),
           runs: count(r.id),
           alive: filter(count(r.id), r.state in ^Run.alive_states()),
           ended_well:
@@ -1347,8 +1348,8 @@ defmodule Apiary.Runs do
   @doc """
   What the organisation's overview says of each of `workspaces`, the workspaces of the
   scope's organisation the reader reaches: `%{workspace_id => %{alive:, runs:, denied:,
-  last_at:, days:, targets:}}`, where `runs` and `denied` count the last fourteen UTC days
-  (today included), `days` the runs of each of them, oldest first, `last_at` is when the
+  last_at:, days:, targets:}}`, where `runs` and `denied` count the last fourteen days in
+  the scope's time zone (today included), `days` the runs of each of them, oldest first, `last_at` is when the
   workspace's last run started (nil when it has none) and `targets` how many targets it
   has. A workspace of another organisation is left out. Four reads, whatever the number
   of workspaces.
@@ -1360,27 +1361,25 @@ defmodule Apiary.Runs do
 
   def workspace_facts(%Scope{}, [], _now), do: %{}
 
-  def workspace_facts(%Scope{organisation: %Organisation{id: organisation_id}}, workspaces, now) do
+  def workspace_facts(
+        %Scope{organisation: %Organisation{id: organisation_id}} = scope,
+        workspaces,
+        now
+      ) do
     ids = for %Workspace{id: id, organisation_id: ^organisation_id} <- workspaces, do: id
-    today = DateTime.to_date(now)
-    first = Date.add(today, -13)
-    from = DateTime.new!(first, ~T[00:00:00], "Etc/UTC")
+    zone = Scope.time_zone(scope)
+    {days, {from, _to}} = Days.window(14, zone, now)
 
     per_day =
       Repo.all(
         from r in Run,
           where: r.organisation_id == ^organisation_id and r.workspace_id in ^ids,
           where: coalesce(r.started_at, r.inserted_at) >= ^from,
-          group_by: [
-            r.workspace_id,
-            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
-          ],
+          group_by: [r.workspace_id, selected_as(:day)],
           select:
             {r.workspace_id,
-             type(
-               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
-               :date
-             ), count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
+             selected_as(sql_day(coalesce(r.started_at, r.inserted_at), ^zone), :day),
+             count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
       )
 
     alive =
@@ -1433,7 +1432,7 @@ defmodule Apiary.Runs do
          runs: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
          denied: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum(),
          last_at: Map.get(last_at, id),
-         days: for(d <- Date.range(first, today), do: Map.get(counts, d, 0)),
+         days: Days.buckets(days, counts),
          targets: Map.get(targets, id, 0)
        }}
     end)
@@ -1442,8 +1441,8 @@ defmodule Apiary.Runs do
   @typedoc """
   A target of the overview's Active targets: its `system` and `path`, whether the same
   path is on another system of the workspace too (`shared?`, which is when the system is
-  shown), its `runs` and `denied` attempts since the window opened, its runs of each UTC
-  day of the window, oldest first (`days`), and its last run (`last`).
+  shown), its `runs` and `denied` attempts since the window opened, its runs of each day
+  of the window, oldest first (`days`), and its last run (`last`).
   """
   @type active_target :: %{
           id: Ecto.UUID.t(),
@@ -1458,7 +1457,8 @@ defmodule Apiary.Runs do
 
   @doc """
   active_targets/3 is what the workspace overview's Active targets say: the `limit`
-  (default 8) targets with the most runs that started on or after the UTC day `from`,
+  (default 8) targets with the most runs that started on or after the day `from`, a day in
+  the scope's time zone,
   most first (by path on a tie), each an `t:active_target/0` with its runs of every day
   from `from` to today; and `targets`, how many targets the workspace has. Five short
   reads over the window's runs and the targets, whatever their number.
@@ -1470,7 +1470,8 @@ defmodule Apiary.Runs do
   def active_targets(scope, from, limit \\ 8)
 
   def active_targets(%Scope{} = scope, %Date{} = from, limit) do
-    start = DateTime.new!(from, ~T[00:00:00.000000], "Etc/UTC")
+    zone = Scope.time_zone(scope)
+    start = Days.start_of(from, zone)
     window = where(in_scope(scope), ^dynamic([r], ^by_start() >= ^start))
 
     top =
@@ -1496,16 +1497,11 @@ defmodule Apiary.Runs do
       Repo.all(
         from r in window,
           where: r.target_id in ^ids,
-          group_by: [
-            r.target_id,
-            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
-          ],
+          group_by: [r.target_id, selected_as(:day)],
           select:
             {r.target_id,
-             type(
-               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
-               :date
-             ), count(r.id)}
+             selected_as(sql_day(coalesce(r.started_at, r.inserted_at), ^zone), :day),
+             count(r.id)}
       )
       |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
 
@@ -1522,7 +1518,7 @@ defmodule Apiary.Runs do
 
     targets = Repo.aggregate(targets_in(scope), :count)
 
-    today = Date.utc_today()
+    today = Days.today(zone)
     days = if Date.compare(from, today) == :gt, do: [], else: Date.range(from, today)
 
     rows =
@@ -1531,7 +1527,7 @@ defmodule Apiary.Runs do
 
         Map.merge(row, %{
           shared?: MapSet.member?(shared, row.path),
-          days: for(day <- days, do: Map.get(counts, day, 0)),
+          days: Days.buckets(Enum.to_list(days), counts),
           last: Map.get(last, row.id)
         })
       end

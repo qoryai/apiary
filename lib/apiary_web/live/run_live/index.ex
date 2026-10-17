@@ -447,14 +447,8 @@ defmodule ApiaryWeb.RunLive.Index do
                         </p>
                         <p class="q-jumpdate-note">
                           {if @filters.sort == "newest",
-                            do:
-                              gettext(
-                                "The page of the first run started on or before that day, in UTC."
-                              ),
-                            else:
-                              gettext(
-                                "The page of the first run started on or after that day, in UTC."
-                              )}
+                            do: gettext("The page of the first run started on or before that day."),
+                            else: gettext("The page of the first run started on or after that day.")}
                         </p>
                       </form>
                     </div>

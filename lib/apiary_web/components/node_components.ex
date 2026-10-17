@@ -6,13 +6,13 @@ defmodule ApiaryWeb.NodeComponents do
   (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings. And
   what the two places that give a person the command that connects a machine share, the
   Access key tab's command page and the workspace overview's first-run box: the command
-  (`enrol_command/3`), and the notice that machines can't reach a loopback address
-  (`unreachable_server/1`). And what a node that chose a gateway is told wherever it is
-  told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`).
-  And what the pages say of a gateway wherever it lives: where its page is
-  (`gateway_path/2`), its name, with its organisation's where that is not the node's
-  (`gateway_name/2`), whether the console offers gateways at the organisation
-  (`organisation_gateways?/0`), and who uses an organisation's gateway now
+  (`enrol_command/3`, and as the pieces a page draws, `enrol_parts/3`), and the notice
+  that machines can't reach a loopback address (`unreachable_server/1`). And what a node
+  that chose a gateway is told wherever it is told how to connect: the gateway its runs go
+  through, at its URL (`through_gateway/1`). And what the pages say of a gateway wherever
+  it lives: where its page is (`gateway_path/2`), its name, with its organisation's where
+  that is not the node's (`gateway_name/2`), whether the console offers gateways at the
+  organisation (`organisation_gateways?/0`), and who uses an organisation's gateway now
   (`using_words/2`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
@@ -174,6 +174,20 @@ defmodule ApiaryWeb.NodeComponents do
     """
   end
 
+  @typedoc """
+  A piece of the enrol command (`enrol_parts/3`): `{:text, text}`, characters to show as
+  they are, spaces included; or `{:placeholder, name}`, a word the person replaces before
+  running the command, shown by its name.
+  """
+  @type enrol_part :: {:text, String.t()} | {:placeholder, String.t()}
+
+  @typedoc "The options of `enrol_command/3` and `enrol_parts/3`."
+  @type enrol_option :: {:replace, boolean} | {:via, String.t() | nil} | feature_enrol_option()
+
+  # The option a feature the documentation does not differ by adds (`docs: false`): an
+  # adapter's command. A private type, so the served docs show its name alone.
+  @typep feature_enrol_option :: {:adapter, String.t() | nil}
+
   @doc """
   enrol_command/3 is the command that connects a machine: `qory access-key enrol`, this
   server's address and the code as the machine sends it. Only a page that shows the
@@ -186,22 +200,84 @@ defmodule ApiaryWeb.NodeComponents do
   gateway's address into the Forager file as `gateway.server.via`. Each address and the
   code go through `shell_word/1`, so a person who pastes the command runs qory with
   them and nothing else.
+
+  It is `enrol_parts/3` joined, each placeholder written as its name.
   """
-  @spec enrol_command(String.t(), String.t(), [{:replace, boolean} | {:via, String.t() | nil}]) ::
-          String.t()
+  # With `adapter: program`, it is an adapter's command instead, which the served docs do
+  # not name (`feature_enrol_option`): `program access-key enrol --secret-file FILE`, this
+  # server's address and the code, where FILE is the path the person chooses for the
+  # adapter's secret, written as the word FILE. The program goes through `shell_word/1` as
+  # the addresses do. It carries no `--replace` and no `--via`: `replace: true` or a `via`
+  # URL with `:adapter` raises an `ArgumentError`, while `replace: false` and `via: nil`,
+  # which ask for neither, change nothing.
+  @spec enrol_command(String.t(), String.t(), [enrol_option]) :: String.t()
   def enrol_command(server, code, opts \\ []) when is_binary(server) and is_binary(code) do
-    replace = if Keyword.get(opts, :replace, false), do: ["--replace"], else: []
+    server
+    |> enrol_parts(code, opts)
+    |> Enum.map_join(fn
+      {:text, text} -> text
+      {:placeholder, name} -> name
+    end)
+  end
 
-    via =
-      case Keyword.get(opts, :via) do
-        nil -> []
-        url when is_binary(url) -> ["--via", shell_word(url)]
-      end
+  @doc """
+  enrol_parts/3 is the command of `enrol_command/3`, with the same arguments, as the pieces
+  a page draws: `{:text, text}` and `{:placeholder, name}` (`t:enrol_part/0`), which
+  concatenate with nothing between them, the spaces inside the text. Text and placeholder
+  alternate, so qory's command, which has no placeholder, is one piece of text:
 
-    Enum.join(
-      ["qory access-key enrol"] ++ replace ++ via ++ [shell_word(server), shell_word(code)],
-      " "
-    )
+      [{:text, "qory access-key enrol https://qory.example.com CODE"}]
+
+  A page shows a placeholder by its name, marked as a word to replace, and copies the text
+  of `enrol_command/3`. The code is shown once, so the pieces are held by the page's
+  process alone, as the command is.
+  """
+  # With `adapter: program` (`enrol_command/3`), the path of the adapter's secret is the
+  # placeholder FILE, the only placeholder:
+  #
+  #     [
+  #       {:text, "PROGRAM access-key enrol --secret-file "},
+  #       {:placeholder, "FILE"},
+  #       {:text, " https://qory.example.com CODE"}
+  #     ]
+  @spec enrol_parts(String.t(), String.t(), [enrol_option]) :: [enrol_part]
+  def enrol_parts(server, code, opts \\ []) when is_binary(server) and is_binary(code) do
+    opts
+    |> enrol_words(shell_word(server), shell_word(code))
+    |> Enum.intersperse({:text, " "})
+    |> Enum.chunk_by(&elem(&1, 0))
+    |> Enum.flat_map(fn
+      [{:text, _} | _] = texts -> [{:text, Enum.map_join(texts, &elem(&1, 1))}]
+      placeholders -> placeholders
+    end)
+  end
+
+  # The command's words, each a piece: qory's enrol, or a program's with its secret file.
+  defp enrol_words(opts, server, code) do
+    case Keyword.get(opts, :adapter) do
+      nil ->
+        replace = if Keyword.get(opts, :replace, false), do: [{:text, "--replace"}], else: []
+
+        via =
+          case Keyword.get(opts, :via) do
+            nil -> []
+            url when is_binary(url) -> [{:text, "--via"}, {:text, shell_word(url)}]
+          end
+
+        [{:text, "qory access-key enrol"}] ++ replace ++ via ++ [{:text, server}, {:text, code}]
+
+      program when is_binary(program) ->
+        if Keyword.get(opts, :replace, false) or Keyword.get(opts, :via) != nil,
+          do: raise(ArgumentError, "the :adapter command takes neither --replace nor --via")
+
+        [
+          {:text, shell_word(program)},
+          {:text, "access-key enrol --secret-file"},
+          {:placeholder, "FILE"},
+          {:text, server},
+          {:text, code}
+        ]
+    end
   end
 
   @doc """

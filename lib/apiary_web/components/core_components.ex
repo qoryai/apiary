@@ -2237,10 +2237,17 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A timestamp as people say it, up to seven days back ("2 minutes ago",
-  "Yesterday, 17:20"), then the date (`ApiaryWeb.Format.time_ago/2`). The full time with
-  its zone is in the `title`.
+  "Yesterday, 17:20"), then the date (`ApiaryWeb.Format.time_ago/3`). The full time with
+  its zone is in the `title`. With `case={:inline}`, it is the form for a time that follows
+  other words in a sentence: "just now", "yesterday, 17:20".
   """
   attr :at, :any, required: true
+
+  attr :case, :atom,
+    default: :start,
+    values: [:start, :inline],
+    doc: "`:inline` for a time that follows other words in a sentence"
+
   attr :class, :any, default: nil
 
   def time_ago(assigns) do
@@ -2250,7 +2257,7 @@ defmodule ApiaryWeb.CoreComponents do
       title={Format.datetime(@at, zone: true)}
       class={@class}
     >
-      {Format.time_ago(@at)}
+      {Format.time_ago(@at, DateTime.utc_now(), case: @case)}
     </time>
     """
   end

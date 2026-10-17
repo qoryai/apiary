@@ -15,7 +15,7 @@ defmodule ApiaryWeb.SettingsLive do
     slug, its type (its domain, read only: "A software workspace") and, last, its danger
     zone, its deletion while it is one of several; Runs,
     `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
-    events and their logs, and what the nightly job last pruned. Its path before,
+    events and their logs, and what the daily job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited. Deleting asks to type the
@@ -380,7 +380,7 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # The workspace's Runs: how long a run's events and log output are kept, its retention,
-  # and what the nightly job last pruned.
+  # and what the daily job last pruned.
   defp section(%{section: :runs} = assigns) do
     ~H"""
     <SettingsComponents.part id="retention-keep">
@@ -439,7 +439,7 @@ defmodule ApiaryWeb.SettingsLive do
     <SettingsComponents.part id="retention-pruned" title={gettext("Pruned")}>
       <p :if={@retention_runs == []} id="retention-runs-empty" class="text-muted">
         {if retention_set?(@current_scope.workspace),
-          do: gettext("Nothing has been pruned yet. The pruning job runs every night."),
+          do: gettext("Nothing has been pruned yet. The pruning job runs every day."),
           else: gettext("Nothing is pruned: this workspace keeps everything.")}
       </p>
       <ul :if={@retention_runs != []} id="retention-runs" class="q-plain-list">

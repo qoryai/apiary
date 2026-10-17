@@ -573,6 +573,39 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    test "every ticking element names the time zone the server rendered it in" do
+      ApiaryWeb.Format.put_time_zone("America/Los_Angeles")
+      at = DateTime.add(DateTime.utc_now(), -90, :second)
+
+      for html <- [
+            render_component(&RunComponents.relative_time/1, at: at),
+            render_component(&RunComponents.relative_time/1, at: at, format: "clock"),
+            render_component(&RunComponents.duration/1, elapsed_seconds: 30, elapsed_at: at),
+            render_component(&RunComponents.run_state/1,
+              state: "running",
+              quiet_for: 90,
+              quiet_since: at
+            ),
+            render_component(&RunComponents.alive/1, state: "running", last_heartbeat_at: at)
+          ] do
+        assert html =~ ~s(data-time-zone="America/Los_Angeles")
+      end
+    end
+
+    test "every <time data-tick> the console renders names its time zone" do
+      sources = Path.wildcard("lib/apiary_web/**/*.ex")
+      ticking = ~r/<time\b[^>]*\bdata-tick=["{][^>]*>/s
+
+      tags =
+        for path <- sources, tag <- Regex.scan(ticking, File.read!(path)), do: {path, hd(tag)}
+
+      assert length(tags) >= 7
+
+      for {path, tag} <- tags do
+        assert tag =~ "data-time-zone={Format.time_zone()}", "#{path}: #{tag}"
+      end
+    end
+
     test "a time names its zone in its title" do
       html =
         render_component(&RunComponents.relative_time/1,
