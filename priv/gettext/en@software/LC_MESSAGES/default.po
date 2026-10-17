@@ -4155,7 +4155,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting."
+msgid "Changes are also sent to Qory Apiary as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -7276,7 +7276,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Its keys are revoked, so the adapter can no longer reach Qory. A command still waiting is cancelled."
+msgid "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -10458,6 +10458,11 @@ msgstr ""
 msgid "Qory Apiary serves the policy now."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary tells the adapter nothing."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory is exploring"
@@ -10491,11 +10496,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory reads the ticket and the code when the run starts, and proposes how to build it."
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/adapter.ex
-#, elixir-autogen, elixir-format
-msgid "Qory tells the adapter nothing."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -12519,7 +12519,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The adapter makes the key there and sends Qory only its public half."
+msgid "The adapter makes the key there and sends Qory Apiary only its public half."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -12530,7 +12530,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
+msgid "The adapters that bring work into Qory Apiary from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex
@@ -12591,7 +12591,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory only the public half. The secret never leaves the machine."
+msgid "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory Apiary only the public half. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -15826,6 +15826,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "none, so no path is allowed"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapters.ex
+#, elixir-autogen, elixir-format
+msgid "not declared yet"
 msgstr ""
 
 #: lib/apiary_web/controllers/run_log_controller.ex

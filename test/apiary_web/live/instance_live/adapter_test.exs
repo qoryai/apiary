@@ -15,7 +15,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
   alias Apiary.{Adapters, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
-  alias Apiary.Adapters.Connection
+  alias Apiary.Adapters.{Connection, Feed}
+  alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
@@ -173,8 +174,40 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       html = lv |> element("#adapter-interval-form select") |> render()
 
       for [_whole, value, label] <-
-            Regex.scan(~r{<option[^>]*value="(\d+)"[^>]*>([^<]*)</option>}, html),
+            Regex.scan(~r{<option[^>]*value="(\d*)"[^>]*>([^<]*)</option>}, html),
           do: {label, value}
+    end
+
+    @choices [
+      {"Every 15 minutes", "900"},
+      {"Every 30 minutes", "1800"},
+      {"Every hour (its default)", ""},
+      {"Every 2 hours", "7200"},
+      {"Every 6 hours", "21600"},
+      {"Every 12 hours", "43200"},
+      {"Every 24 hours", "86400"}
+    ]
+
+    defp selected(lv) do
+      lv
+      |> element("#adapter-interval-form select")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("option[selected]")
+      |> Enum.map(&{LazyHTML.text(&1), LazyHTML.attribute(&1, "value") |> List.first()})
+    end
+
+    # The trail's entries for the pull interval, and the adapter's change feed: what a
+    # change would leave.
+    defp left(adapter) do
+      {Repo.all(from(e in Entry, where: e.action == "adapter.set_interval")),
+       Feed.entries(adapter)}
+    end
+
+    defp submit(lv, value) do
+      lv
+      |> form("#adapter-interval-form", sync: %{sync_interval: value})
+      |> render_submit()
     end
 
     test "offers the declared choices, its default marked, with the hint and Save",
@@ -189,20 +222,11 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
                "How often the adapter pulls what changed"
              )
 
-      assert choices(lv) == [
-               {"Every 15 minutes", "900"},
-               {"Every 30 minutes", "1800"},
-               {"Every hour (its default)", "3600"},
-               {"Every 2 hours", "7200"},
-               {"Every 6 hours", "21600"},
-               {"Every 12 hours", "43200"},
-               {"Every 24 hours", "86400"}
-             ]
-
-      assert has_element?(lv, ~s{#adapter-interval-form option[value="3600"][selected]})
+      assert choices(lv) == @choices
+      assert selected(lv) == [{"Every hour (its default)", ""}]
 
       assert words(lv, "#adapter-interval-form .fieldset") =~
-               "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares every hour as its default, and every 15 minutes as the most often. Organisations don't see this setting."
+               "Changes are also sent to Qory Apiary as they happen; the pull catches what they missed. The adapter declares every hour as its default, and every 15 minutes as the most often. Organisations don't see this setting."
 
       assert has_element?(lv, "#adapter-interval-save button[type=submit]", "Save")
     end
@@ -242,7 +266,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       declare(adapter, sync_default_interval: 2700, sync_sends_changes: false)
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
 
-      assert {"Every 45 minutes (its default)", "2700"} in choices(lv)
+      assert {"Every 45 minutes (its default)", ""} in choices(lv)
 
       hint = words(lv, "#adapter-interval-form .fieldset")
 
@@ -250,6 +274,94 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
                "The adapter declares every 45 minutes as its default, and every 15 minutes as the most often. Organisations don't see this setting."
 
       refute hint =~ "Changes are also sent"
+    end
+
+    test "the default's choice sets no interval, so the adapter's default holds",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      declare(adapter, sync_interval: 7200)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      assert selected(lv) == [{"Every 2 hours", "7200"}]
+
+      assert submit(lv, "") =~ "Shop tracker is saved."
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
+      assert selected(lv) == [{"Every hour (its default)", ""}]
+
+      assert {[entry], [%{kind: "sync", data: %{"interval" => nil}}]} = left(adapter)
+
+      assert {entry.before, entry.after} ==
+               {%{"sync_interval" => 7200}, %{"sync_interval" => nil}}
+    end
+
+    test "an interval set to the default shows the default's choice, and saved so stays set",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      declare(adapter, sync_interval: 3600)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      assert choices(lv) == @choices
+      assert selected(lv) == [{"Every hour (its default)", ""}]
+
+      assert submit(lv, "") =~ "Shop tracker is saved."
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 3600
+      assert left(adapter) == {[], []}
+    end
+
+    test "saved unchanged, no interval or the same one, says so and leaves nothing changed",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      html = submit(lv, "")
+      assert html =~ "Shop tracker is saved."
+      refute html =~ "is invalid"
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
+      assert left(adapter) == {[], []}
+
+      declare(adapter, sync_interval: 7200)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      html = submit(lv, "7200")
+      assert html =~ "Shop tracker is saved."
+      refute html =~ "is invalid"
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 7200
+      assert left(adapter) == {[], []}
+    end
+
+    test "an interval set that is no longer a choice is shown among them, chosen, in order",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter, sync_interval: 600)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      assert choices(lv) == [{"Every 10 minutes", "600"} | @choices]
+      assert selected(lv) == [{"Every 10 minutes", "600"}]
+
+      declare(adapter, sync_interval: 2400)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      assert choices(lv) == List.insert_at(@choices, 2, {"Every 40 minutes", "2400"})
+      assert selected(lv) == [{"Every 40 minutes", "2400"}]
+    end
+
+    test "an interval set that is a choice, or none set, adds no choice",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      assert choices(lv) == @choices
+
+      declare(adapter, sync_interval: 21600)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      assert choices(lv) == @choices
+      assert selected(lv) == [{"Every 6 hours", "21600"}]
+    end
+
+    test "an interval set that is no longer a choice, saved unchanged, stays as it is",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      declare(adapter, sync_interval: 600)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      html = submit(lv, "600")
+      assert html =~ "Shop tracker is saved."
+      refute html =~ "is invalid"
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 600
+      assert left(adapter) == {[], []}
+      assert selected(lv) == [{"Every 10 minutes", "600"}]
     end
 
     test "an adapter no longer declared when saved shows the choice disabled",
@@ -378,7 +490,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, ".q-settings-head-sub") == "This happens at once:"
 
       assert words(lv, "#adapter-remove-follows") ==
-               "Its keys are revoked, so the adapter can no longer reach Qory. A command still waiting is cancelled. Qory tells the adapter nothing. Its name is free again. This cannot be undone."
+               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
 
       assert has_element?(lv, "#adapter-remove-button", "Remove Platform tracker")
 

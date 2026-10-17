@@ -91,7 +91,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       assert words(lv, "#adapter-way-title") == "Connect with a command"
 
       assert words(lv, "#adapter-way-happens") ==
-               "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes. The adapter makes the key there and sends Qory only its public half."
+               "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes. The adapter makes the key there and sends Qory Apiary only its public half."
 
       assert has_element?(lv, "#code-new-button.btn-primary", "Get the command")
       refute has_element?(lv, "#adapter-keys")
@@ -120,7 +120,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       assert page_title(lv) =~ "Connect #{adapter.name} with a command · Adapters"
 
       assert words(lv, ".q-settings-head-sub") ==
-               "The command connects #{adapter.name} by itself: it makes the adapter's key on its machine and sends Qory only the public half. The secret never leaves the machine."
+               "The command connects #{adapter.name} by itself: it makes the adapter's key on its machine and sends Qory Apiary only the public half. The secret never leaves the machine."
 
       assert words(lv, "#code-issued-waiting") ==
                "Waiting for the command to run. This page shows when the adapter is connected."
