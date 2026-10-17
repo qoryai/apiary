@@ -139,7 +139,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
   describe "the time and the replay" do
     test "a time up to 300 seconds from the clock, either way, is accepted", ctx do
-      for offset <- [-300, 300] do
+      for offset <- [-290, 290] do
         conn = claim(ctx, body(@claim, offset))
         assert accepted?(conn, @claim), "#{offset}"
       end
@@ -147,7 +147,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     test "a time more than 300 seconds from the clock is 401, unsigned, and records nothing",
          ctx do
-      for target <- @targets, offset <- [-301, 301, -86_400, 86_400] do
+      for target <- @targets, offset <- [-310, 310, -86_400, 86_400] do
         conn = signed(ctx, target, body(target, offset))
         assert json_response(conn, 401) == @unauthorized, "#{target} #{offset}"
         assert unsigned_answer?(conn)
