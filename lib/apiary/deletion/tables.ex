@@ -33,22 +33,27 @@ defmodule Apiary.Deletion.Tables do
 
   # Children first: a run's events, log and connections before the run; the deliveries
   # before the access keys they name; the run configurations and the policy's rules before
-  # the targets, and so are the pins; a node's instances before the access keys they name;
-  # the access keys before the enrolment codes they arrived by, and the keys, the codes,
-  # the runs, the instances and the organisation's connections to adapters before the
-  # nodes they name; a work item's events before the work item; a connection's workspaces
-  # before the connection, and the connections before the releases and the service
-  # definitions they name; everything of a workspace before the workspace.
+  # the targets, and so are the pins; the runs before the runs of the queue they name, the
+  # dispatches before the runs of the queue, the node pools and the access keys they name,
+  # and the runs of the queue before their work items; a node's instances before the
+  # access keys they name; the access keys before the enrolment codes they arrived by, and
+  # the keys, the codes, the runs, the instances and the organisation's connections to
+  # adapters before the nodes they name; a work item's events before the work item; a
+  # connection's workspaces before the connection, and the connections before the
+  # releases and the service definitions they name; everything of a workspace before the
+  # workspace.
   @tables [
-    {"work_item_events", :workspace},
-    {"work_items", :workspace},
-    {"work_item_counters", :workspace},
     {"log_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},
     {"deliveries", :workspace},
     {"run_configurations", :workspace},
     {"runs", :workspace},
+    {"dispatches", :workspace},
+    {"dispatch_runs", :workspace},
+    {"work_item_events", :workspace},
+    {"work_items", :workspace},
+    {"work_item_counters", :workspace},
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
     {"connection_workspaces", :workspace},
