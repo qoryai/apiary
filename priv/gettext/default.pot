@@ -140,8 +140,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{count} comment on the ticket"
-msgid_plural "%{count} comments on the ticket"
+msgid "%{count} comment on the %{item}"
+msgid_plural "%{count} comments on the %{item}"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -659,7 +659,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{integration} is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, declined."
+msgid "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -1022,17 +1022,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgid "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgid "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."
+msgid "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -1042,12 +1042,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was."
+msgid "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was."
+msgid "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -2966,7 +2966,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
-msgid "A work item starts when someone takes in a ticket from the Backlog. Qory then explores it and proposes how to build it."
+msgid "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -4529,7 +4529,7 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
-msgid "Close the ticket"
+msgid "Close the %{item}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -4580,17 +4580,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the ticket."
+msgid "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the %{item}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
+msgid "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
+msgid "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7058,7 +7058,7 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "If its tickets only track bugs, turn this off. Work items already taken in stay."
+msgid "If its %{items} only track bugs, turn this off. Work items already taken in stay."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -7455,7 +7455,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
+msgid "It is the adapter's only key: until it gets a new one, nothing it sends reaches any organisation."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -7657,7 +7657,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
+msgid "Its open work items, in every organisation, are closed as a member would close them. If it is added again, taking in one of its %{items} makes a new work item."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -8534,7 +8534,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Members of %{workspace} see this. Nothing is posted on the ticket."
+msgid "Members of %{workspace} see this. Nothing is posted on the %{item}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10238,7 +10238,7 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
-msgid "Open the full ticket"
+msgid "Open the full %{item}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -10905,7 +10905,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory is exploring again, with %{name}'s answers. It reads the ticket and the code, and proposes how to build it."
+msgid "Qory is exploring again, with %{name}'s answers. It reads the %{item} and the code, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -10915,7 +10915,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory is exploring again, with the answers of this take in. It reads the ticket and the code, and proposes how to build it."
+msgid "Qory is exploring again, with the answers of this take in. It reads the %{item} and the code, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -10925,7 +10925,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory is exploring again, with your answers. It reads the ticket and the code, and proposes how to build it."
+msgid "Qory is exploring again, with your answers. It reads the %{item} and the code, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -10935,7 +10935,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
+msgid "Qory is exploring. It reads the %{item} and the code, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -10970,32 +10970,32 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the ticket and the code"
+msgid "Qory reads the %{item} and the code"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+msgid "Qory reads the %{item} and the code when the run starts, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the ticket, the code and %{name}'s answers when the run starts, and proposes how to build it."
+msgid "Qory reads the %{item}, the code and %{name}'s answers when the run starts, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the ticket, the code and the answers of this take in when the run starts, and proposes how to build it."
+msgid "Qory reads the %{item}, the code and the answers of this take in when the run starts, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the ticket, the code and your answers when the run starts, and proposes how to build it."
+msgid "Qory reads the %{item}, the code and your answers when the run starts, and proposes how to build it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}."
+msgid "Qory runs Explore again from the start, with the %{item}, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11015,7 +11015,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
+msgid "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and the code, and proposes how to build it, or asks what it needs to know."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11027,7 +11027,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory took its label off the ticket, and its comment stays there. In the Backlog, Take in again brings this work item back."
+msgid "Qory took its label off the %{item}, and its comment stays there. In the Backlog, Take in again brings this work item back."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11650,17 +11650,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} reads the ticket and the code. It proposes how to build it, or asks what it needs to know."
+msgid "Run %{attempt} of %{of} reads the %{item} and the code. It proposes how to build it, or asks what it needs to know."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} reads the ticket, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know."
+msgid "Run %{attempt} of %{of} reads the %{item}, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start."
+msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item}, the code and these answers, from the start."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12056,7 +12056,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
-msgid "Search by title, number or ticket"
+msgid "Search by title, number or %{item}"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -12892,7 +12892,7 @@ msgstr ""
 #: lib/apiary/sources/body.ex
 #, elixir-autogen, elixir-format
 msgctxt "ticket table"
-msgid "Table in the ticket"
+msgid "Table in the %{item}"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -12913,7 +12913,7 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Take its tickets into the Backlog"
+msgid "Take its %{items} into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -12943,7 +12943,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Taking tickets into the Backlog turned on or off"
+msgid "Taking %{items} into the Backlog turned on or off"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -13168,6 +13168,46 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The %{integration} installation ended on %{date}, when %{integration} reported it gone."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_list_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{items} %{workspace} took in from the Backlog, by stage."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The %{items} of %{target} no longer come into the Backlog."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The %{items} of %{target} now come into the Backlog."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{item} as %{integration} last sent it, %{when}. It is no longer kept current."
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{item} has no description."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{item} is still open on %{integration} and keeps Qory's label. In the Backlog, Take in again brings this work item back."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -13989,31 +14029,6 @@ msgstr ""
 msgid "The targets this workspace's runs have changed."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The ticket as %{integration} last sent it, %{when}. It is no longer kept current."
-msgstr ""
-
-#: lib/apiary_web/components/source_components.ex
-#, elixir-autogen, elixir-format
-msgid "The ticket has no description."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The ticket is still open on %{integration} and keeps Qory's label. In the Backlog, Take in again brings this work item back."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The tool answered %{status}."
@@ -14487,7 +14502,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "This work item stays in Qory Apiary. Qory no longer changes anything on the ticket, and the ticket is no longer in the Backlog."
+msgid "This work item stays in Qory Apiary. Qory no longer changes anything on the %{item}, and the %{item} is no longer in the Backlog."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -14543,27 +14558,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Thread"
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ticket"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_list_components.ex
-#, elixir-autogen, elixir-format
-msgid "Tickets %{workspace} took in from the Backlog, by stage."
-msgstr ""
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Tickets of %{target} no longer come into the Backlog."
-msgstr ""
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Tickets of %{target} now come into the Backlog."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -14691,12 +14685,12 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Turned off taking a collection's items into the Backlog"
+msgid "Turned off taking a collection's %{items} into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Turned on taking a collection's items into the Backlog"
+msgid "Turned on taking a collection's %{items} into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15399,7 +15393,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
-msgid "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
+msgid "Work items a member declined. Their %{items} stay in the Backlog, where Take in again brings one back."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
@@ -15921,17 +15915,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgid "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+msgid "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."
+msgid "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15941,12 +15935,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was."
+msgid "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was."
+msgid "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -17133,6 +17127,18 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "through #%{sequence}"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "source item, when its adapter names none"
+msgid "ticket"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "source item, when its adapter names none"
+msgid "tickets"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

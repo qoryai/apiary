@@ -528,7 +528,8 @@ defmodule Apiary.Audit do
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
           runs: %{Ecto.UUID.t() => String.t()},
-          organisations: %{Ecto.UUID.t() => String.t()}
+          organisations: %{Ecto.UUID.t() => String.t()},
+          item_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}}
         }
 
   @doc """
@@ -538,7 +539,9 @@ defmodule Apiary.Audit do
   node, a deleted one's too, the name of each workspace (an entry's, or its subject),
   `system/path` of each target, and the run id of each run, and the name of each other organisation an entry names by id, under a key
   that ends in `_id` in its `details`, `before` or `after`: the other side of a change
-  that concerns two organisations, which an edition records. Only what the scope's
+  that concerns two organisations, which an edition records. For the target of each
+  entry that turned a Backlog on or off (`collection.set_backlog`), what its sources call
+  its items, where they name it (`Apiary.Adapters.target_item_nouns/2`). Only what the scope's
   organisation holds is looked up, people and those organisations aside; in the instance's
   organisation, the nodes and access keys of the instance, which no organisation holds,
   too. A person whose account is deleted, a key or a row
@@ -569,6 +572,15 @@ defmodule Apiary.Audit do
     nodes = ids.(&[if(&1.subject_kind == "node", do: &1.subject_id)])
     targets = ids.(&[if(&1.subject_kind == "target", do: &1.subject_id)])
     runs = ids.(&[if(&1.subject_kind == "run", do: &1.subject_id)])
+
+    backlog_targets =
+      ids.(
+        &[
+          if(&1.subject_kind == "target" and &1.action == "collection.set_backlog",
+            do: &1.subject_id
+          )
+        ]
+      )
 
     # The instance's nodes and keys, which have no organisation, have their entries in the
     # trail of the instance's organisation, and are named there alone.
@@ -628,7 +640,8 @@ defmodule Apiary.Audit do
             select: {r.id, r.public_id}
           )
         ),
-      organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name}))
+      organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name})),
+      item_nouns: Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets)
     }
   end
 

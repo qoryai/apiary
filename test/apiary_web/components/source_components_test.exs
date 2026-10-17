@@ -138,6 +138,41 @@ defmodule ApiaryWeb.SourceComponentsTest do
     end
   end
 
+  describe "the words for a source's items" do
+    @bug %{one: "bug", other: "bugs"}
+
+    test "its adapter's, or ticket and tickets where it names none" do
+      assert SourceComponents.item(@bug) == "bug"
+      assert SourceComponents.items(@bug) == "bugs"
+      assert SourceComponents.item_label(@bug) == "Bug"
+
+      assert SourceComponents.item(nil) == "ticket"
+      assert SourceComponents.items(nil) == "tickets"
+      assert SourceComponents.item_label(nil) == "Ticket"
+
+      assert SourceComponents.item_label(%{one: "user story", other: "user stories"}) ==
+               "User story"
+    end
+
+    test "a text says them: the empty one, and a table's name" do
+      empty =
+        render_component(&SourceComponents.body/1, id: "ticket", body: "", item_noun: @bug)
+
+      assert empty =~ "The bug has no description."
+
+      table =
+        render_component(&SourceComponents.body/1,
+          id: "ticket",
+          body: "| a |\n|---|\n| 1 |",
+          format: "markdown",
+          item_noun: @bug
+        )
+
+      assert table =~ ~s(aria-label="Table in the bug")
+      assert html("| a |\n|---|\n| 1 |", "markdown") =~ ~s(aria-label="Table in the ticket")
+    end
+  end
+
   describe "the generated documentation" do
     # Every instance serves the module reference at /docs, which leaves this module out.
     test "leaves ApiaryWeb.SourceComponents out" do

@@ -224,7 +224,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
       assert %Collection{items: true, backlog: true} = collection(ctx, "SHOP")
       assert Repo.aggregate(Entry, :count) == trail
       refute refused?(ctx, "SHOP")
-      assert Collections.backlog_switch(ctx.scope, shop_target) == %{on: true}
+      assert Collections.backlog_switch(ctx.scope, shop_target) == %{on: true, item_noun: nil}
       assert Enum.sort(tickets(ctx)) == ["Title of A", "Title of R"]
       assert repositories(ctx) == ["API", "SHOP"]
     end
@@ -241,7 +241,11 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
 
       assert feed(ctx) == told
       refute collection(ctx, "SHOP").backlog
-      assert Collections.backlog_switch(ctx.scope, target(ctx.workspace, @shop)) == %{on: false}
+
+      assert Collections.backlog_switch(ctx.scope, target(ctx.workspace, @shop)) == %{
+               on: false,
+               item_noun: nil
+             }
     end
 
     test "unassigned, it flips both ways with no entry", ctx do
@@ -284,13 +288,13 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
       {:ok, :accepted} = post(ctx, [{"SHOP", @shop, false}, {"MIRROR", @shop, nil}])
       {:ok, 2} = assign(ctx, ["SHOP", "MIRROR"], ctx.workspace)
       target = target(ctx.workspace, @shop)
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: true}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: true, item_noun: nil}
 
       assert Collections.set_backlog(ctx.scope, target, false) == {:ok, 1}
 
       assert collection(ctx, "SHOP").backlog
       refute collection(ctx, "MIRROR").backlog
-      assert Collections.backlog_switch(ctx.scope, target) == %{on: false}
+      assert Collections.backlog_switch(ctx.scope, target) == %{on: false, item_noun: nil}
       assert feed(ctx) == [{"MIRROR", "linked"}, {"MIRROR", "unlinked"}]
 
       assert [%Entry{details: %{"backlog" => false, "count" => 1}}] =

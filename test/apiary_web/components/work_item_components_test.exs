@@ -1289,4 +1289,89 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     assert {:docs_v1, _anno, :elixir, _format, :hidden, _meta, _docs} =
              Code.fetch_docs(ApiaryWeb.WorkItemListComponents)
   end
+
+  describe "a source's words for its items" do
+    # A page about one item names it by its source's word; "ticket" where it names none.
+    @bug %{one: "bug", other: "bugs"}
+
+    test "the step card, its Undo line and the Decline question" do
+      html = card(queued(@dana, ago(5)), item_noun: @bug)
+
+      assert text(html, ".q-wi-bee-line") ==
+               "Qory reads the bug and the code when the run starts, and proposes how to build it."
+
+      assert text(html, "#work-item-step-undo-line") ==
+               "You took this in just now. Until a run starts, you can undo this: Qory takes its label off the bug, and the comment stays."
+
+      asking = card(work_item(), item_noun: @bug, asking: :decline, backlog_off: true)
+
+      assert words(asking) =~
+               "The bug stays open on GitHub and keeps Qory's label, and nothing new is posted there."
+    end
+
+    test "the notices, the close question and the end notice" do
+      gone =
+        render_component(&WorkItemComponents.uninstalled_notice/1,
+          integration: "GitHub",
+          at: ~U[2026-10-17 11:58:00Z],
+          item_noun: @bug,
+          now: @now
+        )
+
+      assert gone =~
+               "This work item stays in Qory Apiary. Qory no longer changes anything on the bug, and the bug is no longer in the Backlog."
+
+      close =
+        render_component(&WorkItemComponents.close_question/1,
+          number: 88,
+          integration: "GitHub",
+          item_noun: @bug
+        )
+
+      assert text(close, "#work-item-close-sub") ==
+               "Closing ends the work on it in Qory Apiary. The bug stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
+
+      ended =
+        ended(:closed, %{name: "Mirek", you: false}, ~U[2026-10-12 10:07:00Z], item_noun: @bug)
+
+      assert words(ended) =~
+               "The bug is still open on GitHub and keeps Qory's label. In the Backlog, Take in again brings this work item back."
+    end
+
+    test "Details and the first tab name it by the word, its first letter in upper case" do
+      assert texts(details(work_item(), item_noun: @bug), "dt") ==
+               ["Owner", "Bug", "Repository", "Taken in", "First instruction", "Runs"]
+
+      tabs =
+        render_component(&WorkItemComponents.work_item_tabs/1,
+          number: 88,
+          current: :ticket,
+          ticket_path: "/8wonders/main/work/88",
+          explore_path: "/8wonders/main/work/88/explore",
+          thread_path: "/8wonders/main/work/88/thread",
+          item_noun: %{one: "user story", other: "user stories"}
+        )
+
+      assert text(tabs, "#work-item-tabs-ticket") == "User story"
+    end
+
+    test "the Ticket tab and the composer" do
+      html = ticket_tab(item_noun: @bug, ticket: ticket(%{body: nil}))
+      assert text(html, "#work-item-ticket-comments-h") == "6 comments on the bug"
+      assert html =~ "The bug has no description."
+
+      stale = ticket_tab(item_noun: @bug, uninstalled: true)
+      assert text(stale, "#work-item-ticket-stale") =~ "The bug as GitHub last sent it,"
+
+      composer =
+        render_component(&WorkItemComponents.composer/1,
+          number: 88,
+          workspace: "Main",
+          reader: "Dana",
+          item_noun: @bug
+        )
+
+      assert composer =~ "Members of Main see this. Nothing is posted on the bug."
+    end
+  end
 end

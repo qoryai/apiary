@@ -401,14 +401,20 @@ defmodule ApiaryWeb.ActivityLive do
     for action <- Audit.audited_actions(),
         shown?(scope, Access.shown_as(action)),
         Enum.all?(describers, & &1.offered?(scope, action)),
-        do: {Atom.to_string(action), action_label(describers, action)}
+        do: {Atom.to_string(action), action_label(describers, action, scope)}
   end
 
   defp shown?(_scope, nil), do: true
   defp shown?(scope, feature), do: Features.visible?(scope, feature)
 
-  defp action_label(describers, action),
-    do: first(describers, :label, [action]) || Atom.to_string(action)
+  # Each describer's words for the reader where it has them (`label/2`), else its words.
+  defp action_label(describers, action, scope) do
+    Enum.find_value(describers, fn describer ->
+      if Code.ensure_loaded?(describer) and function_exported?(describer, :label, 2),
+        do: describer.label(action, scope),
+        else: describer.label(action)
+    end) || Atom.to_string(action)
+  end
 
   ## One row
 

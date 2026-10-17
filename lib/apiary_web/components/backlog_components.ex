@@ -18,6 +18,8 @@ defmodule ApiaryWeb.BacklogComponents do
   @moduledoc false
   use ApiaryWeb, :html
 
+  alias ApiaryWeb.SourceComponents
+
   ## A row
 
   @doc """
@@ -306,7 +308,9 @@ defmodule ApiaryWeb.BacklogComponents do
       shows beside the list from 1280 px, as a dialog over it from 768 to 1279, and as a
       sheet below 768: the server does not know the width. It is a dialog named "Ticket",
       with a scrim, and its head has Open the full ticket (`full_path`), Open on the
-      integration, and Close the ticket; Close and a press on the scrim patch to
+      integration, and Close the ticket. Its name and those words take its source's word
+      for its items in place of "ticket" (`item_noun`, `SourceComponents.item/1`):
+      "Bug", "Open the full bug"; Close and a press on the scrim patch to
       `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
     * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
       and the comments, and beside them the facts, Filed by among them, the link out and
@@ -351,6 +355,11 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :close_patch, :string, default: nil, doc: "`:list`: the list without the ticket"
   attr :back_path, :string, default: nil, doc: "`:full`: the Backlog"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   slot :take_in, doc: "the Take in or Take in again block"
   slot :rendered_body, doc: "the ticket's text, through `SourceComponents.body/1`"
   slot :rendered_comment, doc: "a comment's text, given the comment, through `body/1`"
@@ -364,6 +373,7 @@ defmodule ApiaryWeb.BacklogComponents do
         now: now,
         out: Apiary.Sources.Body.https?(ticket.url) and external_url?(ticket.url),
         full_form: full_form(ticket),
+        item: SourceComponents.item(assigns.item_noun),
         open_on: gettext("Open on %{integration}", integration: assigns.integration),
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
@@ -389,7 +399,7 @@ defmodule ApiaryWeb.BacklogComponents do
       aria-hidden="true"
     >
     </div>
-    <div id={@id} class="q-bl-prev" role="dialog" aria-label={gettext("Ticket")}>
+    <div id={@id} class="q-bl-prev" role="dialog" aria-label={SourceComponents.item_label(@item_noun)}>
       <div class="q-bl-tb">
         <.integration_tile name={@integration} class="q-bl-src" />
         <span class="q-bl-key" title={@full_form}>{@full_form}</span>
@@ -400,8 +410,8 @@ defmodule ApiaryWeb.BacklogComponents do
           variant="ghost"
           class="btn-square"
           navigate={@full_path}
-          aria-label={gettext("Open the full ticket")}
-          title={gettext("Open the full ticket")}
+          aria-label={gettext("Open the full %{item}", item: @item)}
+          title={gettext("Open the full %{item}", item: @item)}
         >
           <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
         </.button>
@@ -420,7 +430,7 @@ defmodule ApiaryWeb.BacklogComponents do
           variant="ghost"
           class="btn-square"
           patch={@close_patch}
-          aria-label={gettext("Close the ticket")}
+          aria-label={gettext("Close the %{item}", item: @item)}
           title={gettext("Close")}
         >
           <.icon name="hero-x-mark-micro" class="size-3.5" />

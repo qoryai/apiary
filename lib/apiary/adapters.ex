@@ -58,6 +58,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.Target
 
   ## Who may
 
@@ -147,8 +148,8 @@ defmodule Apiary.Adapters do
   # item_noun/1 is what `adapter` calls one of its items and many, as its description's
   # source role names them (`Apiary.Nodes.Node`'s `item_noun_one` and `item_noun_other`):
   # `%{one: one, other: other}`, lower case, shown as plain text; nil where it names none,
-  # for the default, ticket, which the pages word themselves. A page or a sentence about
-  # one item uses its source's.
+  # for the default, ticket (`ApiaryWeb.SourceComponents.item/1` and `items/1` say the
+  # words). A page or a sentence about one item uses its source's.
   @spec item_noun(Node.t()) :: %{one: String.t(), other: String.t()} | nil
   def item_noun(%Node{kind: :adapter, item_noun_one: one, item_noun_other: other})
       when is_binary(one) and is_binary(other),
@@ -204,6 +205,61 @@ defmodule Apiary.Adapters do
   end
 
   def workspace_item_noun(%Scope{}), do: nil
+
+  @doc false
+  # organisation_item_noun/1 is `shared_item_noun/1` of the sources of the scope's
+  # organisation, to a person who may read its Activity (`audit.read`): the adapters, in
+  # use, of its connected connections. nil to anyone else.
+  @spec organisation_item_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
+  def organisation_item_noun(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
+    if Access.can?(scope, :"audit.read", scope.organisation) do
+      live_query()
+      |> join(:inner, [n], k in Connection, on: k.adapter_id == n.id)
+      |> where(
+        [n, k],
+        k.organisation_id == ^organisation_id and k.state == :connected and is_nil(k.ended_at)
+      )
+      |> distinct(true)
+      |> Repo.all()
+      |> shared_item_noun()
+    end
+  end
+
+  def organisation_item_noun(%Scope{}), do: nil
+
+  @doc false
+  # target_item_nouns/2 is, for each of `target_ids`, targets of the organisation
+  # `organisation_id`, `shared_item_noun/1` of the adapters of the collections with its
+  # system and path, ended ones and those of other workspaces too: what its sources call
+  # its items, by target id. A target with none, or whose sources name none, has no key.
+  # For the names a page reads with the entries of an audit trail it may read already
+  # (`Apiary.Audit.names/2`), so it asks no access.
+  @spec target_item_nouns(Ecto.UUID.t(), [Ecto.UUID.t()]) ::
+          %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}}
+  def target_item_nouns(_organisation_id, []), do: %{}
+
+  def target_item_nouns(organisation_id, target_ids) when is_list(target_ids) do
+    from(t in Target,
+      join: c in Collection,
+      on:
+        c.organisation_id == t.organisation_id and c.target_system == t.system and
+          c.target_path == t.path,
+      join: n in Node,
+      on: n.id == c.adapter_id,
+      where: t.organisation_id == ^organisation_id and t.id in ^target_ids,
+      select: {t.id, n}
+    )
+    |> Repo.all()
+    |> Enum.uniq_by(fn {id, adapter} -> {id, adapter.id} end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.flat_map(fn {id, adapters} ->
+      case shared_item_noun(adapters) do
+        nil -> []
+        noun -> [{id, noun}]
+      end
+    end)
+    |> Map.new()
+  end
 
   ## Changes
 

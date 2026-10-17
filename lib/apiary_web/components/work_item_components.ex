@@ -29,6 +29,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when;
   #   * `:updated_at` - when it last changed.
   #
+  # A part that names the ticket takes the words its source has for its items,
+  # `item_noun` (`ApiaryWeb.SourceComponents.item/1`): "the bug" for a source that calls
+  # them bugs, and "the ticket" where it names none (nil).
+  #
   # The page's parts read more of it, each named where it is used. A person is a map with
   # `:id`, Qory Apiary's id of the person, `:name` and `:you`, true when the person is the
   # reader: a text the reader is the subject of says "you" ("You own it", "Closed by you").
@@ -494,6 +498,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :edit_path, :string, default: nil, doc: "the edit page, `/work/:number/explore/edit`"
   attr :asking, :atom, default: nil, values: [nil, :decline], doc: "the question showing"
   attr :cancel, :any, default: nil, doc: "what the question's Cancel does"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
@@ -512,6 +522,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         mine: hot?(work_item),
         ask: hot?(work_item) or (status in [:questions, :used_up] and assigns.can_act),
         run: work_item[:run],
+        item: SourceComponents.item(assigns.item_noun),
         cancel: assigns.cancel || JS.push("cancel_question")
       )
 
@@ -543,6 +554,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         edit_path={@edit_path}
         asking={@asking}
         cancel={@cancel}
+        item={@item}
         now={@now}
       />
     </section>
@@ -606,6 +618,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :edit_path, :string, required: true
   attr :asking, :atom, required: true
   attr :cancel, :any, required: true
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
 
   defp step_body(%{status: status, asking: :decline, can_act: true} = assigns)
@@ -620,18 +633,21 @@ defmodule ApiaryWeb.WorkItemComponents do
       <%= cond do %>
         <% @uninstalled -> %>
           {gettext(
-            "%{integration} is no longer connected, so nothing changes on the ticket. The work item stays in Qory Apiary, declined.",
-            integration: @integration
+            "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined.",
+            integration: @integration,
+            item: @item
           )}
         <% @backlog_off -> %>
           {gettext(
-            "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
-            integration: @integration
+            "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+            integration: @integration,
+            item: @item
           )}
         <% true -> %>
           {gettext(
-            "The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
-            integration: @integration
+            "The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+            integration: @integration,
+            item: @item
           )}
       <% end %>
       <:action>
@@ -661,23 +677,27 @@ defmodule ApiaryWeb.WorkItemComponents do
           case answers_of(run[:answers_by]) do
             :none ->
               gettext(
-                "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+                "Qory reads the %{item} and the code when the run starts, and proposes how to build it.",
+                item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory reads the ticket, the code and your answers when the run starts, and proposes how to build it."
+                "Qory reads the %{item}, the code and your answers when the run starts, and proposes how to build it.",
+                item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory reads the ticket, the code and %{name}'s answers when the run starts, and proposes how to build it.",
-                name: name
+                "Qory reads the %{item}, the code and %{name}'s answers when the run starts, and proposes how to build it.",
+                name: name,
+                item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory reads the ticket, the code and the answers of this take in when the run starts, and proposes how to build it."
+                "Qory reads the %{item}, the code and the answers of this take in when the run starts, and proposes how to build it.",
+                item: assigns.item
               )
           end,
         queued:
@@ -701,7 +721,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.bee />
       <span>
         {gettext(
-          "Qory reads the ticket and the code when the run starts, and proposes how to build it."
+          "Qory reads the %{item} and the code when the run starts, and proposes how to build it.",
+          item: @item
         )}
       </span>
     </p>
@@ -725,23 +746,27 @@ defmodule ApiaryWeb.WorkItemComponents do
           case answers_of(run[:answers_by]) do
             :none ->
               gettext(
-                "Qory is exploring. It reads the ticket and the code, and proposes how to build it."
+                "Qory is exploring. It reads the %{item} and the code, and proposes how to build it.",
+                item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory is exploring again, with your answers. It reads the ticket and the code, and proposes how to build it."
+                "Qory is exploring again, with your answers. It reads the %{item} and the code, and proposes how to build it.",
+                item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory is exploring again, with %{name}'s answers. It reads the ticket and the code, and proposes how to build it.",
-                name: name
+                "Qory is exploring again, with %{name}'s answers. It reads the %{item} and the code, and proposes how to build it.",
+                name: name,
+                item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory is exploring again, with the answers of this take in. It reads the ticket and the code, and proposes how to build it."
+                "Qory is exploring again, with the answers of this take in. It reads the %{item} and the code, and proposes how to build it.",
+                item: assigns.item
               )
           end,
         started:
@@ -1048,28 +1073,32 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {previous, you?(by), assigns.can_undo} do
       {:declined, true, true} ->
         rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was.",
-          when: at
+          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was.",
+          when: at,
+          item: assigns.item
         )
 
       {:declined, false, true} ->
         rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was.",
+          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the %{item}, so its label stays as it was.",
           name: by.name,
-          when: at
+          when: at,
+          item: assigns.item
         )
 
       {:closed, true, true} ->
         rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was.",
-          when: at
+          "You took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was.",
+          when: at,
+          item: assigns.item
         )
 
       {:closed, false, true} ->
         rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was.",
+          "%{name} took this in again %{when}. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the %{item}, so its label stays as it was.",
           name: by.name,
-          when: at
+          when: at,
+          item: assigns.item
         )
 
       {_previous, true, false} ->
@@ -1088,38 +1117,43 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {assigns.uninstalled, you?(by), assigns.can_undo} do
       {true, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          "You took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           when: at,
-          integration: integration
+          integration: integration,
+          item: assigns.item
         )
 
       {true, true, false} ->
         rich_gettext(
-          "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           when: at,
-          integration: integration
+          integration: integration,
+          item: assigns.item
         )
 
       {true, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          "%{name} took this in %{when}. Until a run starts, you can undo this. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           name: by.name,
           when: at,
-          integration: integration
+          integration: integration,
+          item: assigns.item
         )
 
       {true, false, false} ->
         rich_gettext(
-          "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment.",
+          "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
           name: by.name,
           when: at,
-          integration: integration
+          integration: integration,
+          item: assigns.item
         )
 
       {false, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays.",
-          when: at
+          "You took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays.",
+          when: at,
+          item: assigns.item
         )
 
       {false, true, false} ->
@@ -1127,9 +1161,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {false, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays.",
+          "%{name} took this in %{when}. Until a run starts, you can undo this: Qory takes its label off the %{item}, and the comment stays.",
           name: by.name,
-          when: at
+          when: at,
+          item: assigns.item
         )
 
       {false, false, false} ->
@@ -1176,6 +1211,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, default: "work-item-uninstalled"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :at, :any, required: true, doc: "when the integration reported the installation gone"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def uninstalled_notice(assigns) do
@@ -1197,7 +1238,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <p><.rich text={@line} /></p>
         <p>
           {gettext(
-            "This work item stays in Qory Apiary. Qory no longer changes anything on the ticket, and the ticket is no longer in the Backlog."
+            "This work item stays in Qory Apiary. Qory no longer changes anything on the %{item}, and the %{item} is no longer in the Backlog.",
+            item: SourceComponents.item(@item_noun)
           )}
         </p>
       </div>
@@ -1222,6 +1264,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :cancel, :any, default: nil, doc: "what Cancel does"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   def close_question(assigns) do
     assigns = assign(assigns, :cancel, assigns.cancel || JS.push("cancel_question"))
 
@@ -1237,18 +1284,21 @@ defmodule ApiaryWeb.WorkItemComponents do
         <%= cond do %>
           <% @uninstalled -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the ticket.",
-              integration: @integration
+              "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the %{item}.",
+              integration: @integration,
+              item: SourceComponents.item(@item_noun)
             )}
           <% @backlog_off -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
-              integration: @integration
+              "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there.",
+              integration: @integration,
+              item: SourceComponents.item(@item_noun)
             )}
           <% true -> %>
             {gettext(
-              "Closing ends the work on it in Qory Apiary. The ticket stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
-              integration: @integration
+              "Closing ends the work on it in Qory Apiary. The %{item} stays open on %{integration} and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back.",
+              integration: @integration,
+              item: SourceComponents.item(@item_noun)
             )}
         <% end %>
         <:action>
@@ -1286,6 +1336,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       "whether the Backlog leaves its ticket out while its repository is assigned there: its switch is off, or it has no items (`Apiary.WorkItems.backlog_off/2`)"
 
   attr :again_path, :string, default: nil, doc: "the ticket's panel in the Backlog"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def end_notice(%{work_item: %{status: status}} = assigns) when status not in @ended,
@@ -1301,7 +1357,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         first: end_line(work_item, now),
         second:
           !(assigns.uninstalled or assigns.backlog_off) &&
-            end_second(work_item.status, assigns.integration)
+            end_second(
+              work_item.status,
+              assigns.integration,
+              SourceComponents.item(assigns.item_noun)
+            )
       )
 
     ~H"""
@@ -1368,17 +1428,19 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
   end
 
-  defp end_second(:undone, _integration),
+  defp end_second(:undone, _integration, item),
     do:
       gettext(
-        "Qory took its label off the ticket, and its comment stays there. In the Backlog, Take in again brings this work item back."
+        "Qory took its label off the %{item}, and its comment stays there. In the Backlog, Take in again brings this work item back.",
+        item: item
       )
 
-  defp end_second(_closed_or_declined, integration),
+  defp end_second(_closed_or_declined, integration, item),
     do:
       gettext(
-        "The ticket is still open on %{integration} and keeps Qory's label. In the Backlog, Take in again brings this work item back.",
-        integration: integration
+        "The %{item} is still open on %{integration} and keeps Qory's label. In the Backlog, Take in again brings this work item back.",
+        integration: integration,
+        item: item
       )
 
   ## Details
@@ -1401,6 +1463,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :ticket, :map, required: true, doc: "its ticket: `:filer` and `:filed_at`"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def work_item_details(assigns) do
@@ -1455,7 +1523,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           <span>{@owner.name}</span>
           <span :if={you?(@owner)} class="q-faint">{gettext("(you)")}</span>
         </dd>
-        <dt>{gettext("Ticket")}</dt>
+        <dt>{SourceComponents.item_label(@item_noun)}</dt>
         <dd id={"#{@id}-ticket"}>
           <span class="q-wi-l1">
             <BacklogComponents.integration_tile name={@integration} />
@@ -1528,9 +1596,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## The tabs
 
   @doc """
-  A work item's tabs: Ticket (`ticket_path`), Explore (`explore_path`) and Thread
-  (`thread_path`), with the count of people's comments where there are any; named "Work
-  item #%{number}". Ticket stays the work item's address.
+  A work item's tabs: Ticket (`ticket_path`), named with its source's word for its items,
+  "Bug" for a source that calls them bugs (`item_noun`), Explore (`explore_path`) and
+  Thread (`thread_path`), with the count of people's comments where there are any; named
+  "Work item #%{number}". Ticket stays the work item's address.
   """
   attr :id, :string, default: "work-item-tabs"
   attr :number, :integer, required: true, doc: "the work item's number"
@@ -1545,6 +1614,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :thread_path, :string, required: true, doc: "the Thread, `/work/:number/thread`"
   attr :comment_count, :integer, default: 0, doc: "people's comments in the Thread"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   def work_item_tabs(assigns) do
     ~H"""
     <.page_tabs
@@ -1552,7 +1626,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       label={gettext("Work item #%{number}", number: @number)}
       current={@current}
     >
-      <:tab key={:ticket} patch={@ticket_path} icon="hero-document-text">{gettext("Ticket")}</:tab>
+      <:tab key={:ticket} patch={@ticket_path} icon="hero-document-text">
+        {SourceComponents.item_label(@item_noun)}
+      </:tab>
       <:tab key={:explore} patch={@explore_path} icon="hero-light-bulb">{stage_name(:explore)}</:tab>
       <:tab
         key={:thread}
@@ -1637,6 +1713,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   def explore_tab(assigns) do
     work_item = at_limit(assigns.work_item)
     status = work_item.status
@@ -1653,7 +1734,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         confirmed:
           status == :shape &&
             %{by: work_item.confirmed_by, at: work_item.confirmed_at},
-        mode: if(status == :questions and assigns.can_act, do: :form, else: :read)
+        mode: if(status == :questions and assigns.can_act, do: :form, else: :read),
+        item: SourceComponents.item(assigns.item_noun)
       )
 
     ~H"""
@@ -1665,6 +1747,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         status={@status}
         run={@run}
         groups={@groups}
+        item={@item}
       />
       <.answers_read
         :if={@view == :wait && @groups != []}
@@ -1705,6 +1788,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         answers={@answers}
         errors={@errors}
         submits={@submits}
+        item={@item}
       />
       <.proposal_frame
         :if={@view == :proposal}
@@ -1715,11 +1799,18 @@ defmodule ApiaryWeb.WorkItemComponents do
         now={@now}
       />
       <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
-      <.earlier_runs :if={@earlier_runs != []} id={"#{@id}-earlier"} runs={@earlier_runs} now={@now} />
+      <.earlier_runs
+        :if={@earlier_runs != []}
+        id={"#{@id}-earlier"}
+        runs={@earlier_runs}
+        item={@item}
+        now={@now}
+      />
       <.earlier_take_ins
         :if={@earlier_take_ins != []}
         id={"#{@id}-take-ins"}
         take_ins={@earlier_take_ins}
+        item={@item}
         now={@now}
       />
     </div>
@@ -1818,6 +1909,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :status, :atom, required: true
   attr :run, :map, required: true
   attr :groups, :list, required: true
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
 
   # Queued or running: what Qory does next, with whose answers.
   defp explore_wait(assigns) do
@@ -1831,33 +1923,37 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, :none} ->
           {gettext("Explore is queued."),
            gettext(
-             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know.",
+             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and the code, and proposes how to build it, or asks what it needs to know.",
              attempt: attempt,
-             of: of
+             of: of,
+             item: assigns.item
            )}
 
         {:queued, whose} ->
           {queued_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start.",
+             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item}, the code and these answers, from the start.",
              attempt: attempt,
-             of: of
+             of: of,
+             item: assigns.item
            )}
 
         {:running, :none} ->
           {gettext("Qory is exploring."),
            gettext(
-             "Run %{attempt} of %{of} reads the ticket and the code. It proposes how to build it, or asks what it needs to know.",
+             "Run %{attempt} of %{of} reads the %{item} and the code. It proposes how to build it, or asks what it needs to know.",
              attempt: attempt,
-             of: of
+             of: of,
+             item: assigns.item
            )}
 
         {:running, whose} ->
           {running_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} reads the ticket, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know.",
+             "Run %{attempt} of %{of} reads the %{item}, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know.",
              attempt: attempt,
-             of: of
+             of: of,
+             item: assigns.item
            )}
       end
 
@@ -1981,6 +2077,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :answers, :map, default: %{}
   attr :errors, :map, default: %{}
   attr :submits, :integer, default: 0
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
 
   # Qory's questions, in a frame that names the run; with the form for a member who may
   # answer them.
@@ -2000,9 +2097,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         next:
           next_run?(run) &&
             gettext(
-              "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
+              "Qory runs Explore again from the start, with the %{item}, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
               attempt: Format.number(run.attempt + 1),
-              of: Format.number(run.of)
+              of: Format.number(run.of),
+              item: assigns.item
             )
       )
 
@@ -2457,6 +2555,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :runs, :list, required: true
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
 
   # The take in's earlier runs, each folded: its place, its id, what it gave, when.
@@ -2475,7 +2574,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </span>
         </summary>
         <div class="q-xp-inner">
-          <.run_body id={"#{@id}-#{run.id}-body"} run={run} now={@now} />
+          <.run_body id={"#{@id}-#{run.id}-body"} run={run} item={@item} now={@now} />
         </div>
       </details>
     </section>
@@ -2493,6 +2592,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :run, :map, required: true
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
 
   # Inside a run's fold: its questions and the answers, its questions nobody answered,
@@ -2526,7 +2626,14 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.answered id={"#{@id}-qa"} run={@run} now={@now} />
       </div>
     </section>
-    <.questions_frame :if={!answered?(@run)} id={@id} number={0} run={@run} mode={:read} />
+    <.questions_frame
+      :if={!answered?(@run)}
+      id={@id}
+      number={0}
+      run={@run}
+      mode={:read}
+      item={@item}
+    />
     """
   end
 
@@ -2544,6 +2651,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :take_ins, :list, required: true
+  attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
 
   # The earlier take ins, each folded: who took it in and when, how it ended, how many
@@ -2565,7 +2673,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           <p>{gettext("Its runs counted apart from this take in.")}</p>
           <%= for run <- take_in.runs do %>
             <.run_line id={"#{@id}-#{i}-#{run.id}"} run={run} now={@now} />
-            <.run_body id={"#{@id}-#{i}-#{run.id}-body"} run={run} now={@now} />
+            <.run_body id={"#{@id}-#{i}-#{run.id}-body"} run={run} item={@item} now={@now} />
           <% end %>
         </div>
       </details>
@@ -2937,6 +3045,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :comments, :list, default: [], doc: "its latest comments, as above"
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def ticket_tab(assigns) do
@@ -2963,9 +3077,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         stale:
           assigns.uninstalled &&
             rich_gettext(
-              "The ticket as %{integration} last sent it, %{when}. It is no longer kept current.",
+              "The %{item} as %{integration} last sent it, %{when}. It is no longer kept current.",
               integration: assigns.integration,
-              when: inline_ago(ticket[:received_at] || ticket.updated_at, now)
+              when: inline_ago(ticket[:received_at] || ticket.updated_at, now),
+              item: SourceComponents.item(assigns.item_noun)
             )
       )
 
@@ -2990,7 +3105,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dd>{Enum.join(@ticket.labels, ", ")}</dd>
       </dl>
       <div class="q-wi-text">
-        <SourceComponents.body id={"#{@id}-text"} body={@ticket.body} format={@ticket.format} />
+        <SourceComponents.body
+          id={"#{@id}-text"}
+          body={@ticket.body}
+          format={@ticket.format}
+          item_noun={@item_noun}
+        />
       </div>
       <section
         :if={@count > 0}
@@ -2999,7 +3119,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         aria-labelledby={"#{@id}-comments-h"}
       >
         <h3 id={"#{@id}-comments-h"}>
-          {ngettext("%{count} comment on the ticket", "%{count} comments on the ticket", @count)}
+          {ngettext("%{count} comment on the %{item}", "%{count} comments on the %{item}", @count,
+            item: SourceComponents.item(@item_noun)
+          )}
         </h3>
         <.button
           :if={@earlier > 0}
@@ -3026,6 +3148,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               id={"#{@id}-comment-#{comment.public_id}-text"}
               body={comment.body}
               format={comment.format}
+              item_noun={@item_noun}
             />
           </div>
         </div>
@@ -3523,6 +3646,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :reader, :string, required: true, doc: "the reader's name, for the avatar"
   attr :value, :string, default: nil, doc: "a draft"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
   def composer(assigns) do
     assigns =
       assign(assigns, :label, gettext("Comment on work item #%{number}", number: assigns.number))
@@ -3535,8 +3663,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <textarea id={"#{@id}-body"} name="body" placeholder={@label} rows="3">{@value}</textarea>
         <div class="q-wi-composer-foot">
           <span class="q-wi-grow">
-            {gettext("Members of %{workspace} see this. Nothing is posted on the ticket.",
-              workspace: @workspace
+            {gettext("Members of %{workspace} see this. Nothing is posted on the %{item}.",
+              workspace: @workspace,
+              item: SourceComponents.item(@item_noun)
             )}
           </span>
           <.button id={"#{@id}-go"} type="submit" variant="primary" size="xs">

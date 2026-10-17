@@ -2,15 +2,17 @@ defmodule Apiary.Adapters.ItemNounTest do
   # What an adapter calls its items, and whether it reports any, as its description's
   # source role says (`Apiary.Nodes.Node.source_role_changeset/2`), held by the database
   # to the contract's words; the words of one source (`Apiary.Adapters.item_noun/1`), and
-  # the words a page about many uses (`shared_item_noun/1`, `workspace_item_noun/1`).
+  # the words a page about many uses (`shared_item_noun/1`, `workspace_item_noun/1`,
+  # `organisation_item_noun/1`), and those of a target's sources (`target_item_nouns/2`).
   use Apiary.DataCase, async: true
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.RunListFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Adapters, Repo}
+  alias Apiary.{Adapters, Repo, Targets}
   alias Apiary.Adapters.Connection
   alias Apiary.Nodes.Node
 
@@ -141,6 +143,69 @@ defmodule Apiary.Adapters.ItemNounTest do
       %{scope: stranger} = sign_up_fixture()
       assert Adapters.workspace_item_noun(stranger) == nil
       assert Adapters.workspace_item_noun(%{stranger | workspace: ctx.scope.workspace}) == nil
+    end
+  end
+
+  describe "an organisation's words" do
+    test "of the sources of its connected connections, to a reader of its Activity", ctx do
+      adapter(ctx.scope, "example-tracker.json")
+      assert Adapters.organisation_item_noun(ctx.scope) == @issue
+
+      # A source with no items is left out; one that names none makes them differ.
+      adapter(ctx.scope, "example-projects.json")
+      assert Adapters.organisation_item_noun(ctx.scope) == @issue
+
+      %{connection: plain} = adapter(ctx.scope)
+      assert Adapters.organisation_item_noun(ctx.scope) == nil
+
+      # A connection that ended does not count.
+      plain
+      |> Ecto.Changeset.change(
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: :adapter_reported
+      )
+      |> Repo.update!()
+
+      assert Adapters.organisation_item_noun(ctx.scope) == @issue
+
+      # Another organisation's person reads none of them.
+      %{scope: stranger} = sign_up_fixture()
+      assert Adapters.organisation_item_noun(stranger) == nil
+
+      assert Adapters.organisation_item_noun(%{stranger | organisation: ctx.scope.organisation}) ==
+               nil
+    end
+  end
+
+  describe "a target's words" do
+    test "of the sources of the collections with its system and path, by target", ctx do
+      started_run(ctx.scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
+      started_run(ctx.scope, %{"forge" => "code.example.com", "repository" => "acme/api"})
+      shop = Targets.get(ctx.scope, "code.example.com", "acme/shop")
+      api = Targets.get(ctx.scope, "code.example.com", "acme/api")
+      org = ctx.scope.organisation.id
+
+      assert Adapters.target_item_nouns(org, []) == %{}
+      assert Adapters.target_item_nouns(org, [shop.id, api.id]) == %{}
+
+      %{connection: tracker} = adapter(ctx.scope, "example-tracker.json")
+      %{connection: plain} = adapter(ctx.scope)
+      at = fn path -> %{target_system: "code.example.com", target_path: path} end
+
+      # An ended collection counts: the entry is about what was so.
+      source_collection_fixture(
+        ctx.scope,
+        tracker,
+        Map.merge(at.("acme/shop"), %{ended_at: DateTime.utc_now(), ended_reason: :disconnected})
+      )
+
+      source_collection_fixture(ctx.scope, plain, at.("acme/api"))
+      assert Adapters.target_item_nouns(org, [shop.id, api.id]) == %{shop.id => @issue}
+
+      # Another organisation's targets are not read.
+      %{scope: stranger} = sign_up_fixture()
+      assert Adapters.target_item_nouns(stranger.organisation.id, [shop.id]) == %{}
     end
   end
 end

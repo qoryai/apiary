@@ -47,7 +47,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       )
 
     assert text(html, "h1") == "Work items"
-    assert html =~ "Tickets Main took in from the Backlog, by stage."
+    assert html =~ "The tickets Main took in from the Backlog, by stage."
     assert text(html, "#work-items-take-in") == "Take in from the Backlog"
     assert attr(html, "#work-items-take-in", "href") == ["/8wonders/main/backlog"]
   end
@@ -463,10 +463,48 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
     assert text(html, "h2") == "No work items yet"
 
-    assert html =~
-             "A work item starts when someone takes in a ticket from the Backlog. Qory then explores it and proposes how to build it."
+    assert text(html, ".q-wl-empty") =~
+             "A work item starts when someone takes in one of the Backlog's tickets. Qory then explores it and proposes how to build it."
 
     assert text(html, "#work-items-open-backlog") == "Open the Backlog"
     assert attr(html, "#work-items-open-backlog", "href") == ["/8wonders/main/backlog"]
+  end
+
+  describe "the words the sources share for their items" do
+    # A page about many items names them by the word every source shares; "ticket" where
+    # they differ or name none.
+    @bug %{one: "bug", other: "bugs"}
+
+    test "the head, the stages, the search, the notes and the empty list" do
+      head =
+        render_component(&L.work_items_head/1,
+          workspace: "Main",
+          backlog_path: "/8wonders/main/backlog",
+          item_noun: @bug
+        )
+
+      assert head =~ "The bugs Main took in from the Backlog, by stage."
+
+      assert texts(strip(item_noun: @bug), ".q-wl-st-what") |> hd() ==
+               "Qory reads the bug and the code"
+
+      assert text(band(stage: :explore, count: 2, shown: 2, item_noun: @bug), ".q-wl-what") ==
+               "Qory reads the bug and the code"
+
+      search = render_component(&L.work_item_search/1, item_noun: @bug)
+      assert attr(search, "input", "placeholder") == ["Search by title, number or bug"]
+
+      assert render_component(&L.view_note/1, view: :declined, item_noun: @bug) =~
+               "Work items a member declined. Their bugs stay in the Backlog, where Take in again brings one back."
+
+      empty =
+        render_component(&L.work_items_empty/1,
+          backlog_path: "/8wonders/main/backlog",
+          item_noun: @bug
+        )
+
+      assert text(empty, ".q-wl-empty") =~
+               "A work item starts when someone takes in one of the Backlog's bugs. Qory then explores it and proposes how to build it."
+    end
   end
 end

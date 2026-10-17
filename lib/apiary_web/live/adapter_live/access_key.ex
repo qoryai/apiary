@@ -558,7 +558,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                       />
                       <span>
                         {gettext(
-                          "It is the adapter's only key: until it gets a new one, no tickets arrive for any organisation."
+                          "It is the adapter's only key: until it gets a new one, nothing it sends reaches any organisation."
                         )}
                       </span>
                     </span>

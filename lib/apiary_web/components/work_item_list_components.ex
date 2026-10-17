@@ -10,6 +10,10 @@ defmodule ApiaryWeb.WorkItemListComponents do
   # the paths the page gives. The ticket's key is text only; without one the row shows
   # none, and the ticket's ref at the source is never shown.
   #
+  # A part that names the tickets of many sources takes the words they share for their
+  # items, `item_noun` (`ApiaryWeb.SourceComponents.items/1`): "bugs" where every source
+  # calls them bugs, "tickets" where they differ or name none (nil).
+  #
   # What waits at Confirm is said one way on the strip and on Confirm's band: `waiting`
   # is `%{count: n, for: whom}`, `whom` being `:you` (the reader's work items), `:member`
   # (any member's) or a name (the list filtered to that owner), or `nil` when nothing
@@ -22,7 +26,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   import ApiaryWeb.WorkItemComponents,
     only: [work_item_mark: 1, stage_name: 1, owner_phrase: 1]
 
-  alias ApiaryWeb.BacklogComponents
+  alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
   @stages [:explore, :confirm, :shape]
 
@@ -35,11 +39,19 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :workspace, :string, required: true, doc: "the workspace's name"
   attr :backlog_path, :string, required: true, doc: "the Backlog"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   def work_items_head(assigns) do
     ~H"""
     <.page_header title={gettext("Work items")}>
       <:description>
-        {gettext("Tickets %{workspace} took in from the Backlog, by stage.", workspace: @workspace)}
+        {gettext("The %{items} %{workspace} took in from the Backlog, by stage.",
+          items: SourceComponents.items(@item_noun),
+          workspace: @workspace
+        )}
       </:description>
       <:actions>
         <.button id="work-items-take-in" navigate={@backlog_path}>
@@ -72,6 +84,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :ready, :integer, default: 0, doc: "how many are ready for Shape"
   attr :paths, :map, default: %{}, doc: "each stage's list, by stage"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   def stages_strip(assigns) do
     assigns = assign(assigns, :stages, @stages)
 
@@ -80,7 +97,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
       <.link :for={stage <- @stages} id={"#{@id}-#{stage}"} patch={@paths[stage]} class="q-wl-st">
         <span class="q-wl-st-name">{stage_name(stage)}</span>
         <span class="q-wl-st-n">{Format.number(@counts[stage] || 0)}</span>
-        <span class="q-wl-st-what">{stage_line(stage)}</span>
+        <span class="q-wl-st-what">{stage_line(stage, @item_noun)}</span>
         <span class="q-wl-st-attn">
           <.attention
             stage={stage}
@@ -98,9 +115,12 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   @doc false
-  def stage_line(:explore), do: gettext("Qory reads the ticket and the code")
-  def stage_line(:confirm), do: gettext("A member confirms what Qory proposes")
-  def stage_line(:shape), do: gettext("The plan and its acceptance criteria")
+  # stage_line/2 is what a stage is, in a line; `item_noun` as the strip's.
+  def stage_line(:explore, item_noun),
+    do: gettext("Qory reads the %{item} and the code", item: SourceComponents.item(item_noun))
+
+  def stage_line(:confirm, _item_noun), do: gettext("A member confirms what Qory proposes")
+  def stage_line(:shape, _item_noun), do: gettext("The plan and its acceptance criteria")
 
   @doc """
   What in a stage needs a look, with its mark: how many Qory is exploring, how many wait
@@ -244,13 +264,20 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :id, :string, default: "work-items-search"
   attr :value, :string, default: nil, doc: "the words searched for"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   def work_item_search(assigns) do
     ~H"""
     <.list_search
       id={@id}
       value={@value}
       label={gettext("Search work items")}
-      placeholder={gettext("Search by title, number or ticket")}
+      placeholder={
+        gettext("Search by title, number or %{item}", item: SourceComponents.item(@item_noun))
+      }
     />
     """
   end
@@ -343,6 +370,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   """
   attr :view, :atom, required: true, values: [:open, :you, :declined, :closed]
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   def view_note(%{view: :you} = assigns) do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
@@ -355,7 +387,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
       {gettext(
-        "Work items a member declined. Their tickets stay in the Backlog, where Take in again brings one back."
+        "Work items a member declined. Their %{items} stay in the Backlog, where Take in again brings one back.",
+        items: SourceComponents.items(@item_noun)
       )}
     </p>
     """
@@ -381,6 +414,12 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :no_result, :integer, default: 0
   attr :waiting, :map, default: nil
   attr :all_path, :string, default: nil, doc: "the stage's list"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   slot :inner_block, required: true
 
   def stage_band(assigns) do
@@ -407,7 +446,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
         </button>
         <h2 id={"#{@id}-h"}>{@name}</h2>
         <span class="q-band-n">{Format.number(@count)}</span>
-        <span class="q-band-hint q-wl-what">{stage_line(@stage)}</span>
+        <span class="q-band-hint q-wl-what">{stage_line(@stage, @item_noun)}</span>
         <span class="q-grow"></span>
         <span class="q-wl-band-attn">
           <.attention
@@ -525,6 +564,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   """
   attr :backlog_path, :string, required: true, doc: "the Backlog"
 
+  attr :item_noun, :map,
+    default: nil,
+    doc:
+      "what the workspace's sources call their items, where they all call them the same, `%{one:, other:}` (`Apiary.Adapters.workspace_item_noun/1`); nil for ticket and tickets"
+
   def work_items_empty(assigns) do
     ~H"""
     <.empty_state
@@ -534,7 +578,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
       class="q-wl-empty"
     >
       {gettext(
-        "A work item starts when someone takes in a ticket from the Backlog. Qory then explores it and proposes how to build it."
+        "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it.",
+        items: SourceComponents.items(@item_noun)
       )}
       <:actions>
         <.button id="work-items-open-backlog" variant="primary" navigate={@backlog_path}>

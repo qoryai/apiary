@@ -113,7 +113,7 @@ defmodule Apiary.Adapters.Collections do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo}
+  alias Apiary.{Access, Adapters, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Wire}
   alias Apiary.Lingo.Domain
@@ -1167,18 +1167,23 @@ defmodule Apiary.Adapters.Collections do
   @doc false
   # backlog_switch/2 is whether the items of `target`, a target of the scope's workspace,
   # come into the workspace's Backlog, to a person who may read its work items
-  # (`work_item.read`): `%{on: on}`, on while any of its collections there has its
-  # Backlog on; nil for anyone else, and for a target with no collection there (none
-  # live, of a connected connection, assigned to the workspace, with the target's system
-  # and path, that has items and whose adapter has items). A collection with no items, or
-  # of an adapter with none, has no switch: it is never linked, and its `backlog` keeps
-  # its value, unread.
-  @spec backlog_switch(Scope.t(), Target.t()) :: %{on: boolean} | nil
+  # (`work_item.read`): `%{on: on, item_noun: noun}`, on while any of its collections
+  # there has its Backlog on, and `noun` what their adapters call their items
+  # (`Apiary.Adapters.shared_item_noun/1`); nil for anyone else, and for a target with no
+  # collection there (none live, of a connected connection, assigned to the workspace,
+  # with the target's system and path, that has items and whose adapter has items). A
+  # collection with no items, or of an adapter with none, has no switch: it is never
+  # linked, and its `backlog` keeps its value, unread.
+  @spec backlog_switch(Scope.t(), Target.t()) ::
+          %{on: boolean, item_noun: %{one: String.t(), other: String.t()} | nil} | nil
   def backlog_switch(%Scope{} = scope, %Target{} = target) do
     with true <- readable_target?(scope, target),
-         [_ | _] = switches <-
-           Repo.all(select(target_collections(target), [c], c.backlog)) do
-      %{on: Enum.any?(switches)}
+         [_ | _] = found <-
+           Repo.all(select(target_collections(target), [c, _k, n], {c.backlog, n})) do
+      %{
+        on: Enum.any?(found, &elem(&1, 0)),
+        item_noun: found |> Enum.map(&elem(&1, 1)) |> Adapters.shared_item_noun()
+      }
     else
       _none -> nil
     end
