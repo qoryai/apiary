@@ -6,7 +6,7 @@ defmodule Apiary.Kinds.Bounds do
   a walk of the decoded document before the schema refuses it at the cost of reading it.
   The walk bounds the document, not the schema: when the schema too comes from an
   untrusted input, a few of its references can make JSV's work grow exponentially with
-  their nesting however small the document, and only a time and a heap budget bound it
+  their nesting however small the document, and only a budget of work and heap bounds it
   (`Apiary.Kinds.Budget`).
 
   `within?/2` is the walk. It reads the decoded document once, keeping the values still

@@ -530,7 +530,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       settings = Map.put(settings, "any", List.duplicate(1, 4096 - values(settings) - 1))
       assert values(settings) == 4096
-      assert timed(fn -> Description.check_settings(description, settings) end) == :ok
+
+      # Valid settings pass however slow or busy the machine: the budget decides by
+      # reductions, the same on any machine, so the time is not asserted.
+      assert Description.check_settings(description, settings) == :ok
 
       for over <- [
             %{"list" => for(i <- 1..1025, do: "s#{i}")},
@@ -553,17 +556,17 @@ defmodule Apiary.Integrations.DescriptionTest do
   describe "the budget of the settings check" do
     # The settings schema comes from the description, and a few of its references can make
     # the check's work grow exponentially, which no limit on the settings bounds. The check
-    # runs in another process within 100 ms and 16 MiB of heap; one over that budget is
-    # refused as invalid settings, `budget: :exceeded`, and the warning it logs says which
-    # it ran out of, time or heap. Without the budget, measured: 1.2 s to 1.7 s at 20
+    # runs in another process within 5000000 reductions and 16 MiB of heap, which count
+    # the work and not the time, so which one each check runs out of is the same on any
+    # machine; one over that budget is refused as invalid settings, `budget: :exceeded`,
+    # and the warning it logs says which. Without the budget, measured: 1.2 s to 1.7 s at 20
     # levels of allOf and for 1000 patterns against 1024 strings, 5 s to 5.7 s and 1.19 GB
     # at 20 levels of allOf whose leaf refuses the value, 5.6 s at 20 levels of anyOf, 33 s
     # at 24 levels of allOf and over 30 s in draft-07; 24 s to 28 s for 1000 backtracking
     # patterns against a string of 60001 bytes, 15 s against 128 settings, 9.5 s against a
     # list of 100 strings, and 13.3 s for 1000 email formats against a string of 60 KB.
-    # With it, the heap ran out in under 40 ms where it did, the first check in a fresh VM
-    # included, but for the 1000 patterns, which ran out of time once. The time asserted
-    # leaves room for a slow machine.
+    # With it, each ran out within 350 ms. The time asserted leaves room for a slow
+    # machine; the time of the budget, 10 s, decides none of them.
     @refused_within_ms 1000
 
     defp with_settings_schema(schema) do
@@ -595,8 +598,7 @@ defmodule Apiary.Integrations.DescriptionTest do
         else: with_settings_schema(schema)
     end
 
-    # The refusal, in time, and the budget it ran out of, `reason`: "time", "heap", or
-    # "time|heap" where a cold machine can take longer to fill the heap than the time.
+    # The refusal, in time, and the budget it ran out of, `reason`: "reductions" or "heap".
     defp over_budget(description, settings, reason) do
       {{microseconds, result}, log} =
         with_log(fn -> :timer.tc(fn -> Description.check_settings(description, settings) end) end)
@@ -612,14 +614,14 @@ defmodule Apiary.Integrations.DescriptionTest do
     # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.
     defp backtracking, do: %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
 
-    test "a schema that doubles its work at each of 20 or 24 levels runs out of time" do
-      over_budget(doubling(20), %{"a" => "s"}, "time")
-      over_budget(doubling(24), %{"a" => "s"}, "time")
+    test "a schema that doubles its work at each of 20 or 24 levels runs out of reductions" do
+      over_budget(doubling(20), %{"a" => "s"}, "reductions")
+      over_budget(doubling(24), %{"a" => "s"}, "reductions")
     end
 
     test "so does one in draft-07, its definitions in definitions" do
-      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => "s"}, "time")
-      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => 1}, "time|heap")
+      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => "s"}, "reductions")
+      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => 1}, "heap")
     end
 
     test "a doubling schema whose leaf refuses the value runs out of heap, the errors kept" do
@@ -628,12 +630,12 @@ defmodule Apiary.Integrations.DescriptionTest do
       over_budget(doubling(20, "oneOf"), %{"a" => 1}, "heap")
     end
 
-    test "an anyOf of 16 or 18 levels, each referring twice to the next, is refused" do
-      over_budget(doubling(16, "anyOf", "integer"), %{"a" => "s"}, "time|heap")
-      over_budget(doubling(18, "anyOf", "integer"), %{"a" => "s"}, "time|heap")
+    test "an anyOf of 16 or 18 levels, each referring twice to the next, runs out of heap" do
+      over_budget(doubling(16, "anyOf", "integer"), %{"a" => "s"}, "heap")
+      over_budget(doubling(18, "anyOf", "integer"), %{"a" => "s"}, "heap")
     end
 
-    test "a schema of 1000 patterns for each of 1024 strings is refused" do
+    test "a schema of 1000 patterns for each of 1024 strings runs out of heap" do
       description =
         with_settings_schema(%{
           "type" => "object",
@@ -647,10 +649,10 @@ defmodule Apiary.Integrations.DescriptionTest do
           }
         })
 
-      over_budget(description, %{"x" => List.duplicate("a", 1024)}, "time|heap")
+      over_budget(description, %{"x" => List.duplicate("a", 1024)}, "heap")
     end
 
-    test "1000 backtracking patterns run out of time on one long setting, on 128, on a list" do
+    test "1000 backtracking patterns run out of reductions on a long setting, 128, a list" do
       one =
         with_settings_schema(%{
           "type" => "object",
@@ -658,7 +660,7 @@ defmodule Apiary.Integrations.DescriptionTest do
           "$defs" => %{"p" => backtracking()}
         })
 
-      over_budget(one, %{"s1" => String.duplicate("a", 60_000) <> "!"}, "time")
+      over_budget(one, %{"s1" => String.duplicate("a", 60_000) <> "!"}, "reductions")
 
       many =
         with_settings_schema(%{
@@ -667,7 +669,11 @@ defmodule Apiary.Integrations.DescriptionTest do
           "$defs" => %{"p" => backtracking()}
         })
 
-      over_budget(many, Map.new(1..128, &{"s#{&1}", String.duplicate("a", 60) <> "!"}), "time")
+      over_budget(
+        many,
+        Map.new(1..128, &{"s#{&1}", String.duplicate("a", 60) <> "!"}),
+        "reductions"
+      )
 
       list =
         with_settings_schema(%{
@@ -675,17 +681,21 @@ defmodule Apiary.Integrations.DescriptionTest do
           "properties" => %{"l" => %{"type" => "array", "items" => backtracking()}}
         })
 
-      over_budget(list, %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)}, "time")
+      over_budget(
+        list,
+        %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)},
+        "reductions"
+      )
     end
 
-    test "1000 email formats against a string of 60 KB are refused" do
+    test "1000 email formats against a string of 60 KB run out of heap" do
       description =
         with_settings_schema(%{
           "type" => "object",
           "properties" => %{"e" => %{"allOf" => for(_ <- 1..1000, do: %{"format" => "email"})}}
         })
 
-      over_budget(description, %{"e" => String.duplicate("a", 60_000) <> "@"}, "time|heap")
+      over_budget(description, %{"e" => String.duplicate("a", 60_000) <> "@"}, "heap")
     end
 
     test "a schema that doubles its work at each of 10 levels passes, as do 1000 settings" do
