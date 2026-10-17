@@ -336,9 +336,12 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   describe "bounded first" do
-    # Generous for a shared machine: a refused body takes a few milliseconds here, and the
-    # worst a body of 1 MiB can be made to cost well under this.
-    @quick_ms 500
+    # The bound the adapter wire's test holds a refused body to
+    # (`test/apiary/sources/wire_test.exs`), as these bodies are decoded as an adapter's
+    # are. Generous for a shared machine: the costliest of them, many members or deep
+    # nesting, is refused in about a tenth of a second on an idle machine and has taken
+    # over half a second on a shared one.
+    @quick_ms 1000
 
     defp quick(fun) do
       {microseconds, result} = :timer.tc(fun)
