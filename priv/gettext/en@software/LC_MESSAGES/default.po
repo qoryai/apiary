@@ -13708,6 +13708,13 @@ msgstr ""
 msgid "Work items"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Work items: %{count} waits for you"
+msgid_plural "Work items: %{count} wait for you"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Works once, until %{time} (%{validity}). It is shown only now."

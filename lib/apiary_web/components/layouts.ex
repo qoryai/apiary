@@ -2253,7 +2253,11 @@ defmodule ApiaryWeb.Layouts do
       >
         {policy_mode(@counts)}
       </span>
-      <span :if={count = nav_count(@counts, @entry)} class="q-nav-count">
+      <span
+        :if={count = nav_count(@counts, @entry)}
+        class="q-nav-count"
+        title={nav_count_title(@entry, count)}
+      >
         {Format.number(count)}
       </span>
     </.link>
@@ -2572,6 +2576,13 @@ defmodule ApiaryWeb.Layouts do
     do: Map.get(counts, key)
 
   defp nav_count(_counts, _entry), do: nil
+
+  # What a count beside an entry counts, where the number alone does not say: the work
+  # items that wait for the reader.
+  defp nav_count_title(%Entry{key: :work_items}, count),
+    do: ngettext("Work items: %{count} waits for you", "Work items: %{count} wait for you", count)
+
+  defp nav_count_title(_entry, _count), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
   # workspace has no policy of Qory's yet.
