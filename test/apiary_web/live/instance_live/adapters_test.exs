@@ -33,6 +33,18 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     |> Enum.join(" ")
   end
 
+  # A line's words, each of its parts apart, as it shows them.
+  defp line(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> String.replace("<span", " <span")
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
   test "lists the adapters by name, each with its public id and its state",
        %{conn: conn, admin: admin} do
     shop = adapter_fixture(%{name: "Shop tracker"})
@@ -99,6 +111,51 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     assert words(lv, "#adapter-#{shop.public_id}-pulls") == "Every hour"
     assert words(lv, "#adapter-#{platform.public_id}-pulls") == "Every 15 minutes"
     assert words(lv, "#adapter-#{acme.public_id}-pulls") == "Not declared yet"
+  end
+
+  test "where the table is narrow, one line under the name holds the Pulls and State columns",
+       %{conn: conn, admin: admin} do
+    shop = adapter_fixture(%{name: "Shop tracker"})
+    platform = adapter_fixture(%{name: "Platform tracker"})
+    acme = adapter_fixture(%{name: "Acme tracker"})
+    later = adapter_fixture(%{name: "Acme tracker 2"})
+    %{access_key: key} = enrolled_key_fixture(admin, shop)
+    enrolled_key_fixture(admin, platform)
+    enrolled_key_fixture(admin, later)
+
+    Repo.update_all(from(n in Node, where: n.id in ^[shop.id, platform.id]),
+      set: [sync_default_interval: 3600, sync_minimum_interval: 900, sync_sends_changes: true]
+    )
+
+    Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
+      set: [last_used_at: DateTime.add(DateTime.utc_now(:second), -60)]
+    )
+
+    {:ok, lv, html} = live(conn, ~p"/instance/adapters")
+
+    assert html =~ ~r{<th[^>]*class="q-from-sm"[^>]*>\s*Pulls\s*</th>}
+
+    assert html =~
+             ~r{<th[^>]*class="q-from-sm text-right"[^>]*>\s*<span class="sr-only">State</span>}
+
+    for adapter <- [shop, platform, acme, later] do
+      id = "adapter-#{adapter.public_id}"
+
+      assert has_element?(
+               lv,
+               ~s{##{id} td.q-td-title ##{id}-narrow.flex[class~="@min-[600px]:hidden"]}
+             )
+
+      assert has_element?(lv, "##{id} td.q-from-sm ##{id}-pulls")
+      assert has_element?(lv, "##{id} td.q-from-sm.text-right ##{id}-state")
+    end
+
+    assert line(lv, "#adapter-#{shop.public_id}-narrow") =~ ~r/^Every hour · Last seen \S/
+    assert has_element?(lv, "#adapter-#{shop.public_id}-narrow-state-seen")
+    assert line(lv, "#adapter-#{platform.public_id}-narrow") == "Every hour · Never seen"
+    assert line(lv, "#adapter-#{acme.public_id}-narrow") == "No key yet · not declared yet"
+    assert has_element?(lv, "#adapter-#{acme.public_id}-narrow-state.q-stw-hot")
+    assert line(lv, "#adapter-#{later.public_id}-narrow") == "Never seen · not declared yet"
   end
 
   test "with no adapter, says there is none", %{conn: conn, admin: admin} do
