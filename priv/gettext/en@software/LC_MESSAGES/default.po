@@ -10915,6 +10915,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Qory proposed how to build it, after %{duration}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Qory proposed how to build it, after %{duration}. It waits for %{name} to confirm"
 msgstr ""
 

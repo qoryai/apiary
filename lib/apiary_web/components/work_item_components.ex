@@ -430,8 +430,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
       with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
       the take in, and Decline.
-    * Explore, the run limit (`:used_up`): that the take in used its runs, and why Qory
-      cannot explore again; with `can_act`, the two ways on, Decline and, with
+    * Explore, the run limit (`:used_up`, and questions or no result at the take in's
+      last run): that the take in used its runs, and why Qory cannot explore again; with `can_act`, the two ways on, Decline and, with
       `can_close`, Close work item… (`"ask_close"`).
     * Confirm: Qory's proposal waits; Read Qory's proposal (`explore_path`), Confirm
       (`"confirm"`), Change (the edit page, `edit_path`) and Decline (`"ask_decline"`).
@@ -479,7 +479,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
-    work_item = assigns.work_item
+    work_item = at_limit(assigns.work_item)
     status = work_item.status
 
     assigns =
@@ -834,10 +834,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(assigns,
         line: no_result_line(status, run),
         next:
-          gettext("It starts run %{attempt} of %{of} of this take in.",
-            attempt: Format.number(run.attempt + 1),
-            of: Format.number(run.of)
-          )
+          next_run?(run) &&
+            gettext("It starts run %{attempt} of %{of} of this take in.",
+              attempt: Format.number(run.attempt + 1),
+              of: Format.number(run.of)
+            )
       )
 
     ~H"""
@@ -854,7 +855,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       </.button>
       <.decline_button id={@id} number={@number} />
     </div>
-    <p :if={@can_act} id={"#{@id}-next"} class="q-wi-hint">{@next}</p>
+    <p :if={@can_act && @next} id={"#{@id}-next"} class="q-wi-hint">{@next}</p>
     """
   end
 
@@ -1522,8 +1523,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       the answers that run reads, grouped by the run that asked them;
     * questions: Qory's questions, with the form for a reader who may act (`can_act`):
       one answer for each, Answer and explore again (`"answer"`);
-    * the run limit: the note that the take in used its runs, then the last questions,
-      read-only, or what happened to the last run;
+    * the run limit, and questions or a run without a result at the last run of the take
+      in: the note that the take in used its runs over the last questions, read-only, or
+      what happened to the last run;
     * no result, lost or cancelled: what happened, and the run's page;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
@@ -1555,7 +1557,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   printable ASCII percent-encoded.
 
   The form's draft is `answers` (by question `public_id`), and `errors` its errors, by
-  question `public_id`: `:blank` or `{:too_long, limit}`.
+  question `public_id`: `:blank` or `{:too_long, limit}`. The focus goes to the first
+  question at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-explore"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
@@ -1565,10 +1568,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :can_act, :boolean, default: false, doc: "whether the reader may answer"
   attr :answers, :map, default: %{}, doc: "the form's draft, by question `public_id`"
   attr :errors, :map, default: %{}, doc: "the form's errors, by question `public_id`"
+
+  attr :submits, :integer,
+    default: 0,
+    doc: "how many times the form was sent; the focus goes to the first error after each"
+
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def explore_tab(assigns) do
-    work_item = assigns.work_item
+    work_item = at_limit(assigns.work_item)
     status = work_item.status
     run = work_item[:run]
     groups = Enum.filter(assigns.earlier_runs, &answered?/1)
@@ -1603,7 +1611,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         groups={@groups}
         now={@now}
       />
-      <div :if={@status == :used_up} id={"#{@id}-limit"} class="q-xp-note">
+      <div
+        :if={@status == :used_up && @run[:outcome] == :questions}
+        id={"#{@id}-limit"}
+        class="q-xp-note"
+      >
         <.icon name="hero-exclamation-triangle-micro" class="q-xp-note-i size-4" />
         <p>
           {ngettext(
@@ -1622,6 +1634,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         mode={@mode}
         answers={@answers}
         errors={@errors}
+        submits={@submits}
       />
       <.proposal_frame
         :if={@view == :proposal}
@@ -1645,6 +1658,19 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # What the tab shows for the latest run: what comes next while it is queued or running,
   # else what the run gave.
+  # Run 3 of 3 that asked again or gave no result is the run limit: no run can follow it.
+  defp at_limit(%{status: status, run: run} = work_item)
+       when status in [:questions | @no_result] and is_map(run) do
+    if next_run?(run), do: work_item, else: %{work_item | status: :used_up}
+  end
+
+  defp at_limit(work_item), do: work_item
+
+  defp next_run?(%{attempt: attempt, of: of}) when is_integer(attempt) and is_integer(of),
+    do: attempt < of
+
+  defp next_run?(_run), do: true
+
   defp explore_view(status, _run) when status in [:queued, :running], do: :wait
   defp explore_view(_status, nil), do: nil
   defp explore_view(_status, %{outcome: :proposal}), do: :proposal
@@ -1882,6 +1908,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :mode, :atom, required: true, values: [:form, :read]
   attr :answers, :map, default: %{}
   attr :errors, :map, default: %{}
+  attr :submits, :integer, default: 0
 
   # Qory's questions, in a frame that names the run; with the form for a member who may
   # answer them.
@@ -1899,11 +1926,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         first_error: first_error,
         heading: ngettext("Qory's question", "Qory's questions", n),
         next:
-          gettext(
-            "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
-            attempt: Format.number(run.attempt + 1),
-            of: Format.number(run.of)
-          )
+          next_run?(run) &&
+            gettext(
+              "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
+              attempt: Format.number(run.attempt + 1),
+              of: Format.number(run.of)
+            )
       )
 
     ~H"""
@@ -1940,12 +1968,12 @@ defmodule ApiaryWeb.WorkItemComponents do
               </ol>
               <span
                 :if={@first_error}
-                id={"#{@id}-focus-#{@first_error.public_id}"}
+                id={"#{@id}-focus-#{@submits}-#{@first_error.public_id}"}
                 hidden
                 phx-mounted={JS.focus(to: "##{@id}-answer-#{@first_error.public_id}")}
               ></span>
               <div class="q-xp-form-foot">
-                <p id={"#{@id}-next"}>{@next}</p>
+                <p :if={@next} id={"#{@id}-next"}>{@next}</p>
                 <.button id={"#{@id}-go"} type="submit" variant="primary">
                   <.icon name="hero-paper-airplane-micro" class="size-3.5" />{gettext(
                     "Answer and explore again"
@@ -2005,7 +2033,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           placeholder={gettext("Your answer")}
           aria-describedby={if @message, do: "#{@q_id} #{@error_id}", else: @q_id}
           aria-invalid={@message && "true"}
-        >{@value}</textarea>
+        >{["\n", @value || ""]}</textarea>
         <p :if={@message} id={@error_id} class="q-xp-err">
           <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@message}
         </p>
@@ -2080,7 +2108,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         >
           <:draw :let={complexity}>
             <div class="q-xp-cx">
-              <.badge>{level_word(complexity.level)}</.badge>
+              <.badge :if={level_word(complexity[:level])}>{level_word(complexity[:level])}</.badge>
               <div class="q-xp-val" phx-no-format>{complexity.reason}</div>
             </div>
           </:draw>
@@ -2124,21 +2152,21 @@ defmodule ApiaryWeb.WorkItemComponents do
         <div id={"#{@id}-alternatives"} class="q-xp-sec">
           <h3>{gettext("Not chosen")}</h3>
           <ul class="q-xp-list">
-            <li :for={alternative <- @proposal.alternatives || []} phx-no-format>{alternative.text}<span class="q-xp-why"><.rich text={rich_gettext("Why not: %{reason}", reason: {:bdi, alternative.reason})} /></span></li>
-            <li :if={(@proposal.alternatives || []) == []} class="q-xp-none">{gettext("None")}</li>
+            <li :for={alternative <- @proposal[:alternatives] || []} phx-no-format>{alternative.text}<span class="q-xp-why"><.rich text={rich_gettext("Why not: %{reason}", reason: {:bdi, alternative.reason})} /></span></li>
+            <li :if={(@proposal[:alternatives] || []) == []} class="q-xp-none">{gettext("None")}</li>
           </ul>
         </div>
         <div id={"#{@id}-knowledge"} class="q-xp-sec">
           <h3>{gettext("What Qory learned, and where")}</h3>
-          <ul :if={(@proposal.knowledge || []) != []} class="q-xp-know">
-            <li :for={item <- @proposal.knowledge}>
+          <ul :if={(@proposal[:knowledge] || []) != []} class="q-xp-know">
+            <li :for={item <- @proposal[:knowledge] || []}>
               <div class="q-xp-val" phx-no-format>{item.text}</div>
-              <ul :if={(item.sources || []) != []} class="q-xp-src" aria-label={gettext("Sources")}>
-                <li :for={url <- item.sources}><.source url={url} /></li>
+              <ul :if={(item[:sources] || []) != []} class="q-xp-src" aria-label={gettext("Sources")}>
+                <li :for={url <- item[:sources] || []}><.source url={url} /></li>
               </ul>
             </li>
           </ul>
-          <ul :if={(@proposal.knowledge || []) == []} class="q-xp-list">
+          <ul :if={(@proposal[:knowledge] || []) == []} class="q-xp-list">
             <li class="q-xp-none">{gettext("None")}</li>
           </ul>
         </div>
@@ -2266,6 +2294,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp level_word(:simple), do: pgettext("complexity", "Simple")
   defp level_word(:standard), do: pgettext("complexity", "Standard")
   defp level_word(:complex), do: pgettext("complexity", "Complex")
+  defp level_word(_level), do: nil
 
   attr :url, :string, required: true
 
@@ -2513,7 +2542,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   `:understanding`, `:scope_in`, `:scope_out`, `:approach`), each a string; the run's
   words where it is not given. `errors`, by the same names, says what is wrong with a
   field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}` or
-  `{:too_many_lines, limit}`; the focus goes to the first field at fault.
+  `{:too_many_lines, limit}`; an error a field has no words for marks nothing. The focus
+  goes to the first field at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-edit"
   attr :number, :integer, required: true, doc: "the work item's number"
@@ -2521,6 +2551,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :values, :map, default: %{}, doc: "what the fields hold, by name"
   attr :errors, :map, default: %{}, doc: "what is wrong, by field"
   attr :explore_path, :string, required: true, doc: "Explore's tab"
+
+  attr :submits, :integer,
+    default: 0,
+    doc: "how many times the form was sent; the focus goes to the first error after each"
 
   def proposal_edit(assigns) do
     initial = edit_values(assigns.proposal)
@@ -2532,11 +2566,18 @@ defmodule ApiaryWeb.WorkItemComponents do
           into: MapSet.new(),
           do: field
 
-    first_error = Enum.find(@edit_fields, &Map.has_key?(assigns.errors, &1))
+    errors =
+      for {field, error} <- assigns.errors,
+          edit_error(field, error),
+          into: %{},
+          do: {field, error}
+
+    first_error = Enum.find(@edit_fields, &Map.has_key?(errors, &1))
 
     assigns =
       assign(assigns,
         values: values,
+        errors: errors,
         changed: changed,
         first_error: first_error,
         complexity_changed: MapSet.member?(changed, :level) or MapSet.member?(changed, :reason)
@@ -2643,7 +2684,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         />
         <span
           :if={@first_error}
-          id={"#{@id}-focus-#{@first_error}"}
+          id={"#{@id}-focus-#{@submits}-#{@first_error}"}
           hidden
           phx-mounted={JS.focus(to: "##{@id}-#{edit_dom(@first_error)}")}
         ></span>
@@ -2721,7 +2762,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       rows={@rows}
       aria-describedby={described(@described ++ [@error && "#{@id}-err"])}
       aria-invalid={@error && "true"}
-    >{@value}</textarea>
+    >{["\n", @value || ""]}</textarea>
     <p :if={@error} id={"#{@id}-err"} class="q-xp-err">
       <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@error}
     </p>
@@ -2792,6 +2833,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp edit_error(_field, {:too_many_lines, limit}),
     do: ngettext("Write at most %{count} line.", "Write at most %{count} lines.", limit)
+
+  # An error without words for its field (Out of scope may be empty) marks nothing.
+  defp edit_error(_field, _error), do: nil
 
   ## The Ticket tab
 
@@ -2944,7 +2988,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
     * `:proposed` - Qory proposed how to build it, after how long, and whose turn it is
-      (`owner`); nothing where it has no owner;
+      (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`);
     * `:explore_again` - who asked Qory to explore again;
@@ -3004,8 +3048,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "`:declined`: where"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
-
-  def thread_event(%{kind: :proposed, owner: nil} = assigns), do: ~H""
 
   def thread_event(assigns) do
     now = now(assigns)
@@ -3169,6 +3211,9 @@ defmodule ApiaryWeb.WorkItemComponents do
           name: {:b, actor.name}
         )
   end
+
+  defp event_line(%{kind: :proposed, owner: nil, duration: duration}),
+    do: rich_gettext("Qory proposed how to build it, after %{duration}.", duration: duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),

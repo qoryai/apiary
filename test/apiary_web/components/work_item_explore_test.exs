@@ -1040,7 +1040,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-questions-answer-qq_01") == hd(@answers)
       assert attr(html, "#work-item-explore-questions-answer-qq_01", "aria-invalid") == []
 
-      assert attr(html, "#work-item-explore-questions-focus-qq_02", "phx-mounted") |> hd() =~
+      assert attr(html, "#work-item-explore-questions-focus-0-qq_02", "phx-mounted") |> hd() =~
                "#work-item-explore-questions-answer-qq_02"
     end
 
@@ -1343,12 +1343,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, "#work-item-edit-approach", "aria-describedby") ==
                ["work-item-edit-approach-ch work-item-edit-approach-err"]
 
-      assert attr(html, "#work-item-edit-focus-approach", "phx-mounted") |> hd() =~
+      assert attr(html, "#work-item-edit-focus-0-approach", "phx-mounted") |> hd() =~
                "#work-item-edit-approach"
 
       first = edit(errors: %{approach: :blank, understanding: :blank})
-      assert count(first, "#work-item-edit-focus-understanding") == 1
-      assert count(first, "#work-item-edit-focus-approach") == 0
+      assert count(first, "#work-item-edit-focus-0-understanding") == 1
+      assert count(first, "#work-item-edit-focus-0-approach") == 0
     end
 
     test "every error's words" do
@@ -1424,14 +1424,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert line(one) == "Priya answered Qory's question 14 Oct, 11:25"
     end
 
-    test "proposed: after how long, and whose turn; nothing without an owner" do
+    test "proposed: after how long, and whose turn; only how long without an owner" do
       assert line(event(kind: :proposed, owner: @dana, duration: "11 minutes")) ==
                "Qory proposed how to build it, after 11 minutes. It waits for you to confirm 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: @lea, duration: "7 minutes")) ==
                "Qory proposed how to build it, after 7 minutes. It waits for Lea to confirm 14 Oct, 11:25"
 
-      assert String.trim(event(kind: :proposed, owner: nil, duration: "7 minutes")) == ""
+      assert line(event(kind: :proposed, owner: nil, duration: "7 minutes")) ==
+               "Qory proposed how to build it, after 7 minutes. 14 Oct, 11:25"
     end
 
     test "a run without a result, lost or cancelled, with its mark" do
@@ -1584,6 +1585,155 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       if name == "href" and not String.starts_with?(value, "/"),
         do: assert(value =~ ~r{\Ahttps://}, value)
+    end
+  end
+
+  ## The last run of the take in
+
+  describe "the take in's last run" do
+    defp last(status, overrides) do
+      r =
+        run(
+          Map.merge(
+            %{
+              id: "rn_01aa47c9b05e3f18",
+              path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+              attempt: 3,
+              proposal: nil,
+              ended_at: ago(8 * 60)
+            },
+            overrides
+          )
+        )
+
+      work_item(%{number: 94, status: status, run: r})
+    end
+
+    test "the run limit after a run without a result: no note over questions that are not there" do
+      for overrides <- [
+            %{state: :lost, outcome: nil},
+            %{state: :cancelled, outcome: nil},
+            %{state: :failed, outcome: :error},
+            %{outcome: :none}
+          ] do
+        html = tab(last(:used_up, overrides), can_act: true)
+        assert count(html, "#work-item-explore-limit") == 0, inspect(overrides)
+        assert count(html, "#work-item-explore-none") == 1, inspect(overrides)
+        assert count(html, "#work-item-explore-questions") == 0, inspect(overrides)
+      end
+
+      asked = last(:used_up, %{outcome: :questions, questions: [hd(questions())]})
+      assert count(tab(asked, can_act: true), "#work-item-explore-limit") == 1
+    end
+
+    test "no result at run 3 of 3 is the run-limit card: no Run Explore again, no run 4 of 3" do
+      for {status, overrides} <- [
+            {:no_result, %{state: :failed, outcome: :error}},
+            {:lost, %{state: :lost, outcome: nil}},
+            {:cancelled, %{state: :cancelled, outcome: nil}}
+          ] do
+        html = card(last(status, overrides), can_close: true)
+
+        assert text(html, ".q-wi-badge") == "3 of 3 runs used"
+        assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
+
+        assert text(html, "#work-item-step-line") ==
+                 "Run rn_01aa47c9 was run 3 of 3, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in."
+
+        assert count(html, "#work-item-step-again") == 0
+        assert count(html, "#work-item-step-next") == 0
+        refute html =~ "run 4 of 3"
+        assert text(html, "#work-item-step-close") == "Close work item…"
+
+        tab = tab(last(status, overrides), can_act: true)
+        assert count(tab, "#work-item-explore-limit") == 0
+        assert count(tab, "#work-item-explore-none") == 1
+      end
+    end
+
+    test "questions at run 3 of 3 are read-only under the note: no form, no run 4 of 3" do
+      w = last(:questions, %{outcome: :questions, questions: [hd(questions())]})
+
+      html = tab(w, can_act: true)
+      assert count(html, "#work-item-explore-limit") == 1
+      assert count(html, "form") == 0
+      assert count(html, "#work-item-explore-questions-next") == 0
+      refute html =~ "run 4 of 3"
+
+      assert text(card(w), ".q-wi-badge") == "3 of 3 runs used"
+    end
+
+    test "below the limit, the next run is named" do
+      html = card(last(:lost, %{attempt: 2, state: :lost, outcome: nil}))
+      assert text(html, "#work-item-step-next") == "It starts run 3 of 3 of this take in."
+      assert text(html, "#work-item-step-again") == "Run Explore again"
+    end
+  end
+
+  ## A field's first line, missing keys, the focus
+
+  describe "the fields and the run's words, robustly" do
+    test "a value that starts with a line break keeps it in its field" do
+      [answer] =
+        tab(questions_item(), can_act: true, answers: %{"qq_01" => "\nWeb only."})
+        |> query("#work-item-explore-questions-answer-qq_01")
+        |> Enum.to_list()
+
+      assert LazyHTML.text(answer) == "\nWeb only."
+
+      html = edit(proposal: proposal(%{approach: "\nStarts after a line."}))
+      [approach] = html |> query("#work-item-edit-approach") |> Enum.to_list()
+      assert LazyHTML.text(approach) == "\nStarts after a line."
+      assert count(html, "#work-item-edit-approach-ch") == 0
+
+      [plain] = edit() |> query("#work-item-edit-approach") |> Enum.to_list()
+
+      assert LazyHTML.text(plain) ==
+               "Extract the order service's rounding into a function in the pricing module."
+    end
+
+    test "a proposal without Not chosen or knowledge says None; a fact without sources lists none" do
+      p = proposal() |> Map.delete(:alternatives) |> Map.delete(:knowledge)
+      html = tab(work_item(%{run: run(%{proposal: p})}))
+
+      assert text(html, "#work-item-explore-proposal-alternatives li") == "None"
+      assert text(html, "#work-item-explore-proposal-knowledge li") == "None"
+
+      bare = proposal(%{knowledge: [%{text: "A fact."}]})
+      html = tab(work_item(%{run: run(%{proposal: bare})}))
+      assert text(html, "#work-item-explore-proposal-knowledge .q-xp-know > li") == "A fact."
+      assert count(html, ".q-xp-src") == 0
+    end
+
+    test "an unknown complexity level shows no level word" do
+      p = proposal(%{complexity: %{level: :huge, reason: "Why."}})
+      html = tab(work_item(%{run: run(%{proposal: p})}))
+      assert count(html, "#work-item-explore-proposal-complexity .badge") == 0
+      assert text(html, "#work-item-explore-proposal-complexity .q-xp-val") == "Why."
+
+      edit = edit(proposal: p)
+      assert attr(edit, "#work-item-edit-level option[selected]", "value") == []
+    end
+
+    test "an error a field has no words for marks nothing" do
+      for errors <- [%{scope_out: :blank}, %{approach: :unknown}] do
+        html = edit(errors: errors)
+        assert count(html, ".q-xp-err") == 0
+        assert count(html, "[aria-invalid]") == 0
+        assert count(html, "[phx-mounted]") == 0
+      end
+    end
+
+    test "the focus span is new after each send, so the focus moves again" do
+      errors = %{"qq_02" => :blank}
+
+      for submits <- [1, 2] do
+        html = tab(questions_item(), can_act: true, errors: errors, submits: submits)
+        assert count(html, "#work-item-explore-questions-focus-#{submits}-qq_02") == 1
+
+        edited = edit(errors: %{approach: :blank}, submits: submits)
+        assert count(edited, "#work-item-edit-focus-#{submits}-approach") == 1
+      end
     end
   end
 end
