@@ -161,14 +161,15 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
   end
 
   # The run's attach window ends `seconds` from now, and an attach of it is held, uncommitted,
-  # until told to commit; with the end of the window. A window that closed before the attach
-  # read its clock, on a slow machine, is opened again for twice as long, up to 32 seconds.
+  # until told to commit, and returned with the end of the window. A window that closed
+  # before the attach read its clock, on a slow machine, is opened again for twice as long,
+  # up to 8 seconds, which the 10 seconds the attach's answer is waited for cover.
   # The window is set before the attach's transaction, not in it: a second change of the
   # run's row in that transaction would have its foreign key checked again, and that check
-  # holds the gateway's row as the attach's own lock does.
+  # holds the gateway's row as the attach's lock does.
   defp held_attach(gateway_key, run, body, seconds)
 
-  defp held_attach(_gateway_key, _run, _body, seconds) when seconds > 32,
+  defp held_attach(_gateway_key, _run, _body, seconds) when seconds > 8,
     do: flunk("the attach never came within its window")
 
   defp held_attach(gateway_key, run, body, seconds) do
