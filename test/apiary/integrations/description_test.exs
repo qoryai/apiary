@@ -2,6 +2,7 @@ defmodule Apiary.Integrations.DescriptionTest do
   use ExUnit.Case, async: true
 
   import Apiary.DescriptionFixtures
+  import ExUnit.CaptureLog
 
   alias Apiary.Integrations.Description
 
@@ -436,11 +437,17 @@ defmodule Apiary.Integrations.DescriptionTest do
   describe "the budget of the settings check" do
     # The settings schema comes from the description, and a few of its references can make
     # the check's work grow exponentially, which no limit on the settings bounds. The check
-    # runs in another process within 500 ms and 32 MiB of heap; one over that budget is
-    # refused as invalid settings, `budget: :exceeded`, in about 500 ms or less. Without
-    # the budget the checks below took 1.2 s to 1.7 s at 20 levels of allOf and for the
-    # patterns, 5.6 s at 20 levels of anyOf, and over 5 s at 24 levels of allOf. The time
-    # asserted leaves room for a slow machine.
+    # runs in another process within 100 ms and 16 MiB of heap; one over that budget is
+    # refused as invalid settings, `budget: :exceeded`, and the warning it logs says which
+    # it ran out of, time or heap. Without the budget, measured: 1.2 s to 1.7 s at 20
+    # levels of allOf and for 1000 patterns against 1024 strings, 5 s to 5.7 s and 1.19 GB
+    # at 20 levels of allOf whose leaf refuses the value, 5.6 s at 20 levels of anyOf, 33 s
+    # at 24 levels of allOf and over 30 s in draft-07; 24 s to 28 s for 1000 backtracking
+    # patterns against a string of 60001 bytes, 15 s against 128 settings, 9.5 s against a
+    # list of 100 strings, and 13.3 s for 1000 email formats against a string of 60 KB.
+    # With it, the heap ran out in under 40 ms where it did, the first check in a fresh VM
+    # included, but for the 1000 patterns, which ran out of time once. The time asserted
+    # leaves room for a slow machine.
     @refused_within_ms 1000
 
     defp with_settings_schema(schema) do
@@ -449,45 +456,68 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
 
     # A schema whose every level refers twice to the next, in `keyword`: 2^levels checks of
-    # one string, which the last level takes as `last` says.
-    defp doubling(levels, keyword \\ "allOf", last \\ "string") do
-      defs =
+    # one value, which the last level takes as `last` says. The definitions are in
+    # `defs`, `$defs`, or `definitions` under draft-07.
+    defp doubling(levels, keyword \\ "allOf", last \\ "string", defs \\ "$defs") do
+      chain =
         Map.new(1..levels, fn i ->
-          next = %{"$ref" => "#/$defs/d#{i + 1}"}
+          next = %{"$ref" => "#/#{defs}/d#{i + 1}"}
           {"d#{i}", %{keyword => [next, next]}}
         end)
 
-      with_settings_schema(%{
+      schema = %{
         "type" => "object",
-        "properties" => %{"a" => %{"$ref" => "#/$defs/d1"}},
-        "$defs" => Map.put(defs, "d#{levels + 1}", %{"type" => last})
-      })
+        "properties" => %{"a" => %{"$ref" => "#/#{defs}/d1"}},
+        defs => Map.put(chain, "d#{levels + 1}", %{"type" => last})
+      }
+
+      if defs == "definitions",
+        do:
+          with_settings_schema(
+            Map.put(schema, "$schema", "http://json-schema.org/draft-07/schema#")
+          ),
+        else: with_settings_schema(schema)
     end
 
-    defp over_budget(description, settings) do
-      {microseconds, result} =
-        :timer.tc(fn -> Description.check_settings(description, settings) end)
+    # The refusal, in time, and the budget it ran out of, `reason`: "time", "heap", or
+    # "time|heap" where a cold machine can take longer to fill the heap than the time.
+    defp over_budget(description, settings, reason) do
+      {{microseconds, result}, log} =
+        with_log(fn -> :timer.tc(fn -> Description.check_settings(description, settings) end) end)
 
       assert result ==
                {:error, {:integration_settings_invalid, %{valid: false, budget: :exceeded}}}
 
+      assert log =~ "settings check was stopped name=acme-tracker"
+      assert log =~ ~r/reason=(#{reason})$/m
       assert div(microseconds, 1000) < @refused_within_ms, "took #{div(microseconds, 1000)} ms"
     end
 
-    @tag :capture_log
-    test "a schema that doubles its work at each of 20 or 24 levels is refused within the budget" do
-      over_budget(doubling(20), %{"a" => "s"})
-      over_budget(doubling(24), %{"a" => "s"})
+    # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.
+    defp backtracking, do: %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+
+    test "a schema that doubles its work at each of 20 or 24 levels runs out of time" do
+      over_budget(doubling(20), %{"a" => "s"}, "time")
+      over_budget(doubling(24), %{"a" => "s"}, "time")
     end
 
-    @tag :capture_log
-    test "a schema whose anyOf doubles its work at each of 20 levels is refused within the budget" do
-      # The string fails every branch, so every branch is checked.
-      over_budget(doubling(20, "anyOf", "integer"), %{"a" => "s"})
+    test "so does one in draft-07, its definitions in definitions" do
+      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => "s"}, "time")
+      over_budget(doubling(24, "allOf", "string", "definitions"), %{"a" => 1}, "time|heap")
     end
 
-    @tag :capture_log
-    test "a schema of 1000 patterns for each of 1024 strings is refused within the budget" do
+    test "a doubling schema whose leaf refuses the value runs out of heap, the errors kept" do
+      over_budget(doubling(20), %{"a" => 1}, "heap")
+      over_budget(doubling(20, "anyOf", "integer"), %{"a" => "s"}, "heap")
+      over_budget(doubling(20, "oneOf"), %{"a" => 1}, "heap")
+    end
+
+    test "an anyOf of 16 or 18 levels, each referring twice to the next, is refused" do
+      over_budget(doubling(16, "anyOf", "integer"), %{"a" => "s"}, "time|heap")
+      over_budget(doubling(18, "anyOf", "integer"), %{"a" => "s"}, "time|heap")
+    end
+
+    test "a schema of 1000 patterns for each of 1024 strings is refused" do
       description =
         with_settings_schema(%{
           "type" => "object",
@@ -501,7 +531,45 @@ defmodule Apiary.Integrations.DescriptionTest do
           }
         })
 
-      over_budget(description, %{"x" => List.duplicate("a", 1024)})
+      over_budget(description, %{"x" => List.duplicate("a", 1024)}, "time|heap")
+    end
+
+    test "1000 backtracking patterns run out of time on one long setting, on 128, on a list" do
+      one =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{"s1" => %{"$ref" => "#/$defs/p"}},
+          "$defs" => %{"p" => backtracking()}
+        })
+
+      over_budget(one, %{"s1" => String.duplicate("a", 60_000) <> "!"}, "time")
+
+      many =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => Map.new(1..128, &{"s#{&1}", %{"$ref" => "#/$defs/p"}}),
+          "$defs" => %{"p" => backtracking()}
+        })
+
+      over_budget(many, Map.new(1..128, &{"s#{&1}", String.duplicate("a", 60) <> "!"}), "time")
+
+      list =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{"l" => %{"type" => "array", "items" => backtracking()}}
+        })
+
+      over_budget(list, %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)}, "time")
+    end
+
+    test "1000 email formats against a string of 60 KB are refused" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{"e" => %{"allOf" => for(_ <- 1..1000, do: %{"format" => "email"})}}
+        })
+
+      over_budget(description, %{"e" => String.duplicate("a", 60_000) <> "@"}, "time|heap")
     end
 
     test "a schema that doubles its work at each of 10 levels passes, as do 1000 settings" do
@@ -519,14 +587,14 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
 
     test "every fixture with settings takes the settings it describes" do
-      assert {:ok, github} =
+      assert {:ok, fixture} =
                @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()
 
-      assert Description.check_settings(github, %{
+      assert Description.check_settings(fixture, %{
                "app_id" => 123_456,
                "installation_id" => 7,
                "permissions" => %{"contents" => "read"},
-               "api_url" => "https://api.github.com"
+               "api_url" => "http://localhost:8080"
              }) == :ok
 
       assert {:ok, tracker} = parse(tracker_description())

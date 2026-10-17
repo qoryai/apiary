@@ -1,9 +1,13 @@
 defmodule Apiary.Kinds.Bounds do
   @moduledoc """
-  Bounds keeps the validation of an untrusted JSON document by a JSON Schema in bounded
-  time. JSV checks every entry of a list and every member of an object even after the
+  Bounds limits the size of an untrusted JSON document before a JSON Schema validates
+  it. JSV checks every entry of a list and every member of an object even after the
   first refusal, so a list far longer than the schema allows costs a check of each entry;
   a walk of the decoded document before the schema refuses it at the cost of reading it.
+  The walk bounds the document, not the schema: when the schema too comes from an
+  untrusted input, a few of its references can make JSV's work grow exponentially with
+  their nesting however small the document, and only a time and a heap budget bound it
+  (`Apiary.Kinds.Budget`).
 
   `within?/2` is the walk. It reads the decoded document once, keeping the values still
   to read in a list and calling itself last, so nesting of any depth runs in constant

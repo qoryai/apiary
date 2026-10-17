@@ -66,8 +66,14 @@ defmodule Apiary.Integrations.Description do
   @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
 
   # The budget of the settings check, the build of the schema and the validation
-  # (`Apiary.Kinds.Budget`): 500 ms and 4194304 words of heap, 32 MiB on a 64-bit machine.
-  @settings_budget [ms: 500, heap_words: 4_194_304]
+  # (`Apiary.Kinds.Budget`): 100 ms and 2097152 words of heap, 16 MiB on a 64-bit machine.
+  # Measured in two runs of 50 checks each, idle and with every scheduler busy: settings
+  # at the limits above took 13.5 ms to 18.5 ms at the median and at most 24 ms; 1000
+  # settings of 1000 properties 4.7 ms to 5.7 ms at the median and at most 22 ms, with
+  # 439685 words of heap, the most of any measured; the settings of the fixtures under
+  # 2 ms. Connections checks settings while it holds the organisation's integrations lock
+  # (`Apiary.Connections.lock/1`), which keeps the budget small.
+  @settings_budget [ms: 100, heap_words: 2_097_152]
 
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
@@ -189,7 +195,7 @@ defmodule Apiary.Integrations.Description do
       more than 4096 values in all or more than 64 lists and objects nested in one
       another are refused so: the schema comes from the description and need bound none
       of them. For the same reason the schema is built and the settings validated in
-      another process, within 500 ms and 32 MiB of heap: a schema of a few references
+      another process, within 100 ms and 16 MiB of heap: a schema of a few references
       can make the work grow exponentially with their nesting. Settings whose check
       goes over that budget, or fails, are refused as `integration_settings_invalid`.
 
@@ -252,8 +258,8 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
-  defp budget_refusal(:exceeded), do: %{valid: false, budget: :exceeded}
   defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
+  defp budget_refusal(over) when over in [:time, :heap], do: %{valid: false, budget: :exceeded}
 
   @doc """
   check_argument/2 checks the argument a connection of `description` stores:
