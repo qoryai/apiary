@@ -27,7 +27,10 @@ defmodule Apiary.Dispatches.Wire do
   #   exactly `version` (1), `time`, `reason`, 1 to 200 characters, and `retry`, a
   #   boolean.
   #
-  # A length in characters is the schema's: Unicode code points.
+  # A length in characters is the schema's: Unicode code points. The text a body carries,
+  # `ref` and `reason`, is read as an adapter's text is (`Apiary.Adapters.Wire.text?/3`):
+  # valid UTF-8 and no U+0000, which the database cannot keep. Every other string is held
+  # to a pattern or a URL's characters, none of which is U+0000.
   #
   # **Bounded first.** Every bound is checked before the work it bounds, and the first
   # that fails refuses: a raw body over 1 MiB, the contract's limit for a request
@@ -47,11 +50,10 @@ defmodule Apiary.Dispatches.Wire do
   @max_reason 200
   # The bytes a string of the contract's may take at most: `pool_id` is ASCII, of a fixed
   # length; `time` is ASCII, `2026-10-15T12:00:00Z`; `type` is ASCII, at most 40; a string
-  # of at most 200 characters takes at most 800 bytes.
+  # of at most 200 characters takes at most 800 bytes (`Apiary.Adapters.Wire.text?/3`).
   @pool_id_bytes 19
   @time_bytes 20
   @max_job_system_bytes 40
-  @max_bytes_per_character 4
 
   @claim_required ~w(time version wait_seconds)
   @claim_optional ~w(pool_id)
@@ -137,7 +139,7 @@ defmodule Apiary.Dispatches.Wire do
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          reason when is_binary(reason) <- body["reason"],
-         true <- characters?(reason, @max_reason),
+         true <- AdapterWire.text?(reason, 1, @max_reason),
          retry when is_boolean(retry) <- body["retry"] do
       {:ok, %{time: time, reason: reason, retry: retry}}
     else
@@ -178,7 +180,7 @@ defmodule Apiary.Dispatches.Wire do
            external["type"],
          true <- Regex.match?(@job_system, type),
          ref when is_binary(ref) <- external["ref"],
-         true <- characters?(ref, @max_ref),
+         true <- AdapterWire.text?(ref, 1, @max_ref),
          url when is_binary(url) <- external["url"],
          true <- AdapterWire.url?(url) do
       {:ok, %{type: type, ref: ref, url: url}}
@@ -189,11 +191,4 @@ defmodule Apiary.Dispatches.Wire do
 
   defp optional_external(%{"external" => _other}), do: :error
   defp optional_external(_body), do: {:ok, nil}
-
-  # Whether a string holds 1 to `max` characters, as JSON Schema counts them, in code
-  # points: its bytes bounded before they are counted.
-  defp characters?(string, max) do
-    byte_size(string) in 1..(max * @max_bytes_per_character) and
-      length(String.codepoints(string)) <= max
-  end
 end
