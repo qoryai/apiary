@@ -195,12 +195,14 @@ defmodule Apiary.Integrations.Description do
       `%{valid: false, limits: limits}`: the schema comes from the description and need
       bound none of them;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`. A few references in that schema can
-      make the work of the check grow exponentially with their nesting, which the limits
-      do not bound, so the schema is built and the settings validated in another process
-      (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its
-      work, and 2097152 words of heap (16 MiB on a 64-bit machine). A check that goes
-      over that budget is refused as `integration_settings_invalid` with
+      `settings`, else `integration_settings_invalid` with `%{valid: false}`, as for a
+      schema that JSV cannot build: JSV's errors are not returned. A few references in
+      that schema can make the work of the check grow exponentially with their nesting,
+      which the limits do not bound, so the schema is built and the settings validated
+      in another process (`Apiary.Kinds.Budget`), within 5000000 reductions, the
+      runtime's count of its work, and 2097152 words of heap (16 MiB on a 64-bit
+      machine), the binaries the process refers to counted in it. A check that goes over
+      that budget is refused as `integration_settings_invalid` with
       `%{valid: false, budget: :exceeded}`, and one that fails with
       `%{valid: false, crashed: true}`.
 
@@ -237,8 +239,10 @@ defmodule Apiary.Integrations.Description do
   # objects deep, do 1486870 reductions, 3.3 times fewer than the budget; 1000 settings,
   # each against a pattern, 642740; a setting of 15000 bytes against
   # `"format": "regex"`, its compile charged in reductions (`Apiary.Kinds.RegexFormat`),
-  # 151978. Without the budget, a schema that refers twice to the next level at each of
-  # 20 levels does 157253942.
+  # 151978. The valid settings of 4096 values pass within 318288 words of heap, the
+  # binaries the process refers to counted, 6.5 times fewer than the budget. Without the
+  # budget, a schema that refers twice to the next level at each of 20 levels does
+  # 157253942.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
 
   defp within_budget(description, check) do
@@ -277,14 +281,18 @@ defmodule Apiary.Integrations.Description do
         "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
       })
 
+    # The answer leaves the budget's process, so a refusal is `%{valid: false}` alone.
+    # JSV's errors stay in that process and end with it: they refer to the settings and
+    # the schema, and the message of an error about a pattern, which `Schema.valid?/2`
+    # does not make, would copy that pattern.
     with {:ok, root} <-
            schema
            |> without_casts()
            |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()),
-         :ok <- Schema.validate(settings, root) do
+         true <- Schema.valid?(settings, root) do
       :ok
     else
-      {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
+      _refused -> {:error, {:integration_settings_invalid, %{valid: false}}}
     end
   end
 

@@ -63,8 +63,7 @@ defmodule Apiary.Integrations.SettingsRegexFormatTest do
     assert calls(fn -> Description.check_settings(description, %{"match" => "^[a-z]+$"}) end) ==
              {:ok, [["regex", "^[a-z]+$"]]}
 
-    assert {{:error, {:integration_settings_invalid, %{valid: false, details: [_ | _]}}},
-            [["regex", "("]]} =
+    assert {{:error, {:integration_settings_invalid, %{valid: false}}}, [["regex", "("]]} ==
              calls(fn -> Description.check_settings(description, %{"match" => "("}) end)
   end
 end
