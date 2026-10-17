@@ -16,6 +16,7 @@ defmodule Apiary.Sources.BacklogTest do
   alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Sources.{Backlog, Comment, Item, Topic}
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.People
 
   @moduletag needs: :factory
 
@@ -215,7 +216,42 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert rows[ctx.open.public_id].work_item == nil
       assert rows[ctx.closed.public_id].state_reason == "Not planned"
-      assert rows[ctx.ended.public_id].work_item.state == :closed
+      # Who declined it, only on a declined one.
+      assert %{state: :closed, declined_by: nil} = rows[ctx.ended.public_id].work_item
+      assert %{state: :exploring, declined_by: nil} = rows[ctx.closed_taken.public_id].work_item
+    end
+
+    test "a declined work item names a deleted account as a former member, and no one where no person declined it",
+         ctx do
+      %{user: decliner} = member_fixture(ctx.scope, :member)
+      by_person = ticket(ctx.collection)
+      by_nobody = ticket(ctx.collection)
+
+      work_item(ctx.scope, by_person)
+      |> Ecto.Changeset.change(
+        state: :declined,
+        declined_at: DateTime.utc_now(),
+        declined_by_id: decliner.id
+      )
+      |> Repo.update!()
+
+      work_item(ctx.scope, by_nobody)
+      |> Ecto.Changeset.change(state: :declined, declined_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      declined_by = fn item ->
+        Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
+      end
+
+      assert declined_by.(by_person) == decliner.email
+      assert declined_by.(by_nobody) == nil
+
+      decliner
+      |> Ecto.Changeset.change(deleted_at: DateTime.utc_now(:second))
+      |> Repo.update!()
+
+      assert declined_by.(by_person) == People.former_member()
+      assert declined_by.(by_nobody) == nil
     end
 
     test "a filer the source says is no person is a bot", ctx do
@@ -245,8 +281,12 @@ defmodule Apiary.Sources.BacklogTest do
       assert search.("robin") == [robin.public_id]
       assert search.("\\") == []
 
+      backslash = ticket(ctx.collection, title: ~S"Saves to C:\temp and fails")
+      assert search.("\\") == [backslash.public_id]
+      assert search.(~S":\t") == [backslash.public_id]
+
       assert search.("  ") ==
-               Enum.sort(Enum.map([percent, underscore, plain, robin], & &1.public_id))
+               Enum.sort(Enum.map([percent, underscore, plain, robin, backslash], & &1.public_id))
 
       assert list(ctx.scope, search: "%").counts == %{
                open: 1,
@@ -258,15 +298,24 @@ defmodule Apiary.Sources.BacklogTest do
     end
 
     test "a search too long, not UTF-8, with a NUL or not text matches nothing", ctx do
-      ticket(ctx.collection)
+      longest = ticket(ctx.collection, title: String.duplicate("a", 1024))
+
+      # 1,024 characters, a title's most, find it; one more finds nothing.
+      assert ids(list(ctx.scope, search: String.duplicate("a", 1024))) == [longest.public_id]
+
+      assert ids(list(ctx.scope, search: " " <> String.duplicate("a", 1024) <> " ")) ==
+               [longest.public_id]
+
+      wide = ticket(ctx.collection, title: String.duplicate("é", 1024))
+      assert ids(list(ctx.scope, search: String.duplicate("é", 1024))) == [wide.public_id]
+      assert list(ctx.scope, search: String.duplicate("é", 1025)).rows == []
 
       for text <- [String.duplicate("a", 1025), <<0xFF>>, "a" <> <<0>>, 12, %{}] do
         assert list(ctx.scope, search: text).rows == [], inspect(text)
         assert list(ctx.scope, search: text).counts.total == 0
       end
 
-      assert length(list(ctx.scope, search: String.duplicate("a", 1024)).rows) == 0
-      assert length(list(ctx.scope, search: nil).rows) == 1
+      assert length(list(ctx.scope, search: nil).rows) == 2
     end
   end
 
@@ -312,6 +361,8 @@ defmodule Apiary.Sources.BacklogTest do
             [filed_by: String.duplicate("a", 101)],
             [filed_by: List.duplicate("Lea", 101)],
             [filed_by: [<<0xFF>>]],
+            [filed_by: "a" <> <<0>>],
+            [filed_by: ["Lea", "Le" <> <<0>> <> "a"]],
             [filed_by: 7],
             [state: :declined],
             [state: "shut"]
@@ -373,11 +424,13 @@ defmodule Apiary.Sources.BacklogTest do
       assert second.next == nil
     end
 
-    test "a cursor this list did not give matches nothing", ctx do
-      ticket(ctx.collection)
+    test "a cursor not in the shape this list gives matches nothing; an empty one is none",
+         ctx do
+      item = ticket(ctx.collection)
+      assert ids(list(ctx.scope, after: "")) == [item.public_id]
+      assert ids(list(ctx.scope, %{"after" => ""})) == [item.public_id]
 
       for cursor <- [
-            "",
             "x",
             "12.tk_",
             "12.wi_0123456789abcdef",
@@ -388,8 +441,9 @@ defmodule Apiary.Sources.BacklogTest do
         assert list(ctx.scope, after: cursor).rows == [], inspect(cursor)
       end
 
+      # One in that shape reads after the time and id it names, whichever row gave it.
       assert list(ctx.scope, after: "0.tk_0123456789abcdef").rows == []
-      assert length(list(ctx.scope, after: "99999999999.tk_zzzzzzzzzzzzzzzz").rows) == 1
+      assert ids(list(ctx.scope, after: "99999999999.tk_zzzzzzzzzzzzzzzz")) == [item.public_id]
     end
   end
 
@@ -596,6 +650,31 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert [%{work_item: %{number: nil, state: :declined, path: nil, declined_by: nil}}] =
                list(ctx.scope).rows
+    end
+
+    test "of another organisation, on the same adapter with the same ref, is not the ticket's",
+         ctx do
+      item = ticket(ctx.collection, external_ref: "acme/shop#11")
+      %{scope: other} = sign_up_fixture()
+
+      theirs =
+        Repo.insert!(%Connection{
+          public_id: Apiary.PublicId.generate(Connection.prefix()),
+          organisation_id: other.organisation.id,
+          adapter_id: ctx.connection.adapter_id,
+          created_by_id: other.user.id,
+          state: :connected,
+          pass_nonce: :crypto.strong_rand_bytes(16),
+          pass_nonce_used_at: DateTime.utc_now(),
+          connected_at: DateTime.utc_now()
+        })
+
+      their_item =
+        work_item_fixture(other, %{connection_id: theirs.id, external_ref: "acme/shop#11"})
+
+      assert their_item.adapter_id == item.adapter_id
+      assert Backlog.get_ticket(ctx.scope, item.public_id).work_item == nil
+      assert [%{work_item: nil}] = list(ctx.scope).rows
     end
 
     test "of another adapter with the same ref is not the ticket's", ctx do

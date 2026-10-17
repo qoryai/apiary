@@ -45,6 +45,7 @@ defmodule Apiary.Sources.Backlog do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.{Comment, Item, Topic}
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.People
 
   # The rows a page holds; the characters a search or a name search holds at most, a
   # title's most; the values one filter takes at most; the values a filter offers at most;
@@ -68,8 +69,10 @@ defmodule Apiary.Sources.Backlog do
 
   @typedoc """
   A ticket's work item, as a row shows it: its number in the workspace, its state, its
-  page in the workspace, and, when declined, the email address of who declined it (nil
-  once their account is deleted). One of another workspace has its state alone.
+  page in the workspace, and, when declined, who declined it, as `ApiaryWeb.People.email/1`
+  names an account: the email address of an account in use, "Former member" for a deleted
+  one, nil where no person declined it. `declined_by` is nil for a work item that is not
+  declined. One of another workspace has its state alone.
   """
   @type work_item :: %{
           number: pos_integer | nil,
@@ -180,8 +183,9 @@ defmodule Apiary.Sources.Backlog do
   #   * `after:` the cursor of the page before (`next`), for the page after it.
   #
   # A filter takes at most 100 values; one with more, or with a value that is not one
-  # (a repository that is no id, a name of no 1 to 100 characters), matches nothing, and
-  # so does a cursor that is not one this function gave. A view, a sort or an order it
+  # (a repository that is no id, a name that is not 1 to 100 characters of valid UTF-8
+  # with no NUL), matches nothing, and so does a cursor not in the shape this function
+  # gives. An empty filter, or an empty cursor, is none. A view, a sort or an order it
   # does not know is its default. The rows are at most `page_size/0`; `next` is the cursor
   # of the page after, or nil for the last. The counts are of every view, under the same
   # search and filters, without the view and the cursor.
@@ -345,7 +349,9 @@ defmodule Apiary.Sources.Backlog do
   end
 
   defp name?(name) when is_binary(name) and byte_size(name) <= @max_name * 4,
-    do: String.valid?(name) and String.length(name) in 1..@max_name
+    do:
+      String.valid?(name) and not String.contains?(name, <<0>>) and
+        String.length(name) in 1..@max_name
 
   defp name?(_name), do: false
 
@@ -432,10 +438,7 @@ defmodule Apiary.Sources.Backlog do
     path = "/" <> organisation.slug <> "/" <> workspace.slug <> "/work/"
 
     query
-    |> join(:left, [work_item: w], u in User,
-      as: :declined_by,
-      on: u.id == w.declined_by_id and is_nil(u.deleted_at)
-    )
+    |> join(:left, [work_item: w], u in User, as: :declined_by, on: u.id == w.declined_by_id)
     |> select([item: i, collection: c, work_item: w, declined_by: u], %{
       id: i.public_id,
       key: i.key,
@@ -451,21 +454,16 @@ defmodule Apiary.Sources.Backlog do
       source_updated_at: i.source_updated_at,
       state: i.state,
       state_reason: i.state_reason,
-      body: i.body,
-      body_format: i.body_format,
-      truncated: i.truncated,
       work_item_id: w.id,
       work_item_here: w.workspace_id == ^workspace.id,
       work_item_number: w.number,
       work_item_state: w.state,
-      declined_by: u.email,
+      declined_by: u,
       path: ^path
     })
   end
 
-  defp row(selected), do: Map.drop(ticket(selected), [:body, :body_format, :truncated])
-
-  defp ticket(selected) do
+  defp row(selected) do
     %{
       id: selected.id,
       key: selected.key,
@@ -480,10 +478,7 @@ defmodule Apiary.Sources.Backlog do
       updated_at: selected.source_updated_at,
       state: selected.state,
       state_reason: selected.state_reason,
-      work_item: work_item(selected),
-      body: selected.body,
-      body_format: selected.body_format,
-      truncated: selected.truncated
+      work_item: work_item(selected)
     }
   end
 
@@ -494,7 +489,8 @@ defmodule Apiary.Sources.Backlog do
       number: selected.work_item_number,
       state: selected.work_item_state,
       path: selected.path <> Integer.to_string(selected.work_item_number),
-      declined_by: if(selected.work_item_state == :declined, do: selected.declined_by)
+      declined_by:
+        if(selected.work_item_state == :declined, do: People.email(selected.declined_by))
     }
   end
 
@@ -519,7 +515,7 @@ defmodule Apiary.Sources.Backlog do
       state: state_value(values.state),
       sort: choice(values.sort, @sorts, :updated),
       order: choice(values.order, @orders, :desc),
-      after: values.after
+      after: if(values.after == "", do: nil, else: values.after)
     }
   end
 
@@ -628,8 +624,15 @@ defmodule Apiary.Sources.Backlog do
            |> backlog(workspace_id)
            |> where([item: i], i.public_id == ^public_id)
            |> select_row(scope)
+           |> select_merge([item: i], %{
+             body: i.body,
+             body_format: i.body_format,
+             truncated: i.truncated
+           })
            |> Repo.one() do
-      ticket(selected)
+      selected
+      |> row()
+      |> Map.merge(Map.take(selected, [:body, :body_format, :truncated]))
     else
       _none -> nil
     end
