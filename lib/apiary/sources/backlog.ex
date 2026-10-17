@@ -4,7 +4,8 @@ defmodule Apiary.Sources.Backlog do
   # offer, and the facts an empty Backlog speaks from.
   #
   # **What a Backlog holds.** A ticket is in the Backlog of the scope's workspace while its
-  # collection is live (no `ended_at`) and linked to that workspace, the collection's
+  # collection is live (no `ended_at`), assigned to that workspace with its Backlog on
+  # (`backlog`), so linked (`Apiary.Adapters.Collection.linked?/1`), the collection's
   # connection is connected (not pending, not ended), and the ticket is not disconnected
   # (no `disconnected_at`). A ticket of an ended collection, or of an ended connection,
   # is in no Backlog, whatever its row still says; its work item stays where it is.
@@ -411,7 +412,7 @@ defmodule Apiary.Sources.Backlog do
           w.external_ref == i.external_ref,
       where:
         i.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-          is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at) and
+          c.backlog and is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at) and
           is_nil(i.disconnected_at)
   end
 
@@ -883,7 +884,7 @@ defmodule Apiary.Sources.Backlog do
           is_nil(i.disconnected_at),
       where:
         c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-          is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at),
+          c.backlog and is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at),
       group_by: [c.id, c.title],
       order_by: [desc: count(i.id), asc: c.title, asc: c.id],
       limit: @max_offered,
@@ -973,7 +974,7 @@ defmodule Apiary.Sources.Backlog do
   # backlog_facts/1 is what an empty Backlog of the scope's workspace speaks from, to a
   # person who may read its work items: whether the organisation has a connection that is
   # connected (`connected?`); how many live collections of such a connection are linked to
-  # the workspace (`linked_collections`); whether an adapter's listing has named such a
+  # the workspace, with their Backlog on (`linked_collections`); whether an adapter's listing has named such a
   # connection (`listed?`, its `listed_at`); and how many open tickets the Backlog holds
   # (`open_tickets`). Nothing connected, nothing linked, nothing listed and none open to
   # anyone else.
@@ -997,7 +998,8 @@ defmodule Apiary.Sources.Backlog do
               on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
               where:
                 c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-                  is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at),
+                  c.backlog and is_nil(c.ended_at) and k.state == :connected and
+                  is_nil(k.ended_at),
               select: count(c.id)
           )
 

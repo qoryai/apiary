@@ -66,7 +66,8 @@ defmodule Apiary.WorkItems do
   # them. The ticket's ref at the source is never in it.
   #
   # A work item's ticket is the record of the work item's organisation, adapter and ref,
-  # as the Backlog links them, of a collection linked to the work item's workspace. Where
+  # as the Backlog links them, of a collection assigned to the work item's workspace,
+  # with its Backlog on or off. Where
   # several records share the ref, it is the live one (the record not disconnected, its
   # collection not ended, its connection connected), else the one that ended last. A work
   # item with no such record has no key, and its collection title as it was taken in.

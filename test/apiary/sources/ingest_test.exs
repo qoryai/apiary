@@ -140,15 +140,16 @@ defmodule Apiary.Sources.IngestTest do
       assert count(Listing) == 0
     end
 
-    test "not linked: a live collection linked to no workspace, a ref with none, an ended one",
+    test "not linked: a live collection linked to no workspace, one with its Backlog off, a ref with none, an ended one",
          ctx do
       open = source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      off = source_collection_fixture(ctx.scope, ctx.connection, %{backlog: false})
       gone = source_collection_fixture(ctx.scope, ctx.connection)
 
       {:ok, :disconnected} =
         Collections.disconnect(ctx.key_scope, %{collection_ref: gone.external_ref})
 
-      for ref <- [open.external_ref, gone.external_ref, "NEVER"] do
+      for ref <- [open.external_ref, off.external_ref, gone.external_ref, "NEVER"] do
         assert post(ctx, ref, [item("A")]) == {:error, :not_linked}, ref
       end
 
@@ -162,12 +163,16 @@ defmodule Apiary.Sources.IngestTest do
     test "comments: forbidden, then ended, then suspended, then not linked; each changes nothing",
          ctx do
       open = source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      off = source_collection_fixture(ctx.scope, ctx.connection, %{backlog: false})
       {:ok, :accepted} = post(ctx, "TRK", [item("R")])
       source_item_fixture(ctx.scope, collection: open, external_ref: "UNLINKED")
+      source_item_fixture(ctx.scope, collection: off, external_ref: "OFF")
 
-      # An item_ref the adapter has no item for, and an item of a collection linked to none.
+      # An item_ref the adapter has no item for, an item of a collection linked to none, and
+      # one of a collection with its Backlog off.
       assert post_comments(ctx, "NEVER", [comment("C")]) == {:error, :not_linked}
       assert post_comments(ctx, "UNLINKED", [comment("C")]) == {:error, :not_linked}
+      assert post_comments(ctx, "OFF", [comment("C")]) == {:error, :not_linked}
 
       Edition.put_test_stub(EditionStubs.OutOfUse)
       Process.put(:out_of_use, [ctx.scope.organisation.id])

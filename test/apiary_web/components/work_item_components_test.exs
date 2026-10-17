@@ -457,6 +457,15 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, "button") == 0
     end
 
+    test "the Decline question while the repository keeps its tickets out of the Backlog" do
+      html = card(work_item(), asking: :decline, backlog_off: true)
+
+      assert text(html, "#work-item-step-decline-sub") ==
+               "The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there."
+
+      refute html =~ "Take in again"
+    end
+
     test "the Decline question after the uninstall" do
       html = card(work_item(), asking: :decline, uninstalled: true)
 
@@ -541,6 +550,16 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(gone, "#work-item-close-sub") ==
                "Closing ends the work on it in Qory Apiary. GitHub is no longer connected, so nothing changes on the ticket."
+
+      off =
+        render_component(&WorkItemComponents.close_question/1,
+          number: 88,
+          integration: "GitHub",
+          backlog_off: true
+        )
+
+      assert text(off, "#work-item-close-sub") ==
+               "Closing ends the work on it in Qory Apiary. The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there."
     end
 
     defp ended(status, by, at, extra \\ []) do
@@ -632,6 +651,25 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {:undone, @priya, "Priya undid this"}
           ] do
         html = ended(status, by, ~U[2026-10-12 10:07:00Z], uninstalled: true)
+        assert text(html, "#work-item-ended-line") =~ line
+        assert count(html, ".q-wi-grow > p") == 1
+        assert count(html, "#work-item-ended-again") == 0
+        refute html =~ "Take in again"
+      end
+    end
+
+    test "while the repository keeps its tickets out of the Backlog: the first line alone, and no Take in again" do
+      for {status, by, line} <- [
+            {:closed, %{name: "Mirek", you: false}, "Mirek closed this work item on 12 Oct."},
+            {:declined, @priya, "Priya declined this work item"},
+            {:undone, @dana, "You undid this"}
+          ] do
+        html =
+          ended(status, by, ~U[2026-10-12 10:07:00Z],
+            backlog_off: true,
+            again_path: "/8wonders/main/backlog?ticket=tk_01j9z7"
+          )
+
         assert text(html, "#work-item-ended-line") =~ line
         assert count(html, ".q-wi-grow > p") == 1
         assert count(html, "#work-item-ended-again") == 0

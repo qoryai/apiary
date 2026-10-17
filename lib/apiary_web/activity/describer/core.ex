@@ -60,6 +60,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(:"collection.assign"), do: gettext("Collections assigned")
+
+  def label(:"collection.set_backlog"),
+    do: gettext("Taking tickets into the Backlog turned on or off")
+
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(_action), do: nil
@@ -68,15 +72,21 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # and integrations' only where the reader is shown them, and the nodes' and their access
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
-  # show, by their labels. Of the feature `factory`'s actions only the work item comments'
-  # and the assigning of collections have labels yet, so the filter offers those alone,
+  # show, by their labels. Of the feature `factory`'s actions only the work item comments',
+  # the assigning of collections and the turning of a target's Backlog on or off have
+  # labels yet, so the filter offers those alone,
   # where the reader is shown the feature (the page asks it); the others' entries show as
   # any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
       :factory ->
-        action in [:"work_item.comment", :"work_item.comment_delete", :"collection.assign"]
+        action in [
+          :"work_item.comment",
+          :"work_item.comment_delete",
+          :"collection.assign",
+          :"collection.set_backlog"
+        ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
         Features.visible?(scope, shown_as)
@@ -232,6 +242,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
            "Unassigned %{count} collections from their workspaces",
            count
          )
+
+  # A target's Backlog turned on or off, for its collections: the entry is the target's.
+  defp said(:"collection.set_backlog", %{"backlog" => true}, _actor),
+    do: gettext("Turned on taking a collection's items into the Backlog")
+
+  defp said(:"collection.set_backlog", %{"backlog" => false}, _actor),
+    do: gettext("Turned off taking a collection's items into the Backlog")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
