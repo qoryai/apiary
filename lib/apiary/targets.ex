@@ -4,9 +4,10 @@ defmodule Apiary.Targets do
   page, and the targets a person pinned.
 
   A target is what the workspace's runs change, in the system it lives in
-  (`Apiary.Runs.Target`), created by the projector when a run first names it; nothing
-  here creates one. Every function takes the caller's scope first and reads only the
-  scope's workspace.
+  (`Apiary.Runs.Target`), created the first time the workspace names it
+  (`Apiary.Runs.Target.insert_new/3`), as the projector does when a run first names it;
+  nothing here creates one. Every function takes the caller's scope first and reads only
+  the scope's workspace.
 
   **Pins.** A person pins the targets they work in, in a workspace whose runs they read
   (`run.read`), and the sidebar lists the first of them in the order they were pinned. A

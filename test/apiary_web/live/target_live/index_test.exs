@@ -6,10 +6,13 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
-  alias Apiary.Targets
+  alias Apiary.{AccessKeys, Repo, Targets}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Collections}
 
   setup :register_and_log_in_user
 
@@ -214,6 +217,55 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert_patch(view, workspace_path(scope, "/targets?page=2"))
     render_async(view, 2_000)
     assert length(rows(view)) == 1
+  end
+
+  @tag needs: :factory
+  test "a repository assigned with a collection, before any run, is listed in All and in Never",
+       %{conn: conn, scope: scope} do
+    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+
+    {connection, _nonce} =
+      connection_fixture(scope, connectable.adapter, :connected)
+
+    {:ok, verified} = AccessKeys.fetch_for_verification(connectable.access_key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(verified), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{
+            ref: "NEW",
+            url: "https://tracker.acme.example/NEW",
+            title: "New",
+            target: %{system: "code.example.com", path: "acme/new"}
+          }
+        ],
+        listing: %{
+          id: "listing-1",
+          part: 1,
+          started_at: DateTime.utc_now(:second),
+          complete: false
+        }
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        [collection.id],
+        scope.workspace
+      )
+
+    view = open(conn, scope)
+    assert has_element?(view, "#targets-view-all[aria-current=page]", "4")
+    assert has_element?(view, "#targets-view-never", "1")
+    assert "acme/new" in rows(view)
+
+    view = open(conn, scope, "?view=never")
+    assert rows(view) == ["acme/new"]
   end
 
   test "a workspace no run named a target of says what fills the page" do

@@ -457,28 +457,10 @@ defmodule Apiary.Runs.Projector do
   defp put_target(changeset, %{target_system: system, target_path: path})
        when is_binary(system) and is_binary(path) and system != "" and path != "" do
     run = changeset.data
-    now = DateTime.utc_now()
 
-    # A target seen before keeps its row, and so its public id: the conflict writes nothing.
-    Repo.insert_all(
-      Target,
-      [
-        %{
-          id: Ecto.UUID.generate(),
-          public_id: Apiary.PublicId.generate("tg"),
-          organisation_id: run.organisation_id,
-          workspace_id: run.workspace_id,
-          system: system,
-          path: path,
-          first_seen_at: now,
-          inserted_at: now,
-          updated_at: now
-        }
-      ],
-      on_conflict: :nothing,
-      conflict_target: [:workspace_id, :system, :path],
-      log: false
-    )
+    # A target seen before keeps its row, and so its public id.
+    :ok =
+      Target.insert_new(run.organisation_id, run.workspace_id, [%{system: system, path: path}])
 
     target_id =
       Repo.one!(

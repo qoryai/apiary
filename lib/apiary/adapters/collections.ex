@@ -45,7 +45,10 @@ defmodule Apiary.Adapters.Collections do
   # none (`collection.assign`, owners and admins), by the ids Qory Apiary gives them,
   # never by refs, with the feed's `linked` entry for each it links from none and its
   # `unlinked` entry for each it unlinks, in its transaction; a move from one workspace
-  # to another writes none.
+  # to another writes none. Each collection it links to a workspace that has a target
+  # makes that target in the workspace, unless the workspace has it already
+  # (`Apiary.Runs.Target.insert_new/3`), so the target is there before its first run;
+  # an unlink, a move away or an end leaves the target as it is.
   #
   # **Broadcasts**, after the change commits, carry ids only, on the organisation's topic
   # (`topic/1`, `"adapter_collections:"` and the organisation's id), which `subscribe/1`
@@ -62,8 +65,8 @@ defmodule Apiary.Adapters.Collections do
   #     first listing that names it and each listing of it that completes.
   #
   # Locks: the connection, then the workspace a collection is linked to (`FOR SHARE`), then
-  # the collections, by id for an assign and by ref for a listing's part, then the
-  # adapter's feed counter, which is the last.
+  # the collections, by id for an assign and by ref for a listing's part, then the targets
+  # an assign makes, by system and path, then the adapter's feed counter, which is the last.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -73,8 +76,10 @@ defmodule Apiary.Adapters.Collections do
   alias Apiary.{Access, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Wire}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.Target
   alias Apiary.Sources.Item
 
   @listing_action :"source_item.post"
@@ -810,7 +815,10 @@ defmodule Apiary.Adapters.Collections do
   # by id, so two assigns never wait on each other in turn; then the adapter's feed
   # counter, last. One linked to a workspace from none writes the feed's `linked` entry,
   # one linked to none from a workspace its `unlinked` entry; one moved from a workspace
-  # to another keeps its link state, and writes none. The entry of `collection.assign`,
+  # to another keeps its link state, and writes none. With a workspace, each collection
+  # asked for that has a target makes that target in the workspace, as a run of it would
+  # name it, unless the workspace has it already; with none, nothing is made, and no
+  # target is ever removed. The entry of `collection.assign`,
   # the organisation's, is about the workspace, or the organisation when it unlinks, with
   # the count, the connection's public id and the workspace's id (nil when it unlinks);
   # none when nothing changed. After the commit, the collections changed are broadcast.
@@ -827,6 +835,7 @@ defmodule Apiary.Adapters.Collections do
            true <- every_id? || {:error, :not_found},
            {:ok, collections} <- lock_collections(organisation_id, connection, ids) do
         changed = Enum.reject(collections, &(&1.workspace_id == workspace_id))
+        :ok = insert_targets(organisation_id, workspace, collections)
         :ok = relink(scope, connection, changed, workspace, workspace_id)
         {:ok, Enum.map(changed, & &1.id)}
       end
@@ -888,6 +897,30 @@ defmodule Apiary.Adapters.Collections do
       do: {:ok, collections},
       else: {:error, :not_found}
   end
+
+  # The targets of `collections` in `workspace`, as a dispatched run of each would name
+  # it: its labels carry the collection's system and path under the labels that name a
+  # target by the workspace's domain, and the domain reads them as the projector does
+  # (`Apiary.Lingo.Domain.target/2`), so the run lands on the target made here. A
+  # collection without a target, or with one no label could name, makes none.
+  defp insert_targets(_organisation_id, nil, _collections), do: :ok
+
+  defp insert_targets(organisation_id, %Workspace{id: workspace_id} = workspace, collections) do
+    targets =
+      for collection <- collections,
+          {:ok, target} <- [collection_target(workspace, collection)],
+          do: target
+
+    Target.insert_new(organisation_id, workspace_id, targets)
+  end
+
+  defp collection_target(workspace, %Collection{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path) do
+    labels = workspace |> Domain.target_labels() |> Enum.zip([system, path]) |> Map.new()
+    Domain.target(workspace, labels)
+  end
+
+  defp collection_target(_workspace, _collection), do: :none
 
   # Links `changed`, held, to `workspace_id`, or to none, with its entry, then the feed's
   # entries, the adapter's feed counter last.
