@@ -178,10 +178,10 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert Description.check_settings(description, %{"app_id" => "123456"}) == :ok
       assert Description.check_settings(description, %{}) == :ok
 
-      assert {:error, {:integration_settings_invalid, _}} =
+      assert {:error, {:integration_settings_invalid, %{valid: false}}} ==
                Description.check_settings(description, %{"app_id" => "not an id"})
 
-      assert {:error, {:integration_settings_invalid, _}} =
+      assert {:error, {:integration_settings_invalid, %{valid: false}}} ==
                Description.check_settings(description, %{"app_id" => "1\n"})
     end
 

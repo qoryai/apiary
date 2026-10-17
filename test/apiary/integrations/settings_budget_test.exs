@@ -12,6 +12,7 @@ defmodule Apiary.Integrations.SettingsBudgetTest do
   import ExUnit.CaptureLog
 
   alias Apiary.Integrations.Description
+  alias Apiary.Kinds.{Budget, Schema}
 
   @fixtures Path.expand("../../fixtures/integration-contract", __DIR__)
 
@@ -129,6 +130,76 @@ defmodule Apiary.Integrations.SettingsBudgetTest do
       settings = %{"x" => List.duplicate(String.duplicate("a", 59) <> "!", 1024)}
       assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
       over_budget(description, settings, "reductions")
+    end
+  end
+
+  describe "the refusal of settings the schema refuses" do
+    # A pattern of 16001 bytes, which "b" does not match.
+    defp long_pattern(i), do: "^" <> String.duplicate("a", 16_000) <> "#{i}"
+
+    # A list of `count` strings, each checked against `patterns` long patterns in
+    # items.allOf: an error for each pattern and string, whose normalised message copies
+    # the pattern.
+    defp long_patterns(patterns, count) do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{
+              "type" => "array",
+              "items" => %{"allOf" => for(i <- 1..patterns, do: %{"pattern" => long_pattern(i)})}
+            }
+          }
+        })
+
+      {description, %{"x" => List.duplicate("b", count)}}
+    end
+
+    # The binary bytes a process refers to, each binary once, its heap collected first.
+    defp binary_bytes do
+      :erlang.garbage_collect()
+      {:binary, binaries} = Process.info(self(), :binary)
+      binaries |> Enum.uniq_by(&elem(&1, 0)) |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+    end
+
+    # The result of the check, and the binary bytes the caller, a separate Task, refers to
+    # once it returns, the result still held.
+    defp held(description, settings) do
+      Task.async(fn ->
+        before = binary_bytes()
+        result = Description.check_settings(description, settings)
+        {result, binary_bytes() - before}
+      end)
+      |> Task.await(60_000)
+    end
+
+    test "is %{valid: false} alone, and hands the caller no large binaries" do
+      # Measured before the refusal was cut down: 32845824 and 30793728 bytes in the
+      # caller; after it, 0.
+      for {patterns, count} <- [{2, 1024}, {15, 128}] do
+        {description, settings} = long_patterns(patterns, count)
+        {result, bytes} = held(description, settings)
+
+        assert result == {:error, {:integration_settings_invalid, %{valid: false}}}
+        assert bytes < 1_000_000, "#{bytes} binary bytes in the caller"
+      end
+    end
+
+    test "JSV's normalised errors for them are stopped by the heap budget, binaries counted" do
+      # The budget counts the binaries its process refers to: a check whose errors are
+      # normalised, their messages made in its process, runs out of heap.
+      for {patterns, count} <- [{2, 1024}, {15, 128}] do
+        {description, settings} = long_patterns(patterns, count)
+        schema = description.document["settings"]
+
+        check = fn ->
+          {:ok, root} = Schema.build(schema)
+          Schema.validate(settings, root)
+        end
+
+        assert Budget.run(check, reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000) ==
+                 {:error, :heap}
+      end
     end
   end
 
@@ -269,6 +340,35 @@ defmodule Apiary.Integrations.SettingsBudgetTest do
       # Valid settings pass however slow or busy the machine: the budget decides by
       # reductions and heap, so the time is not asserted.
       assert Description.check_settings(description, settings) == :ok
+    end
+
+    test "valid settings pass against a description of many long strings, parts of its bytes" do
+      # `count` settings, each described in a string of `length` bytes.
+      described = fn count, length ->
+        properties =
+          Map.new(1..count, fn i ->
+            text = String.slice("d#{i}-" <> String.duplicate("x", length), 0, length)
+            {"p#{i}", %{"type" => "string", "description" => text}}
+          end)
+
+        bytes =
+          tracker_description(%{"settings" => %{"type" => "object", "properties" => properties}})
+          |> encode()
+
+        assert {:ok, description} = Description.parse(bytes)
+        text = description.document["settings"]["properties"]["p1"]["description"]
+        assert :binary.referenced_byte_size(text) == byte_size(bytes)
+        {description, byte_size(bytes)}
+      end
+
+      {four_hundred, _bytes} = described.(400, 100)
+      assert Description.check_settings(four_hundred, %{"p1" => "x"}) == :ok
+
+      # Near the 262144 bytes a release's description may have.
+      {thousand, bytes} = described.(1000, 215)
+      assert bytes in 250_000..262_144
+      assert Description.check_settings(thousand, %{"p1" => "x"}) == :ok
+      assert Description.check_settings(thousand, Map.new(1..1000, &{"p#{&1}", "x"})) == :ok
     end
 
     test "every fixture with settings takes the settings it describes" do
