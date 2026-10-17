@@ -53,7 +53,7 @@
         },
         "url": {
           "description": "The work item's page in the control plane.",
-          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/url"
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/url"
         },
         "title": {
           "description": "The work item's title.",

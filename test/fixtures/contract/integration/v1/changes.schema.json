@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/changes.schema.json",
+  "title": "Changes",
+  "description": "The body of the signed 200 answer to the signed GET /v1/work-items/changes?after=<cursor>, application/json: the entries of the adapter's change feed after the cursor. The adapter sends the answer's cursor as after on its next request; after absent means from the start. The control plane holds the request up to 25 seconds while the feed has no entry after the cursor. The feed is one append-only log per adapter. Reading from the start replays every entry in order, so the last entry per collection_ref is the current link state of the live collection with that ref, or unlinked when no collection with that ref is live, the last per work_item_id that work item's current status, and the last sync entry the current interval. Whenever a linked collection ends, by any path (sources/disconnect, a complete listing that leaves it out, the race rule or a connection's end), the control plane writes an unlinked entry for it. When the control plane no longer holds a connection, as after its organisation is removed, the feed carries an unlinked entry for each of that connection's collections that was linked, so the adapter stops mirroring them. An adapter that lost its store reads from the start. Entries apply in cursor order. The entries are bounded by the request's X-Qory-Contract-Version: the feed holds only the entry kinds that revision defines, and an entry of a newer kind is skipped, not sent, while the cursor still moves past it, as definitions.schema.json describes. The answer names that revision in revision, inside the signed body: the adapter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, and does not advance its cursor from a refused answer. The feed holds only the work items taken in from the adapter's items, the adapter's collections and the adapter's interval. The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The adapter refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "revision", "cursor", "changes"],
+  "properties": {
+    "version": {
+      "description": "The document format. The adapter refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The contract revision the control plane built the answer for, the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The adapter refuses an answer whose revision is not the revision it implements, and does not advance its cursor from it.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "cursor": {
+      "description": "Where this answer ends in the feed, 1 to 200 characters, opaque to the adapter.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "changes": {
+      "description": "The entries after the cursor, in cursor order; none when the hold ended without one.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/change"}
+    }
+  },
+  "$defs": {
+    "change": {
+      "description": "One entry, of the kind kind names, with the members of that kind. A reader refuses a kind it does not know.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {"description": "The entry's kind.", "type": "string", "enum": ["work_item", "collection", "sync"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "work_item"}}}, "then": {"$ref": "#/$defs/work_item"}},
+        {"if": {"properties": {"kind": {"const": "collection"}}}, "then": {"$ref": "#/$defs/collection"}},
+        {"if": {"properties": {"kind": {"const": "sync"}}}, "then": {"$ref": "#/$defs/sync"}}
+      ]
+    },
+    "work_item": {
+      "description": "A work item taken in from one of the adapter's items, or undone. On taken_in the adapter writes at the source whatever its words for that are; on undone it takes them back. The control plane sends no text for the source.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "work_item_id", "ref", "status", "url"],
+      "properties": {
+        "kind": {"const": "work_item"},
+        "work_item_id": {"description": "The work item's public id in the control plane.", "type": "string", "pattern": "^wi_[A-Za-z0-9_-]{1,64}$"},
+        "ref": {"description": "The ref of the item it was taken in from, as source-items.schema.json sent it.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "status": {"description": "taken_in, or undone.", "type": "string", "enum": ["taken_in", "undone"]},
+        "url": {"description": "The work item's page in the control plane: https, or http to a loopback address only, at most 2048 characters.", "type": "string", "format": "uri", "maxLength": 2048, "pattern": "^(https://[^/?#@\\s]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)(/[^\\s]*)?$"}
+      }
+    },
+    "collection": {
+      "description": "One of the adapter's collections linked, assigned to a workspace in the control plane, or unlinked. The adapter mirrors only linked collections; on unlinked it stops mirroring the collection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "collection_ref", "status"],
+      "properties": {
+        "kind": {"const": "collection"},
+        "collection_ref": {"description": "The collection's ref, as source-collections.schema.json listed it.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "status": {"description": "linked, or unlinked.", "type": "string", "enum": ["linked", "unlinked"]}
+      }
+    },
+    "sync": {
+      "description": "The interval the adapter pulls changes from the source at. The control plane appends one at the adapter's first POST /v1/adapter, and one whenever a person changes the interval. The adapter clamps a value below its declared minimum_interval up to it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "interval"],
+      "properties": {
+        "kind": {"const": "sync"},
+        "interval": {"description": "The interval in seconds, from 60 to 86400, or null for the default_interval the adapter declared (adapter.schema.json).", "type": ["integer", "null"], "minimum": 60, "maximum": 86400}
+      }
+    }
+  }
+}

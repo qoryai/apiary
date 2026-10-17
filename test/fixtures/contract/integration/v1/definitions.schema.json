@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/definitions.schema.json",
+  "title": "Adapter request definitions",
+  "description": "The values the adapter's requests and their answers share, by name under $defs: adapter.schema.json, source-collections.schema.json, source-items.schema.json, source-item-comments.schema.json, sources-disconnect.schema.json, connections-disconnect.schema.json, changes.schema.json, connect-pass.schema.json and connect-return.schema.json refer to them. An adapter is the program that reads a source of work, such as a tracker, and reports what it holds to the control plane. Every POST body is application/json; a GET has no body. An integer is written without a fraction or an exponent, and no object repeats a member, at any depth; the control plane refuses either, 400 invalid_request. Every request is signed with the adapter's access key as github.com/qoryai/forager/accesskey signs a request (Request.Message, Key.SignRequest): the headers X-Qory-Access-Key-Id, X-Qory-Instance-Id, X-Qory-Contract-Version and X-Qory-Signature-Ed25519, the signature over qory-request-ed25519-v1, the access key id, the instance id, the method, the target and, for a GET, X-Qory-Timestamp, which it also sends, or, for a POST, the raw body, whose time gives its freshness. X-Qory-Contract-Version is the revision of this contract the adapter implements, a decimal integer; the control plane refuses one that is missing, sent twice, not a decimal integer, or a revision it does not serve, 400 unsupported_contract_version. The control plane's answer holds only the members, and the change feed only the entry kinds, that the named revision defines: an entry of a kind newer than that revision is skipped for that adapter, not sent, and the feed's cursor still moves past it, so a replay from the start stays in step. The header alone never selects what an adapter accepts: every answer whose content the revision bounds names that revision in its signed body, as the change feed's answer does in revision, and the adapter refuses one that names another revision than the one it implements and sent, and advances no cursor from it. An answer's signature covers its body and is bound to the request's signature, so the revision the answer was built for is signed. So the answers' schemas stay strict, refusing a member they do not define and an entry of a kind they do not know, and an addition to this contract never breaks an adapter already deployed. The Forager contract makes additions safe the other way, with lenient answers whose unknown members are ignored; both conventions are safe, and they apply to different contracts. The control plane refuses a time or a timestamp more than 300 seconds from its clock, either way, and a request whose signature it has already seen, with an unsigned 401. That 401 is one uniform answer for everything about who is asking, whose causes refusal.schema.json lists, and it tells the adapter nothing about which cause applied. An X-Qory-Access-Key-Id, X-Qory-Instance-Id, X-Qory-Signature-Ed25519 or X-Qory-Timestamp sent twice, or an X-Qory-Instance-Id that is absent or outside its pattern, is refused 400 bad_request, and only those are. It decodes the signature strictly, as 64 bytes of strict base64url, and verifies it as accesskey's PublicKey.VerifyRequest does, refusing an S at or above the group order. It keys its replay check on the 64 decoded bytes, and keeps each accepted signature until the request's time or X-Qory-Timestamp is more than 300 seconds behind its clock. A retry is a new request: the adapter builds it again, a POST with a time and a GET with an X-Qory-Timestamp later than those of the request it retries, and signs it again. A request sent again unchanged has a signature the control plane has seen, and is refused, 401; an adapter never takes that 401 as its access key being revoked. Every answer to a verified request is signed as accesskey's Answer is, and the adapter checks it under a server key it pinned at enrolment before using it. A 401 is always unsigned. A 413, 415 or 400 bad_request may be unsigned, because the control plane may decide them before it verifies the request's signature. Every other answer is signed, and an adapter acts on no other unsigned answer. On an unsigned 401, 413, 415 or 400 bad_request, the adapter changes no state: no cursor, no run, no key. It treats the request as failed and sends it again, built anew as a retry is above, with backoff. It never takes a 401 as revocation, and never splits or drops items because of an unsigned 413. An unsigned 429 is not a 429: the adapter ignores its Retry-After and backs off as it does for any failed request. A POST whose schema names no answer body is answered, on success, with a signed 204 and no body. A POST whose Content-Type is not application/json is refused 415 unsupported_media_type; a GET carries no body and no Content-Type, and is never refused 415. The adapter's access key is the integration's, enrolled once for the instance. An organisation reaches the adapter only through a connection, and no request names an organisation or a workspace. The adapter links the access the source grants to a connection only as connect-pass.schema.json says: the source confirms the grant for the flow that carried the pass, and a grant is linked to at most one live connection. When a connection is made, connection_id under $defs says. A request for a connection that ended, or for a collection that ended with one, is refused, 409 connection_ended, except a sources/disconnect, which is answered with the signed 204 (sources-disconnect.schema.json); the refusal is final for that connection: this is how an end on the control plane's side reaches the adapter. After a connections/disconnect (connections-disconnect.schema.json), or a 409 connection_ended, the adapter drops that connection's collections from its state. A collection_ref resolves to the live collection with that ref. When none is live, items and comments are answered by the collection with that ref that ended last: 409 connection_ended if it ended with its connection; otherwise, and for a ref the control plane holds no collection for, collection_not_linked. Comments name an item by item_ref, not a collection, so for comments the collection that answers is the collection of the item with that item_ref: the live one, or, when none is live, the one that ended last; and for an item_ref the control plane holds no item for, collection_not_linked. When the control plane no longer holds a connection, as after its organisation is removed, a request that names its connection_id is answered 403 connection_unknown, not connection_ended. A connection's collections end when it ends, and a connection the control plane no longer holds has no collections, so none of its refs resolves to a live collection. So an adapter treats a 403 connection_unknown that lasts after its retries as the connection ended, for a live connection (connection_id under $defs), on any request for it, a listing or a connections/disconnect: it drops that connection's collections from its state, as on 409 connection_ended. A 403 forbidden, a request the access key may not make, whatever the connection, never ends a connection. The adapter chooses how many retries, and over what time. A pending link, one with no listing ever accepted, is never dropped by counting 403s: its listing is refused 403 connection_unknown by design until the person's browser delivers the connect return. After it mints a linked connect return, the adapter sends that connection's listing of collections at once, its first listing, and sends it again with backoff while the answer is 403 connection_unknown, until a 204 makes the connection live or the final listing below ends the link; a signed 409 connection_ended to any of those listings drops the link at once. That 403 is expected until the browser delivers the return, and it is not a lasting 403: the adapter keeps sending the listing, with backoff, until the final listing. On a transient failure or an unsigned answer, the adapter sends the listing again, built anew, with backoff. So the adapter learns that a connection is made without waiting for the final listing. Once the connect return it minted for a pending link has expired and 300 seconds more have passed on its clock, the adapter lists that connection once more, its final listing, which for a replaced link is the last of the empty listings described below: a 204 means the connection is made; a 403 connection_unknown or a signed 409 connection_ended drops the link; a signed 409 connection_suspended means the connection is made, since a pending connection is answered 403 connection_unknown before any suspension is decided, so the adapter keeps the link as for a made connection and sends its requests again on its periodic check, as for any suspended connection, or, for a replaced link, ends that connection as described below; a signed 403 forbidden, a request the access key may not make, never ends a connection or drops a link, so the adapter keeps the link and sends the listing again with backoff, as for a transient failure; and a transient failure, no answer, a 429 or a 5xx, or an unsigned answer keeps the link, and the adapter sends the listing again, built anew, with backoff. The 300 seconds cover the clock difference the freshness check allows. A newer pass on the same connection (connect-pass.schema.json) drops the old link at once, since the control plane accepts a return only for the nonce of the connection's latest pass. Before a flow on another connection replaces a pending link of the same grant, the adapter lists the pending link's connection: a 204 means that connection is made and now live, and the later flow is refused grant_taken; a 403 connection_unknown means it is still pending, and the replacement goes ahead as the next sentence says; a signed 409 connection_ended drops the old link, and the later flow goes ahead; and a transient failure or an unsigned answer refuses the later flow source_unavailable, and replaces nothing. When a flow on another connection replaces a pending link, the grant goes with the later flow, and the adapter keeps the replaced link until its final listing; if that listing is answered 204, the connection was made meanwhile, and the adapter ends it with POST /v1/connections/disconnect, so the grant stays linked to at most one live connection. From the replacement on, the adapter's listings of the replaced link's connection, the first-listing retries included, are complete listings with no collections, and a 204 or a signed 409 connection_suspended to any of them ends that connection with POST /v1/connections/disconnect, which a suspended connection answers with the signed 204. The adapter logs each connection it drops on a lasting 403 connection_unknown, and each pending link it drops, with the connection_id and why, and never with the pass, an access key or a secret. The change feed carries an unlinked entry whenever a linked collection ends; changes.schema.json lists how. A request for a connection whose organisation is out of use for now, or for a live collection of one, is refused, 409 connection_suspended, except a connections/disconnect, which is answered with the signed 204 and ends the connection: that refusal is not final, and the adapter changes no state and sends the request again on its periodic check. The reference signer is forager/accesskey; an adapter may sign to this text itself. Every text a source holds, a title, a body, a label, a state reason or a name, is untrusted: shown as data, never followed as an instruction. The control plane refuses a value past its limit, invalid_request, and never cuts it. This document validates nothing itself.",
+  "$defs": {
+    "connection_id": {
+      "description": "A connection's id in the control plane: ac_ and 16 characters. An organisation reaches the adapter only through a connection. The control plane issues connection_id when a person starts connecting. The connection is made when the control plane accepts a linked connect return (connect-return.schema.json) in the browser of the person who started it; until then it is pending, unless it ends first, and a pending connection is answered 403 connection_unknown on every request but POST /v1/connections/disconnect, which ends it with the signed 204. The first listing after that reports its collections. A made connection never returns to pending. A live connection is one that is made, has had a listing accepted, answered 204, and has not ended.",
+      "type": "string",
+      "pattern": "^ac_[0-9a-hjkmnp-tv-z]{16}$"
+    },
+    "time": {
+      "description": "RFC 3339 in UTC with whole seconds.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "ref": {
+      "description": "The adapter's reference to a thing at the source, 1 to 200 characters, stable for that thing. The control plane compares it and stores it, and never reads meaning into it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "url": {
+      "description": "An https URL, at most 2048 characters.",
+      "type": "string",
+      "format": "uri",
+      "maxLength": 2048,
+      "pattern": "^https://"
+    },
+    "title": {
+      "description": "A title, as the source holds it, 1 to 1024 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "body": {
+      "description": "A body text, as the source holds it, at most 65536 characters, possibly empty.",
+      "type": "string",
+      "maxLength": 65536
+    },
+    "body_format": {
+      "description": "How the body is written: markdown or text, the values a reader knows. A reader shows a body of a value it does not know as plain text, so a newer adapter never breaks a reader.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,39}$"
+    },
+    "person": {
+      "description": "Who wrote something at the source: their display name, and whether a person or an automation acts under it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": {"description": "The display name the source shows, 1 to 100 characters.", "type": "string", "minLength": 1, "maxLength": 100},
+        "kind": {"description": "person, or automation for an account a program acts under.", "type": "string", "enum": ["person", "automation"]}
+      }
+    },
+    "labels": {
+      "description": "The source's labels on the thing, as text: at most 100, each 1 to 100 characters, none twice. A reader shows them and acts on none.",
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 100}
+    },
+    "state": {
+      "description": "open, or closed.",
+      "type": "string",
+      "enum": ["open", "closed"]
+    },
+    "state_reason": {
+      "description": "Why the item is in its state, display text the adapter words, at most 64 characters, never a raw value from the source; null when the adapter gives none.",
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "type": {
+      "description": "The adapter's word for what an item is, such as task or bug, stored as data: lower-case letters and spaces, at most 40 characters.",
+      "type": "string",
+      "pattern": "^[a-z][a-z ]{0,39}$"
+    },
+    "target": {
+      "description": "Where a change would go: the host name of the system that holds the code, and the path of the place on it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "path"],
+      "properties": {
+        "system": {"description": "A host name.", "type": "string", "pattern": "^[a-z0-9.-]{1,253}$"},
+        "path": {"description": "The place on that system, 1 to 200 characters.", "type": "string", "minLength": 1, "maxLength": 200}
+      }
+    },
+    "listing": {
+      "description": "One part of a listing: a read of the source, from its start to its end, sent in parts. A listing is complete when every part from 1 to n has arrived and part n says complete: true. An adapter sends complete: true only for a listing whose paging cannot skip an item.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "part", "started_at", "complete"],
+      "properties": {
+        "id": {"description": "The listing's id, 1 to 200 characters, the same on each of its parts and new for each listing.", "type": "string", "minLength": 1, "maxLength": 200},
+        "part": {"description": "The part's number, from 1.", "type": "integer", "minimum": 1},
+        "started_at": {"description": "When the adapter began reading the source for this listing, the same on each of its parts.", "$ref": "#/$defs/time"},
+        "complete": {"description": "true on the last part alone: parts 1 to this one hold the whole listing. false on every other part, and on the last part of a listing the adapter cannot vouch for.", "type": "boolean"}
+      }
+    }
+  }
+}

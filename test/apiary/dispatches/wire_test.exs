@@ -8,8 +8,53 @@ defmodule Apiary.Dispatches.WireTest do
 
   alias Apiary.Dispatches.Wire
 
-  @contract Path.expand("../../fixtures/contract/provisioner/v1", __DIR__)
+  @vendored Path.expand("../../fixtures/contract", __DIR__)
+  @contract Path.join(@vendored, "provisioner/v1")
   @fixtures Path.join(@contract, "fixtures")
+  @base "https://qory.dev/contracts/"
+
+  # The vendored schemas, by their URL under the contracts' base: the provisioner
+  # contract's, and the integration contract's it names, vendored beside them from the
+  # same commit under `integration/v1/`. Nothing is fetched.
+  defmodule Resolver do
+    @moduledoc false
+    @behaviour JSV.Resolver
+
+    @base "https://qory.dev/contracts/"
+
+    @impl JSV.Resolver
+    def resolve(@base <> path, root) do
+      file = Path.expand(path, root)
+
+      with true <- String.starts_with?(file, root <> "/"),
+           {:ok, body} <- File.read(file),
+           {:ok, schema} <- Jason.decode(body) do
+        {:ok, schema}
+      else
+        _ -> {:error, {:not_vendored, path}}
+      end
+    end
+
+    def resolve(url, _root), do: {:error, {:not_vendored, url}}
+  end
+
+  # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
+  # schema its name starts with, the longest that matches.
+  @schemas ~w(claim-answer handover-answer claim dispatched handover release refusal)
+
+  defp schema_of("invalid/" <> name),
+    do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
+
+  defp schema_of(path), do: path |> Path.split() |> hd()
+
+  defp validator(schema) do
+    JSV.build!(%{"$ref" => @base <> "provisioner/v1/#{schema}.schema.json"},
+      resolver: {Resolver, @vendored},
+      formats: true
+    )
+  end
+
+  defp valid?(schema, document), do: match?({:ok, _}, JSV.validate(document, validator(schema)))
 
   # The request bodies and their readers; the answers' fixtures are the control plane's
   # to write, not to read.
@@ -50,7 +95,49 @@ defmodule Apiary.Dispatches.WireTest do
 
   test "the vendored contract is the commit its ref names" do
     assert File.read!(Path.join(@contract, ".contract-ref")) ==
-             "c19bb43a26b10c2c5e89bf32f5d084126c356a47\n"
+             "256400611e9230daccc6c78d0c4d5b156305c3b8\n"
+
+    assert File.read!(Path.join(@vendored, "integration/v1/.contract-ref")) ==
+             "256400611e9230daccc6c78d0c4d5b156305c3b8\n"
+  end
+
+  test "every fixture is valid under its vendored schema, or invalid under it as its directory says" do
+    for path <- Path.wildcard(Path.join(@fixtures, "**/*.json")) do
+      relative = Path.relative_to(path, @fixtures)
+      schema = schema_of(relative)
+      assert schema in @schemas, relative
+      expected = not String.starts_with?(relative, "invalid/")
+      assert valid?(schema, Jason.decode!(File.read!(path))) == expected, relative
+    end
+  end
+
+  test "a work item's url in an answer is https, or http to a loopback address alone" do
+    loopback = Jason.decode!(fixture("claim-answer/explore-loopback.json"))
+    assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
+    assert valid?("claim-answer", loopback)
+
+    http = Jason.decode!(fixture("invalid/claim-answer-work-item-url-http.json"))
+    assert http["work_item"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    refute valid?("claim-answer", http)
+
+    # The same rule holds in a handover's answer, whose work item is the same definition.
+    answer = Jason.decode!(fixture("handover-answer/explore.json"))
+
+    for url <- [
+          "http://localhost/work-items/wi_8Kx2mQ4vT9",
+          "http://[::1]:4000/work-items/wi_8Kx2mQ4vT9",
+          "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+        ] do
+      assert valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+    end
+
+    for url <- [
+          "http://control.example.com/work-items/wi_8Kx2mQ4vT9",
+          "http://127.0.0.2/work-items/wi_8Kx2mQ4vT9",
+          "ftp://127.0.0.1/work-items/wi_8Kx2mQ4vT9"
+        ] do
+      refute valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+    end
   end
 
   test "every fixture is a request read here, an answer, or a refusal" do
@@ -80,7 +167,7 @@ defmodule Apiary.Dispatches.WireTest do
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
     assert length(requests) == 6
     assert length(invalid_requests) == 4
-    assert length(answers) == 8
+    assert length(answers) == 10
     assert length(refusals) == 3
   end
 
