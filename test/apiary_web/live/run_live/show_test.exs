@@ -73,7 +73,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       theirs = projected(scope_fixture(), record())
 
-      for id <- [theirs.public_id, theirs.run_id, theirs.id, Ecto.UUID.generate(), "0191f2a4"],
+      for id <- [
+            theirs.public_id,
+            theirs.node_run_id,
+            theirs.id,
+            Ecto.UUID.generate(),
+            "0191f2a4"
+          ],
           path <- ["", "/terminal", "/network", "/details"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{id}#{path}")
         assert html =~ "This run is not in this workspace"
@@ -87,7 +93,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, record())
-      old = "#{workspace_path(scope)}/runs/#{run.run_id}"
+      old = "#{workspace_path(scope)}/runs/#{run.node_run_id}"
 
       for path <- ["", "/terminal", "/network", "/details"] do
         assert {:ok, _lv, html} = live(conn, old <> path)
@@ -357,7 +363,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#run-id", run.public_id)
       assert has_element?(lv, "#run-details dt", "Node's run id")
-      assert has_element?(lv, "#run-details dd#run-node-run-id", run.run_id)
+      assert has_element?(lv, "#run-details dd#run-node-run-id", run.node_run_id)
       refute page_title(lv) =~ "Details ·"
       assert page_title(lv) == "#{ApiaryWeb.RunComponents.run_title(run)} · Runs · Qory Apiary"
 
@@ -1688,7 +1694,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute html =~ run.policy_digest
       end
 
-      assert html =~ run.run_id
+      assert html =~ run.node_run_id
       assert html =~ "projected through"
       assert html =~ "5b8e2f14-9c3a-4d7e-a1b6-3f0c8d2e7a45"
     end

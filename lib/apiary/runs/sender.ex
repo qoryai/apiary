@@ -8,7 +8,7 @@ defmodule Apiary.Runs.Sender do
 
     * a run that goes through a gateway (`Apiary.Runs.Run.through_gateway?/1`): the
       gateway that attached it, `runs.gateway_id` once `attached_at` is set, under any of
-      its keys, and from the instance that attached it, `runs.attach_instance_id`, the
+      its keys, and from the instance that attached it, `runs.gateway_instance_id`, the
       instance id its signed requests carry. Before the attach nobody sends for it, the
       node or node pool that registered it included, and after it no key but the
       gateway's, theirs included, and no other instance of the gateway. A gateway that
@@ -98,7 +98,10 @@ defmodule Apiary.Runs.Sender do
   instance holds.
   """
   @spec attaching_instance?(Run.t(), String.t() | nil) :: boolean
-  def attaching_instance?(%Run{run_key_payload: payload, attach_instance_id: stored}, instance_id)
+  def attaching_instance?(
+        %Run{run_key_payload: payload, gateway_instance_id: stored},
+        instance_id
+      )
       when is_binary(payload),
       do: is_nil(stored) or stored === instance_id
 
@@ -115,17 +118,17 @@ defmodule Apiary.Runs.Sender do
   """
   @spec take_instance(Run.t(), String.t() | nil) :: {:ok, Run.t()} | {:error, :other_instance}
   def take_instance(
-        %Run{attach_instance_id: nil, attached_at: %DateTime{}, run_key_payload: payload} = run,
+        %Run{gateway_instance_id: nil, attached_at: %DateTime{}, run_key_payload: payload} = run,
         instance_id
       )
       when is_binary(payload) do
     if Instance.instance_id?(instance_id) do
       query =
         from r in Run,
-          where: r.id == ^run.id and is_nil(r.attach_instance_id) and not is_nil(r.attached_at)
+          where: r.id == ^run.id and is_nil(r.gateway_instance_id) and not is_nil(r.attached_at)
 
-      case Repo.update_all(query, set: [attach_instance_id: instance_id]) do
-        {1, _rows} -> {:ok, %{run | attach_instance_id: instance_id}}
+      case Repo.update_all(query, set: [gateway_instance_id: instance_id]) do
+        {1, _rows} -> {:ok, %{run | gateway_instance_id: instance_id}}
         {0, _rows} -> taken(run, instance_id)
       end
     else
@@ -151,9 +154,9 @@ defmodule Apiary.Runs.Sender do
     cond do
       not may_send?(run, access_key) -> :refused
       not Run.through_gateway?(run) -> {:ok, run}
-      is_binary(run.attach_instance_id) and run.attach_instance_id === instance_id -> {:ok, run}
+      is_binary(run.gateway_instance_id) and run.gateway_instance_id === instance_id -> {:ok, run}
       sending_ended?(run) -> {:ok, run}
-      is_nil(run.attach_instance_id) -> taken_instance(run, instance_id)
+      is_nil(run.gateway_instance_id) -> taken_instance(run, instance_id)
       true -> :refused
     end
   end
@@ -183,8 +186,8 @@ defmodule Apiary.Runs.Sender do
   # Another request wrote the run's instance first: it holds the run, unless it was this
   # same instance's.
   defp taken(run, instance_id) do
-    case Repo.one(from r in Run, where: r.id == ^run.id, select: r.attach_instance_id) do
-      ^instance_id -> {:ok, %{run | attach_instance_id: instance_id}}
+    case Repo.one(from r in Run, where: r.id == ^run.id, select: r.gateway_instance_id) do
+      ^instance_id -> {:ok, %{run | gateway_instance_id: instance_id}}
       _other -> {:error, :other_instance}
     end
   end
@@ -216,11 +219,11 @@ defmodule Apiary.Runs.Sender do
   def run_query(access_key, run_id, opts \\ [])
 
   def run_query(%AccessKey{node: %Node{kind: :gateway, id: id}}, run_id, opts) do
-    from(r in Run, where: r.gateway_id == ^id and r.run_id == ^run_id) |> lock(opts)
+    from(r in Run, where: r.gateway_id == ^id and r.node_run_id == ^run_id) |> lock(opts)
   end
 
   def run_query(%AccessKey{workspace_id: workspace_id}, run_id, opts) do
-    from(r in Run, where: r.workspace_id == ^workspace_id and r.run_id == ^run_id)
+    from(r in Run, where: r.workspace_id == ^workspace_id and r.node_run_id == ^run_id)
     |> lock(opts)
   end
 

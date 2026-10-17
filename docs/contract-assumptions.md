@@ -187,7 +187,7 @@ node pool of the workspace, a gateway's included, is `409 wrong_node` for a batc
 
 A run through a gateway (The run endpoint, below) takes its batches from the active keys
 of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), signed
-with the instance id that attached it (`runs.attach_instance_id`), and from nobody before
+with the instance id that attached it (`runs.gateway_instance_id`), and from nobody before
 the attach, the run's node included: another instance of the gateway is `409 wrong_gateway`,
 under any of its keys, while the run's sending has not ended. A run whose starter gave its
 outcome has not ended here: its gateway still sends its last events and its exit. A run
@@ -469,7 +469,7 @@ closing brace, each only when the registration had some, with `X-Qory-Run-Config
 and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
 batches carry the same digest, and `X-Qory-Configuration`. The run keeps `attached_at`,
 `attach_interval_seconds`, the digest given (`attach_answer_digest`), the instance id the
-attach was signed with (`attach_instance_id`), and the attach's Forager version (the
+attach was signed with (`gateway_instance_id`), and the attach's Forager version (the
 `User-Agent`'s first) and contract version.
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
@@ -773,7 +773,7 @@ later heartbeat that counts within three intervals of its arrival brings the run
 and the run's `dev.qory.run.exited` decides its state by How a run ends. For a run
 through a gateway, after a loss, only the attaching instance's heartbeat makes the run
 live again: each event is stored with the instance id of the request that delivered it
-(`events.instance_id`), and the fold counts the starts and heartbeats of the instance
+(`events.node_instance_id`), and the fold counts the starts and heartbeats of the instance
 that attached the run alone (`Apiary.Runs.Fold.liveness_instance/1`). Another instance's
 heartbeat is stored and answered, and moves neither the run's state, nor `lost_at`, nor
 its last heartbeat, and a rebuild folds it the same. An event stored before its instance

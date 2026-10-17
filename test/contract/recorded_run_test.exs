@@ -41,7 +41,7 @@ defmodule Apiary.Contract.RecordedRunTest do
 
   def run!(scope, subject) do
     Repo.one!(
-      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^subject
     )
   end
 
@@ -50,7 +50,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   def stored(run) do
     events =
       Repo.all(from e in Event, where: e.run_id == ^run.id, order_by: e.sequence)
-      |> Enum.map(&Map.take(&1, [:sequence, :event_id, :type, :time, :data]))
+      |> Enum.map(&Map.take(&1, [:sequence, :node_event_id, :type, :time, :data]))
 
     %{events: events, run_event_count: run.event_count}
   end
@@ -125,7 +125,7 @@ defmodule Apiary.Contract.RecordedRunTest do
       assert run.event_count == length(lines)
       assert %{events: events} = stored(run)
       assert Enum.map(events, & &1.sequence) == Enum.to_list(2..length(record))
-      assert Enum.map(events, & &1.event_id) == Enum.map(wire, & &1["id"])
+      assert Enum.map(events, & &1.node_event_id) == Enum.map(wire, & &1["id"])
       assert Enum.map(events, & &1.type) == Enum.map(wire, & &1["type"])
       assert Enum.map(events, & &1.data) == Enum.map(wire, & &1["data"])
 

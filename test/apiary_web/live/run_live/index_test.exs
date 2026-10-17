@@ -1830,14 +1830,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
     test "`?run=` takes the run's `rn_` id only: the node's run id is dropped as any bad value is",
          %{conn: conn, older: older, scope: scope} do
-      for bad <- [older.run_id, older.id, String.slice(older.public_id, 0, 11)] do
+      for bad <- [older.node_run_id, older.id, String.slice(older.public_id, 0, 11)] do
         assert {:error, {:live_redirect, %{to: to}}} = live(conn, runs(scope, "?run=#{bad}"))
         assert to == runs(scope)
       end
 
       # Chosen by a row's event, the node's run id chooses nothing either.
       view = open(conn, scope)
-      render_hook(view, "select", %{"id" => older.run_id})
+      render_hook(view, "select", %{"id" => older.node_run_id})
       refute_patched(view)
     end
   end

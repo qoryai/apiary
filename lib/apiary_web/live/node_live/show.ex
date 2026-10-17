@@ -1026,9 +1026,9 @@ defmodule ApiaryWeb.NodeLive.Show do
           </span>
         <% else %>
           <span id="node-instance-name" class="font-medium">
-            {@last.name || @last.instance_id}
+            {@last.name || @last.node_instance_id}
           </span>
-          <span :if={@last.name} class="q-mono text-muted">{@last.instance_id}</span>
+          <span :if={@last.name} class="q-mono text-muted">{@last.node_instance_id}</span>
           <span class="text-muted">
             {gettext("Last seen")}
             <.relative_time id="node-instance-seen" at={@last.last_seen_at} />

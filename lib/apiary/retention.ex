@@ -108,8 +108,8 @@ defmodule Apiary.Retention do
     %{
       schema: Delivery,
       phases: [:events],
-      run_column: :run_id,
-      run_field: :run_id,
+      run_column: :node_run_id,
+      run_field: :node_run_id,
       count: :deliveries_deleted,
       log_only_in: nil,
       bytes: false
@@ -353,7 +353,7 @@ defmodule Apiary.Retention do
         limit: ^limit,
         select: %{
           id: r.id,
-          run_id: r.run_id,
+          node_run_id: r.node_run_id,
           workspace_id: r.workspace_id,
           age: fragment("COALESCE(?, ?)", r.last_event_at, r.inserted_at)
         }

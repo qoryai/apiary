@@ -70,7 +70,7 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
 
   defp deliver({key, secret}, events), do: signed_post(build_conn(), key.key_id, secret, events)
 
-  defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
   defp started(run_id) do
     {_subject, [started]} = first_events(run_id)
@@ -324,7 +324,7 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
     end
 
     test "for a run whose events retention has pruned, 404", ctx do
-      Repo.update_all(from(r in Run, where: r.run_id == ^ctx.run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^ctx.run_id),
         set: [events_pruned_at: DateTime.utc_now()]
       )
 

@@ -40,7 +40,7 @@ defmodule Apiary.Runs.NoClosedStateMigrationTest do
     values = Enum.map_join(6..(5 + length(columns))//1, &", $#{&1}")
 
     Repo.query!(
-      "INSERT INTO runs (id, organisation_id, workspace_id, run_id, state, inserted_at, " <>
+      "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, inserted_at, " <>
         "updated_at#{names}) VALUES ($1, $2, $3, $4, $5, now(), now()#{values})",
       [
         Ecto.UUID.dump!(id),

@@ -293,8 +293,8 @@ defmodule Apiary.TargetsTest do
       assert summary.window == %{runs: 2, ended_well: 1, cancelled: 0, ended_badly: 1, denied: 2}
       assert List.last(summary.days) == 2
 
-      assert [%{run_id: newest}, _, _] = Targets.recent_runs(scope, shop, 10)
-      assert newest == last.run_id
+      assert [%{node_run_id: newest}, _, _] = Targets.recent_runs(scope, shop, 10)
+      assert newest == last.node_run_id
       assert [_] = Targets.recent_runs(scope, shop, 1)
 
       since = DateTime.add(@now, -14 * @day, :second)

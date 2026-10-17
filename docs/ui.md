@@ -1427,7 +1427,8 @@ run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the node'
 or any other value, is not found, and nothing redirects it. The header, Details and Copy
 run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
 eight characters. Details' Record shows the node's run id on the next row, "Node's run id",
-and the search finds a run by either id.
+and the search finds a run by either id. Details and the runs list's preview show the
+instance id the run's node claimed, when it claimed one, under "Node's instance id".
 
 - **The header** is the title (the one the run gave in its `about`, else "Run" and the
   run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one

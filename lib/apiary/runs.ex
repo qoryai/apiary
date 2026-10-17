@@ -1718,7 +1718,7 @@ defmodule Apiary.Runs do
             dynamic([r], like(r.public_id, ^prefix))
 
           Regex.match?(~r/\A[0-9a-f-]{4,36}\z/, text) ->
-            dynamic([r], fragment("?::text LIKE ?", r.run_id, ^(text <> "%")))
+            dynamic([r], fragment("?::text LIKE ?", r.node_run_id, ^(text <> "%")))
 
           true ->
             nil

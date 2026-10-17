@@ -622,7 +622,7 @@ defmodule Apiary.DeletionTest do
         delivery_id: Ecto.UUID.generate()
       })
 
-    run = Repo.one!(from r in Apiary.Runs.Run, where: r.run_id == ^subject)
+    run = Repo.one!(from r in Apiary.Runs.Run, where: r.node_run_id == ^subject)
     events_fixture(run, Enum.drop(record(), 2))
     {:ok, _} = Projector.project(run)
 

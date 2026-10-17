@@ -466,9 +466,9 @@ defmodule Apiary.AuditChanges do
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
-    node_run_fixture(node, instance.instance_id)
+    node_run_fixture(node, instance.node_instance_id)
     before = entries()
-    {:ok, _} = Nodes.clear_instance(scope, node, instance.instance_id)
+    {:ok, _} = Nodes.clear_instance(scope, node, instance.node_instance_id)
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
@@ -734,7 +734,7 @@ defmodule Apiary.AuditChanges do
 
   defp prepare(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
-    {node, instance_fixture(node).instance_id}
+    {node, instance_fixture(node).node_instance_id}
   end
 
   defp prepare(:"organisation.restore", %{scope: scope}) do

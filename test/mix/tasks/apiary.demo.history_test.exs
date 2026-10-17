@@ -203,7 +203,7 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
 
     # Each run is on its machine's node, as the instance of its host, recorded.
     runs = runs(scope)
-    assert Enum.all?(runs, &(&1.node_id && &1.instance_id))
+    assert Enum.all?(runs, &(&1.node_id && &1.node_instance_id))
     fleet = by_label["ci-fleet"].node_id
 
     names =

@@ -31,7 +31,7 @@ defmodule Apiary.Runs.RunPublicIdMigrationTest do
     id = Ecto.UUID.generate()
 
     Repo.query!(
-      "INSERT INTO runs (id, organisation_id, workspace_id, run_id, state, inserted_at, " <>
+      "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, inserted_at, " <>
         "updated_at) VALUES ($1, $2, $3, $4, 'pending', now(), now())",
       [
         Ecto.UUID.dump!(id),

@@ -156,7 +156,7 @@ defmodule E2E do
     [first] = applied(run)
 
     say(
-      "run #{run.run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
+      "run #{run.node_run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
     )
 
     say(

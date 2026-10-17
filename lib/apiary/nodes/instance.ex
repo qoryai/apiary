@@ -1,11 +1,11 @@
 defmodule Apiary.Nodes.Instance do
   @moduledoc """
   An instance of a node: what Forager, under the node's access key, reports itself as, by
-  the instance id it signs on every request. The id is a **claim**: anyone with the key
-  can report any instance, so it serves display, the audit and the instance limit, and
-  never authorisation. The row carries no integrity code.
+  the instance id it signs on every request, kept as `node_instance_id`. The id is a
+  **claim**: anyone with the key can report any instance, so it serves display, the audit
+  and the instance limit, and never authorisation. The row carries no integrity code.
 
-  An instance is the node's, not its key's: `(node_id, instance_id)` is unique, so an
+  An instance is the node's, not its key's: `(node_id, node_instance_id)` is unique, so an
   instance that moves to the node's replacement key stays one instance, and
   `access_key_id` is the key it last used. `name` is what Forager said it is called
   (`X-Qory-Instance-Name`, unsigned), kept only when it matches `name_pattern/0`.
@@ -26,7 +26,7 @@ defmodule Apiary.Nodes.Instance do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "node_instances" do
-    field :instance_id, :string
+    field :node_instance_id, :string
     field :name, :string
     field :first_seen_at, :utc_datetime_usec
     field :last_seen_at, :utc_datetime_usec

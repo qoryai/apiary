@@ -193,7 +193,7 @@ defmodule Apiary.NodesFixtures do
 
   @doc """
   An instance of `node` as `Apiary.Nodes.seen/3` leaves it, written straight into the
-  table: `instance_id` (a fresh one unless given), `name`, and seen first and last at
+  table: `node_instance_id`, the `instance_id` given or a fresh one, `name`, and seen first and last at
   `seen_at` (now unless given), or at `first_seen_at` and `last_seen_at`.
   """
   def instance_fixture(%Node{} = node, attrs \\ %{}) do
@@ -204,7 +204,7 @@ defmodule Apiary.NodesFixtures do
       organisation_id: node.organisation_id,
       workspace_id: node.workspace_id,
       node_id: node.id,
-      instance_id: Map.get(attrs, :instance_id, unique_instance_id()),
+      node_instance_id: Map.get(attrs, :instance_id, unique_instance_id()),
       name: Map.get(attrs, :name),
       first_seen_at: Map.get(attrs, :first_seen_at, seen),
       last_seen_at: Map.get(attrs, :last_seen_at, seen),
@@ -226,9 +226,9 @@ defmodule Apiary.NodesFixtures do
     %Run{
       organisation_id: node.organisation_id,
       workspace_id: node.workspace_id,
-      run_id: Ecto.UUID.generate(),
+      node_run_id: Ecto.UUID.generate(),
       node_id: node.id,
-      instance_id: instance_id,
+      node_instance_id: instance_id,
       inserted_at: now,
       updated_at: now
     }

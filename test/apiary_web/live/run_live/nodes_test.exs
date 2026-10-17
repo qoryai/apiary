@@ -139,6 +139,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       assert has_element?(view, "#runs-preview-node a", "build-01")
       assert has_element?(view, "#runs-preview-instance", "i_1")
+      assert render(view) =~ "Node&#39;s instance id"
     end
   end
 
@@ -162,6 +163,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       assert has_element?(view, "#run-instance", "build-01.example.com")
       assert has_element?(view, "#run-instance", "i_1")
+      assert render(view) =~ "Node&#39;s instance id"
 
       {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{bare.public_id}"))
       refute has_element?(view, "#run-node")

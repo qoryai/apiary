@@ -41,7 +41,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   defp reload(ctx, run_id, opts \\ []),
     do: signed_get(build_conn(), ctx.key.key_id, ctx.secret, @runs <> "/" <> run_id, opts)
 
-  defp run(run_id), do: Repo.one(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one(from r in Run, where: r.node_run_id == ^run_id)
 
   defp allow(conn), do: Jason.decode!(conn.resp_body)["security_policy"]["egress"]["allow"]
 
@@ -351,7 +351,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       body = Jason.encode!(registration(run_id))
       assert signed_register(build_conn(), ctx.key.key_id, ctx.secret, body).status == 200
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [events_pruned_at: DateTime.utc_now()]
       )
 

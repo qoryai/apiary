@@ -6549,9 +6549,7 @@ msgstr ""
 msgid "Install address"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance"
 msgstr ""
@@ -8725,6 +8723,12 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node pool: short-lived instances that share one access key."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Node's instance id"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

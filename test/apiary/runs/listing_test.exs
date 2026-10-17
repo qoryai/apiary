@@ -553,8 +553,8 @@ defmodule Apiary.Runs.ListingTest do
       assert by.("%") == [a.id]
       assert by.("gitlab.example/acme") == [b.id]
       assert by.("data/etl") == [c.id]
-      assert by.(String.slice(b.run_id, 0, 8)) == [b.id]
-      assert by.(String.upcase(String.slice(c.run_id, 0, 6))) == [c.id]
+      assert by.(String.slice(b.node_run_id, 0, 8)) == [b.id]
+      assert by.(String.upcase(String.slice(c.node_run_id, 0, 6))) == [c.id]
       # The run's `rn_` id: its start, `rn_` and eight characters as a list shows it, and
       # whole; a run page's address names it.
       assert by.(String.slice(a.public_id, 0, 11)) == [a.id]
@@ -644,7 +644,7 @@ defmodule Apiary.Runs.ListingTest do
 
           %{
             id: Ecto.UUID.generate(),
-            run_id: Ecto.UUID.generate(),
+            node_run_id: Ecto.UUID.generate(),
             organisation_id: organisation.id,
             workspace_id: workspace.id,
             state: "succeeded",
@@ -1022,7 +1022,7 @@ defmodule Apiary.Runs.ListingTest do
 
       for {scope, id} <- [
             {other, run.public_id},
-            {scope, run.run_id},
+            {scope, run.node_run_id},
             {scope, run.id},
             {scope, "rn_0000000000000000"},
             {scope, "rn_000000000000000u"},

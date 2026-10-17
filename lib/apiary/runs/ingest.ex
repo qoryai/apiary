@@ -34,8 +34,8 @@ defmodule Apiary.Runs.Ingest do
   lost after its attach, or its events were pruned). From then on a batch from any
   instance of the gateway is answered as the attaching instance's would be: a resend is
   deduplicated, and a run whose events were pruned is answered 410. Each event is stored
-  with the instance id of the request that delivered it (`events.instance_id`), and after
-  a loss, only the attaching instance's heartbeat makes the run live again, once that
+  with the instance id of the request that delivered it (`events.node_instance_id`), and
+  after a loss, only the attaching instance's heartbeat makes the run live again, once that
   instance is known (`Apiary.Runs.Fold`). A run attached before
   its instance was known takes the instance of the first batch its gateway sends while
   its sending has not ended, under the run's row lock.
@@ -218,7 +218,7 @@ defmodule Apiary.Runs.Ingest do
 
       true ->
         {stored_batch, pruned} = without_pruned_log(run, batch)
-        instance_id = placement(access_key, meta).instance_id
+        instance_id = placement(access_key, meta).node_instance_id
         {inserted, duplicates, conflicts} = insert_events(run, stored_batch, instance_id, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
@@ -283,7 +283,7 @@ defmodule Apiary.Runs.Ingest do
   defp own_run(access_key, batch) do
     Repo.one(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject
     )
   end
 
@@ -328,7 +328,7 @@ defmodule Apiary.Runs.Ingest do
             public_id: Run.new_public_id(),
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
-            run_id: batch.subject,
+            node_run_id: batch.subject,
             access_key_id: access_key.id,
             state: "pending",
             forager_version: meta[:forager_version],
@@ -340,12 +340,12 @@ defmodule Apiary.Runs.Ingest do
         )
       ],
       on_conflict: :nothing,
-      conflict_target: [:workspace_id, :run_id]
+      conflict_target: [:workspace_id, :node_run_id]
     )
 
     Repo.one!(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject,
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
         lock: "FOR UPDATE"
     )
   end
@@ -363,18 +363,18 @@ defmodule Apiary.Runs.Ingest do
             organisation_id: run.organisation_id,
             workspace_id: run.workspace_id,
             access_key_id: access_key.id,
-            delivery_id: delivery_id,
-            run_id: batch.subject,
+            node_delivery_id: delivery_id,
+            node_run_id: batch.subject,
             received_at: now,
             event_count: length(batch.events),
             inserted_count: 0,
             status: status,
             run_configuration_digest: run_configuration(meta),
-            instance_id: placement(access_key, meta).instance_id
+            node_instance_id: placement(access_key, meta).node_instance_id
           }
         ],
         on_conflict: :nothing,
-        conflict_target: [:access_key_id, :delivery_id]
+        conflict_target: [:access_key_id, :node_delivery_id]
       )
 
     count == 1
@@ -385,7 +385,7 @@ defmodule Apiary.Runs.Ingest do
   defp record_delivery(access_key, delivery_id, inserted) do
     Repo.update_all(
       from(d in Delivery,
-        where: d.access_key_id == ^access_key.id and d.delivery_id == ^delivery_id
+        where: d.access_key_id == ^access_key.id and d.node_delivery_id == ^delivery_id
       ),
       set: [inserted_count: inserted]
     )
@@ -400,12 +400,12 @@ defmodule Apiary.Runs.Ingest do
           workspace_id: run.workspace_id,
           run_id: run.id,
           sequence: event.sequence,
-          event_id: event.event_id,
+          node_event_id: event.event_id,
           type: event.type,
           time: event.time,
           data: event.data,
           received_at: now,
-          instance_id: instance_id
+          node_instance_id: instance_id
         }
       end)
 
@@ -419,7 +419,7 @@ defmodule Apiary.Runs.Ingest do
         {inserted, returned} =
           Repo.insert_all(Event, chunk,
             on_conflict: :nothing,
-            returning: [:event_id],
+            returning: [:node_event_id],
             log: false
           )
 
@@ -435,22 +435,22 @@ defmodule Apiary.Runs.Ingest do
   # in the same run at the same sequence, and a conflict otherwise: its id is
   # another run's, or its sequence is another event's.
   defp conflicts(run, rows, stored) do
-    stored = MapSet.new(stored, & &1.event_id)
-    skipped = Enum.reject(rows, &MapSet.member?(stored, &1.event_id))
-    ids = Enum.map(skipped, & &1.event_id)
+    stored = MapSet.new(stored, & &1.node_event_id)
+    skipped = Enum.reject(rows, &MapSet.member?(stored, &1.node_event_id))
+    ids = Enum.map(skipped, & &1.node_event_id)
 
     held =
       Repo.all(
         from(e in Event,
-          where: e.workspace_id == ^run.workspace_id and e.event_id in ^ids,
-          select: {e.event_id, {e.run_id, e.sequence}}
+          where: e.workspace_id == ^run.workspace_id and e.node_event_id in ^ids,
+          select: {e.node_event_id, {e.run_id, e.sequence}}
         ),
         log: false
       )
       |> Map.new()
 
     Enum.count(skipped, fn row ->
-      Map.get(held, row.event_id) != {row.run_id, row.sequence}
+      Map.get(held, row.node_event_id) != {row.run_id, row.sequence}
     end)
   end
 

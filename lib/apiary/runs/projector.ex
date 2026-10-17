@@ -412,7 +412,7 @@ defmodule Apiary.Runs.Projector do
         Event
 
       instance_id ->
-        from e in Event, where: is_nil(e.instance_id) or e.instance_id == ^instance_id
+        from e in Event, where: is_nil(e.node_instance_id) or e.node_instance_id == ^instance_id
     end
   end
 

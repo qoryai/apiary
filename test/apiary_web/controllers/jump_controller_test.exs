@@ -144,7 +144,12 @@ defmodule ApiaryWeb.JumpControllerTest do
     short = String.slice(run.public_id, 0, 11)
     href = workspace_path(scope, "/runs/#{run.public_id}")
 
-    for q <- [short, String.slice(run.run_id, 0, 4), run.run_id, "https://x.example#{href}"] do
+    for q <- [
+          short,
+          String.slice(run.node_run_id, 0, 4),
+          run.node_run_id,
+          "https://x.example#{href}"
+        ] do
       answer = jump(conn, workspace_path(scope, "/jump"), q)
       assert [%{"href" => ^href}] = group(answer, "Runs")["items"], q
     end
@@ -169,7 +174,7 @@ defmodule ApiaryWeb.JumpControllerTest do
            )
 
     # An old address, by the node's run id, is no run page's address.
-    old = "https://x.example" <> workspace_path(scope, "/runs/#{run.run_id}")
+    old = "https://x.example" <> workspace_path(scope, "/runs/#{run.node_run_id}")
     refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
