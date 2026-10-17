@@ -12,7 +12,8 @@ defmodule Apiary.Dispatches.Slots do
   # - `held/1` counts the slots a pool's dispatches hold, read from the partial index on
   #   the held ones. `Apiary.Nodes.check_instance_limit/3` adds them to the pool's live
   #   runs that were not dispatched, and a claim counts the same (`Apiary.Dispatches`).
-  # - `free/2` frees what is due at `now`, for one pool or for every pool (`:all`): a
+  # - `free/2` frees what is due at `now`, for one pool, for every pool (`:all`) or for
+  #   the dispatches of some runs of the queue (`{:runs, ids}`, as an undo asks): a
   #   dispatch whose lease lapsed before its handover (`now` at or after `lease_until`,
   #   neither handed over, stale nor ended) is marked stale at `now`, its slot freed, and
   #   its run, claimed, waits in its workspace's queue again with the same `run_id` and
@@ -50,11 +51,14 @@ defmodule Apiary.Dispatches.Slots do
     )
   end
 
-  # Frees what is due at `now` for the dispatches of `pool_id`, or of every pool with
-  # `:all`, as the moduledoc says: the ids of the workspaces whose queue or slots changed.
+  # Frees what is due at `now` for the dispatches of `pool_id`, of every pool with `:all`,
+  # or of the runs `ids` with `{:runs, ids}`, as the moduledoc says: the ids of the
+  # workspaces whose queue or slots changed.
   @doc false
-  @spec free(Ecto.UUID.t() | :all, DateTime.t()) :: [Ecto.UUID.t()]
-  def free(pool, %DateTime{} = now) when is_binary(pool) or pool == :all do
+  @spec free(Ecto.UUID.t() | :all | {:runs, [Ecto.UUID.t()]}, DateTime.t()) :: [Ecto.UUID.t()]
+  def free(pool, %DateTime{} = now)
+      when is_binary(pool) or pool == :all or
+             (is_tuple(pool) and tuple_size(pool) == 2 and elem(pool, 0) == :runs) do
     in_transaction!()
     lapsed = lapse(pool, now, [])
     ended = free_ended(pool, now)
@@ -157,6 +161,10 @@ defmodule Apiary.Dispatches.Slots do
   end
 
   defp of_pool(query, :all), do: query
+
+  defp of_pool(query, {:runs, run_ids}) when is_list(run_ids),
+    do: from(d in query, where: d.dispatch_run_id in ^run_ids)
+
   defp of_pool(query, pool_id), do: from(d in query, where: d.pool_id == ^pool_id)
 
   defp in_transaction! do

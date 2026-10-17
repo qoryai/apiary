@@ -17,12 +17,15 @@ defmodule Apiary.Dispatches do
   # run waits for no pool in particular: any pool of that workspace may claim it.
   #
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
-  # the work item's take in asks first: `{:error, :claimed}` once a run of its current take
-  # in has been claimed, by any dispatch, even one whose lease lapsed since, as the job a
-  # starter began for it may still run; else it ends the take in's waiting runs, end cause
-  # `undone`, and answers `:ok`. The runs of the take in are locked `FOR UPDATE` before
-  # their dispatches are looked at, so a claim of one either commits before and is seen,
-  # or finds the run ended.
+  # the work item's take in asks first. An undo works while no claim holds a run of the
+  # current take in: `{:error, :claimed}` while a dispatch holds one, neither stale nor
+  # ended before its handover, and once one was handed over. Else it ends the take in's
+  # waiting runs, end cause `undone`, a run back in the queue after a lapsed lease or a
+  # release with retry among them, and answers `:ok`; a stale dispatch of a run it ends
+  # ends with it, end cause `run_ended`. A lease that lapsed and was not yet swept is
+  # lapsed first (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The
+  # runs of the take in are locked `FOR UPDATE` before their dispatches are looked at, so
+  # a claim of one either commits before and is seen, or finds the run ended.
   #
   # ## Claiming: `claim/2`
   #
@@ -162,31 +165,31 @@ defmodule Apiary.Dispatches do
   end
 
   # cancel_for_undo/1 ends the waiting runs of the current take in of `work_item`, or
-  # refuses once one of its runs was claimed, inside the caller's transaction (the
-  # moduledoc).
+  # refuses while a claim holds one of its runs or once one was handed over, inside the
+  # caller's transaction (the moduledoc).
   @doc false
   @spec cancel_for_undo(WorkItem.t()) :: :ok | {:error, :claimed}
   def cancel_for_undo(%WorkItem{id: id}) when is_binary(id) do
     in_transaction!("cancel_for_undo/1")
+    now = now()
 
     take_in =
       Repo.one!(from w in WorkItem, where: w.id == ^id, lock: "FOR UPDATE", select: w.take_in)
 
-    runs =
+    run_ids =
       Repo.all(
         from r in DispatchRun,
           where: r.work_item_id == ^id and r.take_in == ^take_in,
           order_by: r.id,
-          lock: "FOR UPDATE"
+          lock: "FOR UPDATE",
+          select: r.id
       )
 
-    run_ids = Enum.map(runs, & &1.id)
+    # A lease that lapsed unswept frees its run first; then the runs as they stand.
+    freed = if run_ids == [], do: [], else: Slots.free({:runs, run_ids}, now)
+    runs = Repo.all(from r in DispatchRun, where: r.id in ^run_ids)
 
-    claimed? =
-      Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) or
-        Repo.exists?(from d in Dispatch, where: d.dispatch_run_id in ^run_ids)
-
-    if claimed? do
+    if Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) do
       {:error, :claimed}
     else
       waiting = for %DispatchRun{state: :waiting, id: run_id} <- runs, do: run_id
@@ -194,9 +197,19 @@ defmodule Apiary.Dispatches do
       {_count, _rows} =
         Repo.update_all(
           from(r in DispatchRun, where: r.id in ^waiting),
-          set: [state: :ended, end_cause: :undone, updated_at: now()]
+          set: [state: :ended, end_cause: :undone, updated_at: now]
         )
 
+      {_count, _rows} =
+        Repo.update_all(
+          from(d in Dispatch,
+            where: d.dispatch_run_id in ^waiting,
+            where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+          ),
+          set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+        )
+
+      broadcast(freed)
       :ok
     end
   end

@@ -1,7 +1,7 @@
 defmodule Apiary.DispatchesTest do
   # The queue of a workspace and its claims (`Apiary.Dispatches`): a run queued in its
-  # work item's workspace, an undo before and after a claim, one try at a claim against
-  # the pool's limit, the slots freed once, the sweep of lapsed leases on one clock, and
+  # work item's workspace, an undo before, during and after a claim, one try at a claim
+  # against the pool's limit, the slots freed once, the sweep of lapsed leases on one clock, and
   # the instance limit of a pool that counts both its dispatched and its other runs. A
   # claim asks `dispatch.claim`, of the `factory` feature.
   use Apiary.DataCase, async: true
@@ -36,6 +36,8 @@ defmodule Apiary.DispatchesTest do
     {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, now)
     dispatch
   end
+
+  defp undo(work_item), do: Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
 
   defp run!(run), do: Repo.get!(DispatchRun, run.id)
   defp dispatch!(dispatch), do: Repo.get!(Dispatch, dispatch.id)
@@ -96,39 +98,100 @@ defmodule Apiary.DispatchesTest do
       work_item = work_item_fixture(ctx.scope)
       run = queue!(work_item)
 
-      assert {:ok, :ok} = Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
+      assert {:ok, :ok} = undo(work_item)
       assert %DispatchRun{state: :ended, end_cause: :undone} = run!(run)
       assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
     end
 
-    test "once a run of the take in is claimed is refused, and changes nothing", ctx do
+    test "while a claim holds the run is refused, and changes nothing", ctx do
       work_item = work_item_fixture(ctx.scope)
       run = queue!(work_item)
       dispatch = claimed!(ctx.key)
 
-      assert {:ok, {:error, :claimed}} =
-               Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
-
+      assert {:ok, {:error, :claimed}} = undo(work_item)
       assert %DispatchRun{state: :claimed, end_cause: nil} = run!(run)
-      assert dispatch!(dispatch).ended_at == nil
+      assert %Dispatch{ended_at: nil, stale_at: nil, slot_freed_at: nil} = dispatch!(dispatch)
     end
 
-    test "stays refused once the claim lapsed and the run waits again", ctx do
+    test "after the lease lapsed and the run waits again, ends it undone, and its stale dispatch with it",
+         ctx do
       work_item = work_item_fixture(ctx.scope)
       run = queue!(work_item)
       dispatch = claimed!(ctx.key)
       Dispatches.sweep(dispatch.lease_until)
       assert run!(run).state == :waiting
 
-      assert {:ok, {:error, :claimed}} =
-               Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
+      assert {:ok, :ok} = undo(work_item)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = run!(run)
 
-      assert run!(run).state == :waiting
+      assert %Dispatch{stale_at: %DateTime{}, ended_at: %DateTime{}, end_cause: :run_ended} =
+               dispatch!(dispatch)
+
+      assert Dispatches.claim(ctx.key, dispatch.lease_until) == {:ok, :none}
+    end
+
+    test "a lease that lapsed and was not yet swept is lapsed first, and the run ends undone",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      run = queue!(work_item)
+      dispatch = claimed!(ctx.key)
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [
+          claimed_at: DateTime.add(dispatch.claimed_at, -700, :second),
+          lease_until: DateTime.add(dispatch.lease_until, -700, :second)
+        ]
+      )
+
+      assert {:ok, :ok} = undo(work_item)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = run!(run)
+
+      assert %Dispatch{
+               stale_at: %DateTime{},
+               slot_freed_at: %DateTime{},
+               end_cause: :run_ended
+             } = dispatch!(dispatch)
+
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "after a release with retry, the run waiting again, ends it undone", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      run = queue!(work_item)
+      dispatch = claimed!(ctx.key)
+      released_at = Dispatches.now()
+
+      # As a release with retry before the handover leaves them.
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [ended_at: released_at, end_cause: :released, slot_freed_at: released_at]
+      )
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [state: :waiting])
+
+      assert {:ok, :ok} = undo(work_item)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = run!(run)
+      assert %Dispatch{end_cause: :released} = dispatch!(dispatch)
+    end
+
+    test "after the handover is refused", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      run = queue!(work_item)
+      dispatch = claimed!(ctx.key)
+      at = DateTime.add(dispatch.claimed_at, 1, :second)
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [dispatched_at: at, handed_over_at: at]
+      )
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [state: :handed_over])
+
+      assert {:ok, {:error, :claimed}} = undo(work_item)
+      assert run!(run).state == :handed_over
     end
 
     test "with no run queued is :ok", ctx do
       work_item = work_item_fixture(ctx.scope)
-      assert {:ok, :ok} = Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
+      assert {:ok, :ok} = undo(work_item)
     end
   end
 
