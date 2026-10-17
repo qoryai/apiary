@@ -298,6 +298,11 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled."
             )}
           </li>
+          <li>
+            {gettext(
+              "Its open work items, in every organisation, are closed as a member would close them. Taking a ticket in after it is added again makes a new work item."
+            )}
+          </li>
           <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>
           <li>{gettext("Its name is free again. This cannot be undone.")}</li>
         </ul>
