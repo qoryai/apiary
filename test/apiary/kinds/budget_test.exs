@@ -1,12 +1,12 @@
 defmodule Apiary.Kinds.BudgetTest do
-  # A function run within a time and a memory budget in another process: its value in
-  # time, a refusal when it takes too long, grows too large or crashes, and in every case
-  # no process, monitor or message left behind.
+  # A function run within a budget of reductions, heap and time in another process: its
+  # value within the budget, a refusal when it works too much, grows too large, runs too
+  # long or crashes, and in every case no process, monitor or message left behind.
   use ExUnit.Case, async: true
 
   alias Apiary.Kinds.Budget
 
-  @budget [ms: 100, heap_words: 1_000_000]
+  @budget [reductions: 10_000_000, heap_words: 1_000_000, ms: 100]
 
   # Runs `fun` within `budget`, and hands the test the pid of the process that ran it.
   defp run(fun, budget \\ @budget) do
@@ -52,8 +52,9 @@ defmodule Apiary.Kinds.BudgetTest do
             :ets.insert(table, for(i <- 1..200_000, do: {i, i}))
             table
           end,
-          ms: 5000,
-          heap_words: 10_000_000
+          reductions: 100_000_000,
+          heap_words: 10_000_000,
+          ms: 5000
         )
 
       assert {:ok, table} = result
@@ -62,6 +63,32 @@ defmodule Apiary.Kinds.BudgetTest do
     end
 
     refute_received _any
+  end
+
+  test "is :reductions when the work passes the budget, and the process is killed then" do
+    before = monitors()
+
+    {microseconds, {result, pid}} =
+      :timer.tc(fn ->
+        run(fn -> Stream.run(Stream.repeatedly(&make_ref/0)) end,
+          reductions: 1_000_000,
+          heap_words: 100_000,
+          ms: 10_000
+        )
+      end)
+
+    assert result == {:error, :reductions}
+    assert div(microseconds, 1000) < 1000
+    gone(pid)
+    assert monitors() == before
+  end
+
+  test "is the value of a function within its reductions, however long it takes" do
+    {result, pid} =
+      run(fn -> Process.sleep(300) end, reductions: 10_000, heap_words: 100_000, ms: 10_000)
+
+    assert result == {:ok, :ok}
+    gone(pid)
   end
 
   test "is :time when the time runs out, and the process is killed then" do
@@ -75,7 +102,14 @@ defmodule Apiary.Kinds.BudgetTest do
 
   test "is :heap when the heap grows past the budget, long before the time" do
     before = monitors()
-    {result, pid} = run(fn -> Enum.to_list(1..10_000_000) end, ms: 10_000, heap_words: 100_000)
+
+    {result, pid} =
+      run(fn -> Enum.to_list(1..10_000_000) end,
+        reductions: 1_000_000_000,
+        heap_words: 100_000,
+        ms: 10_000
+      )
+
     assert result == {:error, :heap}
     gone(pid)
     assert monitors() == before
@@ -93,7 +127,7 @@ defmodule Apiary.Kinds.BudgetTest do
     assert monitors() == before
   end
 
-  test "is :time when the timer has killed the process before the caller looks" do
+  test "is :time when the watcher has killed the process before the caller looks" do
     test = self()
 
     caller =
@@ -104,8 +138,9 @@ defmodule Apiary.Kinds.BudgetTest do
               send(test, {:runner, self()})
               Process.sleep(:infinity)
             end,
-            ms: 50,
-            heap_words: 100_000
+            reductions: 1_000_000,
+            heap_words: 100_000,
+            ms: 50
           )
 
         send(test, {:result, result})
@@ -114,7 +149,7 @@ defmodule Apiary.Kinds.BudgetTest do
     assert_receive {:runner, runner}
     monitor = Process.monitor(runner)
 
-    # The caller sleeps past the time; the timer kills the process meanwhile.
+    # The caller sleeps past the time; the watcher kills the process meanwhile.
     :erlang.suspend_process(caller)
     assert_receive {:DOWN, ^monitor, :process, ^runner, :killed}, 1000
     :erlang.resume_process(caller)
@@ -123,12 +158,14 @@ defmodule Apiary.Kinds.BudgetTest do
   end
 
   test "an answer sent at the deadline is not left in the mailbox" do
-    {result, pid} = run(fn -> Process.sleep(100) end, ms: 100, heap_words: 100_000)
+    {result, pid} =
+      run(fn -> Process.sleep(100) end, reductions: 1_000_000, heap_words: 100_000, ms: 100)
+
     assert result in [{:ok, :ok}, {:error, :time}]
     gone(pid)
   end
 
-  test "the process is killed at its time when the caller dies while it waits" do
+  test "the process is killed at once when the caller dies while it waits" do
     test = self()
 
     caller =
@@ -138,8 +175,9 @@ defmodule Apiary.Kinds.BudgetTest do
             send(test, {:runner, self()})
             Process.sleep(:infinity)
           end,
-          ms: 50,
-          heap_words: 100_000
+          reductions: 1_000_000_000,
+          heap_words: 100_000,
+          ms: 10_000
         )
       end)
 
@@ -148,7 +186,7 @@ defmodule Apiary.Kinds.BudgetTest do
     started = System.monotonic_time(:millisecond)
     Process.exit(caller, :kill)
 
-    # The time, 50 ms, and room for a slow machine.
+    # Long before its time, 10 s, with room for a slow machine.
     assert_receive {:DOWN, ^monitor, :process, ^runner, :killed}, 1000
     assert System.monotonic_time(:millisecond) - started < 500
   end

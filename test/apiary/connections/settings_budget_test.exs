@@ -3,8 +3,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
   # end to end: a release found as the product finds it, whose settings schema makes the
   # check's work grow exponentially, and the writes of Connections, which check settings
   # while they hold the organisation's integrations lock. Each is refused as invalid
-  # settings within the budget, the warning it logs says which it ran out of, time or
-  # heap, the caller lives on and the next write takes the lock. Not async: the time
+  # settings within the budget, the warning it logs says which it ran out of, reductions
+  # or heap, the caller lives on and the next write takes the lock. Not async: the time
   # asserted is the write's alone.
   use Apiary.DataCase, async: false
 
@@ -17,8 +17,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
 
   @moduletag needs: :secrets
 
-  # The budget is 100 ms; this leaves room for a slow machine. Without the budget, the
-  # checks of the writes below took 33 s, 5.7 s and 1.19 GB, and 24.5 s.
+  # Each write is refused within 350 ms; this leaves room for a slow machine. Without the
+  # budget, the checks of the writes below took 33 s, 5.7 s and 1.19 GB, and 24.5 s.
   @refused_within_ms 1000
 
   @url "https://downloads.example.com/acme/tracker/description.json"
@@ -75,8 +75,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     |> Map.put("d#{levels + 1}", %{"type" => "string"})
   end
 
-  # `write` refused within the budget, its warning naming `reason`, "time" or "heap"; and
-  # nothing of the check left with the caller.
+  # `write` refused within the budget, its warning naming `reason`, "reductions" or
+  # "heap"; and nothing of the check left with the caller.
   defp over_budget(write, reason) do
     flush()
     monitors = Process.info(self(), :monitors)
@@ -100,14 +100,15 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     end
   end
 
-  test "create_integration refuses settings whose check runs out of time", %{scope: scope} do
+  test "create_integration refuses settings whose check runs out of reductions",
+       %{scope: scope} do
     release = release!(scope, %{"$ref" => "#/$defs/d1"}, doubling(24))
 
     over_budget(
       fn ->
         Connections.create_integration(scope, release.id, %{"settings" => %{"url" => "s"}})
       end,
-      "time"
+      "reductions"
     )
 
     assert Repo.aggregate(Connection, :count) == 0
@@ -132,7 +133,7 @@ defmodule Apiary.Connections.SettingsBudgetTest do
              Connections.update_connection(scope, connection, %{"applies_to" => "all"})
   end
 
-  test "change_release refuses the settings that the new release's check runs out of time on",
+  test "change_release refuses settings that the new release's check runs out of reductions on",
        %{scope: scope} do
     first = release!(scope, %{"type" => "string"})
     url = String.duplicate("a", 60_000) <> "!"
@@ -144,7 +145,10 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     patterns = %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
     second = release!(scope, %{"$ref" => "#/$defs/p"}, %{"p" => patterns}, "0.4.0")
 
-    over_budget(fn -> Connections.change_release(scope, connection, second.id) end, "time")
+    over_budget(
+      fn -> Connections.change_release(scope, connection, second.id) end,
+      "reductions"
+    )
 
     assert Repo.get!(Connection, connection.id).release_id == first.id
   end

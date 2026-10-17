@@ -35,7 +35,7 @@ defmodule Apiary.Integrations.Description do
 
   require Logger
 
-  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, Schema}
+  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, RegexFormat, Schema, SettingsResolver}
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -73,14 +73,25 @@ defmodule Apiary.Integrations.Description do
   @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
 
   # The budget of the settings check, the build of the schema and the validation
-  # (`Apiary.Kinds.Budget`): 100 ms and 2097152 words of heap, 16 MiB on a 64-bit machine.
-  # Measured in two runs of 50 checks each, idle and with every scheduler busy: settings
-  # at the limits above took 13.5 ms to 18.5 ms at the median and at most 24 ms; 1000
-  # settings of 1000 properties 4.7 ms to 5.7 ms at the median and at most 22 ms, with
-  # 439685 words of heap, the most of any measured; the settings of the fixtures under
-  # 2 ms. Connections checks settings while it holds the organisation's integrations lock
-  # (`Apiary.Connections.lock/1`), which keeps the budget small.
-  @settings_budget [ms: 100, heap_words: 2_097_152]
+  # (`Apiary.Kinds.Budget`): 5000000 reductions, 2097152 words of heap (16 MiB on a
+  # 64-bit machine), and 10 s, a bound only on a check that runs away while it counts few
+  # reductions. The reductions and the heap decide, and neither depends on the machine:
+  # the same check does the same reductions on any machine running the same OTP release.
+  # Measured: settings at the limits above do 1518186 reductions, 3.3 times fewer than
+  # the budget, with 271839 words of heap; 1000 settings of 1000 properties 650000
+  # reductions and 439685 words, the most heap of any measured; the settings of the
+  # fixtures under 7000 reductions. The slowest, the settings at the limits, took 527 ms
+  # with 32 checks at once on one scheduler that a busy process shared. Every measured
+  # attack passed the reductions or the heap within 320 ms. The budget is not larger:
+  # backtracking patterns count about 17 million reductions a second where the rest of
+  # the check counts about 100 million, so at 5000000 they take about 300 ms to stop,
+  # while Connections holds the organisation's integrations lock
+  # (`Apiary.Connections.lock/1`). So valid settings against an extreme schema are refused
+  # by the cap, the same way on every run: a list of 1000 strings, each checked against
+  # 200 alternative patterns, does 7857408 reductions. A compile for `"format": "regex"`
+  # is charged in reductions (`Apiary.Kinds.RegexFormat`): the check of one such setting
+  # of 15000 bytes does about 152000.
+  @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
 
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
@@ -231,8 +242,9 @@ defmodule Apiary.Integrations.Description do
       more than 4096 values in all or more than 64 lists and objects nested in one
       another are refused so: the schema comes from the description and need bound none
       of them. For the same reason the schema is built and the settings validated in
-      another process, within 100 ms and 16 MiB of heap: a schema of a few references
-      can make the work grow exponentially with their nesting. Settings whose check
+      another process, within 5000000 reductions, the runtime's count of its work, and
+      16 MiB of heap: a schema of a few references can make the work grow exponentially
+      with their nesting. Settings whose check
       goes over that budget, or fails, are refused as `integration_settings_invalid`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
@@ -273,7 +285,10 @@ defmodule Apiary.Integrations.Description do
       })
 
     check = fn ->
-      with {:ok, root} <- Schema.build(schema),
+      with {:ok, root} <-
+             schema
+             |> without_casts()
+             |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()),
            do: Schema.validate(settings, root, @settings_limits)
     end
 
@@ -294,8 +309,23 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
+  # JSV builds a `jsv-cast` or `x-jsv-cast` keyword by loading the module it names, which
+  # `atoms: false` and `cast: false` do not stop, so a settings schema loses both keys from
+  # every object in it, at any depth. A `$ref` can point anywhere in the document, even into
+  # a `const` or under `properties`, and JSV builds what it points at, so no object keeps
+  # them: a setting named so loses its schema, and a value that holds one loses it.
+  @casts ~w(jsv-cast x-jsv-cast)
+
+  defp without_casts(map) when is_map(map),
+    do: for({key, value} <- map, key not in @casts, into: %{}, do: {key, without_casts(value)})
+
+  defp without_casts(list) when is_list(list), do: Enum.map(list, &without_casts/1)
+  defp without_casts(other), do: other
+
   defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
-  defp budget_refusal(over) when over in [:time, :heap], do: %{valid: false, budget: :exceeded}
+
+  defp budget_refusal(over) when over in [:reductions, :heap, :time],
+    do: %{valid: false, budget: :exceeded}
 
   @doc """
   check_argument/2 checks the argument a connection of `description` stores:
