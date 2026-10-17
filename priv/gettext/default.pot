@@ -768,7 +768,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it."
+msgid "%{name} has no key yet, so it isn't connected to Qory Apiary. An owner or admin connects it."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -6852,9 +6852,7 @@ msgstr ""
 msgid "Install address"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance"
 msgstr ""
@@ -9065,6 +9063,12 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node pool: short-lived instances that share one access key."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Node's instance id"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

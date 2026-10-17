@@ -27,8 +27,8 @@ defmodule Apiary.RetentionTest do
       organisation_id: run.organisation_id,
       workspace_id: run.workspace_id,
       access_key_id: key_id(scope),
-      delivery_id: Ecto.UUID.generate(),
-      run_id: run.run_id,
+      node_delivery_id: Ecto.UUID.generate(),
+      node_run_id: run.node_run_id,
       received_at: days_ago(days),
       event_count: 14,
       inserted_count: 14,
@@ -212,7 +212,11 @@ defmodule Apiary.RetentionTest do
       assert pruned.state == "completed"
 
       assert count(Event, young) == 14
-      assert Repo.aggregate(from(d in Delivery, where: d.run_id == ^young.run_id), :count) == 1
+
+      assert Repo.aggregate(
+               from(d in Delivery, where: d.node_run_id == ^young.node_run_id),
+               :count
+             ) == 1
     end
 
     test "both settings: the log first, the events later, nothing counted twice", %{scope: scope} do

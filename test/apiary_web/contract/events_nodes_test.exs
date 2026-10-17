@@ -33,7 +33,7 @@ defmodule ApiaryWeb.Contract.EventsNodesTest do
   defp register(%{key: key, secret: secret}, body, opts),
     do: signed_register(build_conn(), key.key_id, secret, body, opts)
 
-  defp run!(subject), do: Repo.one!(from r in Run, where: r.run_id == ^subject)
+  defp run!(subject), do: Repo.one!(from r in Run, where: r.node_run_id == ^subject)
 
   describe "where a run runs" do
     test "the run records the key's node and the claimed instance; the delivery the instance",
@@ -47,9 +47,9 @@ defmodule ApiaryWeb.Contract.EventsNodesTest do
 
       run = run!(subject)
       assert run.node_id == ctx.node.id
-      assert run.instance_id == "i_build-01"
+      assert run.node_instance_id == "i_build-01"
       assert run.access_key_id == ctx.key.id
-      assert [%Delivery{instance_id: "i_build-01"}] = Repo.all(Delivery)
+      assert [%Delivery{node_instance_id: "i_build-01"}] = Repo.all(Delivery)
     end
 
     test "a later batch from another instance leaves the run where it was", %{scope: scope} do
@@ -58,8 +58,8 @@ defmodule ApiaryWeb.Contract.EventsNodesTest do
       assert register(ctx, registration(subject), instance_id: "i_one").status == 200
       assert deliver(ctx, batch, instance_id: "i_two").status == 202
 
-      assert run!(subject).instance_id == "i_one"
-      assert [%Delivery{instance_id: "i_two"}] = Repo.all(Delivery)
+      assert run!(subject).node_instance_id == "i_one"
+      assert [%Delivery{node_instance_id: "i_two"}] = Repo.all(Delivery)
     end
   end
 
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.Contract.EventsNodesTest do
       assert json_response(conn, 409) == %{"error" => "instance_limit"}
       assert signed_answer?(conn)
 
-      refute Repo.exists?(from r in Run, where: r.run_id == ^refused)
+      refute Repo.exists?(from r in Run, where: r.node_run_id == ^refused)
 
       node = Repo.get!(Node, ctx.node.id)
       assert node.instance_limit_refused == 1

@@ -960,7 +960,7 @@ defmodule Apiary.AdaptersTest do
             workspace_id: nil,
             node_id: adapter.id,
             access_key_id: key.id,
-            instance_id: "i_tracker-1",
+            node_instance_id: "i_tracker-1",
             first_seen_at: now,
             last_seen_at: now
           }

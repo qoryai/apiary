@@ -78,7 +78,8 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
 
       run =
         Repo.one!(
-          from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^@subject
+          from r in Run,
+            where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^@subject
         )
 
       {:ok, run} = Projector.project(run)

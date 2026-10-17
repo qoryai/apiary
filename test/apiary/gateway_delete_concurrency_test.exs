@@ -78,7 +78,7 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
 
     assert {:error, :gateway_not_serving} = Task.await(registration, 10_000)
     assert Repo.get!(Node, gateway.id).deleted_at
-    refute Repo.exists?(from r in Run, where: r.run_id == ^run_id)
+    refute Repo.exists?(from r in Run, where: r.node_run_id == ^run_id)
   end
 
   test "a deletion that waits on a registration's commit finds its run",
@@ -98,7 +98,7 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
           Repo.insert!(%Run{
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
-            run_id: run_id
+            node_run_id: run_id
           })
 
           send(test, :held)
@@ -148,7 +148,7 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
       Task.async(fn ->
         Repo.transaction(fn ->
           assert {:ok, %{run: attached, repeated: false}} =
-                   Attach.attach(gateway_key, run.run_id, body, %{})
+                   Attach.attach(gateway_key, run.node_run_id, body, %{})
 
           send(test, :attached)
           receive do: (:commit -> attached)

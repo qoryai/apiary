@@ -173,9 +173,9 @@ defmodule Apiary.Contract.SignedFixturesTest do
     # The run, registered under the fixture access key, on its node, from the instance the
     # request claimed, projected from sequence 1.
     run = Repo.one!(Run)
-    assert run.run_id == @run
+    assert run.node_run_id == @run
     assert run.node_id == node.id
-    assert run.instance_id == instance_id()
+    assert run.node_instance_id == instance_id()
     assert run.projected_sequence == 1
     assert run.registration_labels == %{"forge" => "github.com", "repository" => "acme/shop"}
 
@@ -211,7 +211,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
     assert replay(fixture!("register-replayed.json")).status == 200
     assert replay(fixture!("register-run-id-used.json")).status == 409
     assert replay(fixture!("register-instance-limit.json")).status == 409
-    assert Repo.all(Run) |> Enum.map(& &1.run_id) == [@run]
+    assert Repo.all(Run) |> Enum.map(& &1.node_run_id) == [@run]
   end
 
   test "fixtures/run-registration/*.json, signed here at their time, are registered", %{
@@ -292,7 +292,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
     # The run is on the key's node, from the instance the request claimed.
     run = Repo.one!(Run)
     assert run.node_id == node.id
-    assert run.instance_id == instance_id()
+    assert run.node_instance_id == instance_id()
 
     assert replay(replayed).status == 202
     assert Repo.aggregate(Event, :count) == count

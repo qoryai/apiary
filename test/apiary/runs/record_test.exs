@@ -41,7 +41,7 @@ defmodule Apiary.Runs.RecordTest do
 
       assert Record.fetch_run(scope, other.public_id) == :error
       assert Record.fetch_run(scope, Run.new_public_id()) == :error
-      assert Record.fetch_run(scope, run.run_id) == :error
+      assert Record.fetch_run(scope, run.node_run_id) == :error
       assert Record.fetch_run(scope, String.slice(run.public_id, 0, 11)) == :error
       assert Record.fetch_run(scope, "0191f2a4") == :error
       assert Record.fetch_run(scope, <<0::128>>) == :error
@@ -774,7 +774,7 @@ defmodule Apiary.Runs.RecordTest do
           workspace_id: Ecto.UUID.dump!(run.workspace_id),
           run_id: Ecto.UUID.dump!(run.id),
           sequence: sequence,
-          event_id: Ecto.UUID.bingenerate(),
+          node_event_id: Ecto.UUID.bingenerate(),
           type: type,
           time: now,
           data: data,

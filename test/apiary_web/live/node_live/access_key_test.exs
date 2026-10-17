@@ -1997,7 +1997,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "Connect build-01")
 
       assert words(lv, "#node-keys-members") ==
-               "build-01 has no key yet, so it isn't connected to Qory. An owner or admin connects it."
+               "build-01 has no key yet, so it isn't connected to Qory Apiary. An owner or admin connects it."
 
       refute has_element?(lv, "#node-ways")
       refute has_element?(lv, "#code-#{row.id}")

@@ -27,7 +27,7 @@ defmodule Apiary.Runs.SixStatesMigrationTest do
     id = Ecto.UUID.generate()
 
     Repo.query!(
-      "INSERT INTO runs (id, organisation_id, workspace_id, run_id, state, reason, " <>
+      "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, reason, " <>
         "inserted_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
       [
         Ecto.UUID.dump!(id),

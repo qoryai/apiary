@@ -2134,9 +2134,9 @@ defmodule ApiaryWeb.RunComponents do
               node={Ecto.assoc_loaded?(@preview.run.node) && @preview.run.node}
             />
           </dd>
-          <dt :if={@preview.run.instance_id}>{gettext("Instance")}</dt>
-          <dd :if={@preview.run.instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
-            {@preview.run.instance_id}
+          <dt :if={@preview.run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dd :if={@preview.run.node_instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
+            {@preview.run.node_instance_id}
           </dd>
           <dt :if={@preview.run.cost_usd}>{gettext("Cost")}</dt>
           <dd :if={@preview.run.cost_usd} class="tabular-nums">

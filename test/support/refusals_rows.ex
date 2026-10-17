@@ -505,7 +505,7 @@ defmodule ApiaryWeb.RefusalsRows do
     %{access_key: node_key} = node_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
-    node_run_fixture(node, instance.instance_id)
+    node_run_fixture(node, instance.node_instance_id)
     # After the node and the pool, which stay direct.
     gateway = gateway_fixture(owner, name: "edge-01")
     second_gateway = gateway_fixture(owner, name: "edge-02")
@@ -584,7 +584,7 @@ defmodule ApiaryWeb.RefusalsRows do
   # A target's page is its public id.
   def value(:target_page, world), do: world.target.public_id
   def value(:other_target_page, world), do: world.other_target.public_id
-  def value(:run, world), do: {:id, world.run.run_id}
+  def value(:run, world), do: {:id, world.run.node_run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
@@ -592,7 +592,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:second_gateway, world), do: {:id, world.second_gateway.public_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
-  def value(:instance, world), do: world.instance.instance_id
+  def value(:instance, world), do: world.instance.node_instance_id
   def value(_name, _world), do: nil
 
   # The organisation, the other one, whose pages its owner sends this one's ids from, and

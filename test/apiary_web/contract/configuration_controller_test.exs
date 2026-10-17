@@ -258,7 +258,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
     assert [instance] = Repo.all(Apiary.Nodes.Instance)
     assert instance.node_id == key.node_id
-    assert instance.instance_id == instance_id()
+    assert instance.node_instance_id == instance_id()
     assert instance.name == "build-01"
     assert instance.access_key_id == key.id
   end

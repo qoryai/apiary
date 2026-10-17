@@ -703,11 +703,11 @@ defmodule Apiary.Runs.FoldTest do
           lost_at: at(100),
           last_heartbeat_at: at(10),
           run_key_payload: "{}",
-          attach_instance_id: "i_attaching"
+          gateway_instance_id: "i_attaching"
         })
 
       latest = %{"dev.qory.run.heartbeat" => 4}
-      other = fn event -> Map.put(event, :instance_id, "i_other") end
+      other = fn event -> Map.put(event, :node_instance_id, "i_other") end
 
       # Another instance's beat or start changes nothing of the run's liveness: no revive,
       # no heartbeat, no offset, so a refold of it gives the same.
@@ -721,14 +721,17 @@ defmodule Apiary.Runs.FoldTest do
       # The attaching instance's beat revives it, after another's or alone, and so does one
       # stored before its instance was kept.
       for events <- [
-            [other.(heartbeat(7, 120)), Map.put(heartbeat(8, 150), :instance_id, "i_attaching")],
+            [
+              other.(heartbeat(7, 120)),
+              Map.put(heartbeat(8, 150), :node_instance_id, "i_attaching")
+            ],
             [heartbeat(7, 120)]
           ] do
         assert %{state: "running", lost_at: nil} = Fold.fold(lost, events, latest).run
       end
 
       # A run with no instance kept, and a direct run, take any instance's beat.
-      for run <- [%{lost | attach_instance_id: nil}, Map.delete(lost, :run_key_payload)] do
+      for run <- [%{lost | gateway_instance_id: nil}, Map.delete(lost, :run_key_payload)] do
         assert Fold.fold(run, [other.(heartbeat(7, 120))], latest).run.state == "running"
       end
     end

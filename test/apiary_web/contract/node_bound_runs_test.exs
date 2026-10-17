@@ -49,7 +49,7 @@ defmodule ApiaryWeb.Contract.NodeBoundRunsTest do
     signed_post(build_conn(), key.key_id, secret, body, opts)
   end
 
-  defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
   defp events_of(run_id) do
     run = run(run_id)
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.Contract.NodeBoundRunsTest do
       assert deliver(ctx.key, events) |> response(202) == ""
       assert deliver({key, secret}, events) |> response(202) == ""
 
-      assert Repo.aggregate(from(r in Run, where: r.run_id == ^subject), :count) == 2
+      assert Repo.aggregate(from(r in Run, where: r.node_run_id == ^subject), :count) == 2
     end
   end
 
@@ -166,7 +166,7 @@ defmodule ApiaryWeb.Contract.NodeBoundRunsTest do
         assert get_resp_header(again, header) == get_resp_header(first, header)
       end
 
-      assert Repo.aggregate(from(r in Run, where: r.run_id == ^body["run_id"]), :count) == 1
+      assert Repo.aggregate(from(r in Run, where: r.node_run_id == ^body["run_id"]), :count) == 1
     end
 
     test "with the same bytes under another node's key is 409 run_id_used", ctx do

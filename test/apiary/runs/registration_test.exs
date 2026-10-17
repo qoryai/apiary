@@ -251,10 +251,10 @@ defmodule Apiary.Runs.RegistrationTest do
 
       assert [%Run{} = stored] = runs()
       assert stored.id == run.id
-      assert stored.run_id == run_id
+      assert stored.node_run_id == run_id
       assert stored.state == "pending"
       assert stored.node_id == key.node_id
-      assert stored.instance_id == "i_one"
+      assert stored.node_instance_id == "i_one"
       assert stored.access_key_id == key.id
       assert stored.registered_at
       assert stored.inserted_at == stored.registered_at
@@ -273,7 +273,7 @@ defmodule Apiary.Runs.RegistrationTest do
       refused = body()
 
       assert register(key, refused, "i_two") == {:error, :instance_limit}
-      refute Repo.exists?(from r in Run, where: r.run_id == ^refused["run_id"])
+      refute Repo.exists?(from r in Run, where: r.node_run_id == ^refused["run_id"])
 
       node = node_of(key)
       assert node.instance_limit_refused == 1
@@ -295,7 +295,7 @@ defmodule Apiary.Runs.RegistrationTest do
       assert Map.take(second, [:settings, :digest, :etag, :managed]) ==
                Map.take(first, [:settings, :digest, :etag, :managed])
 
-      assert Repo.aggregate(from(r in Run, where: r.run_id == ^body["run_id"]), :count) == 1
+      assert Repo.aggregate(from(r in Run, where: r.node_run_id == ^body["run_id"]), :count) == 1
       assert node_of(key).instance_limit_refused == 0
     end
 
@@ -355,7 +355,7 @@ defmodule Apiary.Runs.RegistrationTest do
       assert length(runs()) == 2
 
       # Admitted, the instance is refused for the run id alone.
-      Repo.update_all(from(r in Run, where: r.instance_id == "i_full"), set: [state: "lost"])
+      Repo.update_all(from(r in Run, where: r.node_instance_id == "i_full"), set: [state: "lost"])
       assert register(key, Map.put(body, "labels", %{}), "i_one") == {:error, :run_id_used}
     end
 
@@ -475,7 +475,7 @@ defmodule Apiary.Runs.RegistrationTest do
       body = body(Ecto.UUID.generate(), %{"labels" => %{"issue" => "77"}})
       assert register(key, body, "i_one") == {:error, :instance_limit}
       assert node_of(key).instance_limit_refused == 1
-      assert [%Run{instance_id: "i_full"}] = runs()
+      assert [%Run{node_instance_id: "i_full"}] = runs()
     end
 
     test "a workspace nobody has given a policy: no policy, and the run is created",
@@ -517,7 +517,7 @@ defmodule Apiary.Runs.RegistrationTest do
         assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!(batch), meta)
       end
 
-      assert [%Run{instance_id: "i_one"} = stored] = runs()
+      assert [%Run{node_instance_id: "i_one"} = stored] = runs()
       assert stored.id == run.id
       assert node_of(key).instance_limit_refused == 0
     end
@@ -641,7 +641,7 @@ defmodule Apiary.Runs.RegistrationTest do
       assert run.projected_sequence == 0
       assert {:ok, %Run{projected_sequence: 0}} = Projector.project(Repo.get!(Run, run.id))
       assert {:ok, %Run{projected_sequence: 0}} = Projector.rebuild(Repo.get!(Run, run.id))
-      assert Repo.get!(Run, run.id).run_id == subject
+      assert Repo.get!(Run, run.id).node_run_id == subject
     end
   end
 
@@ -704,7 +704,7 @@ defmodule Apiary.Runs.RegistrationTest do
 
       # Another key of the same node reads the same: a key replaced while the run is live.
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
-      assert {:ok, %{digest: ^digest}} = Registration.fetch(same_node, run.run_id)
+      assert {:ok, %{digest: ^digest}} = Registration.fetch(same_node, run.node_run_id)
 
       # A key of another node, and another workspace's key, find no such run.
       %{access_key: other_node} = contract_key_fixture(scope)
@@ -713,7 +713,7 @@ defmodule Apiary.Runs.RegistrationTest do
       %{access_key: other_workspace} = contract_key_fixture(other)
 
       for other_key <- [other_node, other_workspace] do
-        assert Registration.fetch(other_key, run.run_id) == {:error, :not_found}
+        assert Registration.fetch(other_key, run.node_run_id) == {:error, :not_found}
       end
     end
 
@@ -727,7 +727,7 @@ defmodule Apiary.Runs.RegistrationTest do
       assert {:ok, _} = Ingest.ingest(key, batch!(events), meta)
 
       assert {:ok, _run} =
-               Projector.project(Repo.one!(from r in Run, where: r.run_id == ^subject))
+               Projector.project(Repo.one!(from r in Run, where: r.node_run_id == ^subject))
 
       assert Registration.fetch(key, subject) == {:error, :not_found}
 

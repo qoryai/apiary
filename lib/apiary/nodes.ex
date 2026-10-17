@@ -801,7 +801,7 @@ defmodule Apiary.Nodes do
     {updated, _} =
       Repo.update_all(
         from(i in Instance,
-          where: i.node_id == ^node.id and i.instance_id == ^instance_id,
+          where: i.node_id == ^node.id and i.node_instance_id == ^instance_id,
           update: [
             set: [
               last_seen_at: fragment("GREATEST(?, ?)", i.last_seen_at, ^now),
@@ -836,7 +836,7 @@ defmodule Apiary.Nodes do
               workspace_id: node.workspace_id,
               node_id: node.id,
               access_key_id: key,
-              instance_id: instance_id,
+              node_instance_id: instance_id,
               name: name,
               first_seen_at: now,
               last_seen_at: now,
@@ -845,7 +845,7 @@ defmodule Apiary.Nodes do
             }
           ],
           on_conflict: :nothing,
-          conflict_target: [:node_id, :instance_id]
+          conflict_target: [:node_id, :node_instance_id]
         )
     end
 
@@ -870,19 +870,22 @@ defmodule Apiary.Nodes do
   defp contract(_version), do: nil
 
   @doc """
-  placement/2 is what a run records of where it runs, `%{node_id:, instance_id:}`: the
-  node of the access key its registration or first batch came with, and the instance id
-  that request claimed, nil
+  placement/2 is what a run records of where it runs, `%{node_id:, node_instance_id:}`:
+  the node of the access key its registration or first batch came with, and the instance
+  id that request claimed, nil
   when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`). The receiving side
   merges it into the run's row when it creates the run, and the instance id into the
   delivery's row (`Apiary.Runs.Ingest`).
   """
   @spec placement(Node.t() | nil, String.t() | nil) ::
-          %{node_id: Ecto.UUID.t() | nil, instance_id: String.t() | nil}
-  def placement(nil, _instance_id), do: %{node_id: nil, instance_id: nil}
+          %{node_id: Ecto.UUID.t() | nil, node_instance_id: String.t() | nil}
+  def placement(nil, _instance_id), do: %{node_id: nil, node_instance_id: nil}
 
   def placement(%Node{id: id}, instance_id),
-    do: %{node_id: id, instance_id: if(Instance.instance_id?(instance_id), do: instance_id)}
+    do: %{
+      node_id: id,
+      node_instance_id: if(Instance.instance_id?(instance_id), do: instance_id)
+    }
 
   ## The instance limit
 
@@ -934,9 +937,9 @@ defmodule Apiary.Nodes do
     from(r in Run,
       as: :run,
       where: r.node_id == ^id and r.workspace_id == ^workspace_id,
-      where: not is_nil(r.instance_id),
+      where: not is_nil(r.node_instance_id),
       distinct: true,
-      select: r.instance_id
+      select: r.node_instance_id
     )
     |> Liveness.alive(now)
     |> Repo.all()
@@ -1009,7 +1012,7 @@ defmodule Apiary.Nodes do
              {_count, cleared} =
                Repo.update_all(
                  from(i in Instance,
-                   where: i.node_id == ^current.id and i.instance_id == ^instance_id,
+                   where: i.node_id == ^current.id and i.node_instance_id == ^instance_id,
                    select: i
                  ),
                  set: [cleared_at: now, cleared_by_id: user.id]
@@ -1039,7 +1042,7 @@ defmodule Apiary.Nodes do
   defp open_runs(%Node{id: id, workspace_id: workspace_id}, instance_id) do
     from r in Run,
       where: r.node_id == ^id and r.workspace_id == ^workspace_id,
-      where: r.instance_id == ^instance_id and r.state in ["pending", "running"]
+      where: r.node_instance_id == ^instance_id and r.state in ["pending", "running"]
   end
 
   ## Reading instances
@@ -1067,7 +1070,7 @@ defmodule Apiary.Nodes do
   defp get_instance_at(scope, place, node_id, instance_id) do
     scope
     |> instances_query(place)
-    |> where([i], i.node_id == ^node_id and i.instance_id == ^instance_id)
+    |> where([i], i.node_id == ^node_id and i.node_instance_id == ^instance_id)
     |> Repo.one()
   end
 
@@ -1077,7 +1080,7 @@ defmodule Apiary.Nodes do
   pruned or never recorded.
   """
   @spec instance_of(Scope.t(), Run.t()) :: Instance.t() | nil
-  def instance_of(%Scope{} = scope, %Run{node_id: node_id, instance_id: instance_id})
+  def instance_of(%Scope{} = scope, %Run{node_id: node_id, node_instance_id: instance_id})
       when is_binary(node_id) and is_binary(instance_id),
       do: get_instance(scope, node_id, instance_id)
 
@@ -1118,9 +1121,9 @@ defmodule Apiary.Nodes do
         do: %{},
         else:
           from(i in Instance, where: ^of_scope(scope))
-          |> where([i], i.node_id in ^ids and i.instance_id in ^instance_ids)
+          |> where([i], i.node_id in ^ids and i.node_instance_id in ^instance_ids)
           |> Repo.all()
-          |> Map.new(&{{&1.node_id, &1.instance_id}, &1})
+          |> Map.new(&{{&1.node_id, &1.node_instance_id}, &1})
 
     running =
       runs
@@ -1193,10 +1196,10 @@ defmodule Apiary.Nodes do
     from(r in Run,
       as: :run,
       where: r.organisation_id == ^organisation.id and r.workspace_id == ^workspace.id,
-      where: r.node_id in ^ids and not is_nil(r.instance_id),
+      where: r.node_id in ^ids and not is_nil(r.node_instance_id),
       select: %{
         node_id: r.node_id,
-        instance_id: r.instance_id,
+        instance_id: r.node_instance_id,
         public_id: r.public_id,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version

@@ -49,7 +49,7 @@ defmodule Apiary.Runs.RegistrationWithoutSecurityTest do
              Registration.register(key, registration, meta)
 
     assert digest == Render.digest(@no_policy)
-    assert [%Run{run_id: ^run_id}] = Repo.all(Run)
+    assert [%Run{node_run_id: ^run_id}] = Repo.all(Run)
 
     assert Registration.fetch(key, run_id) == {:error, :not_found}
   end

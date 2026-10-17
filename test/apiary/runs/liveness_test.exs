@@ -333,7 +333,7 @@ defmodule Apiary.Runs.LivenessTest do
             workspace_id: run.workspace_id,
             run_id: run.id,
             sequence: 1,
-            event_id: Ecto.UUID.generate(),
+            node_event_id: Ecto.UUID.generate(),
             type: "dev.qory.session.started",
             time: now,
             data: %{},

@@ -51,7 +51,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
 
     run =
       Repo.one!(
-        from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+        from r in Run, where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^subject
       )
 
     {:ok, run} = Projector.project(run)
@@ -95,13 +95,15 @@ defmodule Apiary.Runs.IngestPrunedTest do
     assert %{status: 410} = deliver(key, Enum.take(events, 3))
 
     # A new event of the run is no more welcome than an old one.
-    assert %{status: 410} = deliver(key, [wire_event(run.run_id, 15, "run.heartbeat", %{})])
+    assert %{status: 410} = deliver(key, [wire_event(run.node_run_id, 15, "run.heartbeat", %{})])
 
     {:ok, _run} = Projector.project(run)
     assert state(run) == before
 
     # The delivery is recorded, and nothing else.
-    assert Repo.exists?(from d in Delivery, where: d.run_id == ^run.run_id and d.status == 410)
+    assert Repo.exists?(
+             from d in Delivery, where: d.node_run_id == ^run.node_run_id and d.status == 410
+           )
   end
 
   test "after the log was pruned a replay of the whole record stores and folds nothing", %{
@@ -120,8 +122,8 @@ defmodule Apiary.Runs.IngestPrunedTest do
 
     # A log event the run never sent is not kept either; another event still is.
     late = [
-      wire_event(run.run_id, 15, "run.log", %{"stream" => "stdout", "bytes" => "bGF0ZQo="}),
-      wire_event(run.run_id, 16, "run.heartbeat", %{"elapsed_seconds" => 90})
+      wire_event(run.node_run_id, 15, "run.log", %{"stream" => "stdout", "bytes" => "bGF0ZQo="}),
+      wire_event(run.node_run_id, 16, "run.heartbeat", %{"elapsed_seconds" => 90})
     ]
 
     assert %{status: 202, inserted: 1, duplicates: 1} = deliver(key, late)

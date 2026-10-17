@@ -166,7 +166,11 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
            )
 
     dana = Repo.get_by!(Node, workspace_id: main.id, name: "dana-laptop")
-    assert Repo.exists?(from r in Run, where: r.node_id == ^dana.id and is_nil(r.instance_id))
+
+    assert Repo.exists?(
+             from r in Run, where: r.node_id == ^dana.id and is_nil(r.node_instance_id)
+           )
+
     assert Repo.exists?(from i in Instance, where: i.node_id == ^dana.id and i.name == "dana-mbp")
 
     # Secrets, variables and integrations are the secrets feature's.
