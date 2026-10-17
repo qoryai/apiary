@@ -1,6 +1,6 @@
 defmodule Apiary.Kinds.Budget do
   @moduledoc """
-  Budget runs a function in another process under a budget of work, memory and time, for
+  Budget runs a function in another process under a budget of work, heap and time, for
   work whose cost an untrusted input decides and no limit on the input bounds, such as
   validation against a JSON Schema that the input itself supplies: a schema of a few
   references can make JSV's work, and the errors it keeps, grow exponentially with their
@@ -10,6 +10,10 @@ defmodule Apiary.Kinds.Budget do
   process: the count follows the work the function does on its input, not how fast or
   busy the machine is. The heap is counted in words. The time is only a bound on a
   process that runs while it counts few reductions, such as one that waits.
+
+  Memory the runtime keeps outside the heap and the binaries it counts, such as a
+  compiled pattern's, is not counted: a function that makes it bounds it before the work
+  starts.
 
   `run/2` starts the process unlinked and monitored, with a `max_heap_size`, and waits for
   its answer, reading the process's reductions every few milliseconds:

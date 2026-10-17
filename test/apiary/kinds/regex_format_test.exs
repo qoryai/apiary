@@ -112,4 +112,24 @@ defmodule Apiary.Kinds.RegexFormatTest do
     assert one >= 150_080
     assert many - one < 150_080
   end
+
+  test "after pattern_bytes/2, a value past the bytes allowed throws before its compile" do
+    alias Apiary.Kinds.PatternMemory
+
+    small = PatternMemory.estimate("^a$", [])
+    large = PatternMemory.estimate("(?:a){7900}b", [])
+
+    fresh(fn ->
+      assert RegexFormat.pattern_bytes(large, large + small) == :ok
+      assert {:ok, _} = RegexFormat.validate_cast("regex", "^a$")
+      # A value checked before is not counted again.
+      assert {:ok, _} = RegexFormat.validate_cast("regex", "^a$")
+
+      assert catch_throw(RegexFormat.validate_cast("regex", "^b$")) ==
+               {RegexFormat, :pattern_bytes}
+    end)
+
+    # Without pattern_bytes/2, values are not counted.
+    fresh(fn -> assert {:ok, _} = RegexFormat.validate_cast("regex", "(?:a){7900}b") end)
+  end
 end

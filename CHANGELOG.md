@@ -21,9 +21,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   values, a string of more than 16 KiB or more than 64 levels of nesting, and an
   integration's settings are held to the same limits apart from the string length: a
   deeply nested description no longer keeps a processor busy for seconds.
-- An integration's settings are checked within a limit on work and memory: settings
+- An integration's settings are checked within a limit on work and heap memory: settings
   whose check against the schema in the integration's description would need more are
   refused as invalid, instead of keeping a processor busy while the connection is saved.
+- An integration's settings check refuses a schema, or settings checked as regular
+  expressions, whose patterns would take more than 16 MiB of memory once compiled.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

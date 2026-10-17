@@ -132,6 +132,89 @@ defmodule Apiary.Integrations.SettingsBudgetTest do
     end
   end
 
+  describe "the memory of the settings schema's patterns" do
+    # A compiled pattern is memory outside the heap, which the budget does not count: each
+    # `(?:a){7900}b<i>` compiles to about 64 KB. Measured on main before the estimate,
+    # the build of 1950 of them took the node 126 MiB more memory.
+    defp heavy(i), do: %{"pattern" => "(?:a){7900}b#{i}"}
+
+    test "a schema of 1950 patterns of about 64 KB each is stopped before its build" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{
+              "allOf" =>
+                for(c <- Enum.chunk_every(1..1950, 1000), do: %{"allOf" => Enum.map(c, &heavy/1)})
+            }
+          }
+        })
+
+      over_budget(description, %{"x" => "b"}, "patterns")
+    end
+
+    # JSV builds the target of each distinct reference: 26 pointers, each into the one
+    # before, build the 30 patterns 26 times.
+    test "so is a schema whose 30 such patterns 26 nested pointers build again" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" =>
+            Map.new(
+              0..25,
+              &{"r#{&1}", %{"$ref" => "#/$defs/p" <> String.duplicate("/allOf/0", &1)}}
+            ),
+          "$defs" => %{
+            "p" =>
+              Enum.reduce(1..25, %{"allOf" => Enum.map(1..30, &heavy/1)}, fn _, inner ->
+                %{"allOf" => [inner]}
+              end)
+          }
+        })
+
+      over_budget(description, Map.new(0..25, &{"r#{&1}", "b"}), "patterns")
+    end
+
+    # Each value checked against `"format": "regex"` is compiled once
+    # (`Apiary.Kinds.RegexFormat`). Measured on main before the estimate, 1950 values of
+    # `(?:a){7900}b<i>`, 35958 bytes of settings, passed and took the node 120 MiB more
+    # memory.
+    defp regex_lists do
+      with_settings_schema(%{
+        "type" => "object",
+        "properties" => %{
+          "l1" => %{"type" => "array", "items" => %{"type" => "string", "format" => "regex"}},
+          "l2" => %{"type" => "array", "items" => %{"type" => "string", "format" => "regex"}}
+        }
+      })
+    end
+
+    test "settings of 1950 regular expressions of about 64 KB each are stopped before they compile" do
+      {l1, l2} = Enum.split(for(i <- 1..1950, do: "(?:a){7900}b#{i}"), 1024)
+      over_budget(regex_lists(), %{"l1" => l1, "l2" => l2}, "patterns")
+    end
+
+    test "settings of 2048 ordinary regular expressions are checked" do
+      settings = %{
+        "l1" => for(i <- 1..1024, do: "^v#{i}-[a-z0-9]{1,40}$"),
+        "l2" => for(i <- 1..1024, do: "(?i)^w#{i}(-[0-9]+)*$")
+      }
+
+      assert Description.check_settings(regex_lists(), settings) == :ok
+    end
+
+    test "100 such patterns are built and checked" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{"x" => %{"allOf" => Enum.map(1..100, &heavy/1)}}
+        })
+
+      assert {:error, {:integration_settings_invalid, %{valid: false, details: [_ | _]}}} =
+               Description.check_settings(description, %{"x" => "b"})
+    end
+  end
+
   describe "the budget of the settings check" do
     test "a schema that doubles its work at each of 20 or 24 levels runs out of reductions" do
       over_budget(doubling(20), %{"a" => "s"}, "reductions")
