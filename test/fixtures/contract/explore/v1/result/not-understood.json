@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "verdict": "not_understood",
+  "understanding": "The ticket says the parser fails on some dates, but names no date that fails.",
+  "questions": [
+    "Which dates does the parser refuse? An example of one would help.",
+    "Should a two-digit year be read as a year from 2000?"
+  ]
+}
