@@ -377,6 +377,27 @@ its workspace, the pool's included, and another gateway that may serve its works
 workspace, and a gateway that may not serve the run's workspace, are refused
 `run_id_used`, and open no run under that id.
 
+Once handed over, such a run ends with its registered run, in one of three ways, the first
+to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
+`dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
+handover ends it `released`; and the lost-run check ends it `lost` when its gateway never
+attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
+backstop, 1200 seconds after its attach for the step `explore` (Liveness). Its dispatch ends
+with it, with the same end cause, a stale dispatch of it with `run_ended`, and the slot the
+dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where it is
+empty). An end after the first changes none of them. A release after the handover records
+the registered run cancelled with the reason `released` (`runs.released_at`), which the fold
+applies after every pass and over its exit, and records no outcome: no `end` is sent for
+it, an end following only the starter's outcome, and its gateway's attach is `410` from
+then on. The starter's outcome after a release or a loss is taken as any first outcome is,
+and its state and reason decide the run's, `failed` among them; it is never `409`
+`outcome_given`, and it changes neither the end cause nor the slot. `released` is a reason
+Qory sets itself: a starter's outcome that gives it has it dropped, and is kept without it.
+Each end locks the run of the queue first, then the registered run, then writes the
+dispatches, so two ends of one run take turns, and an outcome that comes as the check
+loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
+staying `lost`.
+
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
 row lock, so a request both refuse is refused by the limit. A node runs one instance at a
@@ -486,7 +507,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
-| `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
+| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
@@ -795,7 +816,11 @@ all. A `running` run is measured from its last heartbeat, else from the arrival 
 `run.started`, and a `pending` run from its attach, for a run through a gateway, else from
 when the workspace first heard of it, its registration for a run that registered. A run
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
-then it holds its node's instance. A heartbeat
+then it holds its node's instance. A run a workspace's queue handed over is also lost at
+its backstop, which its attach sets to the attach and its step's limit, 1200 seconds for
+`explore` (`runs.backstop_at`), should it have neither an outcome nor an exit by then,
+however recently it beat; no heartbeat or start that arrives after that brings it back,
+and only its exit or its starter's outcome changes its state. A heartbeat
 counts by the `time` it carries, corrected by the run's clock offset (the smallest arrival less
 `time` over the run's heartbeats), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it

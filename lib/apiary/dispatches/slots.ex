@@ -25,8 +25,9 @@ defmodule Apiary.Dispatches.Slots do
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
   # - `free_slot/2` frees one dispatch's slot, for the paths that end a dispatch.
   #
-  # **Locks.** A run of the queue is locked before its dispatch, as every path that locks
-  # both does, so that no two of them wait on each other: `free/2` locks the runs of the
+  # **Locks.** A run of the queue is locked before its dispatch, and before the run
+  # registered for it (`Apiary.Dispatches.RunEnd`), as every path that locks both does, so
+  # that no two of them wait on each other: `free/2` locks the runs of the
   # lapsed dispatches `FOR UPDATE`, in the order of their ids, and only then writes the
   # dispatches, each write asking its conditions again, so a dispatch handed over, ended or
   # freed meanwhile is left as it is. Every function here runs inside the caller's

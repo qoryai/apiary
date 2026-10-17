@@ -183,6 +183,13 @@ defmodule Apiary.Runs.Run do
     # The run of a workspace's queue this run is, set when its dispatch is handed over and
     # the run registered for it, unique; nil for every other run.
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
+    # For such a run: when its starter released it after the handover, which the run reads
+    # as cancelled with the reason `released` until its starter's outcome decides
+    # (`Apiary.Runs.Fold`); and, set at its attach, when it is lost should it have neither
+    # an outcome nor an exit by then (`Apiary.Runs.Liveness`). Nil for every other run. Not
+    # folded: a rebuild keeps them.
+    field :released_at, :utc_datetime_usec
+    field :backstop_at, :utc_datetime_usec
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

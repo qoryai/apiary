@@ -36,8 +36,9 @@ defmodule Apiary.Repo.Migrations.KeepDispatches do
   #   before its handover, refusal.schema.json (410 gone).
   # - `run_ended`: the run ended by its outcome or its exit, after its handover, and a
   #   stale dispatch ends with its run, handover.schema.json.
-  # - `lost`: a handed-over run whose job never attached or went silent, ended by the
-  #   liveness check.
+  # - `lost`: a handed-over run whose job never attached by its `attach_by`, or that had
+  #   neither an outcome nor an exit by its step's limit after its attach, ended by the
+  #   liveness check (`Apiary.Dispatches.RunEnd`).
   #
   # Every table is held to its workspace's organisation by the composite key, a dispatch's
   # run to its workspace, and a dispatch's node pool to its workspace. A run of the queue

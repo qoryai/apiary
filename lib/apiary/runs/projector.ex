@@ -75,6 +75,7 @@ defmodule Apiary.Runs.Projector do
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
+        end_handed_over(run)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
 
@@ -164,11 +165,12 @@ defmodule Apiary.Runs.Projector do
 
     blank = Map.take(%Run{}, @rebuilt_fields)
     # The starter's outcome is not folded: it decides the state the run starts again from,
-    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`).
+    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`), and so does an end
+    # Qory recorded without one (`Apiary.Runs.Fold.settle/1`).
     blank =
       Map.merge(
         blank,
-        Fold.outcome(%{current | state: "pending", reason: nil, lost_at: nil})
+        Fold.settle(%{current | state: "pending", reason: nil, lost_at: nil})
         |> Map.take([:state, :reason, :lost_at])
       )
 
@@ -429,6 +431,20 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp touch_heartbeat(_run), do: :ok
+
+  # A run a workspace's queue handed over whose pass folded its exit ends the queue's run
+  # with it, once its passes have committed, in a separate transaction that locks the
+  # queue's run first (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose slots
+  # changed are told. A failure is logged and the lost-run check ends it at its next
+  # tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  defp end_handed_over(%Run{dispatch_run_id: id, exited_at: %DateTime{}} = run)
+       when is_binary(id) do
+    run |> Apiary.Dispatches.RunEnd.run_ended() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:run_end, error.__struct__})
+  end
+
+  defp end_handed_over(_run), do: :ok
 
   defp log_touch_failure(%Run{id: id}, what) do
     Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")
