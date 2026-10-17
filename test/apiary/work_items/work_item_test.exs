@@ -247,6 +247,14 @@ defmodule Apiary.WorkItems.WorkItemTest do
     test "goes with its organisation, with its connection", ctx do
       %{scope: scope, connection: connection, work_item: item} = ctx
 
+      # The key is NO ACTION ("a"), checked at the end of the statement, so the delete
+      # does not depend on the order its cascades run in.
+      assert %{rows: [["a"]]} =
+               Repo.query!(
+                 "SELECT confdeltype::text FROM pg_constraint " <>
+                   "WHERE conname = 'work_items_connection_id_fkey'"
+               )
+
       Repo.query!("DELETE FROM organisations WHERE id = $1", [
         Ecto.UUID.dump!(scope.organisation.id)
       ])

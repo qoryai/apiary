@@ -12,9 +12,10 @@ defmodule Apiary.Repo.Migrations.NameAWorkItemSTicketByItsConnection do
   # - `connection_id` is required, and of the work item's organisation (the composite key
   #   on `organisation_id`, as the work item's workspace is). A connection ends by its
   #   state and is never deleted alone: its rows go only with its organisation, whose
-  #   purge deletes the work items first (`Apiary.Deletion.Tables`). The key restricts,
-  #   so that a work item stays when its connection ends, and nothing deletes a
-  #   connection a work item names.
+  #   purge deletes the work items first (`Apiary.Deletion.Tables`). The key refuses
+  #   deleting a connection a work item names, so that a work item stays when its
+  #   connection ends. It is NO ACTION, not RESTRICT: checked at the end of the statement,
+  #   so one that deletes an organisation removes both, whatever order its cascades run in.
   # - Nothing is unique on (`connection_id`, `external_ref`): the same ticket may be taken
   #   in again as a new work item. The index serves the key and finds a ticket's work
   #   items.
@@ -51,7 +52,7 @@ defmodule Apiary.Repo.Migrations.NameAWorkItemSTicketByItsConnection do
             type: :binary_id,
             with: [organisation_id: :organisation_id],
             match: :full,
-            on_delete: :restrict
+            on_delete: :nothing
           ),
           null: false
     end
