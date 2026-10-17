@@ -234,4 +234,202 @@ defmodule Apiary.Integrations.DescriptionTest do
                Description.check_argument(description, "acme")
     end
   end
+
+  describe "the size of a description, and of its settings" do
+    # A check takes less than this many milliseconds: the limits refuse each input below
+    # in a few, where JSV and the normalising of its errors took up to 3.5 s for a
+    # description and 2.9 s for settings, and JSV alone over 0.25 s on some of them; the
+    # budget leaves room for a slow machine. Which inputs the limits refuse is asserted
+    # apart from the time: a refusal by the limits carries them, `%{limits: _}`, and one
+    # by the schema does not.
+    @budget_ms 150
+
+    setup do
+      # The schemas are built once; the first check pays for it.
+      assert {:ok, _} = parse(tracker_description())
+      assert {:ok, description} = parse(unbounded_settings())
+      %{description: description}
+    end
+
+    defp timed(fun) do
+      {microseconds, result} = :timer.tc(fun)
+      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
+      result
+    end
+
+    defp entries(entry, count), do: Enum.join(List.duplicate(entry, count), ",")
+
+    # A role name for each integer: a, b, ..., z, aa, ab, ...
+    defp letters(i) when i < 26, do: <<?a + i>>
+    defp letters(i), do: letters(div(i, 26) - 1) <> <<?a + rem(i, 26)>>
+
+    defp with_domains(list),
+      do:
+        String.replace(
+          encode(tracker_description(%{"domains" => ["software"]})),
+          ~s("domains":["software"]),
+          ~s("domains":[#{list}])
+        )
+
+    defp nested(key, depth, inner),
+      do: Enum.reduce(1..depth, inner, fn _, acc -> %{key => acc} end)
+
+    defp limited?({:error, {:description_invalid, [{:schema, %{limits: _}}]}}), do: true
+    defp limited?({:error, {:integration_settings_invalid, %{limits: _}}}), do: true
+    defp limited?(_result), do: false
+
+    defp attacks do
+      [
+        with_domains(entries("{}", 40_000)),
+        with_domains(entries("1", 60_000)),
+        encode(tracker_description(%{"roles" => Map.new(0..10_999, &{letters(&1), %{}})})),
+        encode(put_in(tracker_description(), ["settings", "allOf"], List.duplicate(1, 60_000))),
+        encode(put_in(tracker_description(), ["settings", "not"], nested("not", 15_000, %{}))),
+        encode(
+          put_in(
+            tracker_description(),
+            ["settings", "$id"],
+            "https://example.com/" <> String.duplicate("a", 200_000)
+          )
+        )
+      ]
+    end
+
+    # A description whose settings schema bounds nothing: a list of any length, a list of
+    # any length whose every entry is a string of one of 32 patterns, an object of any
+    # members, any value, and a tree of lists of any depth.
+    defp unbounded_settings do
+      tracker_description(%{
+        "settings" => %{
+          "type" => "object",
+          "properties" => %{
+            "list" => %{"type" => "array", "items" => %{"type" => "string"}},
+            "choice" => %{
+              "type" => "array",
+              "items" => %{
+                "anyOf" =>
+                  for(
+                    i <- 1..32,
+                    do: %{"type" => "string", "pattern" => "^p#{i}-[0-9]+$"}
+                  )
+              }
+            },
+            "map" => %{"type" => "object", "additionalProperties" => %{"type" => "string"}},
+            "any" => %{},
+            "tree" => %{"$ref" => "#/$defs/tree"}
+          },
+          "$defs" => %{"tree" => %{"type" => "array", "items" => %{"$ref" => "#/$defs/tree"}}}
+        }
+      })
+    end
+
+    defp settings_attacks do
+      [
+        %{"list" => List.duplicate(1, 30_000)},
+        %{"list" => List.duplicate(%{}, 20_000)},
+        %{"choice" => List.duplicate(1, 30_000)},
+        %{"map" => Map.new(1..6000, &{"k#{&1}", 1})},
+        %{"any" => List.duplicate(1, 30_000)},
+        %{"tree" => Enum.reduce(1..30_000, [], fn _, inner -> [inner] end)}
+      ]
+    end
+
+    # A valid description at the limits: 1024 domains, a settings schema of 1000
+    # properties and 64 lists and objects deep, a description of 16 KiB, 4096 values in all.
+    # The document, `settings` and the outermost `not` are 3 deep; 61 more objects nest in it.
+    defp largest do
+      domains = for i <- 1..1024, do: "d#{i}"
+      properties = Map.new(1..1000, &{"p#{&1}", %{"type" => "string"}})
+      deep = nested("not", 61, %{})
+
+      document =
+        tracker_description(%{
+          "domains" => domains,
+          "description" => String.duplicate("d", 16_384)
+        })
+        |> update_in(["settings", "properties"], &Map.merge(&1, properties))
+        |> put_in(["settings", "not"], deep)
+
+      # `examples` holds a list that holds the filler: two values more.
+      filler = for i <- 1..(4096 - values(document) - 2), do: "e#{i}"
+      put_in(document, ["settings", "examples"], [filler])
+    end
+
+    defp values(value) when is_map(value),
+      do: 1 + (value |> Map.values() |> Enum.map(&values/1) |> Enum.sum())
+
+    defp values(value) when is_list(value), do: 1 + (value |> Enum.map(&values/1) |> Enum.sum())
+    defp values(_value), do: 1
+
+    test "a description over the limits is refused by them, at once" do
+      for text <- attacks() do
+        assert byte_size(text) in 90_000..262_144
+        assert limited?(timed(fn -> Description.parse(text) end))
+      end
+    end
+
+    test "a valid description at the limits is read, and one value, entry or byte more is refused" do
+      document = largest()
+      assert values(document) == 4096
+      text = encode(document)
+      assert byte_size(text) > 30_000
+      assert {:ok, %Description{}} = timed(fn -> Description.parse(text) end)
+
+      for over <- [
+            update_in(document, ["settings", "examples"], &[["one more"] | &1]),
+            Map.put(document, "domains", for(i <- 1..1025, do: "d#{i}")),
+            Map.put(document, "description", String.duplicate("d", 16_385)),
+            put_in(document, ["settings", "not"], nested("not", 62, %{}))
+          ] do
+        assert limited?(parse(over))
+      end
+    end
+
+    test "every fixture is within the limits" do
+      files = Path.wildcard(Path.join(@fixtures, "*.json"))
+      invalid = Path.wildcard(Path.join(@fixtures, "invalid/*.json"))
+
+      for file <- files ++ invalid do
+        refute limited?(file |> File.read!() |> Description.parse()), Path.basename(file)
+      end
+    end
+
+    test "settings over the limits are refused by them, at once, whatever their schema",
+         %{description: description} do
+      for settings <- settings_attacks() do
+        assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 50_000..65_536
+        assert limited?(timed(fn -> Description.check_settings(description, settings) end))
+      end
+    end
+
+    test "valid settings at the limits pass", %{description: description} do
+      # The settings and 63 lists nested in them are 64 deep; `any` fills them to 4096 values.
+      settings = %{
+        "list" => for(i <- 1..1024, do: "s#{i}"),
+        "choice" => for(i <- 1..1024, do: "p32-#{i}"),
+        "map" => Map.new(1..1024, &{"k#{&1}", "v"}),
+        "tree" => Enum.reduce(1..62, [], fn _, inner -> [inner] end)
+      }
+
+      settings = Map.put(settings, "any", List.duplicate(1, 4096 - values(settings) - 1))
+      assert values(settings) == 4096
+      assert timed(fn -> Description.check_settings(description, settings) end) == :ok
+
+      for over <- [
+            %{"list" => for(i <- 1..1025, do: "s#{i}")},
+            %{"map" => Map.new(1..1025, &{"k#{&1}", "v"})},
+            %{"tree" => Enum.reduce(1..63, [], fn _, inner -> [inner] end)},
+            Map.update!(settings, "any", &[1 | &1])
+          ] do
+        assert limited?(Description.check_settings(description, over))
+      end
+    end
+
+    test "a refusal by the schema is no refusal by the limits", %{description: description} do
+      assert {:error, {:integration_settings_invalid, %{count: _, errors: [_ | _]}} = refused} =
+               Description.check_settings(description, %{"list" => [1]})
+
+      refute limited?(refused)
+    end
+  end
 end

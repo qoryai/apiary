@@ -1,7 +1,7 @@
 defmodule Apiary.Kinds.ServicesTest do
   use ExUnit.Case, async: true
 
-  alias Apiary.Kinds.{Headers, Placeholders, Runtimes, ServiceDefinition, Services}
+  alias Apiary.Kinds.{Bounds, Headers, Placeholders, Runtimes, ServiceDefinition, Services}
 
   @dir Path.expand("../../../priv/services", __DIR__)
 
@@ -216,6 +216,89 @@ defmodule Apiary.Kinds.ServicesTest do
           do: assert(Placeholders.conflict?(name))
 
       refute Placeholders.conflict?("STATUS_API_KEY")
+    end
+  end
+
+  describe "the size of a definition" do
+    # A check takes less than this many milliseconds: the bounds the schema gives, lists
+    # of 32 entries and objects of 8 members, refuse each input below in under one, where
+    # JSV and the normalising of its errors took up to 0.4 s; the budget leaves room for a
+    # slow machine. Which inputs the bounds refuse is asserted apart from the time.
+    @budget_ms 150
+
+    setup do
+      # The schema and its bounds are built once; the first check pays for it.
+      assert {:ok, _} = ServiceDefinition.validate(definition())
+      :ok
+    end
+
+    defp timed(fun) do
+      {microseconds, result} = :timer.tc(fun)
+      assert div(microseconds, 1000) < @budget_ms, "took #{div(microseconds, 1000)} ms"
+      result
+    end
+
+    defp deep(depth), do: Enum.reduce(1..depth, [], fn _, inner -> [inner] end)
+
+    # Each about 120 KB as JSON: the page takes 64 KiB, and a definition given to
+    # `Apiary.Connections` as a string is not bounded before it is decoded.
+    defp oversized do
+      [
+        definition(%{"hosts" => List.duplicate(1, 60_000)}),
+        definition(%{"hosts" => List.duplicate(%{}, 40_000)}),
+        definition(%{"paths" => List.duplicate("/a", 24_000)}),
+        definition(%{"declares" => List.duplicate(%{}, 40_000)}),
+        Map.merge(definition(), Map.new(1..11_000, &{"k#{&1}", 1})),
+        definition(%{"auth" => Map.new(1..11_000, &{"k#{&1}", 1})})
+      ]
+    end
+
+    test "a definition over the schema's bounds is refused, at once" do
+      for definition <- oversized() do
+        assert byte_size(Jason.encode!(definition)) in 100_000..140_000
+        refute Bounds.within?(definition, ServiceDefinition.bounds())
+
+        assert timed(fn -> ServiceDefinition.validate(definition) end) ==
+                 {:error, [{:definition_invalid, ""}]}
+      end
+    end
+
+    test "deep nesting passes the bounds in constant stack, and the schema refuses it at once" do
+      definition = definition(%{"hosts" => deep(60_000)})
+      assert byte_size(Jason.encode!(definition)) in 100_000..140_000
+      assert Bounds.within?(definition, ServiceDefinition.bounds())
+
+      assert timed(fn -> ServiceDefinition.validate(definition) end) ==
+               {:error, [{:definition_invalid, ""}]}
+    end
+
+    test "a valid definition with every list at its largest passes" do
+      ids = for i <- 1..16, do: "key_#{i}"
+
+      largest =
+        definition(%{
+          "description" => String.duplicate("d", 500),
+          "hosts" => for(i <- 1..16, do: "api#{i}.example.com"),
+          "paths" => for(i <- 1..32, do: "/v#{i}/" <> String.duplicate("p", 100) <> "/*"),
+          "auth" => %{"scheme" => "header", "header" => "x-api-key", "secret" => "key_1"},
+          "declares" =>
+            for(
+              id <- ids,
+              do: %{
+                "id" => id,
+                "title" => String.duplicate("t", 128),
+                "name" => String.upcase(id)
+              }
+            )
+        })
+
+      assert Bounds.within?(largest, ServiceDefinition.bounds())
+      assert {:ok, ^largest} = timed(fn -> ServiceDefinition.validate(largest) end)
+
+      refute Bounds.within?(
+               %{largest | "paths" => ["/" | largest["paths"]]},
+               ServiceDefinition.bounds()
+             )
     end
   end
 end

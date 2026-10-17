@@ -29,7 +29,8 @@ defmodule Apiary.Policy.Schema do
 
   @doc """
   Validates a run configuration document, as bytes. `:ok`, or `{:error, reason}` with
-  what the schema refuses, for a log and not for a page.
+  what the schema refuses, summed up (`Apiary.Kinds.Schema.summary/1`), for a log and not
+  for a page.
   """
   @spec validate(binary) :: :ok | {:error, term}
   def validate(document) when is_binary(document) do
@@ -37,7 +38,7 @@ defmodule Apiary.Policy.Schema do
          {:ok, _document} <- JSV.validate(decoded, root()) do
       :ok
     else
-      {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
+      {:error, %JSV.ValidationError{} = error} -> {:error, Apiary.Kinds.Schema.summary(error)}
       {:error, reason} -> {:error, reason}
     end
   end

@@ -47,7 +47,7 @@ defmodule Apiary.Explore.Result do
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
-  alias Apiary.Kinds.Schema
+  alias Apiary.Kinds.{Bounds, Schema}
 
   @type result :: %{optional(String.t()) => term}
 
@@ -125,179 +125,24 @@ defmodule Apiary.Explore.Result do
   defp one?(_number), do: false
 
   # within_bounds?/1 walks the decoded `document` once, before the schema is applied, and
-  # is false for a list longer than `max_list` or an object with more members than
-  # `max_members`, at any depth, and for any struct. The bounds are the largest the
-  # schema allows anywhere (`bounds/0`), so a document the schema accepts always passes;
-  # a document with tens of thousands of entries is refused here at the cost of reading
-  # it, where JSV would check each entry. The walk keeps the values still to read in a
-  # list and calls itself last, so nesting of any depth runs in constant stack.
+  # is false for a list longer than the schema allows anywhere or an object with more
+  # members, at any depth, and for any struct (`Apiary.Kinds.Bounds.within?/2`, with
+  # `bounds/0`). A document the schema accepts always passes; a document with tens of
+  # thousands of entries is refused here at the cost of reading it, where JSV would check
+  # each entry. The walk runs in constant stack, so nesting of any depth passes it.
   @doc false
   @spec within_bounds?(term) :: boolean
-  def within_bounds?(document) do
-    {max_list, max_members} = bounds()
-    walk([document], max_list, max_members)
-  end
-
-  defp walk([], _max_list, _max_members), do: true
-
-  defp walk([value | _rest], _max_list, _max_members) when is_struct(value), do: false
-
-  defp walk([list | rest], max_list, max_members) when is_list(list) do
-    if bounded_length?(list, max_list),
-      do: walk(list ++ rest, max_list, max_members),
-      else: false
-  end
-
-  defp walk([map | rest], max_list, max_members) when is_map(map) do
-    if map_size(map) <= max_members,
-      do: walk(Map.values(map) ++ rest, max_list, max_members),
-      else: false
-  end
-
-  defp walk([_scalar | rest], max_list, max_members), do: walk(rest, max_list, max_members)
-
-  # Whether `list` has at most `max` elements, reading at most `max + 1` of them.
-  defp bounded_length?(_list, max) when max < 0, do: false
-  defp bounded_length?([], _max), do: true
-  defp bounded_length?([_head | tail], max), do: bounded_length?(tail, max - 1)
+  def within_bounds?(document), do: Bounds.within?(document, bounds())
 
   # The schema, built once and kept (`Apiary.Kinds.Schema.file!/2`).
   defp root, do: Schema.file!(@schema, &code_point_lengths/1)
 
-  # bounds/0 is `{max_list, max_members}` read from `result.schema.json` (`bounds/1`),
-  # read once and kept in `:persistent_term`.
+  # bounds/0 is `[list: max_list, members: max_members]` read from `result.schema.json`
+  # (`Apiary.Kinds.Bounds.file!/2`): the largest `maxItems` of a schema of type array, and
+  # the most `properties` of a schema of type object, read once and kept.
   @doc false
-  @spec bounds() :: {non_neg_integer, non_neg_integer}
-  def bounds do
-    key = {__MODULE__, :bounds}
-
-    case :persistent_term.get(key, nil) do
-      nil ->
-        bounds =
-          Application.app_dir(:apiary, ["priv" | @schema])
-          |> File.read!()
-          |> Jason.decode!()
-          |> bounds()
-
-        :persistent_term.put(key, bounds)
-        bounds
-
-      bounds ->
-        bounds
-    end
-  end
-
-  # bounds/1 is `{max_list, max_members}` of a decoded JSON Schema: the largest `maxItems`
-  # of a schema of type array, and the most `properties` of a schema of type object. It
-  # reads the keywords `result.schema.json` uses, and raises on a schema whose bounds it
-  # cannot tell, so a bound is never guessed:
-  #
-  #   * a keyword outside those it reads, `patternProperties` among them;
-  #   * a `type` that is not one string;
-  #   * an array without an integer `maxItems`, or an object without
-  #     `additionalProperties: false`;
-  #   * `true`, or a map without a string `type`, a local `$ref`, a `const` or an `enum`,
-  #     where a value is described: the schema itself, a member of `properties`, `items` or
-  #     `$defs`; or `items`, `properties` or `additionalProperties` in such a map;
-  #   * a `$ref` outside the schema's `$defs`, or a `const` or `enum` that holds a list or
-  #     an object.
-  #
-  # The members of `allOf`, `if`, `then` and `else` narrow the value their schema
-  # describes, which that schema bounds: they need no `type`. The members of `properties`
-  # and `$defs` are read by name, never as keywords.
-  @doc false
-  @spec bounds(map) :: {non_neg_integer, non_neg_integer}
-  def bounds(schema) when is_map(schema), do: bounds(schema, :value, {0, 0})
-
-  @read ~w($schema $id $ref $defs title description type const enum required properties
-           additionalProperties items minItems maxItems minLength maxLength pattern allOf if
-           then else)
-  @described ~w(items properties additionalProperties)
-
-  # `place` is `:value` where the schema describes a value, `:narrowing` in `allOf`, `if`,
-  # `then` and `else`, and below them.
-  defp bounds(false, _place, acc), do: acc
-  defp bounds(true, :narrowing, acc), do: acc
-  defp bounds(true, :value, _acc), do: refuse("true, which takes any value", true)
-
-  defp bounds(schema, place, acc) when is_map(schema) do
-    Enum.each(Map.keys(schema), fn keyword ->
-      if keyword not in @read, do: refuse("a keyword bounds/1 does not read", keyword)
-    end)
-
-    type = Map.get(schema, "type")
-
-    cond do
-      Map.has_key?(schema, "type") and not is_binary(type) ->
-        refuse("a type that is not one string", schema)
-
-      place == :value and type == nil and not described?(schema) ->
-        refuse("a value described by no type", schema)
-
-      place == :value and type == nil and Enum.any?(@described, &Map.has_key?(schema, &1)) ->
-        refuse("items, properties or additionalProperties with no type", schema)
-
-      Map.has_key?(schema, "$ref") and not local_ref?(schema["$ref"]) ->
-        refuse("a $ref outside the schema's $defs", schema)
-
-      Enum.any?([schema["const"] | List.wrap(schema["enum"])], &(is_list(&1) or is_map(&1))) ->
-        refuse("a const or an enum that holds a list or an object", schema)
-
-      true ->
-        :ok
-    end
-
-    acc =
-      case type do
-        "array" ->
-          case schema do
-            %{"maxItems" => max} when is_integer(max) -> put_elem(acc, 0, max(elem(acc, 0), max))
-            _no_max -> refuse("an array without maxItems", schema)
-          end
-
-        "object" ->
-          case schema do
-            %{"additionalProperties" => false} ->
-              put_elem(acc, 1, max(elem(acc, 1), map_size(Map.get(schema, "properties", %{}))))
-
-            _open ->
-              refuse("an object that takes any member", schema)
-          end
-
-        _other ->
-          acc
-      end
-
-    acc
-    |> bounds_each(Map.get(schema, "properties", %{}), place)
-    |> bounds_each(Map.get(schema, "$defs", %{}), :value)
-    |> bounds_list([Map.get(schema, "items", false)], place)
-    |> bounds_list(Map.get(schema, "allOf", []), :narrowing)
-    |> bounds_list(
-      for(key <- ~w(if then else), Map.has_key?(schema, key), do: schema[key]),
-      :narrowing
-    )
-  end
-
-  defp bounds(schema, _place, _acc), do: refuse("a schema that bounds/1 cannot read", schema)
-
-  defp described?(schema), do: Enum.any?(~w($ref const enum), &Map.has_key?(schema, &1))
-
-  defp local_ref?("#/$defs/" <> _name), do: true
-  defp local_ref?(_ref), do: false
-
-  # The members of a map of named schemas, `properties` or `$defs`, by name.
-  defp bounds_each(acc, named, place) when is_map(named),
-    do: Enum.reduce(named, acc, fn {_name, schema}, acc -> bounds(schema, place, acc) end)
-
-  defp bounds_each(_acc, named, _place), do: refuse("named schemas that are not a map", named)
-
-  defp bounds_list(acc, schemas, place) when is_list(schemas),
-    do: Enum.reduce(schemas, acc, &bounds(&1, place, &2))
-
-  defp bounds_list(_acc, schemas, _place), do: refuse("schemas that are not a list", schemas)
-
-  defp refuse(what, schema), do: raise(ArgumentError, "#{what}: #{inspect(schema)}")
+  @spec bounds() :: Bounds.limits()
+  def bounds, do: Bounds.file!(@schema)
 
   # code_point_lengths/1 is `schema` with each object that has an integer `minLength` or
   # `maxLength` given the bounds as a pattern instead, `^[\s\S]{min,max}$`, which PCRE in

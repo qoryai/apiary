@@ -6,7 +6,8 @@ defmodule Apiary.Integrations.Description do
   commit `.integration-contract-ref` names for it).
 
   `parse/1` validates the bytes with JSV against the vendored schema, its patterns read as
-  the contract reads them (`Apiary.Kinds.Pattern`), then checks what the schema cannot:
+  the contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within
+  the limits below, then checks what the schema cannot:
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
       it, and no secret is nested in another setting;
@@ -14,6 +15,12 @@ defmodule Apiary.Integrations.Description do
 
   A role other than `credential` is read as it is and never refused. A refusal is
   `{:error, {:description_invalid, problems}}`.
+
+  The schema bounds no list, and its `settings` and `roles` take objects of any members.
+  So a description is refused before the schema when it holds a list of more than 1024
+  entries, an object of more than 1024 members, more than 4096 values in all, a string of
+  more than 16 KiB or more than 64 lists and objects nested in one another
+  (`Apiary.Kinds.Bounds.within?/2`).
 
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
@@ -51,6 +58,11 @@ defmodule Apiary.Integrations.Description do
 
   @settings_max 65_536
 
+  # The limits of a description, and of the plain settings checked against its schema,
+  # before a schema is applied (see the module's documentation and `check_settings/2`).
+  @limits [list: 1024, members: 1024, nodes: 4096, string: 16_384, depth: 64]
+  @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
+
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
   `{:error, {code, details}}` (see the module's documentation).
@@ -76,7 +88,7 @@ defmodule Apiary.Integrations.Description do
   end
 
   defp schema(document) do
-    case Schema.validate(document, root()) do
+    case Schema.validate(document, root(), @limits) do
       :ok -> :ok
       {:error, errors} -> {:error, {:description_invalid, [{:schema, errors}]}}
     end
@@ -164,9 +176,13 @@ defmodule Apiary.Integrations.Description do
       a secret nor a secret's `<name>_file`, else `integration_settings_not_allowed`: a
       connection never holds a secret, and a `<name>_file` is a path on the node that a
       server never sends;
+    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`;
-    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`.
+      `settings`, `integration_settings_invalid`; before that schema is applied, settings
+      that hold a list of more than 1024 entries, an object of more than 1024 members,
+      more than 4096 values in all or more than 64 lists and objects nested in one
+      another are refused so: the schema comes from the description and need bound none
+      of them.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -206,7 +222,7 @@ defmodule Apiary.Integrations.Description do
       })
 
     with {:ok, root} <- Schema.build(schema),
-         :ok <- Schema.validate(settings, root) do
+         :ok <- Schema.validate(settings, root, @settings_limits) do
       :ok
     else
       {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
