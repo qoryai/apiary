@@ -23,7 +23,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #
   # The page's parts read more of it, each named where it is used. A person is a map with
   # `:name` and `:you`, true when the person is the reader: a text the reader is the
-  # subject of has its own words ("You own it", "Closed by you").
+  # subject of says "you" ("You own it", "Closed by you").
   #
   # Every DOM id, `phx-value-*` and path is Qory Apiary's: the work item's number, a
   # comment's `public_id`, and the paths the page gives. The ticket's ref and its number
@@ -209,7 +209,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   """
   attr :id, :string, default: "work-item-head"
   attr :work_item, :map, required: true, doc: "the work item"
-  attr :integration, :string, required: true, doc: "the integration's name, `\"GitHub\"`"
+  attr :integration, :string, required: true, doc: "the integration's name"
   attr :link, :string, required: true, doc: "the work item's address, for Copy link"
   attr :can_close, :boolean, default: false, doc: "whether the reader may close it"
 

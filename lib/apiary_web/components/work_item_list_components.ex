@@ -407,7 +407,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   """
   attr :id, :string, required: true, doc: "the row's DOM id, with the work item's number"
   attr :work_item, :map, required: true, doc: "the work item"
-  attr :integration, :string, required: true, doc: "the integration's name, `\"GitHub\"`"
+  attr :integration, :string, required: true, doc: "the integration's name"
   attr :navigate, :string, required: true, doc: "the work item's page"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
