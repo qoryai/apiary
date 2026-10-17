@@ -303,12 +303,12 @@ defmodule Apiary.Access do
     # The server contract.
     Action.new(:"run.post_events", "open a run and post its events",
       feature: :observability,
-      roles: [:access_key],
+      roles: [:access_key, :pool_key],
       audited: {:not, "the events the gateway posts are the record, not the audit trail"}
     ),
     Action.new(:"run_configuration.fetch", "fetch the run configuration",
       feature: :security,
-      roles: [:access_key],
+      roles: [:access_key, :pool_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
     # The instance's adapters: an organisation's people read them and connect them; an
@@ -404,20 +404,55 @@ defmodule Apiary.Access do
       audited:
         {:not,
          "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
+    ),
+    # A node pool's key at the server contract, on the runs dispatched to its workspace:
+    # one queue per workspace, which any pool of the workspace claims from. Asked of the
+    # workspace, its queue, or of a dispatch of it the key's pool claimed (`key_subject/4`).
+    Action.new(:"dispatch.claim", "claim a run waiting in the workspace's queue",
+      feature: :factory,
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "a claim is kept on its dispatch, with the key that claimed it, not in the audit trail"}
+    ),
+    Action.new(:"dispatch.dispatched", "say that a claimed run's machine was started",
+      feature: :factory,
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "the start of a claimed run's machine is kept on its dispatch, not in the audit trail"}
+    ),
+    Action.new(:"dispatch.handover", "hand a claimed run over to the machine that runs it",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
+    Action.new(:"dispatch.release", "give a claimed run back, to wait again or to end",
+      feature: :factory,
+      roles: [:pool_key]
     )
+  ]
+
+  # The actions a node pool's key takes on the runs dispatched to its workspace.
+  @dispatch_actions [
+    :"dispatch.claim",
+    :"dispatch.dispatched",
+    :"dispatch.handover",
+    :"dispatch.release"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the
   # documentation does not differ by (`docs: false`), which no doc names.
   @undocumented Features.core_undocumented()
 
-  # The core's roles, with who holds each: a membership's level, the gateway's access key, or
-  # the instance itself. An edition adds its own (`c:Apiary.Edition.roles/0`).
+  # The core's roles, with who holds each: a membership's level, the access key of a node,
+  # a gateway, a node pool or an adapter, or the instance itself. An edition adds its own
+  # (`c:Apiary.Edition.roles/0`).
   @roles [
     member: "a person at member, in the workspaces their level reaches",
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
-    access_key: "a gateway, with a key of the workspace",
+    access_key: "a node or a gateway, with a key of the workspace",
+    pool_key: "a node pool, with a key of the workspace",
     adapter_key: "an adapter of the instance, with a key enrolled on it, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
@@ -640,8 +675,8 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc """
-  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key` and
-  `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
+  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`
+  and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
   """
   @type role :: atom
 
@@ -1044,7 +1079,7 @@ defmodule Apiary.Access do
     role = role(scope)
 
     with :ok <- check_place(scope, action, subject),
-         :ok <- key_subject(role, scope, subject) do
+         :ok <- key_subject(role, scope, action, subject) do
       cond do
         own?(scope, action, subject) -> :ok
         author?(scope, action, subject) -> :ok
@@ -1061,7 +1096,12 @@ defmodule Apiary.Access do
   # found to it. Its scope narrowed to the organisation of a connection of that adapter
   # (`Apiary.Accounts.Scope.for_connection/2`) acts on that organisation too, and on its
   # connections to that adapter, and nothing else of it.
-  defp key_subject(:adapter_key, %Scope{access_key: %AccessKey{node_id: id}} = scope, subject) do
+  defp key_subject(
+         :adapter_key,
+         %Scope{access_key: %AccessKey{node_id: id}} = scope,
+         _action,
+         subject
+       ) do
     organisation_id =
       case scope.organisation do
         %Organisation{id: organisation_id} when is_binary(organisation_id) -> organisation_id
@@ -1085,7 +1125,51 @@ defmodule Apiary.Access do
     end
   end
 
-  defp key_subject(_role, _scope, _subject), do: :ok
+  # A node pool's key acts in its pool's workspace, which its place holds it to
+  # (`check_place/3`), and there on its pool: on no other node, and not on the
+  # organisation. A dispatch action is asked of the workspace, whose queue every pool of
+  # it claims from, or of a dispatch its pool claimed (`dispatch_subject/2`), and of
+  # nothing else.
+  defp key_subject(:pool_key, %Scope{access_key: %AccessKey{} = key}, action, subject)
+       when action in @dispatch_actions,
+       do: dispatch_subject(key, subject)
+
+  defp key_subject(:pool_key, %Scope{access_key: %AccessKey{node_id: id}}, _action, subject) do
+    case subject do
+      %Node{id: ^id} when is_binary(id) -> :ok
+      %Node{} -> {:error, :not_found}
+      %Organisation{} -> {:error, :not_found}
+      _other -> :ok
+    end
+  end
+
+  defp key_subject(_role, _scope, _action, _subject), do: :ok
+
+  # What a dispatch action of a node pool's key is asked of: its workspace, the queue, of
+  # which a waiting run is claimed; or a dispatch of that workspace that its pool claimed,
+  # a row or map that carries `organisation_id` and `workspace_id`, the key's, and
+  # `pool_id`, the key's pool. A dispatch another pool claimed, or one that names no pool,
+  # is not found to the key, as one of another workspace is. The place was asked already
+  # (`check_place/3`); it is asked again here, so this answer does not rest on that one.
+  defp dispatch_subject(
+         %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id},
+         %Workspace{id: workspace_id, organisation_id: organisation_id}
+       )
+       when is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
+  defp dispatch_subject(
+         %AccessKey{
+           node_id: pool_id,
+           organisation_id: organisation_id,
+           workspace_id: workspace_id
+         },
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
+  defp dispatch_subject(_key, _subject), do: {:error, :not_found}
 
   @doc """
   check_place/3 is the place's part of the answer, steps 3 to 5 of the moduledoc: `:ok`
@@ -1117,7 +1201,7 @@ defmodule Apiary.Access do
 
   # The key of an adapter, which has no organisation and no workspace, is where its
   # adapter is, and where nothing else of an organisation is: the instance, which no other
-  # scope is at. It reaches nothing else there: `key_subject/3` holds it to its adapter.
+  # scope is at. It reaches nothing else there: `key_subject/4` holds it to its adapter.
   defp same_place?(
          %Scope{
            access_key: %AccessKey{
@@ -1144,10 +1228,10 @@ defmodule Apiary.Access do
 
   @doc """
   role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
-  node, a node pool or a gateway, `:instance` for the instance, the level of the person's
-  membership there, else the role the edition gives them (`c:Apiary.Edition.role/1`); nil
-  for anyone else. A key whose node the scope does not carry loaded, or whose node is of a
-  kind it does not know, gets no role.
+  node or a gateway, `:pool_key` for a node pool's, `:instance` for the instance, the
+  level of the person's membership there, else the role the edition gives them
+  (`c:Apiary.Edition.role/1`); nil for anyone else. A key whose node the scope does not
+  carry loaded, or whose node is of a kind it does not know, gets no role.
   """
   @spec role(Scope.t() | nil) :: role | nil
   def role(%Scope{access_key: %AccessKey{} = key}), do: key_role(key)
@@ -1157,11 +1241,13 @@ defmodule Apiary.Access do
 
   # A key's role follows its node's kind, as the key carries it
   # (`Apiary.Accounts.Scope.for_access_key/1` loads it): `adapter_key` for an adapter's,
-  # asked before any other kind; `access_key` for a node's, a node pool's or a gateway's;
+  # asked before any other kind; `pool_key` for a node pool's, which holds what a node's
+  # key holds and the dispatch actions besides; `access_key` for a node's or a gateway's;
   # none for a key whose node is not loaded or of a kind not known here, which may nothing.
   defp key_role(%AccessKey{node: %Node{kind: :adapter}}), do: :adapter_key
+  defp key_role(%AccessKey{node: %Node{kind: :pool}}), do: :pool_key
 
-  defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :pool, :gateway],
+  defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :gateway],
     do: :access_key
 
   defp key_role(%AccessKey{}), do: nil

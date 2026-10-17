@@ -398,7 +398,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # Reads: a page asks them on mount and for what it shows, and changes nothing; their
   # refusals are the Access hook's (`test/apiary_web/access_test.exs`). The instance's own
   # jobs: no page offers them. The server contract: an access key's, at a signed request,
-  # which the contract's tests refuse (`test/apiary_web/contract/`). Taken on the strength
+  # which the contract's tests refuse (`test/apiary_web/contract/`), and a node pool's
+  # (`test/apiary/pool_key_role_test.exs`). Taken on the strength
   # of an invitation's token, which no role is: nobody is refused it by their level. The
   # release commands: run on the instance's host by whoever controls it, never offered by
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
@@ -434,7 +435,11 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.declare",
         :"source_item.post",
         :"work_item.read_changes",
-        :"adapter.disconnect"
+        :"adapter.disconnect",
+        :"dispatch.claim",
+        :"dispatch.dispatched",
+        :"dispatch.handover",
+        :"dispatch.release"
       ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],

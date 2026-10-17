@@ -8,11 +8,13 @@ defmodule Apiary.AccessRows do
       admin         an admin of the organisation
       owner         an owner of the organisation
       other_owner   an owner of another organisation
-      access_key    a gateway, with an access key of the workspace
+      access_key    a node, with an access key of the workspace
+      pool_key      a node pool, with an access key of the workspace, asked of that
+                    workspace: its queue
       adapter_key   an adapter of the instance, with an access key enrolled on it,
                     asked of that adapter
       instance      the instance itself, in a job no person enqueued
-      feature_off   whoever the action is for, an owner, an access key or the instance, on
+      feature_off   whoever the action is for, an owner, a key or the instance, on
                     an instance without the action's feature
       hidden        whoever the action is for, as feature_off, where the edition hides the
                     action's feature from people, or the part the action belongs to, of
@@ -53,6 +55,7 @@ defmodule Apiary.AccessRows do
       :owner,
       :other_owner,
       :access_key,
+      :pool_key,
       :adapter_key,
       :instance,
       :feature_off,
@@ -114,8 +117,8 @@ defmodule Apiary.AccessRows do
       {:"variable.edit", yes: @owners ++ [:admin]},
       {:"connection.read", yes: @owners ++ [:member, :admin]},
       {:"connection.write", yes: @owners ++ [:admin]},
-      {:"run.post_events", yes: [:access_key, :hidden]},
-      {:"run_configuration.fetch", yes: [:access_key, :hidden]},
+      {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
+      {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
       {:"adapter.create", yes: []},
       {:"adapter.edit", yes: []},
@@ -134,7 +137,11 @@ defmodule Apiary.AccessRows do
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
-      {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter}
+      {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"dispatch.claim", yes: [:pool_key, :hidden]},
+      {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
+      {:"dispatch.handover", yes: [:pool_key, :hidden]},
+      {:"dispatch.release", yes: [:pool_key, :hidden]}
     ]
   end
 
@@ -143,13 +150,15 @@ defmodule Apiary.AccessRows do
   adapter of the instance (`adapter`), and the scopes of the core's actors in it. The
   adapter's key, `adapter_key`, is a key enrolled on it by an instance admin, its scope
   that of the server contract (`Apiary.Accounts.Scope.for_access_key/1`): no organisation,
-  and no workspace.
+  and no workspace. The pool's key, `pool_key`, is a key of a node pool of the workspace.
   """
   @spec setup(map) :: %{places: map, scopes: map}
   def setup(_made) do
     home = sign_up_fixture()
     owner = home.scope
     %{access_key: key} = access_key_fixture(owner)
+    pool = Apiary.NodesFixtures.pool_fixture(owner)
+    %{access_key: pool_key} = access_key_fixture(owner, node: pool)
     adapter = Apiary.NodesFixtures.adapter_fixture()
     %{access_key: adapter_key} = enrolled_key_fixture(instance_admin_scope(), adapter)
 
@@ -161,6 +170,7 @@ defmodule Apiary.AccessRows do
         owner: owner,
         other_owner: sign_up_fixture().scope,
         access_key: Scope.for_access_key(key),
+        pool_key: Scope.for_access_key(pool_key),
         adapter_key: Scope.for_access_key(adapter_key),
         instance: Scope.for_instance(home.organisation, home.workspace)
       }
@@ -175,7 +185,9 @@ defmodule Apiary.AccessRows do
   refusal/3 is why the core's answer is no where it is not the role: a feature that is off
   or hidden is not found, and so is a hidden part, anything of another organisation, an
   organisation that does not exist yet, which is no place, an adapter, which is the
-  instance's, to anyone but its key, and, to an adapter's key, anything but that adapter.
+  instance's, to anyone but its key, to an adapter's key, anything but that adapter, and,
+  to a node pool's key, anything but its workspace: it is asked of no node here, and the
+  organisation is beyond its workspace.
   """
   @spec refusal(atom, atom, term) :: :not_found | nil
   def refusal(action, actor, subject) do
@@ -193,6 +205,9 @@ defmodule Apiary.AccessRows do
         :not_found
 
       actor == :adapter_key and not match?(%Apiary.Nodes.Node{kind: :adapter}, subject) ->
+        :not_found
+
+      actor == :pool_key and not match?(%Apiary.Organisations.Workspace{}, subject) ->
         :not_found
 
       actor != :adapter_key and
