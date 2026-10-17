@@ -346,6 +346,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       second = text(view, "##{id}-run-#{a.run_id}")
       assert second =~ "checkout-tax #{String.slice(a.run_id, 0, 8)}"
+      # The run's title, cut to the line, is whole in its title.
+      assert has_element?(view, "##{id}-run-#{a.run_id} > span.truncate[title='checkout-tax']")
       assert second =~ "1 allowed"
 
       assert has_element?(

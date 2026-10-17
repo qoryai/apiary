@@ -118,7 +118,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
                 </span>
               </span>
             </:col>
-            <:col :let={connection} label={gettext("Kind")}>
+            <:col :let={connection} label={gettext("Kind")} from="sm">
               {Common.kind_word(connection.kind)}
             </:col>
             <:col :let={connection} label={gettext("Version")} from="sm">

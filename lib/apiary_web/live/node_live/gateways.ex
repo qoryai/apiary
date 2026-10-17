@@ -278,14 +278,18 @@ defmodule ApiaryWeb.NodeLive.Gateways do
       >
         <:col :let={gateway} label={gettext("Name")} kind="title">
           <span class="q-nm">
-            <.link navigate={gateway_path(@current_scope, gateway)} class="q-title hover:underline">
+            <.link
+              navigate={gateway_path(@current_scope, gateway)}
+              class="q-title hover:underline"
+              title={gateway.name}
+            >
               {gateway.name}
             </.link>
-            <span class="q-side q-mono">{gateway.public_id}</span>
+            <span class="q-side q-mono" title={gateway.public_id}>{gateway.public_id}</span>
           </span>
         </:col>
         <:col :let={gateway} label={gettext("URL")} from="sm">
-          <span class="q-mono">{gateway.url}</span>
+          <span class="q-mono q-cut" title={gateway.url}>{gateway.url}</span>
         </:col>
         <:col :let={gateway} label={gettext("Default")}>
           <.state_word :if={gateway.default_gateway} id={"gateway-#{gateway.public_id}-default"}>

@@ -271,7 +271,7 @@ defmodule ApiaryWeb.MemberLive.Index do
                 name={m.user.email}
                 kind={if m.user_id == @current_scope.user.id, do: "self", else: "person"}
               />
-              <span class="q-title">{m.user.email}</span>
+              <span class="q-title" title={m.user.email}>{m.user.email}</span>
               <span :if={m.user_id == @current_scope.user.id} class="q-side">{gettext("you")}</span>
               <ApiaryWeb.Extension.slot name={:member_access} scope={@current_scope} member={m} />
             </span>
@@ -378,10 +378,10 @@ defmodule ApiaryWeb.MemberLive.Index do
             <:col :let={i} label={gettext("Email")} kind="title">
               <span class="q-nm">
                 <.avatar kind="pending" />
-                <span class="q-title">{i.email}</span>
+                <span class="q-title" title={i.email}>{i.email}</span>
               </span>
             </:col>
-            <:col :let={i} label={gettext("Workspace")}>
+            <:col :let={i} label={gettext("Workspace")} from="sm">
               <span id={"invitation-#{i.id}-workspace"}>{i.workspace.name}</span>
             </:col>
             <:col :let={i} label={gettext("Sent")} from="sm">

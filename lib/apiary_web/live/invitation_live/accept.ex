@@ -44,7 +44,10 @@ defmodule ApiaryWeb.InvitationLive.Accept do
           <.invitation_summary invitation={@invitation} />
           <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
             <.avatar name={@current_scope.user.email} kind="self" />
-            <p class="min-w-0 truncate text-[13px]/[18px] text-muted">
+            <p
+              class="min-w-0 truncate text-[13px]/[18px] text-muted"
+              title={@current_scope.user.email}
+            >
               <.rich text={
                 rich_gettext("Signed in as %{email}",
                   email: {:b, @current_scope.user.email, "font-medium text-base-content"}

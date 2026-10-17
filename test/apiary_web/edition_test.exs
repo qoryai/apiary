@@ -143,15 +143,15 @@ defmodule ApiaryWeb.EditionTest do
 
       for {entry, scope, inner} <- [
             {ctx.entry, %Scope{user: %User{id: Ecto.UUID.generate()}},
-             ~s(      <span class="truncate">dana@example.com</span>\n      \n    \n)},
+             ~s(      <span class="q-cut" title="dana@example.com">dana@example.com</span>\n      \n    \n)},
             {ctx.entry, %Scope{user: %User{id: ctx.person}},
-             ~s(      <span class="truncate">dana@example.com</span>\n) <>
+             ~s(      <span class="q-cut" title="dana@example.com">dana@example.com</span>\n) <>
                ~s(      <span class="q-faint">you</span>\n    \n)},
             {gone, %Scope{},
-             ~s(      <span class="q-faint truncate">Former member</span>\n    \n)},
+             ~s(      <span class="q-faint q-cut" title="Former member">Former member</span>\n    \n)},
             {key_entry, %Scope{},
              ~s(      #{icon.("key")}\n) <>
-               ~s(      <span class="truncate">build-01</span>\n) <>
+               ~s(      <span class="q-cut" title="build-01">build-01</span>\n) <>
                ~s(      <span class="q-faint q-mono">ak_1</span>\n    \n)},
             {instance, %Scope{},
              ~s(      #{icon.("cpu-chip")}\n      <span>Qory Apiary</span>\n  \n)}

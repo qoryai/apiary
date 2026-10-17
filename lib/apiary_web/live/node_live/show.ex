@@ -595,7 +595,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@live_action != :overview && @paths.overview}>
+      <:crumb navigate={@live_action != :overview && @paths.overview} title={@node.name}>
         {@node.name}
       </:crumb>
 
@@ -720,8 +720,12 @@ defmodule ApiaryWeb.NodeLive.Show do
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
-              <span>{instance.name || instance.instance_id}</span>
-              <span :if={instance.name} class="q-side q-mono">{instance.instance_id}</span>
+              <span class="q-cut" title={instance.name || instance.instance_id}>
+                {instance.name || instance.instance_id}
+              </span>
+              <span :if={instance.name} class="q-side q-mono" title={instance.instance_id}>
+                {instance.instance_id}
+              </span>
             </span>
           </:col>
           <:col :let={instance} label={gettext("Running since")}>
