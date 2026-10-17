@@ -158,6 +158,7 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
+| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the handover no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its handover (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
@@ -325,6 +326,7 @@ the body, the `time`), the first of these that applies is the answer:
 
 | Status | When | Body |
 |---|---|---|
+| `409` | the `run_id` is that of a run of a workspace's queue, on the whole instance, in any state (waiting, claimed, handed over or ended), under any key (A run of the queue, below) | `{"error":"run_id_used"}` |
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: a run of this id that registered with the same bytes, by their SHA-256, under any active key of the node that registered it is given the answer it was given, and nothing is stored or admitted again | the run configuration |
 | `410` | a run of this id whose events retention has pruned | empty |
@@ -338,6 +340,42 @@ the body, the `time`), the first of these that applies is the answer:
 | `409` | any other run of this id: registered with other bytes, or by another node even with the same bytes, or created by events that came without a registration | `{"error":"run_id_used"}` |
 | `503` | a managed workspace whose run configuration cannot be read, a run key that cannot be made for the gateway, or a run that cannot be stored: never a run without its policy | `{"error":"unavailable"}` |
 | `200` | the run is stored | the run configuration, or for a run through a gateway its run key |
+
+**A run of the queue.** A node pool's starter claims the runs a workspace queues and
+hands each over (the provisioner contract, `contracts/provisioner/v1` of
+`qoryai/integrations`). Its `handover.schema.json` has the handover register the run, and
+has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a
+run, waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
+first: before the stored answer to a repeat and before the instance limit, the Forager
+contract giving the other causes and their order. Qory Apiary reads "first" as the first of
+the run endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance,
+read across every workspace and organisation) comes after the refusals every signed request
+gets, the body's `400` and the `time`'s `401` included, so nothing is looked up for a
+request that does not verify or is not fresh, and before every answer that depends on the
+key: the `404` of a key that may not open a run, the repeat, the `410`, the resolution's
+`409`s and the instance limit. A node's key, a node pool's and a gateway's, one of a
+workspace or of an organisation, are given that one answer for such an id, and the answer
+never tells which kind of key asked or what the key may do. The refusal stores nothing
+beyond what every verified request leaves, the spent token of the key's rate and the
+instance's sighting (`Apiary.Nodes.seen/3`): no run, no count of the node's instance limit,
+no use recorded on the key. A lookup the database cannot answer is `503` `unavailable`. A
+run of the queue is given its `run_id`, a fresh UUID, when it is queued, before anyone
+outside the instance learns it, and the id never changes, so no registration can come
+between the queue and the lookup.
+
+The events endpoint holds such a run the same way. A batch whose subject is its `run_id`,
+from a key that does not reach a run under that id, is `409` `run_id_used`, before or
+after the handover, decided inside the batch's transaction after the `404` of a key that
+may not post and before anything of the batch is stored. A key reaches the run when it is
+a key of the run's workspace, or a gateway's that may serve the run's workspace
+(`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's. Before
+the handover (the run waiting, claimed, or ended before it) there is no run, so no key
+reaches one, and every key is refused. After it the run is registered, and a key that
+reaches it keeps the answer it had: the gateway that attached it is taken, another key of
+its workspace, the pool's included, and another gateway that may serve its workspace are
+`409` `wrong_gateway`, and a run whose events were pruned is `410`. A key of another
+workspace, and a gateway that may not serve the run's workspace, are refused
+`run_id_used`, and open no run under that id.
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's

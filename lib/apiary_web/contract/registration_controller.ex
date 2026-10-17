@@ -15,12 +15,14 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   **A registration**, in the contract's order: a body the contract refuses is `400`
   `invalid_request`, with the member that refused it in `names`; a `time` more than 300
   seconds from the server's clock is `401`, unsigned, as a GET's stale timestamp is; then
-  `Apiary.Runs.Registration.register/3`: a key `Apiary.Access` does not let post
-  (`run.post_events`) is `404`, as a path that does not exist; the same bytes again under
-  any active key of the node that registered the run are given the same answer; a run whose events retention has pruned is
-  `410`, with no body; an instance beyond its node's limit is `409` `instance_limit`; a
-  run id the workspace already holds otherwise is `409` `run_id_used`; else the run is
-  stored and answered `200`.
+  `Apiary.Runs.Registration.register/3`: a run id the instance gave a run itself is `409`
+  `run_id_used`, under any key and before anything that depends on the key; a key
+  `Apiary.Access` does not let post (`run.post_events`) is `404`, as a path that does not
+  exist; the same bytes again under any active key of the node that registered the run
+  are given the same answer; a run whose events retention has pruned is `410`, with no
+  body; an instance beyond its node's limit is `409` `instance_limit`; a run id the
+  workspace already holds otherwise is `409` `run_id_used`; else the run is stored and
+  answered `200`.
 
   **A reload** is answered only for a run the key's node registered, under any of its
   active keys, or, for a run through a gateway, to the instance of the gateway that
