@@ -30,8 +30,15 @@ defmodule Apiary.Adapters.Collections do
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
   # for deletion, a collection a part makes is linked to it as it is made, with the feed's
   # `linked` entry, in the part's transaction; one the part only updates keeps its link.
-  # With two workspaces or more, a new collection is linked to none, until a person
-  # assigns it.
+  # A collection so linked that has a target makes that target in the workspace, in the
+  # same transaction, as an assign makes it (`Apiary.Runs.Target.insert_new/3`), so the
+  # target is there before its first run. With two workspaces or more, a new collection
+  # is linked to none, until a person assigns it.
+  #
+  # **A changed target**: a part that changes the target of a collection assigned to a
+  # workspace makes the new target there, in the part's transaction, as an assign makes
+  # it; the old target stays, as on a move. No target is made in a workspace marked for
+  # deletion.
   #
   # **The end of a collection** is final: by `POST /v1/sources/disconnect`
   # (`disconnect/2`), by a complete listing that leaves it out, or with its connection
@@ -74,9 +81,11 @@ defmodule Apiary.Adapters.Collections do
   #     end by the adapter, by the adapter's deletion or by its organisation's purge, the
   #     first listing that names it and each listing of it that completes.
   #
-  # Locks: the connection, then the workspace a collection is linked to (`FOR SHARE`), then
-  # the collections, by id for an assign and by ref for a listing's part, then the targets
-  # an assign makes, by system and path, then the adapter's feed counter, which is the last.
+  # Locks: the connection, then the workspaces its collections are linked to (`FOR SHARE`,
+  # the only workspace first for a listing's part, then by id), then the collections, by
+  # id for an assign and by ref for a listing's part, then the targets an assign or a part
+  # makes, by workspace, then by system and path, then the adapter's feed counter, which
+  # is the last.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -255,12 +264,20 @@ defmodule Apiary.Adapters.Collections do
   # the module says, by ref, so two parts naming the same refs lock their rows in the same
   # order. A ref live under another connection of the adapter is left as it is. A
   # collection made here is linked to the organisation's only workspace, when it has one
-  # (`only_workspace/1`), with the feed's `linked` entry. The ids of the collections made
-  # or updated.
+  # (`only_workspace/1`), with the feed's `linked` entry. Each one made in a workspace, and
+  # each one in a workspace whose target the part changes, makes its target there
+  # (`insert_listed_targets/4`), before the feed's entries. The ids of the collections
+  # made or updated.
   defp put_collections(_connection, [], _started_at, _now), do: []
 
   defp put_collections(%Connection{} = connection, collections, started_at, now) do
     workspace_id = only_workspace(connection.organisation_id)
+    assigned = assigned_before(connection, collections)
+
+    workspaces =
+      lock_workspaces(connection.organisation_id, [
+        workspace_id | Enum.map(Map.values(assigned), &elem(&1, 0))
+      ])
 
     rows =
       for collection <- Enum.sort_by(collections, & &1.ref) do
@@ -303,8 +320,22 @@ defmodule Apiary.Adapters.Collections do
       Repo.insert_all(Collection, rows,
         on_conflict: newer,
         conflict_target: {:unsafe_fragment, @live_index},
-        returning: [:id, :adapter_id, :external_ref, :workspace_id, :backlog]
+        returning: [
+          :id,
+          :adapter_id,
+          :external_ref,
+          :workspace_id,
+          :backlog,
+          :target_system,
+          :target_path
+        ]
       )
+
+    # Made here, or with another workspace or target than before the part.
+    new_target? =
+      &(MapSet.member?(made, &1.id) or Map.get(assigned, &1.external_ref) != listed(&1))
+
+    :ok = insert_listed_targets(connection.organisation_id, workspaces, put, new_target?)
 
     # The update of one live already leaves its link as it was: only one made here is
     # linked by it.
@@ -312,6 +343,57 @@ defmodule Apiary.Adapters.Collections do
       tell(Enum.filter(put, &(Collection.linked?(&1) and MapSet.member?(made, &1.id))), "linked")
 
     Enum.map(put, & &1.id)
+  end
+
+  # The live collections of `connection` that `collections` name by ref and that are
+  # assigned to a workspace, as they stand before the part: by ref, their workspace's id
+  # and target (`listed/1`).
+  defp assigned_before(%Connection{} = connection, collections) do
+    refs = Enum.map(collections, & &1.ref)
+
+    Repo.all(
+      from c in Collection,
+        where: c.connection_id == ^connection.id and is_nil(c.ended_at),
+        where: c.external_ref in ^refs and not is_nil(c.workspace_id),
+        select: {c.external_ref, {c.workspace_id, c.target_system, c.target_path}}
+    )
+    |> Map.new()
+  end
+
+  defp listed(%Collection{} = collection),
+    do: {collection.workspace_id, collection.target_system, collection.target_path}
+
+  # The workspaces of the organisation `organisation_id` among `ids`, by id, each held
+  # `FOR SHARE` in order of id, while it is not marked for deletion nor claimed by a purge,
+  # as `lock_workspace/2` holds one.
+  defp lock_workspaces(organisation_id, ids) do
+    case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() |> Enum.sort() do
+      [] ->
+        %{}
+
+      ids ->
+        Repo.all(
+          from w in Workspace,
+            where: w.id in ^ids and w.organisation_id == ^organisation_id,
+            where: is_nil(w.deletion_marked_at) and is_nil(w.purge_started_at),
+            order_by: w.id,
+            lock: "FOR SHARE"
+        )
+        |> Map.new(&{&1.id, &1})
+    end
+  end
+
+  # The targets of the collections `put` that `new_target?` picks, each in its workspace
+  # among `workspaces`, as an assign makes them (`insert_targets/3`): by workspace id,
+  # then by system and path.
+  defp insert_listed_targets(organisation_id, workspaces, put, new_target?) do
+    put
+    |> Enum.filter(&(Map.has_key?(workspaces, &1.workspace_id) and new_target?.(&1)))
+    |> Enum.group_by(& &1.workspace_id)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.each(fn {workspace_id, collections} ->
+      :ok = insert_targets(organisation_id, Map.fetch!(workspaces, workspace_id), collections)
+    end)
   end
 
   # The id of the organisation's only workspace not marked for deletion, held `FOR SHARE`

@@ -2,7 +2,9 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
   # The targets an assign makes: a collection with a target, linked to a workspace, makes
   # that target there, as a run of it would name it, once; a move makes the new
   # workspace's too; an unlink, a move away or an end leaves it; and a run of the target,
-  # with the labels a dispatched run carries, lands on it.
+  # with the labels a dispatched run carries, lands on it. A listing's part makes them
+  # too: where it links a collection to the organisation's only workspace, and where it
+  # changes the target of a collection assigned to a workspace.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -36,6 +38,7 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
       user: user,
       workspace: scope.workspace,
       other_workspace: other_workspace,
+      adapter: connectable.adapter,
       key_scope: key_scope(connectable.access_key),
       connection: connection
     }
@@ -210,5 +213,71 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert %{rows: []} = Targets.page(ctx.scope, %{view: :active})
     assert Targets.view_counts(ctx.scope) == %{all: 1, active: 0, never: 1}
     assert Targets.count_by_workspace(ctx.scope) == %{ctx.workspace.id => 1}
+  end
+
+  test "a part that links a collection to the only workspace makes its target, listed with no run, where a run lands",
+       ctx do
+    # Another organisation, with one workspace, connected to the same adapter.
+    %{scope: scope} = sign_up_fixture()
+    {connection, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+    ctx = %{ctx | connection: connection}
+
+    {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"API", @api}, {"TRK", nil}])
+
+    assert [%Collection{workspace_id: workspace_id}] =
+             Repo.all(
+               from c in Collection,
+                 where: c.external_ref == "SHOP" and c.connection_id == ^connection.id
+             )
+
+    assert workspace_id == scope.workspace.id
+
+    assert pairs(scope.workspace) == [
+             {"code.example.com", "acme/api"},
+             {"code.example.com", "acme/shop"}
+           ]
+
+    assert %{rows: rows, total: 2} = Targets.page(scope, %{})
+    assert Enum.all?(rows, &(&1.runs == 0 and &1.last == nil))
+
+    shop = Enum.find(targets(scope.workspace), &(&1.path == "acme/shop"))
+    run = started_run(scope, %{"forge" => @shop.system, "repository" => @shop.path})
+
+    assert Repo.get!(Run, run.id).target_id == shop.id
+    assert length(targets(scope.workspace)) == 2
+  end
+
+  test "a part that changes the target of an assigned collection makes the new one and keeps the old",
+       ctx do
+    {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"API", @api}])
+    {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
+    [old] = targets(ctx.workspace)
+
+    # API, linked to none, changes its target too, and makes none.
+    {:ok, :accepted} =
+      post(ctx, [{"SHOP", %{@shop | path: "acme/moved"}}, {"API", %{@api | path: "acme/other"}}],
+        id: "listing-2",
+        started_at: DateTime.add(@started, 60)
+      )
+
+    assert pairs(ctx.workspace) == [
+             {"code.example.com", "acme/moved"},
+             {"code.example.com", "acme/shop"}
+           ]
+
+    assert Repo.get!(Target, old.id) == old
+    assert targets(ctx.other_workspace) == []
+
+    assert %{rows: rows, total: 2} = Targets.page(ctx.scope, %{})
+    assert Enum.all?(rows, &(&1.runs == 0))
+
+    # An older listing changes nothing: the collection keeps the newer target.
+    {:ok, :accepted} =
+      post(ctx, [{"SHOP", %{@shop | path: "acme/stale"}}],
+        id: "listing-0",
+        started_at: DateTime.add(@started, -60)
+      )
+
+    assert length(targets(ctx.workspace)) == 2
   end
 end
