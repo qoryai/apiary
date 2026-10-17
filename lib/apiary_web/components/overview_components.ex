@@ -1016,13 +1016,55 @@ defmodule ApiaryWeb.OverviewComponents do
   defp lost_words(%{reason: "session_lost"}), do: gettext("Lost, stopped responding")
   defp lost_words(_run), do: gettext("Lost, end not recorded")
 
-  defp lost_tip(%{exited_at: nil}),
-    do:
-      gettext(
-        "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
-      )
+  # A run lost with no exit, by the rule the lost-run check applied (`Apiary.Runs.Liveness`),
+  # told from the stored run alone: past the deadline its attach set for its end
+  # (`backstop_at`), however recently it beat; never attached by its `attach_by`; or
+  # silent for three heartbeat intervals.
+  defp lost_tip(%{exited_at: nil} = run) do
+    cond do
+      lost_past_backstop?(run) ->
+        minutes = backstop_minutes(run)
+
+        ngettext(
+          "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
+          "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
+          minutes,
+          number: Format.number(minutes)
+        )
+
+      lost_unattached?(run) ->
+        gettext(
+          "It never started: its gateway did not pick it up in the time it was given, and now it can't."
+        )
+
+      true ->
+        gettext(
+          "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
+        )
+    end
+  end
 
   defp lost_tip(_run), do: gettext("The run's end was not recorded; how it went is not known.")
+
+  defp lost_past_backstop?(%{lost_at: %DateTime{} = lost_at, attached_at: %DateTime{}} = run),
+    do: Apiary.Runs.Liveness.past_backstop?(run, lost_at)
+
+  defp lost_past_backstop?(_run), do: false
+
+  # The minutes its attach gave the run for its end, whole: what the step's backstop was
+  # then, whatever it is now.
+  defp backstop_minutes(%{backstop_at: backstop_at, attached_at: attached_at}),
+    do: div(DateTime.diff(backstop_at, attached_at, :second), 60)
+
+  defp lost_unattached?(%{
+         run_key_issued_at: %DateTime{},
+         attached_at: nil,
+         attach_by: %DateTime{} = attach_by,
+         lost_at: %DateTime{} = lost_at
+       }),
+       do: DateTime.compare(lost_at, attach_by) == :gt
+
+  defp lost_unattached?(_run), do: false
 
   defp mode_tip,
     do:

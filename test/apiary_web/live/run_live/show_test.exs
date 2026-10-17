@@ -3073,6 +3073,39 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "a run its starter released says so in the header, the rail and the announcer", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data()}])
+      {:ok, lv, _html} = run_page(conn, scope, run)
+
+      # As the release writes it (`Apiary.Dispatches.RunEnd`): the fold decides, no outcome.
+      now = DateTime.utc_now()
+      run = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
+      applied = Apiary.Runs.Fold.settle(%{run | released_at: now})
+
+      released =
+        run
+        |> Ecto.Changeset.change(
+          released_at: now,
+          state: applied.state,
+          reason: applied.reason,
+          lost_at: applied.lost_at
+        )
+        |> Apiary.Repo.update!()
+
+      assert %{state: "cancelled", reason: "released"} = released
+
+      Runs.broadcast_changed(released)
+      flush(lv)
+
+      assert has_element?(lv, "#run-meta #run-state", "Cancelled")
+      assert words_of(lv, "#run-meta #run-state + #run-reason") == "the starter released it"
+      assert words_of(lv, "#run-facts #rail-reason") == "the starter released it"
+      assert words_of(lv, "#run-announcer") == "Run cancelled: the starter released it."
+    end
+
     test "no end reason's words, nor the Exit row, nor the timeline, say issuer on the page", %{
       conn: conn,
       scope: scope

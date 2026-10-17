@@ -193,8 +193,11 @@ defmodule ApiaryWeb.RunComponents do
   A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
   the refusal's code as its reason, reads the same.
 
-  Nil when there is no reason, for `run_closed`, for `quiet` without its period, for the
-  `released` Qory recorded itself with no outcome, and for a value that is no code.
+  A run its starter released after a workspace's queue handed it over, with no outcome
+  given, reads "the starter released it".
+
+  Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
+  value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
   def reason_words(%Run{} = run) do
@@ -222,9 +225,9 @@ defmodule ApiaryWeb.RunComponents do
 
   # A run its starter released after a workspace's queue handed it over, which Qory
   # recorded as cancelled with the reason `released`, no outcome given
-  # (`Apiary.Runs.Fold.settle/1`): no words, so the code is not read as the starter's.
+  # (`Apiary.Runs.Fold.settle/1`). An outcome after it decides the state and the reason.
   defp given_words(%{reason: "released", released_at: %DateTime{}, outcome_state: nil}),
-    do: nil
+    do: gettext("the starter released it")
 
   defp given_words(%{reason: reason} = run) when is_binary(reason) do
     if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)

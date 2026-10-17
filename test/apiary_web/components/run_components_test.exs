@@ -205,14 +205,15 @@ defmodule ApiaryWeb.RunComponentsTest do
                "no longer needed"
     end
 
-    test "a run released after a queue handed it over has no words until its outcome" do
+    test "a run released after a queue handed it over reads that its starter released it" do
       released = %Apiary.Runs.Run{
         state: "cancelled",
         reason: "released",
         released_at: ~U[2026-10-17 12:00:00Z]
       }
 
-      assert RunComponents.reason_words(released) == nil
+      assert RunComponents.reason_words(released) == "the starter released it"
+      assert RunComponents.exit_note(released) == "the starter released it"
 
       # Its starter's outcome after it reads as any outcome does.
       assert RunComponents.reason_words(%{
