@@ -91,11 +91,22 @@ defmodule Apiary.Adapters.Collections do
   #     end by the adapter, by the adapter's deletion or by its organisation's purge, the
   #     first listing that names it and each listing of it that completes.
   #
-  # Locks: the connection, then the workspaces its collections are linked to (`FOR SHARE`,
-  # the only workspace first for a listing's part, then by id), then the collections, by
-  # id for an assign and by ref for a listing's part, then the targets an assign or a part
-  # makes, by workspace, then by system and path, then the adapter's feed counter, which
-  # is the last.
+  # Locks, in one order for every change here, so none waits on another in turn:
+  #
+  #   1. the connections: a listing's part holds its connection `FOR UPDATE`, an assign
+  #      its connection `FOR SHARE`, and a Backlog switch (`set_backlog/3`) and a
+  #      workspace's unlink (`unlink_workspace/2`) the connections of the collections they
+  #      change, `FOR SHARE`, by id;
+  #   2. the workspaces, `FOR SHARE`, all in one statement, by id, as a marking
+  #      (`Apiary.Deletion`) and a policy write hold them: the workspace an assign or a
+  #      switch names, and for a listing's part the organisation's only workspace with
+  #      those its collections are assigned to; an unlink holds none;
+  #   3. the collections, `FOR UPDATE`: by id for an assign, a switch and an unlink, read
+  #      again once held; by ref for a listing's part, under its connection held
+  #      `FOR UPDATE`. A change that holds them by id holds their connections first, so it
+  #      holds none of a connection's collections while a part of that connection runs;
+  #   4. the targets an assign or a part makes, by workspace, then by system and path;
+  #   5. the adapter's feed counter, last.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -273,21 +284,32 @@ defmodule Apiary.Adapters.Collections do
   # Makes each collection live under `connection`, or updates the one live under it, as
   # the module says, by ref, so two parts naming the same refs lock their rows in the same
   # order. A ref live under another connection of the adapter is left as it is. A
-  # collection made here is linked to the organisation's only workspace, when it has one
-  # (`only_workspace/1`), with the feed's `linked` entry. Each one made in a workspace, and
+  # collection made here is assigned to the organisation's only workspace, when it has one
+  # (`only_workspace/1`), with the feed's `linked` entry when that links it; one updated
+  # here whose `items` changes its link writes the feed's `linked` or `unlinked` entry. Each one made in a workspace, and
   # each one in a workspace whose target the part changes, makes its target there
   # (`insert_listed_targets/4`), before the feed's entries. The ids of the collections
   # made or updated.
+  #
+  # The only workspace is read without a lock, then held with the workspaces the named
+  # collections are assigned to, in one statement, by id, so the part holds every
+  # workspace in the order a marking and a policy write hold them; then it is read again
+  # (`only_held/3`): one marked or claimed meanwhile, or no longer the only one, links
+  # nothing, as when the organisation has none or two. The adapter's `items` is read
+  # with no lock, and the feed's entries come last.
   defp put_collections(_connection, [], _started_at, _now), do: []
 
   defp put_collections(%Connection{} = connection, collections, started_at, now) do
-    workspace_id = only_workspace(connection.organisation_id)
+    organisation_id = connection.organisation_id
+    only = only_workspace(organisation_id)
     assigned = assigned_before(connection, collections)
 
     workspaces =
-      lock_workspaces(connection.organisation_id, [
-        workspace_id | Enum.map(Map.values(assigned), &elem(&1.listed, 0))
+      lock_workspaces(organisation_id, [
+        only | Enum.map(Map.values(assigned), &elem(&1.listed, 0))
       ])
+
+    workspace_id = only_held(organisation_id, only, workspaces)
 
     rows =
       for collection <- Enum.sort_by(collections, & &1.ref) do
@@ -432,9 +454,8 @@ defmodule Apiary.Adapters.Collections do
     end)
   end
 
-  # The id of the organisation's only workspace not marked for deletion, held `FOR SHARE`
-  # so that it is not marked before the transaction ends; nil while it has none, or two or
-  # more.
+  # The id of the organisation's only workspace not marked for deletion, read without a
+  # lock; nil while it has none, or two or more.
   defp only_workspace(organisation_id) do
     case Repo.all(
            from w in Workspace,
@@ -442,9 +463,19 @@ defmodule Apiary.Adapters.Collections do
              select: w.id,
              limit: 2
          ) do
-      [id] -> lock_workspace(organisation_id, id)
+      [id] -> id
       _none_or_more -> nil
     end
+  end
+
+  # `only`, once `lock_workspaces/2` holds it among `workspaces`, so that it is not marked
+  # before the transaction ends, while it is still the organisation's only workspace not
+  # marked for deletion; nil otherwise.
+  defp only_held(_organisation_id, nil, _workspaces), do: nil
+
+  defp only_held(organisation_id, only, workspaces) do
+    if Map.has_key?(workspaces, only) and only_workspace(organisation_id) == only,
+      do: only
   end
 
   # The workspace `id` of the organisation `organisation_id`, held `FOR SHARE`, while it is
@@ -653,12 +684,24 @@ defmodule Apiary.Adapters.Collections do
   def unlink_workspace(organisation_id, workspace_id) do
     {:ok, count} =
       Repo.transact(fn ->
-        # Held by id first, as an assign holds them, so the two never wait on each other
-        # in turn.
-        ids =
+        # The connections of its collections first, `FOR SHARE`, by id, then the
+        # collections, by id, as a Backlog switch holds them: a listing's part, which holds
+        # its connection `FOR UPDATE` and its collections by ref, and the unlink wait for
+        # each other, never on each other in turn.
+        linked =
           Repo.all(
             from c in Collection,
               where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
+              select: {c.id, c.connection_id}
+          )
+
+        _held = lock_connections(organisation_id, Enum.map(linked, &elem(&1, 1)))
+        ids = Enum.map(linked, &elem(&1, 0))
+
+        ids =
+          Repo.all(
+            from c in Collection,
+              where: c.id in ^ids and c.workspace_id == ^workspace_id,
               order_by: c.id,
               select: c.id,
               lock: "FOR UPDATE"
@@ -998,6 +1041,24 @@ defmodule Apiary.Adapters.Collections do
     {:ok, uuids |> Enum.uniq() |> Enum.sort(), length(uuids) == length(cast)}
   end
 
+  # The connections of the organisation `organisation_id` among `ids`, each held
+  # `FOR SHARE` in order of id, so none ends, and no listing's part of one runs, before
+  # the transaction ends.
+  defp lock_connections(organisation_id, ids) do
+    case ids |> Enum.uniq() |> Enum.sort() do
+      [] ->
+        []
+
+      ids ->
+        Repo.all(
+          from k in Connection,
+            where: k.id in ^ids and k.organisation_id == ^organisation_id,
+            order_by: k.id,
+            lock: "FOR SHARE"
+        )
+    end
+  end
+
   defp lock_connection(organisation_id, %Connection{id: id}) do
     case Repo.one(
            from c in Connection,
@@ -1115,7 +1176,8 @@ defmodule Apiary.Adapters.Collections do
   @spec backlog_switch(Scope.t(), Target.t()) :: %{on: boolean} | nil
   def backlog_switch(%Scope{} = scope, %Target{} = target) do
     with true <- readable_target?(scope, target),
-         [_ | _] = switches <- Repo.all(target_collections(target, select: :backlog)) do
+         [_ | _] = switches <-
+           Repo.all(select(target_collections(target), [c], c.backlog)) do
       %{on: Enum.any?(switches)}
     else
       _none -> nil
@@ -1134,8 +1196,11 @@ defmodule Apiary.Adapters.Collections do
   #     those it never changes;
   #   * `{:ok, count}`, how many changed: the others are as asked already.
   #
-  # It holds the workspace `FOR SHARE`, then the collections, by id, as an assign holds
-  # them, then the adapter's feed counter, last. Each one it turns on writes the feed's
+  # It holds the connections of the collections `FOR SHARE`, by id, then the workspace
+  # `FOR SHARE`, then the collections, by id, read again once held, as an assign holds
+  # them, then the adapter's feed counter, last: a listing's part, which holds its
+  # connection `FOR UPDATE` and its collections by ref, and the switch wait for each
+  # other, never on each other in turn. Each one it turns on writes the feed's
   # `linked` entry, each it turns off its `unlinked` entry: all are assigned to the
   # workspace. The entry of `collection.set_backlog` is about the target, with `backlog`,
   # the new state, and the count; none when nothing changed. After the commit, the
@@ -1146,9 +1211,12 @@ defmodule Apiary.Adapters.Collections do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"collection.set_backlog", scope.organisation),
            true <- same_workspace?(scope, target) || {:error, :not_found},
+           [_ | _] = found <-
+             Repo.all(select(target_collections(target), [c], {c.id, c.connection_id})),
+           connections = lock_connections(scope.organisation.id, Enum.map(found, &elem(&1, 1))),
            workspace_id when is_binary(workspace_id) <-
              lock_workspace(scope.organisation.id, target.workspace_id) || {:error, :not_found},
-           [_ | _] = collections <- lock_target_collections(target) do
+           [_ | _] = collections <- lock_target_collections(target, found, connections) do
         changed = Enum.reject(collections, &(&1.backlog == on))
         :ok = switch_backlog(scope, target, changed, on)
         {:ok, changed}
@@ -1190,10 +1258,10 @@ defmodule Apiary.Adapters.Collections do
   defp same_workspace?(_scope, _target), do: false
 
   # The live collections of a connected connection, assigned to the workspace of `target`,
-  # whose target is the target's system and path, that have items, as their adapters do.
-  # Every domain names a target by the system and path its labels carry, as they are, so a
-  # collection's are its target's.
-  defp target_collections(%Target{} = target, select: field) do
+  # whose target is the target's system and path, that have items, as their adapters do,
+  # by id. Every domain names a target by the system and path its labels carry, as they
+  # are, so a collection's are its target's.
+  defp target_collections(%Target{} = target) do
     from c in Collection,
       join: k in Connection,
       on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
@@ -1204,19 +1272,26 @@ defmodule Apiary.Adapters.Collections do
           c.workspace_id == ^target.workspace_id and c.target_system == ^target.system and
           c.target_path == ^target.path and is_nil(c.ended_at) and k.state == :connected and
           is_nil(k.ended_at) and c.items and n.items,
-      order_by: c.id,
-      select: field(c, ^field)
+      order_by: c.id
   end
 
-  # The collections of `target_collections/2`, each held `FOR UPDATE`, by id, and read
-  # again once held, so one that ended, moved or lost its items meanwhile is left out.
-  defp lock_target_collections(%Target{} = target) do
-    ids = Repo.all(target_collections(target, select: :id))
+  # The collections `found` of `target_collections/1`, `{id, connection_id}`, of the
+  # `connections` held, each held `FOR UPDATE`, by id, and read again once held, so one
+  # that ended, moved, changed its target, lost its items, or whose connection ended
+  # meanwhile is left out.
+  defp lock_target_collections(%Target{} = target, found, connections) do
+    connected =
+      for %Connection{state: :connected, ended_at: nil, id: id} <- connections,
+          into: MapSet.new(),
+          do: id
+
+    ids = for {id, connection_id} <- found, MapSet.member?(connected, connection_id), do: id
 
     Repo.all(
       from c in Collection,
         where: c.id in ^ids,
         where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at) and c.items,
+        where: c.target_system == ^target.system and c.target_path == ^target.path,
         order_by: c.id,
         lock: "FOR UPDATE"
     )

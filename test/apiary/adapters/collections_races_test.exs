@@ -2,7 +2,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # The collections of a connection, racing: two listings of one connection, a listing
   # against the connection's end, a disconnect against the connection's end, two
   # organisations' listings naming one ref at once, two assigns of the same collections
-  # in opposite orders, and an assign against a listing's part. Each side runs on a separate
+  # in opposite orders, an assign against a listing's part, a Backlog switch and a
+  # workspace's unlink against a listing's part over collections whose refs run against
+  # their ids, and a listing's part against a restore and a marking of workspaces. Each
+  # side runs on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to
   # every other test while they run, and they delete it again before they end.
@@ -10,25 +13,30 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # The rules under test (`Apiary.Adapters.Collections`): one connection's parts are taken
   # one at a time, under its row; a listing never makes a collection live under a
   # connection that ended; a collection ends once, with one `unlinked` entry; one live
-  # collection per adapter and ref; an assign holds the collections by id, after the
-  # connection, so two never wait on each other in turn.
+  # collection per adapter and ref; an assign, a switch and an unlink hold the collections
+  # by id, after their connections, so none of them and a listing's part, which holds the
+  # collections by ref under its connection, wait on each other in turn; a listing's part
+  # holds every workspace it holds in one statement, by id, as a marking holds them.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.Races
 
-  alias Apiary.{AccessKeys, Edition, Repo}
+  alias Apiary.{AccessKeys, Deletion, Edition, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections, Feed}
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.Target
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag needs: :factory
 
   @started ~U[2026-10-15 11:00:00Z]
+  @shop %{system: "code.example.com", path: "acme/shop"}
 
   setup_all do
     clean_up_leftovers(%{})
@@ -99,14 +107,14 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     Scope.for_access_key(verified)
   end
 
-  defp part(connection, refs, id, started_at) do
+  defp part(connection, refs, id, started_at, target \\ nil) do
     %{
       time: DateTime.utc_now(:second),
       connection_id: connection.public_id,
       collections:
         for(
           ref <- refs,
-          do: %{ref: ref, url: "https://t.example/" <> ref, title: ref, target: nil}
+          do: %{ref: ref, url: "https://t.example/" <> ref, title: ref, target: target}
         ),
       listing: %{id: id, part: 1, started_at: started_at, complete: true}
     }
@@ -340,5 +348,306 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
              %{"collection_ref" => "X", "status" => "linked"},
              %{"collection_ref" => "X", "status" => "unlinked"}
            ]
+  end
+
+  ## A switch and an unlink against a listing's part
+
+  # Three collections of the connection with the target `@shop`, assigned to the scope's
+  # workspace, whose refs run against their ids: `A`, `B` and `C`, by ref, are the
+  # largest id, the middle one and the smallest. A part holds them by ref, `A` first; a
+  # change that holds them by id holds `C` first.
+  defp against_ids(ctx) do
+    {:ok, :accepted} = targeted(ctx, "made", @started).()
+
+    ids =
+      Repo.all(
+        from c in Collection,
+          where: c.connection_id == ^ctx.connection.id,
+          order_by: [desc: c.id],
+          select: c.id
+      )
+
+    for {id, ref} <- Enum.zip(ids, ["A", "B", "C"]) do
+      Repo.update_all(from(c in Collection, where: c.id == ^id), set: [external_ref: "T" <> ref])
+    end
+
+    for {id, ref} <- Enum.zip(ids, ["A", "B", "C"]) do
+      Repo.update_all(from(c in Collection, where: c.id == ^id), set: [external_ref: ref])
+    end
+
+    {:ok, 3} = assign(ctx, ids, ctx.scope.workspace).()
+    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@shop])
+    [a, b, c] = ids
+
+    %{
+      a: a,
+      b: b,
+      c: c,
+      target:
+        Repo.get_by!(Target,
+          workspace_id: ctx.scope.workspace.id,
+          system: @shop.system,
+          path: @shop.path
+        )
+    }
+  end
+
+  # A part naming `A`, `B` and `C` with the target `@shop`, started `started_at`.
+  defp targeted(ctx, id, started_at),
+    do: fn ->
+      Collections.post_listing(
+        ctx.key_scope,
+        part(ctx.connection, ["A", "B", "C"], id, started_at, @shop)
+      )
+    end
+
+  defp switch(ctx, target, on),
+    do: fn -> Collections.set_backlog(ctx.scope, target, on) end
+
+  defp unlink(ctx),
+    do: fn ->
+      Collections.unlink_workspace(ctx.scope.organisation.id, ctx.scope.workspace.id)
+    end
+
+  defp lock_row(id),
+    do: fn -> Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE") end
+
+  # What `fun` answers, or `{:raised, message}`: a deadlock fails the assertion, not the
+  # process.
+  defp safely(fun) do
+    fn ->
+      try do
+        fun.()
+      rescue
+        error -> {:raised, Exception.message(error)}
+      end
+    end
+  end
+
+  # Waits, in the database, until the backend `waiter` waits on any lock; five seconds at
+  # most, which fails the test.
+  defp await_waiting(waiter) do
+    Repo.query!("""
+    DO $$
+    BEGIN
+      FOR i IN 1..500 LOOP
+        IF cardinality(pg_blocking_pids(#{waiter})) > 0 THEN
+          RETURN;
+        END IF;
+        PERFORM pg_sleep(0.01);
+      END LOOP;
+      RAISE EXCEPTION 'backend % did not wait', #{waiter};
+    END
+    $$
+    """)
+  end
+
+  # The middle collection held, a part waits on it holding `A`; then `change`, which
+  # holds the collections by id, `C` first, starts and waits. A change that took `C`
+  # would wait on `B`, and once `B` is let go the two would wait on each other in turn
+  # (`deadlock_detected`); it waits on the part's connection instead, and each answers.
+  defp through_the_middle(ctx, rows, change) do
+    {held, held_pid} = hold(lock_row(rows.b))
+    listed = start(safely(targeted(ctx, "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, held_pid)
+
+    changed = start(safely(change))
+    await_waiting(changed.backend)
+    commit(held)
+
+    {Task.await(listed.task), Task.await(changed.task)}
+  end
+
+  test "a part holding collections by ref, then a switch holding them by id: the switch waits for the part",
+       ctx do
+    rows = against_ids(ctx)
+
+    assert through_the_middle(ctx, rows, switch(ctx, rows.target, false)) ==
+             {{:ok, :accepted}, {:ok, 3}}
+
+    assert Repo.all(
+             from c in Collection,
+               where: c.id in ^[rows.a, rows.b, rows.c],
+               select: c.backlog,
+               distinct: true
+           ) == [false]
+  end
+
+  test "a switch held, then a part: the part waits for the switch, and each answers", ctx do
+    rows = against_ids(ctx)
+
+    {switched, switch_pid} = hold(switch(ctx, rows.target, false))
+    assert switched.result == {:ok, 3}
+
+    listed = start(safely(targeted(ctx, "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, switch_pid)
+    commit(switched)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert {:ok, 3} = Collections.set_backlog(ctx.scope, rows.target, true)
+  end
+
+  test "a part holding collections by ref, then a workspace's unlink holding them by id: the unlink waits for the part",
+       ctx do
+    rows = against_ids(ctx)
+
+    assert through_the_middle(ctx, rows, unlink(ctx)) == {{:ok, :accepted}, 3}
+
+    assert Repo.all(
+             from c in Collection,
+               where: c.id in ^[rows.a, rows.b, rows.c],
+               select: c.workspace_id,
+               distinct: true
+           ) == [nil]
+  end
+
+  test "a workspace's unlink held, then a part: the part waits for the unlink, and each answers",
+       ctx do
+    against_ids(ctx)
+
+    {unlinked, unlink_pid} = hold(unlink(ctx))
+    assert unlinked.result == 3
+
+    listed = start(safely(targeted(ctx, "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, unlink_pid)
+    commit(unlinked)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+
+    unlinked =
+      for %{"collection_ref" => ref, "status" => "unlinked"} <- collection_entries(ctx.adapter),
+          do: ref
+
+    assert Enum.sort(unlinked) == ["A", "B", "C"]
+  end
+
+  test "parts, switches, unlinks and assigns at once over collections whose refs run against their ids: none deadlocks",
+       ctx do
+    rows = against_ids(ctx)
+    ids = [rows.a, rows.b, rows.c]
+
+    answers =
+      for round <- 1..20 do
+        started = DateTime.add(@started, 60 * round)
+
+        changes = [
+          targeted(ctx, "round #{round}", started),
+          switch(ctx, rows.target, rem(round, 2) == 0),
+          if(rem(round, 3) == 0, do: unlink(ctx), else: switch(ctx, rows.target, true)),
+          assign(ctx, Enum.shuffle(ids), ctx.scope.workspace)
+        ]
+
+        together(Enum.map(Enum.take(changes, sides(4)), &safely/1))
+      end
+      |> List.flatten()
+
+    assert for({:raised, message} <- answers, do: message) == []
+
+    # Each link and unlink wrote its entry: they alternate, per ref, and the last says
+    # how the collection stands.
+    for {ref, id} <- Enum.zip(["A", "B", "C"], ids) do
+      statuses =
+        for %{"collection_ref" => ^ref, "status" => status} <- collection_entries(ctx.adapter),
+            do: status
+
+      assert statuses |> Enum.chunk_every(2, 1, :discard) |> Enum.all?(fn [a, b] -> a != b end)
+
+      linked? = Collection |> Repo.get!(id) |> Repo.preload(:adapter) |> Collection.linked?()
+      assert List.last(statuses) == if(linked?, do: "linked", else: "unlinked")
+    end
+  end
+
+  ## A listing's part against a restore and a marking
+
+  # The task's answer once it has one, or `:blocked` once its backend waits on `holder`;
+  # five seconds at most, which fails the test.
+  defp done_or_blocked(%{task: task, backend: backend}, holder, tries \\ 500) do
+    case Task.yield(task, 0) do
+      {:ok, answer} ->
+        {:done, answer}
+
+      nil ->
+        %{rows: [[blocked?]]} =
+          Repo.query!("SELECT $1::int = ANY (pg_blocking_pids($2::int))", [holder, backend])
+
+        cond do
+          blocked? ->
+            :blocked
+
+          tries == 0 ->
+            flunk("the change neither finished nor waited")
+
+          true ->
+            Process.sleep(10)
+            done_or_blocked(%{task: task, backend: backend}, holder, tries - 1)
+        end
+    end
+  end
+
+  test "a restore committed while a part runs, then a marking: the part holds its workspaces in one statement, and neither waits on the other in turn",
+       ctx do
+    [low, high] = Enum.sort_by([ctx.scope.workspace, ctx.other_workspace], & &1.id)
+    {:ok, :accepted} = listing(ctx, ["OLD"], "first", @started).()
+    [old] = ids(ctx.connection, ["OLD"])
+    {:ok, 1} = assign(ctx, [old], low).()
+    {:ok, _marked} = Deletion.delete_workspace(ctx.scope, low.id, low.slug)
+
+    # The collections' table held, the part stops after it read the organisation's only
+    # workspace, `high`, and before it holds its workspaces.
+    {held, held_pid} =
+      hold(fn -> Repo.query!("LOCK TABLE source_collections IN ACCESS EXCLUSIVE MODE") end)
+
+    listed = start(safely(listing(ctx, ["OLD", "NEW"], "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, held_pid)
+
+    # Meanwhile the lower workspace is restored, and a marking of the higher one holds
+    # every workspace in use, in order of id.
+    {:ok, %Workspace{}} = Deletion.restore_workspace(ctx.scope, low.id)
+    marked = start(safely(fn -> Deletion.delete_workspace(ctx.scope, high.id, high.slug) end))
+    marking = done_or_blocked(marked, listed.backend)
+    commit(held)
+
+    marking =
+      case marking do
+        {:done, answer} -> answer
+        :blocked -> Task.await(marked.task)
+      end
+
+    assert {:ok, %Workspace{}} = marking
+    assert Task.await(listed.task) == {:ok, :accepted}
+    # Marked meanwhile, the higher workspace is not the only one: `NEW` is linked to none.
+    [new] = ids(ctx.connection, ["NEW"])
+    assert Repo.get!(Collection, new).workspace_id == nil
+  end
+
+  test "a part held on the only workspace, then a restore and a marking: the marking waits for the part",
+       ctx do
+    {:ok, _marked} =
+      Deletion.delete_workspace(ctx.scope, ctx.other_workspace.id, ctx.other_workspace.slug)
+
+    {listed, listed_pid} = hold(listing(ctx, ["NEW"], "first", @started))
+    assert listed.result == {:ok, :accepted}
+
+    marked =
+      start(
+        safely(fn ->
+          Repo.transact(fn ->
+            {:ok, _restored} = Deletion.restore_workspace(ctx.scope, ctx.other_workspace.id)
+
+            Deletion.delete_workspace(
+              ctx.scope,
+              ctx.scope.workspace.id,
+              ctx.scope.workspace.slug
+            )
+          end)
+        end)
+      )
+
+    await_blocked(marked.backend, listed_pid)
+    commit(listed)
+
+    assert {:ok, %Workspace{}} = Task.await(marked.task)
+    [new] = ids(ctx.connection, ["NEW"])
+    assert Repo.get!(Collection, new).workspace_id == ctx.scope.workspace.id
   end
 end
