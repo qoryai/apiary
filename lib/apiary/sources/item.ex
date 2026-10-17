@@ -22,10 +22,12 @@ defmodule Apiary.Sources.Item do
   # it, from `20261017191000_keep_when_an_item_was_last_listed`, or nil while none has.
   # `closed_by_listing_at` is for an item a complete listing left out and closed: that
   # listing's `started_at`; only a closed item has it. `disconnected_at` is for an item
-  # that left every Backlog where it is: one whose collection the adapter no longer
-  # reaches, or one whose ref an item of another live collection of the adapter now holds
-  # (`Apiary.Sources`). The column marks it, so that its row can stay. An item stays with
-  # its collection when the collection ends, and goes with its organisation.
+  # that left every Backlog where it is, as an item of another live collection of the
+  # adapter holds its ref (`Apiary.Sources`): one whose ref such an item took, or one
+  # written already ended, as a write that does not take the ref is. The column marks
+  # it, so that its row can stay. An item stays with its collection when the collection
+  # ends, and goes with its organisation; the Backlog leaves out the tickets of an ended
+  # collection by the collection's `ended_at`.
   #
   # `organisation_id` and `adapter_id` are its collection's, held to it by the composite
   # key. `public_id` is its name outside the database: `tk_`, then sixteen lowercase

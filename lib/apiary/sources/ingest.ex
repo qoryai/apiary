@@ -31,16 +31,17 @@ defmodule Apiary.Sources.Ingest do
   # **A ref held in another collection.** An item's ref is unique among the items of the
   # adapter's live collections, which no index holds: it is held here. Where an item
   # written to a collection has a ref that an item of another live collection of the same
-  # adapter holds, the write takes the ref when it is newer: a later `updated_at`, or, at
-  # the same time, open against closed. A closed write never takes the ref from an open
-  # item: the contract sends an item moved out of a collection as closed, so a "closed"
-  # says the item is no longer in that collection. When the write takes the ref, the
-  # item that held it ends where it is, in its collection (`disconnected_at`), and leaves
-  # every Backlog; the one written is a ticket of the collection it was written to, a new
-  # row with a new `tk_` id where that collection had none. Nothing moves between
-  # collections, and no work item changes. An item whose write does not take the ref is
-  # kept in its collection, ended there. One that ended so takes the ref back when a later
-  # write of it to its collection takes the ref.
+  # adapter holds, the write takes the ref when it is newer: an `updated_at` after the
+  # time the holder is kept at, as above, where a listing's close counts as a write at its
+  # `started_at`; or, at that time, open against closed. A closed write never takes the
+  # ref from an open item: the contract sends an item moved out of a collection as
+  # closed, so a "closed" says the item is no longer in that collection. When the write
+  # takes the ref, the item that held it ends where it is, in its collection
+  # (`disconnected_at`), and leaves every Backlog; the one written is a ticket of the
+  # collection it was written to, a new row with a new `tk_` id where that collection had
+  # none. Nothing moves between collections, and no work item changes. An item whose
+  # write does not take the ref is kept in its collection, ended there. One that ended so
+  # takes the ref back when a later write of it to its collection takes the ref.
   #
   # **Listings.** A part of a listing adds its number to the listing's bookkeeping
   # (`Apiary.Sources.Listing`), as `Apiary.Adapters.Collections` keeps a listing of
@@ -362,12 +363,12 @@ defmodule Apiary.Sources.Ingest do
     do: if(DateTime.compare(closed_at, updated_at) == :gt, do: closed_at, else: updated_at)
 
   # The write takes its ref from `holder`, an item of another live collection: never a
-  # closed write from an open holder; otherwise when it is newer, or, at the same time,
-  # when it is open and the holder closed.
+  # closed write from an open holder; otherwise when it is newer than the time the holder
+  # is kept at (`kept_at/1`), or, at that time, when it is open and the holder closed.
   defp takes_ref?(%Item{state: :closed}, %Item{state: :open}), do: false
 
   defp takes_ref?(row, %Item{} = holder) do
-    case DateTime.compare(row.source_updated_at, holder.source_updated_at) do
+    case DateTime.compare(row.source_updated_at, kept_at(holder)) do
       :gt -> true
       :eq -> row.state == :open and holder.state == :closed
       :lt -> false
@@ -571,7 +572,8 @@ defmodule Apiary.Sources.Ingest do
   # While the ref's lock is held, no write takes the ref, and no item comes to hold it;
   # only the collection of the one that holds it may end, until it is held `FOR SHARE`.
   # Should it have ended meanwhile, the answer is decided again from the start: by the
-  # collection that ended last, as no item holds the ref now.
+  # collection that ended last, as no item holds the ref now. Should it be gone, as its
+  # organisation's purge deletes it, `{:error, :not_linked}`.
   defp hold_answering(key_scope, adapter_id, ref) do
     item = answering_item(adapter_id, ref)
 
@@ -585,6 +587,9 @@ defmodule Apiary.Sources.Ingest do
 
         %Collection{} ->
           hold_answering(key_scope, adapter_id, ref)
+
+        nil ->
+          {:error, :not_linked}
       end
     end
   end

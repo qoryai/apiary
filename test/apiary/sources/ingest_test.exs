@@ -602,6 +602,36 @@ defmodule Apiary.Sources.IngestTest do
       assert %DateTime{} = ticket(ctx.trk, "R").disconnected_at
     end
 
+    test "a holder a listing closed is kept at the listing's started_at, and so is a write of it after it lost the ref",
+         ctx do
+      started = later(600)
+      dev = source_collection_fixture(ctx.scope, ctx.connection, %{external_ref: "DEV"})
+      {:ok, :accepted} = post(ctx, "TRK", [item("R")])
+      {:ok, :accepted} = post(ctx, "TRK", [], listing: %{id: "l", started_at: started})
+      closed = ticket(ctx.trk, "R")
+      assert %Item{state: :closed, disconnected_at: nil} = closed
+
+      # Updated after the one kept but before started_at: it does not take the ref.
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(300))])
+      assert %DateTime{} = ticket(ctx.ops, "R").disconnected_at
+      assert Repo.get!(Item, closed.id) == closed
+
+      # After started_at, it does; then its collection is disconnected, and a third
+      # collection's write, updated before started_at, holds the ref, as none does.
+      {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(700))])
+      assert %DateTime{} = Repo.get!(Item, closed.id).disconnected_at
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "OPS"})
+      {:ok, :accepted} = post(ctx, "DEV", [item("R", updated_at: later(100))])
+      holder = ticket(dev, "R")
+      assert holder.disconnected_at == nil
+
+      # A write to the closed one, between what it kept and started_at: newer than the
+      # holder, but not written, so it takes nothing, and the holder stays live.
+      {:ok, :accepted} = post(ctx, "TRK", [item("R", title: "Late", updated_at: later(300))])
+      assert %Item{state: :closed, title: "Title of R"} = Repo.get!(Item, closed.id)
+      assert Repo.get!(Item, holder.id) == holder
+    end
+
     test "at the same time an open item takes the ref from a closed one; an older one never does",
          ctx do
       {:ok, :accepted} = post(ctx, "TRK", [item("R", state: "closed", updated_at: later(60))])

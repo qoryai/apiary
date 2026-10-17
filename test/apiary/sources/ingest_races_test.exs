@@ -290,14 +290,17 @@ defmodule Apiary.Sources.IngestRacesTest do
 
     assert listed.result == {:ok, :accepted}
 
-    waiting = start(posting(ctx.key_scope, "OPS", [item("R")]))
+    # Updated after the item but before the listing began.
+    waiting = start(posting(ctx.key_scope, "OPS", [item("R", updated_at: later(30))]))
     await_blocked(waiting.backend, listed_pid)
     commit(listed)
 
-    # At the same time, open against what the listing closed: it takes the ref.
+    # The item it read is the one the listing closed, kept at the listing's started_at:
+    # the write does not take the ref, and is kept in its collection, ended there.
     assert Task.await(waiting.task) == {:ok, :accepted}
-    assert holders(ctx.adapter, "R") == [ops.id]
-    assert %Item{state: :closed, disconnected_at: %DateTime{}} = ticket(ctx.trk, "R")
+    assert holders(ctx.adapter, "R") == [ctx.trk.id]
+    assert %Item{state: :closed, disconnected_at: nil} = ticket(ctx.trk, "R")
+    assert %DateTime{} = ticket(ops, "R").disconnected_at
   end
 
   test "comments waiting on a write that takes their item's ref go to the item that holds it now",
@@ -350,5 +353,33 @@ defmodule Apiary.Sources.IngestRacesTest do
 
     assert Task.await(waiting.task) == {:error, :ended}
     assert comments_on(ticket(ops, "S")) == []
+  end
+
+  test "comments waiting on the purge of their item's collection are not linked, and write nothing",
+       ctx do
+    {:ok, :accepted} = posting(ctx.key_scope, "TRK", [item("R")]).()
+    organisation_id = ctx.scope.organisation.id
+
+    # As the organisation's purge deletes them, table by table.
+    {purged, purge_pid} =
+      hold(fn ->
+        Repo.delete_all(from c in Comment, where: c.organisation_id == ^organisation_id)
+        Repo.delete_all(from i in Item, where: i.organisation_id == ^organisation_id)
+        Repo.delete_all(from l in Listing, where: l.organisation_id == ^organisation_id)
+        Repo.delete_all(from c in Collection, where: c.organisation_id == ^organisation_id)
+      end)
+
+    assert {1, _} = purged.result
+
+    waiting = start(commenting(ctx.key_scope, "R", [comment("C")]))
+    await_blocked(waiting.backend, purge_pid)
+    commit(purged)
+
+    assert Task.await(waiting.task) == {:error, :not_linked}
+
+    assert Repo.aggregate(
+             from(c in Comment, where: c.organisation_id == ^organisation_id),
+             :count
+           ) == 0
   end
 end
