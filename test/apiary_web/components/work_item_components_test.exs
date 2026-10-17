@@ -413,17 +413,46 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       refute html =~ "Qory proposed"
     end
 
-    test "without the right to act: the line alone, no Confirm, no Decline, no question" do
+    test "without the right to act: whose turn it is, no Confirm, no Decline, no question" do
       for asking <- [nil, :decline] do
-        html = card(work_item(), can_act: false, asking: asking)
+        html = card(work_item(%{owner: @priya}), can_act: false, asking: asking)
 
         assert text(html, ".q-wi-bee-line") ==
-                 "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+                 "Waits for Priya to confirm Qory's proposal or decline the work item."
 
+        assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
+        refute html =~ "Qory proposed how to build it"
         assert count(html, "button") == 0
         assert count(html, "[role=group]") == 0
         refute html =~ "Decline work item"
       end
+
+      acts = card(work_item(%{owner: @priya}), can_act: true)
+
+      assert text(acts, ".q-wi-bee-line") ==
+               "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+
+      assert count(acts, "#work-item-step-confirm") == 1
+    end
+
+    test "without the right to act: the owner by name, the reader too, escaped" do
+      mine = card(work_item(), can_act: false)
+
+      assert text(mine, ".q-wi-bee-line") ==
+               "Waits for Dana to confirm Qory's proposal or decline the work item."
+
+      html =
+        card(work_item(%{owner: %{id: "pr_x", name: "<b>Ana</b>", you: false}}), can_act: false)
+
+      assert html =~ "Waits for &lt;b&gt;Ana&lt;/b&gt; to confirm"
+      assert count(html, ".q-wi-bee-line b") == 0
+    end
+
+    test "without the right to act and without an owner: no line, and no buttons" do
+      html = card(work_item(%{owner: nil}), can_act: false)
+      assert text(html, "h2") == "Confirm"
+      assert count(html, ".q-wi-bee-line") == 0
+      assert count(html, "button") == 0
     end
 
     test "the Decline question after the uninstall" do
@@ -833,7 +862,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   defp event(extra) do
     render_component(
       &WorkItemComponents.thread_event/1,
-      Keyword.merge([id: "ev-1", at: ~U[2026-10-14 11:24:00Z], now: @now], extra)
+      Keyword.merge(
+        [id: "ev-1", at: ~U[2026-10-14 11:24:00Z], integration: "GitHub", now: @now],
+        extra
+      )
     )
   end
 
@@ -897,8 +929,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       namesake = %{id: "pr_priya_b", name: "Priya", you: false}
 
       for {owner, expected} <- [
-            {namesake, "Priya took this in from acme/shop#1204. Priya owns it"},
-            {%{taker | name: "Priya A."}, "Priya took this in from acme/shop#1204"}
+            {namesake, "Priya took this in from G acme/shop#1204. Priya owns it"},
+            {%{taker | name: "Priya A."}, "Priya took this in from G acme/shop#1204"}
           ] do
         html = event(kind: :taken_in, actor: taker, owner: owner, external_ref: "acme/shop#1204")
         assert line(html) =~ expected
@@ -910,10 +942,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "taken in: every owner and reader form" do
       for {actor, owner, expected} <- [
-            {@dana, @dana, "You took this in from acme/shop#1204"},
-            {@lea, @dana, "Lea took this in from acme/shop#1204. You own it"},
-            {@lea, @priya, "Lea took this in from acme/shop#1204. Priya owns it"},
-            {@dana, @priya, "You took this in from acme/shop#1204. Priya owns it"}
+            {@dana, @dana, "You took this in from G acme/shop#1204"},
+            {@lea, @dana, "Lea took this in from G acme/shop#1204. You own it"},
+            {@lea, @priya, "Lea took this in from G acme/shop#1204. Priya owns it"},
+            {@dana, @priya, "You took this in from G acme/shop#1204. Priya owns it"}
           ] do
         html = event(kind: :taken_in, actor: actor, owner: owner, external_ref: "acme/shop#1204")
         assert line(html) =~ expected

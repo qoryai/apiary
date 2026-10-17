@@ -14295,6 +14295,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waits for %{name} to confirm Qory's proposal or decline the work item."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waits for you"
 msgstr ""
 

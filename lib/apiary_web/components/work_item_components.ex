@@ -370,7 +370,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       the run started; the run's id links its page where `path` is given.
     * Confirm: Qory's proposal waits; Confirm (`"confirm"`) and Decline (`"ask_decline"`).
       With `asking: :decline`, the Decline question in their place: its line, Decline
-      (`"decline"`) and Cancel.
+      (`"decline"`) and Cancel. Without `can_act`, whose turn it is: the work item's
+      `:owner`, by name.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
   Undo is there only with `can_undo`; Confirm, Decline and the Decline question only with
@@ -548,14 +549,32 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # A reader who may act reads what to do; one who may not, whose turn it is. Without an
+  # owner there is no one to name: no line.
   defp step_body(%{status: :confirm} = assigns) do
+    owner = assigns.work_item[:owner]
+
+    assigns =
+      assign(assigns,
+        line:
+          cond do
+            assigns.can_act ->
+              gettext(
+                "Qory proposed how to build it. Confirm the proposal, or decline the work item."
+              )
+
+            owner ->
+              gettext("Waits for %{name} to confirm Qory's proposal or decline the work item.",
+                name: owner.name
+              )
+
+            true ->
+              nil
+          end
+      )
+
     ~H"""
-    <p class="q-wi-bee-line">
-      <.bee />
-      <span>
-        {gettext("Qory proposed how to build it. Confirm the proposal, or decline the work item.")}
-      </span>
-    </p>
+    <p :if={@line} class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
     <div :if={@can_act} class="q-wi-acts">
       <.button
         id={"#{@id}-confirm"}
@@ -1184,6 +1203,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       instruction under it (`first_instruction`, none where it is empty or blank);
     * `:closed`, `:declined` - who closed or declined it;
     * `:undone` - who undid it, before a run started.
+
+  Every kind takes `integration`, so no page draws the ref without its mark.
   """
   attr :id, :string, required: true, doc: "the DOM id: the event's `public_id` under the Thread's"
   attr :kind, :atom, required: true, values: [:taken_in, :closed, :declined, :undone]
@@ -1191,7 +1212,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :at, :any, required: true, doc: "when"
   attr :external_ref, :string, default: nil, doc: "`:taken_in`: the ticket's ref"
   attr :url, :string, default: nil, doc: "`:taken_in`: the ticket's page at the source"
-  attr :integration, :string, default: nil, doc: "`:taken_in`: the integration's name"
+  attr :integration, :string, required: true, doc: "the integration's name, beside the ref"
   attr :owner, :map, default: nil, doc: "`:taken_in`: who owns it, a person"
   attr :first_instruction, :string, default: nil, doc: "`:taken_in`: the first instruction"
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
@@ -1217,7 +1238,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           <.rich text={@line}>
             <:part name={:ref}>
               <span class="q-wi-ev-ref">
-                <BacklogComponents.integration_tile :if={@integration} name={@integration} />
+                <BacklogComponents.integration_tile name={@integration} />
                 <.external_link href={@href}>{@external_ref}</.external_link>
               </span>
             </:part>
