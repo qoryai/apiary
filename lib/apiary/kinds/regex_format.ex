@@ -61,13 +61,22 @@ defmodule Apiary.Kinds.RegexFormat do
     end
   end
 
-  # One call of :erlang.bump_reductions/1 counts at most one time slice of the process,
-  # 4000 reductions in the OTP release measured, so the charge is made in parts of
-  # @charge_part.
-  defp charge(reductions) when reductions > @charge_part do
-    :erlang.bump_reductions(@charge_part)
-    charge(reductions - @charge_part)
+  # One call of :erlang.bump_reductions/1 counts at most what is left of the process's
+  # time slice, so it is called, in parts of at most @charge_part, until the process's
+  # count of reductions has grown by the charge.
+  defp charge(reductions), do: charge_until(own_reductions() + reductions)
+
+  defp charge_until(target) do
+    left = target - own_reductions()
+
+    if left > 0 do
+      :erlang.bump_reductions(min(left, @charge_part))
+      charge_until(target)
+    end
   end
 
-  defp charge(reductions), do: :erlang.bump_reductions(reductions)
+  defp own_reductions do
+    {:reductions, reductions} = Process.info(self(), :reductions)
+    reductions
+  end
 end

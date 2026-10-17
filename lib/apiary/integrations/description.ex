@@ -86,7 +86,7 @@ defmodule Apiary.Integrations.Description do
   # by the cap, the same way on every run: a list of 1000 strings, each checked against
   # 200 alternative patterns, does 7857408 reductions. A compile for `"format": "regex"`
   # is charged in reductions (`Apiary.Kinds.RegexFormat`): the check of one such setting
-  # of 15000 bytes does 151176.
+  # of 15000 bytes does about 152000.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
 
   @doc """
