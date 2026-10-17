@@ -11814,6 +11814,8 @@
   @media (min-width: 1440px) {
     .q-wi {
       grid-template-columns: minmax(0, 1fr) 320px;
+      /* A tall rail grows the body's row, never the header's. */
+      grid-template-rows: auto 1fr;
       grid-template-areas: "h r" "b r";
     }
     .q-wi-r {
