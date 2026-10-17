@@ -195,7 +195,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
           {"work_item",
            Jason.OrderedObject.new([
              {"id", work_item.public_id},
-             {"url", WorkItems.external_url(work_item)},
+             {"url", WorkItems.stable_url(work_item)},
              {"title", work_item.title}
            ])}
         ])

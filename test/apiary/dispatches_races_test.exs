@@ -1,7 +1,7 @@
 defmodule Apiary.DispatchesRacesTest do
-  # Claims racing each other (`Apiary.Dispatches.claim/2`), each on a connection of its
-  # own, outside the SQL sandbox, so each commits and each waits on the other's locks as
-  # it would in production. Not async: what these tests commit is visible to every other
+  # Claims racing each other (`Apiary.Dispatches.claim/2`), each on a separate
+  # connection, outside the SQL sandbox, so each commits and each waits on the other's
+  # locks as it would in production. Not async: what these tests commit is visible to every other
   # test while they run, and they delete it again before they end; the ledger and the
   # adapters, which outlive an organisation, by what they made.
   #

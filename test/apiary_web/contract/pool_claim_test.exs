@@ -184,7 +184,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert answer["work_item"]["url"] == expected
       assert %URI{path: "/work-items/" <> public_id} = URI.parse(expected)
       assert public_id == work_item.public_id
-      assert Apiary.WorkItems.external_url(work_item) == expected
+      assert Apiary.WorkItems.stable_url(work_item) == expected
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",
