@@ -311,7 +311,7 @@ defmodule ApiaryWeb.PolicyComponents do
     doc: "the target's: the workspace's default"
 
   attr :workspace, :string, default: nil, doc: "the target's: the workspace's name"
-  attr :target, :string, default: nil, doc: "the target's: its name as it is addressed"
+  attr :target, :string, default: nil, doc: "the target's: its name in its notation"
 
   attr :set, :any,
     default: nil,

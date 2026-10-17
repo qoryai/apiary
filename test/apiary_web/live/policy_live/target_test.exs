@@ -6,7 +6,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
   import Apiary.Midnight
@@ -32,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.deny(scope, nil, %{host: "telemetry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
 
-    %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
+    %{target: target, path: target_path(scope, target, ["policy"])}
   end
 
   defp open(conn, path) do
@@ -124,7 +124,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another workspace's target is not found, by its path or by its old id", %{
+  test "another workspace's target is not found, by its public id or by its old id", %{
     conn: conn,
     scope: scope
   } do
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
     assert_raise Ecto.NoResultsError, fn ->
-      live(conn, target_path(scope, theirs.system, theirs.path, ["policy"]))
+      live(conn, target_path(scope, theirs, ["policy"]))
     end
 
     for id <- [theirs.id, "nope"] do
@@ -155,10 +155,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
              "See what its runs reached"
            )
 
-    # Where another system has the same path, the system is in the address too: the
-    # target's own, where its tab now is, and the narrowed list's.
+    # Where another system has the same path, the narrowed list's address has the system
+    # too.
     started_run(scope, shop("gitlab.com"))
-    view = open(conn, workspace_path(scope, "/targets/github.example/acme/shop/-/policy"))
+    view = open(conn, path)
 
     assert has_element?(
              view,
@@ -167,13 +167,13 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   end
 
   test "a target no other system has is named by its path alone, in its title and its words",
-       %{conn: conn, scope: scope, path: path} do
+       %{conn: conn, scope: scope, path: path, target: target} do
     view = open(conn, path)
 
     assert page_title(view) =~ "Policy · acme/shop"
     refute page_title(view) =~ "github.example"
     assert name(view, "#target-header h1") == "acme/shop"
-    crumb = "#breadcrumb a[href='#{workspace_path(scope, "/targets/acme/shop")}']"
+    crumb = "#breadcrumb a[href='#{target_path(scope, target, [])}']"
     assert name(view, crumb) == "acme/shop"
 
     assert has_element?(
@@ -187,13 +187,13 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     started_run(scope, shop("gitlab.com"))
     {:ok, _} = Policy.deny(scope, target, %{host: "gitlab.example"})
     rule = own(scope, target, "gitlab.example")
-    base = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+    base = target_path(scope, target, ["policy"])
 
     view = open(conn, base)
     assert page_title(view) =~ "Policy · github.example/acme/shop"
     assert name(view, "#target-header h1") == "github.example/acme/shop"
 
-    crumb = "#breadcrumb a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
+    crumb = "#breadcrumb a[href='#{target_path(scope, target, [])}']"
     assert name(view, crumb) == "github.example/acme/shop"
 
     assert has_element?(
@@ -227,7 +227,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "#policy-export-button")
 
     # A version and its export continue the breadcrumb as on the workspace's Policy.
-    page = workspace_path(scope, "/targets/github.example/acme/shop")
+    page = target_path(scope, target, [])
     repositories = {"Repositories", workspace_path(scope, "/targets")}
 
     view = open(conn, base <> "/versions/2")
@@ -943,7 +943,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view =
         open(
           log_in_user(build_conn(), other.user),
-          target_path(other, target.system, target.path, ["policy"])
+          target_path(other, target, ["policy"])
         )
 
       # It follows the workspace, which observes: picking observe changes the mode of

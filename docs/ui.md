@@ -472,7 +472,7 @@ button, with a line under it of what the rules are; the search's bar keeps Find,
 and Sort. A reader who may not change the policy sees no Add rule and no row menus.
 
 **A rule is added and changed on a page** (No modals, above), never in a line
-over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/new`) from
+over the list: New rule (`…/policy/rules/new`, a target's `…/tg_…/policy/rules/new`) from
 Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
 Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
 (`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
@@ -501,7 +501,7 @@ force: a honey tile with the mode's icon (a lock where a level above requires en
 workspace, by its name, or Overridden; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
-The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
+The Document tab (`…/policy/document`, a target's `…/tg_…/policy/document`) is the document
 in force under the card and the tabs: its version's number, In force and the version's
 views, which stay on the tab. The document's bar is the tab's one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document
@@ -541,7 +541,7 @@ The policy pages confirm in place, never over the page:
   the page (`#policy-keys`), not an overlay; Escape and its Close hide it.
 
 **The export** (`…/policy/versions/:n/export`, and a target's
-`…/-/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
+`…/tg_…/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
 with Version n and Export and is the one way back, with no separate trail on the page; the
 title "Export for a node without a server" and what is exported (an h2 under a target's
 title), the policy file with Download and Copy, the command for the
@@ -779,14 +779,12 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
   the rows it holds in place.
-- **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
-  segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
-  `…/-/network` (once `…/-/connections`, which the page sends on with its query, moved
-  permanently) and, with `security`, `…/-/policy` with the policy's paths after it
-  (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
-  would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
-  the workspace does not have, and a tab the page does not know, are not found. The header
-  names the target as it is addressed (its path, its system before it only where two
+- **A target's page** is `/:org/:workspace/targets/:target_id`, by the target's public id,
+  `tg_…`, never its system or its path (`target_path/3`): Overview at the bare address
+  and, with `security`, `…/policy` with the policy's paths after it (`/history`,
+  `/document`, `/versions/:n`, `/export`, `/rules/new`, `/rules/:id/edit`). An id the
+  workspace does not have, and a tab the reader may not read, are not found. The header
+  names the target in its notation (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it overrides the workspace's) and Open on the
   system when the system is a host name; the breadcrumb ends with the section, a link to the
@@ -799,8 +797,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
   - Its runs and its Network access are the workspace's lists narrowed to it
-    (`/runs?target=acme/shop`, `/network?target=acme/shop`); the old `…/-/runs`,
-    `…/-/network` and `…/-/connections` send on there with their query.
+    (`/runs?target=acme/shop`, `/network?target=acme/shop`).
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode card (Follow the workspace, by its name, Observe or Enforce, and whose the mode
     is), the rules in force for it on the list pattern with their Source, and

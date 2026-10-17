@@ -386,8 +386,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     for %{verb: verb} = route <- ApiaryWeb.Router.__routes__(),
         verb in [:get, :*],
         not Map.has_key?(@skipped, route.path),
+        not hidden_tab?(route),
         do: route
   end
+
+  # A target's Policy tab and its paths belong to the `security` feature, on a page of
+  # `observability`: where `security` is off, the page raises not found as it mounts, which
+  # the endpoint renders as a path that does not exist and a test's request raises again
+  # (`test/apiary_web/live/target_live/show_test.exs` holds it).
+  defp hidden_tab?(%{path: "/:org/:workspace/targets/:target_id/" <> _}),
+    do: not Features.on?(:security)
+
+  defp hidden_tab?(_route), do: false
 
   # The addresses of `route`, its parameters filled; `{:unknown, names}` for parameters
   # this test does not fill.
@@ -444,7 +454,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("release_id", _path, p), do: p.release_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
-  defp value_of("glob", _path, p), do: p.target_glob
   defp value_of("path", "/docs/*path", _p), do: "no-such-page.html"
   defp value_of("page", "/dev/dashboard" <> _, _p), do: "home"
   defp value_of("node", "/dev/dashboard" <> _, _p), do: Atom.to_string(node())
@@ -462,6 +471,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       # A connection's list names a workspace, by its id.
       String.contains?(path, "/settings/integrations/") -> p.workspace_id
       String.contains?(path, "/policy/targets/") -> p.target_id
+      # A target's page names it by its public id.
+      String.contains?(path, "/targets/:target_id") -> p.target_public_id
       true -> nil
     end
   end
@@ -553,7 +564,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       run_id: run.public_id,
       target_id: target.id,
       workspace_id: scope.workspace.id,
-      target_glob: target.path,
+      target_public_id: target.public_id,
       invitation_token: invitation,
       login_token: login_token,
       password_token: password_token,

@@ -547,8 +547,10 @@ defmodule ApiaryWeb.RunLive.Index do
             path: path,
             label: if(system, do: "#{system}/#{path}", else: path),
             shared_alone: Narrowing.shared_alone?(narrowing),
-            page: found && target_page(scope, found, [], shared),
-            policy: found && assigns.security && target_page(scope, found, ["policy"], shared),
+            page: found && ApiaryWeb.TargetComponents.target_path(scope, found),
+            policy:
+              found && assigns.security &&
+                ApiaryWeb.TargetComponents.target_path(scope, found, ["policy"]),
             network:
               ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params(elem(linked, 0), path)}",
             all: page_path(scope, Filters.put(filters, target: nil))
@@ -657,11 +659,6 @@ defmodule ApiaryWeb.RunLive.Index do
     <span id="runs-narrowed-name">{@node_name}</span>
     """
   end
-
-  # A target's page, or one of its tabs, by the route helper every page writes it with:
-  # its system in the address only where its path is shared.
-  defp target_page(scope, %{system: system, path: path}, rest, shared),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, rest, shared)
 
   # What the list is narrowed to, as its line names it: one target (`target=` with a path;
   # never "none"), else one node; a target goes first, and a node beside it stays a token.

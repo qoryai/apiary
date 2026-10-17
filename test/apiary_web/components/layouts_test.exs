@@ -1209,16 +1209,29 @@ defmodule ApiaryWeb.LayoutsTest do
       api = Ecto.UUID.generate()
 
       pins = [
-        %{id: shop, system: "github.example", path: "acme/shop", shared: true},
-        %{id: api, system: "github.example", path: "acme/api", shared: false}
+        %{
+          id: shop,
+          public_id: "tg_0000000000000001",
+          system: "github.example",
+          path: "acme/shop",
+          shared: true
+        },
+        %{
+          id: api,
+          public_id: "tg_0000000000000002",
+          system: "github.example",
+          path: "acme/api",
+          shared: false
+        }
       ]
 
       html = shell(scope, :runs, %{pins: pins})
       assert html =~ ~s(id="nav-group-pinned")
       assert html =~ ~s(id="nav-pin-#{shop}")
-      # A pin's address is its path, with its system only where the path is shared.
-      assert html =~ ~s(href="#{workspace_path(scope, "/targets/acme/api")}")
-      assert html =~ ~s(href="#{workspace_path(scope, "/targets/github.example/acme/shop")}")
+      # A pin's address is its public id; its name its path, with its system only where
+      # the path is shared.
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/tg_0000000000000002")}")
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/tg_0000000000000001")}")
       assert before?(html, "acme/shop", "acme/api")
       # The system shows where the same path is in another system, and nowhere else.
       assert html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/shop}

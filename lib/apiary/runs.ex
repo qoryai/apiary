@@ -1435,13 +1435,15 @@ defmodule Apiary.Runs do
   end
 
   @typedoc """
-  A target of the overview's Active targets: its `system` and `path`, whether the same
+  A target of the overview's Active targets: its `public_id`, which addresses its page, its
+  `system` and `path`, whether the same
   path is on another system of the workspace too (`shared?`, which is when the system is
   shown), its `runs` and `denied` attempts since the window opened, its runs of each day
   of the window, oldest first (`days`), and its last run (`last`).
   """
   @type active_target :: %{
           id: Ecto.UUID.t(),
+          public_id: String.t(),
           system: String.t(),
           path: String.t(),
           shared?: boolean,
@@ -1475,11 +1477,12 @@ defmodule Apiary.Runs do
         from r in window,
           join: t in Target,
           on: t.id == r.target_id,
-          group_by: [t.id, t.system, t.path],
+          group_by: [t.id, t.public_id, t.system, t.path],
           order_by: [desc: count(r.id), asc: t.path, asc: t.system],
           limit: ^bound(limit),
           select: %{
             id: t.id,
+            public_id: t.public_id,
             system: t.system,
             path: t.path,
             runs: count(r.id),

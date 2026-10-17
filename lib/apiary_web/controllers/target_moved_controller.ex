@@ -2,11 +2,10 @@ defmodule ApiaryWeb.TargetMovedController do
   @moduledoc """
   A target's policy had a separate page, `/:org/:workspace/policy/targets/:target_id/…`,
   by the target row's id; it is the Policy tab of the target's page now
-  (`ApiaryWeb.TargetLive.Show`, `…/targets/acme/shop/-/policy/…`, the system before the
-  path only where the path is shared). This sends such a
-  path on to the tab, with whatever followed the id (`history`, `document`,
-  `versions/:n`, `versions/:n/export`) and the query, so a bookmark or a link in an old
-  message still lands. A target the reader may not read, or that is not in the
+  (`ApiaryWeb.TargetLive.Show`, `…/targets/tg_…/policy/…`, by the target's public id).
+  This sends such a path on to the tab, with whatever followed the id (`history`,
+  `document`, `versions/:n`, `versions/:n/export`) and the query, so a bookmark or a link
+  in an old message still lands. A target the reader may not read, or that is not in the
   workspace, is not found, as the page would say.
   """
   use ApiaryWeb, :controller
@@ -23,16 +22,7 @@ defmodule ApiaryWeb.TargetMovedController do
       rest = List.wrap(params["rest"])
       query = if conn.query_string == "", do: "", else: "?" <> conn.query_string
 
-      redirect(conn,
-        to:
-          TargetComponents.target_path(
-            scope,
-            target.system,
-            target.path,
-            ["policy" | rest],
-            Targets.shared?(scope, target.path)
-          ) <> query
-      )
+      redirect(conn, to: TargetComponents.target_path(scope, target, ["policy" | rest]) <> query)
     else
       _not_found -> raise Ecto.NoResultsError, queryable: Apiary.Runs.Target
     end

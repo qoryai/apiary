@@ -1336,15 +1336,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/targets"))
 
-      # Its system is in the address only where its path is shared.
-      for {target, path} <- [
-            {shop, "/targets/github.example/acme/shop"},
-            {other, "/targets/gitlab.example/acme/shop"},
-            {billing, "/targets/acme/billing"}
-          ] do
+      # Each links to its page by its public id.
+      for target <- [shop, billing, other] do
         assert has_element?(
                  lv,
-                 "#variable-target-#{target.id} a[href='#{workspace_path(scope, path)}']"
+                 "#variable-target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}")}']"
                )
       end
     end

@@ -1533,16 +1533,16 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']"
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy")}']"
              )
 
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")}']"
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy/versions/1")}']"
              )
     end
 
-    test "a target whose path another system has is linked at its address, with its system",
+    test "a target whose path another system has is linked by its id, named with its system",
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, shop("gitlab.example"))
@@ -1553,8 +1553,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.deny(scope, target, %{host: "registry.example"})
 
       view = open(conn, scope, "/policy/targets")
-      base = workspace_path(scope, "/targets/gitlab.example/acme/shop/-/policy")
-      assert has_element?(view, "#target-#{target.id} a[href='#{base}']")
+      base = workspace_path(scope, "/targets/#{target.public_id}/policy")
+
+      assert has_element?(
+               view,
+               "#target-#{target.id} a[href='#{base}']",
+               "gitlab.example/acme/shop"
+             )
+
       assert has_element?(view, "#target-#{target.id} a[href='#{base}/versions/1']")
     end
   end

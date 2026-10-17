@@ -475,8 +475,7 @@ defmodule ApiaryWeb.Routes do
 
         # The paths of pages that moved, under the settings, out of them or to a new name,
         # sent on to where they are now, so a link someone kept still lands. Before the
-        # pages, whose `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
-        # too; its page's glob sends that one on (`TargetLive.Show`).
+        # pages, whose `/:org/:workspace` would take `/:org/members`.
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
@@ -582,16 +581,20 @@ defmodule ApiaryWeb.Routes do
               live "/work/:number/thread", WorkItemLive.Show, :thread
               live "/backlog", BacklogLive.Index, :index
               live "/backlog/:item_id/take-in", BacklogLive.Index, :take_in
-              # The targets the workspace's runs changed, and one target's page: its
-              # address is the glob, the target's path alone, its system before the path
-              # only where two targets of the workspace share the path (question 9, answer
-              # A; `ApiaryWeb.TargetComponents.target_path/5`). Its tabs follow a `-`
-              # segment (`…/-/policy`), and a tab's own paths follow the tab
-              # (`…/-/policy/history`). An old address with the system of an unshared path
-              # is sent on to the path alone; the old Runs and Network access tabs to the
-              # lists narrowed to the target (`ApiaryWeb.TargetLive.Show`).
+              # The targets the workspace's runs changed, and one target's page. `:target_id`
+              # is the target's public id (`tg_…`), never its system or its path
+              # (`ApiaryWeb.TargetComponents.target_path/3`). Its Overview is the bare
+              # address; the Policy tab and that tab's paths follow it
+              # (`…/policy/history`, `…/policy/rules/new`).
               live "/targets", TargetLive.Index, :index
-              live "/targets/*glob", TargetLive.Show, :show
+              live "/targets/:target_id", TargetLive.Show, :overview
+              live "/targets/:target_id/policy", TargetLive.Show, :rules
+              live "/targets/:target_id/policy/history", TargetLive.Show, :history
+              live "/targets/:target_id/policy/document", TargetLive.Show, :document
+              live "/targets/:target_id/policy/versions/:n", TargetLive.Show, :version
+              live "/targets/:target_id/policy/versions/:n/export", TargetLive.Show, :export
+              live "/targets/:target_id/policy/rules/new", TargetLive.Show, :new_rule
+              live "/targets/:target_id/policy/rules/:id/edit", TargetLive.Show, :edit_rule
               # The workspace's nodes, node pools and gateways: the list, with New node, New
               # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
@@ -638,7 +641,7 @@ defmodule ApiaryWeb.Routes do
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the
               # compared version and the export page are in the URL. A rule is added and
-              # edited on a page of its own (a target's: `…/-/policy/rules/new`).
+              # edited on a page of its own (a target's: `…/policy/rules/new`).
               live "/policy", PolicyLive.Show, :rules
               live "/policy/rules/new", PolicyLive.Show, :new_rule
               live "/policy/rules/:id/edit", PolicyLive.Show, :edit_rule

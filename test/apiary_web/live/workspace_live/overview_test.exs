@@ -950,7 +950,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#active-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop")}']"
+               "#active-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}")}']"
              )
 
       assert has_element?(view, "#overview-targets-all", "All 1 repository")
@@ -1078,12 +1078,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert Enum.at(rows, 2) =~ "acme/t1"
       refute Enum.at(rows, 2) =~ "github.example"
 
-      # Each links to its page at its address: the system in it where the path is shared.
-      for {system, path} <- [
-            {"github.example", "/targets/github.example/acme/shop"},
-            {"gitlab.example", "/targets/gitlab.example/acme/shop"}
-          ] do
+      # Each links to its page by its public id.
+      for system <- ["github.example", "gitlab.example"] do
         target = Apiary.Targets.get(scope, system, "acme/shop")
+        path = "/targets/#{target.public_id}"
         assert has_element?(view, "#active-#{target.id} a[href='#{workspace_path(scope, path)}']")
       end
 
@@ -1091,7 +1089,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#active-#{t1.id} a[href='#{workspace_path(scope, "/targets/acme/t1")}']"
+               "#active-#{t1.id} a[href='#{workspace_path(scope, "/targets/#{t1.public_id}")}']"
              )
 
       assert has_element?(view, "#overview-targets-all", "All 10 repositories")
@@ -1194,7 +1192,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#overview-own a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']",
+               "#overview-own a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy")}']",
                "acme/shop"
              )
 
@@ -1219,7 +1217,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#overview-own a[href='#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}']"
+               "#overview-own a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy")}']"
              )
     end
 
@@ -1489,9 +1487,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       compare =
-        workspace_path(
+        target_page_path(
           scope,
-          "/targets/github.example/acme/shop/-/policy/versions/#{new.version}?compare=#{old.version}"
+          "github.example",
+          "acme/shop",
+          "/policy/versions/#{new.version}?compare=#{old.version}"
         )
 
       assert has_element?(

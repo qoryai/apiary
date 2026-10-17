@@ -9,12 +9,10 @@ defmodule ApiaryWeb.TargetComponents do
   (`Apiary.Runs.shared_paths/2`), the header of the target's page included. In words, in
   titles, labels and toasts, it is named the same way (`target_label/3`).
 
-  **The address** follows the notation (question 9, answer A): `target_path/5` is where a
-  target's page is, its path alone, `/:org/:workspace/targets/acme/shop`, and its system
-  before the path only where the path is shared, `…/targets/gitlab.com/acme/shop`; its
-  tabs follow a `-` segment (`…/-/policy`), GitLab's way, so no tab can be taken for a
-  part of a path. A caller that cannot tell whether the path is shared writes the path
-  alone: the page there lists the targets that share it.
+  **The address** is the target's public id, Qory Apiary's id for it (`tg_…`,
+  `Apiary.Runs.Target`): `target_path/3` is where a target's page is,
+  `/:org/:workspace/targets/tg_…`, and its tabs follow it (`…/tg_…/policy`). The system
+  and the path, Forager's labels, name the target; they never address it.
 
   **A run's state** is a dot and, when the run needs a look, a word: running, failed,
   timed out, lost and pending say so; a run that ended well is the dot alone, its word
@@ -32,51 +30,31 @@ defmodule ApiaryWeb.TargetComponents do
   """
   @type shared :: boolean | MapSet.t(String.t())
 
+  @typedoc "A target as `target_path/3` takes it: anything with its public id, or the id."
+  @type addressed :: %{required(:public_id) => String.t(), optional(atom) => term} | String.t()
+
   @doc """
-  target_path/5 is the path of a target's page in the scope's workspace: its path alone,
-  `…/targets/acme/shop`, or, where the path is `shared` by another target of the
-  workspace, its system before it, `…/targets/gitlab.com/acme/shop` (question 9, answer
-  A). `rest` is the segments of a tab after `-` (`["policy"]`, `["policy", "history"]`),
-  none for its Overview. A nil system writes the path alone, whatever `shared` says.
-
-  The path's segments are the target path's, each escaped, unless one of them is empty,
-  `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a segment of it
-  is never read as the tab's separator or as a step up.
-
-  For compatibility, `target_path/5` given an organisation and a workspace in place of
-  the scope is `target_path/6` with `shared` false.
+  target_path/3 is the path of a target's page in the scope's workspace, by the target's
+  public id: `…/targets/tg_…`. `target` is the target, anything with its `public_id`, or
+  the id itself. `rest` is the segments of a tab (`["policy"]`, `["policy", "history"]`),
+  none for its Overview.
   """
-  @spec target_path(Scope.t(), String.t() | nil, String.t(), [String.t()], shared) ::
-          String.t()
-  def target_path(scope, system, path, rest \\ [], shared \\ false)
+  @spec target_path(Scope.t(), addressed, [String.t()]) :: String.t()
+  def target_path(%Scope{organisation: organisation, workspace: workspace}, target, rest \\ []),
+    do: target_path(organisation, workspace, target, rest)
 
-  def target_path(
-        %Scope{organisation: organisation, workspace: workspace},
-        system,
-        path,
-        rest,
-        shared
-      ),
-      do: target_path(organisation, workspace, system, path, rest, shared)
+  @doc "target_path/4 is `target_path/3` with the organisation and the workspace given."
+  @spec target_path(term, term, addressed, [String.t()]) :: String.t()
+  def target_path(organisation, workspace, target, rest) when is_list(rest),
+    do: ~p"/#{organisation}/#{workspace}/targets/#{[public_id(target) | rest]}"
 
-  def target_path(organisation, workspace, system, path, rest) when is_list(rest),
-    do: target_path(organisation, workspace, system, path, rest, false)
-
-  @doc "target_path/6 is `target_path/5` with the organisation and the workspace given."
-  @spec target_path(term, term, String.t() | nil, String.t(), [String.t()], shared) ::
-          String.t()
-  def target_path(organisation, workspace, system, path, rest, shared) do
-    segments =
-      if(with_system?(system, path, shared), do: [system], else: []) ++
-        path_segments(path) ++ if(rest == [], do: [], else: ["-" | rest])
-
-    ~p"/#{organisation}/#{workspace}/targets/#{segments}"
-  end
+  defp public_id(%{public_id: id}) when is_binary(id), do: id
+  defp public_id(id) when is_binary(id), do: id
 
   @doc """
   target_label/3 is a target's name in words, as titles, headings, breadcrumbs, labels and
-  toasts write it: named as it is addressed, its path alone, `acme/shop`, and its system
-  before the path only where the path is `shared` by another target of the workspace,
+  toasts write it: its path alone, `acme/shop`, and its system before the path only where
+  the path is `shared` by another target of the workspace,
   `gitlab.com/acme/shop`. A nil system writes the path alone. The exported policy file
   keeps the full name.
   """
@@ -86,12 +64,11 @@ defmodule ApiaryWeb.TargetComponents do
   end
 
   @doc """
-  with_system?/3 is the one test of a target's address (`target_path/6`) and its name
-  (`target_label/3`, `ApiaryWeb.RunComponents.target_name/1`): whether both carry the
-  system, which they do together or not at all. They do where `shared` says the path alone
-  would not name the target alone: `true`, as a target's page passes it where its path is
-  shared or reads as another target's system and path, or the workspace's shared paths
-  holding the path. A nil system never does.
+  with_system?/3 is the one test of a target's name (`target_label/3`,
+  `ApiaryWeb.RunComponents.target_name/1`): whether it carries the system. It does where
+  `shared` says the path alone would not name the target alone: `true`, as a target's
+  page passes it where its path is shared, or the workspace's shared paths holding the
+  path. A nil system never does.
   """
   @spec with_system?(String.t() | nil, String.t(), shared | nil) :: boolean
   def with_system?(system, path, shared), do: is_binary(system) and shared?(shared, path)
@@ -104,26 +81,6 @@ defmodule ApiaryWeb.TargetComponents do
   def shared?(true, _path), do: true
   def shared?(%MapSet{} = shared, path), do: MapSet.member?(shared, path)
   def shared?(_shared, _path), do: false
-
-  @doc """
-  path_segments/1 is the segments a target's path takes in its page's URL: its segments, or
-  the path whole when a segment of it would be misread (`target_path/4`).
-  """
-  @spec path_segments(String.t()) :: [String.t()]
-  def path_segments(path) do
-    segments = String.split(path, "/")
-    if Enum.any?(segments, &(&1 in ["", "-", ".", ".."])), do: [path], else: segments
-  end
-
-  @doc """
-  parse_glob/1 reads the glob of a target's page back: the path, and the segments of the
-  tab after the first `-`. `path_segments/1` in reverse.
-  """
-  @spec parse_glob([String.t()]) :: {String.t(), [String.t()]}
-  def parse_glob(glob) when is_list(glob) do
-    {path, rest} = Enum.split_while(glob, &(&1 != "-"))
-    {Enum.join(path, "/"), Enum.drop(rest, 1)}
-  end
 
   @doc """
   A run's state as a dot and its word (pending, running, failed, cancelled, lost); the dot
@@ -152,7 +109,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   The star that pins a target for the reader, or takes the pin away: a toggle button that
-  sends `pin` with the target's id. Its spoken name names the target as it is addressed
+  sends `pin` with the target's id. Its spoken name names the target in its notation
   (`target_label/3`): its system too only where its path is `shared`.
   """
   attr :id, :string, required: true

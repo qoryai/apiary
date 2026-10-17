@@ -387,9 +387,7 @@ defmodule ApiaryWeb.TargetLive.Index do
           <:col :let={row} label={gettext("Target")} kind="title" class="q-tgt-c-name">
             <.link
               id={"target-link-#{row.target.id}"}
-              navigate={
-                target_path(@current_scope, row.target.system, row.target.path, [], row.shared)
-              }
+              navigate={target_path(@current_scope, row.target)}
               class="q-tgt-name"
               title={"#{row.target.system}/#{row.target.path}"}
             >

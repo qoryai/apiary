@@ -594,7 +594,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   end
 
   # The lead of the export: what is exported, as of which version, and in which files. A
-  # target is named as it is addressed; the file's own head keeps its system and path.
+  # target is named in its notation; the file's own head keeps its system and path.
   defp export_lead(export) do
     subject =
       if export.workspace,

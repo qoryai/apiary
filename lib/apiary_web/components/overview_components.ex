@@ -1104,9 +1104,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <ul :if={@rows not in [nil, []]} id={"#{@id}-list"} class="q-rows">
         <li :for={row <- @rows} id={"active-#{row.id}"}>
           <.link
-            navigate={
-              ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [], row.shared?)
-            }
+            navigate={ApiaryWeb.TargetComponents.target_path(@scope, row)}
             class="q-rr"
           >
             <span class="q-rr-p">
@@ -1656,22 +1654,14 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  # The target's Policy tab, the target named as it is addressed: its system in its name
-  # and its address only where its path is `shared` (the policy's read says).
+  # The target's Policy tab, the target named in its notation: its system in its name only
+  # where its path is `shared` (the policy's read says).
   defp own_link(scope, target, shared) do
     assigns = %{scope: scope, target: target, shared: shared}
 
     ~H"""
     <.link
-      navigate={
-        ApiaryWeb.TargetComponents.target_path(
-          @scope,
-          @target.system,
-          @target.path,
-          ["policy"],
-          @shared
-        )
-      }
+      navigate={ApiaryWeb.TargetComponents.target_path(@scope, @target, ["policy"])}
       class="q-mono hover:underline"
     >{ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)}</.link>
     """

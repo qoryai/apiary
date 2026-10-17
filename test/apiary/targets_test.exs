@@ -47,9 +47,11 @@ defmodule Apiary.TargetsTest do
       assert [
                %{id: api_id, path: "acme/api", system: "github.example", shared: false},
                %{id: shop_id, path: "acme/shop", system: "gitlab.example", shared: true}
-             ] = Targets.list_pins(scope)
+             ] = pins = Targets.list_pins(scope)
 
       assert {api_id, shop_id} == {api.id, shop.id}
+      # Each with its public id, which addresses its page.
+      assert Enum.map(pins, & &1.public_id) == [api.public_id, shop.public_id]
       assert Targets.pinned?(scope, api)
       assert Targets.pinned_ids(scope) == MapSet.new([api.id, shop.id])
       assert [%{id: ^api_id}] = Targets.list_pins(scope, 1)

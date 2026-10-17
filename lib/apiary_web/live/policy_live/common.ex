@@ -61,8 +61,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   a level above the workspace; `may_change`, whether the reader may change the page's
   rules, a function of the scope, `security_policy.edit` on the workspace by default
   (`may?/2`), which the New rule and Edit rule pages and a save of the form ask
-  (`new_rule/2`, `edit_rule/2`). The holder is named and addressed by it (`holder_name/1`,
-  `base/3`), its system said only where it is shared.
+  (`new_rule/2`, `edit_rule/2`). The holder is named by it (`holder_name/1`), its system
+  said only where it is shared, and addressed by its public id (`base/2`).
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
@@ -76,7 +76,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: Keyword.get(opts, :scope) || if(holder, do: :target, else: :workspace),
       may_change: Keyword.get(opts, :may_change, &may_edit?/1),
-      base: Keyword.get(opts, :base) || base(scope, holder, shared),
+      base: Keyword.get(opts, :base) || base(scope, holder),
       people: people(scope),
       authors: %{},
       fresh: %{},
@@ -137,16 +137,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The path of the holder's policy page in `scope`'s workspace: a target's Policy tab at its
-  address, its system in it only where its path is `shared`
-  (`ApiaryWeb.TargetComponents.target_path/5`).
+  The path of the holder's policy page in `scope`'s workspace: the workspace's, or a
+  target's Policy tab, by the target's public id
+  (`ApiaryWeb.TargetComponents.target_path/3`).
   """
-  def base(scope, holder, shared \\ false)
+  def base(scope, holder)
 
-  def base(scope, nil, _shared), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
-
-  def base(scope, %{system: system, path: path}, shared),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"], shared)
+  def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+  def base(scope, target), do: ApiaryWeb.TargetComponents.target_path(scope, target, ["policy"])
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security
@@ -1088,7 +1086,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The target holder's name in words, as it is addressed: its path, `acme/shop`, and its
+  The target holder's name in words, in its notation: its path, `acme/shop`, and its
   system before it only where the path is shared, `gitlab.com/acme/shop`
   (`ApiaryWeb.TargetComponents.target_label/3`, the page's `holder_shared`).
   """
@@ -2015,7 +2013,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
-      # The page names a target as it is addressed; the file's head, `subject`, in full.
+      # The page names a target in its notation; the file's head, `subject`, in full.
       name: if(holder, do: holder_name(socket)),
       workspace: if(is_nil(holder), do: scope.workspace.name),
       version: configuration.version,

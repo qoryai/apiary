@@ -1153,15 +1153,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     >
       <:col :let={%{target: target}} label={gettext("Target")} kind="title">
         <.link
-          navigate={
-            ApiaryWeb.TargetComponents.target_path(
-              @current_scope,
-              target.system,
-              target.path,
-              [],
-              @shared
-            )
-          }
+          navigate={ApiaryWeb.TargetComponents.target_path(@current_scope, target)}
           class="hover:underline"
         >
           <.target_name system={target.system} path={target.path} shared={@shared} class="q-cut" />

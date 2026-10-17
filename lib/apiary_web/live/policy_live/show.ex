@@ -451,6 +451,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       %{
         id: target.id,
+        public_id: target.public_id,
         system: target.system,
         path: target.path,
         own: row.rule_count,
@@ -853,7 +854,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
-  # rules of their own, at most fifty of them. Each is named as it is addressed (`name`):
+  # rules of their own, at most fifty of them. Each is named in its notation (`name`):
   # one read of the paths it names.
   defp held_by_lock(scope, rule) do
     held =
@@ -1595,15 +1596,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={
-                    ApiaryWeb.TargetComponents.target_path(
-                      @scope,
-                      row.system,
-                      row.path,
-                      ["policy"],
-                      @shared
-                    )
-                  }
+                  navigate={ApiaryWeb.TargetComponents.target_path(@scope, row, ["policy"])}
                   class="q-target-name q-rowlink q-cut"
                   title={"#{row.system}/#{row.path}"}
                 >
@@ -1647,13 +1640,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
                           do:
                             ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                           else:
-                            ApiaryWeb.TargetComponents.target_path(
-                              @scope,
-                              row.system,
-                              row.path,
-                              ["policy", "versions", to_string(row.detail.version.version)],
-                              @shared
-                            )
+                            ApiaryWeb.TargetComponents.target_path(@scope, row, [
+                              "policy",
+                              "versions",
+                              to_string(row.detail.version.version)
+                            ])
                       }
                       class="q-mono hover:underline"
                     >

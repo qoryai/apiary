@@ -9,7 +9,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormPathsTest do
 
   import Phoenix.LiveViewTest
   import Apiary.RunListFixtures
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
 
   alias Apiary.Policy
 
@@ -47,7 +47,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormPathsTest do
   defp target(%{scope: scope}) do
     started_run(scope, shop())
     [%{target: target}] = Policy.list_targets(scope)
-    %{target: target, base: target_path(scope, target.system, target.path, ["policy"])}
+    %{target: target, base: target_path(scope, target, ["policy"])}
   end
 
   # The Paths row on Allow and on Deny, drawn or not.

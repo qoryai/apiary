@@ -39,7 +39,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
-  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 5]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 2]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
@@ -151,9 +151,9 @@ defmodule ApiaryWeb.RunLive.Show do
                 />
                 <span :if={program_exit(@run)}>{program_exit(@run)}</span>
                 <.link
-                  :if={@run.target_id}
+                  :if={target_link(@target_page)}
                   id="run-target"
-                  navigate={target_link(@current_scope, @run, @target_shared)}
+                  navigate={target_link(@target_page)}
                   class="q-run-target"
                 >
                   <.target_name
@@ -161,7 +161,7 @@ defmodule ApiaryWeb.RunLive.Show do
                     system={@target_shared && @run.target_system}
                   />
                 </.link>
-                <span :if={!@run.target_id && @run.target_path} id="run-target">
+                <span :if={!target_link(@target_page) && @run.target_path} id="run-target">
                   <.target_name path={@run.target_path} system={@run.target_system} />
                 </span>
                 <span :if={@run.runtime} id="run-runtime">
@@ -251,15 +251,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <div class="mt-1">
               <.link
                 id="run-behind-diff"
-                navigate={
-                  behind_path(
-                    @current_scope,
-                    @target,
-                    @target_shared,
-                    @reported_version,
-                    @in_force
-                  )
-                }
+                navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
                 class="q-link"
               >
                 {if comparable?(@reported_version, @in_force),
@@ -298,7 +290,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <.details_rail
           scope={@current_scope}
           run={@run}
-          target_shared={@target_shared}
+          target_page={target_link(@target_page)}
           policy={@policy}
           session_id={@session_id}
           quiet={@quiet_for != nil}
@@ -781,7 +773,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # under small headings; the run's labels are its own identifiers, in mono.
   attr :scope, :map, required: true
   attr :run, :map, required: true
-  attr :target_shared, :boolean, default: false, doc: "whether the run's target's path is shared"
+  attr :target_page, :string, default: nil, doc: "the path of the run's target's page"
   attr :policy, :any, required: true
   attr :session_id, :string, default: nil
   attr :quiet, :boolean, required: true
@@ -897,14 +889,12 @@ defmodule ApiaryWeb.RunLive.Show do
             <dt>{key}</dt>
             <dd title={to_string(value)}>
               <.link
-                :if={
-                  path = label_path(@scope, @run, @target_shared, to_string(key), to_string(value))
-                }
+                :if={path = label_path(@scope, @target_page, to_string(key))}
                 navigate={path}
               >
                 {to_string(value)}
               </.link>
-              <span :if={!label_path(@scope, @run, @target_shared, to_string(key), to_string(value))}>
+              <span :if={!label_path(@scope, @target_page, to_string(key))}>
                 {to_string(value)}
               </span>
             </dd>
@@ -1232,6 +1222,7 @@ defmodule ApiaryWeb.RunLive.Show do
        page_title: gettext("Run"),
        tips: tips(),
        target_shared: false,
+       target_page: {nil, nil},
        announcement: nil,
        announced_at: nil,
        at_end: false,
@@ -1338,6 +1329,7 @@ defmodule ApiaryWeb.RunLive.Show do
             run.target_id != nil and Targets.shared?(scope, run.target_path)
           )
           |> assign_run(run)
+          |> assign_target_page(run)
           |> assign(:instance, Nodes.instance_of(scope, run))
 
         if connected?(socket) do
@@ -1523,21 +1515,28 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
-  defp label_path(scope, %Run{target_id: id} = run, shared, key, _value) when is_binary(id) do
-    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run, shared)
+  defp label_path(scope, page, key) when is_binary(page) do
+    if key in Domain.target_labels(scope.workspace), do: page
   end
 
-  defp label_path(_scope, _run, _shared, _key, _value), do: nil
+  defp label_path(_scope, _page, _key), do: nil
 
   # The short form of the id a run that is not here was asked by, when it is a run's id at
   # all; nil for an address that is none, whose breadcrumb ends with Runs.
   defp missing_id(run_id), do: if(Run.public_id?(run_id), do: short_id(run_id))
 
-  # The target's page: the run's own copy of its system and path, which the target's row
-  # holds too while the run names it, at its address: its system in it only where its
-  # path is `shared` (the page's `target_shared`).
-  defp target_link(scope, %Run{target_system: system, target_path: path}, shared),
-    do: target_path(scope, system, path, [], shared)
+  # The page of the target the run names, by the target's public id: `{target_id, path}`,
+  # read again only when the run names another target.
+  defp assign_target_page(%{assigns: %{target_page: {id, _path}}} = socket, %Run{target_id: id}),
+    do: socket
+
+  defp assign_target_page(socket, %Run{target_id: id}) do
+    scope = socket.assigns.current_scope
+    target = id && Targets.get_by_id(scope, id)
+    assign(socket, :target_page, {id, target && target_path(scope, target)})
+  end
+
+  defp target_link({_id, path}), do: path
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
@@ -2266,7 +2265,7 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -2275,7 +2274,7 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              path: Rules.version_path(scope, holder, change.version),
               label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
@@ -2296,12 +2295,7 @@ defmodule ApiaryWeb.RunLive.Show do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(
-            scope,
-            if(entry.source == :target and target, do: target),
-            entry.host,
-            socket.assigns.target_shared
-          ),
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end
@@ -2341,15 +2335,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A target's version is on the run's target's Policy tab: the only target a run's
   # versions are of.
-  defp behind_path(scope, target, shared, reported, in_force) do
+  defp behind_path(scope, target, reported, in_force) do
     if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
       do:
         Rules.version_path(
           scope,
           in_force.target_id && target,
           in_force.n,
-          %{"compare" => reported.n},
-          shared
+          %{"compare" => reported.n}
         ),
       else: in_force.path
   end
@@ -2444,6 +2437,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     socket
     |> assign_run(run)
+    |> assign_target_page(run)
     |> announce_change(old, run, was_quiet?)
     |> follow_digests(old, run)
   end

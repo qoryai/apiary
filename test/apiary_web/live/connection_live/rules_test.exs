@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
@@ -88,9 +88,15 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   end
 
   describe "a target's version and rule, named and addressed" do
-    test "its system only where its path is shared; a caller that does not say names it in full",
+    test "named with its system only where its path is shared; addressed by its public id",
          %{scope: scope} do
-      target = %{id: "t", system: "github.example", path: "acme/shop"}
+      target = %{
+        id: "t",
+        public_id: "tg_0123456789abcdef",
+        system: "github.example",
+        path: "acme/shop"
+      }
+
       shared = MapSet.new(["acme/shop"])
 
       assert Rules.version_label("t", target, false) == "acme/shop"
@@ -101,19 +107,13 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert Rules.version_label(nil, target, true) == "the workspace's policy"
 
       assert Rules.version_path(scope, target, 3) ==
-               workspace_path(scope, "/targets/acme/shop/-/policy/versions/3")
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy/versions/3")
 
-      assert Rules.version_path(scope, target, 3, %{"compare" => 2}, shared) ==
-               workspace_path(
-                 scope,
-                 "/targets/github.example/acme/shop/-/policy/versions/3?compare=2"
-               )
+      assert Rules.version_path(scope, target, 3, %{"compare" => 2}) ==
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy/versions/3?compare=2")
 
       assert Rules.rule_path(scope, target, "x.example") ==
-               workspace_path(scope, "/targets/acme/shop/-/policy?rule=x.example")
-
-      assert Rules.rule_path(scope, target, "x.example", true) ==
-               workspace_path(scope, "/targets/github.example/acme/shop/-/policy?rule=x.example")
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy?rule=x.example")
     end
   end
 
@@ -371,10 +371,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       github = target(scope, "github.example")
       view = open(conn, scope, "/network?system=github.example&target=acme/shop")
 
-      # The path is on two systems: its policy's address keeps the system.
+      # The path is on two systems: its policy's address is the chosen target's id.
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}"]),
+               ~s(#connections-target-policy[href="#{target_path(scope, github, ["policy"])}"]),
                "Its policy"
              )
 
@@ -392,8 +392,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       line = text(view, "##{dst("files.cdn.example")}-after")
       assert line =~ "Allowed for this repository in v1 · of github.example/acme/shop by you"
 
-      # The rule and its version are at the target's own address, its system kept.
-      policy = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+      # The rule and its version are at the target's address, by its id.
+      policy = target_path(scope, github, ["policy"])
 
       assert has_element?(
                view,

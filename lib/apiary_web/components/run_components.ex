@@ -2353,7 +2353,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :shared, :any,
     default: nil,
     doc:
-      "workspace: the paths on more than one system (a MapSet), so a run's target is named as it is addressed; nil names it in full"
+      "workspace: the paths on more than one system (a MapSet), so a run's target is named in its notation; nil names it in full"
 
   slot :trailing, doc: "what the slot holds when `act` is not given"
 

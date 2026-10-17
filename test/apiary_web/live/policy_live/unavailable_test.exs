@@ -11,7 +11,7 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
@@ -54,7 +54,7 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
     refute has_element?(view, "#policy-rules td.q-c-seen")
     refute view |> element("#policy-rules") |> render() =~ "not seen"
 
-    view = open(conn, target_path(scope, target.system, target.path, ["policy"]))
+    view = open(conn, target_path(scope, target, ["policy"]))
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
 
