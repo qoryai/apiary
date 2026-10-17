@@ -69,7 +69,7 @@ defmodule Apiary.Connections do
   what it is about: `{:overlap, public_ids}`, `{:in_use, public_ids}`, `:runtime_unknown`,
   `:service_unknown`, `:release_not_ready`, `:integration_source_refused`,
   `:target_not_found`, `{:integration_source_mismatch, why}`, and the description's
-  `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, errors}`,
+  `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, details}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`.
   """

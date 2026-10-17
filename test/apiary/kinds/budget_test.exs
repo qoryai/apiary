@@ -125,6 +125,27 @@ defmodule Apiary.Kinds.BudgetTest do
     assert monitors() == before
   end
 
+  test "is :heap when the binaries the process refers to outside its heap pass the budget" do
+    before = monitors()
+
+    # 1000 binaries of 16 KiB, 16 MiB outside the heap, held in a list on a heap of some
+    # ten thousand words (measured: 10958): within the budget were they not counted.
+    {result, pid} =
+      run(
+        fn ->
+          binaries = for _ <- 1..1000, do: :binary.copy(<<0>>, 16_384)
+          length(binaries)
+        end,
+        reductions: 1_000_000_000,
+        heap_words: 100_000,
+        ms: 10_000
+      )
+
+    assert result == {:error, :heap}
+    gone(pid)
+    assert monitors() == before
+  end
+
   test "is :crashed when the function raises, throws or exits, and the caller lives on" do
     before = monitors()
 

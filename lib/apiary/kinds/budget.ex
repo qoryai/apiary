@@ -8,8 +8,14 @@ defmodule Apiary.Kinds.Budget do
 
   The work is counted in reductions, the units of work the runtime counts for each
   process: the count follows the work the function does on its input, not how fast or
-  busy the machine is. The heap is counted in words. The time is only a bound on a
-  process that runs while it counts few reductions, such as one that waits.
+  busy the machine is. The heap is counted in words, and with it the binaries the process
+  refers to that live outside its heap (`include_shared_binaries`), a binary shared with
+  other processes counted in full in each, and a part of a large binary possibly counted
+  as the whole of it, again for each part the process refers to: a function that makes
+  large binaries, such as JSV's error messages that copy a pattern, is held to the budget
+  too, and an input of many parts of one large binary is better given as copies. The
+  time is only a bound on a process that runs while it counts few reductions, such as one
+  that waits.
 
   Memory the runtime keeps outside the heap and the binaries it counts, such as a
   compiled pattern's, is not counted: a function that makes it bounds it before the work
@@ -21,8 +27,8 @@ defmodule Apiary.Kinds.Budget do
     * `{:ok, value}`, the function's value, when it returns within the budget;
     * `{:error, :reductions}` when its reductions pass the budget, the process then
       killed;
-    * `{:error, :heap}` when its heap grows past the budget, the process killed by the
-      runtime;
+    * `{:error, :heap}` when its heap and the binaries it refers to grow past the
+      budget, the process killed by the runtime;
     * `{:error, :time}` when the time runs out, the process then killed;
     * `{:error, :crashed}` when the function raises, throws or exits.
 
@@ -36,7 +42,8 @@ defmodule Apiary.Kinds.Budget do
 
   @typedoc """
   The budget: `:reductions`, the most reductions the function may do; `:heap_words`, the
-  most words its process's heap may hold; `:ms`, the most milliseconds it may take.
+  most words its process's heap and the binaries it refers to may hold; `:ms`, the most
+  milliseconds it may take.
   """
   @type budget :: [reductions: pos_integer, heap_words: pos_integer, ms: pos_integer]
 
@@ -63,7 +70,11 @@ defmodule Apiary.Kinds.Budget do
             ms -> :ok
           end
         end,
-        [:monitor, {:max_heap_size, %{size: words, kill: true, error_logger: false}}]
+        [
+          :monitor,
+          {:max_heap_size,
+           %{size: words, kill: true, error_logger: false, include_shared_binaries: true}}
+        ]
       )
 
     {watcher, watcher_monitor} = spawn_monitor(fn -> watch(caller, pid, ms) end)

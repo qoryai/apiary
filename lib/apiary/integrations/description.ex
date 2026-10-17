@@ -196,12 +196,14 @@ defmodule Apiary.Integrations.Description do
       `%{valid: false, limits: limits}`: the schema comes from the description and need
       bound none of them;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`. A few references in that schema can
-      make the work of the check grow exponentially with their nesting, which the limits
-      do not bound, so the schema is built and the settings validated in another process
-      (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its
-      work, and 2097152 words of heap (16 MiB on a 64-bit machine). A check that goes
-      over that budget is refused as `integration_settings_invalid` with
+      `settings`, else `integration_settings_invalid` with `%{valid: false}`, as for a
+      schema that JSV cannot build: JSV's errors are not returned. A few references in
+      that schema can make the work of the check grow exponentially with their nesting,
+      which the limits do not bound, so the schema is built and the settings validated
+      in another process (`Apiary.Kinds.Budget`), within 5000000 reductions, the
+      runtime's count of its work, and 2097152 words of heap (16 MiB on a 64-bit
+      machine), the binaries the process refers to counted in it. A check that goes over
+      that budget is refused as `integration_settings_invalid` with
       `%{valid: false, budget: :exceeded}`, and one that fails with
       `%{valid: false, crashed: true}`. A compiled pattern is memory outside the heap,
       which that budget does not count, so before the schema is built the patterns it
@@ -228,7 +230,15 @@ defmodule Apiary.Integrations.Description do
          {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
 
       true ->
-        within_budget(description, fn -> plain_schema(description, settings) end)
+        # The process is given copies of the schema it builds and of the settings, never
+        # the description: a string of the description can be a part of its bytes, which
+        # the budget would count in full for each such string (`Apiary.Kinds.Budget`).
+        # The copies are linear in the schema, a part of the description, and so bounded
+        # by the bytes a release's description may have (`Apiary.Integrations`), and in
+        # the settings, at most 65536 bytes as canonical JSON.
+        schema = copy(plain_schema(description, settings))
+        settings = copy(settings)
+        within_budget(description, fn -> check(schema, settings) end)
     end
   end
 
@@ -240,12 +250,14 @@ defmodule Apiary.Integrations.Description do
   # and 10 s, a bound only on a check that runs while it counts few reductions.
   # Measured on OTP 29, the estimate of the patterns included: valid settings of 4096
   # values, two lists and an object of 1024 entries each, the entries of one list checked
-  # against 32 patterns, and 64 lists and objects deep, do 1493015 reductions, 3.3 times
-  # fewer than the budget; 1000 settings, each against a pattern, 836975, of which the
-  # estimate is 136704; a setting of 15000 bytes against `"format": "regex"`, its
-  # compile charged in reductions (`Apiary.Kinds.RegexFormat`) and its estimate,
-  # 228118. Without the budget, a schema that refers twice to the next level at each of
-  # 20 levels does 157253942.
+  # against 32 patterns, and 64 lists and objects deep, do 1464033 reductions, 3.4 times
+  # fewer than the budget; 1000 settings, each against a pattern, 824296, of which the
+  # estimate is 136704; a setting of 15000 bytes against `"format": "regex"`, its compile
+  # charged in reductions (`Apiary.Kinds.RegexFormat`) and its estimate, 228185. The
+  # valid settings of 4096 values, in a description of 261772 bytes whose definitions
+  # hold 1000 strings of 234 bytes, pass within 347969 words of heap, the binaries the
+  # process refers to counted, 6.0 times fewer than the budget. Without the budget, a
+  # schema that refers twice to the next level at each of 20 levels does 157253942.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
 
   # The most bytes the patterns of a settings check may hold once compiled, those of the
@@ -283,30 +295,47 @@ defmodule Apiary.Integrations.Description do
   # checked against its own property's schema alone: a rule across settings, such as the
   # top level's `required` or a `oneOf` between a secret and its `<name>_file`, is the
   # program's to check once the document is whole. The definitions a property refers to
-  # stay where its references point. The patterns the build would compile are estimated
-  # first, and a schema whose patterns would hold more than @pattern_bytes stops the check
-  # before anything is compiled: `{:stopped, :patterns}`. What is left of @pattern_bytes
-  # bounds the settings RegexFormat compiles, which stop the check the same way.
+  # stay where its references point.
   defp plain_schema(description, settings) do
     document = description.document["settings"]
 
-    schema =
-      document
-      |> Map.take(["$schema", "$id", "$defs", "definitions"])
-      |> Map.merge(%{
-        "type" => "object",
-        "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
-      })
-      |> without_casts()
+    document
+    |> Map.take(["$schema", "$id", "$defs", "definitions"])
+    |> Map.merge(%{
+      "type" => "object",
+      "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
+    })
+  end
 
+  # `term` with every binary in it, the keys of its maps too, copied, so that none is a
+  # part of a larger binary.
+  defp copy(map) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {copy(key), copy(value)} end)
+
+  defp copy(list) when is_list(list), do: Enum.map(list, &copy/1)
+  defp copy(binary) when is_binary(binary), do: :binary.copy(binary)
+  defp copy(other), do: other
+
+  # The settings check, in the budget's process. The patterns the build would compile are
+  # estimated first, and a schema whose patterns would hold more than @pattern_bytes stops
+  # the check before anything is compiled: `{:stopped, :patterns}`. What is left of
+  # @pattern_bytes bounds the settings RegexFormat compiles, which stop the check the same
+  # way.
+  defp check(schema, settings) do
+    schema = without_casts(schema)
+
+    # The answer leaves the budget's process, so a refusal is `%{valid: false}` alone.
+    # JSV's errors stay in that process and end with it: they refer to the settings and
+    # the schema, and the message of an error about a pattern, which `Schema.valid?/2`
+    # does not make, would copy that pattern.
     with :ok <- within_pattern_bytes(schema),
          {:ok, root} <-
            Schema.build(schema, resolver: SettingsResolver, formats: RegexFormat.formats()),
-         :ok <- validate(settings, root) do
+         true <- valid?(settings, root) do
       :ok
     else
       {:stopped, reason} -> {:stopped, reason}
-      {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
+      _refused -> {:error, {:integration_settings_invalid, %{valid: false}}}
     end
   end
 
@@ -318,8 +347,8 @@ defmodule Apiary.Integrations.Description do
       else: {:stopped, :patterns}
   end
 
-  defp validate(settings, root) do
-    Schema.validate(settings, root)
+  defp valid?(settings, root) do
+    Schema.valid?(settings, root)
   catch
     :throw, {RegexFormat, :pattern_bytes} -> {:stopped, :patterns}
   end

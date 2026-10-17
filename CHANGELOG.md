@@ -24,6 +24,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An integration's settings are checked within a limit on work and heap memory: settings
   whose check against the schema in the integration's description would need more are
   refused as invalid, instead of keeping a processor busy while the connection is saved.
+- An integration's settings check counts large text toward its memory limit.
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
 <!-- /feature -->
