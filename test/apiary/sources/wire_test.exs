@@ -345,7 +345,7 @@ defmodule Apiary.Sources.WireTest do
       end
     end
 
-    test "labels are at most 100, each 1 to 100 code points, none twice" do
+    test "labels are at most 100, each a string of 1 to 100 code points with no U+0000, none twice" do
       labels = for n <- 1..101, do: "label-#{n}"
 
       assert item_ok?(Map.put(item(), "labels", []))
@@ -357,6 +357,21 @@ defmodule Apiary.Sources.WireTest do
       refute item_ok?(Map.put(item(), "labels", ["bug", nil]))
       refute item_ok?(Map.put(item(), "labels", "bug"))
       refute item_ok?(Map.put(item(), "labels", nil))
+
+      # One label at its greatest length in code points, of one, two or four bytes, and
+      # one past it.
+      for character <- ["a", "\u00e9", "\u{1F600}"] do
+        at = String.duplicate(character, 100)
+
+        assert {:ok, %{items: [%{labels: ["bug", ^at]}]}} =
+                 Wire.items(event_of(Map.put(item(), "labels", ["bug", at])))
+
+        refute item_ok?(Map.put(item(), "labels", ["bug", at <> character])), character
+      end
+
+      for label <- ["a\u0000b", <<0>>, <<0xFF, 0xFE>>, "a" <> <<0xC3>>] do
+        refute item_ok?(Map.put(item(), "labels", ["bug", label])), inspect(label)
+      end
 
       # Equal as code points only: the same letter composed and decomposed are two labels.
       assert item_ok?(Map.put(item(), "labels", ["café", "café"]))
@@ -742,7 +757,7 @@ defmodule Apiary.Sources.WireTest do
   end
 
   describe "bounded first" do
-    # Generous for a shared machine: a refused body takes a few milliseconds here.
+    # Generous for a shared machine: a refused body takes well under a second here.
     @quick_ms 1000
 
     defp quick(fun) do
