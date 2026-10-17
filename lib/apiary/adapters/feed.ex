@@ -91,6 +91,14 @@ defmodule Apiary.Adapters.Feed do
     {"sync", %{"interval" => interval}}
   end
 
+  # A collection that stopped being linked: `%{kind: "collection", collection_ref: ref,
+  # status: "unlinked"}`, written whenever a linked collection ends or loses its workspace
+  # (`Apiary.Adapters.Collections`).
+  defp shape!(%{kind: "collection", collection_ref: ref, status: "unlinked"} = entry)
+       when map_size(entry) == 3 and is_binary(ref) do
+    {"collection", %{"collection_ref" => ref, "status" => "unlinked"}}
+  end
+
   defp shape!(entry) do
     raise ArgumentError, "not an entry this feed writes: #{inspect(Map.get(entry, :kind))}"
   end

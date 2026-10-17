@@ -5,4 +5,4 @@
 # accepted and refused, and two signed requests, a POST and a GET), and whose
 # connect-return.schema.json is under test/fixtures/integration-contract/schema/: a
 # commit of the integrations, pinned by its id.
-6f182adf71ae4bae78af8de8bbfce1514e647feb
+256400611e9230daccc6c78d0c4d5b156305c3b8

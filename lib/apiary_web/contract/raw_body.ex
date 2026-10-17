@@ -31,8 +31,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   # documentation does not name.
   @adapter_max_bytes 1024 * 1024
   # The integration contract's signed paths served here, read the same way:
-  # `POST /v1/adapter`.
-  @adapter_paths [["v1", "adapter"]]
+  # `POST /v1/adapter`, `POST /v1/source-collections` and `POST /v1/sources/disconnect`.
+  @adapter_paths [["v1", "adapter"], ["v1", "source-collections"]]
+  @adapter_three_paths [["v1", "sources", "disconnect"]]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -71,6 +72,10 @@ defmodule ApiaryWeb.Contract.RawBody do
       path when path in @adapter_paths -> :adapter
       _other -> nil
     end
+  end
+
+  defp kept([_, _, _] = path_info) do
+    if Enum.map(path_info, &decode/1) in @adapter_three_paths, do: :adapter
   end
 
   defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> of_a_run()

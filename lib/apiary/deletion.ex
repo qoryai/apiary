@@ -371,6 +371,8 @@ defmodule Apiary.Deletion do
          :ok <- refuse(:purge, workspace),
          :claimed <- claim(Workspace, workspace_id) do
       _retired = AccessKeys.retire_public_keys(organisation_id, workspace_id)
+      # The collections linked to it stay with their organisation, linked to none.
+      _unlinked = Apiary.Adapters.Collections.unlink_workspace(organisation_id, workspace_id)
       deleted = delete_rows(Tables.workspace_tables(), organisation_id, workspace_id)
 
       Repo.transact(fn ->
