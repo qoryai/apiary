@@ -435,11 +435,11 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(acts, "#work-item-step-confirm") == 1
     end
 
-    test "without the right to act: the owner by name, the reader too, escaped" do
+    test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
       assert text(mine, ".q-wi-bee-line") ==
-               "Waits for Dana to confirm Qory's proposal or decline the work item."
+               "Waits for you to confirm Qory's proposal or decline the work item."
 
       html =
         card(work_item(%{owner: %{id: "pr_x", name: "<b>Ana</b>", you: false}}), can_act: false)
@@ -933,11 +933,11 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {%{taker | name: "Priya A."}, "Priya took this in from G acme/shop#1204"}
           ] do
         html = event(kind: :taken_in, actor: taker, owner: owner, external_ref: "acme/shop#1204")
-        assert line(html) =~ expected
+        assert line(html) == expected <> " 14 Oct, 11:24"
       end
 
       same = event(kind: :taken_in, actor: taker, owner: taker, external_ref: "acme/shop#1204")
-      refute line(same) =~ "owns it"
+      assert line(same) == "Priya took this in from G acme/shop#1204 14 Oct, 11:24"
     end
 
     test "taken in: every owner and reader form" do
@@ -948,7 +948,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {@dana, @priya, "You took this in from G acme/shop#1204. Priya owns it"}
           ] do
         html = event(kind: :taken_in, actor: actor, owner: owner, external_ref: "acme/shop#1204")
-        assert line(html) =~ expected
+        assert line(html) == expected <> " 14 Oct, 11:24"
       end
     end
 

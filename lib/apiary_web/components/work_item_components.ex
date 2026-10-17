@@ -17,7 +17,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     `:closed` or `:undone`;
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
-  #   * `:owner` - a person;
+  #   * `:owner` - a person, or `nil`;
   #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when;
   #   * `:updated_at` - when it last changed.
   #
@@ -371,7 +371,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Confirm: Qory's proposal waits; Confirm (`"confirm"`) and Decline (`"ask_decline"`).
       With `asking: :decline`, the Decline question in their place: its line, Decline
       (`"decline"`) and Cancel. Without `can_act`, whose turn it is: the work item's
-      `:owner`, by name.
+      `:owner`, by name, or "you" where the owner is the reader.
     * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
 
   Undo is there only with `can_undo`; Confirm, Decline and the Decline question only with
@@ -562,6 +562,9 @@ defmodule ApiaryWeb.WorkItemComponents do
               gettext(
                 "Qory proposed how to build it. Confirm the proposal, or decline the work item."
               )
+
+            you?(owner) ->
+              gettext("Waits for you to confirm Qory's proposal or decline the work item.")
 
             owner ->
               gettext("Waits for %{name} to confirm Qory's proposal or decline the work item.",
