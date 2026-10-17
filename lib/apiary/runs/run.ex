@@ -24,7 +24,12 @@ defmodule Apiary.Runs.Run do
   use Ecto.Schema
 
   @typedoc "A run of a workspace."
-  @type t :: %__MODULE__{}
+  @type t :: run()
+
+  # The struct, whose fields include one of a feature the documentation does not differ by
+  # (`docs: false`): the run of a workspace's queue a run is. A private type, so the served
+  # docs show its name alone.
+  @typep run :: %__MODULE__{}
 
   @states ~w(pending running completed failed cancelled lost)
 

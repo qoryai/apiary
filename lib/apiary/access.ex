@@ -457,6 +457,13 @@ defmodule Apiary.Access do
     instance: "the instance itself, in a job no person enqueued"
   ]
 
+  # The roles that belong to a feature, which the tables and the docs of this module leave
+  # out where the documentation does not differ by it (`docs: false`), as they leave out
+  # its actions: a node pool's key, which holds what a node's key holds and the dispatch
+  # actions besides, and an adapter's key.
+  @role_features [pool_key: :factory, adapter_key: :factory]
+  @undocumented_roles for {role, feature} <- @role_features, feature in @undocumented, do: role
+
   # The actions over people, and the levels each role may take them on: the level of the
   # membership changed or removed; an invitation, sent or revoked, is at member, the level
   # its person joins at. An owner acts on anyone, an admin on members only.
@@ -594,7 +601,7 @@ defmodule Apiary.Access do
 
   | Role | Who | Actions |
   |---|---|---|
-  #{@roles |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
+  #{@roles |> Enum.reject(fn {role, _who} -> role in @undocumented_roles end) |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
 
   Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
   Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
@@ -675,7 +682,7 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc """
-  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`
+  A role: one of the core's, #{([:owner, :admin, :member, :access_key, :pool_key] -- @undocumented_roles) |> Enum.map_join(", ", &"`#{inspect(&1)}`")}
   and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
   """
   @type role :: atom
@@ -1228,7 +1235,7 @@ defmodule Apiary.Access do
 
   @doc """
   role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
-  node or a gateway, `:pool_key` for a node pool's, `:instance` for the instance, the
+  node or a gateway, #{unless :pool_key in @undocumented_roles, do: "`:pool_key` for a node pool's, "}`:instance` for the instance, the
   level of the person's membership there, else the role the edition gives them
   (`c:Apiary.Edition.role/1`); nil for anyone else. A key whose node the scope does not
   carry loaded, or whose node is of a kind it does not know, gets no role.
