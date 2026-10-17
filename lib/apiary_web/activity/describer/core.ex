@@ -213,13 +213,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
   defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
 
-  # Collections linked to a workspace; those linked to none say no more than any change.
+  # Collections linked to a workspace, or unlinked from theirs: the entry of an unassign
+  # names no workspace (`"workspace_id"` nil).
   defp said(:"collection.assign", %{"count" => count, "workspace_id" => id}, _actor)
        when is_integer(count) and is_binary(id),
        do:
          ngettext(
            "Assigned %{count} collection to a workspace",
            "Assigned %{count} collections to a workspace",
+           count
+         )
+
+  defp said(:"collection.assign", %{"count" => count, "workspace_id" => nil}, _actor)
+       when is_integer(count),
+       do:
+         ngettext(
+           "Unassigned %{count} collection from its workspace",
+           "Unassigned %{count} collections from their workspaces",
            count
          )
 
