@@ -10,10 +10,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   #
   #   * `:number` - the workspace's number for it, which Qory Apiary gives, `88`;
   #   * `:title` - the ticket's title as it was taken in;
-  #   * `:external_ref` - the ticket's ref at the source, `"acme/shop#1204"`: words to
-  #     show, never an id, a path or an event's value;
+  #   * `:key` - the ticket's key at the source, such as `"#1204"`, or `nil`: display text
+  #     only, shown as it is and never parsed, as the Backlog shows it. Without a key the
+  #     pages show none; the ticket's ref at the source is never shown;
   #   * `:url` - the ticket's page at the source, or `nil`;
-  #   * `:repository` - the repository as the source names it, `"acme/shop"`;
+  #   * `:repository` - the title of the collection that holds the ticket, `"acme/shop"`.
+  #     The ticket's full form is this title followed by its key (`"acme/shop#1204"`), or
+  #     the title alone without a key (`BacklogComponents.full_form/1`);
   #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory asked), `:used_up`
   #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
   #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
@@ -34,9 +37,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # Every DOM id, `phx-value-*` and path is Qory Apiary's: the work item's number, a
   # comment's `public_id`, a question's `public_id`, a run's `rn_` id, and the paths the
   # page gives. A source Qory learned from is a link only when it is an https address
-  # core allows; any other is its address as text. The ticket's ref and its number
-  # at the source are text only. The page gives every path (`again_path`, `ticket_path`,
-  # the run's `path`); a component builds none.
+  # core allows; any other is its address as text. The ticket's key at the source is
+  # text only. The page gives every path (`again_path`, `ticket_path`, the run's `path`);
+  # a component builds none.
   #
   # The events a component sends, for the page to handle:
   #
@@ -254,9 +257,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc """
   A work item's header: the ticket's title as it was taken in and the work item's number;
-  the meta line, its status, the ticket's ref with the integration's mark as a link out
-  ("Open %{ref} on %{integration}"), and who owns it; More, with Copy link and Close work
-  item…, on a work item that has not ended; then the stages (`stage_track/1`).
+  the meta line, its status, the ticket's key with the integration's mark as a link out
+  ("Open %{ref} on %{integration}", with the ticket's full form), and who owns it; More,
+  with Copy link and Close work item…, on a work item that has not ended; then the stages
+  (`stage_track/1`).
 
   Copy link copies `link`, the work item's address, in the browser (the `CopyToClipboard`
   hook). Close work item… sends `"ask_close"`, and is there only with `can_close`.
@@ -281,7 +285,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         href: if(out?(work_item[:url]), do: work_item.url),
         open_title:
           gettext("Open %{ref} on %{integration}",
-            ref: work_item.external_ref,
+            ref: BacklogComponents.full_form(work_item),
             integration: assigns.integration
           )
       )
@@ -297,7 +301,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             <.work_item_status work_item={@work_item} can_act={@can_act} />
             <span>
               <.external_link href={@href} class="q-wi-ref" title={@href && @open_title}>
-                <BacklogComponents.integration_tile name={@integration} />{@work_item.external_ref}
+                <BacklogComponents.integration_tile name={@integration} />{@work_item[:key]}
               </.external_link>
             </span>
             <span>{owner_phrase(@work_item.owner)}</span>
@@ -1343,9 +1347,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   from, who filed it and when), its repository, when and by whom it was taken in, its
   first instruction, its runs, and how it ended. From 1440 px a quiet list beside the page
   under its heading; below it, folded behind a button that says who owns it and the
-  ticket's ref, which opens it in place.
+  ticket's key, which opens it in place.
 
-  It reads the work item's `:owner`, `:external_ref`, `:url`, `:repository`,
+  It reads the work item's `:owner`, `:key`, `:url`, `:repository`,
   `:taken_in_by`, `:taken_in_at`, `:first_instruction` (`nil`, empty or blank for none),
   `:runs` (`nil` for none, or `%{latest: %{id:, path:}, count:, running:}`), `:ended_by`
   and `:ended_at`, and its ticket's filer and when it was filed (`ticket`,
@@ -1394,7 +1398,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.rich text={@summary}>
           <:part name={:ref}>
             <span class="q-wi-refm">
-              <BacklogComponents.integration_tile name={@integration} />{@work_item.external_ref}
+              <BacklogComponents.integration_tile name={@integration} />{@work_item[:key]}
             </span>
           </:part>
         </.rich>
@@ -1414,7 +1418,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <dd id={"#{@id}-ticket"}>
           <span class="q-wi-l1">
             <BacklogComponents.integration_tile name={@integration} />
-            <.external_link href={@href} class="q-wi-tkr">{@work_item.external_ref}</.external_link>
+            <.external_link :if={@work_item[:key]} href={@href} class="q-wi-tkr">
+              {@work_item[:key]}
+            </.external_link>
           </span>
           <span class="q-wi-sub"><.rich text={@ticket_line} /></span>
         </dd>
@@ -2852,11 +2858,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## The Ticket tab
 
   @doc """
-  The Ticket tab: the ticket as the integration sent it, kept current. Its ref with the
-  integration's mark, who filed it and when, when it was last updated, Open on the
-  integration, its labels, its text (`SourceComponents.body/1`, with Show as written), and
-  its latest comments under how many it has, with Show earlier comments
-  (`"show_earlier_comments"`) where it has more than are given.
+  The Ticket tab: the ticket as the integration sent it, kept current. Its full form with
+  the integration's mark, as the Backlog's ticket head names it, who filed it and when,
+  when it was last updated, Open on the integration, its labels, its text
+  (`SourceComponents.body/1`, with Show as written), and its latest comments under how
+  many it has, with Show earlier comments (`"show_earlier_comments"`) where it has more
+  than are given.
 
   After the integration's uninstall (`uninstalled`) a line above it says when the
   integration last sent it (`ticket.received_at`), and that it is no longer kept current.
@@ -2868,7 +2875,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   name), `:at`, `:body` and `:format`.
   """
   attr :id, :string, default: "work-item-ticket"
-  attr :work_item, :map, required: true, doc: "the work item: `:external_ref` and `:url`"
+  attr :work_item, :map, required: true, doc: "the work item: `:key`, `:repository` and `:url`"
   attr :ticket, :map, required: true, doc: "the ticket, as above"
   attr :comments, :list, default: [], doc: "its latest comments, as above"
   attr :integration, :string, required: true, doc: "the integration's name"
@@ -2886,6 +2893,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         count: count,
         earlier: max(count - length(assigns.comments), 0),
         href: if(out?(assigns.work_item[:url]), do: assigns.work_item.url),
+        full_form: BacklogComponents.full_form(assigns.work_item),
         # The Backlog's line; the space before its "·" does not break, so a wrapped line
         # never starts with it.
         meta:
@@ -2911,7 +2919,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       </p>
       <div class="q-wi-tkt-meta">
         <span class="q-wi-key">
-          <BacklogComponents.integration_tile name={@integration} />{@work_item.external_ref}
+          <BacklogComponents.integration_tile name={@integration} />
+          <span title={@full_form}>{@full_form}</span>
         </span>
         <span class="q-wi-tkt-filed">{@meta}</span>
         <span class="q-wi-grow"></span>
@@ -2988,11 +2997,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   One event of the Thread, a line with its time:
 
-    * `:taken_in` - who took the work item in from the ticket (`external_ref`, beside the
-      mark of the integration it came from, `integration`, and a link out where `url` is
-      given), or took it in again (`again`), who owns it where that is another person
-      (`owner`), and the first instruction under it (`first_instruction`, none where it is
-      empty or blank);
+    * `:taken_in` - who took the work item in from the ticket (its `key`, beside the mark
+      of the integration it came from, `integration`, and a link out where `url` is given;
+      the mark alone without a key), or took it in again (`again`), who owns it where that
+      is another person (`owner`), and the first instruction under it
+      (`first_instruction`, none where it is empty or blank);
     * `:started` - Qory started Explore in a run (`run`), its first, again with the
       answers (`start: :answers`), or again after Run Explore again or a retry
       (`start: :again`), with the run's place in the take in beside it;
@@ -3011,7 +3020,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   A run is `%{id:, path:, attempt:, of:}`, its id shown as `short_id/1` and linked where
   `path` is given. A question is `%{public_id:, text:, answer:}`. Every kind takes
-  `integration`, so no page draws the ref without its mark. What a run wrote, and a
+  `integration`, so no page draws the key without its mark. What a run wrote, and a
   member's answers, are quoted as plain text, never inside a sentence.
   """
   attr :id, :string, required: true, doc: "the DOM id: the event's `public_id` under the Thread's"
@@ -3036,9 +3045,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :actor, :map, default: nil, doc: "who acted, a person; none for Qory's events"
   attr :at, :any, required: true, doc: "when"
-  attr :external_ref, :string, default: nil, doc: "`:taken_in`: the ticket's ref"
+  attr :key, :string, default: nil, doc: "`:taken_in`: the ticket's key, or none"
   attr :url, :string, default: nil, doc: "`:taken_in`: the ticket's page at the source"
-  attr :integration, :string, required: true, doc: "the integration's name, beside the ref"
+  attr :integration, :string, required: true, doc: "the integration's name, beside the key"
   attr :owner, :map, default: nil, doc: "`:taken_in`, `:proposed`: who owns it, a person"
   attr :first_instruction, :string, default: nil, doc: "`:taken_in`: the first instruction"
   attr :again, :boolean, default: false, doc: "`:taken_in`: whether it was taken in again"
@@ -3094,7 +3103,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             <:part name={:ref}>
               <span class="q-wi-ev-ref">
                 <BacklogComponents.integration_tile name={@integration} />
-                <.external_link href={@href}>{@external_ref}</.external_link>
+                <.external_link :if={@key} href={@href}>{@key}</.external_link>
               </span>
             </:part>
           </.rich>

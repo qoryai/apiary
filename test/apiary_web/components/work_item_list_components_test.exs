@@ -249,7 +249,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       %{
         number: 88,
         title: "Checkout totals are a cent off when a discount applies",
-        external_ref: "acme/shop#1204",
+        external_ref: "123456#42",
+        key: "#1204",
         status: :confirm,
         owner: @dana,
         ended_by: nil,
@@ -286,9 +287,9 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(html, ".q-wl-ttl > b") ==
                "Checkout totals are a cent off when a discount applies"
 
-      assert text(html, ".q-wl-tk") == "G acme/shop#1204"
+      assert text(html, ".q-wl-tk") == "G #1204"
       assert attr(html, ".q-wl-tk .q-bl-tile", "aria-label") == ["GitHub"]
-      assert attr(html, ".q-wl-tk span[title]", "title") == ["acme/shop#1204"]
+      assert attr(html, ".q-wl-tk span[title]", "title") == ["#1204"]
       assert text(html, ".q-wl-nx") == "Waits for you to confirm"
       assert text(html, ".q-wl-sub") == "#88 · Waits for you to confirm"
       assert count(html, ".q-wl-row-hot") == 1
@@ -346,10 +347,23 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     end
 
     test "what the ticket holds is escaped" do
-      html = row(work_item(%{title: "<script>alert(1)</script>", external_ref: "acme/<x>#1"}))
+      html = row(work_item(%{title: "<script>alert(1)</script>", key: "<x>#1"}))
       refute html =~ "<script>"
       assert html =~ "&lt;script&gt;"
-      refute html =~ "acme/<x>"
+      refute html =~ "<x>"
+      assert html =~ "&lt;x&gt;#1"
+    end
+
+    test "without a key, the mark alone; the ticket's ref never, in any form" do
+      html = row(work_item(%{key: nil}))
+      assert text(html, ".q-wl-tk") == "G"
+      assert count(html, ".q-wl-tk span[title]") == 0
+
+      for w <- [work_item(), work_item(%{key: nil})] do
+        html = row(w)
+        refute html =~ "123456"
+        refute html =~ "#42"
+      end
     end
 
     test "no id or path holds the ticket's ref or its number there" do

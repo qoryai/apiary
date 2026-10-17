@@ -4,10 +4,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   # a work item's row, the pager of Closed, and the empty list.
   #
   # Every component takes plain assigns, as `ApiaryWeb.WorkItemComponents` describes: a
-  # work item is a map with `:number`, `:title`, `:external_ref`, `:status`, `:owner`,
-  # `:ended_by` and `:updated_at`, and a person a map with `:name` and `:you`. Every DOM
-  # id and path is Qory Apiary's: the work item's number, and the paths the page gives.
-  # The ticket's ref is text only.
+  # work item is a map with `:number`, `:title`, `:key` (the ticket's key at the source,
+  # or `nil`), `:status`, `:owner`, `:ended_by` and `:updated_at`, and a person a map with
+  # `:name` and `:you`. Every DOM id and path is Qory Apiary's: the work item's number, and
+  # the paths the page gives. The ticket's key is text only; without one the row shows
+  # none, and the ticket's ref at the source is never shown.
   #
   # What waits at Confirm is said one way on the strip and on Confirm's band: `waiting`
   # is `%{count: n, for: whom}`, `whom` being `:you` (the reader's work items), `:member`
@@ -434,7 +435,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
 
   @doc """
   A work item's row: its mark, its number, its title (the only strong text), its ticket's
-  ref with the integration's mark, its status in words (Waits for you to confirm the one
+  key with the integration's mark (the mark alone without a key), its status in words (Waits for you to confirm the one
   strong status), its owner's mark, and when it last changed. The whole row is a link to
   the work item (`navigate`). In a narrow list the number and the status go under the
   title. Questions, and a take in that used its runs, wait for the reader with `can_act`.
@@ -473,7 +474,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
         </span>
         <span class="q-wl-tk">
           <BacklogComponents.integration_tile name={@integration} />
-          <span title={@work_item.external_ref}>{@work_item.external_ref}</span>
+          <span :if={@work_item[:key]} title={@work_item[:key]}>{@work_item[:key]}</span>
         </span>
         <span class="q-wl-nx">{@words}</span>
         <span

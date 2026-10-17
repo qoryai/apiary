@@ -139,7 +139,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       %{
         number: 88,
         title: "Checkout totals are a cent off when a discount applies",
-        external_ref: "acme/shop#1204",
+        external_ref: "123456#42",
+        key: "#1204",
         url: "https://example.com/acme/shop/issues/1204",
         repository: "acme/shop",
         status: :confirm,
@@ -1469,13 +1470,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
-    test "taken in again: the five whole sentences, the ref beside its mark" do
+    test "taken in again: the five whole sentences, the key beside its mark" do
       for {actor, owner, words} <- [
-            {@dana, @dana, "You took this in again from G acme/shop#1240"},
-            {@priya, @priya, "Priya took this in again from G acme/shop#1240"},
-            {@dana, @priya, "You took this in again from G acme/shop#1240. Priya owns it"},
-            {@priya, @dana, "Priya took this in again from G acme/shop#1240. You own it"},
-            {@priya, @lea, "Priya took this in again from G acme/shop#1240. Lea owns it"}
+            {@dana, @dana, "You took this in again from G #1240"},
+            {@priya, @priya, "Priya took this in again from G #1240"},
+            {@dana, @priya, "You took this in again from G #1240. Priya owns it"},
+            {@priya, @dana, "Priya took this in again from G #1240. You own it"},
+            {@priya, @lea, "Priya took this in again from G #1240. Lea owns it"}
           ] do
         html =
           event(
@@ -1483,7 +1484,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             again: true,
             actor: actor,
             owner: owner,
-            external_ref: "acme/shop#1240"
+            key: "#1240"
           )
 
         assert line(html) |> String.replace(~r/\s+\./, ".") == words <> " 14 Oct, 11:25"
@@ -1507,7 +1508,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       work_item(%{
         number: 94,
         status: :questions,
-        external_ref: "acme/shop#1240",
+        external_ref: "123456#94",
+        key: "#1240",
         run: run1_answered()
       })
 
@@ -1551,7 +1553,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           again: true,
           actor: @dana,
           owner: @dana,
-          external_ref: "acme/shop#1240",
+          key: "#1240",
           url: "https://example.com/acme/shop/issues/1240"
         ),
         event(kind: :answered, actor: @dana, questions: questions(@answers))
@@ -1563,6 +1565,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           name in ["id", "href", "name", "for", "aria-controls", "aria-describedby"] or
             String.starts_with?(name, "phx-value-"),
           do: {name, value}
+
+    # The ticket's ref at the source is drawn nowhere, as text or as a value.
+    refute html =~ "123456"
 
     assert Enum.any?(values, &match?({"phx-value-number", "88"}, &1))
     assert Enum.any?(values, &match?({"phx-value-number", "94"}, &1))

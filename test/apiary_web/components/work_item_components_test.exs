@@ -15,6 +15,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
   @now ~U[2026-10-17 12:00:00Z]
   @url "https://example.com/acme/shop/issues/1204"
+  # The ticket's ref at the source: opaque, never drawn.
+  @ref "123456#42"
 
   @dana %{id: "pr_dana", name: "Dana", you: true}
   @priya %{id: "pr_priya", name: "Priya", you: false}
@@ -27,7 +29,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       %{
         number: 88,
         title: "Checkout totals are a cent off when a discount applies",
-        external_ref: "acme/shop#1204",
+        external_ref: @ref,
+        key: "#1204",
         url: @url,
         repository: "acme/shop",
         status: :confirm,
@@ -154,8 +157,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert attr(html, "a.q-wi-ref", "href") == [@url]
       assert attr(html, "a.q-wi-ref", "title") == ["Open acme/shop#1204 on GitHub"]
       assert attr(html, "a.q-wi-ref", "target") == ["_blank"]
-      assert text(html, "a.q-wi-ref") =~ "acme/shop#1204"
-      assert text(html, "a.q-wi-ref") =~ "(opens in a new tab)"
+      assert text(html, "a.q-wi-ref") == "G #1204 (opens in a new tab)"
       assert html =~ "You own it"
 
       assert attr(html, "#work-item-head-more-button", "aria-label") == [
@@ -190,10 +192,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       end
     end
 
-    test "a ticket url that may not be a link is the ref as text, with its mark" do
+    test "a ticket url that may not be a link is the key as text, with its mark" do
       html = header(work_item(%{url: "http://example.com/acme/shop/issues/1204"}))
       assert count(html, "a.q-wi-ref") == 0
-      assert text(html, "span.q-wi-ref") == "G acme/shop#1204"
+      assert text(html, "span.q-wi-ref") == "G #1204"
       assert attr(html, "span.q-wi-ref .q-bl-tile", "aria-label") == ["GitHub"]
     end
   end
@@ -662,7 +664,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-details-toggle .q-wi-dtoggle-t") == "Details"
 
       assert text(html, "#work-item-details-toggle .q-wi-dtoggle-s") ==
-               "You own it · G acme/shop#1204"
+               "You own it · G #1204"
 
       assert attr(html, "#work-item-details-toggle", "aria-expanded") == ["false"]
       assert attr(html, "#work-item-details-toggle", "aria-controls") == ["work-item-details"]
@@ -672,7 +674,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                ["Owner", "Ticket", "Repository", "Taken in", "First instruction", "Runs"]
 
       assert text(html, "#work-item-details-owner") == "D Dana (you)"
-      assert text(html, "#work-item-details-ticket a") =~ "acme/shop#1204"
+      assert text(html, "#work-item-details-ticket a") == "#1204 (opens in a new tab)"
       assert attr(html, "#work-item-details-ticket a", "href") == [@url]
 
       assert text(html, "#work-item-details-ticket .q-wi-sub") ==
@@ -699,7 +701,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       refute html =~ "(you)"
 
       assert text(html, "#work-item-details-toggle .q-wi-dtoggle-s") ==
-               "Priya owns it · G acme/shop#1204"
+               "Priya owns it · G #1204"
 
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by you"
       assert text(html, "#work-item-details-instruction") == "None"
@@ -828,6 +830,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = ticket_tab()
 
       assert text(html, ".q-wi-key") == "G acme/shop#1204"
+      assert attr(html, ".q-wi-key span[title]", "title") == ["acme/shop#1204"]
       assert attr(html, ".q-wi-key .q-bl-tile", "aria-label") == ["GitHub"]
 
       assert text(html, ".q-wi-tkt-filed") ==
@@ -893,13 +896,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           kind: :taken_in,
           actor: @lea,
           owner: @lea,
-          external_ref: "acme/shop#1204",
+          key: "#1204",
           url: @url,
           integration: "GitHub",
           first_instruction: "Check the rounding."
         )
 
-      assert line(html) =~ "Lea took this in from G acme/shop#1204"
+      assert line(html) =~ "Lea took this in from G #1204"
       assert attr(html, ".q-wi-ev-ref .q-bl-tile", "aria-label") == ["GitHub"]
       assert attr(html, ".q-wi-ev-ref a", "href") == [@url]
       assert attr(html, ".q-wi-ev-ref a", "target") == ["_blank"]
@@ -909,19 +912,19 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-q") == "First instruction: Check the rounding."
     end
 
-    test "taken in: a ticket url that may not be a link is the ref as text" do
+    test "taken in: a ticket url that may not be a link is the key as text" do
       html =
         event(
           kind: :taken_in,
           actor: @lea,
           owner: @lea,
-          external_ref: "acme/shop#1204",
+          key: "#1204",
           url: "http://example.com/acme/shop/issues/1204",
           integration: "GitHub"
         )
 
       assert count(html, "a") == 0
-      assert text(html, ".q-wi-ev-ref") == "G acme/shop#1204"
+      assert text(html, ".q-wi-ev-ref") == "G #1204"
     end
 
     test "taken in: an empty or blank first instruction is none" do
@@ -931,7 +934,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             kind: :taken_in,
             actor: @lea,
             owner: @lea,
-            external_ref: "acme/shop#1204",
+            key: "#1204",
             integration: "GitHub",
             first_instruction: blank
           )
@@ -946,25 +949,25 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       namesake = %{id: "pr_priya_b", name: "Priya", you: false}
 
       for {owner, expected} <- [
-            {namesake, "Priya took this in from G acme/shop#1204. Priya owns it"},
-            {%{taker | name: "Priya A."}, "Priya took this in from G acme/shop#1204"}
+            {namesake, "Priya took this in from G #1204. Priya owns it"},
+            {%{taker | name: "Priya A."}, "Priya took this in from G #1204"}
           ] do
-        html = event(kind: :taken_in, actor: taker, owner: owner, external_ref: "acme/shop#1204")
+        html = event(kind: :taken_in, actor: taker, owner: owner, key: "#1204")
         assert line(html) == expected <> " 14 Oct, 11:24"
       end
 
-      same = event(kind: :taken_in, actor: taker, owner: taker, external_ref: "acme/shop#1204")
-      assert line(same) == "Priya took this in from G acme/shop#1204 14 Oct, 11:24"
+      same = event(kind: :taken_in, actor: taker, owner: taker, key: "#1204")
+      assert line(same) == "Priya took this in from G #1204 14 Oct, 11:24"
     end
 
     test "taken in: every owner and reader form" do
       for {actor, owner, expected} <- [
-            {@dana, @dana, "You took this in from G acme/shop#1204"},
-            {@lea, @dana, "Lea took this in from G acme/shop#1204. You own it"},
-            {@lea, @priya, "Lea took this in from G acme/shop#1204. Priya owns it"},
-            {@dana, @priya, "You took this in from G acme/shop#1204. Priya owns it"}
+            {@dana, @dana, "You took this in from G #1204"},
+            {@lea, @dana, "Lea took this in from G #1204. You own it"},
+            {@lea, @priya, "Lea took this in from G #1204. Priya owns it"},
+            {@dana, @priya, "You took this in from G #1204. Priya owns it"}
           ] do
-        html = event(kind: :taken_in, actor: actor, owner: owner, external_ref: "acme/shop#1204")
+        html = event(kind: :taken_in, actor: actor, owner: owner, key: "#1204")
         assert line(html) == expected <> " 14 Oct, 11:24"
       end
     end
@@ -1099,14 +1102,14 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
   end
 
-  describe "the ticket's ref" do
+  describe "the ticket's key" do
     test "is drawn beside the integration's mark wherever it is shown" do
       thread =
         event(
           kind: :taken_in,
           actor: @lea,
           owner: @lea,
-          external_ref: "acme/shop#1204",
+          key: "#1204",
           url: @url,
           integration: "GitHub"
         )
@@ -1120,20 +1123,73 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           now: @now
         )
 
-      for {where, html, selector} <- [
-            {"the header", header(work_item()), "a.q-wi-ref"},
-            {"the Details row", details(work_item()), "#work-item-details-ticket .q-wi-l1"},
-            {"the Details fold", details(work_item()), ".q-wi-dtoggle-s .q-wi-refm"},
-            {"the Ticket tab", ticket_tab(), ".q-wi-key"},
-            {"the Thread", thread, ".q-wi-ev-ref"},
-            {"the list row", row, ".q-wl-tk"}
+      for {where, html, selector, drawn} <- [
+            {"the header", header(work_item()), "a.q-wi-ref", "G #1204"},
+            {"the Details row", details(work_item()), "#work-item-details-ticket .q-wi-l1",
+             "G #1204"},
+            {"the Details fold", details(work_item()), ".q-wi-dtoggle-s .q-wi-refm", "G #1204"},
+            {"the Ticket tab", ticket_tab(), ".q-wi-key", "G acme/shop#1204"},
+            {"the Thread", thread, ".q-wi-ev-ref", "G #1204"},
+            {"the list row", row, ".q-wl-tk", "G #1204"}
           ] do
-        assert text(html, selector) =~ "G acme/shop#1204", where
+        assert text(html, selector) =~ drawn, where
         assert attr(html, "#{selector} .q-bl-tile", "aria-label") == ["GitHub"], where
 
-        refs = html |> words() |> String.split("acme/shop#1204") |> length()
+        keys = html |> words() |> String.split("#1204") |> length()
         marks = count(html, ".q-bl-tile")
-        assert refs - 1 == marks, "#{where}: every ref beside a mark"
+        assert keys - 1 == marks, "#{where}: every key beside a mark"
+      end
+    end
+
+    test "without a key, none is drawn, and the ref never is" do
+      w = work_item(%{key: nil})
+
+      header = header(w)
+      assert text(header, "a.q-wi-ref") == "G (opens in a new tab)"
+      assert attr(header, "a.q-wi-ref", "title") == ["Open acme/shop on GitHub"]
+
+      details = details(w)
+      assert text(details, "#work-item-details-toggle .q-wi-dtoggle-s") == "You own it · G"
+      assert text(details, "#work-item-details-ticket .q-wi-l1") == "G"
+      assert count(details, "#work-item-details-ticket a") == 0
+
+      # The full form is the collection's title alone, as the Backlog's ticket head has it.
+      tab = ticket_tab(work_item: w)
+      assert text(tab, ".q-wi-key") == "G acme/shop"
+
+      thread =
+        event(kind: :taken_in, actor: @lea, owner: @lea, key: nil, url: @url)
+
+      assert line(thread) == "Lea took this in from G 14 Oct, 11:24"
+      assert count(thread, "a") == 0
+
+      for html <- [header, details, tab, thread] do
+        refute html =~ "#1204"
+        refute html =~ "123456"
+      end
+    end
+
+    test "the ticket's ref at the source is never in the page" do
+      for w <- [work_item(), work_item(%{key: nil})] do
+        html =
+          Enum.join([
+            header(w),
+            track(w),
+            card(w),
+            details(w),
+            ticket_tab(work_item: w),
+            event(kind: :taken_in, actor: @lea, owner: @dana, key: w.key, url: @url),
+            render_component(&ApiaryWeb.WorkItemListComponents.work_item_row/1,
+              id: "work-item-88",
+              work_item: w,
+              integration: "GitHub",
+              navigate: "/8wonders/main/work/88",
+              now: @now
+            )
+          ])
+
+        refute html =~ "123456"
+        refute html =~ @ref
       end
     end
 
@@ -1159,7 +1215,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             kind: :taken_in,
             actor: @lea,
             owner: @dana,
-            external_ref: "acme/shop#1204",
+            key: "#1204",
             url: @url,
             integration: "GitHub"
           ),
