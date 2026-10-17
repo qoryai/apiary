@@ -673,7 +673,8 @@ defmodule Apiary.EnvironmentsTest do
       assert Environments.image_for(ctx.pool, @shop) == image("2")
       assert Environments.image_for(ctx.pool, %{@shop | path: "acme/docs"}) == image("7")
 
-      # A record queued again keeps its last good build for runs until the next one lands.
+      # A record queued again, never retired, keeps its last good build for runs until the
+      # next one lands.
       Repo.update_all(from(r in Record, where: r.source_collection_id == ^newest.id),
         set: [queued_ref: "env-2", queued_at: DateTime.utc_now()]
       )

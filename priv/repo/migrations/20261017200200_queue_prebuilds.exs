@@ -24,9 +24,10 @@ defmodule Apiary.Repo.Migrations.QueuePrebuilds do
   # while one is claimed or runs queues the one that waits next.
   #
   # The end causes, on both tables: `collection_ended`, the collection of a prebuild
-  # ended, was assigned to none or to another workspace, has no target, or its connection
-  # ended, before the run was handed over; `superseded`, a claimed prebuild whose lease
-  # lapsed while another prebuild of its collection and pool waited.
+  # ended, was assigned to none or to another workspace, has no target or no
+  # `environment_ref`, or its connection ended, before the run was handed over;
+  # `superseded`, a claimed prebuild whose lease lapsed while another prebuild of its
+  # collection and pool waited or went back to waiting.
   #
   # The collection and the node pool are NO ACTION, as a dispatch's pool is: the purge
   # deletes the runs of the queue before them. Rolled back, the shape and the causes are

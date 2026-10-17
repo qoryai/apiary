@@ -28,7 +28,10 @@ defmodule Apiary.Dispatches.Slots do
   #   other ends `superseded`. A dispatch of a run that ends so ends with it
   #   (`run_ended`). A dispatch that ended with its slot still held has it freed.
   #   Whatever the state of the pool or of the key that claimed it: a deleted pool's or a
-  #   revoked key's dispatch lapses at its `lease_until` as any other does, and its run waits for the workspace's other pools.
+  #   revoked key's dispatch lapses at its `lease_until` as any other does. Its run then
+  #   waits for the workspace's other pools, unless it is a prebuild: a lapsed prebuild
+  #   waits again or ends as above, and the one that waits is still held for its pool,
+  #   which alone may claim it.
   #   It answers the ids of the workspaces whose queue or slots changed, for the caller to
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
   # - `free_slot/2` frees one dispatch's slot, for the paths that end a dispatch.
@@ -49,9 +52,10 @@ defmodule Apiary.Dispatches.Slots do
   #      one (`Apiary.Environments.trigger/2`), whatever order its caller names them in,
   #      and `free/2` the records of every prebuild whose dispatch lapsed in its scope,
   #      those of every batch, before its first batch locks a run. It reads them before
-  #      their lock, as a run's collection and pool never change, and leaves a prebuild
-  #      whose lease lapses after that statement for the next free. The free of an undo
-  #      or a close, of the runs of work items, locks none;
+  #      their lock, as a run's collection and pool never change. A prebuild seen lapsed
+  #      only after that statement, its dispatch or its record committed after it, is
+  #      taken only when its record is already locked, and is left for the next free
+  #      otherwise. The free of an undo or a close, of the runs of work items, locks none;
   #   4. the runs of the queue whose dispatch lapsed, `FOR UPDATE`, by id (`free/2`), and
   #      the runs `Apiary.Dispatches` ends for an undo or a close;
   #   5. the waiting runs: the one prebuild that waits per collection and pool, which a
@@ -73,11 +77,13 @@ defmodule Apiary.Dispatches.Slots do
   # batch locks its runs after an earlier one locked its waiting runs and its
   # dispatches. No two paths wait on each other for that: it holds every record its
   # batches need before the first, so a path that holds a record never waits on it at a
-  # run; it locks only the waiting runs of the records it holds, and only the dispatches
-  # of the runs it holds; and every path that locks runs whose lease lapsed, another
-  # free, an undo or a close, takes them in the order of their ids as well, so whichever
-  # of two waits on the other at a run holds only runs of lower ids, which the other
-  # never asks for again. Every function here runs inside the caller's transaction.
+  # run; it locks only the waiting runs of the records it holds, as it takes a prebuild
+  # only when it holds its record (`candidates/3`, which says why every prebuild has
+  # one), and only the dispatches of the runs it holds; and every path that locks runs
+  # whose lease lapsed, another free, an undo or a close, takes them in the order of
+  # their ids as well, so whichever of two waits on the other at a run holds only runs
+  # of lower ids, which the other never asks for again. Every function here runs inside
+  # the caller's transaction.
 
   import Ecto.Query, only: [from: 2]
 
@@ -189,10 +195,14 @@ defmodule Apiary.Dispatches.Slots do
     end
   end
 
-  # The runs of the next batch, `@batch` at most, by id: of the lapsed dispatches of
-  # `pool`, a prebuild's only when the record of its collection and pool is among those
-  # `lock_records/2` locked, or it has none. A prebuild whose lease lapsed after that lock
-  # is left for the next free.
+  # The runs of the next batch, `@batch` at most, by id, of the lapsed dispatches of
+  # `pool`: a run of any other step, which has no environment record (`is_nil(e.id)`), and
+  # a prebuild only when the record of its collection and pool is among those
+  # `lock_records/2` locked. A prebuild seen lapsed only after that lock, its dispatch or
+  # its record committed after it, is so taken only when its record is already locked,
+  # and is left for the next free otherwise. A prebuild without a record cannot occur:
+  # its record is written before it (`Apiary.Environments`), and the purge deletes the
+  # runs of the queue before the environment records.
   defp candidates(pool, now, %{ids: record_ids}) do
     from d in lapsed(pool, now),
       join: r in DispatchRun,
