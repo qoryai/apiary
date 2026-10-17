@@ -14,6 +14,7 @@ defmodule Apiary.Explore.ResultTest do
   use ExUnitProperties
 
   alias Apiary.Explore.Result
+  alias Apiary.Kinds.Bounds
   alias Apiary.Runs.Event
 
   @fixtures Path.expand("../../fixtures/contract/explore/v1", __DIR__)
@@ -631,7 +632,7 @@ defmodule Apiary.Explore.ResultTest do
 
   describe "the bounds come from the schema" do
     test "the vendored result.schema.json allows lists of 50 and objects of 8 members" do
-      assert Result.bounds() == {50, 8}
+      assert Result.bounds() == [list: 50, members: 8]
     end
 
     test "a schema whose arrays and objects are all bounded gives the largest" do
@@ -646,7 +647,7 @@ defmodule Apiary.Explore.ResultTest do
         "allOf" => [%{"if" => %{"properties" => %{"a" => %{"const" => 1}}}, "then" => false}]
       }
 
-      assert Result.bounds(schema) == {7, 2}
+      assert Bounds.from_schema(schema) == [list: 7, members: 2]
     end
 
     test "a schema whose bounds cannot be told raises" do
@@ -677,7 +678,7 @@ defmodule Apiary.Explore.ResultTest do
             %{"type" => "string", "allOf" => [%{"type" => "array"}]},
             %{"type" => "string", "$defs" => %{"a" => %{"type" => "object"}}}
           ] do
-        assert_raise ArgumentError, fn -> Result.bounds(schema) end
+        assert_raise ArgumentError, fn -> Bounds.from_schema(schema) end
       end
     end
   end

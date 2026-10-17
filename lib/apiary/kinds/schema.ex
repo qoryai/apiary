@@ -14,7 +14,7 @@ defmodule Apiary.Kinds.Schema do
 
   @behaviour JSV.Resolver
 
-  alias Apiary.Kinds.Pattern
+  alias Apiary.Kinds.{Bounds, Pattern}
 
   @forager_contract "https://qory.dev/contracts/forager/v1/"
   @vendored ~w(auth.schema.json)
@@ -22,10 +22,15 @@ defmodule Apiary.Kinds.Schema do
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for
   one JSV cannot build, such as a pattern PCRE does not take.
+
+  It is built with `atoms: false`, whatever `opts` say: a cast that makes atoms, such as
+  `"jsv-cast": ["Elixir.JSV.Cast", "string_to_atom"]` or `"aprops"`, is left out, so a
+  schema from an untrusted input can make no atom, which the runtime never frees.
   """
   @spec build(map, keyword) :: {:ok, JSV.Root.t()} | {:error, term}
   def build(schema, opts \\ []) when is_map(schema) do
-    {:ok, JSV.build!(Pattern.end_only(schema), Keyword.merge([formats: true], opts))}
+    opts = [formats: true] |> Keyword.merge(opts) |> Keyword.put(:atoms, false)
+    {:ok, JSV.build!(Pattern.end_only(schema), opts)}
   rescue
     error -> {:error, error}
   end
@@ -56,15 +61,47 @@ defmodule Apiary.Kinds.Schema do
   end
 
   @doc """
-  validate/2 validates the decoded JSON `value` against `root`: `:ok`, or
-  `{:error, errors}` with JSV's normalised errors, for a log and not for a page.
+  validate/3 validates the decoded JSON `value` against `root`, once `value` is within
+  `limits` (`Apiary.Kinds.Bounds.within?/2`): `:ok`, or `{:error, summary}`, for a log
+  and not for a page. A value outside the limits is never given to JSV:
+  `%{valid: false, limits: limits}`, the limits as a map. A refusal by the schema is
+  `summary/1` of JSV's error. JSV validates with `cast: false`: the value is checked, and
+  no cast the schema names is called on it.
   """
-  @spec validate(term, JSV.Root.t()) :: :ok | {:error, map}
-  def validate(value, root) do
-    case JSV.validate(value, root) do
-      {:ok, _value} -> :ok
-      {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
+  @spec validate(term, JSV.Root.t(), Bounds.limits()) :: :ok | {:error, map}
+  def validate(value, root, limits) do
+    if Bounds.within?(value, limits) do
+      case JSV.validate(value, root, cast: false) do
+        {:ok, _value} -> :ok
+        {:error, %JSV.ValidationError{} = error} -> {:error, summary(error)}
+      end
+    else
+      {:error, %{valid: false, limits: Map.new(limits)}}
     end
+  end
+
+  @summarised 8
+
+  @doc """
+  summary/1 is JSV's `error` summed up for a log: `%{valid: false, count: count,
+  errors: errors}`, where `count` is the number of errors JSV gave and `errors` the first
+  #{@summarised} of them, each its keyword, `kind`, and where in the value it is,
+  `instanceLocation`, as `JSV.normalize_error/1` writes it.
+
+  An error is not normalised: JSV gives an error for every entry and member it refuses,
+  and the normalising of one error also normalises every error nested in it, so its cost
+  grows with the value.
+  """
+  @spec summary(JSV.ValidationError.t()) :: map
+  def summary(%JSV.ValidationError{errors: errors}) do
+    %{
+      valid: false,
+      count: length(errors),
+      errors:
+        for %JSV.Validator.Error{kind: kind, data_path: path} <- Enum.take(errors, @summarised) do
+          %{kind: kind, instanceLocation: JSV.ErrorFormatter.format_data_path(path)}
+        end
+    }
   end
 
   # A file of ours that refers to Forager's contract gets the vendored copy, whose

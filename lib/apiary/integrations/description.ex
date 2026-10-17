@@ -5,8 +5,12 @@ defmodule Apiary.Integrations.Description do
   (`priv/contract/integration/description.schema.json`, vendored from the contract at the
   commit `.integration-contract-ref` names for it).
 
-  `parse/1` validates the bytes with JSV against the vendored schema, its patterns read as
-  the contract reads them (`Apiary.Kinds.Pattern`), then checks what the schema cannot:
+  `parse/1` refuses a document in which an object repeats a member, at any depth, the
+  names compared once their escapes are read: Jason keeps the first value of a repeated
+  name, and a reader that keeps the last would read another document. It then
+  validates the bytes with JSV against the vendored schema, its patterns read as the
+  contract reads them (`Apiary.Kinds.Pattern`), once the decoded document is within the
+  limits below, and checks what the schema cannot:
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
       it, and no secret is nested in another setting;
@@ -15,11 +19,19 @@ defmodule Apiary.Integrations.Description do
   A role other than `credential` is read as it is and never refused. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
+  The schema bounds no list, and its `settings` and `roles` take objects of any members.
+  So a description is refused before the schema when it holds a list of more than 1024
+  entries, an object of more than 1024 members, more than 4096 values in all, a string of
+  more than 16 KiB or more than 64 lists and objects nested in one another
+  (`Apiary.Kinds.Bounds.within?/2`).
+
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  alias Apiary.Kinds.{CanonicalJSON, Pattern, Schema}
+  require Logger
+
+  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, Schema}
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -51,6 +63,21 @@ defmodule Apiary.Integrations.Description do
 
   @settings_max 65_536
 
+  # The limits of a description, and of the plain settings checked against its schema,
+  # before a schema is applied (see the module's documentation and `check_settings/2`).
+  @limits [list: 1024, members: 1024, nodes: 4096, string: 16_384, depth: 64]
+  @settings_limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
+
+  # The budget of the settings check, the build of the schema and the validation
+  # (`Apiary.Kinds.Budget`): 100 ms and 2097152 words of heap, 16 MiB on a 64-bit machine.
+  # Measured in two runs of 50 checks each, idle and with every scheduler busy: settings
+  # at the limits above took 13.5 ms to 18.5 ms at the median and at most 24 ms; 1000
+  # settings of 1000 properties 4.7 ms to 5.7 ms at the median and at most 22 ms, with
+  # 439685 words of heap, the most of any measured; the settings of the fixtures under
+  # 2 ms. Connections checks settings while it holds the organisation's integrations lock
+  # (`Apiary.Connections.lock/1`), which keeps the budget small.
+  @settings_budget [ms: 100, heap_words: 2_097_152]
+
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
   `{:error, {code, details}}` (see the module's documentation).
@@ -67,16 +94,45 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
+  # The bytes are decoded twice: once keeping every member of each object in order, to
+  # find a name held twice, then as maps, which keep only one value of a name, for the
+  # rest of the checks.
   defp decode(bytes) do
-    case Jason.decode(bytes) do
-      {:ok, %{} = document} -> {:ok, document}
-      {:ok, _other} -> {:error, {:description_invalid, [:not_an_object]}}
-      {:error, _error} -> {:error, {:description_invalid, [:not_json]}}
+    case Jason.decode(bytes, objects: :ordered_objects) do
+      {:ok, %Jason.OrderedObject{} = ordered} ->
+        if repeats_member?([ordered]),
+          do: {:error, {:description_invalid, [:member_repeated]}},
+          else: {:ok, Jason.decode!(bytes)}
+
+      {:ok, _other} ->
+        {:error, {:description_invalid, [:not_an_object]}}
+
+      {:error, _error} ->
+        {:error, {:description_invalid, [:not_json]}}
     end
   end
 
+  # Whether an object of the ordered decode, at any depth, holds a member name twice. The
+  # values still to read are kept in a list and each function calls the next last, so
+  # nesting of any depth runs in constant stack.
+  defp repeats_member?([]), do: false
+
+  defp repeats_member?([%Jason.OrderedObject{values: members} | rest]),
+    do: members_repeat?(members, %{}, rest)
+
+  defp repeats_member?([list | rest]) when is_list(list), do: repeats_member?(list ++ rest)
+  defp repeats_member?([_scalar | rest]), do: repeats_member?(rest)
+
+  defp members_repeat?([], _seen, rest), do: repeats_member?(rest)
+
+  defp members_repeat?([{name, value} | members], seen, rest) do
+    if is_map_key(seen, name),
+      do: true,
+      else: members_repeat?(members, Map.put(seen, name, true), [value | rest])
+  end
+
   defp schema(document) do
-    case Schema.validate(document, root()) do
+    case Schema.validate(document, root(), @limits) do
       :ok -> :ok
       {:error, errors} -> {:error, {:description_invalid, [{:schema, errors}]}}
     end
@@ -164,9 +220,16 @@ defmodule Apiary.Integrations.Description do
       a secret nor a secret's `<name>_file`, else `integration_settings_not_allowed`: a
       connection never holds a secret, and a `<name>_file` is a path on the node that a
       server never sends;
+    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`;
-    * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`.
+      `settings`, `integration_settings_invalid`; before that schema is applied, settings
+      that hold a list of more than 1024 entries, an object of more than 1024 members,
+      more than 4096 values in all or more than 64 lists and objects nested in one
+      another are refused so: the schema comes from the description and need bound none
+      of them. For the same reason the schema is built and the settings validated in
+      another process, within 100 ms and 16 MiB of heap: a schema of a few references
+      can make the work grow exponentially with their nesting. Settings whose check
+      goes over that budget, or fails, are refused as `integration_settings_invalid`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -205,13 +268,30 @@ defmodule Apiary.Integrations.Description do
         "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
       })
 
-    with {:ok, root} <- Schema.build(schema),
-         :ok <- Schema.validate(settings, root) do
-      :ok
-    else
-      {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
+    check = fn ->
+      with {:ok, root} <- Schema.build(schema),
+           do: Schema.validate(settings, root, @settings_limits)
+    end
+
+    case Budget.run(check, @settings_budget) do
+      {:ok, :ok} ->
+        :ok
+
+      {:ok, {:error, errors}} ->
+        {:error, {:integration_settings_invalid, errors}}
+
+      {:error, reason} ->
+        Logger.warning(
+          "an integration's settings check was stopped name=#{description.name} " <>
+            "program_version=#{description.program_version} reason=#{reason}"
+        )
+
+        {:error, {:integration_settings_invalid, budget_refusal(reason)}}
     end
   end
+
+  defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
+  defp budget_refusal(over) when over in [:time, :heap], do: %{valid: false, budget: :exceeded}
 
   @doc """
   check_argument/2 checks the argument a connection of `description` stores:
