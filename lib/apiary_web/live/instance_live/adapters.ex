@@ -7,10 +7,11 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   # pages.
   #
   # Each adapter is a row, by name: its name, which leads to its Overview, its public id,
-  # and its state (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it
-  # was last seen, or Never seen, all the rows' times read at once. With none, the page
-  # says there is no adapter yet. The instance has no catalogue of adapters to add yet,
-  # so the page lists none.
+  # how often it pulls, or that it has not declared it yet, and its state
+  # (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it was last seen,
+  # or Never seen, all the rows' times read at once. With none, the page says there is no
+  # adapter yet. The instance has no catalogue of adapters to add yet, so the page lists
+  # none.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -34,7 +35,8 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
           do: %{
             adapter: adapter,
             connected: AccessKeys.active_key?(adapter),
-            seen: Map.get(seen, adapter.id)
+            seen: Map.get(seen, adapter.id),
+            every: AdapterComponents.pulls_every(AdapterComponents.sync_of(adapter))
           }
 
     {:ok,
@@ -80,6 +82,15 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
                 {adapter.name}
               </.link>
               <span class="q-mono text-[12.5px] text-muted">{adapter.public_id}</span>
+            </span>
+          </:col>
+          <:col :let={row} label={gettext("Pulls")}>
+            <span id={"adapter-#{row.adapter.public_id}-pulls"}>
+              <%= if row.every do %>
+                {AdapterComponents.interval_label(row.every)}
+              <% else %>
+                <span class="text-faint">{gettext("Not declared yet")}</span>
+              <% end %>
             </span>
           </:col>
           <:col :let={row} sr_label={gettext("State")} class="text-right">

@@ -583,6 +583,16 @@ msgstr ""
 msgid "%{integration} is connected."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "%{interval} (its default)"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "%{interval}, and changes are sent as they happen"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -777,6 +787,7 @@ msgstr ""
 msgid "%{name} is renamed."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -3801,6 +3812,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Change"
@@ -3971,6 +3983,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Changes"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -5388,6 +5405,11 @@ msgstr ""
 msgid "Events pruned"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "Every %{count} seconds"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Every API set up from it takes the new definition."
@@ -5427,6 +5449,20 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Every host below %{suffix}, and not %{suffix} itself."
 msgstr ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "Every hour"
+msgid_plural "Every %{count} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "Every minute"
+msgid_plural "Every %{count} minutes"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
@@ -6358,6 +6394,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "How many invitations an organisation sends in 24 hours."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "How often the adapter pulls what changed"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -8759,6 +8800,7 @@ msgid "Not allowed"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "Not declared yet"
 msgstr ""
@@ -9912,6 +9954,17 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Pull interval"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/instance_live/adapters.ex
+#, elixir-autogen, elixir-format
+msgid "Pulls"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -11933,6 +11986,16 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The adapter connects to Qory Apiary with a key that it makes on its machine. Until it has one, organisations can't install it."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter declares its default, and the most often it may pull, once it is connected and running. Until then this can't be set."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -14684,10 +14747,29 @@ msgstr ""
 msgid "events refused"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "every %{count} seconds"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "every %{seconds} s"
 msgstr ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "every hour"
+msgid_plural "every %{count} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/adapter_components.ex
+#, elixir-autogen, elixir-format
+msgid "every minute"
+msgid_plural "every %{count} minutes"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/common.ex

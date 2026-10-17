@@ -14,6 +14,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
 
   alias Apiary.{Adapters, Repo}
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
 
@@ -78,6 +79,26 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     refute html =~ "Connected"
     assert has_element?(lv, "#adapter-#{platform.public_id}-state.q-stw-hot")
     refute has_element?(lv, "#adapters-empty")
+  end
+
+  test "each row says how often the adapter pulls, or that it has not declared it yet",
+       %{conn: conn} do
+    shop = adapter_fixture(%{name: "Shop tracker"})
+    platform = adapter_fixture(%{name: "Platform tracker"})
+    acme = adapter_fixture(%{name: "Acme tracker"})
+
+    Repo.update_all(from(n in Node, where: n.id in ^[shop.id, platform.id]),
+      set: [sync_default_interval: 3600, sync_minimum_interval: 900, sync_sends_changes: true]
+    )
+
+    Repo.update_all(from(n in Node, where: n.id == ^platform.id), set: [sync_interval: 900])
+
+    {:ok, lv, html} = live(conn, ~p"/instance/adapters")
+
+    assert html =~ ~r{<th[^>]*>\s*Pulls\s*</th>}
+    assert words(lv, "#adapter-#{shop.public_id}-pulls") == "Every hour"
+    assert words(lv, "#adapter-#{platform.public_id}-pulls") == "Every 15 minutes"
+    assert words(lv, "#adapter-#{acme.public_id}-pulls") == "Not declared yet"
   end
 
   test "with no adapter, says there is none", %{conn: conn, admin: admin} do

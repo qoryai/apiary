@@ -138,4 +138,55 @@ defmodule ApiaryWeb.AdapterComponentsTest do
     refute html =~ "Connected"
     refute html =~ "No key yet"
   end
+
+  test "interval_label/1 and interval_words/1 say an interval in hours, minutes or seconds" do
+    labels =
+      for seconds <- [60, 300, 600, 900, 1800, 3600, 7200, 21_600, 43_200, 86_400],
+          do: AdapterComponents.interval_label(seconds)
+
+    assert labels == [
+             "Every minute",
+             "Every 5 minutes",
+             "Every 10 minutes",
+             "Every 15 minutes",
+             "Every 30 minutes",
+             "Every hour",
+             "Every 2 hours",
+             "Every 6 hours",
+             "Every 12 hours",
+             "Every 24 hours"
+           ]
+
+    assert AdapterComponents.interval_label(2700) == "Every 45 minutes"
+    assert AdapterComponents.interval_label(90) == "Every 90 seconds"
+
+    assert Enum.map([60, 900, 3600, 7200, 90], &AdapterComponents.interval_words/1) == [
+             "every minute",
+             "every 15 minutes",
+             "every hour",
+             "every 2 hours",
+             "every 90 seconds"
+           ]
+  end
+
+  test "pulls_every/1 is the chosen interval, else the default, raised to the minimum" do
+    sync = %{interval: nil, default: 3600, minimum: 900}
+    assert AdapterComponents.pulls_every(sync) == 3600
+    assert AdapterComponents.pulls_every(%{sync | interval: 1800}) == 1800
+    assert AdapterComponents.pulls_every(%{sync | interval: 300}) == 900
+    assert AdapterComponents.pulls_every(%{interval: nil, default: nil, minimum: nil}) == nil
+
+    adapter = %Node{
+      kind: :adapter,
+      sync_interval: 7200,
+      sync_default_interval: 3600,
+      sync_minimum_interval: 900,
+      sync_sends_changes: true
+    }
+
+    assert AdapterComponents.sync_of(adapter) ==
+             %{interval: 7200, default: 3600, minimum: 900, sends_changes: true}
+
+    assert adapter |> AdapterComponents.sync_of() |> AdapterComponents.pulls_every() == 7200
+  end
 end

@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # An adapter's page in Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapter`),
   # for an instance admin: its Overview, the state, when it was last seen, read again as a
-  # key arrives, and the install address; its Settings tab, with its name and the danger
-  # zone; the Rename page, with its errors; the Remove page, which revokes its keys and
-  # ends every connection to it; and a path that does not exist for anyone else.
+  # key arrives, the install address and how often it pulls; its Settings tab, with the
+  # pull interval, its name and the danger zone; the Rename page, with its errors; the
+  # Remove page, which revokes its keys and ends every connection to it; and a path that
+  # does not exist for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -15,6 +16,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   alias Apiary.{Adapters, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.Connection
+  alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
 
@@ -29,6 +31,13 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   end
 
   defp page_path(adapter, rest \\ ""), do: "/instance/adapters/#{adapter.public_id}" <> rest
+
+  # As the adapter's declaration would: its default, its minimum and whether it sends
+  # changes.
+  defp declare(adapter, set) do
+    {1, _} = Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: set)
+    adapter
+  end
 
   defp words(lv, selector) do
     lv
@@ -58,7 +67,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
              )
 
       assert words(lv, "#adapter-overview") ==
-               "State No key yet · organisations can install it once it is connected and running · Connect it Install address Not declared yet"
+               "State No key yet · organisations can install it once it is connected and running · Connect it Install address Not declared yet Pulls Not declared yet"
 
       assert has_element?(lv, ~s{#adapter-connect-it[href="#{page_path(adapter, "/keys")}"]})
     end
@@ -96,6 +105,38 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     end
   end
 
+  describe "the Overview's Pulls row" do
+    test "says how often it pulls, that changes are sent, and leads to Settings",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: true
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-pulls") ==
+               "Every hour, and changes are sent as they happen · Change"
+
+      lv |> element("#adapter-change-pulls") |> render_click()
+      assert_patch(lv, page_path(adapter, "/settings"))
+    end
+
+    test "says the chosen interval alone when the adapter sends no changes",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter,
+        sync_interval: 7200,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: false
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+      assert words(lv, "#adapter-overview-pulls") == "Every 2 hours · Change"
+    end
+  end
+
   describe "the Settings tab" do
     test "holds the name with Rename…, and the danger zone with Remove adapter…",
          %{conn: conn, adapter: adapter} do
@@ -115,6 +156,142 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       lv |> element("#adapter-remove-link") |> render_click()
       assert_patch(lv, page_path(adapter, "/settings/remove"))
     end
+  end
+
+  describe "the Settings tab's pull interval" do
+    setup %{adapter: adapter} do
+      declare(adapter,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: true
+      )
+
+      :ok
+    end
+
+    defp choices(lv) do
+      html = lv |> element("#adapter-interval-form select") |> render()
+
+      for [_whole, value, label] <-
+            Regex.scan(~r{<option[^>]*value="(\d+)"[^>]*>([^<]*)</option>}, html),
+          do: {label, value}
+    end
+
+    test "offers the declared choices, its default marked, with the hint and Save",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      assert has_element?(lv, "#adapter-interval h2, #adapter-interval h3", "Pull interval")
+
+      assert has_element?(
+               lv,
+               "#adapter-interval-form label",
+               "How often the adapter pulls what changed"
+             )
+
+      assert choices(lv) == [
+               {"Every 15 minutes", "900"},
+               {"Every 30 minutes", "1800"},
+               {"Every hour (its default)", "3600"},
+               {"Every 2 hours", "7200"},
+               {"Every 6 hours", "21600"},
+               {"Every 12 hours", "43200"},
+               {"Every 24 hours", "86400"}
+             ]
+
+      assert has_element?(lv, ~s{#adapter-interval-form option[value="3600"][selected]})
+
+      assert words(lv, "#adapter-interval-form .fieldset") =~
+               "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares every hour as its default, and every 15 minutes as the most often. Organisations don't see this setting."
+
+      assert has_element?(lv, "#adapter-interval-save button[type=submit]", "Save")
+    end
+
+    test "saves the chosen interval, says so, and the Overview reads it",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      html =
+        lv
+        |> form("#adapter-interval-form", sync: %{sync_interval: "7200"})
+        |> render_submit()
+
+      assert html =~ "Shop tracker is saved."
+      assert has_element?(lv, ~s{#adapter-interval-form option[value="7200"][selected]})
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 7200
+
+      lv |> element("#adapter-tabs-overview") |> render_click()
+
+      assert words(lv, "#adapter-overview-pulls") ==
+               "Every 2 hours, and changes are sent as they happen · Change"
+    end
+
+    test "a value not among the choices is said under the field, and nothing is saved",
+         %{conn: conn, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      html = render_submit(lv, "save_interval", %{"sync" => %{"sync_interval" => "300"}})
+
+      assert html =~ "is invalid"
+      refute html =~ "is saved."
+      assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
+    end
+
+    test "without changes sent, the hint leaves out its first sentence; an off-ladder default is marked",
+         %{conn: conn, adapter: adapter} do
+      declare(adapter, sync_default_interval: 2700, sync_sends_changes: false)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      assert {"Every 45 minutes (its default)", "2700"} in choices(lv)
+
+      hint = words(lv, "#adapter-interval-form .fieldset")
+
+      assert hint =~
+               "The adapter declares every 45 minutes as its default, and every 15 minutes as the most often. Organisations don't see this setting."
+
+      refute hint =~ "Changes are also sent"
+    end
+
+    test "an adapter no longer declared when saved shows the choice disabled",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+      declare(adapter,
+        sync_default_interval: nil,
+        sync_minimum_interval: nil,
+        sync_sends_changes: nil
+      )
+
+      html = render_submit(lv, "save_interval", %{"sync" => %{"sync_interval" => "7200"}})
+
+      refute html =~ "is saved."
+      refute has_element?(lv, "#adapter-interval-form")
+      assert has_element?(lv, "#adapter-interval-undeclared select[disabled]")
+    end
+
+    test "an adapter removed meanwhile leaves for the list", %{
+      conn: conn,
+      admin: admin,
+      adapter: adapter
+    } do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      {:ok, _removed} = Adapters.delete_adapter(admin, adapter)
+
+      assert {:error, {:live_redirect, %{to: "/instance/adapters"}}} =
+               render_submit(lv, "save_interval", %{"sync" => %{"sync_interval" => "7200"}})
+    end
+  end
+
+  test "before the adapter declares, the pull interval is disabled, with why",
+       %{conn: conn, adapter: adapter} do
+    {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+
+    refute has_element?(lv, "#adapter-interval-form")
+    assert has_element?(lv, "#adapter-interval-undeclared select[disabled]")
+    refute has_element?(lv, "#adapter-interval button")
+
+    assert words(lv, "#adapter-interval-undeclared") ==
+             "How often the adapter pulls what changed Not declared yet The adapter declares its default, and the most often it may pull, once it is connected and running. Until then this can't be set."
   end
 
   describe "Rename" do
@@ -240,6 +417,11 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     render_click(lv, "remove", %{})
     render_submit(lv, "rename", %{"adapter" => %{"name" => "Platform tracker"}})
     assert Adapters.get_adapter(admin, adapter.public_id).name == "Shop tracker"
+
+    declare(adapter, sync_default_interval: 3600, sync_minimum_interval: 900)
+    {:ok, lv, _html} = live(conn, page_path(adapter))
+    render_submit(lv, "save_interval", %{"sync" => %{"sync_interval" => "7200"}})
+    assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
   end
 
   test "anyone but an instance admin, an organisation's owner included, meets Not Found",
