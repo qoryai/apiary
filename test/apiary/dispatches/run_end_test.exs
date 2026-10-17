@@ -444,6 +444,32 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Slots.held(ctx.pool.id) == 0
     end
 
+    test "after an exit its projection skipped unfolded, is :ended and changes nothing",
+         ctx do
+      handed = handed_over!(ctx)
+
+      exited =
+        event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+
+      # Marked projected as a pass that raised on it leaves it: the run never folded it.
+      Repo.update_all(from(e in Event, where: e.id == ^exited.id),
+        set: [projected_at: DateTime.utc_now()]
+      )
+
+      unfolded = run!(handed.run)
+      assert %Run{exited_at: nil, exit_state: nil, released_at: nil} = unfolded
+
+      assert release(handed.dispatch_run) == {:error, :ended}
+      assert run!(handed.run) == unfolded
+      assert_live(handed)
+
+      # The lost-run check ends it as its exit, as without the release, and frees the slot.
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+      assert_ended(handed, :run_ended)
+      assert %Run{released_at: nil} = run!(handed.run)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
     test "sends no end; the starter's outcome after it does", ctx do
       gateway = gateway_fixture(ctx.scope)
       %{access_key: gateway_key} = contract_key_fixture(ctx.scope, node: gateway)

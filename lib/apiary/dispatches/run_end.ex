@@ -16,8 +16,8 @@ defmodule Apiary.Dispatches.RunEnd do
   #   no `end` is sent for it: an end follows only the starter's outcome
   #   (`Apiary.Runs.Ingest`). Its gateway's attach is refused `410` from then on, as for any
   #   run that ended (`Apiary.Runs.Attach`). A release that finds the registered run's
-  #   outcome or exit folded and its end not yet written is too late: it changes nothing,
-  #   and that end is written `run_ended`;
+  #   outcome or exit folded and its end not yet written, or its exit projected and not
+  #   folded, is too late: it changes nothing, and that end is written `run_ended`;
   # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with neither an outcome nor an exit by
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
@@ -103,8 +103,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # none) for the caller to broadcast, and the workspaces whose slots changed, for the
   # caller to tell, both once its transaction commits; `{:error, :ended}` for one that
   # ended already, whatever its cause, or whose registered run has its outcome or its exit
-  # folded and its end not yet written: the first to come decides, and the projection that
-  # folded the exit, or the lost-run check, writes that end (`run_ended/1`, `lose/1`);
+  # folded and its end not yet written, or its exit projected and not folded: the first to
+  # come decides, and the projection that folded the exit, or the lost-run check, writes
+  # that end (`run_ended/1`, `lose/1`);
   # `{:error, :not_handed_over}` for one waiting or claimed; `{:error, :not_found}` for
   # none. Nothing is written but on `:ok`.
   @doc false
@@ -147,10 +148,11 @@ defmodule Apiary.Dispatches.RunEnd do
     end
   end
 
-  # A registered run whose outcome or exit came first: the release finds it ended, and
-  # leaves its end to the one that came (the moduledoc).
+  # A registered run whose outcome or exit came first, an exit its projection skipped
+  # unfolded among them: the release finds it ended, and leaves its end to the one that
+  # came, as the lost-run check takes it (the moduledoc, `cause/2`).
   defp release_handed_over(%DispatchRun{} = dispatch_run, run, now) do
-    if run && outcome_or_exit?(run),
+    if run && (outcome_or_exit?(run) or exit_stored(run) == :projected),
       do: {:error, :ended},
       else:
         {:ok,
