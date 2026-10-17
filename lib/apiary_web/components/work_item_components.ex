@@ -870,10 +870,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <dl class="q-rail-kv">
         <dt>{pgettext("work item", "Owner")}</dt>
         <dd id={"#{@id}-owner"} class="q-wi-l1">
-          <.avatar name={@owner.name} size="xs" />{@owner.name}<span
-            :if={you?(@owner)}
-            class="q-faint"
-          >{gettext("(you)")}</span>
+          <.avatar name={@owner.name} size="xs" />
+          <span>{@owner.name}</span>
+          <span :if={you?(@owner)} class="q-faint">{gettext("(you)")}</span>
         </dd>
         <dt>{gettext("Ticket")}</dt>
         <dd id={"#{@id}-ticket"}>
