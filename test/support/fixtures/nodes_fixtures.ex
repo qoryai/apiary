@@ -193,8 +193,9 @@ defmodule Apiary.NodesFixtures do
 
   @doc """
   An instance of `node` as `Apiary.Nodes.seen/3` leaves it, written straight into the
-  table: `node_instance_id`, the `instance_id` given or a fresh one, `name`, and seen first and last at
-  `seen_at` (now unless given), or at `first_seen_at` and `last_seen_at`.
+  table: `node_instance_id`, the `instance_id` given or a fresh one, `name`, and seen
+  first and last at `seen_at` (now unless given), or at `first_seen_at` and
+  `last_seen_at`.
   """
   def instance_fixture(%Node{} = node, attrs \\ %{}) do
     attrs = Map.new(attrs)

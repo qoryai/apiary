@@ -6,12 +6,14 @@ defmodule Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS do
   #
   # - `runs.run_id` is `node_run_id`, the run's id as its node gave it, the subject of its
   #   events in the server contract; `runs.instance_id` is `node_instance_id`, the instance
-  #   id the run's registration claimed; `runs.attach_instance_id` is
+  #   id the request that created the run claimed; `runs.attach_instance_id` is
   #   `gateway_instance_id`, the instance id of the gateway that attached the run.
   # - `events.event_id` is `node_event_id` and `events.instance_id` is `node_instance_id`.
   #   `events.run_id` is the run's row, Qory's id, and keeps its name.
   # - `deliveries.delivery_id`, `deliveries.run_id` and `deliveries.instance_id` are
-  #   `node_delivery_id`, `node_run_id` and `node_instance_id`.
+  #   `node_delivery_id`, `node_run_id` and `node_instance_id`. `node_delivery_id` is the
+  #   delivery id the node gave the batch, or one the server made up when the batch gave
+  #   none or gave one that is not a UUID.
   # - `node_instances.instance_id` is `node_instance_id`.
   #
   # The server contract's words stay as they are: a body, a path, a header and a signed

@@ -46,14 +46,16 @@ defmodule Apiary.AccessKeys.EnrolmentCodeTest do
     test "refuses a character that takes more than one byte, where its bytes make 26" do
       prefix = EnrolmentCode.prefix(:node)
 
-      # 24 letters and one character of two bytes: 26 bytes, one character too few.
+      # 24 letters and one character of two bytes: 26 bytes, so the alphabet check reads
+      # them, and refuses the two bytes. "ſ" and "ı" are letters outside ASCII that a
+      # Unicode upper case would read as the alphabet's, `S` and `I`.
       for character <- ["É", "ſ", "ı"] do
         typed = prefix <> String.duplicate("A", 24) <> character
         assert byte_size(typed) == byte_size(prefix) + 26
         assert EnrolmentCode.normalise(typed) == :error
       end
 
-      # Letters outside ASCII that a Unicode upper case would read as the alphabet's.
+      # Twenty-six of them are 52 bytes, which the length refuses before the alphabet.
       assert EnrolmentCode.normalise(prefix <> String.duplicate("ſ", 26)) == :error
       assert EnrolmentCode.normalise(prefix <> String.duplicate("ı", 26)) == :error
     end
