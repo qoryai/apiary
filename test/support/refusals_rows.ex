@@ -592,7 +592,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:second_gateway, world), do: {:id, world.second_gateway.public_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
-  def value(:instance, world), do: world.instance.node_instance_id
+  def value(:instance, world), do: world.instance.id
   def value(_name, _world), do: nil
 
   # The organisation, the other one, whose pages its owner sends this one's ids from, and

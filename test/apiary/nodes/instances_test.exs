@@ -513,6 +513,42 @@ defmodule Apiary.Nodes.InstancesTest do
     end
   end
 
+  describe "get_instance_by_id/3 and get_instance_run/3" do
+    test "an instance by its row's id, or by an open run of its, of the node alone", %{
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      sibling = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1")
+      sibling_instance = instance_fixture(sibling, instance_id: "i_1")
+      run = node_run_fixture(node, "i_1")
+      sibling_run = node_run_fixture(sibling, "i_1")
+      ended = node_run_fixture(node, "i_1", %{state: "succeeded"})
+      unnamed = node_run_fixture(node, nil)
+
+      assert Nodes.get_instance_by_id(scope, node, instance.id).id == instance.id
+      assert Nodes.get_instance_by_id(scope, node, sibling_instance.id) == nil
+      assert Nodes.get_instance_run(scope, node, run.public_id).id == run.id
+      assert Nodes.get_instance_run(scope, node, sibling_run.public_id) == nil
+      assert Nodes.get_instance_run(scope, node, ended.public_id) == nil
+      assert Nodes.get_instance_run(scope, node, unnamed.public_id) == nil
+
+      # The node's instance id addresses neither; nor does a malformed id.
+      for id <- ["i_1", "", "not-a-uuid", <<0xFF, 0xFE>>, nil, run.id, instance.id] do
+        assert Nodes.get_instance_run(scope, node, id) == nil
+      end
+
+      for id <- ["i_1", "", "not-a-uuid", <<0xFF, 0xFE>>, nil, run.public_id] do
+        assert Nodes.get_instance_by_id(scope, node, id) == nil
+      end
+
+      # Another organisation's scope reads none of them.
+      %{scope: stranger} = sign_up_fixture()
+      assert Nodes.get_instance_by_id(stranger, node, instance.id) == nil
+      assert Nodes.get_instance_run(stranger, node, run.public_id) == nil
+    end
+  end
+
   describe "activity/3" do
     test "a node's running instances, oldest first, and the one seen last", %{scope: scope} do
       pool = pool_fixture(scope, instance_limit: 10)
@@ -520,7 +556,7 @@ defmodule Apiary.Nodes.InstancesTest do
       never = node_fixture(scope)
       now = DateTime.utc_now()
 
-      instance_fixture(pool, instance_id: "i_1", name: "spot-1", seen_at: ago(5, now))
+      spot = instance_fixture(pool, instance_id: "i_1", name: "spot-1", seen_at: ago(5, now))
       instance_fixture(pool, instance_id: "i_2", seen_at: ago(1, now))
       instance_fixture(idle, instance_id: "i_3", seen_at: ago(7200, now))
       instance_fixture(idle, instance_id: "i_4", seen_at: ago(3600, now))
@@ -537,15 +573,22 @@ defmodule Apiary.Nodes.InstancesTest do
 
       node_run_fixture(pool, "i_2", %{inserted_at: ago(10, now)})
       node_run_fixture(pool, "i_5", %{state: "failed"})
+      unrecorded = node_run_fixture(pool, "i_6", %{inserted_at: ago(5, now)})
 
       activity = Nodes.activity(scope, [pool, idle, never], now)
 
-      assert %{running: [one, two], last: %Instance{node_instance_id: "i_2"}} = activity[pool.id]
+      assert %{running: [one, two, three], last: %Instance{node_instance_id: "i_2"}} =
+               activity[pool.id]
 
       assert %{instance_id: "i_1", name: "spot-1", forager_version: "0.7.1"} = one
       assert one.since == first.inserted_at
       assert one.run_public_id == newest.public_id
-      assert %{instance_id: "i_2", name: nil} = two
+      # The id of its row, which a page addresses it by; one with no row has none.
+      assert one.row_id == spot.id
+      assert %{instance_id: "i_2", name: nil, row_id: row_id} = two
+      assert is_binary(row_id)
+      assert %{instance_id: "i_6", row_id: nil} = three
+      assert three.run_public_id == unrecorded.public_id
 
       assert %{running: [], last: %Instance{node_instance_id: "i_4"}} = activity[idle.id]
       assert activity[never.id] == %{running: [], last: nil, used: nil}

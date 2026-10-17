@@ -16,7 +16,10 @@ defmodule ApiaryWeb.NodeLive.Show do
     it, with the way to its Settings. Owners and admins clear a running instance
     (`node.clear_instance`): a text action on a Node's, an item of each row's menu on a
     pool's, either turning that line or row into its confirmation in place, never a
-    dialog, at `/nodes/:node_id/instances/:instance/clear`.
+    dialog, at `/nodes/:node_id/instances/:instance/clear`, `:instance` the id of the
+    instance's row in `node_instances`, or, for an instance with no row, at
+    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of its newest
+    open run. Neither address carries the node's instance id.
   - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
@@ -182,7 +185,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp apply_action(socket, :overview, _params),
     do: assign(socket, page_title: socket.assigns.node.name, clearing: nil, delete_refused: nil)
 
-  defp apply_action(socket, :clear_instance, %{"instance" => instance_id}) do
+  defp apply_action(socket, :clear_instance, params) do
     cond do
       not socket.assigns.may_clear ->
         socket
@@ -196,7 +199,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )
         |> push_patch(to: node_path(socket, :overview))
 
-      clearing = clearing(socket, instance_id) ->
+      clearing = clearing(socket, params) ->
         assign(socket, page_title: socket.assigns.node.name, clearing: clearing)
 
       true ->
@@ -226,19 +229,36 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # The instance the confirmation clears: one running now, or one the record holds a row of.
-  defp clearing(socket, instance_id) do
-    %{current_scope: scope, node: node, activity: activity} = socket.assigns
+  # The instance the confirmation clears, by the address's id: the id of its row, for one
+  # the record holds a row of, running now or not; or an open run of its, for one running
+  # with no row. The clearing names it by the node's instance id, which the address never
+  # carries.
+  defp clearing(socket, %{"instance" => row_id}) do
+    %{current_scope: scope, node: node} = socket.assigns
 
-    case Enum.find(activity.running, &(&1.instance_id == instance_id)) do
-      %{} = running ->
-        %{instance_id: instance_id, name: running.name}
+    case Nodes.get_instance_by_id(scope, node, row_id) do
+      %Instance{node_instance_id: instance_id, name: name} ->
+        %{instance_id: instance_id, name: name}
 
       nil ->
-        case Instance.instance_id?(instance_id) && Nodes.get_instance(scope, node, instance_id) do
-          %Instance{name: name} -> %{instance_id: instance_id, name: name}
-          _none -> nil
-        end
+        nil
+    end
+  end
+
+  defp clearing(socket, %{"run_id" => run_id}) do
+    %{current_scope: scope, node: node, activity: activity} = socket.assigns
+
+    with %Run{node_instance_id: instance_id} <- Nodes.get_instance_run(scope, node, run_id) do
+      case Enum.find(activity.running, &(&1.instance_id == instance_id)) do
+        %{} = running ->
+          %{instance_id: instance_id, name: running.name}
+
+        nil ->
+          case Nodes.get_instance(scope, node, instance_id) do
+            %Instance{name: name} -> %{instance_id: instance_id, name: name}
+            nil -> %{instance_id: instance_id, name: nil}
+          end
+      end
     end
   end
 
@@ -576,9 +596,13 @@ defmodule ApiaryWeb.NodeLive.Show do
     }
   end
 
-  # The path where an instance of the node is asked to be cleared.
-  defp clear_path(scope, node, instance_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{instance_id}/clear"
+  # The path where a running instance of the node is asked to be cleared: by the id of its
+  # row, or, for one with no row, by its newest open run's public id.
+  defp clear_path(scope, node, %{row_id: row_id}) when is_binary(row_id),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{row_id}/clear"
+
+  defp clear_path(scope, node, %{run_public_id: run_id}),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/runs/#{run_id}/clear-instance"
 
   ## Render
 
@@ -748,7 +772,7 @@ defmodule ApiaryWeb.NodeLive.Show do
             >
               <.menu_item
                 id={"#{instance_dom_id(instance.instance_id)}-clear"}
-                patch={clear_path(@scope, @node, instance.instance_id)}
+                patch={clear_path(@scope, @node, instance)}
               >
                 {gettext("Clear instance…")}
               </.menu_item>
@@ -1045,7 +1069,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           :if={@may_clear}
           id="node-instance-clear"
           variant="link"
-          patch={clear_path(@scope, @node, @running.instance_id)}
+          patch={clear_path(@scope, @node, @running)}
         >
           {gettext("Clear instance…")}
         </.button>

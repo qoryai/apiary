@@ -155,7 +155,7 @@ defmodule ApiaryWeb.NodesPartTest do
 
     test "every act asked after the nodes were hidden changes nothing, and the page leaves",
          %{conn: conn, scope: scope, node: node, key: key, code: code, gateway: gateway} do
-      instance_fixture(node, instance_id: "i_1")
+      instance = instance_fixture(node, instance_id: "i_1")
       node_page = &workspace_path(scope, "/nodes/#{node.public_id}" <> &1)
       gateway_page = ~p"/#{scope.organisation}/gateways/#{gateway.public_id}"
       tab = node_page.("/access-key")
@@ -164,7 +164,7 @@ defmodule ApiaryWeb.NodesPartTest do
         {node_page.("/settings"), :submit, "save", %{"node" => %{"name" => "build-02"}}},
         {node_page.("/settings/delete"), :click, "delete", %{}},
         {gateway_page, :click, "make_default", %{}},
-        {node_page.("/instances/i_1/clear"), :click, "clear_instance", %{}},
+        {node_page.("/instances/#{instance.id}/clear"), :click, "clear_instance", %{}},
         {tab, :click, "create_code", %{}},
         {tab <> "/keys/#{key.key_id}/revoke", :click, "revoke", %{}},
         {tab <> "/codes/#{code.id}/revoke", :click, "revoke_code", %{}},
