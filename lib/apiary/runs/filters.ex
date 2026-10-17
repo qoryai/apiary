@@ -19,10 +19,19 @@ defmodule Apiary.Runs.Filters do
   requests that name a tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one
   a path rule refused.
 
-  A target is two parameters, `system` and `target` (the path), because either may
-  hold any character, a colon included; `target=none` without a `system` is "no target",
-  and a `target` without a `system` is that path on every system the workspace has it on.
-  `target_params/2` writes them, for every link to a filtered page.
+  A target is Qory Apiary's id for it (`tg_…`, `Apiary.PublicId`), never its system or
+  path: `target=tg_…`, or several ids joined by commas, `target=tg_…,tg_…`, for the
+  runs of any of them; `target=none` is "no target". The parse reads the shape of each id
+  alone: which of them name a target of the workspace is read with the page's address
+  (`ApiaryWeb.Narrowing`), and an id that names none is dropped like any value the page
+  does not know. A `system` parameter, or a `target` that is not an id, is the address of
+  an older release and is dropped. `target_params/1` writes them, for every link to a
+  filtered page.
+
+  A name a reader typed after `repo:` or `target:` that names no target is search text,
+  not an address: it stays in the query, `q=target:acme/nowhere`, and is the target filter
+  `{:name, text}`, the runs whose target's path is that text, none until a target has it.
+  The free text is the query's other words. No path is ever a `target` value.
 
   `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
@@ -41,6 +50,7 @@ defmodule Apiary.Runs.Filters do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  alias Apiary.PublicId
   alias Apiary.Runs.Run
 
   # The four families the states read as, in the order they are shown. Only their states
@@ -67,6 +77,8 @@ defmodule Apiary.Runs.Filters do
   # The free text of a query: what `Apiary.Runs.like/1` matches.
   @max_q 256
   @max_page 100_000
+  # More ids than a link to a filtered list gives: every target on one path, or a few.
+  @max_targets 20
 
   # The qualifiers a page reads, by the word typed; `repo` is the software domain's word,
   # `target` the engine's, and both are read on every page.
@@ -113,7 +125,11 @@ defmodule Apiary.Runs.Filters do
             page: 1,
             dropped: []
 
-  @type target :: nil | :none | {String.t(), String.t()} | {nil, String.t()}
+  @typedoc """
+  No target, the runs that name none (`:none`), the targets of these ids, or a typed name
+  that names no target (`{:name, text}`), which the query keeps.
+  """
+  @type target :: nil | :none | [String.t()] | {:name, String.t()}
 
   @type t :: %__MODULE__{
           kind: :runs | :connections,
@@ -212,6 +228,7 @@ defmodule Apiary.Runs.Filters do
     {since, d5} = read(params, "since", &one_of(&1, @ranges[kind]))
     {page, d6} = read(params, "page", &page/1)
     {q, d7} = read(params, "q", &query_text/1)
+    {target, q, d7} = named(target, q, d7, params, kind)
     {sort, d8} = read(params, "sort", &one_of(&1, @sorts[kind]))
 
     filters = %__MODULE__{
@@ -278,12 +295,11 @@ defmodule Apiary.Runs.Filters do
   def to_params(%__MODULE__{kind: kind} = f) do
     [
       {"state", f.states != [] && Enum.join(f.states, ",")},
-      {"system", system_param(f.target)},
       {"target", target_param(f.target)},
       {"runtime", f.runtime},
       {"host", f.host},
       {"node", f.node},
-      {"q", f.q},
+      {"q", q_param(f)},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
       {"from", f.from && Date.to_iso8601(f.from)},
       {"to", f.to && Date.to_iso8601(f.to)},
@@ -362,9 +378,10 @@ defmodule Apiary.Runs.Filters do
           end
 
         "target" ->
-          current
-          |> Map.drop(["system", "target"])
-          |> Map.merge(target_from_value(form["target"]))
+          case form["target"] do
+            value when is_binary(value) -> f |> unnamed() |> Map.put("target", value)
+            _other -> current
+          end
 
         name when name in ~w(runtime host node) ->
           Map.merge(current, Map.take(form, [name]))
@@ -383,6 +400,11 @@ defmodule Apiary.Runs.Filters do
 
   def change(%__MODULE__{} = f, _form), do: f
 
+  # The address without the target, a typed name's word included, so the target chosen in
+  # its place does not leave that word behind as free text.
+  defp unnamed(%__MODULE__{} = f),
+    do: %{f | target: nil} |> to_params() |> Map.delete("page")
+
   defp toggle_family(states, key, true), do: Enum.uniq(states ++ family_states(key))
   defp toggle_family(states, key, false), do: states -- family_states(key)
 
@@ -395,35 +417,45 @@ defmodule Apiary.Runs.Filters do
   the page knows and whose value it could not read, as they were typed. Back to page 1.
 
   `resolve:` is how a `repo:` value becomes a target: a function of the text that answers
-  `{system, path}`, `{nil, path}` (the path on every system) or nil (refused); without it
-  the text is a path on every system. `Apiary.Runs.resolve_target/2` is the page's.
+  the ids of the targets it names, or nil where it names none; without it the text is read
+  as ids (`tg_…`, several joined by commas). A name that names no target is the filter
+  `{:name, text}`, kept in the query as its word. `ApiaryWeb.Narrowing.typed/2` is the
+  page's.
   """
   @spec apply_query(t(), String.t(), keyword) :: {t(), [String.t()]}
   def apply_query(%__MODULE__{kind: kind} = f, text, opts \\ []) when is_binary(text) do
-    resolve = Keyword.get(opts, :resolve, &path_everywhere/1)
-    current = f |> to_params() |> Map.drop(["page", "q"])
+    resolve = Keyword.get(opts, :resolve, &ids/1)
+    name = with {:name, name} <- f.target, do: name, else: (_ -> nil)
+    unnamed = if name, do: %{f | target: nil}, else: f
+    current = %{unnamed | q: nil} |> to_params() |> Map.drop(["page", "q"])
 
-    {params, free, refused} =
+    {params, free, refused, name} =
       text
       |> words()
-      |> Enum.reduce({current, [], []}, fn word, {params, free, refused} ->
+      |> Enum.reduce({current, [], [], name}, fn word, {params, free, refused, name} ->
         case qualifier(word, kind) do
           {qualifier, value} ->
             case query_params(qualifier, value, kind, resolve) do
               {:ok, drop, put} ->
-                {params |> Map.drop(drop) |> Map.merge(put), free, refused}
+                name = if "target" in drop, do: nil, else: name
+                {params |> Map.drop(drop) |> Map.merge(put), free, refused, name}
+
+              {:name, name} ->
+                {Map.delete(params, "target"), free, refused, name}
 
               :error ->
-                {params, free, [word | refused]}
+                {params, free, [word | refused], name}
             end
 
           nil ->
-            {params, [unquote_word(word) | free], refused}
+            {params, [unquote_word(word) | free], refused, name}
         end
       end)
 
     free = free |> Enum.reverse() |> Enum.reject(&(&1 == "")) |> Enum.join(" ")
-    params = if free == "", do: params, else: Map.put(params, "q", free)
+    named = if name, do: [name_word(name)], else: []
+    q = Enum.join(named ++ if(free == "", do: [], else: [free]), " ")
+    params = if q == "", do: params, else: Map.put(params, "q", q)
     filters = parse(params, kind)
 
     # The qualifiers were read as the parse reads them; what it may still refuse is free
@@ -463,8 +495,10 @@ defmodule Apiary.Runs.Filters do
       if String.downcase(value) == "none", do: :none, else: text(value) && resolve.(value)
 
     case target do
-      nil -> :error
-      target -> {:ok, ["system", "target"], target_params(target)}
+      :none -> {:ok, ["target"], target_params(:none)}
+      [_ | _] = ids -> {:ok, ["target"], target_params(ids)}
+      nil -> if text(value), do: {:name, value}, else: :error
+      _nothing -> :error
     end
   end
 
@@ -582,7 +616,18 @@ defmodule Apiary.Runs.Filters do
     |> Map.new()
   end
 
-  defp path_everywhere(value), do: {nil, value}
+  @doc """
+  The ids a text gives, `tg_…` joined by commas, in their order, once each; nil when one
+  of them is not an id or there are more than #{@max_targets}.
+  """
+  @spec ids(String.t()) :: [String.t()] | nil
+  def ids(text) when is_binary(text) do
+    ids = text |> String.split(",") |> Enum.uniq()
+
+    if length(ids) <= @max_targets and Enum.all?(ids, &PublicId.valid?("tg", &1)), do: ids
+  end
+
+  def ids(_text), do: nil
 
   @typedoc "One filter as the query writes it, and the filters without it."
   @type token :: %{key: atom(), value: String.t(), without: t() | nil}
@@ -594,7 +639,7 @@ defmodule Apiary.Runs.Filters do
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
   is a default but the connections' window, which is always said. `target_text:` writes a target (by default
-  its path, after its system when it has one); `except:` leaves out the tokens of these
+  its ids, as the address writes them); `except:` leaves out the tokens of these
   qualifiers, which a view already says.
   """
   @spec tokens(t(), keyword) :: [token()]
@@ -630,9 +675,8 @@ defmodule Apiary.Runs.Filters do
   defp range_without(%__MODULE__{kind: kind}),
     do: [since: @default_since[kind], from: nil, to: nil]
 
-  defp default_target_text(:none), do: "none"
-  defp default_target_text({nil, path}), do: path
-  defp default_target_text({system, path}), do: "#{system}/#{path}"
+  defp default_target_text({:name, name}), do: name
+  defp default_target_text(target), do: target_param(target)
 
   defp states_text(states) do
     case families_of(states) do
@@ -740,102 +784,107 @@ defmodule Apiary.Runs.Filters do
   ## Targets
 
   @doc """
-  The parameters of a target, for a link to a filtered page:
-  `%{"system" => system, "target" => path}`; `%{"target" => path}` for the path on every
-  system; `%{"target" => "none"}` for runs without one.
+  The parameters of a target, for a link to a filtered page: `%{"target" => "tg_…"}` for
+  the target of that id, its ids joined by commas for several, `%{"target" => "none"}` for
+  the runs without one (`:none`), the query's word for a typed name
+  (`%{"q" => "target:acme/nowhere"}`), none for every target (nil or no id).
   """
-  @spec target_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
-  def target_params(system, path) when is_binary(system) and is_binary(path),
-    do: %{"system" => system, "target" => path}
+  @spec target_params(target()) :: %{String.t() => String.t()}
+  def target_params({:name, name}), do: %{"q" => name_word(name)}
 
-  def target_params(nil, path) when is_binary(path), do: %{"target" => path}
-  def target_params(_system, _path), do: %{"target" => "none"}
-
-  @doc """
-  The parameters of a target as the console's links write them (question 9, answer A): its
-  path, `%{"target" => "acme/shop"}`, and its system only where the path is `shared` by
-  another target of the workspace, `%{"system" => "gitlab.com", "target" => "acme/shop"}`.
-  `shared` is a boolean, or the workspace's shared paths (`Apiary.Runs.shared_paths/2`).
-  """
-  @spec target_params(String.t() | nil, String.t(), boolean | MapSet.t(String.t())) :: %{
-          String.t() => String.t()
-        }
-  def target_params(system, path, shared) when is_binary(path) do
-    {system, path} = link_target({system, path}, shared)
-    target_params(system, path)
-  end
-
-  @doc """
-  A target of the filters as the console's links write it (question 9, answer A):
-  `{nil, path}`, the path alone, unless the path is `shared` by another target of the
-  workspace, where the pair stays whole. `shared` is a boolean, or the workspace's shared
-  paths (`Apiary.Runs.shared_paths/2`). `nil` and `:none` are themselves. A rail's link and
-  a Filter menu's option write a target through it, so they match the short address the
-  sidebar and the narrowed line write.
-  """
-  @spec link_target(target(), boolean | MapSet.t(String.t()) | nil) :: target()
-  def link_target({system, path}, shared) when is_binary(path) do
-    shared? =
-      case shared do
-        %MapSet{} -> MapSet.member?(shared, path)
-        shared -> shared == true
-      end
-
-    {if(shared?, do: system), path}
-  end
-
-  def link_target(target, _shared), do: target
-
-  defp target_params(:none), do: %{"target" => "none"}
-  defp target_params({system, path}), do: target_params(system, path)
-
-  @doc """
-  A target as the one value of a menu's option: `none`, or the JSON of `[system, path]`
-  (`[null, path]` for the path on every system), which no system or path can be mistaken
-  for. `change/2` reads it back.
-  """
-  def target_value(nil), do: nil
-  def target_value(:none), do: "none"
-  def target_value({system, path}), do: Jason.encode!([system, path])
-
-  defp target_from_value("none"), do: %{"target" => "none"}
-
-  defp target_from_value(value) when is_binary(value) do
-    case Jason.decode(value) do
-      {:ok, [system, path]} when (is_binary(system) or is_nil(system)) and is_binary(path) ->
-        target_params(system, path)
-
-      _ ->
-        %{"target" => value}
+  def target_params(target) do
+    case target_param(target) do
+      nil -> %{}
+      value -> %{"target" => value}
     end
   end
 
-  defp target_from_value(_value), do: %{}
+  # A typed name as the query keeps it: one word, quoted when it holds a space.
+  defp name_word(name), do: "target:" <> quote_value(name)
 
-  defp system_param({system, _path}) when is_binary(system), do: system
-  defp system_param(_target), do: nil
+  # The query parameter: a typed name's word first, then the free text.
+  defp q_param(%__MODULE__{target: {:name, name}, q: q}),
+    do: Enum.join([name_word(name) | List.wrap(q)], " ")
 
-  defp target_param(nil), do: nil
+  defp q_param(%__MODULE__{q: q}), do: q
+
+  # A typed name in the query (`target:acme/nowhere`, `repo:` too), where the address names
+  # no target: the filter `{:name, text}`, and the other words the free text, of which a
+  # query holds 256 bytes. The first such word is the name; another stays text.
+  defp named(target, q, dropped, params, kind) do
+    {target, q} =
+      with nil <- target,
+           false <- Map.has_key?(params, "target") or Map.has_key?(params, "system"),
+           q when is_binary(q) <- q,
+           {name, rest} <- split_name(q, kind) do
+        {{:name, name}, rest}
+      else
+        _ -> {target, q}
+      end
+
+    if is_binary(q) and byte_size(q) > @max_q,
+      do: {target, nil, dropped ++ ["q"]},
+      else: {target, q, dropped}
+  end
+
+  defp split_name(q, kind) do
+    words = words(q)
+
+    case Enum.split_while(words, &is_nil(typed_name(&1, kind))) do
+      {_words, []} ->
+        nil
+
+      {before, [word | rest]} ->
+        free = Enum.join(before ++ rest, " ")
+        {typed_name(word, kind), if(free != "", do: free)}
+    end
+  end
+
+  defp typed_name(word, kind) do
+    with {:target, value} <- qualifier(word, kind),
+         true <- String.downcase(value) != "none",
+         value when is_binary(value) <- text(value) do
+      value
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  A target as the one value of a menu's option, which is what the address writes: `none`,
+  or its ids joined by commas. `change/2` reads it back as the address is read.
+  """
+  @spec target_value(target()) :: String.t() | nil
+  def target_value(target), do: target_param(target)
+
   defp target_param(:none), do: "none"
-  defp target_param({_system, path}), do: path
+  defp target_param([_ | _] = ids), do: Enum.join(ids, ",")
+  defp target_param(_target), do: nil
 
-  # `target=none` alone is "no target", `target` alone a path on every system; a `system`
-  # needs its path.
+  # `target=none` is "no target", and `target=tg_…,tg_…` the targets of those ids: an id
+  # in the shape Qory Apiary gives (`Apiary.PublicId`), whose target the page then reads.
+  # An id that is not one is dropped, and the others kept, as with the states. A `system`
+  # is the address of an older release, which named a target by its system and path: the
+  # target goes with it.
   defp target(params) do
-    case {Map.fetch(params, "system"), Map.fetch(params, "target")} do
-      {:error, :error} ->
+    case {Map.has_key?(params, "system"), Map.fetch(params, "target")} do
+      {true, _target} ->
+        {nil, ["target"]}
+
+      {false, :error} ->
         {nil, []}
 
-      {:error, {:ok, "none"}} ->
+      {false, {:ok, "none"}} ->
         {:none, []}
 
-      {:error, {:ok, path}} ->
-        if text(path), do: {{nil, path}, []}, else: {nil, ["target"]}
+      {false, {:ok, value}} when is_binary(value) ->
+        given = value |> String.split(",") |> Enum.uniq()
+        ids = given |> Enum.filter(&PublicId.valid?("tg", &1)) |> Enum.take(@max_targets)
+        target = if ids != [], do: ids
 
-      {{:ok, system}, {:ok, path}} ->
-        if text(system) && text(path), do: {{system, path}, []}, else: {nil, ["target"]}
+        {target, if(ids == given, do: [], else: ["target"])}
 
-      _one_without_the_other ->
+      {false, {:ok, _other}} ->
         {nil, ["target"]}
     end
   end
@@ -885,10 +934,15 @@ defmodule Apiary.Runs.Filters do
 
   defp text(_value), do: nil
 
-  # The free text as the query field keeps it: trimmed, one line, what `Runs.like/1` reads.
+  # The query as the field keeps it: trimmed, one line, what `Runs.like/1` reads, with
+  # room for a typed name's word beside the free text (`named/5` holds the free text to
+  # 256 bytes).
   defp query_text(value) when is_binary(value) do
     value = String.trim(value)
-    if value != "" and byte_size(value) <= @max_q and fits?(value), do: value
+
+    if value != "" and byte_size(value) <= @max_q + @max_text + 16 and String.valid?(value) and
+         not String.match?(value, ~r/[\x00-\x1F\x7F]/),
+       do: value
   end
 
   defp query_text(_value), do: nil

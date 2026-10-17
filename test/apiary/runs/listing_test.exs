@@ -43,8 +43,18 @@ defmodule Apiary.Runs.ListingTest do
     run
   end
 
+  # Two ids in the shape Qory Apiary gives a target (`Apiary.PublicId`), for the parse
+  # alone, which reads their shape and never the database.
+  @tg_a "tg_0123456789abcdef"
+  @tg_b "tg_ghjkmnpqrstvwxyz"
+
   defp shop(system \\ "github.example"), do: %{"forge" => system, "repository" => "acme/shop"}
   defp parse(params), do: Filters.parse(params, :runs)
+  defp target_of(scope, system, path), do: Apiary.Targets.get(scope, system, path)
+
+  defp tg(scope, system \\ "github.example", path \\ "acme/shop"),
+    do: target_of(scope, system, path).public_id
+
   defp ids(runs), do: Enum.map(runs, & &1.id)
 
   describe "Filters" do
@@ -53,8 +63,7 @@ defmodule Apiary.Runs.ListingTest do
         parse(%{
           "group" => "colour",
           "state" => "failed,bogus,lost,failed",
-          "system" => "github.example",
-          "target" => "acme/shop",
+          "target" => @tg_a,
           "task" => "none",
           "since" => "90d",
           "denials" => "yes",
@@ -65,18 +74,14 @@ defmodule Apiary.Runs.ListingTest do
         })
 
       assert filters.states == ["failed", "lost"]
-      assert filters.target == {"github.example", "acme/shop"}
+      assert filters.target == [@tg_a]
       assert filters.since == "all"
       assert filters.sort == "newest"
       assert filters.per == 50
       refute filters.denials
       assert filters.page == 1
 
-      assert Filters.to_params(filters) == %{
-               "state" => "failed,lost",
-               "system" => "github.example",
-               "target" => "acme/shop"
-             }
+      assert Filters.to_params(filters) == %{"state" => "failed,lost", "target" => @tg_a}
 
       # A task is an ordinary label, no filter: an old address's `task` is not read, nor
       # named as refused.
@@ -240,40 +245,75 @@ defmodule Apiary.Runs.ListingTest do
       end
     end
 
-    test "a target is two parameters, so a system may hold a colon; a path alone is every system's" do
-      filters = parse(%{"system" => "git.example:8443", "target" => "acme/shop:v2"})
-      assert filters.target == {"git.example:8443", "acme/shop:v2"}
+    test "a target is the id Qory Apiary gives it, several joined by commas, none for no target" do
+      assert parse(%{"target" => @tg_a}).target == [@tg_a]
+      assert Filters.to_params(parse(%{"target" => @tg_a})) == %{"target" => @tg_a}
 
-      assert Filters.to_params(filters) == %{
-               "system" => "git.example:8443",
-               "target" => "acme/shop:v2"
-             }
+      both = parse(%{"target" => "#{@tg_a},#{@tg_b}"})
+      assert %{target: [@tg_a, @tg_b], dropped: []} = both
+      assert Filters.to_params(both) == %{"target" => "#{@tg_a},#{@tg_b}"}
+      # An id given twice is read once.
+      assert parse(%{"target" => "#{@tg_a},#{@tg_a}"}).target == [@tg_a]
 
-      assert Filters.target_params("git.example:8443", "acme/shop") == %{
-               "system" => "git.example:8443",
-               "target" => "acme/shop"
-             }
+      assert %{target: :none, dropped: []} = parse(%{"target" => "none"})
+      assert Filters.to_params(parse(%{"target" => "none"})) == %{"target" => "none"}
 
-      assert Filters.target_params(nil, "acme/shop") == %{"target" => "acme/shop"}
-      assert Filters.target_params(nil, nil) == %{"target" => "none"}
+      assert Filters.target_params([@tg_a]) == %{"target" => @tg_a}
+      assert Filters.target_params([@tg_a, @tg_b]) == %{"target" => "#{@tg_a},#{@tg_b}"}
+      assert Filters.target_params(:none) == %{"target" => "none"}
+      assert Filters.target_params(nil) == %{}
 
-      assert parse(%{"target" => "none"}).target == :none
-      assert parse(%{"target" => "acme/shop"}).target == {nil, "acme/shop"}
-      assert Filters.to_params(parse(%{"target" => "acme/shop"})) == %{"target" => "acme/shop"}
-      assert %{target: nil, dropped: ["target"]} = parse(%{"system" => "git.example"})
+      # The section's one value is what the address writes, and reads back the same.
+      for target <- [[@tg_a], [@tg_a, @tg_b], :none] do
+        value = Filters.target_value(target)
+        changed = Filters.change(parse(%{}), %{"_filter" => "target", "target" => value})
+        assert changed.target == target
+      end
+    end
 
-      # The section's one value reads back to the same pair, whatever it holds.
-      value = Filters.target_value({"git.example:8443", ~s(we"ird/pa,th)})
-      changed = Filters.change(parse(%{}), %{"_filter" => "target", "target" => value})
-      assert changed.target == {"git.example:8443", ~s(we"ird/pa,th)}
+    test "a target's older address, by its system and path, is dropped and named" do
+      for params <- [
+            %{"system" => "github.example", "target" => "acme/shop"},
+            %{"system" => "github.example", "target" => @tg_a},
+            %{"system" => "github.example"},
+            %{"target" => "acme/shop"},
+            %{"target" => "github.example/acme/shop"}
+          ] do
+        assert %{target: nil, dropped: ["target"]} = filters = parse(params)
+        assert Filters.to_params(filters) == %{}
+      end
+    end
 
-      assert Filters.change(parse(%{}), %{"_filter" => "target", "target" => "none"}).target ==
-               :none
+    test "an id not of the shape is dropped and named; the others are kept" do
+      assert %{target: [@tg_a], dropped: ["target"]} =
+               parse(%{"target" => "#{@tg_a},acme/shop"})
 
-      every = Filters.target_value({nil, "acme/shop"})
+      for bad <- [
+            "",
+            ",",
+            "tg_0123456789ABCDEF",
+            "tg_0123456789abcdei",
+            "rn_0123456789abcdef",
+            "tg_0123456789abcde",
+            "tg_0123456789abcdef0",
+            "NONE",
+            ["tg_0123456789abcdef"],
+            %{"a" => "b"}
+          ] do
+        assert %{target: nil, dropped: ["target"]} = parse(%{"target" => bad})
+      end
 
-      assert Filters.change(parse(%{}), %{"_filter" => "target", "target" => every}).target ==
-               {nil, "acme/shop"}
+      # Bytes that are not text are refused, never raised over: the shape is read byte by
+      # byte.
+      for bad <- [<<255>>, "tg_" <> <<255, 254>> <> "0123456789abcd", @tg_a <> "," <> <<192>>] do
+        assert %{dropped: ["target"]} = filters = parse(%{"target" => bad})
+        assert filters.target in [nil, [@tg_a]]
+      end
+
+      # More ids than a link gives are read up to the most it gives, and the rest named.
+      many = for n <- 1..25, do: "tg_" <> String.pad_leading(Integer.to_string(n), 16, "0")
+      assert %{target: kept, dropped: ["target"]} = parse(%{"target" => Enum.join(many, ",")})
+      assert kept == Enum.take(many, 20)
     end
 
     test "the workspace's connections are read over at most 90 days, the last fourteen unless set" do
@@ -302,11 +342,11 @@ defmodule Apiary.Runs.ListingTest do
     test "qualifiers set their filters, the other words are the free text" do
       {f, []} =
         query(
-          ~s(state:failed,lost repo:acme/shop runtime:"claude code" host:gpu-01 node:build-01 denied:yes checkout totals)
+          ~s(state:failed,lost repo:#{@tg_a} runtime:"claude code" host:gpu-01 node:build-01 denied:yes checkout totals)
         )
 
       assert f.states == ~w(failed lost)
-      assert f.target == {nil, "acme/shop"}
+      assert f.target == [@tg_a]
       assert f.runtime == "claude code"
       assert f.host == "gpu-01"
       assert f.node == "build-01"
@@ -390,13 +430,74 @@ defmodule Apiary.Runs.ListingTest do
     end
 
     test "repo: is resolved by the page, and none is the runs without a target" do
-      resolve = fn "shop" -> {"github.example", "acme/shop"} end
+      resolve = fn
+        "shop" -> [@tg_a]
+        "both" -> [@tg_a, @tg_b]
+        _none -> nil
+      end
 
-      assert {%{target: {"github.example", "acme/shop"}}, []} =
-               query("repo:shop", %{}, resolve: resolve)
-
+      assert {%{target: [@tg_a]}, []} = query("repo:shop", %{}, resolve: resolve)
+      assert {%{target: [@tg_a, @tg_b]}, []} = query("repo:both", %{}, resolve: resolve)
       assert {%{target: :none}, []} = query("target:none")
-      assert {%{target: {nil, "acme/shop"}}, []} = query("repository:acme/shop")
+
+      # A name that names no target is search text: read, never refused, it takes the
+      # place of the target before it and stays in the query, never in `target`.
+      assert {%{target: {:name, "nowhere"}, q: nil} = f, []} =
+               query("repo:nowhere", %{"target" => @tg_b}, resolve: resolve)
+
+      assert Filters.to_params(f) == %{"q" => "target:nowhere"}
+      assert Filters.target_params(f.target) == %{"q" => "target:nowhere"}
+      assert parse(Filters.to_params(f)) == f
+
+      # The free text beside it is kept after it; a name with a space is quoted.
+      {f, []} = query(~s(fix repo:"acme/no where" totals), %{}, resolve: resolve)
+      assert %{target: {:name, "acme/no where"}, q: "fix totals"} = f
+      assert Filters.to_params(f) == %{"q" => ~s(target:"acme/no where" fix totals)}
+      assert parse(Filters.to_params(f)) == f
+
+      # More free text keeps the name; a name or an id typed later takes its place.
+      {g, []} = Filters.apply_query(f, "mirror", resolve: resolve)
+      assert %{target: {:name, "acme/no where"}, q: "mirror"} = g
+
+      assert {%{target: [@tg_a], q: nil}, []} =
+               Filters.apply_query(f, "repo:shop", resolve: resolve)
+
+      assert {%{target: :none}, []} = Filters.apply_query(f, "target:none", resolve: resolve)
+
+      # Its token is the name, and reads back to it; taking it away keeps the free text.
+      assert [%{key: :target, value: ~s("acme/no where"), without: without}] = Filters.tokens(f)
+      assert without.target == nil and without.q == "fix totals"
+
+      # Without the page, the text is read as ids, else as a name.
+      assert {%{target: [@tg_a]}, []} = query("repository:#{@tg_a}")
+      assert {%{target: [@tg_a, @tg_b]}, []} = query("repo:#{@tg_a},#{@tg_b}")
+      assert {%{target: {:name, "acme/shop"}}, []} = query("repo:acme/shop")
+    end
+
+    test "a name in the query is the target filter only where the address names no target" do
+      assert %{target: {:name, "acme/x"}, q: "fix", dropped: []} =
+               parse(%{"q" => "fix repo:acme/x"})
+
+      assert %{target: {:name, "acme/x"}} = Filters.parse(%{"q" => "target:acme/x"}, :connections)
+
+      # With a target in the address, or an older one, the word stays free text.
+      assert %{target: [@tg_a], q: "target:acme/x"} =
+               parse(%{"target" => @tg_a, "q" => "target:acme/x"})
+
+      assert %{target: nil, q: "target:acme/x", dropped: ["target"]} =
+               parse(%{"system" => "x", "q" => "target:acme/x"})
+
+      # none, and a word with no value, stay free text; a second name is free text too.
+      assert %{target: nil, q: "target:none"} = parse(%{"q" => "target:none"})
+      assert %{target: {:name, "a"}, q: "target:b"} = parse(%{"q" => "target:a target:b"})
+
+      # The free text beside a name holds what a query holds; the name what a label holds.
+      long = String.duplicate("x", 257)
+
+      assert %{target: {:name, "a"}, q: nil, dropped: ["q"]} =
+               parse(%{"q" => "target:a " <> long})
+
+      assert %{target: nil, dropped: ["q"]} = parse(%{"q" => long})
     end
 
     test "the connections read their own qualifiers" do
@@ -421,8 +522,7 @@ defmodule Apiary.Runs.ListingTest do
       f =
         parse(%{
           "state" => "failed,timed_out,lost",
-          "system" => "github.example",
-          "target" => "acme/shop",
+          "target" => @tg_a,
           "runtime" => "claude code",
           "from" => "2026-09-01",
           "denials" => "1",
@@ -432,7 +532,7 @@ defmodule Apiary.Runs.ListingTest do
       tokens = Filters.tokens(f)
 
       assert Enum.map(tokens, &{&1.key, &1.value}) == [
-               {:target, "github.example/acme/shop"},
+               {:target, @tg_a},
                {:state, "ended_badly"},
                {:runtime, ~s("claude code")},
                {:started, ">=2026-09-01"},
@@ -443,7 +543,10 @@ defmodule Apiary.Runs.ListingTest do
       assert hd(tokens).without.target == nil
       assert hd(tokens).without.q == "free"
 
-      assert Filters.tokens(f, except: [:state, :denied], target_text: fn {_s, p} -> p end)
+      assert Filters.tokens(f,
+               except: [:state, :denied],
+               target_text: fn [_id] -> "acme/shop" end
+             )
              |> Enum.map(&{&1.key, &1.value}) == [
                {:target, "acme/shop"},
                {:runtime, ~s("claude code")},
@@ -451,7 +554,7 @@ defmodule Apiary.Runs.ListingTest do
              ]
 
       # What a token says reads back to the same filter.
-      for token <- tokens, token.key != :target do
+      for token <- tokens do
         {again, []} = Filters.apply_query(token.without, "#{token.key}:#{token.value}")
         assert Filters.same?(again, %{f | q: nil})
       end
@@ -485,7 +588,10 @@ defmodule Apiary.Runs.ListingTest do
       assert run.id == pending.id
     end
 
-    test "state, target, runtime, host, node and denials; a task is no filter", %{scope: scope} do
+    test "state, target, runtime, host, node and denials; a task is no filter", %{
+      scope: scope,
+      other: other
+    } do
       node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
 
       a =
@@ -516,9 +622,11 @@ defmodule Apiary.Runs.ListingTest do
 
       assert by.(%{"state" => "failed"}) == [c.id]
       assert by.(%{"state" => "running,failed"}) == Enum.sort([a.id, b.id, c.id])
-      assert by.(%{"system" => "github.example", "target" => "acme/shop"}) == [a.id]
-      assert by.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [b.id]
-      assert by.(%{"target" => "acme/shop"}) == Enum.sort([a.id, b.id])
+      first = tg(scope)
+      gitlab = tg(scope, "gitlab.example")
+      assert by.(%{"target" => first}) == [a.id]
+      assert by.(%{"target" => gitlab}) == [b.id]
+      assert by.(%{"target" => "#{first},#{gitlab}"}) == Enum.sort([a.id, b.id])
       assert by.(%{"target" => "none"}) == [c.id]
       assert by.(%{"task" => "mirror-sync"}) == Enum.sort([a.id, b.id, c.id])
       assert by.(%{"runtime" => "otherrt"}) == [c.id]
@@ -527,7 +635,17 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(%{"node" => node.public_id}) == [a.id]
       assert by.(%{"node" => "nobody"}) == []
       assert by.(%{"denials" => "1"}) == [a.id]
-      assert by.(%{"system" => "github.example", "target" => "nothing/here"}) == []
+      assert by.(%{"target" => "tg_0000000000000000"}) == []
+
+      # The target of another workspace's id, same system and path, names none of these runs.
+      started(other, shop(), 100)
+      theirs = tg(other)
+      assert by.(%{"target" => theirs}) == []
+      assert by.(%{"target" => "#{theirs},#{gitlab}"}) == [b.id]
+
+      # A typed name is search text: the runs whose target's path it is, here none.
+      assert by.(%{"q" => "target:acme/shop"}) == Enum.sort([a.id, b.id])
+      assert by.(%{"q" => "target:acme/nowhere"}) == []
     end
 
     test "the free text finds the start of a run's id, its title and its target, as text", %{
@@ -804,7 +922,12 @@ defmodule Apiary.Runs.ListingTest do
     test "the rail counts the targets under every filter but the target, pinned first", %{
       scope: scope
     } do
-      filters = parse(%{"system" => "github.example", "target" => "acme/shop"})
+      shop = target_of(scope, "github.example", "acme/shop")
+      gitlab = target_of(scope, "gitlab.example", "acme/shop")
+      api = target_of(scope, "github.example", "acme/api")
+      pin = &Map.take(&1, [:id, :public_id, :system, :path])
+
+      filters = parse(%{"target" => shop.public_id})
       rail = Runs.target_counts(scope, filters, now: @now)
 
       assert rail.all == 5
@@ -813,24 +936,37 @@ defmodule Apiary.Runs.ListingTest do
       assert rail.more == 0
 
       assert rail.targets == [
-               %{system: "github.example", path: "acme/shop", runs: 2},
-               %{system: "github.example", path: "acme/api", runs: 1},
-               %{system: "gitlab.example", path: "acme/shop", runs: 1}
+               %{public_id: shop.public_id, system: "github.example", path: "acme/shop", runs: 2},
+               %{public_id: api.public_id, system: "github.example", path: "acme/api", runs: 1},
+               %{
+                 public_id: gitlab.public_id,
+                 system: "gitlab.example",
+                 path: "acme/shop",
+                 runs: 1
+               }
              ]
 
       pinned =
         Runs.target_counts(scope, parse(%{"state" => "running"}),
           now: @now,
-          pinned: [{"gitlab.example", "acme/shop"}, {"github.example", "acme/api"}],
+          pinned: [pin.(gitlab), pin.(api)],
           limit: 1
         )
 
       assert pinned.pinned == [
-               %{system: "gitlab.example", path: "acme/shop", runs: 1},
-               %{system: "github.example", path: "acme/api", runs: 0}
+               %{
+                 public_id: gitlab.public_id,
+                 system: "gitlab.example",
+                 path: "acme/shop",
+                 runs: 1
+               },
+               %{public_id: api.public_id, system: "github.example", path: "acme/api", runs: 0}
              ]
 
-      assert pinned.targets == [%{system: "github.example", path: "acme/shop", runs: 1}]
+      assert pinned.targets == [
+               %{public_id: shop.public_id, system: "github.example", path: "acme/shop", runs: 1}
+             ]
+
       assert pinned.more == 0
 
       more = Runs.target_counts(scope, parse(%{}), now: @now, limit: 1)
@@ -842,26 +978,45 @@ defmodule Apiary.Runs.ListingTest do
         Runs.target_counts(scope, parse(%{}),
           now: @now,
           narrow: "GITLAB",
-          pinned: [{"gitlab.example", "acme/shop"}]
+          pinned: [pin.(gitlab)]
         )
 
       assert found.pinned == []
-      assert found.targets == [%{system: "gitlab.example", path: "acme/shop", runs: 1}]
+
+      assert found.targets == [
+               %{
+                 public_id: gitlab.public_id,
+                 system: "gitlab.example",
+                 path: "acme/shop",
+                 runs: 1
+               }
+             ]
+
       assert Runs.target_counts(scope, parse(%{}), now: @now, narrow: "%").targets == []
     end
 
-    test "a path on two systems is written with its system; repo: finds it", %{scope: scope} do
+    test "a path on two systems is written with its system; repo: finds it by its ids", %{
+      scope: scope,
+      other: other
+    } do
       assert Runs.shared_paths(scope) == MapSet.new(["acme/shop"])
+      api = tg(scope, "github.example", "acme/api")
 
-      assert Runs.resolve_target(scope, "acme/api") == {"github.example", "acme/api"}
-      assert Runs.resolve_target(scope, "ACME/API") == {"github.example", "acme/api"}
-      assert Runs.resolve_target(scope, "acme/shop") == {nil, "acme/shop"}
+      assert Runs.resolve_target(scope, "acme/api") == [api]
+      assert Runs.resolve_target(scope, "ACME/API") == [api]
+      assert Runs.resolve_target(scope, "github.example/acme/api") == [api]
+
+      # A path on two systems is each of its targets, in the order of their systems.
+      assert Runs.resolve_target(scope, "acme/shop") ==
+               [tg(scope), tg(scope, "gitlab.example")]
 
       assert Runs.resolve_target(scope, "gitlab.example/acme/shop") ==
-               {"gitlab.example", "acme/shop"}
+               [tg(scope, "gitlab.example")]
 
-      assert Runs.resolve_target(scope, "nothing/here") == {nil, "nothing/here"}
-      assert Runs.resolve_target(scope_fixture(), "acme/api") == {nil, "acme/api"}
+      # A name that names no target of the workspace names none, another workspace's too.
+      assert Runs.resolve_target(scope, "nothing/here") == nil
+      assert Runs.resolve_target(scope_fixture(), "acme/api") == nil
+      assert Runs.resolve_target(other, "acme/shop") == [tg(other)]
     end
 
     test "facets are counted from the data, each under the other filters", %{scope: scope} do
@@ -875,14 +1030,20 @@ defmodule Apiary.Runs.ListingTest do
 
       assert facets.target == %{
                options: [
-                 {"github.example/acme/shop",
-                  Filters.target_value({"github.example", "acme/shop"}), 1},
-                 {"gitlab.example/acme/shop",
-                  Filters.target_value({"gitlab.example", "acme/shop"}), 1},
+                 {{"github.example", "acme/shop"}, tg(scope), 1},
+                 {{"gitlab.example", "acme/shop"}, tg(scope, "gitlab.example"), 1},
                  {"Unassigned", "none", 1}
                ],
                total: 3
              }
+
+      # A chosen target the most frequent leave out comes first, counted, with its value.
+      api = tg(scope, "github.example", "acme/api")
+
+      chosen =
+        Runs.run_facets(scope, parse(%{"state" => "running", "target" => api}), now: @now)
+
+      assert hd(chosen.target.options) == {{"github.example", "acme/api"}, api, 0}
 
       refute Map.has_key?(facets, :task)
       assert facets.runtime.options == [{"claude", "claude", 3}]
@@ -1141,9 +1302,8 @@ defmodule Apiary.Runs.ListingTest do
       assert hosts.(%{"decision" => "allowed"}) == ["registry.example"]
       assert hosts.(%{"decision" => "denied"}) == ["files.cdn.example", "registry.example"]
 
-      assert hosts.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [
-               "registry.example"
-             ]
+      assert hosts.(%{"target" => tg(scope, "gitlab.example")}) == ["registry.example"]
+      assert hosts.(%{"target" => "none"}) == []
 
       assert hosts.(%{"host" => "files.cdn.example"}) == ["files.cdn.example"]
       assert hosts.(%{"since" => "90d"}) == ["files.cdn.example", "registry.example"]
@@ -1304,15 +1464,28 @@ defmodule Apiary.Runs.ListingTest do
     end
 
     test "the rail counts each target's destinations, as the views count", %{scope: scope} do
+      gitlab = target_of(scope, "gitlab.example", "acme/shop")
+
       rail =
         Runs.destination_target_counts(scope, cx(%{}),
           now: @now,
-          pinned: [{"gitlab.example", "acme/shop"}]
+          pinned: [Map.take(gitlab, [:id, :public_id, :system, :path])]
         )
 
       assert rail.all == 2
-      assert rail.pinned == [%{system: "gitlab.example", path: "acme/shop", runs: 1}]
-      assert rail.targets == [%{system: "github.example", path: "acme/shop", runs: 2}]
+
+      assert rail.pinned == [
+               %{
+                 public_id: gitlab.public_id,
+                 system: "gitlab.example",
+                 path: "acme/shop",
+                 runs: 1
+               }
+             ]
+
+      assert rail.targets == [
+               %{public_id: tg(scope), system: "github.example", path: "acme/shop", runs: 2}
+             ]
     end
 
     test "facets of the page", %{scope: scope} do
@@ -1320,8 +1493,7 @@ defmodule Apiary.Runs.ListingTest do
       assert {"registry.example", "registry.example", 2} in facets.host.options
 
       # A target counts the destinations its runs reached, as the rail does.
-      assert {"github.example/acme/shop", Filters.target_value({"github.example", "acme/shop"}),
-              2} in facets.target.options
+      assert {{"github.example", "acme/shop"}, tg(scope), 2} in facets.target.options
 
       narrowed =
         Runs.destination_facets(scope, cx(%{}),
@@ -1330,7 +1502,7 @@ defmodule Apiary.Runs.ListingTest do
         )
 
       assert narrowed.host.options == [{"files.cdn.example", "files.cdn.example", 1}]
-      assert [{"gitlab.example/acme/shop", _, 1}] = narrowed.target.options
+      assert [{{"gitlab.example", "acme/shop"}, _, 1}] = narrowed.target.options
     end
   end
 

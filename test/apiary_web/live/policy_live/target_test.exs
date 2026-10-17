@@ -142,28 +142,25 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
-  test "what its runs reached is Network access narrowed to the target", %{
+  test "what its runs reached is Network access narrowed to the target, by its id", %{
     conn: conn,
     scope: scope,
-    path: path
+    path: path,
+    target: target
   } do
     view = open(conn, path)
+    network = workspace_path(scope, "/network?target=#{target.public_id}")
 
     assert has_element?(
              view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?target=acme%2Fshop")}']",
+             "#policy-hosts-network[href='#{network}']",
              "See what its runs reached"
            )
 
-    # Where another system has the same path, the narrowed list's address has the system
-    # too.
+    # Where another system has the same path, the address is the same id.
     started_run(scope, shop("gitlab.com"))
     view = open(conn, path)
-
-    assert has_element?(
-             view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?system=github.example&target=acme%2Fshop")}']"
-           )
+    assert has_element?(view, "#policy-hosts-network[href='#{network}']")
   end
 
   test "a target no other system has is named by its path alone, in its title and its words",
@@ -267,6 +264,33 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert redirected_to(get(conn, old)) == path
     assert redirected_to(get(conn, old <> "/history?page=2")) == path <> "/history?page=2"
     assert redirected_to(get(conn, old <> "/versions/3/export")) == path <> "/versions/3/export"
+
+    # Each path of the tab goes on whole.
+    for rest <- ["/history", "/document", "/versions/3", "/versions/12/export"] do
+      assert redirected_to(get(conn, old <> rest)) == path <> rest, rest
+    end
+
+    # Anything else goes to the bare tab, the query kept.
+    for rest <- [
+          "/..",
+          "/../../settings",
+          "/history/..",
+          "/%2E%2E",
+          "/members",
+          "/history/extra",
+          "/document/x",
+          "/versions",
+          "/versions/0",
+          "/versions/03",
+          "/versions/-1",
+          "/versions/x",
+          "/versions/3/x",
+          "/versions/3/export/x",
+          "/versions/1234567890123456789012"
+        ] do
+      assert redirected_to(get(conn, old <> rest)) == path, rest
+      assert redirected_to(get(conn, old <> rest <> "?view=denied")) == path <> "?view=denied"
+    end
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
@@ -1134,7 +1158,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # The export is a page of the tab, under the target's own title: an h2 and Done to the
     # Document view. The way back is the top bar's breadcrumb, never a trail of the page's own.
     view = open(conn, path <> "/versions/1/export")
-    # The page names the target as it is addressed; the file's head names it in full.
+    # The page names the target by its path, with its system where another system shares
+    # the path; the file's head names it in full.
     assert text(view, "#export-lead") =~ "The effective policy of acme/shop as of version 1"
 
     assert text(view, "#export-policy-text") =~

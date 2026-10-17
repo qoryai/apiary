@@ -472,21 +472,6 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
-  narrowed/2 is the value of `app/1`'s `narrowed` for a list narrowed to `target`, as the
-  list's filters parsed it (`{system, path}`, `{nil, path}` for the path on every system),
-  given the paths shared by two systems of the workspace (`Apiary.Runs.shared_paths/2`, or
-  whether this one is): the system is carried only where the path is shared. Nil for no
-  target, or `:none`.
-  """
-  @spec narrowed(term, MapSet.t() | boolean) :: map | nil
-  def narrowed({system, path}, shared) when is_binary(path) do
-    shared? = if is_boolean(shared), do: shared, else: MapSet.member?(shared, path)
-    %{system: system, path: path, shared: shared? and is_binary(system)}
-  end
-
-  def narrowed(_target, _shared), do: nil
-
-  @doc """
   The application shell: a 48 px top bar across the window, then the sidebar of the
   page's scope beside the main column.
 
@@ -595,7 +580,7 @@ defmodule ApiaryWeb.Layouts do
   attr :narrowed, :map,
     default: nil,
     doc:
-      "on Runs and Network access narrowed to one target, that target, `%{system, path, shared}` (`narrowed/2`): the sidebar's Runs and Network access carry it, its path and, only where the path is shared, its system. Nil everywhere else"
+      "on Runs and Network access narrowed to the targets of one path or to a typed name, `%{target, system, path}` (`ApiaryWeb.Narrowing.carried/2`): the sidebar's Runs and Network access carry the filters' target as the lists write it, and are named by the path and, only where another system has the path and one target is named, its system. Nil everywhere else"
 
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
@@ -872,24 +857,23 @@ defmodule ApiaryWeb.Layouts do
 
   # What the sidebar's Runs and Network access carry on a list narrowed to a target: that
   # target, on Runs and on Network access alone; nothing anywhere else.
-  defp carry(%{path: path} = narrowed, nav) when nav in [:runs, :network] and is_binary(path),
-    do: narrowed
+  defp carry(%{target: target, path: path} = narrowed, nav)
+       when nav in [:runs, :network] and not is_nil(target) and is_binary(path),
+       do: narrowed
 
   defp carry(_narrowed, _nav), do: nil
 
   # The target's name as the lists write it: its path, its system before it where the path
   # is shared.
-  defp narrowed_name(%{shared: true, system: system, path: path}) when is_binary(system),
+  defp narrowed_name(%{system: system, path: path}) when is_binary(system),
     do: "#{system}/#{path}"
 
   defp narrowed_name(%{path: path}), do: path
 
-  # The list's path with the target's parameters, written as the lists write them
-  # (`Apiary.Runs.Filters.target_params/2`): the path, and the system only where the path
-  # is shared.
-  defp carried_path(path, %{system: system, path: target_path, shared: shared}) do
-    params = Apiary.Runs.Filters.target_params(if(shared, do: system), target_path)
-    path <> "?" <> Plug.Conn.Query.encode(params)
+  # The list's path with the target, as the lists write it
+  # (`Apiary.Runs.Filters.target_params/1`): its ids, or a typed name's query word.
+  defp carried_path(path, %{target: target}) do
+    path <> "?" <> Plug.Conn.Query.encode(Apiary.Runs.Filters.target_params(target))
   end
 
   defp carried_label(:runs, name), do: gettext("Runs, narrowed to %{name}", name: name)

@@ -766,7 +766,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#rule-#{id}.q-confirming #lock-confirm")
       refute has_element?(view, "dialog#lock-confirm")
       assert text(view, "#lock-confirm") =~ "1 repository rule stops being in force"
-      # A target is named as it is addressed: its path, where no other system has it.
+      # A target is named by its path, with its system where another system shares the
+      # path: here no other system has it. The host in brackets is the rule's.
       assert text(view, "#lock-confirm") =~ ": acme/shop (github.example)"
       refute rule(scope, "github.example").locked
 

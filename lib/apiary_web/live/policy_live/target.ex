@@ -59,11 +59,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
       else: assign(socket, loaded: false)
   end
 
-  # What the target's runs reached: Network access narrowed to the target, its system in
-  # the address only where another system has the same path.
+  # What the target's runs reached: Network access narrowed to the target, by its id.
   defp network_path(socket, target) do
     scope = socket.assigns.current_scope
-    params = Filters.target_params(target.system, target.path, socket.assigns.holder_shared)
+    params = Filters.target_params([target.public_id])
     ~p"/#{scope.organisation}/#{scope.workspace}/network?#{params}"
   end
 

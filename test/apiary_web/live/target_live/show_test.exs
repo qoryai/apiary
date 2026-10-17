@@ -117,7 +117,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-all-runs[href='#{workspace_path(scope, "/runs?system=github.example&target=acme%2Fshop")}']",
+             "#target-all-runs[href='#{workspace_path(scope, "/runs?target=#{target_id(scope, "github.example", "acme/shop")}")}']",
              "All 2 runs"
            )
 
@@ -129,7 +129,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-denied-connections[href='#{workspace_path(scope, "/network?system=github.example&target=acme%2Fshop&decision=denied")}']"
+             "#target-denied-connections[href='#{workspace_path(scope, "/network?target=#{target_id(scope, "github.example", "acme/shop")}&decision=denied")}']"
            )
 
     assert has_element?(view, "#target-about", "github.example")
@@ -229,13 +229,13 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-all-runs[href='#{workspace_path(scope, "/runs?target=acme%2Fbilling")}']",
+             "#target-all-runs[href='#{workspace_path(scope, "/runs?target=#{target_id(scope, "github.example", "acme/billing")}")}']",
              "All 1 run"
            )
 
     assert has_element?(
              view,
-             "#target-denied-connections[href='#{workspace_path(scope, "/network?target=acme%2Fbilling&decision=denied")}']"
+             "#target-denied-connections[href='#{workspace_path(scope, "/network?target=#{target_id(scope, "github.example", "acme/billing")}&decision=denied")}']"
            )
 
     # The sidebar is the workspace's, plain: nothing on a target's page carries it.
@@ -365,7 +365,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-all-runs[href='#{workspace_path(scope, "/runs?system=-&target=acme%2Fx")}']"
+             "#target-all-runs[href='#{workspace_path(scope, "/runs?target=#{target.public_id}")}']"
            )
   end
 

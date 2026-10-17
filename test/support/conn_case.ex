@@ -80,6 +80,15 @@ defmodule ApiaryWeb.ConnCase do
   end
 
   @doc """
+  The id (`tg_…`) of the scope's workspace's target on `system` with `path`, as the lists'
+  addresses write it (`?target=tg_…`). The target must exist.
+  """
+  def target_id(scope, system, path) do
+    %{public_id: public_id} = Apiary.Targets.get(scope, system, path)
+    public_id
+  end
+
+  @doc """
   The breadcrumb's segments after the place, of a page (its view or its HTML), each
   `{words, href}`: href is nil where the segment is no link, as the page itself is. The
   place is the organisation and the workspace on a workspace's page (`:workspace`), the

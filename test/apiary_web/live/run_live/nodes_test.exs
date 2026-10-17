@@ -93,7 +93,13 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       end
 
       # With a target too, the line names the target and the node stays a token.
-      view = open(conn, workspace_path(scope, "/runs?node=#{node.public_id}&target=acme/shop"))
+      Apiary.RunListFixtures.started_run(scope, %{
+        "forge" => "github.example",
+        "repository" => "acme/shop"
+      })
+
+      shop = target_id(scope, "github.example", "acme/shop")
+      view = open(conn, workspace_path(scope, "/runs?node=#{node.public_id}&target=#{shop}"))
       assert has_element?(view, "#runs-narrowed-what", "acme/shop")
       assert has_element?(view, "#runs-narrowed-network")
       assert has_element?(view, "#runs-token-node", node.public_id)

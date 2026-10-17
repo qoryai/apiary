@@ -1789,7 +1789,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "##{item}-act[aria-expanded=true]")
       assert has_element?(view, "#rule-panel", "files.cdn.example")
       assert has_element?(view, "#rule-panel-submit", "Allow for the repository")
-      # The target is named as it is addressed: its path, where no other system has it.
+      # The target is named by its path, with its system where another system shares the
+      # path: here no other system has it.
       assert text(view, "#rule-panel-target") =~ "acme/shop · 1 run"
       refute text(view, "#rule-panel-target") =~ "github.example"
       # The one target is chosen, so its option takes the focus.
