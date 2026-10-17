@@ -19,7 +19,7 @@ defmodule Apiary.Integrations.Description do
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  alias Apiary.Kinds.{CanonicalJSON, Pattern, Schema}
+  alias Apiary.Kinds.{CanonicalJSON, Pattern, Schema, SettingsResolver}
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -205,13 +205,26 @@ defmodule Apiary.Integrations.Description do
         "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
       })
 
-    with {:ok, root} <- Schema.build(schema),
+    with {:ok, root} <- schema |> without_casts() |> Schema.build(resolver: SettingsResolver),
          :ok <- Schema.validate(settings, root) do
       :ok
     else
       {:error, errors} -> {:error, {:integration_settings_invalid, errors}}
     end
   end
+
+  # JSV builds a `jsv-cast` or `x-jsv-cast` keyword by loading the module it names, which
+  # `atoms: false` and `cast: false` do not stop, so a settings schema loses both keys from
+  # every object in it, at any depth. A `$ref` can point anywhere in the document, even into
+  # a `const` or under `properties`, and JSV builds what it points at, so no object keeps
+  # them: a setting named so loses its schema, and a value that holds one loses it.
+  @casts ~w(jsv-cast x-jsv-cast)
+
+  defp without_casts(map) when is_map(map),
+    do: for({key, value} <- map, key not in @casts, into: %{}, do: {key, without_casts(value)})
+
+  defp without_casts(list) when is_list(list), do: Enum.map(list, &without_casts/1)
+  defp without_casts(other), do: other
 
   @doc """
   check_argument/2 checks the argument a connection of `description` stores:

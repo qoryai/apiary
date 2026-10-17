@@ -4,6 +4,7 @@ defmodule Apiary.Integrations.DescriptionTest do
   import Apiary.DescriptionFixtures
 
   alias Apiary.Integrations.Description
+  alias Apiary.Kinds.Schema
 
   @fixtures Path.expand("../../fixtures/integration-contract", __DIR__)
 
@@ -232,6 +233,164 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert {:error, {:integration_argument_not_allowed, ["credential"]}} =
                Description.check_argument(description, "acme")
+    end
+  end
+
+  describe "a settings schema's casts" do
+    # A module on the code path, compiled and then unloaded: building a schema that names
+    # it in a cast, or refers to it with `jsv:module:`, loads it.
+    defp unloaded_module(dir) do
+      module = :"Elixir.Apiary.CastProbe#{System.unique_integer([:positive])}"
+
+      source = """
+      defmodule #{inspect(module)} do
+        def cast(value), do: {:ok, value}
+        def json_schema, do: %{"type" => "string"}
+      end
+      """
+
+      [{^module, beam}] = Code.compile_string(source)
+      File.write!(Path.join(dir, "#{module}.beam"), beam)
+      :code.purge(module)
+      :code.delete(module)
+      :code.purge(module)
+      true = :code.add_patha(String.to_charlist(dir))
+      on_exit(fn -> :code.del_path(String.to_charlist(dir)) end)
+      refute :code.is_loaded(module)
+      module
+    end
+
+    defp tracker_with(settings) do
+      assert {:ok, description} =
+               tracker_description()
+               |> update_in(["settings"], &Map.merge(&1, settings))
+               |> parse()
+
+      description
+    end
+
+    @tag :tmp_dir
+    test "are left out at any depth, and the module a cast names is never loaded",
+         %{tmp_dir: dir} do
+      short = %{"type" => "string", "maxLength" => 5}
+
+      for settings <- [
+            &%{"properties" => %{"url" => Map.put(short, "jsv-cast", [&1, "cast"])}},
+            &%{"properties" => %{"url" => Map.put(short, "x-jsv-cast", [[&1, "cast"]])}},
+            &%{
+              "$defs" => %{"short" => Map.put(short, "jsv-cast", [&1, "cast"])},
+              "properties" => %{"url" => %{"$ref" => "#/$defs/short"}}
+            },
+            # A `$ref` into a value builds the value as a schema.
+            &%{
+              "$defs" => %{"short" => %{"const" => Map.put(short, "jsv-cast", [&1, "cast"])}},
+              "properties" => %{"url" => %{"$ref" => "#/$defs/short/const"}}
+            },
+            &%{
+              "$defs" => %{"short" => %{"default" => Map.put(short, "x-jsv-cast", &1)}},
+              "properties" => %{"url" => %{"$ref" => "#/$defs/short/default"}}
+            }
+          ] do
+        module = unloaded_module(dir)
+        description = tracker_with(settings.(Atom.to_string(module)))
+
+        assert Description.check_settings(description, %{"url" => "abc"}) == :ok
+
+        assert {:error, {:integration_settings_invalid, _}} =
+                 Description.check_settings(description, %{"url" => "abcdefgh"})
+
+        refute :code.is_loaded(module)
+
+        # Built with its casts, the same schema loads the module, which has no `__jsv__`.
+        assert {:error, _} = Schema.build(description.document["settings"])
+        assert {:file, _} = :code.is_loaded(module)
+      end
+    end
+
+    test "leave out a setting's schema, or a key in a const, named like a cast" do
+      description =
+        tracker_with(%{
+          "properties" => %{
+            "jsv-cast" => %{"type" => "integer"},
+            "mode" => %{"const" => %{"x-jsv-cast" => "kept"}}
+          }
+        })
+
+      # Its schema left out, the setting is checked like one the schema does not name.
+      assert Description.check_settings(description, %{"jsv-cast" => "three"}) == :ok
+      assert Description.check_settings(description, %{"mode" => %{}}) == :ok
+    end
+  end
+
+  describe "a settings schema's jsv: references" do
+    @describetag :tmp_dir
+
+    test "are answered with a schema no value meets, and the module named is never loaded",
+         %{tmp_dir: dir} do
+      for settings <- [
+            &%{"properties" => %{"url" => %{"$ref" => "jsv:module:" <> &1}}},
+            &%{"properties" => %{"url" => %{"$ref" => "JSV:module:" <> &1}}},
+            &%{"properties" => %{"url" => %{"$dynamicRef" => "jsv:module:" <> &1}}},
+            &%{
+              "$defs" => %{"remote" => %{"$ref" => "jsv:module:" <> &1}},
+              "properties" => %{"url" => %{"$ref" => "#/$defs/remote"}}
+            },
+            &%{"$schema" => "jsv:module:" <> &1, "properties" => %{"url" => %{}}}
+          ] do
+        module = unloaded_module(dir)
+        description = tracker_with(settings.(Atom.to_string(module)))
+
+        assert {:error, {:integration_settings_invalid, _}} =
+                 Description.check_settings(description, %{"url" => "abc"})
+
+        refute :code.is_loaded(module)
+
+        # Built with JSV's resolvers alone, the same schema loads the module.
+        Schema.build(description.document["settings"])
+        assert {:file, _} = :code.is_loaded(module)
+      end
+    end
+
+    test "leave a subschema whose $id is a jsv: URI to its $ref", %{tmp_dir: dir} do
+      module = unloaded_module(dir)
+      id = "jsv:module:" <> Atom.to_string(module)
+
+      description =
+        tracker_with(%{
+          "$defs" => %{"local" => %{"$id" => id, "type" => "integer"}},
+          "properties" => %{"url" => %{"$ref" => id}}
+        })
+
+      assert Description.check_settings(description, %{"url" => 3}) == :ok
+
+      assert {:error, {:integration_settings_invalid, _}} =
+               Description.check_settings(description, %{"url" => "abc"})
+
+      refute :code.is_loaded(module)
+    end
+
+    test "leave a schema with a meta-schema JSV embeds, and a local $ref, as it was" do
+      short = %{"type" => "string", "maxLength" => 5}
+
+      for settings <- [
+            %{
+              "$schema" => "https://json-schema.org/draft/2020-12/schema",
+              "$defs" => %{"short" => short},
+              "properties" => %{"url" => %{"$ref" => "#/$defs/short"}}
+            },
+            %{
+              "$schema" => "http://json-schema.org/draft-07/schema#",
+              "definitions" => %{"short" => short},
+              "properties" => %{"url" => %{"$ref" => "#/definitions/short"}}
+            }
+          ] do
+        description = tracker_with(settings)
+
+        assert Description.check_settings(description, %{"url" => "abc"}) == :ok
+
+        assert {:error, {:integration_settings_invalid, _}} =
+                 Description.check_settings(description, %{"url" => "abcdefgh"})
+      end
     end
   end
 end

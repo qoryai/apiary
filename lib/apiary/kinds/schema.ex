@@ -9,7 +9,9 @@ defmodule Apiary.Kinds.Schema do
   `:persistent_term`. Nothing is fetched over the network: a reference outside the file
   resolves to the Forager contract's `auth.schema.json`, vendored under `priv/contract/`,
   which a service definition's `auth` refers to by its URL, or through JSV's local
-  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules.
+  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules. A
+  settings schema reaches no module it names: `Apiary.Kinds.SettingsResolver` answers its
+  `jsv:` references first.
   """
 
   @behaviour JSV.Resolver
@@ -22,10 +24,15 @@ defmodule Apiary.Kinds.Schema do
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for
   one JSV cannot build, such as a pattern PCRE does not take.
+
+  It is built with `atoms: false`, whatever `opts` say: a cast that makes atoms, such as
+  `"jsv-cast": ["Elixir.JSV.Cast", "string_to_atom"]` or `"aprops"`, is left out, so a
+  schema from an untrusted input can make no atom, which the runtime never frees.
   """
   @spec build(map, keyword) :: {:ok, JSV.Root.t()} | {:error, term}
   def build(schema, opts \\ []) when is_map(schema) do
-    {:ok, JSV.build!(Pattern.end_only(schema), Keyword.merge([formats: true], opts))}
+    opts = [formats: true] |> Keyword.merge(opts) |> Keyword.put(:atoms, false)
+    {:ok, JSV.build!(Pattern.end_only(schema), opts)}
   rescue
     error -> {:error, error}
   end
@@ -57,11 +64,13 @@ defmodule Apiary.Kinds.Schema do
 
   @doc """
   validate/2 validates the decoded JSON `value` against `root`: `:ok`, or
-  `{:error, errors}` with JSV's normalised errors, for a log and not for a page.
+  `{:error, errors}` with JSV's normalised errors, for a log and not for a page. JSV
+  validates with `cast: false`: the value is checked, and no cast the schema names is
+  called on it.
   """
   @spec validate(term, JSV.Root.t()) :: :ok | {:error, map}
   def validate(value, root) do
-    case JSV.validate(value, root) do
+    case JSV.validate(value, root, cast: false) do
       {:ok, _value} -> :ok
       {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
     end
