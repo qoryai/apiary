@@ -57,9 +57,14 @@ defmodule Apiary.Sources.Backlog do
   @max_name 100
 
   @views [:open, :taken, :declined, :closed, :all]
-  @sorts [:updated, :created]
+  @sorts [:updated, :created, :comments]
   @orders [:desc, :asc]
-  @params [:view, :search, :repository, :filed_by, :state, :sort, :order, :after]
+  @params [:view, :search, :repository, :filed_by, :label, :state, :sort, :order, :after, :before]
+
+  # The most a ticket's comments are counted at, as the database keeps them.
+  @max_comments 9_223_372_036_854_775_807
+  # The seconds since 1970 a cursor's time may name: from the year 1 to the year 9999.
+  @cursor_seconds -62_135_596_800..253_402_300_799
 
   @typedoc "A view of the Backlog."
   @type view :: :open | :taken | :declined | :closed | :all
@@ -142,8 +147,18 @@ defmodule Apiary.Sources.Backlog do
           total: non_neg_integer
         }
 
-  @typedoc "A page of the Backlog: its rows, the counts, and the cursor of the next page."
-  @type page :: %{rows: [row], counts: counts, next: String.t() | nil}
+  @typedoc """
+  A page of the Backlog: its rows, the counts, the cursors of the page after (`next`) and
+  the page before (`prev`), and the place of its first row in the view, from 1 (`first`),
+  0 when it has no rows.
+  """
+  @type page :: %{
+          rows: [row],
+          counts: counts,
+          next: String.t() | nil,
+          prev: String.t() | nil,
+          first: non_neg_integer
+        }
 
   @typedoc "A value a filter offers: its key, its words, how many tickets, its mark."
   @type value :: %{
@@ -162,6 +177,8 @@ defmodule Apiary.Sources.Backlog do
         }
 
   @no_counts %{open: 0, taken: 0, declined: 0, closed: 0, total: 0}
+  @no_rows %{rows: [], next: nil, prev: nil, first: 0}
+  @no_page Map.put(@no_rows, :counts, @no_counts)
 
   ## The list
 
@@ -177,18 +194,28 @@ defmodule Apiary.Sources.Backlog do
   #   * `repository:` a collection's id, the one Qory Apiary gives it, or a list of them:
   #     the tickets of those collections;
   #   * `filed_by:` a filer's name, as stored, or a list of them;
+  #   * `label:` a label, as stored, or a list of them: the tickets that carry any of
+  #     them, each matched exactly;
   #   * `state:` `:open` or `:closed` (or its string), the ticket's state at its source;
   #   * `sort:` `:updated` (the default) or `:created`, the ticket's times at its source,
-  #     and `order:` `:desc` (the default) or `:asc`;
-  #   * `after:` the cursor of the page before (`next`), for the page after it.
+  #     and `order:` `:desc` (the default) or `:asc`; or `:comments`, the most comments
+  #     first, then the latest change at the source, then the public id, always
+  #     descending, whatever `order:` says;
+  #   * `after:` the cursor of the page before (`next`), for the page after it (Older);
+  #   * `before:` the cursor of the page after (`prev`), for the page before it (Newer).
   #
   # A filter takes at most 100 values; one with more, or with a value that is not one
-  # (a repository that is no id, a name that is not 1 to 100 characters of valid UTF-8
-  # with no NUL), matches nothing, and so does a cursor not in the shape this function
-  # gives. An empty filter, or an empty cursor, is none. A view, a sort or an order it
+  # (a repository that is no id, a name or a label that is not 1 to 100 characters of
+  # valid UTF-8 with no NUL), matches nothing, and so does a cursor not in the shape this
+  # function gives, a cursor of another sort or order, and `after:` and `before:`
+  # together. An empty filter, or an empty cursor, is none. A view, a sort or an order it
   # does not know is its default. The rows are at most `page_size/0`; `next` is the cursor
-  # of the page after, or nil for the last. The counts are of every view, under the same
-  # search and filters, without the view and the cursor.
+  # of the page after, or nil for the last; `prev` the cursor of the page before, or nil
+  # for the first. A page `before:` names that would hold the first row is the first page,
+  # as it is read with no cursor. `first` is the place of the page's first row in the
+  # view, from 1, counted in the database from the rows ahead of it under the same view,
+  # search and filters; 0 for a page with no rows. The counts are of every view, under the
+  # same search and filters, without the view and the cursor.
   @spec list_tickets(Scope.t(), map | keyword) :: page
   def list_tickets(%Scope{} = scope, params) when is_map(params) or is_list(params) do
     case workspace(scope) do
@@ -201,47 +228,146 @@ defmodule Apiary.Sources.Backlog do
           |> search(params.search)
           |> repositories(params.repository)
           |> filers(params.filed_by)
+          |> labels(params.label)
           |> state(params.state)
 
-        {rows, next} = page(filtered, params, scope)
-        %{rows: rows, counts: counts(filtered), next: next}
+        filtered
+        |> view(params.view)
+        |> page(params, scope)
+        |> Map.put(:counts, counts(filtered))
 
       :error ->
-        %{rows: [], counts: @no_counts, next: nil}
+        @no_page
     end
   end
 
-  def list_tickets(%Scope{}, _params), do: %{rows: [], counts: @no_counts, next: nil}
+  def list_tickets(%Scope{}, _params), do: @no_page
 
   # The rows a page holds at most.
   @doc false
   @spec page_size() :: pos_integer
   def page_size, do: @page_size
 
+  # A page of `query`, the view already in it: its rows, `next`, `prev` and `first`.
   defp page(query, params, scope) do
-    {field, order} = {sort_field(params.sort), params.order}
+    sort = {params.sort, params.order}
 
-    rows =
-      query
-      |> view(params.view)
-      |> after_cursor(params.after, field, order)
-      |> order_by([item: i], [{^order, field(i, ^field)}, {^order, i.public_id}])
-      |> limit(@page_size + 1)
-      |> select_row(scope)
-      |> Repo.all()
-
-    case Enum.split(rows, @page_size) do
-      {rows, []} ->
-        {Enum.map(rows, &row/1), nil}
-
-      {rows, _more} ->
-        last = List.last(rows)
-        {Enum.map(rows, &row/1), cursor(Map.fetch!(last, field), last.id)}
+    case {params.after, params.before} do
+      {nil, nil} -> first_page(query, sort, scope)
+      {cursor, nil} -> older(query, sort, cursor, scope)
+      {nil, cursor} -> newer(query, sort, cursor, scope)
+      {_after, _before} -> @no_rows
     end
+  end
+
+  defp first_page(query, sort, scope) do
+    {rows, more} = query |> fetch(sort, :forward, scope) |> Enum.split(@page_size)
+
+    %{
+      rows: Enum.map(rows, &row/1),
+      next: if(more != [], do: last_cursor(rows, sort)),
+      prev: nil,
+      first: if(rows == [], do: 0, else: 1)
+    }
+  end
+
+  # The page after the row the cursor names. Its `first` and `prev` come from the rows
+  # ahead of its first row, or, on a page with no rows, of the cursor's row.
+  defp older(query, sort, cursor, scope) do
+    case parse_cursor(cursor, sort) do
+      {:ok, position} ->
+        {rows, more} =
+          query
+          |> beyond(sort, :behind, position)
+          |> fetch(sort, :forward, scope)
+          |> Enum.split(@page_size)
+
+        anchor = if rows == [], do: position, else: position(hd(rows), sort)
+        ahead = count_ahead(query, sort, anchor)
+
+        %{
+          rows: Enum.map(rows, &row/1),
+          next: if(more != [], do: last_cursor(rows, sort)),
+          prev: if(ahead > 0, do: cursor(anchor, sort)),
+          first: if(rows == [], do: 0, else: ahead + 1)
+        }
+
+      :error ->
+        @no_rows
+    end
+  end
+
+  # The page before the row the cursor names, read backwards and turned round; the first
+  # page when it would hold the first row.
+  defp newer(query, sort, cursor, scope) do
+    with {:ok, position} <- parse_cursor(cursor, sort),
+         reversed = query |> beyond(sort, :ahead, position) |> fetch(sort, :backward, scope),
+         {page, [_more | _]} <- Enum.split(reversed, @page_size) do
+      rows = Enum.reverse(page)
+      first = position(hd(rows), sort)
+      last = position(List.last(rows), sort)
+
+      %{
+        rows: Enum.map(rows, &row/1),
+        next: if(Repo.exists?(beyond(query, sort, :behind, last)), do: cursor(last, sort)),
+        prev: cursor(first, sort),
+        first: count_ahead(query, sort, first) + 1
+      }
+    else
+      :error -> @no_rows
+      {_page, []} -> first_page(query, sort, scope)
+    end
+  end
+
+  # At most a page and one more row of `query`, in the sort's order (`:forward`) or
+  # against it (`:backward`).
+  defp fetch(query, sort, direction, scope) do
+    query
+    |> order(sort, direction)
+    |> limit(@page_size + 1)
+    |> select_row(scope)
+    |> Repo.all()
+  end
+
+  defp order(query, {:comments, :desc}, direction) do
+    order = if direction == :forward, do: :desc, else: :asc
+
+    order_by(query, [item: i], [
+      {^order, i.comment_count},
+      {^order, i.source_updated_at},
+      {^order, i.public_id}
+    ])
+  end
+
+  defp order(query, {sort, order}, direction) do
+    order = if direction == :forward, do: order, else: flip(order)
+    field = sort_field(sort)
+    order_by(query, [item: i], [{^order, field(i, ^field)}, {^order, i.public_id}])
+  end
+
+  defp flip(:desc), do: :asc
+  defp flip(:asc), do: :desc
+
+  # How many rows of `query` are ahead of `position`, in the sort's order.
+  defp count_ahead(query, sort, position) do
+    query
+    |> beyond(sort, :ahead, position)
+    |> select([item: i], count(i.id))
+    |> Repo.one()
   end
 
   defp sort_field(:updated), do: :source_updated_at
   defp sort_field(:created), do: :source_created_at
+
+  # The place of a selected row in the sort's order: its sort time and public id, or, by
+  # comments, its comments, its latest change at the source and its public id.
+  defp position(selected, {:comments, :desc}),
+    do: {selected.comment_count, selected.source_updated_at, selected.id}
+
+  defp position(selected, {:updated, _order}), do: {selected.source_updated_at, selected.id}
+  defp position(selected, {:created, _order}), do: {selected.source_created_at, selected.id}
+
+  defp last_cursor(rows, sort), do: rows |> List.last() |> position(sort) |> cursor(sort)
 
   # Every ticket of the Backlog of the workspace `workspace_id` of the organisation
   # `organisation_id`, with its collection, its connection and its work item, if any,
@@ -348,6 +474,15 @@ defmodule Apiary.Sources.Backlog do
       else: where(query, false)
   end
 
+  defp labels(query, nil), do: query
+
+  defp labels(query, labels) do
+    if is_list(labels) and length(labels) <= @max_filter_values and Enum.all?(labels, &name?/1),
+      do: where(query, [item: i], fragment("? && ?::text[]", i.labels, ^labels)),
+      else: where(query, false)
+  end
+
+  # A filer's name, or a label: 1 to 100 characters of valid UTF-8 with no NUL.
   defp name?(name) when is_binary(name) and byte_size(name) <= @max_name * 4,
     do:
       String.valid?(name) and not String.contains?(name, <<0>>) and
@@ -362,59 +497,144 @@ defmodule Apiary.Sources.Backlog do
 
   defp state(query, _state), do: where(query, false)
 
-  # The page after the row the cursor names, in the page's order: the rows whose sort
-  # time, then public id, come after it.
-  defp after_cursor(query, nil, _field, _order), do: query
+  # The rows of `query` behind `position` (after it, in the sort's order) or ahead of it
+  # (before it), by their place in that order.
+  defp beyond(query, {:comments, :desc}, side, position),
+    do: compare(query, position, :comment_count, if(side == :behind, do: :<, else: :>))
 
-  defp after_cursor(query, cursor, field, order) do
-    case parse_cursor(cursor) do
-      {:ok, at, public_id} when order == :desc ->
-        where(
-          query,
-          [item: i],
-          fragment(
-            "(?, ?) < (?, ?)",
-            field(i, ^field),
-            i.public_id,
-            type(^at, :utc_datetime),
-            ^public_id
-          )
-        )
+  defp beyond(query, {sort, order}, side, position) do
+    operator =
+      case {order, side} do
+        {:desc, :behind} -> :<
+        {:desc, :ahead} -> :>
+        {:asc, :behind} -> :>
+        {:asc, :ahead} -> :<
+      end
 
-      {:ok, at, public_id} ->
-        where(
-          query,
-          [item: i],
-          fragment(
-            "(?, ?) > (?, ?)",
-            field(i, ^field),
-            i.public_id,
-            type(^at, :utc_datetime),
-            ^public_id
-          )
-        )
+    compare(query, position, sort_field(sort), operator)
+  end
 
-      :error ->
-        where(query, false)
+  defp compare(query, {at, public_id}, field, :<) do
+    where(
+      query,
+      [item: i],
+      fragment(
+        "(?, ?) < (?, ?)",
+        field(i, ^field),
+        i.public_id,
+        type(^at, :utc_datetime),
+        ^public_id
+      )
+    )
+  end
+
+  defp compare(query, {at, public_id}, field, :>) do
+    where(
+      query,
+      [item: i],
+      fragment(
+        "(?, ?) > (?, ?)",
+        field(i, ^field),
+        i.public_id,
+        type(^at, :utc_datetime),
+        ^public_id
+      )
+    )
+  end
+
+  defp compare(query, {count, at, public_id}, :comment_count, :<) do
+    where(
+      query,
+      [item: i],
+      fragment(
+        "(?, ?, ?) < (?, ?, ?)",
+        i.comment_count,
+        i.source_updated_at,
+        i.public_id,
+        type(^count, :integer),
+        type(^at, :utc_datetime),
+        ^public_id
+      )
+    )
+  end
+
+  defp compare(query, {count, at, public_id}, :comment_count, :>) do
+    where(
+      query,
+      [item: i],
+      fragment(
+        "(?, ?, ?) > (?, ?, ?)",
+        i.comment_count,
+        i.source_updated_at,
+        i.public_id,
+        type(^count, :integer),
+        type(^at, :utc_datetime),
+        ^public_id
+      )
+    )
+  end
+
+  # A cursor names a row's place in one sort and order: the sort's mark, a `.`, the row's
+  # sort time in seconds since 1970, a `.`, and its public id; by comments, the mark, its
+  # comments, its latest change at the source in seconds, and its public id, each after a
+  # `.`. The mark is `ud`, `ua`, `cd` or `ca` (updated or created, descending or
+  # ascending), or `md` (comments).
+  defp cursor({count, at, public_id}, sort),
+    do: Enum.join([mark(sort), Integer.to_string(count), seconds(at), public_id], ".")
+
+  defp cursor({at, public_id}, sort), do: Enum.join([mark(sort), seconds(at), public_id], ".")
+
+  defp seconds(%DateTime{} = at), do: Integer.to_string(DateTime.to_unix(at))
+
+  defp mark({:updated, :desc}), do: "ud"
+  defp mark({:updated, :asc}), do: "ua"
+  defp mark({:created, :desc}), do: "cd"
+  defp mark({:created, :asc}), do: "ca"
+  defp mark({:comments, :desc}), do: "md"
+
+  # The place a cursor of `sort` names, or `:error` for a cursor not in that shape, or of
+  # another sort or order. Its size is bounded before it is split.
+  defp parse_cursor(cursor, sort) when is_binary(cursor) and byte_size(cursor) <= 64 do
+    mark = mark(sort)
+
+    case {sort, String.split(cursor, ".")} do
+      {{:comments, :desc}, [^mark, count, seconds, public_id]} ->
+        with {:ok, count} <- parse_count(count),
+             {:ok, at} <- parse_seconds(seconds),
+             true <- Item.public_id?(public_id) do
+          {:ok, {count, at, public_id}}
+        else
+          _not -> :error
+        end
+
+      {{time, _order}, [^mark, seconds, public_id]} when time in [:updated, :created] ->
+        with {:ok, at} <- parse_seconds(seconds),
+             true <- Item.public_id?(public_id) do
+          {:ok, {at, public_id}}
+        else
+          _not -> :error
+        end
+
+      _not ->
+        :error
     end
   end
 
-  # A cursor is the last row's sort time, in seconds since 1970, a `.`, and its public id.
-  defp cursor(%DateTime{} = at, public_id),
-    do: Integer.to_string(DateTime.to_unix(at)) <> "." <> public_id
+  defp parse_cursor(_cursor, _sort), do: :error
 
-  defp parse_cursor(cursor) when is_binary(cursor) and byte_size(cursor) <= 64 do
-    with [seconds, public_id] <- String.split(cursor, ".", parts: 2),
-         {seconds, ""} <- Integer.parse(seconds),
-         true <- Item.public_id?(public_id),
-         {:ok, at} <- DateTime.from_unix(seconds) do
-      {:ok, at, public_id}
-    else
+  defp parse_count(text) do
+    case Integer.parse(text) do
+      {count, ""} when count in 0..@max_comments -> {:ok, count}
       _not -> :error
     end
   end
 
-  defp parse_cursor(_cursor), do: :error
+  defp parse_seconds(text) do
+    case Integer.parse(text) do
+      {seconds, ""} when seconds in @cursor_seconds -> DateTime.from_unix(seconds)
+      _not -> :error
+    end
+  end
 
   # How many tickets of the query each view holds, and in all, by one grouped query.
   defp counts(query) do
@@ -506,16 +726,19 @@ defmodule Apiary.Sources.Backlog do
     params = Map.new(params)
     get = fn key -> Map.get(params, key, Map.get(params, Atom.to_string(key))) end
     values = Map.new(@params, &{&1, get.(&1)})
+    sort = choice(values.sort, @sorts, :updated)
 
     %{
       view: choice(values.view, @views, :open),
       search: values.search,
       repository: list(values.repository),
       filed_by: list(values.filed_by),
+      label: list(values.label),
       state: state_value(values.state),
-      sort: choice(values.sort, @sorts, :updated),
-      order: choice(values.order, @orders, :desc),
-      after: if(values.after == "", do: nil, else: values.after)
+      sort: sort,
+      order: if(sort == :comments, do: :desc, else: choice(values.order, @orders, :desc)),
+      after: if(values.after == "", do: nil, else: values.after),
+      before: if(values.before == "", do: nil, else: values.before)
     }
   end
 
@@ -549,11 +772,15 @@ defmodule Apiary.Sources.Backlog do
   #   * `:filed_by`: every filer of the Backlog's tickets, by the name stored: `key` and
   #     `label` are the name, `count` their tickets in every view, `avatar` `:person` when
   #     a person filed one of them, else `:bot`.
+  #   * `:label`: every label the Backlog's tickets carry, as stored: `key` and `label`
+  #     are the label, `count` the tickets that carry it in every view, `avatar` nil.
   #   * `:repository`: every live collection linked to the workspace, whose connection is
   #     connected: `key` is the collection's id, the one Qory Apiary gives it, `label` its
   #     title, `count` its tickets in every view, `avatar` nil.
-  @spec filter_values(Scope.t(), :filed_by | :repository, String.t() | nil) :: [value]
-  def filter_values(%Scope{} = scope, kind, query) when kind in [:filed_by, :repository] do
+  @spec filter_values(Scope.t(), :filed_by | :label | :repository, String.t() | nil) ::
+          [value]
+  def filter_values(%Scope{} = scope, kind, query)
+      when kind in [:filed_by, :label, :repository] do
     with {:ok, organisation_id, %Workspace{id: workspace_id}} <- workspace(scope),
          pattern when pattern != :none <- pattern(query) do
       values(kind, organisation_id, workspace_id, pattern)
@@ -583,6 +810,25 @@ defmodule Apiary.Sources.Backlog do
       |> Map.put(:avatar, if(value.person?, do: :person, else: :bot))
       |> Map.delete(:person?)
     end)
+  end
+
+  # A ticket carries each label once, so a label's rows are its tickets.
+  defp values(:label, organisation_id, workspace_id, pattern) do
+    organisation_id
+    |> backlog(workspace_id)
+    |> join(:inner_lateral, [item: i], l in fragment("SELECT unnest(?) AS name", i.labels),
+      as: :label,
+      on: true
+    )
+    |> then(fn q ->
+      if pattern, do: where(q, [label: l], ilike(l.name, ^pattern)), else: q
+    end)
+    |> group_by([label: l], l.name)
+    |> order_by([item: i, label: l], desc: count(i.id), asc: l.name)
+    |> limit(@max_offered)
+    |> select([item: i, label: l], %{key: l.name, label: l.name, count: count(i.id)})
+    |> Repo.all()
+    |> Enum.map(&Map.put(&1, :avatar, nil))
   end
 
   defp values(:repository, organisation_id, workspace_id, pattern) do
