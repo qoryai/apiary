@@ -86,10 +86,21 @@ defmodule Apiary.Dispatches do
   # its transaction, and tells the workspaces it changed. `Apiary.Dispatches.Sweep` runs it
   # every minute.
   #
+  # ## The end of a run handed over: `end_run_released/2` and `backstop_seconds/1`
+  #
+  # A run handed over ends with its registered run: by its starter's outcome or its exit,
+  # by its starter's release after the handover (`end_run_released/2`, which no endpoint
+  # calls: the release endpoint answers `404`, `ApiaryWeb.Contract.DispatchController`), or
+  # by the lost-run check, at its gateway's `attach_by` should it never attach, or
+  # at `backstop_seconds/1` of its step after its attach should it have neither an outcome
+  # nor an exit by then (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
+  # it held is freed, once.
+  #
   # ## The clock
   #
   # `now/0` is the one clock of the queue: a claim's `claimed_at` and `lease_until`, the
-  # slots freed and the sweep all read it, never the database's.
+  # slots freed, the sweep and the end of a run its projection ended all read it, never the
+  # database's.
 
   import Ecto.Query, only: [from: 2]
 
@@ -97,7 +108,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.Connection
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -483,6 +494,29 @@ defmodule Apiary.Dispatches do
         lock: "FOR UPDATE SKIP LOCKED"
     )
   end
+
+  ## The end of a run handed over
+
+  # end_run_released/2 ends the run of the queue `dispatch_run_id`, which its starter
+  # released after its handover, at `now`, inside the caller's transaction
+  # (`Apiary.Dispatches.RunEnd.released/2`): the registered run reads as cancelled with the
+  # reason `released`, no outcome is recorded and no `end` is sent; the dispatch ends,
+  # `released`, and its slot is freed once. `{:ok, %{run: run, changed: workspace_ids}}`
+  # for the caller to broadcast and tell once its transaction commits, or
+  # `{:error, :ended | :not_handed_over | :not_found}`, after which nothing is written. The
+  # caller locks nothing of the run before, or locks the run of the queue first.
+  @doc false
+  @spec end_run_released(Ecto.UUID.t(), DateTime.t()) ::
+          {:ok, %{run: Apiary.Runs.Run.t() | nil, changed: [Ecto.UUID.t()]}}
+          | {:error, :ended | :not_handed_over | :not_found}
+  def end_run_released(dispatch_run_id, %DateTime{} = now),
+    do: RunEnd.released(dispatch_run_id, now)
+
+  # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
+  # outcome or its exit, or is lost: 1200 for `explore`.
+  @doc false
+  @spec backstop_seconds(String.t() | nil) :: pos_integer
+  def backstop_seconds(step), do: RunEnd.backstop_seconds(step)
 
   ## The sweep
 

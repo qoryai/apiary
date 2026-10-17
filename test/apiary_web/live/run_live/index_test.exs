@@ -1846,6 +1846,29 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       end
     end
 
+    test "a run its starter released is Cancelled in its row, and released by its starter in the preview",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop(), about: %{"title" => "released"})
+
+      # As the release writes it (`Apiary.Dispatches.RunEnd`): cancelled, no outcome.
+      run =
+        run
+        |> Ecto.Changeset.change(
+          state: "cancelled",
+          reason: "released",
+          released_at: DateTime.utc_now()
+        )
+        |> Repo.update!()
+
+      view = open(conn, runs(scope, "?run=#{run.public_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert text(view, "#{row(run)} .q-rl-st") == "Cancelled"
+      assert has_element?(view, "#runs-preview .q-st-cancelled", "Cancelled")
+      assert text(view, "#runs-preview .q-st-code") == "the starter released it"
+    end
+
     test "a reader who may read the log sees its new lines as the run changes",
          %{conn: conn, older: older, scope: scope} do
       log = %{"stream" => "stdout", "bytes" => Base.encode64("first line\n")}

@@ -2508,14 +2508,24 @@ defmodule ApiaryWeb.RunLive.Show do
       else: gettext("Run lost.")
   end
 
-  defp state_sentence("lost", %Run{heartbeat_interval_seconds: interval})
-       when is_integer(interval),
-       do:
-         gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
+  # A run lost at the deadline its attach set for its end (`backstop_at`) was lost however
+  # recently it beat: no heartbeat to count.
+  defp state_sentence("lost", %Run{heartbeat_interval_seconds: interval} = run)
+       when is_integer(interval) do
+    if lost_past_backstop?(run),
+      do: gettext("Run lost."),
+      else:
+        gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
+  end
 
   defp state_sentence("lost", _run), do: gettext("Run lost.")
   defp state_sentence("running", _run), do: gettext("Run started.")
   defp state_sentence(_state, _run), do: nil
+
+  defp lost_past_backstop?(%Run{lost_at: %DateTime{} = lost_at} = run),
+    do: Apiary.Runs.Liveness.past_backstop?(run, lost_at)
+
+  defp lost_past_backstop?(_run), do: false
 
   defp announce(socket, nil, _when), do: socket
 

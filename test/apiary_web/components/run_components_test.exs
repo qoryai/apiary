@@ -205,6 +205,26 @@ defmodule ApiaryWeb.RunComponentsTest do
                "no longer needed"
     end
 
+    test "a run released after a queue handed it over reads that its starter released it" do
+      released = %Apiary.Runs.Run{
+        state: "cancelled",
+        reason: "released",
+        released_at: ~U[2026-10-17 12:00:00Z]
+      }
+
+      assert RunComponents.reason_words(released) == "the starter released it"
+      assert RunComponents.exit_note(released) == "the starter released it"
+
+      # Its starter's outcome after it reads as any outcome does.
+      assert RunComponents.reason_words(%{
+               released
+               | state: "failed",
+                 reason: "crashed",
+                 outcome_state: "failed",
+                 outcome_reason: "crashed"
+             }) == "crashed"
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},

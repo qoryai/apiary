@@ -35,8 +35,8 @@ defmodule Apiary.Runs.Attach do
        instance of its gateway that attaches it again is given the answer and becomes its
        attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
-       ended it, it was lost after its attach, or its events were pruned. So is a run
-       whose record is gone;
+       ended it, its starter ended it without one, it was lost after its attach, or its
+       events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -50,8 +50,9 @@ defmodule Apiary.Runs.Attach do
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
     11. else the run is attached: when, its heartbeat interval, which
         the run is held to from then on (`Apiary.Runs.Liveness`), Forager's version and the
-        contract's, the digest of the run configuration it is given, and the instance id
-        the attach was signed with.
+        contract's, the digest of the run configuration it is given, the instance id the
+        attach was signed with, and, for a run given one, the deadline for its end
+        (`backstop_at`, `Apiary.Runs.Liveness`).
 
   Since the gateway that attaches is the one the run key names, another gateway node
   never reaches the ninth answer once it passes the seventh; another instance of the
@@ -86,9 +87,10 @@ defmodule Apiary.Runs.Attach do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Dispatches, Gateways, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Batch, Registration, Run, RunKey, Sender}
@@ -363,8 +365,10 @@ defmodule Apiary.Runs.Attach do
 
   defp repeat?(_run, _gateway, _instance_id), do: false
 
-  # Its exit arrived, its starter's outcome ended it, or it was lost after its attach; or
-  # retention pruned its events, and the workspace wants nothing more of it.
+  # Its exit arrived, its starter's outcome ended it, its starter released it after a
+  # queue handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was
+  # lost after its attach; or retention pruned its events, and the workspace wants nothing
+  # more of it.
   defp ended?(%Run{} = run) do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
@@ -398,12 +402,23 @@ defmodule Apiary.Runs.Attach do
           gateway_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
+          backstop_at: backstop_at(run, now),
           updated_at: now
         )
         |> Repo.update!()
 
       {:ok, answer(run, settings, false)}
     end
+  end
+
+  # A run a workspace's queue handed over is lost should it have neither an outcome nor an
+  # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
+  # has no such deadline.
+  defp backstop_at(%Run{dispatch_run_id: nil}, _now), do: nil
+
+  defp backstop_at(%Run{dispatch_run_id: id}, now) do
+    step = Repo.one(from d in DispatchRun, where: d.id == ^id, select: d.step)
+    DateTime.add(now, Dispatches.backstop_seconds(step), :second)
   end
 
   # The instance id the request was signed with, when it can be kept; nil otherwise, so the

@@ -61,7 +61,10 @@ defmodule Apiary.Runs.Fold do
 
   The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
-  applies it, so its state and reason are the run's, and the exit's stay beside them.
+  applies it, so its state and reason are the run's, and the exit's stay beside them. A run
+  whose end Qory recorded without an outcome (`released_at`, not folded either) is
+  cancelled with the reason `released`, whatever its exit said, until its starter's
+  outcome decides; that step comes just before the outcome's.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
   the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -76,7 +79,9 @@ defmodule Apiary.Runs.Fold do
   offset as the pass leaves it, from its time and arrival (the projector hands them over
   when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
   order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
-  run only when it counts as heard within three intervals of its arrival; a lower offset
+  run only when it counts as heard within three intervals of its arrival, and, for a run
+  whose attach set a deadline for its end (`backstop_at`, `Apiary.Runs.Liveness`), only
+  when it arrived by then, as does a start; a lower offset
   alone revives nothing and undoes no revive. So the one order that can show is a revive
   by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
   an earlier heartbeat delivered after it across a clock set back between the two. The
@@ -209,8 +214,26 @@ defmodule Apiary.Runs.Fold do
       |> Enum.reduce(acc, &event(&2, &1))
       |> count_beat()
 
-    %{acc | run: outcome(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
+    %{acc | run: settle(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
   end
+
+  # settle/1 is the last step of every fold, and what a rebuild's reset and an end Qory
+  # records apply: a run its starter released after a queue handed it over
+  # (`released_at`, `Apiary.Dispatches.RunEnd`) is cancelled with the reason `released`,
+  # whatever its exit said, and not lost; then its starter's outcome, should it have one,
+  # decides over that as over all the rest (`outcome/1`). No outcome is recorded for a
+  # release. Every other run is `outcome/1` alone.
+  @doc false
+  @spec settle(map()) :: map()
+  def settle(run), do: run |> released() |> outcome()
+
+  defp released(%{released_at: %DateTime{}} = run) do
+    if Map.get(run, :outcome_state) in @outcome_states,
+      do: run,
+      else: Map.merge(run, %{state: "cancelled", reason: "released", lost_at: nil})
+  end
+
+  defp released(run), do: run
 
   @doc """
   `run` with its starter's outcome applied: given an outcome (`outcome_state`, from
@@ -487,11 +510,13 @@ defmodule Apiary.Runs.Fold do
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  # A start revives the run as a heartbeat does, from the attaching instance alone.
+  # A start revives the run as a heartbeat does, from the attaching instance alone, and
+  # not past the run's backstop.
   defp started_state(run, event) do
-    if ended?(run) or not attaching_instance?(run, event),
-      do: run,
-      else: %{run | state: "running", lost_at: nil}
+    if ended?(run) or not attaching_instance?(run, event) or
+         Liveness.past_backstop?(run, received_at(event)),
+       do: run,
+       else: %{run | state: "running", lost_at: nil}
   end
 
   @doc """
@@ -607,9 +632,10 @@ defmodule Apiary.Runs.Fold do
       Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
         Map.get(run, :heartbeat_interval_seconds)
 
-    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
-      do: %{acc | run: revive(run)},
-      else: %{acc | run: run}
+    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at) and
+         not Liveness.past_backstop?(run, received_at),
+       do: %{acc | run: revive(run)},
+       else: %{acc | run: run}
   end
 
   defp count_beat(acc), do: acc

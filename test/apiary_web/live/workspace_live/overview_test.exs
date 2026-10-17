@@ -1627,6 +1627,83 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#close-run")
     end
 
+    test "a lost run's tip says how it was lost: silent, never picked up, or past its backstop",
+         %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+      ago = &DateTime.add(now, -&1, :second)
+      issued = ago.(9000)
+      attach_by = DateTime.add(issued, 600, :second)
+      attached = ago.(8000)
+
+      silent =
+        "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
+
+      never =
+        "It never started: its gateway did not pick it up in the time it was given, and now it can't."
+
+      backstop = fn word ->
+        "No exit or outcome came within #{word} of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+      end
+
+      gateway =
+        now
+        |> Apiary.DispatchedRunsFixtures.gateway_run_attrs()
+        |> Map.merge(%{registered_at: issued, run_key_issued_at: issued, attach_by: attach_by})
+
+      unattached =
+        gateway
+        |> Map.merge(Apiary.DispatchedRunsFixtures.unattached())
+        |> Map.merge(%{
+          state: "lost",
+          started_at: nil,
+          elapsed_seconds: nil,
+          heartbeat_interval_seconds: nil
+        })
+
+      attached_with = fn seconds, lost_at ->
+        Map.merge(gateway, %{
+          state: "lost",
+          attached_at: attached,
+          backstop_at: DateTime.add(attached, seconds, :second),
+          lost_at: lost_at
+        })
+      end
+
+      for {attrs, tip} <- [
+            # Lost to silence, with no run key.
+            {%{}, silent},
+            # Its run key issued, never attached, lost past its attach_by.
+            {Map.put(unattached, :lost_at, DateTime.add(attach_by, 1, :second)), never},
+            # Never attached, and lost at its attach_by or before it: not by that rule.
+            {Map.put(unattached, :lost_at, attach_by), silent},
+            {Map.put(unattached, :lost_at, DateTime.add(attach_by, -1, :second)), silent},
+            # Past its backstop, in the minutes its attach gave it.
+            {attached_with.(1200, DateTime.add(attached, 1201, :second)),
+             backstop.("20 minutes")},
+            {attached_with.(2700, DateTime.add(attached, 2701, :second)),
+             backstop.("45 minutes")},
+            {attached_with.(60, DateTime.add(attached, 61, :second)), backstop.("1 minute")},
+            # Lost to silence before its backstop.
+            {attached_with.(1200, DateTime.add(attached, 600, :second)), silent},
+            {attached_with.(1200, DateTime.add(attached, 1200, :second)), silent}
+          ] do
+        run = lost_run(scope, attrs)
+        view = open(conn, scope)
+        case_ = inspect(Map.take(attrs, [:attached_at, :backstop_at, :lost_at]))
+
+        assert text(view, "#att-run-#{run.public_id}") =~ "Lost, never posted its exit", case_
+
+        assert view
+               |> render()
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("#att-run-#{run.public_id} .q-ar-why")
+               |> LazyHTML.attribute("title") == [tip],
+               case_
+
+        Repo.delete!(run)
+      end
+    end
+
     test "a run that ended Lost lists with its own words; Apiary's own Lost keeps its line",
          %{conn: conn, scope: scope} do
       own = lost_run(scope)

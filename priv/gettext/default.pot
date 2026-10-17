@@ -7498,6 +7498,11 @@ msgstr ""
 msgid "It needs one of: %{ids}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "It never started: its gateway did not pick it up in the time it was given, and now it can't."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -8947,6 +8952,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "No entries yet"
 msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+msgid_plural "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -17041,6 +17053,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "the starter gave no outcome"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "the starter released it"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
