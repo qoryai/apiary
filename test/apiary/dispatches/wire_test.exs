@@ -1,9 +1,10 @@
 defmodule Apiary.Dispatches.WireTest do
   # The bodies a node pool's starter posts, read as the provisioner contract has them:
   # every request fixture vendored from the commit in
-  # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, and each
-  # field refused in turn, with members twice, integers written with a fraction, members
-  # the schema does not define, and labels on a handover.
+  # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, but the
+  # prebuilt's, which is not served yet, and each field refused in turn, with members
+  # twice, integers written with a fraction, members the schema does not define, and
+  # labels on a handover.
   use ExUnit.Case, async: true
 
   alias Apiary.Dispatches.Wire
@@ -40,7 +41,7 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
   # schema its name starts with, the longest that matches.
-  @schemas ~w(claim-answer handover-answer claim dispatched handover release refusal)
+  @schemas ~w(claim-answer handover-answer claim dispatched handover release prebuilt refusal)
 
   defp schema_of("invalid/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
@@ -64,6 +65,19 @@ defmodule Apiary.Dispatches.WireTest do
     "handover" => &Wire.handover/1,
     "release" => &Wire.release/1
   }
+
+  # The prebuilt request, its refused bodies and the three refusals only a prebuilt
+  # meets. The control plane does not serve prebuilt yet, so the tests of what it reads
+  # and refuses leave them out; they are still held to their schema above.
+  @not_yet_served ~w(
+    prebuilt/
+    invalid/prebuilt-
+    refusal/not-handed-over.json
+    refusal/not-prebuild.json
+    refusal/run-mismatch.json
+  )
+
+  defp not_yet_served?(relative), do: String.starts_with?(relative, @not_yet_served)
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
 
@@ -95,10 +109,10 @@ defmodule Apiary.Dispatches.WireTest do
 
   test "the vendored contract is the commit its ref names" do
     assert File.read!(Path.join(@contract, ".contract-ref")) ==
-             "3630480b0a2919781d7675d88b8e1eeeb0941f69\n"
+             "df3cdbb1b276545fbbe6830f713220fdd314e3e4\n"
 
     assert File.read!(Path.join(@vendored, "integration/v1/.contract-ref")) ==
-             "3630480b0a2919781d7675d88b8e1eeeb0941f69\n"
+             "df3cdbb1b276545fbbe6830f713220fdd314e3e4\n"
   end
 
   test "every fixture is valid under its vendored schema, or invalid under it as its directory says" do
@@ -146,6 +160,7 @@ defmodule Apiary.Dispatches.WireTest do
       |> Path.join("**/*.json")
       |> Path.wildcard()
       |> Enum.map(&Path.relative_to(&1, @fixtures))
+      |> Enum.reject(&not_yet_served?/1)
 
     requests =
       for path <- all,
@@ -167,13 +182,14 @@ defmodule Apiary.Dispatches.WireTest do
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
     assert length(requests) == 6
     assert length(invalid_requests) == 6
-    assert length(answers) == 10
+    assert length(answers) == 20
     assert length(refusals) == 3
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
     codes =
-      for path <- Path.wildcard(Path.join([@fixtures, "refusal", "*.json"])) do
+      for path <- Path.wildcard(Path.join([@fixtures, "refusal", "*.json"])),
+          not not_yet_served?(Path.relative_to(path, @fixtures)) do
         assert {:ok, %{"error" => code} = refusal} = Wire.decode(File.read!(path)), path
         assert map_size(refusal) == 1
         assert Regex.match?(~r/\A[a-z_]{1,64}\z/, code)
@@ -244,7 +260,8 @@ defmodule Apiary.Dispatches.WireTest do
         for path <- Path.wildcard(Path.join([@fixtures, "invalid", "*.json"])),
             name = Path.basename(path),
             # An answer's fixture is the starter's to refuse.
-            not String.contains?(name, "-answer-") do
+            not String.contains?(name, "-answer-"),
+            not not_yet_served?("invalid/" <> name) do
           [kind | _] = String.split(name, "-", parts: 2)
           assert read(Map.fetch!(@readers, kind), File.read!(path)) == :error, name
           name
