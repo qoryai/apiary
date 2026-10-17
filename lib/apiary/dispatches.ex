@@ -50,7 +50,8 @@ defmodule Apiary.Dispatches do
   #      the other; none is `{:ok, :none}`. A run whose work item is no longer live (closed,
   #      declined, undone, its connection ended, or gone) or no longer in the run's
   #      workspace is not handed out: it ends, `undone` for a work item undone and `closed`
-  #      otherwise, and the next is taken, up to 100 per claim;
+  #      otherwise, a stale dispatch of it with it (`run_ended`), and the next is taken, up
+  #      to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
@@ -311,7 +312,8 @@ defmodule Apiary.Dispatches do
   end
 
   # A waiting run whose work item is no longer live, or no longer in the run's
-  # workspace, is ended, and the next one looked at, `max` at most per claim.
+  # workspace, is ended, with any stale dispatch of it (`run_ended`), and the next one
+  # looked at, `max` at most per claim.
   defp pick(_key, _pool, _now, 0, ended), do: {:none, ended}
 
   defp pick(key, pool, now, max, ended) do
@@ -330,6 +332,16 @@ defmodule Apiary.Dispatches do
                 set: [state: :ended, end_cause: cause, updated_at: now]
               )
 
+            # A stale dispatch of the run ends with it; the lapse freed its slot already.
+            {_count, _rows} =
+              Repo.update_all(
+                from(d in Dispatch,
+                  where: d.dispatch_run_id == ^run.id,
+                  where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+                ),
+                set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+              )
+
             pick(key, pool, now, max - 1, [run.workspace_id | ended])
         end
     end
@@ -338,8 +350,8 @@ defmodule Apiary.Dispatches do
   # The run's work item when it is live, in the run's workspace, and its connection has
   # not ended; else the cause the run ends for: `undone` for a work item undone, `closed`
   # for any other (closed, declined, its connection ended, moved to another workspace,
-  # or gone). Read without a lock: the run is locked, and a close or an undo that commits
-  # meanwhile ends the dispatch as it would end any claimed run.
+  # or gone). Read without a lock: the run is locked, so an undo waits for the claim and
+  # is then refused; a close that commits meanwhile finds the run claimed.
   defp work_item_of(%DispatchRun{work_item_id: work_item_id, workspace_id: workspace_id}) do
     found =
       Repo.one(

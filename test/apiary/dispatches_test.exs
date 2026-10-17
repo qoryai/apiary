@@ -293,6 +293,25 @@ defmodule Apiary.DispatchesTest do
           do: assert(%DispatchRun{state: :ended, end_cause: ^cause} = run!(run))
     end
 
+    test "ends a waiting run back from a lapsed lease with its stale dispatch, run_ended",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      run = queue!(work_item)
+      dispatch = claimed!(ctx.key)
+      Dispatches.sweep(dispatch.lease_until)
+      %Dispatch{slot_freed_at: freed_at} = dispatch!(dispatch)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: ended_state(:closed)
+      )
+
+      assert Dispatches.claim(ctx.key, dispatch.lease_until) == {:ok, :none}
+      assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
+
+      assert %Dispatch{ended_at: %DateTime{}, end_cause: :run_ended, slot_freed_at: ^freed_at} =
+               dispatch!(dispatch)
+    end
+
     test "at the pool's limit ends nothing", ctx do
       pool = pool_fixture(ctx.scope, instance_limit: 1)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
