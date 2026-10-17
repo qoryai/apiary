@@ -80,7 +80,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
   defp seen_count, do: Repo.aggregate("adapter_seen_requests", :count)
 
-  # The answer as it goes out, but the headers each answer has its own value of.
+  # The answer as it goes out, but the headers whose value differs from one answer to the
+  # next.
   defp answer(conn) do
     headers =
       conn.resp_headers
@@ -454,8 +455,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     end
   end
 
-  # The answer the endpoint sends to `request`, of `status`, but the headers each answer
-  # has its own value of.
+  # The answer the endpoint sends to `request`, of `status`, but the headers whose value
+  # differs from one answer to the next.
   defp sent(status, request) do
     # A path the router does not know is answered without raising; a body the parsers
     # refuse raises, and is answered as the error is.

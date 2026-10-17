@@ -31,10 +31,10 @@ defmodule Apiary.Dispatches.Wire do
   #
   # **Bounded first.** Every bound is checked before the work it bounds, and the first
   # that fails refuses: a raw body over 1 MiB, the contract's limit for a request
-  # (`refusal.schema.json`, 413), before it is decoded; the members of an object, which
-  # are counted against the schema's before any value is read; a string's bytes, before
-  # a pattern is matched or its characters counted (a character is at most 4 bytes of
-  # UTF-8). No body is validated against a JSON Schema here: each field is checked
+  # (`refusal.schema.json`, 413), before it is decoded; the count of an object's members,
+  # held to the schema's before its keys are compared with the schema's names; a string's
+  # bytes, before a pattern is matched or its characters counted (a character is at most
+  # 4 bytes of UTF-8). No body is validated against a JSON Schema here: each field is checked
   # explicitly, and no check walks past the first value it refuses.
 
   alias Apiary.Adapters.Wire, as: AdapterWire

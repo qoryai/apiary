@@ -14,9 +14,10 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   # answered as an adapter is: the routes of the pipeline `:contract_pool` go through it
   # with `kind: :pool`. Everything below holds for both kinds; they differ only in the
   # key a request verifies under (`lookup/2`), the revisions served (`revisions/1`) and
-  # the bucket the rate limit spends (`rate/2`). An adapter's key verifies on an
-  # adapter's route alone, a pool's key on a pool's route alone: on the other kind's
-  # route, as everywhere else, it is refused as an unknown key is.
+  # the bucket the rate limit spends (`rate/2`). This plug refuses a pool's key on an
+  # adapter's route, and every key but a pool's on a pool's route, as it refuses an
+  # unknown key. A pool's key also verifies on the Forager contract's routes, through
+  # `ApiaryWeb.Contract.SignedRequest`, as below.
   #
   # **The signature.** The request is signed as a request of the Forager contract is
   # (`Apiary.Contract.SignedMessage.request/5`): `X-Qory-Access-Key-Id`,
@@ -54,10 +55,11 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   #      `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice;
   #   3. `401` `unauthorized`, unsigned and the same whatever the cause: a key id or a
   #      signature missing, a key id of the wrong shape, a key the instance does not hold,
-  #      has revoked, or that is not an adapter's, a row that fails its integrity check, a
-  #      signature that is not 64 bytes of strict base64url or does not verify;
+  #      has revoked, or that is not of the kind the route verifies, a row that fails its
+  #      integrity check, a signature that is not 64 bytes of strict base64url or does not
+  #      verify;
   #   4. `429` `rate_limited` with `Retry-After`, from the key's bucket for adapters, or
-  #      for node pools, each key its own bucket
+  #      for node pools, one bucket per key
   #      (`config :apiary, ApiaryWeb.Contract.AdapterRequest`, `rate` and `burst`, 50 and
   #      100 unless set);
   #   5. `400` `bad_request` for an instance id absent or outside its pattern;
