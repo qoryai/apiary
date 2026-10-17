@@ -24,10 +24,12 @@ defmodule Apiary.Integrations.Description do
   A description is refused before the schema when it holds a list of more than 1024
   entries, an object of more than 1024 members, more than 4096 values in all, a string of
   more than 16 KiB or more than 64 lists and objects nested in one another
-  (`Apiary.Kinds.Bounds.within?/2`). The schema's keywords state three of these bounds,
-  the entries of a list, the members of an object and the length of a string, this one in
-  characters rather than bytes, and its description states the rest; a value past any of
-  them is never given to JSV.
+  (`Apiary.Kinds.Bounds.within?/2`): `{:error, {:description_invalid, [{:schema,
+  %{valid: false, limits: limits}}]}}`. The schema's keywords state three of these
+  bounds, the entries of a list, the members of an object and the length of a string,
+  this one in characters rather than bytes, and its description states the rest; a value
+  past any of them is never given to JSV. Its `settings`, the schema `check_settings/2`
+  builds from, is inside the description and so within the same limits.
 
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
@@ -240,12 +242,14 @@ defmodule Apiary.Integrations.Description do
       `settings`, `integration_settings_invalid`; before that schema is applied, settings
       that hold a list of more than 1024 entries, an object of more than 1024 members,
       more than 4096 values in all or more than 64 lists and objects nested in one
-      another are refused so: the schema comes from the description and need bound none
-      of them. For the same reason the schema is built and the settings validated in
-      another process, within 5000000 reductions, the runtime's count of its work, and
-      16 MiB of heap: a schema of a few references can make the work grow exponentially
-      with their nesting. Settings whose check
-      goes over that budget, or fails, are refused as `integration_settings_invalid`.
+      another are refused so, with `%{valid: false, limits: limits}`: the schema comes
+      from the description and need bound none of them. For the same reason the schema is
+      built and the settings validated in another process (`Apiary.Kinds.Budget`), within
+      5000000 reductions, the runtime's count of its work, and 2097152 words of heap
+      (16 MiB on a 64-bit machine): a schema of a few references can make the work grow
+      exponentially with their nesting. Settings whose check goes over that budget are
+      refused as `integration_settings_invalid` with `%{valid: false, budget: :exceeded}`,
+      and settings whose check fails with `%{valid: false, crashed: true}`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """

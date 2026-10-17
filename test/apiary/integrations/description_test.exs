@@ -592,13 +592,40 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert byte_size(text) > 30_000
       assert {:ok, %Description{}} = Description.parse(text)
 
+      # One string more in the filler: 4097 values, while the filler stays within 1024
+      # entries, so the total alone passes a limit.
+      one_more =
+        update_in(document, ["settings", "examples"], fn [filler] -> [["e0" | filler]] end)
+
+      assert values(one_more) == 4097
+      assert length(hd(one_more["settings"]["examples"])) <= 1024
+
       for over <- [
-            update_in(document, ["settings", "examples"], &[["one more"] | &1]),
+            one_more,
             Map.put(document, "domains", for(i <- 1..1025, do: "d#{i}")),
             Map.put(document, "description", String.duplicate("d", 16_385)),
             put_in(document, ["settings", "not"], nested("not", 62, %{}))
           ] do
         assert limited?(parse(over))
+      end
+    end
+
+    test "a settings schema nested deep inside a description is refused by the limits" do
+      # The settings schema `check_settings/2` builds from is a part of the description's
+      # `settings`, so the description's limits bound it. Without them, the description
+      # schema's check of a property nested 15000 deep did about 471 million reductions;
+      # the limits refuse it at the 65th level, after the document is decoded.
+      for {at, deep} <- [
+            {["settings", "properties", "url", "not"], nested("not", 15_000, %{})},
+            {["settings", "properties", "url", "items"], nested("items", 15_000, %{})},
+            {["settings", "not"], nested("not", 15_000, %{})},
+            {["settings", "$defs"], %{"deep" => nested("properties", 15_000, %{})}}
+          ] do
+        text = encode(put_in(tracker_description(), at, deep))
+        {count, result} = reductions(fn -> Description.parse(text) end)
+
+        assert limited?(result), inspect(at)
+        assert count < 5_000_000, "#{inspect(at)}: #{count} reductions"
       end
     end
 
@@ -659,6 +686,11 @@ defmodule Apiary.Integrations.DescriptionTest do
                Description.check_settings(description, %{"list" => [1]})
 
       refute limited?(refused)
+
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               refused = parse(tracker_description(%{"version" => 2}))
+
+      refute limited?(refused)
     end
   end
 
@@ -707,15 +739,21 @@ defmodule Apiary.Integrations.DescriptionTest do
         else: with_settings_schema(schema)
     end
 
-    # The refusal, and the budget it ran out of, `reason`: "reductions" or "heap".
+    # The refusal, and the budget it ran out of, `reason`: "reductions" or "heap". The
+    # caller does little of the work: the check runs in another process, stopped at the
+    # budget.
     defp over_budget(description, settings, reason) do
-      {result, log} = with_log(fn -> Description.check_settings(description, settings) end)
+      {{caller, result}, log} =
+        with_log(fn ->
+          reductions(fn -> Description.check_settings(description, settings) end)
+        end)
 
       assert result ==
                {:error, {:integration_settings_invalid, %{valid: false, budget: :exceeded}}}
 
       assert log =~ "settings check was stopped name=acme-tracker"
       assert log =~ ~r/reason=(#{reason})$/m
+      assert caller < 1_000_000, "#{caller} reductions in the caller"
     end
 
     # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.
@@ -793,6 +831,52 @@ defmodule Apiary.Integrations.DescriptionTest do
         %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)},
         "reductions"
       )
+    end
+
+    # Without the budget, each of the next three checks passed 2000000000 reductions
+    # unfinished.
+
+    test "a $ref chain that doubles at each of 40 levels runs out of reductions" do
+      over_budget(doubling(40), %{"a" => "s"}, "reductions")
+    end
+
+    test "a recursive anyOf of items against settings 64 deep runs out of heap" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{"t" => %{"$ref" => "#/$defs/t"}},
+          "$defs" => %{
+            "t" => %{
+              "type" => "array",
+              "anyOf" => [
+                %{"items" => %{"$ref" => "#/$defs/t"}},
+                %{"items" => %{"$ref" => "#/$defs/t"}}
+              ]
+            }
+          }
+        })
+
+      # The settings and 63 lists nested in them are 64 deep. The innermost holds 1, which
+      # `t` refuses, so each level tries both branches.
+      settings = %{"t" => Enum.reduce(1..62, [1], fn _, inner -> [inner] end)}
+      over_budget(description, settings, "heap")
+    end
+
+    test "1000 backtracking patterns in items.oneOf against 1024 strings run out of reductions" do
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{
+              "type" => "array",
+              "items" => %{"oneOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+            }
+          }
+        })
+
+      settings = %{"x" => List.duplicate(String.duplicate("a", 59) <> "!", 1024)}
+      assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
+      over_budget(description, settings, "reductions")
     end
 
     test "1000 email formats against a string of 60 KB run out of heap" do
