@@ -2914,13 +2914,17 @@
   .table tr.row-off td {
     color: var(--q-faint);
   }
-  /* Columns that show from a width of the table's own, not the screen's. */
+  /* Columns that show from a width of the table's own, not the screen's; and q-to-sm,
+     the opposite, a part shown only below that width, with the display it has. */
   .q-tbl :is(th, td):is(.q-from-sm, .q-from-md, .q-from-lg) {
     display: none;
   }
   @container (min-width: 600px) {
     .q-tbl :is(th, td).q-from-sm {
       display: table-cell;
+    }
+    .q-tbl .q-to-sm {
+      display: none;
     }
   }
   @container (min-width: 1000px) {

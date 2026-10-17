@@ -63,7 +63,7 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
         <:subtitle>
           {pgettext(
             "plain",
-            "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
+            "The adapters that bring work into Qory Apiary from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
           )}
         </:subtitle>
 
@@ -128,7 +128,7 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
     ~H"""
     <span
       id={@id}
-      class="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-[12.5px] text-muted @min-[600px]:hidden"
+      class="q-to-sm mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-[12.5px] text-muted"
     >
       <%= if @row.every do %>
         <span>{AdapterComponents.interval_label(@row.every)}</span>

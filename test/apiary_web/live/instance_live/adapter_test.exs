@@ -226,7 +226,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert selected(lv) == [{"Every hour (its default)", ""}]
 
       assert words(lv, "#adapter-interval-form .fieldset") =~
-               "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares every hour as its default, and every 15 minutes as the most often. Organisations don't see this setting."
+               "Changes are also sent to Qory Apiary as they happen; the pull catches what they missed. The adapter declares every hour as its default, and every 15 minutes as the most often. Organisations don't see this setting."
 
       assert has_element?(lv, "#adapter-interval-save button[type=submit]", "Save")
     end
@@ -490,7 +490,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, ".q-settings-head-sub") == "This happens at once:"
 
       assert words(lv, "#adapter-remove-follows") ==
-               "Its keys are revoked, so the adapter can no longer reach Qory. A command still waiting is cancelled. Qory tells the adapter nothing. Its name is free again. This cannot be undone."
+               "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled. Qory Apiary tells the adapter nothing. Its name is free again. This cannot be undone."
 
       assert has_element?(lv, "#adapter-remove-button", "Remove Platform tracker")
 

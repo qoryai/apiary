@@ -64,7 +64,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     assert has_element?(lv, ~s{#instance-tab-adapters[aria-current="page"]})
 
     assert words(lv, ".q-settings-head-sub") ==
-             "The adapters that bring work into Qory from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
+             "The adapters that bring work into Qory Apiary from other systems. Each organisation installs the ones it uses from its Integrations page; their keys and how often they pull are set here."
 
     assert html =~ ~r{<th[^>]*>\s*Adapter\s*</th>}
     assert html =~ ~s(<span class="sr-only">State</span>)
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
 
       assert has_element?(
                lv,
-               ~s{##{id} td.q-td-title ##{id}-narrow.flex[class~="@min-[600px]:hidden"]}
+               "##{id} td.q-td-title ##{id}-narrow.q-to-sm.flex"
              )
 
       assert has_element?(lv, "##{id} td.q-from-sm ##{id}-pulls")

@@ -295,10 +295,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         <ul id="adapter-remove-follows" class="grid list-disc gap-1.5 pl-5 text-[13.5px]/5">
           <li>
             {gettext(
-              "Its keys are revoked, so the adapter can no longer reach Qory. A command still waiting is cancelled."
+              "Its keys are revoked, so the adapter can no longer reach Qory Apiary. A command still waiting is cancelled."
             )}
           </li>
-          <li>{gettext("Qory tells the adapter nothing.")}</li>
+          <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>
           <li>{gettext("Its name is free again. This cannot be undone.")}</li>
         </ul>
 
@@ -564,7 +564,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # What the choice is for, with what the adapter declared, in a sentence's words.
   defp interval_hint(%{sends_changes: true} = sync) do
     gettext(
-      "Changes are also sent to Qory as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting.",
+      "Changes are also sent to Qory Apiary as they happen; the pull catches what they missed. The adapter declares %{default} as its default, and %{minimum} as the most often. Organisations don't see this setting.",
       default: AdapterComponents.interval_words(sync.default),
       minimum: AdapterComponents.interval_words(sync.minimum)
     )
