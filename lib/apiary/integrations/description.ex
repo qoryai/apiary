@@ -3,7 +3,7 @@ defmodule Apiary.Integrations.Description do
   Description reads an integration's `description.json`, what its program's `describe`
   prints and its release publishes, and checks it as the integrations contract says
   (`priv/contract/integration/description.schema.json`, vendored from the contract at the
-  commit in `.integration-contract-ref`).
+  commit `.integration-contract-ref` names for it).
 
   `parse/1` validates the bytes with JSV against the vendored schema, its patterns read as
   the contract reads them (`Apiary.Kinds.Pattern`), then checks what the schema cannot:

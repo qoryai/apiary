@@ -216,6 +216,13 @@ defmodule ApiaryWeb.Routes do
         post "/runs/:run_id/outcome", OutcomeController, :create
       end
 
+      # An adapter's read of its change feed, after a cursor.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        get "/work-items/changes", ChangesController, :index
+      end
+
       # An adapter's requests: its declaration as it starts.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
@@ -508,6 +515,17 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
+        end
+
+        # Install, with the `factory` feature: an owner or an admin connects the
+        # organisation to an integration, by its adapter's public id (`na_…`), and is sent
+        # on to the adapter's connect address. A POST, with the session's CSRF token.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+          post "/:org/settings/integrations/:adapter_id/install",
+               AdapterInstallController,
+               :create
         end
 
         scope "/", ApiaryWeb do

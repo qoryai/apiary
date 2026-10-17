@@ -32,7 +32,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
-    ApiaryWeb.AdapterRedirectController
+    ApiaryWeb.AdapterRedirectController,
+    ApiaryWeb.AdapterInstallController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -56,10 +57,12 @@ defmodule ApiaryWeb.FactoryShellTest do
   # `{verb, path, module}` with its parameters filled in: the scope's organisation and
   # workspace, the adapter, a connection's id that names none, a work item's number, and
   # a made-up id for the rest. The signed requests of an adapter and of a node pool's
-  # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest` and its
-  # fixtures' test, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
+  # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
+  # `ApiaryWeb.Contract.ChangesControllerTest` and their fixtures' tests, and
+  # `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
   @signed_routes [
     ApiaryWeb.Contract.AdapterController,
+    ApiaryWeb.Contract.ChangesController,
     ApiaryWeb.Contract.PoolClaimController,
     ApiaryWeb.Contract.DispatchController,
     ApiaryWeb.Contract.HandoverController
@@ -141,6 +144,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "#{org}/settings/integrations"},
                  {:get, "#{org}/settings/integrations/new"},
                  {:get, integration},
+                 # Install, which connects the organisation to it.
+                 {:post, integration <> "/install"},
                  # The instance admins': the list, Add for one entry of the catalogue, and
                  # an adapter's Overview, its keys and its settings.
                  {:get, "/instance/adapters"},
