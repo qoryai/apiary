@@ -1,0 +1,747 @@
+defmodule Apiary.Sources.BacklogTest do
+  # The Backlog of a workspace, read for people: its views and their counts, the search
+  # with `%` and `_`, the filters, the pages, the values the filters offer, one ticket and
+  # its comments, the facts of an empty Backlog, the open tickets of a collection, and
+  # what is never read: another workspace's or organisation's tickets, the tickets of an
+  # ended connection or collection, a disconnected ticket, and anything at all for a
+  # person who may not read the workspace's work items. A row's work item is found by the
+  # ticket's organisation, adapter and ref.
+  use Apiary.DataCase, async: true
+
+  import Ecto.Query
+  import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
+
+  alias Apiary.{Edition, EditionStubs, Repo}
+  alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Sources.{Backlog, Comment, Item, Topic}
+  alias Apiary.WorkItems.WorkItem
+
+  @moduletag needs: :factory
+
+  @at ~U[2026-10-01 12:00:00Z]
+
+  setup do
+    %{scope: scope} = sign_up_fixture()
+    connection = ticket_connection_fixture(scope)
+    collection = source_collection_fixture(scope, connection, %{title: "acme/shop"})
+    %{scope: scope, connection: connection, collection: collection}
+  end
+
+  # A ticket of `collection`, with a ref no other has, changed at the source `minutes`
+  # after `@at` (`:minutes`), and any other field `attrs` names.
+  defp ticket(collection, attrs \\ %{}) do
+    unique = System.unique_integer([:positive])
+    attrs = Map.new(attrs)
+    {minutes, attrs} = Map.pop(attrs, :minutes, 0)
+    at = DateTime.add(@at, minutes, :minute)
+    scope = %Apiary.Accounts.Scope{}
+
+    source_item_fixture(
+      scope,
+      Enum.into(attrs, %{
+        collection: collection,
+        external_ref: "ref-#{unique}",
+        key: "##{unique}",
+        source_created_at: at,
+        source_updated_at: at
+      })
+    )
+  end
+
+  # The work item of `item`, in the scope's workspace, in `state`.
+  defp work_item(scope, %Item{} = item, state \\ :exploring) do
+    connection =
+      Repo.one!(
+        from c in Collection,
+          where: c.id == ^item.collection_id,
+          select: c.connection_id
+      )
+
+    work_item =
+      work_item_fixture(scope, %{
+        connection_id: connection,
+        item_id: item.id,
+        external_ref: item.external_ref
+      })
+
+    set_state(work_item, state, scope.user)
+  end
+
+  defp set_state(work_item, :exploring, _user), do: work_item
+
+  defp set_state(work_item, :declined, user) do
+    work_item
+    |> Ecto.Changeset.change(
+      state: :declined,
+      declined_at: DateTime.utc_now(),
+      declined_by_id: user.id
+    )
+    |> Repo.update!()
+  end
+
+  defp set_state(work_item, :closed, _user) do
+    work_item
+    |> Ecto.Changeset.change(state: :closed, closed_at: DateTime.utc_now())
+    |> Repo.update!()
+  end
+
+  defp set_state(work_item, :undone, _user) do
+    work_item |> Ecto.Changeset.change(state: :undone) |> Repo.update!()
+  end
+
+  defp ids(page), do: Enum.map(page.rows, & &1.id)
+  defp list(scope, params \\ %{}), do: Backlog.list_tickets(scope, params)
+
+  defp end_connection(connection) do
+    connection
+    |> Ecto.Changeset.change(
+      state: :ended,
+      ended_at: DateTime.utc_now(),
+      ended_reason: :adapter_reported
+    )
+    |> Repo.update!()
+  end
+
+  defp end_collection(collection) do
+    collection
+    |> Ecto.Changeset.change(ended_at: DateTime.utc_now(), ended_reason: :disconnected)
+    |> Repo.update!()
+  end
+
+  defp comment(%Item{} = item, attrs) do
+    unique = System.unique_integer([:positive])
+    {deleted_at, attrs} = Map.pop(Map.new(attrs), :deleted_at)
+
+    %Comment{organisation_id: item.organisation_id, item_id: item.id, deleted_at: deleted_at}
+    |> Comment.changeset(
+      Enum.into(attrs, %{
+        external_ref: "comment-#{unique}",
+        url: "https://forge.example.com/c/#{unique}",
+        author_name: "Robin Example",
+        author_kind: :person,
+        body: "A comment",
+        body_format: "markdown",
+        source_created_at: @at,
+        source_updated_at: @at
+      })
+    )
+    |> Repo.insert!()
+  end
+
+  describe "views and counts" do
+    setup %{scope: scope, collection: collection} do
+      open = ticket(collection, minutes: 5)
+      taken = ticket(collection, minutes: 4)
+      declined = ticket(collection, minutes: 3)
+      ended = ticket(collection, minutes: 2)
+      closed = ticket(collection, minutes: 1, state: :closed, state_reason: "Not planned")
+      closed_taken = ticket(collection, minutes: 0, state: :closed)
+
+      work_item(scope, taken)
+      work_item(scope, declined, :declined)
+      work_item(scope, ended, :closed)
+      work_item(scope, closed_taken)
+
+      %{
+        open: open,
+        taken: taken,
+        declined: declined,
+        ended: ended,
+        closed: closed,
+        closed_taken: closed_taken
+      }
+    end
+
+    test "each view holds its tickets, newest change first; the counts come with every page",
+         ctx do
+      counts = %{open: 4, taken: 1, declined: 1, closed: 2, total: 6}
+      page = list(ctx.scope)
+
+      assert ids(page) == Enum.map([ctx.open, ctx.taken, ctx.declined, ctx.ended], & &1.public_id)
+      assert page.counts == counts
+      assert page.next == nil
+
+      assert ids(list(ctx.scope, view: :taken)) == [ctx.taken.public_id]
+      assert ids(list(ctx.scope, %{"view" => "declined"})) == [ctx.declined.public_id]
+
+      assert ids(list(ctx.scope, view: :closed)) ==
+               [ctx.closed.public_id, ctx.closed_taken.public_id]
+
+      assert length(list(ctx.scope, view: :all).rows) == 6
+      assert list(ctx.scope, view: :taken).counts == counts
+      # A view it does not know is the default.
+      assert ids(list(ctx.scope, view: "elsewhere")) == ids(page)
+    end
+
+    test "a row carries the ticket and its work item as the components draw them", ctx do
+      %{scope: scope} = ctx
+      declined_item = Repo.get_by!(WorkItem, item_id: ctx.declined.id)
+      taken_item = Repo.get_by!(WorkItem, item_id: ctx.taken.id)
+      rows = Map.new(list(scope, view: :all).rows, &{&1.id, &1})
+      path = "/#{scope.organisation.slug}/#{scope.workspace.slug}/work/"
+
+      assert %{
+               id: id,
+               key: key,
+               title: "The checkout keeps the old price",
+               url: "https://forge.example.com/acme/shop/issues/12",
+               repository: "acme/shop",
+               repository_id: repository_id,
+               filer: %{name: "Avery Example", kind: :person},
+               labels: ["bug"],
+               comment_count: 0,
+               state: :open,
+               state_reason: nil,
+               work_item: %{state: :declined, number: number, path: declined_path}
+             } = row = rows[ctx.declined.public_id]
+
+      assert {id, key, repository_id} ==
+               {ctx.declined.public_id, ctx.declined.key, ctx.collection.id}
+
+      assert row.filed_at == ctx.declined.source_created_at
+      assert row.updated_at == ctx.declined.source_updated_at
+      assert number == declined_item.number
+      assert declined_path == path <> Integer.to_string(number)
+      assert row.work_item.declined_by == scope.user.email
+      refute Map.has_key?(row, :body)
+
+      assert rows[ctx.taken.public_id].work_item == %{
+               number: taken_item.number,
+               state: :exploring,
+               path: path <> Integer.to_string(taken_item.number),
+               declined_by: nil
+             }
+
+      assert rows[ctx.open.public_id].work_item == nil
+      assert rows[ctx.closed.public_id].state_reason == "Not planned"
+      assert rows[ctx.ended.public_id].work_item.state == :closed
+    end
+
+    test "a filer the source says is no person is a bot", ctx do
+      bot = ticket(ctx.collection, filed_by_name: "deploy-bot", filed_by_kind: :automation)
+      [row] = list(ctx.scope, filed_by: "deploy-bot").rows
+      assert row.id == bot.public_id
+      assert row.filer == %{name: "deploy-bot", kind: :bot}
+    end
+  end
+
+  describe "search" do
+    test "matches the title, the key and the filer's name, any case, with % and _ as they are",
+         ctx do
+      percent = ticket(ctx.collection, title: "Discount of 100% applies twice")
+      underscore = ticket(ctx.collection, title: "order_id is empty")
+      plain = ticket(ctx.collection, title: "Order 100 id", key: "#zz77")
+      robin = ticket(ctx.collection, title: "Slow page", filed_by_name: "Robin Example")
+
+      search = fn text -> list(ctx.scope, search: text) |> ids() |> Enum.sort() end
+
+      assert search.("%") == [percent.public_id]
+      assert search.("100%") == [percent.public_id]
+      assert search.("_") == [underscore.public_id]
+      assert search.("r_i") == [underscore.public_id]
+      assert search.("ORDER") == Enum.sort([underscore.public_id, plain.public_id])
+      assert search.("ZZ77") == [plain.public_id]
+      assert search.("robin") == [robin.public_id]
+      assert search.("\\") == []
+
+      assert search.("  ") ==
+               Enum.sort(Enum.map([percent, underscore, plain, robin], & &1.public_id))
+
+      assert list(ctx.scope, search: "%").counts == %{
+               open: 1,
+               taken: 0,
+               declined: 0,
+               closed: 0,
+               total: 1
+             }
+    end
+
+    test "a search too long, not UTF-8, with a NUL or not text matches nothing", ctx do
+      ticket(ctx.collection)
+
+      for text <- [String.duplicate("a", 1025), <<0xFF>>, "a" <> <<0>>, 12, %{}] do
+        assert list(ctx.scope, search: text).rows == [], inspect(text)
+        assert list(ctx.scope, search: text).counts.total == 0
+      end
+
+      assert length(list(ctx.scope, search: String.duplicate("a", 1024)).rows) == 0
+      assert length(list(ctx.scope, search: nil).rows) == 1
+    end
+  end
+
+  describe "filters" do
+    setup %{scope: scope, connection: connection, collection: collection} do
+      other = source_collection_fixture(scope, connection, %{title: "acme/api"})
+      lea = ticket(collection, filed_by_name: "Lea", minutes: 3)
+      sam = ticket(other, filed_by_name: "Sam", minutes: 2)
+      closed = ticket(other, filed_by_name: "Lea", state: :closed, minutes: 1)
+      %{other: other, lea: lea, sam: sam, closed: closed}
+    end
+
+    test "by repository, by filer and by state, alone and together", ctx do
+      assert ids(list(ctx.scope, repository: ctx.other.id)) == [ctx.sam.public_id]
+
+      assert ids(list(ctx.scope, view: :all, repository: [ctx.other.id])) ==
+               [ctx.sam.public_id, ctx.closed.public_id]
+
+      assert ids(list(ctx.scope, %{"view" => "all", "filed_by" => ["Lea"]})) ==
+               [ctx.lea.public_id, ctx.closed.public_id]
+
+      assert ids(list(ctx.scope, view: :all, state: :closed)) == [ctx.closed.public_id]
+
+      assert ids(list(ctx.scope, %{"view" => "all", "state" => "open"})) ==
+               [ctx.lea.public_id, ctx.sam.public_id]
+
+      page = list(ctx.scope, view: :all, filed_by: "Lea", repository: ctx.other.id)
+      assert ids(page) == [ctx.closed.public_id]
+      assert page.counts == %{open: 0, taken: 0, declined: 0, closed: 1, total: 1}
+
+      # An empty filter is none.
+      assert length(list(ctx.scope, repository: [], filed_by: "").rows) == 2
+    end
+
+    test "a value that is not one, or too many, matches nothing", ctx do
+      many = for _ <- 1..101, do: Ecto.UUID.generate()
+
+      for params <- [
+            [repository: "acme/api"],
+            [repository: [ctx.other.id, 7]],
+            [repository: many],
+            [repository: ctx.other.public_id],
+            [filed_by: String.duplicate("a", 101)],
+            [filed_by: List.duplicate("Lea", 101)],
+            [filed_by: [<<0xFF>>]],
+            [filed_by: 7],
+            [state: :declined],
+            [state: "shut"]
+          ] do
+        page = list(ctx.scope, [view: :all] ++ params)
+        assert page.rows == [], inspect(params)
+        assert page.counts.total == 0, inspect(params)
+      end
+    end
+  end
+
+  describe "pages" do
+    test "of 50 by keyset, in either order and by either time, each ticket once", ctx do
+      tickets =
+        for n <- 1..120 do
+          ticket(ctx.collection, minutes: n, source_created_at: DateTime.add(@at, -n, :minute))
+        end
+
+      newest_first = tickets |> Enum.reverse() |> Enum.map(& &1.public_id)
+
+      pages = fn params ->
+        Stream.unfold(:start, fn
+          nil ->
+            nil
+
+          cursor ->
+            after_param = if cursor == :start, do: %{}, else: %{after: cursor}
+            page = list(ctx.scope, Map.merge(Map.new(params), after_param))
+            {page, page.next}
+        end)
+        |> Enum.to_list()
+      end
+
+      by_updated = pages.([])
+      assert Enum.map(by_updated, &length(&1.rows)) == [50, 50, 20]
+      assert Enum.flat_map(by_updated, &ids/1) == newest_first
+      assert Enum.all?(by_updated, &(&1.counts.total == 120))
+      assert List.last(by_updated).next == nil
+
+      assert Enum.flat_map(pages.(order: :asc), &ids/1) == Enum.reverse(newest_first)
+      # Created in the other order from updated.
+      assert Enum.flat_map(pages.(sort: :created, order: :desc), &ids/1) ==
+               Enum.reverse(newest_first)
+
+      assert Enum.flat_map(pages.(%{"sort" => "created", "order" => "asc"}), &ids/1) ==
+               newest_first
+    end
+
+    test "tickets changed in the same second keep one order across pages", ctx do
+      tickets = for _ <- 1..55, do: ticket(ctx.collection)
+      first = list(ctx.scope)
+      second = list(ctx.scope, after: first.next)
+
+      assert Enum.sort(ids(first) ++ ids(second)) == Enum.sort(Enum.map(tickets, & &1.public_id))
+
+      assert ids(first) ==
+               tickets |> Enum.map(& &1.public_id) |> Enum.sort(:desc) |> Enum.take(50)
+
+      assert second.next == nil
+    end
+
+    test "a cursor this list did not give matches nothing", ctx do
+      ticket(ctx.collection)
+
+      for cursor <- [
+            "",
+            "x",
+            "12.tk_",
+            "12.wi_0123456789abcdef",
+            "a.tk_0123456789abcdef",
+            12,
+            String.duplicate("1", 65)
+          ] do
+        assert list(ctx.scope, after: cursor).rows == [], inspect(cursor)
+      end
+
+      assert list(ctx.scope, after: "0.tk_0123456789abcdef").rows == []
+      assert length(list(ctx.scope, after: "99999999999.tk_zzzzzzzzzzzzzzzz").rows) == 1
+    end
+  end
+
+  describe "filter values" do
+    test "every filer by name, with their tickets in every view, and a name search", ctx do
+      ticket(ctx.collection, filed_by_name: "Lea")
+      ticket(ctx.collection, filed_by_name: "Lea", state: :closed)
+      ticket(ctx.collection, filed_by_name: "Sam")
+      ticket(ctx.collection, filed_by_name: "Deploy-bot", filed_by_kind: :automation)
+      ticket(ctx.collection, filed_by_name: "Deploy-bot", filed_by_kind: :automation)
+      ticket(ctx.collection, filed_by_name: "50%_off")
+
+      assert Backlog.filter_values(ctx.scope, :filed_by, nil) == [
+               %{key: "Deploy-bot", label: "Deploy-bot", count: 2, avatar: :bot},
+               %{key: "Lea", label: "Lea", count: 2, avatar: :person},
+               %{key: "50%_off", label: "50%_off", count: 1, avatar: :person},
+               %{key: "Sam", label: "Sam", count: 1, avatar: :person}
+             ]
+
+      assert Backlog.filter_values(ctx.scope, :filed_by, "LE") == [
+               %{key: "Lea", label: "Lea", count: 2, avatar: :person}
+             ]
+
+      assert [%{key: "50%_off"}] = Backlog.filter_values(ctx.scope, :filed_by, "%")
+      assert [%{key: "50%_off"}] = Backlog.filter_values(ctx.scope, :filed_by, "_")
+      assert Backlog.filter_values(ctx.scope, :filed_by, String.duplicate("a", 1025)) == []
+      assert Backlog.filter_values(ctx.scope, :filed_by, "nobody") == []
+    end
+
+    test "every live repository linked to the workspace, by its id, with its tickets", ctx do
+      other = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/api"})
+      empty = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/zoo"})
+      gone = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/gone"})
+      unlinked = source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      ticket(ctx.collection)
+      ticket(ctx.collection, state: :closed)
+      ticket(other)
+
+      ticket(other)
+      |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      ticket(gone)
+      end_collection(gone)
+      ticket(unlinked)
+
+      assert Backlog.filter_values(ctx.scope, :repository, "") == [
+               %{key: ctx.collection.id, label: "acme/shop", count: 2, avatar: nil},
+               %{key: other.id, label: "acme/api", count: 1, avatar: nil},
+               %{key: empty.id, label: "acme/zoo", count: 0, avatar: nil}
+             ]
+
+      assert Backlog.filter_values(ctx.scope, :repository, "API") == [
+               %{key: other.id, label: "acme/api", count: 1, avatar: nil}
+             ]
+    end
+  end
+
+  describe "what a Backlog never holds" do
+    test "another workspace's tickets, nor another organisation's", ctx do
+      mine = ticket(ctx.collection)
+      workspace = workspace_fixture(ctx.scope.organisation, "Second")
+      there = workspace_scope(ctx.scope.user, workspace)
+      theirs_collection = source_collection_fixture(there, ctx.connection, %{title: "acme/b"})
+      theirs = ticket(theirs_collection)
+
+      %{scope: other} = sign_up_fixture()
+      other_connection = ticket_connection_fixture(other)
+      foreign = ticket(source_collection_fixture(other, other_connection))
+
+      assert ids(list(ctx.scope, view: :all)) == [mine.public_id]
+      assert ids(list(there, view: :all)) == [theirs.public_id]
+      assert ids(list(other, view: :all)) == [foreign.public_id]
+
+      assert Backlog.get_ticket(ctx.scope, theirs.public_id) == nil
+      assert Backlog.get_ticket(ctx.scope, foreign.public_id) == nil
+      assert Backlog.list_comments(ctx.scope, foreign.public_id) == []
+
+      assert Backlog.filter_values(ctx.scope, :repository, nil) |> Enum.map(& &1.key) ==
+               [ctx.collection.id]
+
+      assert ids(list(ctx.scope, view: :all, repository: theirs_collection.id)) == []
+      assert Backlog.backlog_facts(ctx.scope).open_tickets == 1
+    end
+
+    test "the tickets of an ended connection, in every read", ctx do
+      item = ticket(ctx.collection)
+      comment(item, %{})
+      work_item(ctx.scope, item)
+      end_connection(ctx.connection)
+
+      assert list(ctx.scope, view: :all) == %{
+               rows: [],
+               counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
+               next: nil
+             }
+
+      assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
+      assert Backlog.list_comments(ctx.scope, item.public_id) == []
+      assert Backlog.filter_values(ctx.scope, :filed_by, nil) == []
+      assert Backlog.filter_values(ctx.scope, :repository, nil) == []
+
+      assert Backlog.backlog_facts(ctx.scope) ==
+               %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+
+      # Its work item stays.
+      assert Repo.get_by!(WorkItem, item_id: item.id)
+    end
+
+    test "the tickets of an ended collection, while its connection is live", ctx do
+      item = ticket(ctx.collection)
+      live = source_collection_fixture(ctx.scope, ctx.connection)
+      kept = ticket(live)
+      end_collection(ctx.collection)
+
+      assert ids(list(ctx.scope, view: :all)) == [kept.public_id]
+      assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
+      assert Backlog.backlog_facts(ctx.scope).linked_collections == 1
+    end
+
+    test "a disconnected ticket", ctx do
+      item = ticket(ctx.collection)
+      kept = ticket(ctx.collection)
+
+      item
+      |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      assert ids(list(ctx.scope, view: :all)) == [kept.public_id]
+      assert list(ctx.scope).counts.total == 1
+      assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
+      assert Backlog.backlog_facts(ctx.scope).open_tickets == 1
+    end
+
+    test "anything at all for a person who may not read the workspace's work items", ctx do
+      item = ticket(ctx.collection)
+      comment(item, %{})
+      %{scope: other} = sign_up_fixture()
+
+      nothing = %{
+        rows: [],
+        counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
+        next: nil
+      }
+
+      no_facts = %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+
+      # Another organisation's person, in their scope and in a scope of ours.
+      foreign = %{other | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
+
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:factory])
+      hidden = Apiary.Access.reload(ctx.scope)
+
+      for scope <- [foreign, hidden] do
+        assert list(scope, view: :all) == nothing
+        assert Backlog.get_ticket(scope, item.public_id) == nil
+        assert Backlog.list_comments(scope, item.public_id) == []
+        assert Backlog.filter_values(scope, :filed_by, nil) == []
+        assert Backlog.filter_values(scope, :repository, nil) == []
+        assert Backlog.backlog_facts(scope) == no_facts
+        assert {:error, _refused} = Backlog.subscribe(scope)
+      end
+
+      assert list(other, view: :all) == nothing
+      assert Backlog.subscribe(%{ctx.scope | workspace: nil}) == {:error, :not_found}
+    end
+  end
+
+  describe "a work item, by the ticket's organisation, adapter and ref" do
+    test "is found from another record of the same ticket, never by the ticket's id", ctx do
+      # The ticket's earlier record, of a collection that ended; its work item names it.
+      earlier = source_collection_fixture(ctx.scope, ctx.connection)
+      old = ticket(earlier, external_ref: "acme/shop#5")
+      taken = work_item(ctx.scope, old)
+      end_collection(earlier)
+
+      # The same ticket, by its ref, in a live collection of the same adapter.
+      new = ticket(ctx.collection, external_ref: "acme/shop#5")
+      assert taken.item_id == old.id
+
+      assert [%{id: id, work_item: %{number: number, state: :exploring}}] =
+               list(ctx.scope).rows
+
+      assert {id, number} == {new.public_id, taken.number}
+
+      # A work item that names a ticket by its id with another ref is not that ticket's.
+      other = ticket(ctx.collection, external_ref: "acme/shop#6", minutes: -1)
+
+      work_item_fixture(ctx.scope, %{
+        connection_id: ctx.connection.id,
+        item_id: other.id,
+        external_ref: "acme/shop#7"
+      })
+
+      assert Backlog.get_ticket(ctx.scope, other.public_id).work_item == nil
+    end
+
+    test "of another workspace shows its state alone", ctx do
+      item = ticket(ctx.collection)
+      workspace = workspace_fixture(ctx.scope.organisation, "Second")
+      there = workspace_scope(ctx.scope.user, workspace)
+      work_item(there, item, :declined)
+
+      assert [%{work_item: %{number: nil, state: :declined, path: nil, declined_by: nil}}] =
+               list(ctx.scope).rows
+    end
+
+    test "of another adapter with the same ref is not the ticket's", ctx do
+      item = ticket(ctx.collection, external_ref: "acme/shop#9")
+      elsewhere = ticket_connection_fixture(ctx.scope)
+      other = ticket(source_collection_fixture(ctx.scope, elsewhere), external_ref: "acme/shop#9")
+      work_item(ctx.scope, other)
+
+      assert Backlog.get_ticket(ctx.scope, item.public_id).work_item == nil
+      assert Backlog.get_ticket(ctx.scope, other.public_id).work_item.state == :exploring
+    end
+  end
+
+  describe "one ticket" do
+    test "by its public id, with its text", ctx do
+      item = ticket(ctx.collection, body: "The **text**", truncated: ["body"])
+
+      assert %{
+               id: id,
+               title: "The checkout keeps the old price",
+               body: "The **text**",
+               body_format: "markdown",
+               truncated: ["body"],
+               work_item: nil,
+               repository: "acme/shop"
+             } = Backlog.get_ticket(ctx.scope, item.public_id)
+
+      assert id == item.public_id
+    end
+
+    test "nil for an id that is not a ticket's public id, or names none here", ctx do
+      ticket(ctx.collection)
+
+      for id <- [
+            nil,
+            12,
+            "",
+            "tk_",
+            "tk_0123456789ABCDEF",
+            "tk_0123456789abcdefg",
+            "wi_0123456789abcdef",
+            "tk_0123456789abcdef",
+            String.duplicate("tk_", 10_000),
+            %{id: "tk_0123456789abcdef"}
+          ] do
+        assert Backlog.get_ticket(ctx.scope, id) == nil, inspect(id)
+      end
+    end
+
+    test "its comments, oldest first, without the deleted ones", ctx do
+      item = ticket(ctx.collection)
+      second = comment(item, %{source_created_at: DateTime.add(@at, 60), author_name: "Sam"})
+
+      first =
+        comment(item, %{
+          author_name: "deploy-bot",
+          author_kind: :automation,
+          body: "Built",
+          url: "https://forge.example.com/c/first"
+        })
+
+      comment(item, %{deleted_at: DateTime.utc_now()})
+      other = ticket(ctx.collection)
+      comment(other, %{})
+      ticket = Backlog.get_ticket(ctx.scope, item.public_id)
+
+      assert [
+               %{
+                 id: first_id,
+                 author: "deploy-bot",
+                 author_kind: :bot,
+                 at: @at,
+                 body: "Built",
+                 body_format: "markdown",
+                 url: "https://forge.example.com/c/first",
+                 truncated: []
+               },
+               %{id: second_id, author: "Sam", author_kind: :person}
+             ] = Backlog.list_comments(ctx.scope, ticket)
+
+      assert {first_id, second_id} == {first.id, second.id}
+      assert length(Backlog.list_comments(ctx.scope, item.public_id)) == 2
+      assert Backlog.list_comments(ctx.scope, "tk_nope") == []
+    end
+  end
+
+  describe "the facts of an empty Backlog" do
+    test "nothing connected, then connected, listed, linked and with open tickets" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert Backlog.backlog_facts(scope) ==
+               %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+
+      connection = ticket_connection_fixture(scope)
+
+      assert Backlog.backlog_facts(scope) ==
+               %{connected?: true, linked_collections: 0, listed?: false, open_tickets: 0}
+
+      connection |> Ecto.Changeset.change(listed_at: DateTime.utc_now()) |> Repo.update!()
+      collection = source_collection_fixture(scope, connection)
+      source_collection_fixture(scope, connection, %{workspace_id: nil})
+
+      assert Backlog.backlog_facts(scope) ==
+               %{connected?: true, linked_collections: 1, listed?: true, open_tickets: 0}
+
+      ticket(collection)
+      ticket(collection, state: :closed)
+
+      assert Backlog.backlog_facts(scope) ==
+               %{connected?: true, linked_collections: 1, listed?: true, open_tickets: 1}
+    end
+  end
+
+  describe "a collection's open tickets" do
+    test "count those open at the source and not disconnected", ctx do
+      ticket(ctx.collection)
+      ticket(ctx.collection)
+      ticket(ctx.collection, state: :closed)
+
+      ticket(ctx.collection)
+      |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      empty = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/zoo"})
+      connection = Repo.get!(Connection, ctx.connection.id)
+
+      counts =
+        Map.new(Collections.list_collections(ctx.scope, connection), &{&1.id, &1.open_tickets})
+
+      assert counts == %{ctx.collection.id => 2, empty.id => 0}
+    end
+  end
+
+  describe "subscribing" do
+    test "asks to read the workspace's work items, then hears the workspace's topic", ctx do
+      assert Backlog.subscribe(ctx.scope) == :ok
+      workspace_id = ctx.scope.workspace.id
+
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Topic.topic(workspace_id),
+        {:tickets_changed, ["tk_x"]}
+      )
+
+      assert_receive {:tickets_changed, ["tk_x"]}
+      assert Topic.topic(workspace_id) == "backlog:" <> workspace_id
+    end
+  end
+end

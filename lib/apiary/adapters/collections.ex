@@ -75,6 +75,7 @@ defmodule Apiary.Adapters.Collections do
   alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Wire}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Sources.Item
 
   @listing_action :"source_item.post"
   @disconnect_action :"adapter.disconnect"
@@ -721,9 +722,19 @@ defmodule Apiary.Adapters.Collections do
     }
   end
 
-  # The open tickets of each of the collections `ids`, by id; one with none is left out.
-  # The tickets are not kept yet, so each has none: the count is 0 until they are.
-  defp open_tickets(_ids), do: %{}
+  # The open tickets of each of the collections `ids`, by id: those open at their source
+  # and not disconnected (`Apiary.Sources.Item`); one with none is left out.
+  defp open_tickets([]), do: %{}
+
+  defp open_tickets(ids) do
+    Repo.all(
+      from i in Item,
+        where: i.collection_id in ^ids and i.state == :open and is_nil(i.disconnected_at),
+        group_by: i.collection_id,
+        select: {i.collection_id, count(i.id)}
+    )
+    |> Map.new()
+  end
 
   @doc false
   # counts/2 is how many live collections `connection` reaches, to a person who may read
