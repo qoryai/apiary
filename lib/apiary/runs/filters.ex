@@ -202,9 +202,16 @@ defmodule Apiary.Runs.Filters do
   @doc "The time ranges a page offers, as `{label, value}`; the runs list's first is every run."
   def ranges(kind \\ :runs)
 
-  def ranges(:runs),
+  def ranges(:runs), do: [{gettext("Any time"), "all"} | windows()]
+  def ranges(:connections), do: windows() ++ [{gettext("Last 90 days"), "90d"}]
+
+  @doc """
+  The windows back from now the runs list offers, as `{label, value}`, the shortest first:
+  the last hour, 24 hours, 7, 14 and 30 days.
+  """
+  @spec windows() :: [{String.t(), String.t()}]
+  def windows,
     do: [
-      {gettext("Any time"), "all"},
       {gettext("Last hour"), "1h"},
       {gettext("Last 24 hours"), "24h"},
       {gettext("Last 7 days"), "7d"},
@@ -212,8 +219,18 @@ defmodule Apiary.Runs.Filters do
       {gettext("Last 30 days"), "30d"}
     ]
 
-  def ranges(:connections),
-    do: tl(ranges(:runs)) ++ [{gettext("Last 90 days"), "90d"}]
+  @doc """
+  The seconds back from now a window covers, by its value (`7d`); nil for a value that is
+  no window, such as `all`.
+  """
+  @spec window_seconds(term()) :: pos_integer() | nil
+  def window_seconds("1h"), do: 3600
+  def window_seconds("24h"), do: 86_400
+  def window_seconds("7d"), do: 7 * 86_400
+  def window_seconds("14d"), do: 14 * 86_400
+  def window_seconds("30d"), do: 30 * 86_400
+  def window_seconds("90d"), do: 90 * 86_400
+  def window_seconds(_value), do: nil
 
   @doc "Reads the parameters of the runs list (`:runs`) or the workspace's connections (`:connections`)."
   @spec parse(map(), :runs | :connections) :: t()
@@ -719,17 +736,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   def bounds(%__MODULE__{since: since}, now, _zone) do
-    seconds =
-      case since do
-        "1h" -> 3600
-        "24h" -> 86_400
-        "7d" -> 7 * 86_400
-        "14d" -> 14 * 86_400
-        "30d" -> 30 * 86_400
-        "90d" -> 90 * 86_400
-        _all -> nil
-      end
-
+    seconds = window_seconds(since)
     {seconds && DateTime.add(now, -seconds, :second), nil}
   end
 

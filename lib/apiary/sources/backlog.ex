@@ -43,6 +43,7 @@ defmodule Apiary.Sources.Backlog do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.Filters
   alias Apiary.Sources.{Comment, Item, Topic}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.People
@@ -59,7 +60,19 @@ defmodule Apiary.Sources.Backlog do
   @views [:open, :taken, :declined, :closed, :all]
   @sorts [:updated, :created, :comments]
   @orders [:desc, :asc]
-  @params [:view, :search, :repository, :filed_by, :label, :state, :sort, :order, :after, :before]
+  @params [
+    :view,
+    :search,
+    :repository,
+    :filed_by,
+    :label,
+    :state,
+    :updated,
+    :sort,
+    :order,
+    :after,
+    :before
+  ]
 
   # The most a ticket's comments are counted at, as the database keeps them.
   @max_comments 9_223_372_036_854_775_807
@@ -183,7 +196,7 @@ defmodule Apiary.Sources.Backlog do
   ## The list
 
   @doc false
-  # list_tickets/2 is a page of the Backlog of the scope's workspace, to a person who may
+  # list_tickets/3 is a page of the Backlog of the scope's workspace, to a person who may
   # read its work items, and an empty page (no rows, every count 0) to anyone else.
   # `params`, a map or a keyword list, with atom keys or their strings:
   #
@@ -197,6 +210,10 @@ defmodule Apiary.Sources.Backlog do
   #   * `label:` a label, as stored, or a list of them: the tickets that carry any of
   #     them, each matched exactly;
   #   * `state:` `:open` or `:closed` (or its string), the ticket's state at its source;
+  #   * `updated:` a window the runs list offers, by its value (`1h`, `24h`, `7d`, `14d`
+  #     or `30d`, `Apiary.Runs.Filters.windows/0`): the tickets whose latest change at
+  #     their source is at or after that long before `now`, the read's moment to the
+  #     second;
   #   * `sort:` `:updated` (the default) or `:created`, the ticket's times at its source,
   #     and `order:` `:desc` (the default) or `:asc`; or `:comments`, the most comments
   #     first, then the latest change at the source, then the public id, always
@@ -206,18 +223,23 @@ defmodule Apiary.Sources.Backlog do
   #
   # A filter takes at most 100 values; one with more, or with a value that is not one
   # (a repository that is no id, a name or a label that is not 1 to 100 characters of
-  # valid UTF-8 with no NUL), matches nothing, and so does a cursor not in the shape this
-  # function gives, a cursor of another sort or order, and `after:` and `before:`
-  # together. An empty filter, or an empty cursor, is none. A view, a sort or an order it
-  # does not know is its default. The rows are at most `page_size/0`; `next` is the cursor
-  # of the page after, or nil for the last; `prev` the cursor of the page before, or nil
-  # for the first. A page `before:` names that would hold the first row is the first page,
-  # as it is read with no cursor. `first` is the place of the page's first row in the
-  # view, from 1, counted in the database from the rows ahead of it under the same view,
-  # search and filters; 0 for a page with no rows. The counts are of every view, under the
-  # same search and filters, without the view and the cursor.
-  @spec list_tickets(Scope.t(), map | keyword) :: page
-  def list_tickets(%Scope{} = scope, params) when is_map(params) or is_list(params) do
+  # valid UTF-8 with no NUL, a state or a window it does not offer), matches nothing, and
+  # so does a cursor not in the shape this function gives, a cursor of another sort or
+  # order, and `after:` and `before:` together. An empty filter, or an empty cursor, is
+  # none. A view, a sort or an order it does not know is its default. The rows are at
+  # most `page_size/0`; `next` is the cursor of the page after, or nil for the last;
+  # `prev` the cursor of the page before, or nil for the first. A page `before:` names
+  # that would hold the first row is the first page, as it is read with no cursor.
+  # `first` is the place of the page's first row in the view, from 1, counted in the
+  # database from the rows ahead of it under the same view, search and filters; 0 for a
+  # page with no rows. The counts are of every view, under the same search and filters,
+  # without the view and the cursor. A cursor names a row's place in its sort alone, so it
+  # holds under any filter, a window too, whose start each page counts back from `now`.
+  @spec list_tickets(Scope.t(), map | keyword, DateTime.t()) :: page
+  def list_tickets(scope, params, now \\ DateTime.utc_now())
+
+  def list_tickets(%Scope{} = scope, params, %DateTime{} = now)
+      when is_map(params) or is_list(params) do
     case workspace(scope) do
       {:ok, organisation_id, %Workspace{} = workspace} ->
         params = normalise(params)
@@ -230,6 +252,7 @@ defmodule Apiary.Sources.Backlog do
           |> filers(params.filed_by)
           |> labels(params.label)
           |> state(params.state)
+          |> updated(params.updated, now)
 
         filtered
         |> view(params.view)
@@ -241,7 +264,7 @@ defmodule Apiary.Sources.Backlog do
     end
   end
 
-  def list_tickets(%Scope{}, _params), do: @no_page
+  def list_tickets(%Scope{}, _params, _now), do: @no_page
 
   # The rows a page holds at most.
   @doc false
@@ -497,6 +520,16 @@ defmodule Apiary.Sources.Backlog do
 
   defp state(query, _state), do: where(query, false)
 
+  # A window back from `now`, the second it was read in, by its value: the tickets whose
+  # latest change at their source is at or after its start.
+  defp updated(query, nil, _now), do: query
+  defp updated(query, :invalid, _now), do: where(query, false)
+
+  defp updated(query, window, now) do
+    since = now |> DateTime.truncate(:second) |> DateTime.add(-Filters.window_seconds(window))
+    where(query, [item: i], i.source_updated_at >= type(^since, :utc_datetime))
+  end
+
   # The rows of `query` behind `position` (after it, in the sort's order) or ahead of it
   # (before it), by their place in that order.
   defp beyond(query, {:comments, :desc}, side, position),
@@ -735,6 +768,7 @@ defmodule Apiary.Sources.Backlog do
       filed_by: list(values.filed_by),
       label: list(values.label),
       state: state_value(values.state),
+      updated: window(values.updated),
       sort: sort,
       order: if(sort == :comments, do: :desc, else: choice(values.order, @orders, :desc)),
       after: if(values.after == "", do: nil, else: values.after),
@@ -759,6 +793,14 @@ defmodule Apiary.Sources.Backlog do
   defp state_value("open"), do: :open
   defp state_value("closed"), do: :closed
   defp state_value(_state), do: :invalid
+
+  # A window's value, when it is one the runs list offers; `:invalid` for any other.
+  defp window(nil), do: nil
+  defp window(""), do: nil
+
+  defp window(value) do
+    if List.keymember?(Filters.windows(), value, 1), do: value, else: :invalid
+  end
 
   ## The filters' values
 
