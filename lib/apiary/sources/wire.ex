@@ -27,11 +27,12 @@ defmodule Apiary.Sources.Wire do
   # before they are compared. Text is counted in code points, as the contract's lengths
   # are, its size in bytes bounded first, and none of it may hold U+0000, which the
   # database cannot keep. Times, URLs, a target and a listing part are read as
-  # `Apiary.Adapters.Wire` reads them for a listing of collections, which holds two of
-  # them tighter than the contract: a part numbered past
-  # `Apiary.Adapters.Wire.max_part/0` is refused, and a URL may hold only RFC 3986's
-  # characters, every `%` followed by two hexadecimal digits, no user information, and a
-  # port from 1 to 65,535 when one is written.
+  # `Apiary.Adapters.Wire` reads them for a listing of collections, which holds some of
+  # them tighter than the contract, among them: a part numbered past
+  # `Apiary.Adapters.Wire.max_part/0` is refused; a time with a leap second (`:60`) is
+  # refused; and a URL may hold only RFC 3986's characters, every `%` followed by two
+  # hexadecimal digits, a host, a port from 1 to 65,535 when one is written, and no user
+  # information.
   #
   # An entry whose ref the body names twice is taken once: the one with the later
   # `updated_at`, and of two with the same `updated_at` the one named last, as the newer

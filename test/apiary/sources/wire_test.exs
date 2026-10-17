@@ -609,6 +609,7 @@ defmodule Apiary.Sources.WireTest do
       for url <- [
             "http://tracker.acme.example/TRK-1",
             "https://",
+            "https:///x",
             "tracker.acme.example",
             "https://a b.example/",
             "https://user@tracker.acme.example/",
@@ -700,6 +701,7 @@ defmodule Apiary.Sources.WireTest do
               "2026-10-15 12:00:00Z",
               "2026-10-15T12:00:00",
               "2026-02-30T12:00:00Z",
+              "2016-12-31T23:59:60Z",
               "2026-10-15T24:00:00Z",
               " 2026-10-15T12:00:00Z",
               "2026-10-15T12:00:00Z\n",
