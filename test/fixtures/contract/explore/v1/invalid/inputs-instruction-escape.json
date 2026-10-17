@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 1,
+    "of": 3
+  },
+  "ticket": {
+    "external_ref": "TRK-77",
+    "url": "https://tracker.example.com/items/TRK-77",
+    "title": "The date parser refuses two-digit years",
+    "body": "Importing a file with the date 01/02/26 fails with \"invalid date\".\nFour-digit years work.",
+    "filed_by": {
+      "name": "Alex Example",
+      "kind": "person"
+    },
+    "filed_at": "2026-10-17T09:12:00Z",
+    "collection": "Example service"
+  },
+  "instruction": {
+    "text": "Look at the date parser first.\u001b[2J",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T09:15:00Z",
+      "body": "It started after the last import change."
+    },
+    {
+      "by": {
+        "name": "Example triage",
+        "kind": "automation"
+      },
+      "at": "2026-10-17T09:16:00Z",
+      "body": "Labelled as a bug."
+    }
+  ],
+  "comments_omitted": 0,
+  "answers": [],
+  "target": {
+    "system": "code.example.com",
+    "path": "example/service"
+  }
+}

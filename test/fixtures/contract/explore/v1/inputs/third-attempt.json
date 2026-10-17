@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 3,
+    "of": 3
+  },
+  "ticket": {
+    "external_ref": "TRK-77",
+    "url": "https://tracker.example.com/items/TRK-77",
+    "title": "The date parser refuses some dates",
+    "body": "Importing some files fails with \"invalid date\".",
+    "filed_by": {
+      "name": "Alex Example",
+      "kind": "person"
+    },
+    "filed_at": "2026-10-17T09:12:00Z",
+    "collection": "Example service"
+  },
+  "instruction": {
+    "text": "",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T11:40:00Z",
+      "body": "The files that fail all come from the old export."
+    }
+  ],
+  "comments_omitted": 12,
+  "answers": [
+    {
+      "question": "Which dates does the parser refuse? An example of one would help.",
+      "answer": "01/02/26 is refused; 01/02/2026 is read.",
+      "by": {
+        "name": "Sam Example"
+      },
+      "at": "2026-10-17T10:05:00Z"
+    },
+    {
+      "question": "Should a two-digit year be read as a year from 2000?",
+      "answer": "Yes.",
+      "by": {
+        "name": "Sam Example"
+      },
+      "at": "2026-10-17T11:20:00Z"
+    }
+  ],
+  "target": {
+    "system": "code.example.com",
+    "path": "example/service"
+  }
+}
