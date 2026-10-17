@@ -15,9 +15,9 @@ defmodule ApiaryWeb.Contract.EventsController do
   is `400` `invalid_request`; a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; then
   `Apiary.Runs.Ingest`: a batch whose subject is a run id the instance gave a run itself,
-  from a key that reaches no run under it (a key of another workspace, or a gateway that
-  may not serve the run's), is `409` `run_id_used`, the whole batch refused and nothing of
-  it stored; a run bound to another node than the key's (`Apiary.Runs.Sender`)
+  from a key that reaches no run under it, such as a key of another workspace, or a
+  gateway that may not serve the run's, is `409` `run_id_used`, the whole batch refused
+  and nothing of it stored; a run bound to another node than the key's (`Apiary.Runs.Sender`)
   is `409` `wrong_node`, or `wrong_gateway` for a run behind a gateway, the whole batch
   refused and nothing of it stored; a run behind a gateway that may no longer serve its
   workspace (`Apiary.Runs.Sender.serves?/2`, decided as at the attach) is `410`
