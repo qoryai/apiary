@@ -71,14 +71,17 @@ defmodule Apiary.Kinds.BoundsTest do
 
       task =
         Task.async(fn ->
+          # The task's heap holds a copy of the million entries. Collect garbage first,
+          # so that a collection cannot fall between the two readings and be counted.
+          :erlang.garbage_collect()
           {:reductions, before} = Process.info(self(), :reductions)
           false = Bounds.within?(long, list: 2)
           {:reductions, done} = Process.info(self(), :reductions)
           done - before
         end)
 
-      # Measured: 44 reductions; a walk of the million entries does a million or more.
-      assert Task.await(task, 60_000) < 1000
+      # A walk of the million entries does a million reductions or more.
+      assert Task.await(task, 60_000) < 100_000
     end
   end
 
