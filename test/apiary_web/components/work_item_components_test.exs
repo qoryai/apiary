@@ -1114,13 +1114,23 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           integration: "GitHub"
         )
 
+      row =
+        render_component(&ApiaryWeb.WorkItemListComponents.work_item_row/1,
+          id: "work-item-88",
+          work_item: work_item(),
+          integration: "GitHub",
+          navigate: "/8wonders/main/work/88",
+          now: @now
+        )
+
       for {where, html, selector, drawn} <- [
             {"the header", header(work_item()), "a.q-wi-ref", "G #1204"},
             {"the Details row", details(work_item()), "#work-item-details-ticket .q-wi-l1",
              "G #1204"},
             {"the Details fold", details(work_item()), ".q-wi-dtoggle-s .q-wi-refm", "G #1204"},
             {"the Ticket tab", ticket_tab(), ".q-wi-key", "G acme/shop#1204"},
-            {"the Thread", thread, ".q-wi-ev-ref", "G #1204"}
+            {"the Thread", thread, ".q-wi-ev-ref", "G #1204"},
+            {"the list row", row, ".q-wl-tk", "G #1204"}
           ] do
         assert text(html, selector) =~ drawn, where
         assert attr(html, "#{selector} .q-bl-tile", "aria-label") == ["GitHub"], where
@@ -1168,7 +1178,14 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             card(w),
             details(w),
             ticket_tab(work_item: w),
-            event(kind: :taken_in, actor: @lea, owner: @dana, key: w.key, url: @url)
+            event(kind: :taken_in, actor: @lea, owner: @dana, key: w.key, url: @url),
+            render_component(&ApiaryWeb.WorkItemListComponents.work_item_row/1,
+              id: "work-item-88",
+              work_item: w,
+              integration: "GitHub",
+              navigate: "/8wonders/main/work/88",
+              now: @now
+            )
           ])
 
         refute html =~ "123456"
