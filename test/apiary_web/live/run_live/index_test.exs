@@ -1676,6 +1676,24 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert_patch(view, runs(scope, "?target=#{shop_id}%2C#{gitlab_id}"))
     end
 
+    test "a target chosen in the Filter menu takes the place of a typed name, and the free text stays",
+         %{conn: conn, scope: scope} do
+      shop_run = started_run(scope, shop(), about: %{"title" => "fix the build"})
+      loose = started_run(scope, %{}, about: %{"title" => "fix the docs"})
+      shop_id = tg(scope)
+      shown = %{shop_id => shop_run, "none" => loose}
+
+      for {typed, kept} <- [{"+fix", "q=fix&"}, {"", ""}], value <- [shop_id, "none"] do
+        view = open(conn, runs(scope, "?q=target%3Aacme%2Fnowhere" <> typed))
+        view |> form("#filter-target-form") |> render_change(%{"target" => value})
+        assert_patch(view, runs(scope, "?" <> kept <> "target=#{value}"))
+        render_async(view)
+
+        refute render(view) =~ "nowhere"
+        assert has_element?(view, row(shown[value]))
+      end
+    end
+
     test "with many targets, the chosen one missing from the rail comes first, with its count",
          %{conn: conn, scope: scope} do
       for n <- 1..21 do

@@ -17,8 +17,8 @@ defmodule ApiaryWeb.Narrowing do
 
   What a reader types (`repo:acme/shop`) is the ids of the targets it names (`typed/2`). A
   name that names no target is search text the query keeps (`{:name, text}`,
-  `Apiary.Runs.Filters`): the list matches no run, and its line names the text as typed,
-  with no page or policy to lead to.
+  `Apiary.Runs.Filters`): the list matches nothing, no run and no destination, and its line
+  names the text as typed, with no page or policy to lead to.
   """
   use ApiaryWeb, :html
 

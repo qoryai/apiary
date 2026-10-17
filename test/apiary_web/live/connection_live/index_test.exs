@@ -1064,6 +1064,22 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert_patch(view, workspace_path(scope, "/network?target=#{shop}"))
     end
 
+    test "a target chosen in the Filter menu takes the place of a typed name, and the free text stays",
+         %{conn: conn, scope: scope, shop: shop} do
+      started_run(scope, %{}, egress: [@registry])
+
+      for {typed, kept} <- [{"+registry", "q=registry&"}, {"", ""}], value <- [shop, "none"] do
+        nowhere = "/network?q=target%3Aacme%2Fnowhere" <> typed
+        view = open(conn, workspace_path(scope, nowhere))
+        view |> form("#filter-target-form") |> render_change(%{"target" => value})
+        assert_patch(view, workspace_path(scope, "/network?" <> kept <> "target=#{value}"))
+        render_async(view, 2_000)
+
+        refute note(view) =~ "nowhere"
+        assert has_element?(view, "##{dst("registry.example")}")
+      end
+    end
+
     test "a patch to another target names it and its policy at once", %{
       conn: conn,
       scope: scope,

@@ -379,7 +379,7 @@ defmodule Apiary.Runs.Filters do
 
         "target" ->
           case form["target"] do
-            value when is_binary(value) -> Map.put(current, "target", value)
+            value when is_binary(value) -> f |> unnamed() |> Map.put("target", value)
             _other -> current
           end
 
@@ -399,6 +399,11 @@ defmodule Apiary.Runs.Filters do
   end
 
   def change(%__MODULE__{} = f, _form), do: f
+
+  # The address without the target, a typed name's word included, so the target chosen in
+  # its place does not leave that word behind as free text.
+  defp unnamed(%__MODULE__{} = f),
+    do: %{f | target: nil} |> to_params() |> Map.delete("page")
 
   defp toggle_family(states, key, true), do: Enum.uniq(states ++ family_states(key))
   defp toggle_family(states, key, false), do: states -- family_states(key)

@@ -465,8 +465,10 @@ workspace is dropped, like any value the page does not know, and the page says t
 target filter could not be read. An address of an older release, which named a target by
 `system=` and a path in `target=`, is dropped the same way. A typed `repo:` takes a
 target's name, or its id. A name that names no target is search text, never an address: it
-stays in the query (`?q=target:acme/nowhere`), the list matches no run, and the line names
-it as typed ("Showing the runs of acme/nowhere only.").
+stays in the query (`?q=target:acme/nowhere`), the list matches nothing (no run on Runs, no
+destination on Network access), and the line names it as typed ("Showing the runs of
+acme/nowhere only.", "Showing acme/nowhere only."). A target chosen in its place, in the
+Filter menu or the rail, takes the name out of the query and keeps the rest of the text.
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
