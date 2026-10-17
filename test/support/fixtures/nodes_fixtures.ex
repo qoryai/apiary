@@ -102,6 +102,36 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  A live collection (`Apiary.Adapters.Collection`) of a connection of the scope's
+  organisation to a fresh adapter, written as it stands, as nothing in the product does:
+  no listing, no feed entry, nothing queued. Linked to the scope's workspace, its target
+  `code.example.com` and `acme/` and its ref, its `environment_ref` `env-1`, unless
+  `attrs` sets `:workspace_id`, `:external_ref`, `:target_system`, `:target_path` or
+  `:environment_ref` (nil for none).
+  """
+  def collection_fixture(scope, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    %{adapter: adapter} = connectable_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    ref = Map.get(attrs, :external_ref, "R_#{System.unique_integer([:positive])}")
+
+    Repo.insert!(%Apiary.Adapters.Collection{
+      public_id: Apiary.PublicId.generate(Apiary.Adapters.Collection.prefix()),
+      organisation_id: scope.organisation.id,
+      adapter_id: adapter.id,
+      connection_id: connection.id,
+      workspace_id: Map.get(attrs, :workspace_id, scope.workspace.id),
+      external_ref: ref,
+      url: "https://code.example.com/acme/" <> ref,
+      title: ref,
+      target_system: Map.get(attrs, :target_system, "code.example.com"),
+      target_path: Map.get(attrs, :target_path, "acme/" <> ref),
+      environment_ref: Map.get(attrs, :environment_ref, "env-1"),
+      last_listed_at: DateTime.utc_now(:second)
+    })
+  end
+
+  @doc """
   The connection of the scope's organisation to `adapter`, connectable
   (`connectable_adapter_fixture/1`), started by the scope's person, an owner or an admin
   (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:connected`,

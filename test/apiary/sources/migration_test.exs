@@ -1,6 +1,7 @@
 defmodule Apiary.Sources.MigrationTest do
   # The migrations that keep the tickets, take work items in again, keep when a ticket was
-  # last listed and keep when a complete set left a comment out, run down and up again
+  # last listed and keep when a complete set left a comment out, with the later one that
+  # queues prebuilds down first and up last, run down and up again
   # inside the test's transaction, which rolls it all back. They change `work_items`,
   # `work_item_events` and `dispatch_runs` under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -15,13 +16,14 @@ defmodule Apiary.Sources.MigrationTest do
            "keep_when_an_item_was_last_listed"}
   @left_out {20_261_017_191_500, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
              "keep_when_a_complete_set_left_a_comment_out"}
+  @prebuilds {20_261_017_200_200, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
 
   @tables ~w(source_items source_item_comments source_item_listings)
   @functions ~w(source_item_public_id source_parts_valid source_texts_valid)
   @columns ~w(adapter_id item_id target_system target_path take_in declined_at declined_by_id)
 
   setup_all do
-    for {version, migration, name} <- [@items, @again, @listed, @left_out],
+    for {version, migration, name} <- [@items, @again, @listed, @left_out, @prebuilds],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -79,6 +81,7 @@ defmodule Apiary.Sources.MigrationTest do
     assert key("dispatch_runs_work_item_id_fkey") =~ "(work_item_id, organisation_id)"
     assert check("work_items_state_check") =~ "declined"
 
+    down!(@prebuilds)
     down!(@left_out)
     down!(@listed)
     down!(@again)
@@ -103,6 +106,7 @@ defmodule Apiary.Sources.MigrationTest do
     up!(@again)
     up!(@listed)
     up!(@left_out)
+    up!(@prebuilds)
 
     assert tables() == Enum.sort(@tables)
     assert functions() == Enum.sort(@functions)
@@ -124,6 +128,7 @@ defmodule Apiary.Sources.MigrationTest do
     %{scope: scope} = sign_up_fixture()
     work_item_fixture(scope)
 
+    down!(@prebuilds)
     down!(@again)
 
     assert_raise Postgrex.Error, ~r/runs only while work_items is empty/, fn ->
@@ -134,6 +139,7 @@ defmodule Apiary.Sources.MigrationTest do
 
     Repo.query!("DELETE FROM work_items")
     up!(@again)
+    up!(@prebuilds)
     assert columns() == Enum.sort(@columns)
   end
 end

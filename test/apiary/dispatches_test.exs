@@ -97,6 +97,64 @@ defmodule Apiary.DispatchesTest do
     end
   end
 
+  describe "queue_prebuild/3" do
+    @describetag needs: :factory
+
+    test "writes a waiting prebuild held for the pool, with no work item and no take in",
+         ctx do
+      collection = collection_fixture(ctx.scope)
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+
+      {:ok, run} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
+
+      assert %DispatchRun{
+               step: "prebuild",
+               state: :waiting,
+               work_item_id: nil,
+               take_in: nil,
+               attempt: nil,
+               of: nil,
+               environment_ref: "env-1"
+             } = run!(run)
+
+      assert run.source_collection_id == collection.id
+      assert run.pool_id == ctx.pool.id
+      assert run.workspace_id == ctx.scope.workspace.id
+      assert {:ok, _uuid} = Ecto.UUID.cast(run.run_id)
+      assert_receive {Dispatches, :changed}
+    end
+
+    test "is no work of a take in: no claim takes it yet", ctx do
+      collection = collection_fixture(ctx.scope)
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "e") end)
+
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      run = queued!(ctx.scope)
+      assert claimed!(ctx.key).dispatch_run_id == run.id
+    end
+
+    test "refuses a pool of another workspace, and runs only inside a transaction", ctx do
+      collection = collection_fixture(ctx.scope)
+
+      assert_raise ArgumentError, ~r/caller's transaction/, fn ->
+        Dispatches.queue_prebuild(collection, ctx.pool, "env-1")
+      end
+
+      workspace = workspace_fixture(ctx.scope.organisation)
+      theirs = pool_fixture(%{ctx.scope | workspace: workspace})
+
+      assert_raise FunctionClauseError, fn ->
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, theirs, "env-1") end)
+      end
+
+      assert {:error, %Ecto.Changeset{errors: [environment_ref: _]}} =
+               Repo.transact(fn ->
+                 Dispatches.queue_prebuild(collection, ctx.pool, String.duplicate("é", 201))
+               end)
+    end
+  end
+
   describe "cancel_for_undo/1" do
     @describetag needs: :factory
 

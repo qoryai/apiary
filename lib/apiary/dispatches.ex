@@ -16,6 +16,12 @@ defmodule Apiary.Dispatches do
   # organisation alone; this is what holds a queued run to its work item's workspace. The
   # run waits for no pool in particular: any pool of that workspace may claim it.
   #
+  # `queue_prebuild(collection, pool, environment_ref)` writes, inside the caller's
+  # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
+  # the collection's, held for that pool, for the collection's `environment_ref`. It has
+  # no work item and counts toward no take in; like any run, it takes a slot of the pool
+  # when it is claimed. `Apiary.Environments` decides when one is due.
+  #
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
   # current take in: `{:error, :claimed}` while a dispatch holds one, neither stale nor
@@ -57,13 +63,13 @@ defmodule Apiary.Dispatches do
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/2`), then the pool's limit
   #      counted: its held slots and its live runs that were not dispatched; at the limit,
   #      `{:ok, :none}`;
-  #   6. the oldest waiting run of the key's workspace, by `queued_at`, locked
-  #      `FOR UPDATE SKIP LOCKED`, so two claims never take one run and neither waits on
-  #      the other; none is `{:ok, :none}`. A run whose work item is no longer live (closed,
-  #      declined, undone, its connection ended, or gone) or no longer in the run's
-  #      workspace is not handed out: it ends, `undone` for a work item undone and `closed`
-  #      otherwise, a stale dispatch of it with it (`run_ended`), and the next is taken, up
-  #      to 100 per claim;
+  #   6. the oldest waiting run of the key's workspace, by `queued_at`, but a prebuild,
+  #      which no claim takes yet, locked `FOR UPDATE SKIP LOCKED`, so two claims never
+  #      take one run and neither waits on the other; none is `{:ok, :none}`. A run whose
+  #      work item is no longer live (closed, declined, undone, its connection ended, or
+  #      gone) or no longer in the run's workspace is not handed out: it ends, `undone` for
+  #      a work item undone and `closed` otherwise, a stale dispatch of it with it
+  #      (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
@@ -96,7 +102,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.Connection
+  alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
@@ -176,6 +182,43 @@ defmodule Apiary.Dispatches do
         take_in: take_in,
         attempt: 1,
         of: @of,
+        queued_at: now()
+      })
+      |> Repo.insert()
+
+    with {:ok, _run} <- result, do: broadcast([workspace_id])
+    result
+  end
+
+  # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
+  # node pool `pool` of the collection's workspace, for `environment_ref`, inside the
+  # caller's transaction (the moduledoc).
+  @doc false
+  @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
+          {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
+  def queue_prebuild(
+        %Collection{
+          id: collection_id,
+          organisation_id: organisation_id,
+          workspace_id: workspace_id
+        },
+        %Node{
+          kind: :pool,
+          id: pool_id,
+          organisation_id: organisation_id,
+          workspace_id: workspace_id
+        },
+        environment_ref
+      )
+      when is_binary(workspace_id) and is_binary(environment_ref) do
+    in_transaction!("queue_prebuild/3")
+
+    result =
+      %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
+      |> DispatchRun.prebuild_changeset(%{
+        source_collection_id: collection_id,
+        pool_id: pool_id,
+        environment_ref: environment_ref,
         queued_at: now()
       })
       |> Repo.insert()
@@ -478,6 +521,8 @@ defmodule Apiary.Dispatches do
       from r in DispatchRun,
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         where: fragment("? = 'waiting'", r.state),
+        # A prebuild is not handed out yet.
+        where: r.step != ^DispatchRun.prebuild(),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
         lock: "FOR UPDATE SKIP LOCKED"
