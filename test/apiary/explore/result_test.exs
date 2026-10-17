@@ -730,10 +730,19 @@ defmodule Apiary.Explore.ResultTest do
       end
     end
 
+    # `check all` raises the generation size by one each run, so over 200 runs it reaches
+    # 200, and `term()` grows with it: at size 200 a term nests up to about 340 values
+    # (StreamData's `tree/2` allows size^1.1 leaves), and the map holds up to 200 of them.
+    # Building one such map took up to half a second, the property several seconds locally
+    # and over a minute on a slow runner. Each generator is capped at size 30: a term
+    # still nests lists, maps and tuples of booleans, integers, floats, binaries, atoms
+    # and references, up to about 42 values, and the map still holds up to 30 members.
+    # `from_events/1` reads only the data's `is_error` and `result`, so larger data tests
+    # no more.
     property "any data in a result event is no result or a result" do
       check all(
-              data <- one_of([term(), map_of(string(:utf8), term())]),
-              is_error <- one_of([boolean(), term()]),
+              data <- capped(one_of([term(), map_of(string(:utf8), term())]), 30),
+              is_error <- capped(one_of([boolean(), term()]), 30),
               max_runs: 200
             ) do
         data = if is_map(data), do: Map.put(data, "is_error", is_error), else: data
@@ -744,6 +753,10 @@ defmodule Apiary.Explore.ResultTest do
       end
     end
   end
+
+  # The generator `data` at the run's generation size, at most `max`: early runs stay
+  # small, and later runs stop growing at `max`.
+  defp capped(data, max), do: StreamData.scale(data, &min(&1, max))
 
   defp parse_shape(:none), do: true
   defp parse_shape({:ok, %{}}), do: true
