@@ -1,6 +1,7 @@
 defmodule Apiary.Sources.Item do
   # An item an adapter sends of a collection (`Apiary.Adapters.Collection`): a ticket at
-  # its source. The contract calls it an item; the pages call it a ticket. The table and its rules are `20261017190000_keep_source_items`'s.
+  # its source. The contract calls it an item; the pages call it a ticket. The table and
+  # its rules are `20261017190000_keep_source_items`'s.
   #
   # `external_ref` is the adapter's ref for it, 1 to 200 characters, unique in its
   # collection, which the core compares and stores and never reads meaning into. `key` is

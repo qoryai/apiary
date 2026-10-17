@@ -322,7 +322,8 @@ defmodule Apiary.WorkItems.WorkItemTest do
     test "a ticket has one work item in its organisation, live or not", ctx do
       %{scope: scope, connection: connection, work_item: first} = ctx
 
-      # Ended, the work item still holds the ticket: a take in again reuses it.
+      # Ended, the work item still holds the ticket's key, so a second work item of the
+      # ticket is refused.
       assert %{num_rows: 1} =
                update!("work_items", first.id, "state = 'closed', closed_at = now()")
 
