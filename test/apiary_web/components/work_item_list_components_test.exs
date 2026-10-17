@@ -319,7 +319,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     end
 
     test "Explore's statuses: their words and marks, the reader's with the right to act" do
-      run = %{id: "rn_01aa47c9", attempt: 3, of: 3}
+      run = %{id: "rn_01aa47c9", attempt: 2, of: 3}
 
       for {status, words, acts, others} <- [
             {:questions, "Waits for answers", "wait", "wait_other"},

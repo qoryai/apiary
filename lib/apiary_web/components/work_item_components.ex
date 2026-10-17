@@ -82,7 +82,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   A work item's status: its mark and its words, the row's and the meta line's. Waits for
   you to confirm is the one strong status (`q-wi-hot`). Questions and a take in that used
   its runs wait for any member who may act: their mark is the reader's with `can_act`,
-  another member's without.
+  another member's without. Questions or a run without a result at the take in's last
+  run read as the run limit, here as on the step card and the tab.
   """
   attr :work_item, :map,
     required: true,
@@ -125,57 +126,63 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc false
-  def status_words(%{status: :queued}), do: gettext("Explore is queued")
-  def status_words(%{status: :running}), do: gettext("Qory is exploring")
+  def status_words(work_item), do: words_of(at_limit(work_item))
 
-  def status_words(%{status: :confirm, owner: owner}) do
+  defp words_of(%{status: :queued}), do: gettext("Explore is queued")
+  defp words_of(%{status: :running}), do: gettext("Qory is exploring")
+
+  defp words_of(%{status: :confirm, owner: owner}) do
     if you?(owner),
       do: gettext("Waits for you to confirm"),
       else: gettext("Waits for %{name} to confirm", name: owner.name)
   end
 
-  def status_words(%{status: :questions}), do: gettext("Waits for answers")
+  defp words_of(%{status: :questions}), do: gettext("Waits for answers")
 
-  def status_words(%{status: :used_up, run: %{of: of}}),
+  defp words_of(%{status: :used_up, run: %{of: of}}),
     do:
       ngettext("Explore used its %{of} run", "Explore used its %{of} runs", of,
         of: Format.number(of)
       )
 
-  def status_words(%{status: :no_result}), do: gettext("Explore ended without a result")
-  def status_words(%{status: :lost}), do: gettext("Explore's run was lost")
-  def status_words(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
-  def status_words(%{status: :shape}), do: gettext("Ready for Shape")
+  defp words_of(%{status: :no_result}), do: gettext("Explore ended without a result")
+  defp words_of(%{status: :lost}), do: gettext("Explore's run was lost")
+  defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
+  defp words_of(%{status: :shape}), do: gettext("Ready for Shape")
 
-  def status_words(%{status: :declined, ended_by: by}) do
+  defp words_of(%{status: :declined, ended_by: by}) do
     if you?(by),
       do: gettext("Declined by you"),
       else: gettext("Declined by %{name}", name: by.name)
   end
 
-  def status_words(%{status: :closed, ended_by: by}) do
+  defp words_of(%{status: :closed, ended_by: by}) do
     if you?(by), do: gettext("Closed by you"), else: gettext("Closed by %{name}", name: by.name)
   end
 
-  def status_words(%{status: :undone, ended_by: by}) do
+  defp words_of(%{status: :undone, ended_by: by}) do
     if you?(by), do: gettext("Undone by you"), else: gettext("Undone by %{name}", name: by.name)
   end
 
   @doc false
-  def mark(work_item, can_act \\ false)
-  def mark(%{status: :queued}, _can_act), do: :todo
-  def mark(%{status: :running}, _can_act), do: :run
+  def mark(work_item, can_act \\ false),
+    do: mark_of(at_limit(work_item), can_act)
 
-  def mark(%{status: :confirm, owner: owner}, _can_act),
+  defp mark_of(%{status: :queued}, _can_act), do: :todo
+  defp mark_of(%{status: :running}, _can_act), do: :run
+
+  defp mark_of(%{status: :confirm, owner: owner}, _can_act),
     do: if(you?(owner), do: :wait, else: :wait_other)
 
-  def mark(%{status: status}, can_act) when status in [:questions, :used_up],
+  defp mark_of(%{status: status}, can_act) when status in [:questions, :used_up],
     do: if(can_act, do: :wait, else: :wait_other)
 
-  def mark(%{status: status}, _can_act) when status in [:no_result, :lost, :cancelled], do: :err
-  def mark(%{status: :shape}, _can_act), do: :ready
-  def mark(%{status: :declined}, _can_act), do: :declined
-  def mark(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
+  defp mark_of(%{status: status}, _can_act) when status in [:no_result, :lost, :cancelled],
+    do: :err
+
+  defp mark_of(%{status: :shape}, _can_act), do: :ready
+  defp mark_of(%{status: :declined}, _can_act), do: :declined
+  defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
   def hot?(%{status: :confirm, owner: owner}), do: you?(owner)
@@ -338,7 +345,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :work_item, :map, required: true, doc: "the work item: `:status`, and `:stage` if ended"
 
   def stage_track(assigns) do
-    work_item = assigns.work_item
+    work_item = at_limit(assigns.work_item)
     at = Enum.find_index(@stages, &(&1 == stage_of(work_item)))
     ended = ended?(work_item)
 
@@ -1659,6 +1666,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # What the tab shows for the latest run: what comes next while it is queued or running,
   # else what the run gave.
   # Run 3 of 3 that asked again or gave no result is the run limit: no run can follow it.
+  # Every part that reads the status (its words, its mark, the stages, the step, the tab)
+  # reads it through this, so one work item reads the same everywhere.
   defp at_limit(%{status: status, run: run} = work_item)
        when status in [:questions | @no_result] and is_map(run) do
     if next_run?(run), do: work_item, else: %{work_item | status: :used_up}
@@ -1918,7 +1927,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     first_error =
       assigns.mode == :form &&
-        Enum.find(run.questions, &Map.has_key?(assigns.errors, &1.public_id))
+        Enum.find(run.questions, &answer_error(assigns.errors[&1.public_id]))
 
     assigns =
       assign(assigns,
@@ -2049,6 +2058,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp answer_error({:too_long, limit}),
     do: gettext("Write at most %{number} characters.", number: Format.number(limit))
+
+  # An error without words marks nothing.
+  defp answer_error(_error), do: nil
 
   attr :run, :map, required: true
 

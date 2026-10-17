@@ -186,7 +186,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   describe "the statuses Explore adds" do
     test "their words and marks; questions and the run limit wait for the reader who may act" do
-      used = run(%{attempt: 3, outcome: :questions})
+      used = run(%{attempt: 2, outcome: :questions})
 
       for {status, words, acts, reads} <- [
             {:questions, "Waits for answers", "wait", "wait_other"},
@@ -1663,6 +1663,47 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(card(w), ".q-wi-badge") == "3 of 3 runs used"
     end
 
+    test "at run 3 of 3 the header, the row, the stages and the card read the run limit alike" do
+      for {status, overrides} <- [
+            {:questions, %{outcome: :questions, questions: [hd(questions())]}},
+            {:lost, %{state: :lost, outcome: nil}}
+          ] do
+        w = last(status, overrides)
+
+        for {can_act, mark} <- [{true, "wait"}, {false, "wait_other"}] do
+          header =
+            render_component(&C.work_item_header/1,
+              work_item: w,
+              integration: "GitHub",
+              link: "https://apiary.example.com/8wonders/main/work/94",
+              can_act: can_act
+            )
+
+          assert text(header, ".q-wi-meta .q-wi-st") == "Explore used its 3 runs"
+          assert attr(header, ".q-wi-meta .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-#{mark}"]
+
+          row =
+            render_component(&ApiaryWeb.WorkItemListComponents.work_item_row/1,
+              id: "work-item-94",
+              work_item: w,
+              integration: "GitHub",
+              navigate: "/8wonders/main/work/94",
+              can_act: can_act,
+              now: @now
+            )
+
+          assert text(row, ".q-wl-nx") == "Explore used its 3 runs"
+          assert attr(row, ".q-wl-row .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-#{mark}"]
+
+          card = card(w, can_act: can_act)
+          assert attr(card, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-#{mark}"]
+        end
+
+        assert C.status_words(w) == "Explore used its 3 runs"
+        assert count(render_component(&C.stage_track/1, work_item: w), ".q-wi-stage-wait") == 1
+      end
+    end
+
     test "below the limit, the next run is named" do
       html = card(last(:lost, %{attempt: 2, state: :lost, outcome: nil}))
       assert text(html, "#work-item-step-next") == "It starts run 3 of 3 of this take in."
@@ -1722,6 +1763,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert count(html, "[aria-invalid]") == 0
         assert count(html, "[phx-mounted]") == 0
       end
+    end
+
+    test "an answer error without words marks nothing" do
+      html =
+        tab(questions_item(), can_act: true, errors: %{"qq_01" => :unknown, "qq_02" => {:odd}})
+
+      assert count(html, ".q-xp-err") == 0
+      assert count(html, "[aria-invalid]") == 0
+      assert count(html, "[phx-mounted]") == 0
     end
 
     test "the focus span is new after each send, so the focus moves again" do
