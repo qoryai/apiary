@@ -609,7 +609,7 @@ defmodule Apiary.Gateways do
       where: r.state not in ^Run.with_old_names(~w(completed failed cancelled lost)),
       where: is_nil(r.exited_at) and is_nil(r.outcome_state) and is_nil(r.events_pruned_at),
       where: not is_nil(r.attached_at) or r.attach_by >= ^now,
-      order_by: [asc: r.registered_at, asc: r.run_id]
+      order_by: [asc: r.registered_at, asc: r.node_run_id]
     )
     |> Repo.all()
   end

@@ -59,7 +59,7 @@ defmodule Apiary.Runs.Attach do
   second gateway, or a second instance of one, take a run on.
 
   The instance is the attach's signed `X-Qory-Instance-Id`, given in `meta`. It is stored
-  on the run beside the attach's answer (`runs.attach_instance_id`), and from then on the
+  on the run beside the attach's answer (`runs.gateway_instance_id`), and from then on the
   run's batches, heartbeats and reloads are taken from that instance alone
   (`Apiary.Runs.Sender`), until the run's sending ends: once its exit arrived, it was lost
   after its attach, or its events were pruned, a batch from any instance of the gateway
@@ -275,7 +275,9 @@ defmodule Apiary.Runs.Attach do
   defp held(%{workspace: public_id, run_id: run_id}) do
     with %Workspace{} = workspace <- Repo.get_by(Workspace, public_id: public_id),
          %Run{} = run <-
-           Repo.one(from r in Run, where: r.workspace_id == ^workspace.id and r.run_id == ^run_id) do
+           Repo.one(
+             from r in Run, where: r.workspace_id == ^workspace.id and r.node_run_id == ^run_id
+           ) do
       {:ok, workspace, run}
     else
       nil -> {:error, :gone}
@@ -393,7 +395,7 @@ defmodule Apiary.Runs.Attach do
           attached_at: now,
           attach_interval_seconds: attach.interval_seconds,
           attach_answer_digest: settings.digest,
-          attach_instance_id: kept_instance(meta[:instance_id]),
+          gateway_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
           updated_at: now

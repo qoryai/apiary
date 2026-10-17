@@ -59,7 +59,8 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   defp run!(ctx, subject),
     do:
       Repo.one!(
-        from r in Run, where: r.workspace_id == ^ctx.scope.workspace.id and r.run_id == ^subject
+        from r in Run,
+          where: r.workspace_id == ^ctx.scope.workspace.id and r.node_run_id == ^subject
       )
 
   test "a batch that names no target, of a run that reports nothing, is answered the baseline's digest",
@@ -156,7 +157,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert [ctx.own, nil, nil] ==
              Repo.all(
                from d in Delivery,
-                 where: d.run_id == ^subject,
+                 where: d.node_run_id == ^subject,
                  order_by: d.received_at,
                  select: d.run_configuration_digest
              )

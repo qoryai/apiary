@@ -7,8 +7,9 @@ defmodule Apiary.Runs.Run do
   `/:org/:workspace/runs/:public_id`. The application sets it when it creates the row; the
   column's default, `run_public_id()`, is the same shape.
 
-  `run_id` is the node's run id, the subject of the run's events in the server contract,
-  unique within the workspace. The row is
+  `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
+  `run_id` and the subject of the run's events in the server contract, unique within the
+  workspace. The row is
   created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
@@ -37,7 +38,7 @@ defmodule Apiary.Runs.Run do
   @derive {Phoenix.Param, key: :public_id}
   schema "runs" do
     field :public_id, :string, read_after_writes: true
-    field :run_id, Ecto.UUID
+    field :node_run_id, Ecto.UUID
 
     # The run's target as its labels named it (`Apiary.Lingo.Domain`): the system and the
     # path, kept on the run beside `target_id`, both nil when the labels name none.
@@ -109,10 +110,11 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
-    # The node of the key the run's registration came with, and the instance id it claimed:
-    # copied when the run is created and never moved, both nil for a key that names no node.
+    # The node of the key the run's registration came with, and the node's instance id it
+    # claimed: copied when the run is created and never moved, both nil for a key that names
+    # no node.
     belongs_to :node, Apiary.Nodes.Node
-    field :instance_id, :string
+    field :node_instance_id, :string
     belongs_to :target, Apiary.Runs.Target
 
     # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered;
@@ -171,7 +173,7 @@ defmodule Apiary.Runs.Run do
     field :attached_at, :utc_datetime_usec
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
-    field :attach_instance_id, :string
+    field :gateway_instance_id, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

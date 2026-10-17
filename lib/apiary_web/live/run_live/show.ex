@@ -860,11 +860,11 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.node_id} id="run-node">
             <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
           </dd>
-          <dt :if={@run.instance_id}>{gettext("Instance")}</dt>
-          <dd :if={@run.instance_id} id="run-instance">
+          <dt :if={@run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dd :if={@run.node_instance_id} id="run-instance">
             <span :if={@instance && @instance.name}>{@instance.name}</span>
             <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
-              {@run.instance_id}
+              {@run.node_instance_id}
             </span>
           </dd>
           <dt :if={@security}>{gettext("Policy")}</dt>
@@ -942,7 +942,7 @@ defmodule ApiaryWeb.RunLive.Show do
             />
           </dd>
           <dt>{gettext("Node's run id")}</dt>
-          <dd id="run-node-run-id" class="font-mono">{@run.run_id}</dd>
+          <dd id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
             <.rich text={

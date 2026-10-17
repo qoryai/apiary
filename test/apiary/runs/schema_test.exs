@@ -11,7 +11,7 @@ defmodule Apiary.Runs.SchemaTest do
         %Run{
           organisation_id: scope.organisation.id,
           workspace_id: scope.workspace.id,
-          run_id: Ecto.UUID.generate()
+          node_run_id: Ecto.UUID.generate()
         },
         attrs
       )
@@ -50,10 +50,10 @@ defmodule Apiary.Runs.SchemaTest do
     %{scope: other} = sign_up_fixture()
     run = run_fixture(scope)
 
-    assert %Run{} = run_fixture(other, %{run_id: run.run_id})
+    assert %Run{} = run_fixture(other, %{node_run_id: run.node_run_id})
 
-    assert_raise Ecto.ConstraintError, ~r/runs_workspace_id_run_id_index/, fn ->
-      run_fixture(scope, %{run_id: run.run_id})
+    assert_raise Ecto.ConstraintError, ~r/runs_workspace_id_node_run_id_index/, fn ->
+      run_fixture(scope, %{node_run_id: run.node_run_id})
     end
   end
 
@@ -65,7 +65,7 @@ defmodule Apiary.Runs.SchemaTest do
       Repo.insert!(%Run{
         organisation_id: other.organisation.id,
         workspace_id: scope.workspace.id,
-        run_id: Ecto.UUID.generate()
+        node_run_id: Ecto.UUID.generate()
       })
     end
   end
@@ -79,7 +79,7 @@ defmodule Apiary.Runs.SchemaTest do
       workspace_id: scope.workspace.id,
       run_id: run.id,
       sequence: 1,
-      event_id: Ecto.UUID.generate(),
+      node_event_id: Ecto.UUID.generate(),
       type: "dev.qory.ping",
       time: DateTime.utc_now(),
       received_at: DateTime.utc_now(),
@@ -89,10 +89,10 @@ defmodule Apiary.Runs.SchemaTest do
     Repo.insert!(event)
 
     assert_raise Ecto.ConstraintError, ~r/events_run_id_sequence_index/, fn ->
-      Repo.insert!(%{event | event_id: Ecto.UUID.generate()})
+      Repo.insert!(%{event | node_event_id: Ecto.UUID.generate()})
     end
 
-    assert_raise Ecto.ConstraintError, ~r/events_workspace_id_event_id_index/, fn ->
+    assert_raise Ecto.ConstraintError, ~r/events_workspace_id_node_event_id_index/, fn ->
       Repo.insert!(%{event | sequence: 2})
     end
 
@@ -111,7 +111,7 @@ defmodule Apiary.Runs.SchemaTest do
         workspace_id: other.workspace.id,
         run_id: run.id,
         sequence: 1,
-        event_id: Ecto.UUID.generate(),
+        node_event_id: Ecto.UUID.generate(),
         type: "dev.qory.ping",
         time: DateTime.utc_now(),
         received_at: DateTime.utc_now()
@@ -162,8 +162,8 @@ defmodule Apiary.Runs.SchemaTest do
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       access_key_id: key.id,
-      delivery_id: Ecto.UUID.generate(),
-      run_id: Ecto.UUID.generate(),
+      node_delivery_id: Ecto.UUID.generate(),
+      node_run_id: Ecto.UUID.generate(),
       received_at: DateTime.utc_now(),
       status: 202
     })

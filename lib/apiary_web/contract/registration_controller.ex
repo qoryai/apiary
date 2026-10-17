@@ -111,7 +111,9 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   # so neither its digest nor an `ETag`.
   defp answer(conn, %{run: run, run_key: run_key}) do
     body =
-      Jason.encode!(Jason.OrderedObject.new(version: 1, run_id: run.run_id, run_key: run_key))
+      Jason.encode!(
+        Jason.OrderedObject.new(version: 1, run_id: run.node_run_id, run_key: run_key)
+      )
 
     conn
     |> put_resp_header("x-qory-configuration", Configuration.digest(conn.assigns.access_key))

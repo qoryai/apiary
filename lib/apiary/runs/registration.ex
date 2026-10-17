@@ -414,7 +414,8 @@ defmodule Apiary.Runs.Registration do
     run =
       Repo.one(
         from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^registration.run_id
+          where:
+            r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^registration.run_id
       )
 
     case run do
@@ -650,7 +651,7 @@ defmodule Apiary.Runs.Registration do
             public_id: Run.new_public_id(),
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
-            run_id: registration.run_id,
+            node_run_id: registration.run_id,
             access_key_id: access_key.id,
             state: "pending",
             forager_version: forager_version(registration, meta),
@@ -675,7 +676,8 @@ defmodule Apiary.Runs.Registration do
     run =
       Repo.one(
         from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^registration.run_id,
+          where:
+            r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^registration.run_id,
           lock: "FOR UPDATE"
       )
 

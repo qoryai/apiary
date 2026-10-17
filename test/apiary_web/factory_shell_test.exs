@@ -11,6 +11,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # whole node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Phoenix.Component, only: [sigil_H: 2]
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -270,6 +271,33 @@ defmodule ApiaryWeb.FactoryShellTest do
       # Nothing waits on anyone yet: no count beside Work items.
       refute has_element?(view, "#nav-work_items .q-nav-count")
       refute Map.has_key?(ApiaryWeb.UserAuth.nav_counts(scope), :waiting_on)
+    end
+
+    test "the count beside Work items says in its title that they wait for the reader", %{
+      scope: scope
+    } do
+      shell = fn counts ->
+        assigns = %{scope: scope, counts: counts}
+
+        ~H"""
+        <Layouts.app flash={%{}} current_scope={@scope} nav={:work_items} counts={@counts}>
+          <p>page</p>
+        </Layouts.app>
+        """
+        |> rendered_to_string()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#nav-work_items .q-nav-count")
+      end
+
+      three = shell.(%{waiting_on: 3})
+      assert three |> LazyHTML.text() |> String.trim() == "3"
+      assert LazyHTML.attribute(three, "title") == ["Work items: 3 wait for you"]
+
+      one = shell.(%{waiting_on: 1})
+      assert one |> LazyHTML.text() |> String.trim() == "1"
+      assert LazyHTML.attribute(one, "title") == ["Work items: 1 waits for you"]
+
+      assert shell.(%{}) |> Enum.count() == 0
     end
 
     test "a member has the Work group too", %{scope: scope} do

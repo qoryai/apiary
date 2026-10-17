@@ -61,7 +61,7 @@ defmodule Apiary.Runs.RunPublicIdTest do
     {:ok, batch} = events |> Jason.encode!() |> Batch.parse()
 
     assert {:ok, %{run: %Run{} = run}} = Ingest.ingest(key, batch, %{contract_version: 1})
-    assert run.run_id == subject
+    assert run.node_run_id == subject
     assert run.public_id =~ @format
     assert Repo.get!(Run, run.id).public_id == run.public_id
 
@@ -91,7 +91,7 @@ defmodule Apiary.Runs.RunPublicIdTest do
     assert {:ok, %{settings: settings, run: %Run{} = run}} =
              Registration.register(key, registration, meta)
 
-    assert run.run_id == run_id
+    assert run.node_run_id == run_id
     assert run.public_id =~ @format
     refute settings =~ "rn_"
   end

@@ -47,7 +47,7 @@ defmodule Apiary.Runs.AttachConcurrencyTest do
 
     {:ok, body} = Attach.parse(attach_body(run_key))
     assert {:ok, %{repeated: false}} = Attach.attach(gateway_key, run_id, body, %{})
-    assert Repo.one!(from r in Run, where: r.run_id == ^run_id).attach_instance_id == nil
+    assert Repo.one!(from r in Run, where: r.node_run_id == ^run_id).gateway_instance_id == nil
     {run_id, body}
   end
 
@@ -75,7 +75,7 @@ defmodule Apiary.Runs.AttachConcurrencyTest do
     assert [{_loser, {:error, :run_attached}}] =
              Enum.filter(results, &match?({_instance, {:error, _reason}}, &1))
 
-    assert Repo.one!(from r in Run, where: r.run_id == ^run_id).attach_instance_id == winner
+    assert Repo.one!(from r in Run, where: r.node_run_id == ^run_id).gateway_instance_id == winner
   end
 
   test "two instances send the first batch of a run with no instance at once: one holds it" do
@@ -101,8 +101,8 @@ defmodule Apiary.Runs.AttachConcurrencyTest do
     assert [{_loser, {:error, :wrong_gateway}}] =
              Enum.filter(results, &match?({_instance, {:error, _reason}}, &1))
 
-    run = Repo.one!(from r in Run, where: r.run_id == ^run_id)
-    assert run.attach_instance_id == winner
+    run = Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
+    assert run.gateway_instance_id == winner
     assert run.event_count == 1
   end
 
@@ -130,7 +130,7 @@ defmodule Apiary.Runs.AttachConcurrencyTest do
     assert one.settings == other.settings
     assert one.digest == other.digest
 
-    run = Repo.one!(from r in Run, where: r.run_id == ^run_id)
+    run = Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
     assert run.attached_at != nil
     assert run.gateway_id == gateway.id
   end

@@ -849,7 +849,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           workspace_id: workspace.id,
           run_id: id,
           sequence: sequence,
-          event_id: Ecto.UUID.generate(),
+          node_event_id: Ecto.UUID.generate(),
           type: "dev.qory." <> type,
           time: instant(time),
           data: data,
@@ -868,10 +868,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       public_id: Run.new_public_id(),
       organisation_id: organisation.id,
       workspace_id: workspace.id,
-      run_id: run_id,
+      node_run_id: run_id,
       access_key_id: key.id,
       node_id: key.node_id,
-      instance_id: instance_id(key.node_id, spec.host),
+      node_instance_id: instance_id(key.node_id, spec.host),
       state: "pending",
       forager_version: forager_version(spec),
       contract_version: 1,
@@ -1951,11 +1951,11 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       Repo.all(
         from r in Run,
           where: r.workspace_id == ^workspace.id and not is_nil(r.node_id),
-          where: not is_nil(r.instance_id) and not is_nil(r.host),
-          group_by: [r.node_id, r.instance_id, r.host],
+          where: not is_nil(r.node_instance_id) and not is_nil(r.host),
+          group_by: [r.node_id, r.node_instance_id, r.host],
           select: %{
             node_id: r.node_id,
-            instance_id: r.instance_id,
+            node_instance_id: r.node_instance_id,
             name: r.host,
             first_seen_at: min(r.inserted_at),
             last_seen_at: max(r.last_event_at),
@@ -1984,7 +1984,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     Repo.insert_all(Instance, entries,
       on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_forager_version]},
-      conflict_target: [:node_id, :instance_id]
+      conflict_target: [:node_id, :node_instance_id]
     )
   end
 

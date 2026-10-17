@@ -173,7 +173,7 @@ defmodule Apiary.Runs.Outcome do
   defp held(access_key, run_id) do
     Repo.one(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^run_id,
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^run_id,
         select: struct(r, [:id])
     )
   end

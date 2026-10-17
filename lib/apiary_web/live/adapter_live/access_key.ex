@@ -360,7 +360,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       <.settings_page section={:adapters} title={command_title(@adapter)}>
         <:subtitle>
           {gettext(
-            "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory only the public half. The secret never leaves the machine.",
+            "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory Apiary only the public half. The secret never leaves the machine.",
             name: @adapter.name
           )}
         </:subtitle>
@@ -465,7 +465,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               {gettext(
                 "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
               )}
-              {gettext("The adapter makes the key there and sends Qory only its public half.")}
+              {gettext("The adapter makes the key there and sends Qory Apiary only its public half.")}
               <:confirm :if={@code}><.cancel_confirm code={@code} paths={@paths} /></:confirm>
             </.way>
           </SettingsComponents.part>

@@ -84,8 +84,8 @@ defmodule Apiary.Runs.Fold do
 
   A run through a gateway counts the starts and heartbeats of the instance that attached
   it alone (`liveness_instance/1`), by the instance id each event was delivered with
-  (`events.instance_id`): after a loss, only the attaching instance's heartbeat makes the
-  run live again. Another instance's heartbeat is folded into nothing, neither the last
+  (`events.node_instance_id`): after a loss, only the attaching instance's heartbeat makes
+  the run live again. Another instance's heartbeat is folded into nothing, neither the last
   heartbeat, nor the offset, nor the elapsed time, and its start revives nothing. An
   event stored before its instance was kept counts, and so does every event of a run
   whose attaching instance is not known, and of a direct run. The instance ids are stored
@@ -496,19 +496,19 @@ defmodule Apiary.Runs.Fold do
 
   @doc """
   The instance whose starts and heartbeats count towards `run`'s liveness: the instance
-  that attached it (`attach_instance_id`), for a run through a gateway that has one; nil
+  that attached it (`gateway_instance_id`), for a run through a gateway that has one; nil
   for any other run, whose events count from whoever sent them.
   """
   @spec liveness_instance(map()) :: String.t() | nil
   def liveness_instance(run) do
-    if Map.get(run, :run_key_payload), do: Map.get(run, :attach_instance_id)
+    if Map.get(run, :run_key_payload), do: Map.get(run, :gateway_instance_id)
   end
 
   # An event stored before its instance was kept, with none, counts as it did.
   defp attaching_instance?(run, event) do
     case liveness_instance(run) do
       nil -> true
-      instance_id -> Map.get(event, :instance_id) in [nil, instance_id]
+      instance_id -> Map.get(event, :node_instance_id) in [nil, instance_id]
     end
   end
 

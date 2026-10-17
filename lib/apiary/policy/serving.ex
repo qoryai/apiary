@@ -133,7 +133,7 @@ defmodule Apiary.Policy.Serving do
     run =
       Repo.one(
         from r in Run,
-          where: r.workspace_id == ^workspace_id and r.run_id == ^subject,
+          where: r.workspace_id == ^workspace_id and r.node_run_id == ^subject,
           select: struct(r, [:target_id, :registration_labels])
       )
 

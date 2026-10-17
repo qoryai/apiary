@@ -693,7 +693,7 @@ defmodule Apiary.GatewaysTest do
 
     defp attach(%{gateway_key: key}, {run, run_key}) do
       {:ok, body} = Attach.parse(attach_body(run_key))
-      {:ok, %{run: attached}} = Attach.attach(key, run.run_id, body, %{})
+      {:ok, %{run: attached}} = Attach.attach(key, run.node_run_id, body, %{})
       attached
     end
 

@@ -1908,7 +1908,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         >
           <p id="node-keys-members" class="text-[13px]/5 text-muted">
             {gettext(
-              "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it.",
+              "%{name} has no key yet, so it isn't connected to Qory Apiary. An owner or admin connects it.",
               name: @node.name
             )}
           </p>
