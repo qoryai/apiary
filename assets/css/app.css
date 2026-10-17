@@ -10551,10 +10551,12 @@
   }
   .q-bl-no {
     width: 56px;
+    overflow: hidden;
     color: var(--q-faint);
     font-family: var(--font-mono);
     font-size: 0.75rem;
     text-align: right;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .q-bl-t {
@@ -11219,6 +11221,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .q-bl-tk-head .q-bl-key .q-bl-key-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .q-bl-tk-head h1 {
     margin-top: 6px;
