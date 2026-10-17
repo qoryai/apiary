@@ -334,6 +334,86 @@ defmodule Apiary.Dispatches.WireTest do
     end
   end
 
+  describe "bounded first" do
+    # Generous for a shared machine: a refused body takes a few milliseconds here, and the
+    # worst a body of 1 MiB can be made to cost well under this.
+    @quick_ms 500
+
+    defp quick(fun) do
+      {microseconds, result} = :timer.tc(fun)
+      assert div(microseconds, 1000) < @quick_ms, "took #{div(microseconds, 1000)} ms"
+      result
+    end
+
+    test "a raw body one byte over 1 MiB is refused undecoded, at once" do
+      assert Wire.max_bytes() == 1024 * 1024
+      at_limit = Jason.encode!(@claim) <> String.duplicate(" ", 1024 * 1024)
+      at_limit = binary_part(at_limit, 0, 1024 * 1024)
+      over = at_limit <> " "
+
+      for {_kind, reader} <- @readers do
+        assert quick(fn -> read(reader, over) end) == :error
+      end
+
+      assert {:ok, _} = Wire.decode(Jason.encode!(@claim) <> String.duplicate(" ", 1024))
+    end
+
+    test "a crafted body of up to 1 MiB is refused quickly, whatever its shape" do
+      mib = 1024 * 1024
+      depth = div(mib, 2) - 1
+      objects = div(mib, 6) - 1
+
+      bodies = [
+        String.duplicate("[", depth) <> String.duplicate("]", depth),
+        String.duplicate(~s({"a":), objects) <> "1" <> String.duplicate("}", objects),
+        "{" <> Enum.map_join(1..80_000, ",", &~s("k#{&1}":1)) <> "}",
+        ~s({"version":1,"labels":[) <> Enum.map_join(1..300_000, ",", fn _ -> "1" end) <> "]}",
+        ~s({"a":[) <> Enum.map_join(1..60_000, ",", fn _ -> ~s({"b":1,"b":1}) end) <> "]}",
+        Jason.encode!(Map.put(@release, "reason", String.duplicate("\u00e9", 170_000)))
+      ]
+
+      for body <- bodies, {kind, reader} <- @readers do
+        assert byte_size(body) <= mib
+        assert quick(fn -> read(reader, body) end) == :error, kind
+      end
+    end
+
+    test "an object of more members than its schema defines is refused before they are compared" do
+      many = Map.new(1..10_000, &{"k#{&1}", 1})
+
+      assert quick(fn -> claim(Map.merge(@claim, many)) end) == :error
+      assert quick(fn -> dispatched(put_in(@dispatched, ["external"], many)) end) == :error
+      assert quick(fn -> handover(Map.merge(@handover, many)) end) == :error
+      assert quick(fn -> release(Map.merge(@release, many)) end) == :error
+    end
+
+    test "a string just over its bound in bytes is refused, and one at it is read" do
+      four_bytes = "\u{1F600}"
+      assert byte_size(four_bytes) == 4
+
+      at_bound = String.duplicate(four_bytes, 200)
+      over = String.duplicate(four_bytes, 201)
+
+      assert {:ok, %{reason: ^at_bound}} = release(Map.put(@release, "reason", at_bound))
+      assert quick(fn -> release(Map.put(@release, "reason", over)) end) == :error
+
+      assert {:ok, %{external: %{ref: ^at_bound}}} =
+               dispatched(put_in(@dispatched, ["external", "ref"], at_bound))
+
+      assert dispatched(put_in(@dispatched, ["external", "ref"], over)) == :error
+
+      # 200 characters of one byte each are 200 bytes: the count still holds them to 200.
+      assert release(Map.put(@release, "reason", String.duplicate("r", 201))) == :error
+
+      assert claim(Map.put(@claim, "pool_id", "np_0123456789abcdef0")) == :error
+      assert claim(Map.put(@claim, "time", "2026-10-15T12:00:00Z ")) == :error
+      assert claim(Map.put(@claim, "time", String.duplicate("2", 100_000))) == :error
+
+      assert dispatched(put_in(@dispatched, ["external", "type"], String.duplicate("a", 41))) ==
+               :error
+    end
+  end
+
   describe "a handover" do
     test "carrying labels, or anything else a registration would carry, is refused" do
       assert handover(Map.put(@handover, "labels", ["linux"])) == :error
