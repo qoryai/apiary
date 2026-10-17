@@ -49,11 +49,14 @@ defmodule Apiary.Adapters.Connections do
   #     either row, or a change of its key, waits on that lock or keeps it waiting.
   #   * The return (`complete_return/4`) holds the connection `FOR UPDATE`, and nothing
   #     else. `mark_listed/1` holds it `FOR UPDATE` inside the transaction of a listing's
-  #     part, which goes on to hold the organisation's only workspace `FOR SHARE`, the
+  #     part, which goes on to hold the workspaces it links to `FOR SHARE`, the
   #     collections the part names, then the adapter's feed counter
   #     (`Apiary.Adapters.Collections.post_listing/2`). An assign holds the connection
   #     `FOR SHARE`, then the workspace, the collections and the feed counter
-  #     (`Apiary.Adapters.Collections.assign_collections/4`). An end (`end_connection/2`,
+  #     (`Apiary.Adapters.Collections.assign_collections/4`); a Backlog switch and a
+  #     workspace's unlink hold the connections of the collections they change
+  #     `FOR SHARE`, by id, then the collections (`set_backlog/3`, `unlink_workspace/2`
+  #     there). An end (`end_connection/2`,
   #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
   #     then its collections, then the adapter's feed counter.
   #
