@@ -183,8 +183,8 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     view = open(conn, scope)
     refute has_element?(view, "#nav-group-pinned")
 
-    # Its spoken name names the target as it is addressed: the system only where the
-    # path is shared.
+    # Its spoken name names the target by its path, with its system only where another
+    # system shares the path.
     assert has_element?(view, "#target-pin-#{shop.id}[aria-label='Pin github.example/acme/shop']")
     assert has_element?(view, "#target-pin-#{api.id}[aria-label='Pin acme/api']")
 

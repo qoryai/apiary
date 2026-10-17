@@ -342,7 +342,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{id}-toggle[aria-expanded=true][aria-controls='#{id}-runs']")
       assert text(view, "##{id}-runs") =~ "2 runs reached this destination"
 
-      # Each run names its target as it is addressed: acme/shop is on two systems.
+      # Each run names its target by its path, with its system where another system shares
+      # the path: acme/shop is on two systems.
       first = view |> text("##{id}-run-#{b.public_id}") |> String.replace(" / ", "/")
       assert first =~ "Running"
       assert first =~ "gitlab.example/acme/shop"

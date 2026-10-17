@@ -1131,7 +1131,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # The export is a page of the tab, under the target's own title: an h2 and Done to the
     # Document view. The way back is the top bar's breadcrumb, never a trail of the page's own.
     view = open(conn, path <> "/versions/1/export")
-    # The page names the target as it is addressed; the file's head names it in full.
+    # The page names the target by its path, with its system where another system shares
+    # the path; the file's head names it in full.
     assert text(view, "#export-lead") =~ "The effective policy of acme/shop as of version 1"
 
     assert text(view, "#export-policy-text") =~
