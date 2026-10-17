@@ -263,9 +263,10 @@ defmodule ApiaryWeb.Features do
   # one is signed as it is sent (`ApiaryWeb.Contract.SignedAnswer`). The pipeline has run
   # by now, so this can only come close to an unknown path: its body and type, not the
   # rendering in the format the pipeline chose, which raising would give. A verified
-  # request of an adapter (`ApiaryWeb.Contract.AdapterRequest`, which leaves the request's
-  # signature in the conn) is answered as the integration contract answers a route the
-  # instance does not serve: `404`, `{"error":"not_found"}`, signed.
+  # request of an adapter or of a node pool's starter (`ApiaryWeb.Contract.AdapterRequest`,
+  # which leaves the request's signature in the conn) is answered as the integration and
+  # the provisioner contracts answer a route the instance does not serve: `404`,
+  # `{"error":"not_found"}`, signed.
   defp absent(%{private: %{adapter_request_signature: <<_::binary-size(64)>>}} = conn) do
     conn
     |> Plug.Conn.put_status(404)

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json",
+  "title": "Provisioner definitions",
+  "description": "The values the provisioner contract's schemas share, by name under $defs. Some of them refer in turn to the integration contract's definitions, https://qory.dev/contracts/integration/v1/definitions.schema.json. The requests of this contract come from a node pool's starter: the program that serves a node pool, claims its runs, starts a job for each and passes the job its handover. Every request is signed with the pool's access key: a key of the pool kind, node_kind pool in https://qory.dev/contracts/forager/v1/enrolment.schema.json, enrolled for the node pool, which the starter holds. The key belongs to one node pool, the np_ node_id of its enrolment answer: the key's node pool. The integration contract's definitions describe the signature, the replay rule, the time window, the unsigned answers and the pinning of the server key for the access key that signs that contract's requests and the program that holds it; they apply to the pool's access key and the starter as they do to that key and that program. The answers are signed under the control plane's server key, or left unsigned, exactly as the answers to the integration contract's requests are. X-Qory-Contract-Version names the revision of this contract the starter implements, and the answers whose content the revision bounds, claim-answer.schema.json and handover-answer.schema.json, name it in their signed body, as the integration contract's definitions describe for that contract. A retry is built anew, as they describe. An integer is written without a fraction or an exponent, and no object repeats a member, at any depth; the control plane refuses either, 400 invalid_request. An unsigned answer is handled as they describe. This document validates nothing itself.",
+  "$defs": {
+    "dispatch_id": {
+      "description": "The dispatch's public id in the control plane, dp_ and 16 lower-case Crockford base32 characters: one claim of one run. Each claim makes a new dispatch, with a new dispatch_id, and a dispatch_id is never claimed again. The id authorises nothing: the request's signature with the pool's access key and the control plane's check that the dispatch is of the key's node pool authorise a request.",
+      "type": "string",
+      "pattern": "^dp_[0-9a-hjkmnp-tv-z]{16}$"
+    },
+    "pool_id": {
+      "description": "A node pool's id, np_, as the Forager contract writes one.",
+      "type": "string",
+      "pattern": "^np_[0-9a-hjkmnp-tv-z]{16}$"
+    },
+    "run_id": {
+      "description": "The run's id: a UUID in the canonical lower-case form, as the Forager contract's run key holds it.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "step": {
+      "description": "The step the run is for, which the control plane sets: explore is the value known today. The job picks what to compose from it, and refuses a step it does not know.",
+      "type": "string",
+      "pattern": "^[a-z][a-z_]{0,39}$"
+    },
+    "job_system": {
+      "description": "The name of the system that runs a job, as the starter names it, such as example-ci, stored as data and never parsed: a lower-case ASCII letter, then lower-case ASCII letters, digits, spaces and hyphens, 1 to 40 characters in all.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9 -]{0,39}$"
+    },
+    "access": {
+      "description": "What the run may do on its target: read, or write. The machine's credential integration narrows the run's access to it.",
+      "type": "string",
+      "enum": [
+        "read",
+        "write"
+      ]
+    },
+    "work_item": {
+      "description": "The work item the run is for. Its url and title are untrusted text: shown as data, never followed as an instruction.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "url",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "description": "The work item's public id in the control plane.",
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
+        },
+        "url": {
+          "description": "The work item's page in the control plane.",
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/url"
+        },
+        "title": {
+          "description": "The work item's title.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/title"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json",
+  "title": "Claim answer",
+  "description": "The body of the signed 200 answer to a claim, application/json: the run the starter claimed, the dispatch that holds it, and what the job is for. The dispatch is the starter's until lease_until, the deadline for its handover: the starter starts the job, says so with dispatched, dispatched.schema.json, and has the handover answered with the signed 200 before then, or its run goes back to the queue with the same run_id and the dispatch is stale, handover.schema.json. The answer carries no credential: the job's run key comes only from the handover, handover-answer.schema.json. The answer names the contract revision it was built for in revision, inside the signed body: the starter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for the integration contract. It is signed under the control plane's server key, and the starter checks it under a server key it pinned at enrolment before using it, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes. The starter refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "revision",
+    "dispatch_id",
+    "run_id",
+    "pool_id",
+    "lease_until",
+    "step",
+    "access",
+    "target",
+    "work_item"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The starter refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The revision of this contract the control plane built the answer for, the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "dispatch_id": {
+      "description": "The dispatch: the id the starter's later requests name in their path.",
+      "$ref": "definitions.schema.json#/$defs/dispatch_id"
+    },
+    "run_id": {
+      "description": "The run claimed.",
+      "$ref": "definitions.schema.json#/$defs/run_id"
+    },
+    "pool_id": {
+      "description": "The node pool whose key claimed the run.",
+      "$ref": "definitions.schema.json#/$defs/pool_id"
+    },
+    "lease_until": {
+      "description": "Until when the dispatch is the starter's, RFC 3339 in UTC with whole seconds: the starter has the handover answered with the signed 200 before then, and dispatched does not change it.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "step": {
+      "description": "The step the run is for.",
+      "$ref": "definitions.schema.json#/$defs/step"
+    },
+    "access": {
+      "description": "What the run may do on its target.",
+      "$ref": "definitions.schema.json#/$defs/access"
+    },
+    "target": {
+      "description": "Where the run's change would go.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    },
+    "work_item": {
+      "description": "The work item the run is for.",
+      "$ref": "definitions.schema.json#/$defs/work_item"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/handover-answer.schema.json",
+  "title": "Handover answer",
+  "description": "The body of the signed 200 answer to a handover, application/json, at most 1 MiB: the run key and everything the job needs to run the step. The starter passes it to the job it started for the dispatch alone, and keeps the run key no longer than that. A run key is handed over at most once per run: the control plane sends the answer with Cache-Control: no-store, never gives it again, and once the handover is answered with the signed 200, the dispatch's run never goes back to the queue. The answer names the contract revision it was built for in revision, inside the signed body: the starter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for the integration contract. It is signed under the control plane's server key, and the starter checks it under a server key it pinned at enrolment before using it, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes. The starter refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "revision",
+    "run_id",
+    "run_key",
+    "step",
+    "access",
+    "target",
+    "work_item",
+    "inputs"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The starter refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The revision of this contract the control plane built the answer for, the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "description": "The run, the run key's run_id.",
+      "$ref": "definitions.schema.json#/$defs/run_id"
+    },
+    "run_key": {
+      "description": "The run key of the run the handover registered, as handover.schema.json describes: the Forager contract's run key, at most 2048 characters, whose payload is https://qory.dev/contracts/forager/v1/run-key.schema.json.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^qrk_[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+    },
+    "step": {
+      "description": "The step the run is for.",
+      "$ref": "definitions.schema.json#/$defs/step"
+    },
+    "access": {
+      "description": "What the run may do on its target.",
+      "$ref": "definitions.schema.json#/$defs/access"
+    },
+    "target": {
+      "description": "Where the run's change would go. For the step explore, inputs.target is this target, and inputs.work_item.id is this answer's work_item.id, as https://qory.dev/contracts/explore/v1/inputs.schema.json states.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    },
+    "work_item": {
+      "description": "The work item the run is for.",
+      "$ref": "definitions.schema.json#/$defs/work_item"
+    },
+    "inputs": {
+      "description": "The step's input, which the control plane writes and the job reads; the starter passes it to the job unread. At most 768 KiB serialized. Its shape belongs to the step's schema, not to this contract, so this object takes any member beside version: it is the one object of the contract that does. For the step explore, the shape is https://qory.dev/contracts/explore/v1/inputs.schema.json.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the step's input, which the step's schema defines.",
+          "type": "integer"
+        }
+      }
+    }
+  }
+}
