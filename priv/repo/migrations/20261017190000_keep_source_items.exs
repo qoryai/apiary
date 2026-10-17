@@ -24,9 +24,12 @@ defmodule Apiary.Repo.Migrations.KeepSourceItems do
   #   `source_created_at` and `source_updated_at`, the item's times at its source, which
   #   tell an earlier write of it from a later one. `closed_by_listing_at` is for an item a
   #   complete listing left out and closed, and only a closed item has it;
-  #   `disconnected_at` is for an item whose collection the adapter no longer reaches
-  #   (`POST /v1/sources/disconnect`): the column marks it, so that its row can stay. An
-  #   item stays with its collection when the collection ends.
+  #   `disconnected_at` is for an item that left every Backlog where it is, as an item of
+  #   another live collection of the adapter holds its ref (`Apiary.Sources`): one whose
+  #   ref such an item took, or one written already ended, as a write that does not take
+  #   the ref is. The column marks it, so that its row can stay. An item stays with its
+  #   collection when the collection ends; the Backlog leaves out the tickets of an ended
+  #   collection by the collection's `ended_at`.
   # - `source_item_comments` (`Apiary.Sources.Comment`): one row per comment of an item,
   #   by the comment's ref, unique on its item, with the same bounds: `url`, `author_name`
   #   and `author_kind`, `body` and `body_format`, `truncated`, its times at its source,
