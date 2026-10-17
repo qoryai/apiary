@@ -94,6 +94,30 @@ defmodule Apiary.Sources.BacklogTest do
   defp ids(page), do: Enum.map(page.rows, & &1.id)
   defp list(scope, params \\ %{}), do: Backlog.list_tickets(scope, params)
 
+  # Every page of the list, from the first by Older, as `list/2` gives them.
+  defp older_pages(scope, params) do
+    Stream.unfold(list(scope, params), fn
+      nil -> nil
+      %{next: nil} = page -> {page, nil}
+      page -> {page, list(scope, Keyword.put(params, :after, page.next))}
+    end)
+    |> Enum.to_list()
+  end
+
+  # The tickets in the order of `sort` (`{sort, order}`), with ties.
+  defp sorted(tickets, {:comments, :desc}),
+    do:
+      Enum.sort_by(
+        tickets,
+        &{&1.comment_count, DateTime.to_unix(&1.source_updated_at), &1.public_id},
+        :desc
+      )
+
+  defp sorted(tickets, {sort, order}) do
+    field = if sort == :updated, do: :source_updated_at, else: :source_created_at
+    Enum.sort_by(tickets, &{DateTime.to_unix(Map.fetch!(&1, field)), &1.public_id}, order)
+  end
+
   defp end_connection(connection) do
     connection
     |> Ecto.Changeset.change(
@@ -432,9 +456,15 @@ defmodule Apiary.Sources.BacklogTest do
 
       for cursor <- [
             "x",
-            "12.tk_",
-            "12.wi_0123456789abcdef",
-            "a.tk_0123456789abcdef",
+            "ud.12.tk_",
+            "ud.12.wi_0123456789abcdef",
+            "ud.a.tk_0123456789abcdef",
+            "12.tk_0123456789abcdef",
+            "xx.12.tk_0123456789abcdef",
+            "ud.12.tk_0123456789abcdef.7",
+            # Times out of the years 1 to 9999.
+            "ud.-62135596801.tk_0123456789abcdef",
+            "ud.253402300800.tk_0123456789abcdef",
             12,
             String.duplicate("1", 65)
           ] do
@@ -442,8 +472,261 @@ defmodule Apiary.Sources.BacklogTest do
       end
 
       # One in that shape reads after the time and id it names, whichever row gave it.
-      assert list(ctx.scope, after: "0.tk_0123456789abcdef").rows == []
-      assert ids(list(ctx.scope, after: "99999999999.tk_zzzzzzzzzzzzzzzz")) == [item.public_id]
+      assert list(ctx.scope, after: "ud.0.tk_0123456789abcdef").rows == []
+
+      assert ids(list(ctx.scope, after: "ud.99999999999.tk_zzzzzzzzzzzzzzzz")) ==
+               [item.public_id]
+    end
+
+    test "a cursor of another sort or order matches nothing", ctx do
+      item = ticket(ctx.collection, comment_count: 2)
+      at = Integer.to_string(DateTime.to_unix(item.source_updated_at) + 60)
+      later = "tk_zzzzzzzzzzzzzzzz"
+
+      for {params, cursor} <- [
+            {[], "ua.#{at}.#{later}"},
+            {[], "cd.#{at}.#{later}"},
+            {[], "md.9.#{at}.#{later}"},
+            {[order: :asc], "ud.0.#{later}"},
+            {[sort: :created], "ud.#{at}.#{later}"},
+            {[sort: :comments], "ud.#{at}.#{later}"},
+            {[sort: :comments], "md.#{at}.#{later}"},
+            {[sort: :comments], "md.-1.#{at}.#{later}"},
+            {[sort: :comments], "md.9223372036854775808.#{at}.#{later}"}
+          ] do
+        page = list(ctx.scope, [{:after, cursor} | params])
+        assert {page.rows, page.next, page.prev, page.first} == {[], nil, nil, 0}, cursor
+      end
+
+      # Each, in the sort and order it names, reads after it.
+      assert ids(list(ctx.scope, after: "ud.#{at}.#{later}")) == [item.public_id]
+      assert ids(list(ctx.scope, order: :asc, after: "ua.0.#{later}")) == [item.public_id]
+
+      assert ids(list(ctx.scope, sort: :comments, after: "md.9.#{at}.#{later}")) == [
+               item.public_id
+             ]
+    end
+  end
+
+  describe "the pager" do
+    setup %{collection: collection} do
+      # 120 tickets: three to a minute changed and seven to a minute filed, so every sort
+      # meets ties, and comments in four groups.
+      tickets =
+        for n <- 1..120 do
+          ticket(collection,
+            minutes: div(n, 3),
+            source_created_at: DateTime.add(@at, -div(n, 7), :minute),
+            comment_count: rem(n, 4)
+          )
+        end
+
+      %{tickets: tickets}
+    end
+
+    test "Older to the last page and Newer back to the first, under every sort", ctx do
+      for {sort, order} = key <- [
+            {:updated, :desc},
+            {:updated, :asc},
+            {:created, :desc},
+            {:created, :asc},
+            {:comments, :desc}
+          ] do
+        params = [sort: sort, order: order]
+        expected = ctx.tickets |> sorted(key) |> Enum.map(& &1.public_id)
+        [one, two, three] = older_pages(ctx.scope, params)
+        context = inspect(key)
+
+        assert Enum.map([one, two, three], &ids/1) == [
+                 Enum.slice(expected, 0, 50),
+                 Enum.slice(expected, 50, 50),
+                 Enum.slice(expected, 100, 20)
+               ],
+               context
+
+        assert Enum.map([one, two, three], & &1.first) == [1, 51, 101], context
+        assert {one.prev, three.next} == {nil, nil}, context
+        assert Enum.all?([one.next, two.prev, two.next, three.prev], &is_binary/1), context
+
+        # Newer from the last page is the second again, and Newer from it the first.
+        back_two = list(ctx.scope, Keyword.put(params, :before, three.prev))
+        assert back_two == two, context
+        back_one = list(ctx.scope, Keyword.put(params, :before, back_two.prev))
+        assert back_one == one, context
+
+        # Older again from there walks the same pages.
+        assert list(ctx.scope, Keyword.put(params, :after, back_one.next)) == two, context
+      end
+    end
+
+    test "comments: the most first, then the latest change, then the public id, descending alone",
+         ctx do
+      rows = list(ctx.scope, sort: :comments).rows
+      expected = ctx.tickets |> sorted({:comments, :desc}) |> Enum.take(50)
+
+      assert Enum.map(rows, & &1.id) == Enum.map(expected, & &1.public_id)
+      assert Enum.map(rows, & &1.comment_count) |> Enum.uniq() == [3, 2]
+
+      # An order asked of it changes nothing; its string is the same sort.
+      assert list(ctx.scope, sort: :comments, order: :asc) == list(ctx.scope, sort: :comments)
+
+      assert list(ctx.scope, %{"sort" => "comments", "order" => "asc"}) ==
+               list(ctx.scope, sort: :comments)
+    end
+
+    test "comments break their ties by the latest change, then the public id" do
+      # Another organisation, so only these five are read.
+      %{scope: scope} = sign_up_fixture()
+      collection = source_collection_fixture(scope, ticket_connection_fixture(scope))
+
+      most = ticket(collection, comment_count: 9, minutes: -10)
+      later = ticket(collection, comment_count: 2, minutes: 5)
+      tied = for _ <- 1..2, do: ticket(collection, comment_count: 2, minutes: 1)
+      none = ticket(collection, comment_count: 0, minutes: 30)
+
+      tied_ids = tied |> Enum.map(& &1.public_id) |> Enum.sort(:desc)
+
+      assert ids(list(scope, sort: :comments)) ==
+               [most.public_id, later.public_id] ++ tied_ids ++ [none.public_id]
+    end
+
+    test "first counts the rows ahead in the view, under the search and filters", ctx do
+      %{scope: scope, collection: collection} = ctx
+
+      # 60 tickets with a label, two of them closed, among the 120.
+      labelled =
+        for n <- 1..60 do
+          ticket(collection,
+            labels: ["ui"],
+            minutes: 200 + n,
+            state: if(n <= 2, do: :closed, else: :open)
+          )
+        end
+
+      for {params, total} <- [
+            {[label: "ui"], 58},
+            {[label: "ui", view: :all], 60},
+            {[label: ["ui", "nothing"], view: :all, sort: :comments], 60},
+            {[repository: collection.id, view: :all], 180},
+            {[search: "checkout", view: :all, sort: :created, order: :asc], 180}
+          ] do
+        pages = older_pages(scope, params)
+        sizes = Enum.map(pages, &length(&1.rows))
+
+        assert Enum.sum(sizes) == total, inspect(params)
+        assert Enum.map(pages, & &1.first) == Enum.scan([1 | Enum.drop(sizes, -1)], &+/2)
+        last = List.last(pages)
+        back = list(scope, Keyword.put(params, :before, last.prev))
+        assert back == Enum.at(pages, -2), inspect(params)
+      end
+
+      # The open view counts its 58 rows alone, the newest change first.
+      [one, two] = older_pages(scope, label: "ui")
+      assert {one.first, two.first, length(two.rows)} == {1, 51, 8}
+      refute Enum.any?(one.rows ++ two.rows, &(&1.state == :closed))
+      assert hd(one.rows).id == List.last(labelled).public_id
+    end
+
+    test "an Older page past the last row has none, and its prev reads the rows ahead", ctx do
+      page = list(ctx.scope, after: "ud.0.tk_0123456789abcdef")
+      assert {page.rows, page.next, page.first} == {[], nil, 0}
+      assert page.prev == "ud.0.tk_0123456789abcdef"
+
+      # Ahead of it are all 120: the 50 nearest it, the oldest changes.
+      newer = list(ctx.scope, before: page.prev)
+      expected = ctx.tickets |> sorted({:updated, :desc}) |> Enum.map(& &1.public_id)
+      assert ids(newer) == Enum.slice(expected, 70, 50)
+      assert {newer.first, newer.next} == {71, nil}
+
+      # A cursor ahead of every row reads the first page: no prev, and first 1.
+      ahead = list(ctx.scope, after: "ud.99999999999.tk_zzzzzzzzzzzzzzzz")
+      assert {ids(ahead), ahead.prev, ahead.first} == {Enum.take(expected, 50), nil, 1}
+    end
+
+    test "a before cursor not in the shape this list gives, or of another sort, matches nothing",
+         ctx do
+      %{prev: prev} = list(ctx.scope, after: list(ctx.scope).next)
+      empty = %{rows: [], next: nil, prev: nil, first: 0}
+
+      for {params, cursor} <- [
+            {[], "x"},
+            {[], "ud.12.tk_"},
+            {[], "ud.a.tk_0123456789abcdef"},
+            {[], "12.tk_0123456789abcdef"},
+            {[], 12},
+            {[], String.duplicate("1", 65)},
+            {[], "ud.-62135596801.tk_0123456789abcdef"},
+            {[order: :asc], prev},
+            {[sort: :created], prev},
+            {[sort: :comments], prev}
+          ] do
+        page = list(ctx.scope, [{:before, cursor} | params])
+        assert Map.take(page, [:rows, :next, :prev, :first]) == empty, inspect(cursor)
+        assert page.counts.total == 120
+      end
+
+      # Both cursors at once match nothing; an empty one is none.
+      page = list(ctx.scope, after: prev, before: prev)
+      assert Map.take(page, [:rows, :next, :prev, :first]) == empty
+      assert list(ctx.scope, before: "") == list(ctx.scope)
+      assert list(ctx.scope, %{"before" => "", "after" => ""}) == list(ctx.scope)
+    end
+  end
+
+  describe "labels" do
+    test "a label filter holds the tickets that carry any of its labels, each matched exactly",
+         ctx do
+      ui = ticket(ctx.collection, labels: ["bug", "ui"], minutes: 4)
+      capital = ticket(ctx.collection, labels: ["Bug"], minutes: 3)
+      longer = ticket(ctx.collection, labels: ["bugfix"], minutes: 2)
+      none = ticket(ctx.collection, labels: [], minutes: 1)
+      closed = ticket(ctx.collection, labels: ["ui"], state: :closed)
+
+      assert ids(list(ctx.scope, label: "bug")) == [ui.public_id]
+      assert ids(list(ctx.scope, label: "Bug")) == [capital.public_id]
+      assert ids(list(ctx.scope, label: ["bug", "bugfix"])) == [ui.public_id, longer.public_id]
+
+      assert ids(list(ctx.scope, %{"label" => ["ui"], "view" => "all"})) ==
+               [ui.public_id, closed.public_id]
+
+      for label <- ["BUG", "bu", "%", "ui "] do
+        assert list(ctx.scope, label: label).rows == [], label
+      end
+
+      page = list(ctx.scope, label: ["ui", "Bug"])
+      assert page.counts == %{open: 2, taken: 0, declined: 0, closed: 1, total: 3}
+
+      # With the other filters, all of them hold.
+      assert ids(list(ctx.scope, label: "ui", state: :closed, view: :all)) == [closed.public_id]
+
+      # An empty filter is none.
+      assert length(list(ctx.scope, label: []).rows) == 4
+      assert length(list(ctx.scope, label: "").rows) == 4
+      assert none.public_id in ids(list(ctx.scope, label: nil))
+    end
+
+    test "a label that is not one, or too many, matches nothing", ctx do
+      ticket(ctx.collection, labels: ["bug"])
+
+      for label <- [
+            [""],
+            String.duplicate("a", 101),
+            List.duplicate("bug", 101),
+            [<<0xFF>>],
+            "b" <> <<0>>,
+            ["bug", "b" <> <<0>> <> "ug"],
+            7,
+            [%{}]
+          ] do
+        page = list(ctx.scope, view: :all, label: label)
+        assert page.rows == [], inspect(label)
+        assert page.counts.total == 0, inspect(label)
+      end
+
+      # 100 values, and a label of 100 characters, are a filter's most.
+      assert length(list(ctx.scope, label: ["bug" | List.duplicate("x", 99)]).rows) == 1
+      longest = ticket(ctx.collection, labels: [String.duplicate("é", 100)])
+      assert ids(list(ctx.scope, label: String.duplicate("é", 100))) == [longest.public_id]
     end
   end
 
@@ -471,6 +754,78 @@ defmodule Apiary.Sources.BacklogTest do
       assert [%{key: "50%_off"}] = Backlog.filter_values(ctx.scope, :filed_by, "_")
       assert Backlog.filter_values(ctx.scope, :filed_by, String.duplicate("a", 1025)) == []
       assert Backlog.filter_values(ctx.scope, :filed_by, "nobody") == []
+    end
+
+    test "every label of the Backlog's tickets, with their tickets in every view, and a search",
+         ctx do
+      ticket(ctx.collection, labels: ["bug", "ui"])
+      ticket(ctx.collection, labels: ["bug"], state: :closed)
+      ticket(ctx.collection, labels: ["Bug", "50%_off"])
+      ticket(ctx.collection, labels: [])
+
+      assert Backlog.filter_values(ctx.scope, :label, nil) == [
+               %{key: "bug", label: "bug", count: 2, avatar: nil},
+               %{key: "50%_off", label: "50%_off", count: 1, avatar: nil},
+               %{key: "Bug", label: "Bug", count: 1, avatar: nil},
+               %{key: "ui", label: "ui", count: 1, avatar: nil}
+             ]
+
+      assert Backlog.filter_values(ctx.scope, :label, "") ==
+               Backlog.filter_values(ctx.scope, :label, nil)
+
+      assert Backlog.filter_values(ctx.scope, :label, "BU") == [
+               %{key: "bug", label: "bug", count: 2, avatar: nil},
+               %{key: "Bug", label: "Bug", count: 1, avatar: nil}
+             ]
+
+      assert [%{key: "50%_off"}] = Backlog.filter_values(ctx.scope, :label, "%")
+      assert [%{key: "50%_off"}] = Backlog.filter_values(ctx.scope, :label, "_")
+      assert Backlog.filter_values(ctx.scope, :label, String.duplicate("a", 1025)) == []
+      assert Backlog.filter_values(ctx.scope, :label, "nothing") == []
+    end
+
+    test "at most 100 labels, the ones with the most tickets first", ctx do
+      hundred = for n <- 1..100, do: "label-#{String.pad_leading(Integer.to_string(n), 3, "0")}"
+      ticket(ctx.collection, labels: hundred)
+      ticket(ctx.collection, labels: ["label-100", "shared"])
+      ticket(ctx.collection, labels: ["shared"])
+
+      values = Backlog.filter_values(ctx.scope, :label, nil)
+      assert length(values) == 100
+
+      assert Enum.take(values, 2) == [
+               %{key: "label-100", label: "label-100", count: 2, avatar: nil},
+               %{key: "shared", label: "shared", count: 2, avatar: nil}
+             ]
+
+      # The rest by their words, the last one left out.
+      assert Enum.map(Enum.drop(values, 2), & &1.key) == Enum.slice(hundred, 0, 98)
+    end
+
+    test "the labels of this Backlog alone", ctx do
+      ticket(ctx.collection, labels: ["mine"])
+
+      gone = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/gone"})
+      ticket(gone, labels: ["ended"])
+      end_collection(gone)
+
+      unlinked = source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      ticket(unlinked, labels: ["unlinked"])
+
+      ticket(ctx.collection, labels: ["disconnected"])
+      |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      workspace = workspace_fixture(ctx.scope.organisation, "Second")
+      there = workspace_scope(ctx.scope.user, workspace)
+      ticket(source_collection_fixture(there, ctx.connection), labels: ["theirs"])
+
+      %{scope: other} = sign_up_fixture()
+      ticket(source_collection_fixture(other, ticket_connection_fixture(other)), labels: ["far"])
+
+      assert Enum.map(Backlog.filter_values(ctx.scope, :label, nil), & &1.key) == ["mine"]
+      assert Enum.map(Backlog.filter_values(there, :label, nil), & &1.key) == ["theirs"]
+      assert Enum.map(Backlog.filter_values(other, :label, nil), & &1.key) == ["far"]
     end
 
     test "every live repository linked to the workspace, by its id, with its tickets", ctx do
@@ -538,12 +893,15 @@ defmodule Apiary.Sources.BacklogTest do
       assert list(ctx.scope, view: :all) == %{
                rows: [],
                counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
-               next: nil
+               next: nil,
+               prev: nil,
+               first: 0
              }
 
       assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
       assert Backlog.list_comments(ctx.scope, item.public_id) == []
       assert Backlog.filter_values(ctx.scope, :filed_by, nil) == []
+      assert Backlog.filter_values(ctx.scope, :label, nil) == []
       assert Backlog.filter_values(ctx.scope, :repository, nil) == []
 
       assert Backlog.backlog_facts(ctx.scope) ==
@@ -586,7 +944,9 @@ defmodule Apiary.Sources.BacklogTest do
       nothing = %{
         rows: [],
         counts: %{open: 0, taken: 0, declined: 0, closed: 0, total: 0},
-        next: nil
+        next: nil,
+        prev: nil,
+        first: 0
       }
 
       no_facts = %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
@@ -603,6 +963,7 @@ defmodule Apiary.Sources.BacklogTest do
         assert Backlog.get_ticket(scope, item.public_id) == nil
         assert Backlog.list_comments(scope, item.public_id) == []
         assert Backlog.filter_values(scope, :filed_by, nil) == []
+        assert Backlog.filter_values(scope, :label, nil) == []
         assert Backlog.filter_values(scope, :repository, nil) == []
         assert Backlog.backlog_facts(scope) == no_facts
         assert {:error, _refused} = Backlog.subscribe(scope)
