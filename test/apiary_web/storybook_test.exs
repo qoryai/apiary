@@ -32,6 +32,13 @@ if Mix.Project.config()[:app] == :apiary do
           do: assert(path in paths, "#{path} is not in the storybook")
     end
 
+    test "the sample runs carry distinct ids in the shape of a run's" do
+      ids = Enum.map(ApiaryWeb.Storybook.Sample.runs(), & &1.public_id)
+
+      assert Enum.all?(ids, &Apiary.Runs.Run.public_id?/1)
+      assert length(Enum.uniq(ids)) == length(ids)
+    end
+
     test "every variation of every component story renders, and its code" do
       for {path, story} <- stories(), story.storybook_type() == :component do
         assert story.variations() != [], "#{path} has no variation"

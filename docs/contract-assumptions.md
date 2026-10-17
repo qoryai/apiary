@@ -931,8 +931,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   Forager refuses a run whose `about` breaks any of these; the fold drops the part that
   breaks one, for whatever reaches it. A type is shown as given: Qory Apiary knows no
   subject types. A later `run.started` replaces all of it, like every other field. A run's
-  title is its `about` title; without one, the run page says `Run` and its short id, the
-  lists the short id, and the Overview its command line, else its short id. The
+  title is its `about` title; without one, the run page's heading says `Run` and its whole
+  `rn_` id, its breadcrumb and title `Run` and its short id, the lists the short id, and
+  the Overview its command line, else its short id. The
   registration carries `about` beside the labels, held to these rules whole
   (`Apiary.Runs.About.validate/1`: a registration whose `about` breaks one is
   `400 invalid_request`), and kept on the run as `registration_about`. It never selects a
