@@ -129,6 +129,7 @@ defmodule ApiaryWeb.FeaturesAnyTest do
 
     test "the page is there, to the instance and to a person shown secrets" do
       assert answer("/either") == {200, "either"}
+      assert answer("/%65ither") == {200, "either"}
       assert answer("/either", person([])) == {200, "either"}
       assert {:ok, view, _html} = live_isolated(build_conn(), EitherLive)
       assert has_element?(view, "#either")
@@ -174,6 +175,16 @@ defmodule ApiaryWeb.FeaturesAnyTest do
       assert answer("/either") == answer("/no-such-page")
       assert answer("/either") == answer("/secrets")
       assert answer("/either", person([])) == answer("/no-such-page", person([]))
+    end
+
+    test "a path with a character escaped is found as the route the router decodes it to" do
+      assert answer("/%65ither") == answer("/no-such-page")
+      assert answer("/%73ecrets") == answer("/no-such-page")
+
+      # A malformed escape is kept as written, as the router keeps it: no route matches it,
+      # and it passes the door as any path the router does not know.
+      conn = build_conn(:get, "/%zz")
+      assert ApiaryWeb.Features.Routes.call(conn, Router) == conn
     end
 
     test "past the door, the page's gates answer as a hidden page's" do

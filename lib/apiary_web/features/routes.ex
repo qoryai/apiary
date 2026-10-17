@@ -11,20 +11,23 @@ defmodule ApiaryWeb.Features.Routes do
   exists. Raising `Phoenix.Router.NoRouteError` here makes the answer the one the router
   gives an unknown path.
 
-  The route is found with `Phoenix.Router.route_info/4` and its feature read from the
-  LiveView or controller that declares one (`use ApiaryWeb.Features`); a route whose
-  module names several, with `any:`, passes when the instance has one of them. Below the
+  The route is found with `Phoenix.Router.route_info/4`, from the path's segments decoded
+  as the router decodes them, so that a path with a character escaped is found as the
+  route it is routed to. Its feature is read from the LiveView or controller that
+  declares one (`use ApiaryWeb.Features`); a route whose module names several, with
+  `any:`, passes when the instance has one of them. Below the
   instance, where a person may be shown less than the instance has, the gates of
   `ApiaryWeb.Features` still decide per scope, and they alone see a live navigation, which
   never reaches here. To a signed request of the server contract the gates answer as the
   instance: its access key follows the instance's features alone.
 
-  One request passes on to its route with the feature off: a request of the server
-  contract that carries a request signature (`X-Qory-Signature-Ed25519`), on a route that
-  pipes through `:contract`, `:contract_events` or `:contract_registration`. The
-  contract signs every answer to a verified request, `404` included, so that `404` comes
+  One request passes on to its route with the feature off: a request that carries a
+  request signature (`X-Qory-Signature-Ed25519`), on a route of the server contract that
+  pipes through `:contract`, `:contract_events` or `:contract_registration`, or on a
+  signed route of another contract, which this documentation does not name. Each of these
+  contracts signs every answer to a verified request, `404` included, so that `404` comes
   once the request is verified, from the controller's gate; a request that does not verify
-  is told `401`, as on any route of the contract.
+  is told `401`, as on any route of its contract.
   """
   @behaviour Plug
 
@@ -47,7 +50,14 @@ defmodule ApiaryWeb.Features.Routes do
   def call(conn, nil), do: call(conn, ApiaryWeb.Edition.router())
 
   def call(conn, router) do
-    route = Phoenix.Router.route_info(router, conn.method, conn.path_info, conn.host)
+    case decoded(conn.path_info) do
+      {:ok, path} -> gate(conn, router, path)
+      :error -> conn
+    end
+  end
+
+  defp gate(conn, router, path) do
+    route = Phoenix.Router.route_info(router, conn.method, path, conn.host)
 
     case feature(route) do
       nil ->
@@ -60,6 +70,17 @@ defmodule ApiaryWeb.Features.Routes do
           true -> raise(Phoenix.Router.NoRouteError, conn: conn, router: router)
         end
     end
+  end
+
+  # The segments as the router matches them, each decoded (`URI.decode/1`), so that
+  # `/v1/source%2Ditems` is found as the route it is routed to. On the Elixir this project
+  # pins (`mise.toml`), `URI.decode/1` keeps a malformed escape as written, as the router
+  # does, so the gate finds the same route. On an Elixir where it raises, the result is
+  # `:error`: the gate passes the request on, and the router raises the same for any path.
+  defp decoded(path_info) do
+    {:ok, Enum.map(path_info, &URI.decode/1)}
+  rescue
+    ArgumentError -> :error
   end
 
   # The feature the matched route's module declares, or the features with `any:`

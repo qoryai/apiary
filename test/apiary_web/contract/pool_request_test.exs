@@ -488,6 +488,30 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       end
     end
 
+    test "an unsigned request to a path with a character escaped answers as a path the router does not know",
+         ctx do
+      unsigned = fn path, raw ->
+        fn ->
+          build_conn()
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("x-qory-access-key-id", ctx.key.key_id)
+          |> post(path, raw)
+        end
+      end
+
+      # Each with the path the router does not know of as many segments.
+      for {path, unknown} <- [
+            {"/v1/pools/%63laim", "/v1/pools/unknown"},
+            {"/v1/%70ools/claim", "/v1/pools/unknown"},
+            {@dispatch <> "/%64ispatched", @dispatch <> "/unknown"},
+            {@dispatch <> "/%72elease", @dispatch <> "/unknown"}
+          ],
+          {raw, status} <- [{Jason.encode!(body(@claim)), 404}, {"", 404}, {"not json", 400}] do
+        assert sent(status, unsigned.(path, raw)) == sent(status, unsigned.(unknown, raw)),
+               "#{path}, #{inspect(raw)}"
+      end
+    end
+
     test "a verified request is answered 404 not_found, signed, and records nothing", ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
