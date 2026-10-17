@@ -4,7 +4,9 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
   # comments the adapter sends for it refused as not linked; its tickets out of the
   # Backlog; no switch for its target, which keeps its value. A listing that turns a
   # linked collection's items off writes unlinked, and one that turns them on again
-  # writes linked, with no trail entry and the switch as it was.
+  # writes linked, with no trail entry and the switch as it was. A start whose description
+  # turns the source's items off unlinks every linked collection of the adapter, and one
+  # that turns them on again links them, with no entry in the organisation's trail.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -12,11 +14,13 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
   import Apiary.OrganisationsFixtures
 
   import Apiary.SourcesFixtures, only: [items_body: 2, item: 1, comments_body: 2, comment: 1]
+  import Apiary.DescriptionFixtures, only: [read_description: 1]
 
-  alias Apiary.{AccessKeys, Repo, Sources}
+  alias Apiary.{AccessKeys, Adapters, Repo, Sources}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connections, Feed}
   alias Apiary.Audit.Entry
+  alias Apiary.Nodes.Node
   alias Apiary.Runs.Target
   alias Apiary.Sources.Backlog
 
@@ -299,6 +303,120 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
 
       assert [%Entry{details: %{"backlog" => false, "count" => 1}}] =
                entries("collection.set_backlog")
+    end
+  end
+
+  describe "a start whose description changes the source's items" do
+    # The adapter starts with the description fixture `name`
+    # (`Apiary.Adapters.declare/2`).
+    defp start(ctx, name) do
+      Adapters.declare(ctx.key_scope, %{
+        time: DateTime.utc_now(:second),
+        connect_url: "https://tracker-adapter.acme.example/connect",
+        default_interval: 900,
+        minimum_interval: 300,
+        sends_changes: false,
+        description: read_description(name)
+      })
+    end
+
+    defp organisation_trail(ctx),
+      do:
+        Repo.aggregate(
+          from(e in Entry, where: e.organisation_id == ^ctx.scope.organisation.id),
+          :count
+        )
+
+    test "to none unlinks every linked collection, and back links them; nothing else changes",
+         ctx do
+      {:ok, :accepted} =
+        post(ctx, [
+          {"SHOP", @shop, nil},
+          {"API", @api, nil},
+          {"OFF", @shop, nil},
+          {"BARE", @api, false},
+          {"LOOSE", @shop, nil}
+        ])
+
+      {:ok, 4} = assign(ctx, ["SHOP", "API", "OFF", "BARE"], ctx.workspace)
+      {:ok, 1} = assign(ctx, ["OFF"], ctx.other_workspace)
+      {:ok, 1} = Collections.set_backlog(ctx.scope, target(ctx.other_workspace, @shop), false)
+      {:ok, :accepted} = Sources.post_items(ctx.key_scope, items_body("SHOP", [item("R")]))
+      assert tickets(ctx) == ["Title of R"]
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Collections.topic(ctx.scope.organisation.id))
+      told = feed(ctx)
+
+      assert told == [
+               {"API", "linked"},
+               {"OFF", "linked"},
+               {"SHOP", "linked"},
+               {"OFF", "unlinked"}
+             ]
+
+      trail = organisation_trail(ctx)
+
+      assert {:ok, %Node{items: false}} = start(ctx, "example-projects.json")
+
+      assert Enum.drop(feed(ctx), length(told)) == [{"API", "unlinked"}, {"SHOP", "unlinked"}]
+      assert organisation_trail(ctx) == trail
+
+      for ref <- ["SHOP", "API", "OFF", "BARE", "LOOSE"] do
+        assert refused?(ctx, ref), ref
+      end
+
+      # Each collection keeps its workspace, its switch and its items.
+      assert %Collection{backlog: true, items: true} = collection(ctx, "SHOP")
+      assert %Collection{backlog: false} = collection(ctx, "OFF")
+      assert %Collection{items: false} = collection(ctx, "BARE")
+      assert collection(ctx, "LOOSE").workspace_id == nil
+      assert tickets(ctx) == []
+
+      connection_id = ctx.connection.id
+      ids = Enum.sort([collection(ctx, "API").id, collection(ctx, "SHOP").id])
+
+      assert_receive {:collections_changed, %{connection_id: ^connection_id, collection_ids: got}}
+      assert Enum.sort(got) == ids
+
+      # A start that says the same changes no link.
+      told = feed(ctx)
+      assert {:ok, %Node{items: false}} = start(ctx, "example-projects.json")
+      assert feed(ctx) == told
+      refute_receive {:collections_changed, _}
+
+      # Back: the same two are linked again.
+      assert {:ok, %Node{items: true}} = start(ctx, "example-tracker.json")
+      assert Enum.drop(feed(ctx), length(told)) == [{"API", "linked"}, {"SHOP", "linked"}]
+      assert organisation_trail(ctx) == trail
+      refute refused?(ctx, "SHOP")
+      assert tickets(ctx) == ["Title of R"]
+      assert_receive {:collections_changed, %{connection_id: ^connection_id}}
+    end
+
+    test "with no source role, it is the default: items, and so links again", ctx do
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, nil}])
+      {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
+      assert {:ok, %Node{items: false}} = start(ctx, "example-projects.json")
+
+      assert {:ok, %Node{items: true, item_noun_one: nil, collection_noun_one: nil}} =
+               start(ctx, "acme-tracker.json")
+
+      assert feed(ctx) == [{"SHOP", "linked"}, {"SHOP", "unlinked"}, {"SHOP", "linked"}]
+    end
+
+    test "an ended collection, or one of an ended connection, gets no entry", ctx do
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, nil}, {"API", @api, nil}])
+      {:ok, 2} = assign(ctx, ["SHOP", "API"], ctx.workspace)
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "API"})
+      told = feed(ctx)
+      assert told == [{"API", "linked"}, {"SHOP", "linked"}, {"API", "unlinked"}]
+
+      assert {:ok, _} = start(ctx, "example-projects.json")
+      assert Enum.drop(feed(ctx), length(told)) == [{"SHOP", "unlinked"}]
+
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      told = feed(ctx)
+      assert {:ok, _} = start(ctx, "example-tracker.json")
+      assert feed(ctx) == told
     end
   end
 end

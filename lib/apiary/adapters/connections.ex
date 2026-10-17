@@ -39,6 +39,10 @@ defmodule Apiary.Adapters.Connections do
   #
   #   * A deletion of the adapter (`Apiary.Adapters.delete_adapter/2`) holds its row
   #     `FOR NO KEY UPDATE`, then ends its connections.
+  #   * A start of the adapter (`Apiary.Adapters.declare/2`) holds its row
+  #     `FOR NO KEY UPDATE`; one that changes its `items` then holds its connections that
+  #     have not ended `FOR SHARE`, by id, then their live collections
+  #     (`Apiary.Adapters.Collections.relink_adapter/2`).
   #   * A connect (`Apiary.Adapters.connect/2`) holds the adapter's row `FOR SHARE`, then
   #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do;
   #     a connection it makes takes the adapter's row `FOR SHARE` again (the trigger
@@ -49,7 +53,8 @@ defmodule Apiary.Adapters.Connections do
   #     either row, or a change of its key, waits on that lock or keeps it waiting.
   #   * The return (`complete_return/4`) holds the connection `FOR UPDATE`, and nothing
   #     else. `mark_listed/1` holds it `FOR UPDATE` inside the transaction of a listing's
-  #     part, which goes on to hold `FOR SHARE` the organisation's only workspace, when
+  #     part, which holds the adapter's row `FOR SHARE` before it, and goes on to hold
+  #     `FOR SHARE` the organisation's only workspace, when
   #     it has one, and the workspaces its collections are assigned to; then the live
   #     collections of the connection that the part names, and, when the part completes
   #     its listing, the collections of the connection it ends, and no collection of
