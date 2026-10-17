@@ -386,8 +386,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     for %{verb: verb} = route <- ApiaryWeb.Router.__routes__(),
         verb in [:get, :*],
         not Map.has_key?(@skipped, route.path),
+        not hidden_tab?(route),
         do: route
   end
+
+  # A target's Policy tab and its paths belong to the `security` feature, on a page of
+  # `observability`: where `security` is off, the page raises not found as it mounts, which
+  # the endpoint renders as a path that does not exist and a test's request raises again
+  # (`test/apiary_web/live/target_live/show_test.exs` holds it).
+  defp hidden_tab?(%{path: "/:org/:workspace/targets/:target_id/" <> _}),
+    do: not Features.on?(:security)
+
+  defp hidden_tab?(_route), do: false
 
   # The addresses of `route`, its parameters filled; `{:unknown, names}` for parameters
   # this test does not fill.
