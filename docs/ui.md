@@ -164,8 +164,9 @@ page and an Instance page, the one the person came from (Two levels, below).
   node's Settings tab lists its few sections in the page.
 - **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
   and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
-  `Layouts.narrowed/2`): its path, and its system only where two systems share the path,
-  each entry's accessible name and tooltip saying so ("Runs, narrowed to acme/shop",
+  `ApiaryWeb.Narrowing.carried/1`): its id in the address, named by its path, and its
+  system only where two systems share the path, each entry's accessible name and tooltip
+  saying so ("Runs, narrowed to acme/shop",
   "Network access, narrowed to acme/shop"). Nothing else carries it, and the palette's Go
   to never does.
 - **The sidebar folds to icons** from 768 px, by the fold (`#sidebar-collapse`, an icon
@@ -455,6 +456,16 @@ on to the new paths with their query, moved permanently (`ApiaryWeb.MovedControl
 connection as a thing keeps its word: a row is a destination and the connections made to
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
+
+A target is filtered by the id Qory Apiary gives it, never by its system or its path:
+`?target=tg_…`, several ids joined by commas for the runs of any of them, and
+`?target=none` for the runs with no target. The ids are read with the address, in one
+query scoped to the workspace (`ApiaryWeb.Narrowing`): an id that names no target of the
+workspace is dropped, like any value the page does not know, and the page says the link's
+target filter could not be read. An address of an older release, which named a target by
+`system=` and a path in `target=`, is dropped the same way. A typed `repo:` takes a
+target's name, or its id; a name that names no target is said in the notice of words that
+could not be read.
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
@@ -797,7 +808,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
   - Its runs and its Network access are the workspace's lists narrowed to it
-    (`/runs?target=acme/shop`, `/network?target=acme/shop`).
+    (`/runs?target=tg_…`, `/network?target=tg_…`).
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode card (Follow the workspace, by its name, Observe or Enforce, and whose the mode
     is), the rules in force for it on the list pattern with their Source, and

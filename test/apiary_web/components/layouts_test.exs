@@ -1255,22 +1255,25 @@ defmodule ApiaryWeb.LayoutsTest do
   end
 
   describe "narrowing, carried by the sidebar" do
+    @tg_a "tg_0123456789abcdef"
+    @tg_b "tg_ghjkmnpqrstvwxyz"
+
     setup do
       %{scope: sign_up_fixture().scope}
     end
 
     test "on Runs narrowed to a target, Runs and Network access carry it; every other entry links plainly",
          %{scope: scope} do
-      narrowed = ApiaryWeb.Layouts.narrowed({"github.example", "acme/shop"}, MapSet.new())
+      narrowed = %{ids: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:runs, :network] do
         html = narrowed_shell(scope, nav, narrowed)
 
         assert attribute(html, "#nav-runs", "href") ==
-                 workspace_path(scope, "/runs?target=acme%2Fshop")
+                 workspace_path(scope, "/runs?target=#{@tg_a}")
 
         assert attribute(html, "#nav-network", "href") ==
-                 workspace_path(scope, "/network?target=acme%2Fshop")
+                 workspace_path(scope, "/network?target=#{@tg_a}")
 
         assert attribute(html, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
         assert attribute(html, "#nav-runs", "title") == "Runs, narrowed to acme/shop"
@@ -1289,27 +1292,29 @@ defmodule ApiaryWeb.LayoutsTest do
       end
     end
 
-    test "the system is carried only where two systems share the path", %{scope: scope} do
-      shared =
-        ApiaryWeb.Layouts.narrowed({"gitlab.example", "acme/shop"}, MapSet.new(["acme/shop"]))
-
+    test "the system is named only where two systems share the path; the ids are carried",
+         %{scope: scope} do
+      shared = %{ids: [@tg_b], system: "gitlab.example", path: "acme/shop"}
       html = narrowed_shell(scope, :runs, shared)
 
       assert attribute(html, "#nav-network", "href") ==
-               workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{@tg_b}")
 
       assert attribute(html, "#nav-network", "aria-label") ==
                "Network access, narrowed to gitlab.example/acme/shop"
 
-      # A path on every system, as `?target=` alone reads it.
-      html = narrowed_shell(scope, :network, ApiaryWeb.Layouts.narrowed({nil, "acme/shop"}, true))
+      # The targets of one path on two systems, named by the path, carried by their ids.
+      both = %{ids: [@tg_a, @tg_b], system: nil, path: "acme/shop"}
+      html = narrowed_shell(scope, :network, both)
 
       assert attribute(html, "#nav-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{@tg_a}%2C#{@tg_b}")
+
+      assert attribute(html, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
     end
 
     test "nothing carries on any other page, or without a target", %{scope: scope} do
-      narrowed = ApiaryWeb.Layouts.narrowed({"github.example", "acme/shop"}, false)
+      narrowed = %{ids: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:overview, :targets, :policy, :settings] do
         html = narrowed_shell(scope, nav, narrowed)
@@ -1321,8 +1326,7 @@ defmodule ApiaryWeb.LayoutsTest do
       html = narrowed_shell(scope, :runs, nil)
       assert attribute(html, "#nav-network", "href") == workspace_path(scope, "/network")
 
-      assert ApiaryWeb.Layouts.narrowed(:none, MapSet.new()) == nil
-      assert ApiaryWeb.Layouts.narrowed(nil, MapSet.new()) == nil
+      assert ApiaryWeb.Narrowing.carried(nil) == nil
     end
 
     defp narrowed_shell(scope, nav, narrowed) do

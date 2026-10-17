@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.TargetComponentsTest do
   @moduledoc """
-  The helpers that write a target's address, by its public id, and its name and its lists'
-  parameters given the workspace's shared paths as a set (`Apiary.Runs.shared_paths/2`),
-  as the lists pass them: the system only for a path in the set.
+  The helpers that write a target's address, by its public id, and its name given the
+  workspace's shared paths as a set (`Apiary.Runs.shared_paths/2`), as the lists pass
+  them: the system only for a path in the set.
   """
   use ExUnit.Case, async: true
 
@@ -10,7 +10,6 @@ defmodule ApiaryWeb.TargetComponentsTest do
 
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.Filters
   alias ApiaryWeb.TargetComponents
 
   @scope %Scope{organisation: %Organisation{slug: "acme"}, workspace: %Workspace{slug: "main"}}
@@ -79,16 +78,5 @@ defmodule ApiaryWeb.TargetComponentsTest do
       assert TargetComponents.target_label(system, path, shared) == name
       assert TargetComponents.with_system?(system, path, shared) == (name == "#{system}/#{path}")
     end
-  end
-
-  test "Filters.target_params/3 gives the system only for a path in the set" do
-    assert Filters.target_params("gitlab.com", "acme/shop", @shared) ==
-             %{"system" => "gitlab.com", "target" => "acme/shop"}
-
-    assert Filters.target_params("github.com", "acme/billing", @shared) ==
-             %{"target" => "acme/billing"}
-
-    assert Filters.target_params("github.com", "acme/shop", MapSet.new()) ==
-             %{"target" => "acme/shop"}
   end
 end

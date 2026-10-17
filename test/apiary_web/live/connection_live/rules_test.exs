@@ -369,7 +369,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       scope: scope
     } do
       github = target(scope, "github.example")
-      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?target=#{github.public_id}")
 
       # The path is on two systems: its policy's address is the chosen target's id.
       assert has_element?(
@@ -584,7 +584,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, "button##{dst("files.cdn.example")}-allow.q-act-i")
 
       # with repo set the rows are weighed against that target's policy, and it answers
-      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?target=#{target(scope, "github.example").public_id}")
       assert has_element?(view, "button##{dst("files.cdn.example")}-allow.q-act-i")
       refute has_element?(view, "##{dst("files.cdn.example")}-after")
     end

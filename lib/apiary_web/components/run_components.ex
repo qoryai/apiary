@@ -1473,10 +1473,10 @@ defmodule ApiaryWeb.RunComponents do
   `heading` names). A search on the server at its top; every run; the
   pinned targets (`rail.pinned`) first; then the targets with the most, `rail.more` more
   behind a button that asks for them; the runs without a target last. Choosing one is a
-  link that sets the target (`path`, a function of the target, nil for every one). Below
+  link that sets the target (`path`, a function of its ids, nil for every one). Below
   1280 px the rail is not shown and the Filter menu's section does its work.
 
-  The chosen target (`chosen`, a `{system, path}`) is marked as the page's. Where it is
+  The chosen target (`chosen`, one target's entry) is marked as the page's. Where it is
   neither pinned nor among the targets listed, as one of 150 can be, it comes first,
   under every run, with its count (`chosen_count`: what the list holds with it), so the
   rail always shows what the list is narrowed to.
@@ -1484,14 +1484,22 @@ defmodule ApiaryWeb.RunComponents do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :rail, :map, default: nil, doc: "`Apiary.Runs.target_counts/3`; nil while it loads"
-  attr :chosen, :any, default: nil, doc: "the target the filters hold"
+
+  attr :chosen, :any,
+    default: nil,
+    doc:
+      "the targets the filters hold, as `ApiaryWeb.Narrowing.chosen/2` gives them: `%{public_id:, system:, path:}` each, `:none`, or nil"
 
   attr :chosen_count, :integer,
     default: nil,
     doc: "how many the list holds with the chosen target, for it where the rail misses it"
 
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
-  attr :path, :any, required: true
+
+  attr :path, :any,
+    required: true,
+    doc: "the list's path narrowed to a target: a function of its ids (`[tg_…]`), `:none` or nil"
+
   attr :query, :string, default: nil
   attr :search, :string, default: "rail_search"
   attr :more, :string, default: "rail_more"
@@ -1608,9 +1616,9 @@ defmodule ApiaryWeb.RunComponents do
   # The chosen target where the rail misses it (`target_rail/1`): neither pinned nor
   # listed, and no search narrowing the rail. It is one of the `more` no longer behind the
   # button, when the list holds any of it.
-  defp assign_missing_chosen(%{rail: %{} = rail, chosen: {system, path}} = assigns)
-       when is_binary(system) and is_binary(path) and is_integer(assigns.chosen_count) do
-    listed? = Enum.any?(rail.pinned ++ rail.targets, &({&1.system, &1.path} == {system, path}))
+  defp assign_missing_chosen(%{rail: %{} = rail, chosen: [%{public_id: id} = chosen]} = assigns)
+       when is_integer(assigns.chosen_count) do
+    listed? = Enum.any?(rail.pinned ++ rail.targets, &(&1.public_id == id))
 
     if listed? or assigns.query not in [nil, ""] do
       assign(assigns, :missing, nil)
@@ -1619,7 +1627,7 @@ defmodule ApiaryWeb.RunComponents do
       more = if count > 0, do: max(rail.more - 1, 0), else: rail.more
 
       assigns
-      |> assign(:missing, %{system: system, path: path, runs: count})
+      |> assign(:missing, Map.put(chosen, :runs, count))
       |> assign(:rail, %{rail | more: more})
     end
   end
@@ -1633,13 +1641,19 @@ defmodule ApiaryWeb.RunComponents do
   attr :path, :any, required: true
 
   defp rail_target(assigns) do
-    assigns = assign(assigns, :pair, {assigns.target.system, assigns.target.path})
+    id = assigns.target.public_id
+
+    assigns =
+      assign(assigns,
+        pair: {assigns.target.system, assigns.target.path},
+        current: match?([%{public_id: ^id}], assigns.chosen)
+      )
 
     ~H"""
     <.link
       id={"#{@id}-t-#{dom_token(@pair)}"}
-      patch={@path.(@pair)}
-      aria-current={@chosen == @pair && "true"}
+      patch={@path.([@target.public_id])}
+      aria-current={@current && "true"}
       title={"#{@target.system}/#{@target.path}"}
     >
       <.target_name

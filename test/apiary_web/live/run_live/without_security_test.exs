@@ -251,7 +251,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params("github.example", "acme/shop")}"
+          ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params([target_id(scope, "github.example", "acme/shop")])}"
         )
 
       refute_policy(render(view))

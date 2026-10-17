@@ -142,28 +142,25 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
-  test "what its runs reached is Network access narrowed to the target", %{
+  test "what its runs reached is Network access narrowed to the target, by its id", %{
     conn: conn,
     scope: scope,
-    path: path
+    path: path,
+    target: target
   } do
     view = open(conn, path)
+    network = workspace_path(scope, "/network?target=#{target.public_id}")
 
     assert has_element?(
              view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?target=acme%2Fshop")}']",
+             "#policy-hosts-network[href='#{network}']",
              "See what its runs reached"
            )
 
-    # Where another system has the same path, the narrowed list's address has the system
-    # too.
+    # Where another system has the same path, the address is the same id.
     started_run(scope, shop("gitlab.com"))
     view = open(conn, path)
-
-    assert has_element?(
-             view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?system=github.example&target=acme%2Fshop")}']"
-           )
+    assert has_element?(view, "#policy-hosts-network[href='#{network}']")
   end
 
   test "a target no other system has is named by its path alone, in its title and its words",

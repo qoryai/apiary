@@ -10,8 +10,7 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   **The lists live once, at the workspace** (the narrowing ruling): the page has no Runs or
   Network access tab. Its Overview leads to the runs list and to Network access narrowed to
-  the target (`?target=acme/shop`, the system only where the path is shared,
-  `Apiary.Runs.Filters.target_params/3`).
+  the target, by its id (`?target=tg_…`, `Apiary.Runs.Filters.target_params/1`).
 
   The header names the target in its notation, its path, `acme/shop`, and its system
   before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
@@ -405,7 +404,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             <.link
               :if={@facts && @facts.runs > 0}
               id="target-all-runs"
-              navigate={list_path(@scope, :runs, @target, @shared)}
+              navigate={list_path(@scope, :runs, @target)}
               class="q-tgt-more"
             >
               {ngettext("All %{number} run", "All %{number} runs", @facts.runs,
@@ -436,7 +435,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             <span class="grow"></span>
             <.link
               id="target-denied-connections"
-              navigate={list_path(@scope, :network, @target, @shared, decision: "denied")}
+              navigate={list_path(@scope, :network, @target, decision: "denied")}
               class="q-tgt-more"
             >
               {gettext("Network access")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
@@ -582,16 +581,15 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   defp rule_form?(_assigns), do: false
 
-  # The workspace's runs list or Network access narrowed to the target: its path, and its
-  # system only where the path is shared, then the list's own parameters.
-  defp list_path(scope, list, target, shared, params \\ []) do
+  # The workspace's runs list or Network access narrowed to the target, by its id, then the
+  # list's parameters.
+  defp list_path(scope, list, target, params \\ []) do
     %{organisation: organisation, workspace: workspace} = scope
-    target_params = Filters.target_params(target.system, target.path, shared)
+    target_params = Filters.target_params([target.public_id])
     narrowed_path(organisation, workspace, list, target_params, params)
   end
 
-  # A list's path with the target's parameters first (`system`, then `target`), then the
-  # list's own, in their order.
+  # A list's path with the target's parameter first, then the list's, in their order.
   defp narrowed_path(organisation, workspace, list, target_params, params) do
     path =
       case list do
