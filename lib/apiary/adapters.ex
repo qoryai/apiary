@@ -236,7 +236,8 @@ defmodule Apiary.Adapters do
   # keeps (`ApiaryWeb.ConnectSession`), so the return comes back in their browser. The
   # entry is the organisation's, about the organisation, naming the adapter and the
   # connection, never the pass or its nonce. Once it commits, the organisation hears that
-  # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`).
+  # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`), and,
+  # first, that the one it replaced ended, when it replaced one.
   #
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection;
@@ -256,7 +257,7 @@ defmodule Apiary.Adapters do
                  {:error, :not_found},
              :ok <- connectable(current),
              nonce = ConnectPass.new_nonce(),
-             {:ok, connection, pass} <- Connections.start(scope, current, nonce),
+             {:ok, connection, pass, replaced} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"adapter.connect", scope.organisation, %{
                  details:
@@ -266,13 +267,13 @@ defmodule Apiary.Adapters do
                }) do
           {:ok,
            {with_state(current.connect_url, pass), {connection.public_id, Ed25519.encode(nonce)},
-            connection}}
+            Enum.reject([replaced, connection], &is_nil/1)}}
         end
       end)
 
     case result do
-      {:ok, {url, session, connection}} ->
-        :ok = Collections.broadcast_connection(connection)
+      {:ok, {url, session, changed}} ->
+        Enum.each(changed, &(:ok = Collections.broadcast_connection(&1)))
         {:ok, url, session}
 
       {:error, _reason} = error ->

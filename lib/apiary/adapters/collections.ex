@@ -43,8 +43,9 @@ defmodule Apiary.Adapters.Collections do
   # `list_collections/3`, a connection's collections a page at a time; `counts/2` and
   # `count_unassigned/2`. `assign_collections/4` assigns collections to a workspace, or to
   # none (`collection.assign`, owners and admins), by the ids Qory Apiary gives them,
-  # never by refs, with the feed's `linked` or `unlinked` entry for each whose link it
-  # changes, in its transaction.
+  # never by refs, with the feed's `linked` entry for each it links from none and its
+  # `unlinked` entry for each it unlinks, in its transaction; a move from one workspace
+  # to another writes none.
   #
   # **Broadcasts**, after the change commits, carry ids only, on the organisation's topic
   # (`topic/1`, `"adapter_collections:"` and the organisation's id), which `subscribe/1`
@@ -52,12 +53,13 @@ defmodule Apiary.Adapters.Collections do
   #
   #   * `{:collections_changed, %{connection_id: id, collection_ids: ids}}`, the ids of the
   #     collections of the connection `id` that a listing's part made, updated or ended,
-  #     or that an assign linked, moved or unlinked; one message per part, and per assign
-  #     that changed any;
+  #     or that an assign linked, moved or unlinked; one message per part that changed
+  #     any, and per assign that changed any, none for one that changed none;
   #   * `{:connection_changed, %{connection_id: id, adapter_id: id}}`, when the connection
   #     changes as its page shows it (`broadcast_connection/1`): a press of Install that
-  #     takes or makes it, its return that connects it, its end, the first listing that
-  #     names it and each listing of it that completes.
+  #     takes or makes it, or that replaces it (its end), its return that connects it, its
+  #     end by the adapter, by the adapter's deletion or by its organisation's purge, the
+  #     first listing that names it and each listing of it that completes.
   #
   # Locks: the connection, then the workspace a collection is linked to (`FOR SHARE`), then
   # the collections, by id for an assign and by ref for a listing's part, then the

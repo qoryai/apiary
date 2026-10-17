@@ -102,7 +102,7 @@ defmodule Apiary.AdaptersRacesTest do
       Repo.transact(fn ->
         current = Repo.one!(from n in Node, where: n.id == ^adapter.id, lock: "FOR SHARE")
 
-        with {:ok, connection, pass} <-
+        with {:ok, connection, pass, _replaced} <-
                Connections.start(scope, current, ConnectPass.new_nonce(), now: now),
              do: {:ok, {connection, pass}}
       end)

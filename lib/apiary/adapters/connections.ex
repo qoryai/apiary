@@ -58,8 +58,9 @@ defmodule Apiary.Adapters.Connections do
   #     then its collections, then the adapter's feed counter.
   #
   # Once each change commits, the organisation hears of it on its topic
-  # (`Apiary.Adapters.Collections.broadcast_connection/1`): a press of Install, the return
-  # that connects, and each end.
+  # (`Apiary.Adapters.Collections.broadcast_connection/1`): a press of Install, for the
+  # connection it takes or makes and for the one it replaces, the return that connects,
+  # and each end.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -159,7 +160,8 @@ defmodule Apiary.Adapters.Connections do
   # it connected as they were, and a new pending connection is made in its place, with a
   # new public id, as above. One pending is replaced so too when its next pass would
   # expire too far ahead, below.
-  # `{:ok, connection, pass}`;
+  # `{:ok, connection, pass, replaced}`, `replaced` the connection this press ended in its
+  # place, or nil;
   # `{:error, :connected}` while the organisation is connected to it and a listing named
   # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
   # cannot be made, which the caller's transaction rolls back.
@@ -191,7 +193,8 @@ defmodule Apiary.Adapters.Connections do
   # connection, or finds the one that replaced it. Each try after the first follows a
   # commit of another transaction that ended the live row.
   @spec start(Scope.t(), Node.t(), <<_::128>>, keyword) ::
-          {:ok, Connection.t(), String.t()} | {:error, :connected | :invalid | :too_long}
+          {:ok, Connection.t(), String.t(), Connection.t() | nil}
+          | {:error, :connected | :invalid | :too_long}
   def start(
         %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}},
         %Node{kind: :adapter} = adapter,
@@ -238,7 +241,7 @@ defmodule Apiary.Adapters.Connections do
                    updated_at: now
                  )
                  |> Repo.update() do
-            {:ok, connection, pass}
+            {:ok, connection, pass, nil}
           end
         end
 
@@ -256,16 +259,17 @@ defmodule Apiary.Adapters.Connections do
   # person who started it and the time it connected as they are; then makes a new pending
   # connection in its place, with a new public id, started by the person who pressed,
   # whose pass, with `nonce`, is its first and expires `validity/0` seconds after now.
+  # `{:ok, connection, pass, ended}`.
   defp replace(live, organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
     fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
 
     with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
-         {:ok, _ended} <- end_live(live, :replaced, now),
+         {:ok, ended} <- end_live(live, :replaced, now),
          {:ok, connection} <-
            Connection
            |> struct!(%{fields | pass_expires_at: expires_at})
            |> Repo.insert() do
-      {:ok, connection, pass}
+      {:ok, connection, pass, ended}
     end
   end
 

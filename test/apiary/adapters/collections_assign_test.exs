@@ -121,6 +121,31 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       end
     end
 
+    test "a cursor naming another connection's collection gives nothing", ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B"]))
+
+      # Another organisation's connection to the adapter, with a collection whose title
+      # sorts first.
+      %{scope: other} = sign_up_fixture()
+      workspace_fixture(other.organisation)
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+
+      {:ok, :accepted} =
+        Collections.post_listing(ctx.key_scope, part(theirs, [{"THEIRS", "Aaa"}]))
+
+      their_cursor = Repo.get_by!(Collection, connection_id: theirs.id).public_id
+      assert Collections.list_collections(ctx.scope, ctx.connection, after: their_cursor) == []
+
+      # The organisation's earlier connection, ended, whose collection ended with it.
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      {later, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(later, titled(["C"])))
+      earlier = Repo.get_by!(Collection, connection_id: ctx.connection.id, external_ref: "A")
+
+      assert Collections.list_collections(ctx.scope, later, after: earlier.public_id) == []
+      assert names(Collections.list_collections(ctx.scope, later)) == ["Title of C"]
+    end
+
     test "a row: its ids, title, address, workspace, times, end and open tickets", ctx do
       {:ok, :accepted} = post(ctx, [{"TRK", "Tracker"}])
 
@@ -553,6 +578,34 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
       assert [{:connection_changed, %{connection_id: ^new_id, adapter_id: ^adapter_id}}] =
                messages()
+    end
+
+    test "a press of Install that replaces a connection tells of both: the one it ended first",
+         ctx do
+      :ok = Collections.subscribe(ctx.scope)
+      old_id = ctx.connection.id
+      adapter_id = ctx.adapter.id
+
+      # Connected, and no listing named it: a press ends it and makes a new one.
+      {:ok, _url, {public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
+      new_id = Repo.get_by!(Connection, public_id: public_id).id
+      assert Repo.get!(Connection, old_id).ended_reason == :replaced
+
+      assert [
+               {:connection_changed, %{connection_id: ^old_id, adapter_id: ^adapter_id}},
+               {:connection_changed, %{connection_id: ^new_id, adapter_id: ^adapter_id}}
+             ] = messages()
+
+      # A press on the pending one, its pass long expired, takes it, and tells of it alone.
+      past = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {1, _} =
+        Repo.update_all(from(c in Connection, where: c.id == ^new_id),
+          set: [pass_expires_at: past]
+        )
+
+      {:ok, _url, {^public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
+      assert [{:connection_changed, %{connection_id: ^new_id}}] = messages()
     end
 
     test "a part that changes no collection and no marker says nothing", ctx do

@@ -21,8 +21,8 @@ defmodule Apiary.Deletion.Tables do
   `workspace_tables/0` lists those, in the same order, the tables a workspace's purge
   walks. A table marked `:organisation` holds the organisation's rows: `memberships`
   has no workspace, since a person stays in the organisation when a workspace goes, and
-  only their access to it goes with it. A few such tables have a `workspace_id` all the
-  same, a link to a workspace that their rows outlive (`outliving_tables/0`): the
+  only their access to it goes with it. A table so marked may have a `workspace_id` all
+  the same, a link to a workspace that its rows outlive (`outliving_tables/0`): the
   workspace's purge links them to none before it walks, and the organisation's purge
   deletes them. `organisations` itself is not on the list: its row is deleted last, after
   them all. Nor are the instance's tables, `users` and
