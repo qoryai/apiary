@@ -100,18 +100,13 @@ defmodule Apiary.Sources.ItemTest do
       set!("source_items", item.id, "public_id", Item.new_public_id())
     end
 
-    test "the id function is pinned to pg_catalog" do
-      assert %{rows: [[config]]} =
-               Repo.query!(
-                 "SELECT proconfig FROM pg_proc WHERE proname = 'source_item_public_id'"
-               )
+    test "the functions are pinned to pg_catalog" do
+      for name <- ~w(source_item_public_id source_texts_valid source_parts_valid) do
+        assert %{rows: [[config]]} =
+                 Repo.query!("SELECT proconfig FROM pg_proc WHERE proname = $1", [name])
 
-      assert config == ["search_path=pg_catalog"]
-
-      assert %{rows: [[config]]} =
-               Repo.query!("SELECT proconfig FROM pg_proc WHERE proname = 'source_texts_valid'")
-
-      assert config == ["search_path=pg_catalog"]
+        assert config == ["search_path=pg_catalog"], name
+      end
     end
 
     test "each text keeps to its bounds, in code points", %{item: item} do
@@ -454,19 +449,31 @@ defmodule Apiary.Sources.ItemTest do
                    end
     end
 
-    test "the parts are from 1, at most 10,000, the last at least every one", %{item: item} do
+    test "the parts are 1 to 10,000, each once, none NULL, the last at least every one",
+         %{item: item} do
       listing = listing!(item)
 
       for {assignments, params} <- [
             {"parts = $2", [[]]},
             {"parts = $2", [[0]]},
+            {"parts = $2", [[nil]]},
+            {"parts = $2", [[1, nil]]},
+            {"parts = $2", [[1, 1]]},
+            {"parts = $2", [[99_999]]},
+            {"parts = $2", [[10_001]]},
             {"parts = $2", [Enum.to_list(1..10_001)]},
+            {"parts = '{{1,2},{3,4}}'::integer[]", []},
             {"last_part = 10001", []},
             {"parts = $2, last_part = 2", [[1, 3]]}
           ] do
-        refused("source_item_listings_parts_check", fn ->
+        refused("source_item_listings_parts", fn ->
           update!("source_item_listings", listing.id, assignments, params)
         end)
+      end
+
+      for parts <- [[1], [10_000], [3, 1, 2]] do
+        assert %{num_rows: 1} =
+                 update!("source_item_listings", listing.id, "parts = $2", [parts])
       end
 
       refused("source_item_listings_completed_check", fn ->
@@ -559,7 +566,8 @@ defmodule Apiary.Sources.ItemTest do
             target_path: "acme/shop",
             truncated: ["subject"],
             truncated: ["title", "title"],
-            comment_count: -1
+            comment_count: -1,
+            comment_count: 9_223_372_036_854_775_808
           ] do
         changeset = Item.changeset(%Item{}, item_attrs(%{field => value}))
         refute changeset.valid?, inspect({field, value})
@@ -580,7 +588,8 @@ defmodule Apiary.Sources.ItemTest do
             labels: [String.duplicate("é", 100) | for(n <- 1..99, do: "l#{n}")],
             state_reason: String.duplicate("é", 64),
             type: "feature request",
-            truncated: ["title", "body", "filed_by.name", "labels"]
+            truncated: ["title", "body", "filed_by.name", "labels"],
+            comment_count: 9_223_372_036_854_775_807
           ] do
         assert Item.changeset(%Item{}, item_attrs(%{field => value})).valid?,
                inspect({field, value})

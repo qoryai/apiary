@@ -12,7 +12,7 @@ defmodule Apiary.Sources.MigrationTest do
           "take_work_items_in_again"}
 
   @tables ~w(source_items source_item_comments source_item_listings)
-  @functions ~w(source_item_public_id source_texts_valid)
+  @functions ~w(source_item_public_id source_parts_valid source_texts_valid)
   @columns ~w(adapter_id item_id target_system target_path take_in declined_at declined_by_id)
 
   setup_all do

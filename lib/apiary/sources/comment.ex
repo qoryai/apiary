@@ -7,9 +7,9 @@ defmodule Apiary.Sources.Comment do
   # 1 to 100 characters, and `author_kind`, `:person` or `:automation`, are stored as
   # sent. `body` is at most 65,536 characters, written in `body_format`. `truncated` names
   # the fields the adapter cut, `body` or `author.name`, each once. `source_created_at`
-  # and `source_updated_at` are its times at its source; the newer one wins. `deleted_at`
-  # is when it was marked deleted: a comment deleted at the source, or left out of a
-  # complete set of the item's comments, is marked, not deleted.
+  # and `source_updated_at` are its times at its source, which tell an earlier write of it
+  # from a later one. `deleted_at` is for a comment deleted at its source, or left out of
+  # a complete set of the item's comments: the column marks it, so that its row can stay.
   #
   # A comment is of its item's organisation, held to it by the composite key, and goes
   # with its item. Every text is untrusted: shown as data, never followed.

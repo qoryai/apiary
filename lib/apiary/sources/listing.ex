@@ -4,11 +4,10 @@ defmodule Apiary.Sources.Listing do
   # collection. The table and its rules are `20261017190000_keep_source_items`'s.
   #
   # `started_at` is when the adapter began reading the source for it, the same on each
-  # part. `parts` are the part numbers that arrived, from 1, at most 10,000 of them;
+  # part. `parts` are the part numbers that arrived, each once, from 1 to 10,000;
   # `last_part` is the number of the part that said `complete`, at least every part that
   # arrived; `completed_at` is when every part from 1 to `last_part` had arrived, and only
-  # a listing with a last part has it. A row is deleted a day after it was made
-  # (`inserted_at`), complete or not.
+  # a listing with a last part has it. `inserted_at` is when the row was made.
   #
   # A listing is of its collection's organisation, held to it by the composite key.
   #

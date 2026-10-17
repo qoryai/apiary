@@ -12,9 +12,10 @@ defmodule Apiary.WorkItems.WorkItem do
   # project that holds it, 1 to 1,024 characters; and where a change for it goes,
   # `target_system`, a host name to the contract's pattern, and `target_path`, 1 to 200
   # characters. A later change at the source does not change it. A ticket has one work
-  # item in an organisation, live or not, by its adapter and its ref: taking it in again
-  # reuses the work item and counts the take in, `take_in`, from 1. A work item stays
-  # when its ticket, the ticket's collection, its connection or its adapter ends.
+  # item in an organisation, live or not, by its adapter and its ref, so that a take in
+  # again has one work item to find; `take_in` counts the take ins of the work item, from
+  # 1. No end of its ticket, the ticket's collection, its connection or its adapter
+  # deletes a work item.
   # `owner_id` is the person who owns it, and `first_instruction` what a person said
   # first, 0 to 4,000 characters.
   #

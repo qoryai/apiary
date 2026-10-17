@@ -16,9 +16,8 @@ defmodule Apiary.Repo.Migrations.NameAWorkItemSTicketByItsConnection do
   #   deleting a connection a work item names, so that a work item stays when its
   #   connection ends. It is NO ACTION, not RESTRICT: checked at the end of the statement,
   #   so one that deletes an organisation removes both, whatever order its cascades run in.
-  # - Nothing is unique on (`connection_id`, `external_ref`). Taking a ticket in again
-  #   reuses its work item, never makes a new one; what holds one work item per ticket is
-  #   20261017190100's. The index serves the key.
+  # - Nothing is unique on (`connection_id`, `external_ref`); a ticket has one work item,
+  #   which 20261017190100's unique index holds. The index serves the key.
   #
   # The table starts empty: no work item names a connection yet, so this migration
   # refuses to run while `work_items` holds a row.

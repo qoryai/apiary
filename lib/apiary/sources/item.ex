@@ -1,7 +1,6 @@
 defmodule Apiary.Sources.Item do
-  # An item an adapter sends of a collection (`Apiary.Adapters.Collection`): a piece of
-  # work at the source, such as an issue. The contract calls it an item; the pages call it
-  # a ticket. The table and its rules are `20261017190000_keep_source_items`'s.
+  # An item an adapter sends of a collection (`Apiary.Adapters.Collection`): a ticket at
+  # its source. The contract calls it an item; the pages call it a ticket. The table and its rules are `20261017190000_keep_source_items`'s.
   #
   # `external_ref` is the adapter's ref for it, 1 to 200 characters, unique in its
   # collection, which the core compares and stores and never reads meaning into. `key` is
@@ -15,12 +14,13 @@ defmodule Apiary.Sources.Item do
   # it is, or nil. The target (`target_system`, `target_path`, both or neither) is where
   # a change for it would go. `truncated` names the fields the adapter cut, each once.
   # `comment_count` is how many comments it has at its source. `source_created_at` and
-  # `source_updated_at` are its times at its source; the newer one wins.
+  # `source_updated_at` are its times at its source, which tell an earlier write of it from
+  # a later one.
   #
-  # `closed_by_listing_at` is when a complete listing closed it by leaving it out; only a
-  # closed item has it. `disconnected_at` is when the adapter said its collection is out
-  # of reach: the item is marked, never deleted. An item stays with its collection when
-  # the collection ends.
+  # `closed_by_listing_at` is for an item a complete listing left out and closed; only a
+  # closed item has it. `disconnected_at` is for an item whose collection the adapter no
+  # longer reaches: the column marks it, so that its row can stay. An item stays with its
+  # collection when the collection ends, and goes with its organisation.
   #
   # `organisation_id` and `adapter_id` are its collection's, held to it by the composite
   # key. `public_id` is its name outside the database: `tk_`, then sixteen lowercase
@@ -53,6 +53,8 @@ defmodule Apiary.Sources.Item do
   @max_label 100
   @max_state_reason 64
   @max_path 200
+  # The most a bigint column holds.
+  @max_count 9_223_372_036_854_775_807
   @kinds [:person, :automation]
   @states [:open, :closed]
   @truncatable ~w(title body filed_by.name labels)
@@ -176,7 +178,10 @@ defmodule Apiary.Sources.Item do
     |> validate_target()
     |> validate_subset(:truncated, @truncatable)
     |> validate_texts(:truncated, length(@truncatable), 13)
-    |> validate_number(:comment_count, greater_than_or_equal_to: 0)
+    |> validate_number(:comment_count,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: @max_count
+    )
     |> check_constraint(:public_id, name: :source_items_public_id_check)
     |> check_constraint(:external_ref, name: :source_items_external_ref_check)
     |> check_constraint(:key, name: :source_items_key_check)

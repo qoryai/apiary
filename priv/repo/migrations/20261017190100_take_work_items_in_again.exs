@@ -10,9 +10,9 @@ defmodule Apiary.Repo.Migrations.TakeWorkItemsInAgain do
   #   at once, NO ACTION as before. An adapter is never deleted, and a connection only
   #   with its organisation.
   # - One work item per ticket in an organisation, live or not: the unique index on
-  #   (`organisation_id`, `adapter_id`, `external_ref`). Taking a ticket in again reuses
-  #   its work item, whatever connection or collection the ticket now comes through; it is
-  #   never a new work item. Nothing is unique on `item_id`.
+  #   (`organisation_id`, `adapter_id`, `external_ref`), whatever connection or collection
+  #   the ticket comes through, so that a take in again has one work item to find.
+  #   Nothing is unique on `item_id`.
   # - `item_id` is the ticket the work item was last taken in from, of the work item's
   #   organisation and adapter (the composite key). When the ticket's row goes, the work
   #   item stays, with its snapshot and no ticket (`ON DELETE SET NULL` of `item_id`
@@ -134,8 +134,10 @@ defmodule Apiary.Repo.Migrations.TakeWorkItemsInAgain do
   end
 
   # Rolled back, a work item names its ticket by its connection and ref alone, as before.
-  # A run of the queue and an event name their work item by its workspace again, which
-  # refuses while one names a work item of another workspace.
+  # A run of the queue and an event name their work item by its workspace again, and
+  # `declined` is no state and no kind of event, so the roll back refuses while a run of
+  # the queue or an event names a work item of another workspace, and while a work item
+  # is declined or an event is `declined`.
   def down do
     execute("""
     ALTER TABLE dispatch_runs DROP CONSTRAINT dispatch_runs_work_item_id_fkey,

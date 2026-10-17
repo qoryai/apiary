@@ -21,27 +21,31 @@ defmodule Apiary.Repo.Migrations.KeepSourceItems do
   #   none; `type`, the contract's pattern, or none; the target (`target_system`,
   #   `target_path`, both or neither) to the contract's `$defs/target`; `truncated`, the
   #   fields the adapter cut, each once; `comment_count`, 0 or more;
-  #   `source_created_at` and `source_updated_at`, the item's times at its source, the
-  #   newer of which wins. `closed_by_listing_at` is when a complete listing closed it by
-  #   leaving it out, and only a closed item has it; `disconnected_at` is when the adapter
-  #   said its collection is out of reach (`POST /v1/sources/disconnect`): the item is
-  #   marked, not deleted. An item stays with its collection when the collection ends.
+  #   `source_created_at` and `source_updated_at`, the item's times at its source, which
+  #   tell an earlier write of it from a later one. `closed_by_listing_at` is for an item a
+  #   complete listing left out and closed, and only a closed item has it;
+  #   `disconnected_at` is for an item whose collection the adapter no longer reaches
+  #   (`POST /v1/sources/disconnect`): the column marks it, so that its row can stay. An
+  #   item stays with its collection when the collection ends.
   # - `source_item_comments` (`Apiary.Sources.Comment`): one row per comment of an item,
   #   by the comment's ref, unique on its item, with the same bounds: `url`, `author_name`
   #   and `author_kind`, `body` and `body_format`, `truncated`, its times at its source,
-  #   and `deleted_at`, when it was marked deleted. A comment goes with its item.
+  #   and `deleted_at`, which marks a comment deleted at its source, so that its row can
+  #   stay. A comment goes with its item.
   # - `source_item_listings` (`Apiary.Sources.Listing`): one row per items listing of a
   #   collection, by the listing's id, `external_id`: its `started_at`, the part numbers
-  #   that arrived (`parts`), the number of the part that said `complete` (`last_part`)
-  #   and when every part from 1 to that one had arrived (`completed_at`). Bookkeeping:
-  #   deleted a day after it was made.
+  #   that arrived (`parts`, each once, from 1 to 10,000, at most 10,000 of them), the
+  #   number of the part that said `complete` (`last_part`), when every part from 1 to
+  #   that one had arrived (`completed_at`), and when the row was made (`inserted_at`).
   #
   # Every character count is in code points, as `char_length` counts. A list of texts is
   # held by `source_texts_valid(texts, shortest, longest, most)`: one dimension, at most
-  # `most` texts, none NULL, each `shortest` to `longest` characters, and none twice. It
-  # and `source_item_public_id()` have the `search_path` `pg_catalog`, where every
-  # function they call is (20261011120000), whatever the `search_path` of the session
-  # that calls them.
+  # `most` texts, none NULL, each `shortest` to `longest` characters, and none twice. A
+  # listing's parts are held by `source_parts_valid(parts)`: one dimension, 1 to 10,000
+  # numbers, none NULL, each 1 to 10,000, and none twice. Both, and
+  # `source_item_public_id()`, have the `search_path` `pg_catalog`, where every function
+  # they call is (20261011120000), whatever the `search_path` of the session that calls
+  # them.
   #
   # The rows of the three tables are an organisation's, and go only with it: a collection
   # and a connection end by their state and are never deleted alone. The keys to a
@@ -88,6 +92,21 @@ defmodule Apiary.Repo.Migrations.KeepSourceItems do
           WHERE t.text IS NULL OR char_length(t.text) NOT BETWEEN shortest AND longest
         )
         AND (SELECT count(DISTINCT t.text) FROM unnest(texts) AS t(text)) = cardinality(texts)
+    $$
+    """)
+
+    execute("""
+    CREATE FUNCTION source_parts_valid(parts integer[])
+    RETURNS boolean LANGUAGE sql IMMUTABLE
+    SET search_path = pg_catalog AS $$
+      SELECT parts IS NOT NULL
+        AND array_ndims(parts) = 1
+        AND cardinality(parts) BETWEEN 1 AND 10000
+        AND array_position(parts, NULL) IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(parts) AS p(part) WHERE p.part NOT BETWEEN 1 AND 10000
+        )
+        AND (SELECT count(DISTINCT p.part) FROM unnest(parts) AS p(part)) = cardinality(parts)
     $$
     """)
 
@@ -316,7 +335,7 @@ defmodule Apiary.Repo.Migrations.KeepSourceItems do
 
     create constraint(:source_item_listings, :source_item_listings_parts_check,
              check:
-               "cardinality(parts) BETWEEN 1 AND 10000 AND 1 <= ALL(parts) AND " <>
+               "source_parts_valid(parts) AND " <>
                  "(last_part IS NULL OR (last_part BETWEEN 1 AND 10000 AND last_part >= ALL(parts)))"
            )
 
@@ -325,13 +344,14 @@ defmodule Apiary.Repo.Migrations.KeepSourceItems do
            )
   end
 
-  # Rolled back, the items, their comments and their listings go, and both functions.
+  # Rolled back, the items, their comments and their listings go, and the three functions.
   def down do
     drop table(:source_item_listings)
     drop table(:source_item_comments)
     drop table(:source_items)
     drop index(:source_collections, [:id, :organisation_id, :adapter_id])
 
+    execute("DROP FUNCTION source_parts_valid(integer[])")
     execute("DROP FUNCTION source_texts_valid(text[], integer, integer, integer)")
     execute("DROP FUNCTION source_item_public_id()")
   end
