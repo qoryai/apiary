@@ -35,7 +35,7 @@ defmodule Apiary.Policy.Schema do
   @spec validate(binary) :: :ok | {:error, term}
   def validate(document) when is_binary(document) do
     with {:ok, decoded} <- Jason.decode(document),
-         {:ok, _document} <- JSV.validate(decoded, root()) do
+         {:ok, _document} <- JSV.validate(decoded, root(), cast: false) do
       :ok
     else
       {:error, %JSV.ValidationError{} = error} -> {:error, Apiary.Kinds.Schema.summary(error)}
@@ -54,7 +54,8 @@ defmodule Apiary.Policy.Schema do
         root =
           JSV.build!(%{"$ref" => @base <> "run-configuration.schema.json"},
             resolver: __MODULE__,
-            formats: true
+            formats: true,
+            atoms: false
           )
 
         :persistent_term.put(__MODULE__, {stamp, root})

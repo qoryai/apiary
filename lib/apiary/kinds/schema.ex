@@ -22,10 +22,15 @@ defmodule Apiary.Kinds.Schema do
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for
   one JSV cannot build, such as a pattern PCRE does not take.
+
+  It is built with `atoms: false`, whatever `opts` say: a cast that makes atoms, such as
+  `"jsv-cast": ["Elixir.JSV.Cast", "string_to_atom"]` or `"aprops"`, is left out, so a
+  schema from an untrusted input can make no atom, which the runtime never frees.
   """
   @spec build(map, keyword) :: {:ok, JSV.Root.t()} | {:error, term}
   def build(schema, opts \\ []) when is_map(schema) do
-    {:ok, JSV.build!(Pattern.end_only(schema), Keyword.merge([formats: true], opts))}
+    opts = [formats: true] |> Keyword.merge(opts) |> Keyword.put(:atoms, false)
+    {:ok, JSV.build!(Pattern.end_only(schema), opts)}
   rescue
     error -> {:error, error}
   end
@@ -60,12 +65,13 @@ defmodule Apiary.Kinds.Schema do
   `limits` (`Apiary.Kinds.Bounds.within?/2`): `:ok`, or `{:error, summary}`, for a log
   and not for a page. A value outside the limits is never given to JSV:
   `%{valid: false, limits: limits}`, the limits as a map. A refusal by the schema is
-  `summary/1` of JSV's error.
+  `summary/1` of JSV's error. JSV validates with `cast: false`: the value is checked, and
+  no cast the schema names is called on it.
   """
   @spec validate(term, JSV.Root.t(), Bounds.limits()) :: :ok | {:error, map}
   def validate(value, root, limits) do
     if Bounds.within?(value, limits) do
-      case JSV.validate(value, root) do
+      case JSV.validate(value, root, cast: false) do
         {:ok, _value} -> :ok
         {:error, %JSV.ValidationError{} = error} -> {:error, summary(error)}
       end

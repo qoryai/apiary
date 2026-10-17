@@ -41,6 +41,29 @@ defmodule Apiary.Kinds.BudgetTest do
     assert monitors() == before
   end
 
+  test "its process has ended when run/2 returns the value, slow as its end may be" do
+    # The process owns a large table, which the runtime deletes as the process ends, after
+    # its answer.
+    for _ <- 1..5 do
+      {result, pid} =
+        run(
+          fn ->
+            table = :ets.new(:budget_test, [:public])
+            :ets.insert(table, for(i <- 1..200_000, do: {i, i}))
+            table
+          end,
+          ms: 5000,
+          heap_words: 10_000_000
+        )
+
+      assert {:ok, table} = result
+      refute Process.alive?(pid)
+      assert :ets.info(table) == :undefined
+    end
+
+    refute_received _any
+  end
+
   test "is :time when the time runs out, and the process is killed then" do
     before = monitors()
     {microseconds, {result, pid}} = :timer.tc(fn -> run(fn -> Process.sleep(:infinity) end) end)

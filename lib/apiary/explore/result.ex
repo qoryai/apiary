@@ -90,7 +90,7 @@ defmodule Apiary.Explore.Result do
          {:ok, %{} = document} <- Jason.decode(text, floats: :decimals),
          {:ok, document} <- version(document),
          true <- within_bounds?(document),
-         {:ok, _document} <- JSV.validate(document, root()) do
+         {:ok, _document} <- JSV.validate(document, root(), cast: false) do
       {:ok, document}
     else
       _refused -> :none

@@ -49,7 +49,7 @@ defmodule Apiary.Kinds.Budget do
     result =
       receive do
         {^ref, answer} ->
-          Process.demonitor(monitor, [:flush])
+          gone(pid, monitor, deadline)
           answer
 
         # Before the time, only the runtime kills the process: its heap is past the budget.
@@ -80,6 +80,21 @@ defmodule Apiary.Kinds.Budget do
 
     :timer.cancel(timer)
     result
+  end
+
+  # The process has answered and ends: its :DOWN is waited for until the time runs out,
+  # and then it is killed.
+  defp gone(pid, monitor, deadline) do
+    receive do
+      {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        Process.exit(pid, :kill)
+
+        receive do
+          {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
+        end
+    end
   end
 
   defp answer(fun) do
