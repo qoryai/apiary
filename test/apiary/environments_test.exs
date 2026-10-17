@@ -3,8 +3,9 @@ defmodule Apiary.EnvironmentsTest do
   # (one record per pool and collection, the last good build set together, the image
   # pinned by its digest, the bounds of the refs, a failure's cause and reason), the
   # composite keys that hold a record to its pool's workspace and its collection's
-  # organisation, the purges of a workspace and of an organisation, and the trigger that
-  # queues a prebuild per node pool from a listing, an assign and a new pool.
+  # organisation, the purges of a workspace and of an organisation, the trigger that
+  # queues a prebuild per node pool from a listing, an assign and a new pool, and a run's
+  # image: which record gives it, and the run configuration document that names it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -17,6 +18,7 @@ defmodule Apiary.EnvironmentsTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Policy.{Effective, Render, Schema}
 
   @moduletag needs: :factory
 
@@ -386,6 +388,114 @@ defmodule Apiary.EnvironmentsTest do
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->
         Environments.trigger_for_pool(ctx.pool, DateTime.utc_now())
       end
+    end
+  end
+
+  describe "a run's image" do
+    @shop %{system: "code.example.com", path: "acme/shop"}
+
+    defp image(n), do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
+
+    defp built!(ctx, collection, n, minutes, attrs \\ %{}) do
+      at = DateTime.add(~U[2026-10-15 12:00:00.000000Z], minutes, :minute)
+
+      Repo.insert!(
+        record(
+          ctx,
+          Map.merge(
+            %{source_collection_id: collection.id},
+            Map.merge(built(at), Map.put(attrs, :image, image(n)))
+          )
+        )
+      )
+    end
+
+    defp shop(ctx, attrs \\ []),
+      do: collection_fixture(ctx.scope, Keyword.merge([target_path: "acme/shop"], attrs))
+
+    test "is the newest build of a live collection of the pool's workspace with that target",
+         ctx do
+      assert Environments.image_for(ctx.pool, @shop) == nil
+
+      built!(ctx, shop(ctx), "1", 1)
+      assert Environments.image_for(ctx.pool, @shop) == image("1")
+
+      newest = shop(ctx)
+      built!(ctx, newest, "2", 2)
+      assert Environments.image_for(ctx.pool, @shop) == image("2")
+
+      # Newer, but not counted: a collection without an environment_ref, a record retired,
+      # a collection ended or linked to another workspace, another target.
+      built!(ctx, shop(ctx, environment_ref: nil), "3", 3)
+      built!(ctx, shop(ctx), "4", 4, %{retired_at: DateTime.utc_now()})
+      ended = shop(ctx)
+      built!(ctx, ended, "5", 5)
+
+      Repo.update_all(from(c in Collection, where: c.id == ^ended.id),
+        set: [ended_at: DateTime.utc_now(), ended_reason: :disconnected]
+      )
+
+      moved = shop(ctx)
+      built!(ctx, moved, "6", 6)
+      workspace = workspace_fixture(ctx.scope.organisation)
+
+      Repo.update_all(from(c in Collection, where: c.id == ^moved.id),
+        set: [workspace_id: workspace.id]
+      )
+
+      built!(ctx, shop(ctx, target_path: "acme/docs"), "7", 7)
+      assert Environments.image_for(ctx.pool, @shop) == image("2")
+      assert Environments.image_for(ctx.pool, %{@shop | path: "acme/docs"}) == image("7")
+
+      # A record queued again keeps its last good build for runs until the next one lands.
+      Repo.update_all(from(r in Record, where: r.source_collection_id == ^newest.id),
+        set: [queued_ref: "env-2", queued_at: DateTime.utc_now()]
+      )
+
+      assert Environments.image_for(ctx.pool, @shop) == image("2")
+
+      # Another pool's builds are its own.
+      other = pool_fixture(ctx.scope)
+      assert Environments.image_for(other, @shop) == nil
+    end
+
+    test "goes inline into the security policy of the run configuration document" do
+      effective = %Effective{mode: "enforce", allow: ["api.example.com"], deny: ["bad.example"]}
+      document = Render.document(effective)
+
+      assert {:ok, %{document: composed, digest: digest}} =
+               Environments.with_image(document, image("a"))
+
+      assert digest == Render.digest(composed)
+      assert digest != Render.digest(document)
+
+      assert Environments.with_image(document, image("a")) ==
+               {:ok, %{document: composed, digest: digest}}
+
+      assert %{"version" => 1, "security_policy" => policy} = Jason.decode!(composed)
+      assert policy["image"] == image("a")
+
+      # The rest keeps its members, its order and its bytes.
+      assert Map.delete(policy, "image") == Jason.decode!(document)["security_policy"]
+
+      members =
+        composed
+        |> Jason.decode!(objects: :ordered_objects)
+        |> then(& &1["security_policy"].values)
+
+      assert Enum.map(members, &elem(&1, 0)) == ~w(version egress image)
+
+      assert composed ==
+               String.replace_suffix(document, "}}", ~s(,"image":"#{image("a")}"}}))
+
+      # The vendored policy contract names an image by name only, so the document is not
+      # one this server serves yet.
+      assert :ok = Schema.validate(document)
+      assert {:error, _reason} = Schema.validate(composed)
+
+      # A document with no policy has no security policy to put it in.
+      assert Environments.with_image(Render.no_policy_document(), image("a")) ==
+               {:error, :no_security_policy}
     end
   end
 end

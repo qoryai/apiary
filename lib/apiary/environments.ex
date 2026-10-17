@@ -32,6 +32,21 @@ defmodule Apiary.Environments do
   # The record is written by one statement that decides, under the row's lock, whether it
   # is due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the
   # same pool and collection queue one prebuild.
+  #
+  # ## A run's image: `image_for/2` and `with_image/2`
+  #
+  # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
+  # live collections linked to the pool's workspace with that target, only those with an
+  # `environment_ref` count, and of their records for the pool, the one built last
+  # (`built_at`) that is not retired gives its `image`; nil when there is none.
+  #
+  # `with_image(document, image)` is a run configuration document (`Apiary.Policy.Render`)
+  # with `image` added inline to its `security_policy`, as the run's signed policy names
+  # the image it starts in, and the new document's digest. The members already there keep
+  # their order and their bytes. A document without a `security_policy` (the document of
+  # no policy) is refused, `{:error, :no_security_policy}`: the policy needs its `egress`.
+  # Nothing serves the document yet: the policy contract this server vendors names an
+  # image by name only, not by a reference pinned by its digest.
 
   import Ecto.Query, only: [from: 2]
 
@@ -39,6 +54,7 @@ defmodule Apiary.Environments do
   alias Apiary.Adapters.Collection
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
+  alias Apiary.Policy.Render
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
   @doc false
@@ -56,6 +72,63 @@ defmodule Apiary.Environments do
         where: r.source_collection_id == ^collection_id,
         order_by: [asc: r.inserted_at, asc: r.id]
     )
+  end
+
+  ## A run's image
+
+  # image_for/2 is the image a run of `pool` for `target` starts in, or nil (the
+  # moduledoc).
+  @doc false
+  @spec image_for(Node.t(), %{system: String.t(), path: String.t()}) :: String.t() | nil
+  def image_for(%Node{kind: :pool, id: pool_id, workspace_id: workspace_id}, %{
+        system: system,
+        path: path
+      })
+      when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
+    Repo.one(
+      from r in Record,
+        join: c in Collection,
+        on: c.id == r.source_collection_id,
+        where: r.pool_id == ^pool_id and not is_nil(r.image) and is_nil(r.retired_at),
+        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+        where: not is_nil(c.environment_ref),
+        where: c.target_system == ^system and c.target_path == ^path,
+        order_by: [desc: r.built_at, desc: r.id],
+        limit: 1,
+        select: r.image
+    )
+  end
+
+  # with_image/2 is the run configuration document `document` with `image` in its
+  # `security_policy`, and its digest (the moduledoc).
+  @doc false
+  @spec with_image(binary, String.t()) ::
+          {:ok, %{document: binary, digest: String.t()}} | {:error, :no_security_policy}
+  def with_image(document, image) when is_binary(document) and is_binary(image) do
+    %Jason.OrderedObject{values: members} = Jason.decode!(document, objects: :ordered_objects)
+
+    case List.keyfind(members, "security_policy", 0) do
+      {"security_policy", %Jason.OrderedObject{values: policy}} ->
+        policy = put_member(policy, "image", image)
+
+        composed =
+          members
+          |> put_member("security_policy", Jason.OrderedObject.new(policy))
+          |> Jason.OrderedObject.new()
+          |> Jason.encode!(escape: :json)
+
+        {:ok, %{document: composed, digest: Render.digest(composed)}}
+
+      nil ->
+        {:error, :no_security_policy}
+    end
+  end
+
+  # `name` set to `value`, in its place when it is there, else last.
+  defp put_member(members, name, value) do
+    if List.keymember?(members, name, 0),
+      do: List.keyreplace(members, name, 0, {name, value}),
+      else: members ++ [{name, value}]
   end
 
   ## The trigger
