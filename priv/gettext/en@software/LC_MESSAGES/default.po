@@ -4347,6 +4347,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed what its runs read: %{paths}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed where an integration is used"
 msgstr ""
 
@@ -12354,6 +12359,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Set in the application's configuration"
 msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set its runs to read no other target"
+msgstr "Set its runs to read no other repository"
 
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format

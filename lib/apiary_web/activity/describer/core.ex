@@ -121,6 +121,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
   end
 
+  # What a target's runs also read, the list as it is after the change, joined as a list
+  # is on a page; the entry is the target's, which the subject names.
+  def sentence(
+        :"target.set_further_repositories",
+        %{after: %{"further_repositories" => paths}},
+        _names
+      )
+      when is_list(paths) do
+    case paths do
+      [] ->
+        gettext("Set its runs to read no other target")
+
+      paths ->
+        gettext("Changed what its runs read: %{paths}", paths: Enum.join(paths, ", "))
+    end
+  end
+
   def sentence(action, entry, _names) do
     details = entry.details || %{}
 
