@@ -384,13 +384,13 @@ defmodule Apiary.Adapters.CollectionsTest do
                 %{
                   "name" => "Title of DOC",
                   "connection_id" => theirs.public_id,
-                  "integration" => "Acme tracker"
+                  "integration" => ctx.adapter.name
                 }},
                {other.organisation.id, :instance, old_trk.id,
                 %{
                   "name" => "Title of TRK",
                   "connection_id" => theirs.public_id,
-                  "integration" => "Acme tracker"
+                  "integration" => ctx.adapter.name
                 }}
              ]
     end
