@@ -246,8 +246,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
     workspace = Enum.find(socket.assigns.workspaces, &(&1.id == id))
 
     socket =
-      with %{} <- workspace,
-           true <- map_size(selected) > 0,
+      with true <- map_size(selected) > 0,
+           %{} <- workspace || {:error, :not_found},
            {:ok, _changed} <-
              Collections.assign_collections(scope, connection, Map.keys(selected), workspace) do
         put_flash(
@@ -256,7 +256,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
           assigned(socket.assigns.adapter, Map.values(selected), workspace)
         )
       else
-        _refused -> socket
+        false -> socket
+        {:error, reason} -> put_flash(socket, :error, refused(socket.assigns, reason))
       end
 
     {:noreply, socket |> assign(:selected, %{}) |> reload()}
@@ -833,6 +834,29 @@ defmodule ApiaryWeb.AdapterLive.Show do
       collection: collection_word(adapter, 1),
       collections: collection_word(adapter, :other),
       workspace: workspace.name
+    )
+  end
+
+  # The flash when an assign is refused: it assigns all or nothing, so nothing moved.
+  # A workspace or a collection gone since the page was drawn, or a selection past the
+  # most one assign takes, is the page out of date: it shows them anew.
+  defp refused(%{current_scope: scope, adapter: adapter}, :forbidden) do
+    gettext("Only owners and admins of %{organisation} assign %{collections}.",
+      organisation: scope.organisation.name,
+      collections: collection_word(adapter, :other)
+    )
+  end
+
+  defp refused(%{adapter: adapter}, :ended),
+    do:
+      gettext("Nothing was assigned: the installation of %{integration} ended.",
+        integration: adapter.name
+      )
+
+  defp refused(%{adapter: adapter}, reason) when reason in [:not_found, :invalid] do
+    gettext(
+      "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are.",
+      collections: collection_word(adapter, :other)
     )
   end
 

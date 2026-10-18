@@ -10005,6 +10005,16 @@ msgstr ""
 msgid "Nothing waits"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was assigned: the installation of %{integration} ended."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -10353,6 +10363,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins manage members, and only owners change a level or manage an owner or an admin."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} assign %{collections}."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex

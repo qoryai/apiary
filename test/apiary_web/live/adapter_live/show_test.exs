@@ -736,6 +736,100 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#flash-info") =~ "Assigned 5 repositories to Platform."
   end
 
+  test "an assign refused for a person no longer an owner or an admin says who assigns", %{
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    %{user: user, membership: membership} = member_fixture(scope, :admin)
+    {:ok, lv, _html} = live(log_in_user(build_conn(), user), page(scope, adapter))
+
+    pick(lv, "acme/shop")
+    {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+
+    assert words(lv, "#flash-error") =~
+             "Only owners and admins of #{scope.organisation.name} assign repositories."
+
+    refute has_element?(lv, "#collections-selection")
+    assert Collections.counts(scope, connection).unassigned == 2
+  end
+
+  test "an assign refused for an installation that ended says nothing was assigned", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    pick(lv, "acme/shop")
+
+    :ok =
+      set(connection,
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: :adapter_reported
+      )
+
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+
+    assert words(lv, "#flash-error") =~
+             "Nothing was assigned: the installation of Acme tracker ended."
+
+    assert Collections.counts(scope, connection).unassigned == 2
+  end
+
+  test "an assign refused on a page out of date says so, and shows them as they are", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    out_of_date = "Nothing was assigned: the page was out of date."
+
+    # A collection selected that ended since.
+    pick(lv, "acme/shop")
+
+    {1, _} =
+      Repo.update_all(
+        from(c in Apiary.Adapters.Collection,
+          where: c.id == ^Repo.get_by!(Apiary.Adapters.Collection, title: "acme/shop").id
+        ),
+        set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+      )
+
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+
+    assert words(lv, "#flash-error p:first-child") == out_of_date
+    assert words(lv, "#flash-error p.text-muted") == "It now shows the repositories as they are."
+
+    assert Enum.drop(rows(lv), 1) == ["acme/api Unassigned — Today"]
+    lv |> element("#flash-error button") |> render_click()
+
+    # A workspace the page no longer has.
+    pick(lv, "acme/api")
+    render_click(lv, "assign", %{"workspace" => Ecto.UUID.generate()})
+    assert words(lv, "#flash-error") =~ out_of_date
+    lv |> element("#flash-error button") |> render_click()
+
+    # More than one assign takes.
+    pick(lv, "acme/api")
+
+    :sys.replace_state(lv.pid, fn state ->
+      more = Map.new(1..10_001, fn n -> {Ecto.UUID.generate(), "acme/repo-#{n}"} end)
+      update_in(state.socket.assigns.selected, &Map.merge(&1, more))
+    end)
+
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert words(lv, "#flash-error") =~ out_of_date
+    assert Collections.counts(scope, connection).unassigned == 1
+  end
+
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{
     conn: conn,
     scope: scope,
