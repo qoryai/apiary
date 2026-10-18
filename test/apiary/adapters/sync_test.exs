@@ -120,16 +120,23 @@ defmodule Apiary.Adapters.SyncTest do
       assert Adapters.collection_noun(reload(adapter)) == %{one: "project", other: "projects"}
 
       # The next start replaces them, whatever it says.
-      for {name, expected} <- [
-            {"example-work-items.json", {"task", "tasks", true, "work item", "work-items"}},
-            {"example-projects.json", {nil, nil, false, "project", "projects"}},
-            {"acme-tracker.json", {nil, nil, true, nil, nil}},
-            {"example-tracker.json", {"issue", "issues", true, "project", "projects"}}
+      tasks_and_boards =
+        Apiary.DescriptionFixtures.contract_description()
+        |> put_in(["roles", "source", "item_noun"], %{"one" => "task", "other" => "tasks"})
+        |> put_in(["roles", "source", "collection_noun"], %{"one" => "board", "other" => "boards"})
+
+      for {name, description, expected} <- [
+            {"tasks and boards", tasks_and_boards, {"task", "tasks", true, "board", "boards"}},
+            {"example-projects.json", "example-projects.json",
+             {nil, nil, false, "project", "projects"}},
+            {"acme-tracker.json", "acme-tracker.json", {nil, nil, true, nil, nil}},
+            {"example-tracker.json", "example-tracker.json",
+             {"issue", "issues", true, "project", "projects"}}
           ] do
         assert {:ok, _} =
                  Adapters.declare(key_scope, %{
                    declaration()
-                   | description: read_description(name)
+                   | description: read_description(description)
                  })
 
         assert words.(adapter) == expected, name
@@ -153,14 +160,15 @@ defmodule Apiary.Adapters.SyncTest do
         Repo.update_all(from(n in Node, where: n.id == ^node.id), set: fields)
       end
 
-      # No word is refused: "work item" names a collection as well as any.
       assert {1, _} =
-               set.(adapter,
-                 collection_noun_one: "work item",
-                 collection_noun_other: "work-items"
-               )
+               set.(adapter, collection_noun_one: "work board", collection_noun_other: "works")
 
+      # Never "work item" or "work items", with a space or a hyphen, as for its items.
       for fields <- [
+            [collection_noun_one: "work item"],
+            [collection_noun_other: "work-items"],
+            [collection_noun_one: "work-item"],
+            [collection_noun_other: "work items"],
             [collection_noun_one: "Project"],
             [collection_noun_other: "code  bases"],
             [collection_noun_one: "-project"],
