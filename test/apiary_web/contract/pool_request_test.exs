@@ -92,6 +92,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       do: json_response(conn, 404) == @not_found,
       else: json_response(conn, 403) == @forbidden
   end
+
   defp seen_count, do: Repo.aggregate("adapter_seen_requests", :count)
 
   # The answer as it goes out, but the headers whose value differs from one answer to the
