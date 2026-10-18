@@ -144,27 +144,32 @@ defmodule Apiary.Environments do
   # node pool, `:no_environment` where no live collection assigned to the workspace with the
   # target names an `environment_ref` and no pool's record of one is retired, else
   # `:pools`; `named`, whether one of those collections names an `environment_ref`; and
-  # `pools`, one line for each live pool of the workspace, by id. Where the target names an
-  # environment a pool's line reads the records of the collections that name one, as
-  # `image_for/2` does: the newest build not retired gives the image, `serves` `:image`
-  # where it was built for the target and `:other_target` where it was built for another
-  # target or none, `:default` with no such build. Where the target names none, `serves`
-  # is `:retired` where a record of the pool is retired, else `:default`. `failure` is the
-  # cause of the last failure those records keep, where it failed after the newest build
-  # any of them keeps, nil for none: a build of one collection made after another
-  # collection's build failed leaves no failure to say; `running` and `waiting`
-  # are whether a prebuild of those collections, held for the pool, is claimed or handed
-  # over, and waits unclaimed.
+  # `pools`, one line for each live pool of the workspace, by id. Where the run
+  # configuration in force for the target names an image in its `security_policy`
+  # (`Apiary.Policy.ComposedConfiguration.names_image?/1`), on an instance with the
+  # feature `security`, a run starts in that image, and every pool's `serves` is
+  # `:policy`, with no image. Else, where the target names an environment, a pool's line
+  # gives the record `image_for/2` reads for the pool, by the same query (`served/3`):
+  # its image, `built_at` and `commit`, and `serves` `:image`; where there is none,
+  # `serves` is `:other_target` where a record of those collections for the pool keeps an
+  # image that is not retired, built for another target or for none, and `:default`
+  # otherwise. Where the target names none, `serves` is `:retired` where a record of the
+  # pool is retired, else `:default`. `failure` is the cause of the last failure those
+  # records keep, where it failed after the newest build any of them keeps, nil for none:
+  # a build of one collection made after another collection's build failed leaves no
+  # failure to say; `running` and `waiting` are whether a prebuild of those collections,
+  # held for the pool, is claimed or handed over, and waits unclaimed.
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Audit, Dispatches, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, Policy, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
   alias Apiary.Runs.Target
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
@@ -247,18 +252,26 @@ defmodule Apiary.Environments do
       })
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     Repo.one(
-      from r in Record,
-        join: c in Collection,
-        on: c.id == r.source_collection_id,
-        where: r.pool_id == ^pool_id and not is_nil(r.image) and is_nil(r.retired_at),
-        where: r.built_target_system == ^system and r.built_target_path == ^path,
-        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
-        where: not is_nil(c.environment_ref),
-        where: c.target_system == ^system and c.target_path == ^path,
+      from r in served(workspace_id, system, path),
+        where: r.pool_id == ^pool_id,
         order_by: [desc: r.built_at, desc: r.id],
         limit: 1,
         select: r.image
     )
+  end
+
+  # The records whose image a run of a pool of the workspace `workspace_id` for the target
+  # `system` and `path` may start in (the moduledoc): `image_for/2` gives the newest of a
+  # pool's, and `section/2` shows it.
+  defp served(workspace_id, system, path) do
+    from r in Record,
+      join: c in Collection,
+      on: c.id == r.source_collection_id,
+      where: not is_nil(r.image) and is_nil(r.retired_at),
+      where: r.built_target_system == ^system and r.built_target_path == ^path,
+      where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+      where: not is_nil(c.environment_ref),
+      where: c.target_system == ^system and c.target_path == ^path
   end
 
   ## A build whose ref is older than the image's
@@ -465,7 +478,7 @@ defmodule Apiary.Environments do
   @type pool_line :: %{
           id: Ecto.UUID.t(),
           name: String.t(),
-          serves: :image | :other_target | :default | :retired,
+          serves: :image | :other_target | :default | :retired | :policy,
           image: String.t() | nil,
           built_at: DateTime.t() | nil,
           commit: String.t() | nil,
@@ -522,14 +535,25 @@ defmodule Apiary.Environments do
       )
       |> Enum.group_by(&elem(&1, 0))
 
+    served =
+      Repo.all(
+        from r in served(target.workspace_id, target.system, target.path),
+          where: r.pool_id in ^pool_ids,
+          distinct: r.pool_id,
+          order_by: [desc: r.built_at, desc: r.id]
+      )
+      |> Map.new(&{&1.pool_id, &1})
+
+    policy? = policy_image?(target)
+
     lines =
       for pool <- pools do
         pool_line(
           pool,
-          target,
           named,
           Map.get(records, pool.id, []),
-          Map.get(runs, pool.id, [])
+          Map.get(runs, pool.id, []),
+          if(policy?, do: :policy, else: Map.get(served, pool.id))
         )
       end
 
@@ -546,9 +570,27 @@ defmodule Apiary.Environments do
 
   defp section_state(_pools, _named, _lines), do: :pools
 
+  # Whether the run configuration in force for `target` names an image in its
+  # `security_policy`, which a run of the target then starts in; never on an instance
+  # without the feature `security`, where no run configuration is served.
+  defp policy_image?(
+         %Target{organisation_id: organisation_id, workspace_id: workspace_id} = target
+       ) do
+    Features.on?(:security) and
+      case Policy.in_force(organisation_id, workspace_id, target.id) do
+        {:ok, %RunConfiguration{document: document}} ->
+          ComposedConfiguration.names_image?(document)
+
+        {:error, _reason} ->
+          false
+      end
+  end
+
   # A pool's line: of the records and prebuilds of the collections that name an
   # `environment_ref`, where one does; of every collection of the target, where none does.
-  defp pool_line(%Node{} = pool, target, named, records, runs) do
+  # `served` is `:policy` where the policy names the image, else the record `image_for/2`
+  # reads for the pool, nil for none.
+  defp pool_line(%Node{} = pool, named, records, runs, served) do
     {records, runs} =
       if named == [],
         do: {records, runs},
@@ -556,18 +598,12 @@ defmodule Apiary.Environments do
           {Enum.filter(records, &(&1.source_collection_id in named)),
            Enum.filter(runs, &(elem(&1, 1) in named))}
 
-    built =
-      if named == [],
-        do: nil,
-        else:
-          records
-          |> Enum.filter(&(&1.image != nil and is_nil(&1.retired_at)))
-          |> Enum.max_by(& &1.built_at, DateTime, fn -> nil end)
+    built = if match?(%Record{}, served), do: served
 
     %{
       id: pool.id,
       name: pool.name,
-      serves: serves(named, built, records, target),
+      serves: serves(served, named, records),
       image: built && built.image,
       built_at: built && built.built_at,
       commit: built && built.commit,
@@ -577,16 +613,18 @@ defmodule Apiary.Environments do
     }
   end
 
-  defp serves([], _built, records, _target) do
+  defp serves(:policy, _named, _records), do: :policy
+
+  defp serves(_served, [], records) do
     if Enum.any?(records, &(&1.retired_at != nil)), do: :retired, else: :default
   end
 
-  defp serves(_named, nil, _records, _target), do: :default
+  defp serves(%Record{}, _named, _records), do: :image
 
-  defp serves(_named, %Record{} = built, _records, %Target{system: system, path: path}) do
-    if built.built_target_system == system and built.built_target_path == path,
-      do: :image,
-      else: :other_target
+  defp serves(nil, _named, records) do
+    if Enum.any?(records, &(&1.image != nil and is_nil(&1.retired_at))),
+      do: :other_target,
+      else: :default
   end
 
   # The newest `built_at` of `records`, retired or not, nil where none keeps a build.

@@ -19,8 +19,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
-  alias Apiary.{Dispatches, Environments, Repo, Targets}
+  alias Apiary.{Dispatches, Environments, Policy, Repo, Targets}
   alias Apiary.Environments.Record
+  alias Apiary.Policy.{Render, RunConfiguration}
 
   @moduletag needs: :factory
 
@@ -28,6 +29,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   @path "acme/shop"
   @digest "3a1b9c2d4e5f" <> String.duplicate("0", 52)
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> @digest
+  @other_image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("7e0a", 16)
+  @naming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example"]},"image":"with-docker"}})
 
   setup :register_and_log_in_user
 
@@ -361,6 +364,108 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       refute has_element?(view, "#{pool_id(pool)}-image")
       refute has_element?(view, "#{pool_id(pool)}-commit")
+    end
+
+    test "two collections whose records differ in built target: the image a run of the target starts in, never the newer build for another target",
+         %{conn: conn, scope: scope, shop: shop, path: path} do
+      pool = pool_fixture(scope)
+      first = collection(scope)
+      second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
+      earlier = DateTime.add(DateTime.utc_now(), -600, :second)
+      later = DateTime.add(earlier, 300, :second)
+
+      for_shop = record!(scope, pool, first, built(earlier))
+
+      record!(
+        scope,
+        pool,
+        second,
+        built(later, image: @other_image, built_target_path: "acme/old")
+      )
+
+      assert Environments.image_for(pool, shop) == @image
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
+      refute has_element?(view, "#{pool_id(pool)}-other-target")
+
+      for_shop |> Ecto.Changeset.change(built_target_path: "acme/old") |> Repo.update!()
+      assert Environments.image_for(pool, shop) == nil
+      view = open(conn, path)
+      refute has_element?(view, "#{pool_id(pool)}-image")
+
+      assert has_element?(
+               view,
+               "#{pool_id(pool)}-other-target",
+               "Runs use the pool's default image until this repository is built."
+             )
+    end
+
+    test "a retired record's image is never shown, even when it is the newest build for the target",
+         %{conn: conn, scope: scope, shop: shop, path: path} do
+      pool = pool_fixture(scope)
+      first = collection(scope)
+      second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
+      now = DateTime.utc_now()
+      earlier = DateTime.add(now, -600, :second)
+
+      retired =
+        record!(scope, pool, first, Map.put(built(now, image: @other_image), :retired_at, now))
+
+      record!(scope, pool, second, built(earlier))
+
+      assert Environments.image_for(pool, shop) == @image
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
+
+      Repo.delete_all(from r in Record, where: r.id != ^retired.id and r.pool_id == ^pool.id)
+      assert Environments.image_for(pool, shop) == nil
+      view = open(conn, path)
+      refute has_element?(view, "#{pool_id(pool)}-image")
+      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
+    end
+
+    test "the workspace's policy names an image: each pool says runs use it, in place of the prebuilt image",
+         %{conn: conn, scope: scope, shop: shop, path: path} do
+      mac = pool_fixture(scope, name: "mac-pool")
+      linux = pool_fixture(scope, name: "linux-pool")
+      shop_collection = collection(scope)
+      record!(scope, mac, shop_collection, built(DateTime.utc_now()))
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
+
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(mac)}-image")
+      refute has_element?(view, "#{pool_id(mac)}-policy")
+
+      {:ok, baseline} = Policy.current_configuration(scope, nil)
+
+      Repo.insert!(%RunConfiguration{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        version: baseline.version + 1,
+        document: @naming,
+        digest: Render.digest(@naming),
+        rendered_at: DateTime.utc_now()
+      })
+
+      view = open(conn, path)
+
+      for pool <- [mac, linux] do
+        assert has_element?(
+                 view,
+                 "#{pool_id(pool)}-policy",
+                 "Runs use the image this workspace's policy names."
+               )
+
+        refute has_element?(view, "#{pool_id(pool)}-image")
+        refute has_element?(view, "#{pool_id(pool)}-commit")
+        refute has_element?(view, "#{pool_id(pool)}-default")
+      end
+
+      # A version for the target, which names no image, is the one in force for it.
+      {:ok, _rule} = Policy.allow(scope, shop, %{host: "cdn.example"})
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(mac)}-image")
+      refute has_element?(view, "#{pool_id(mac)}-policy")
     end
 
     test "no card where the reader is not shown the feature", %{
