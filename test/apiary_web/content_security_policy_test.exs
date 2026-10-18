@@ -80,8 +80,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
                  "/instance/adapters/:adapter_id/settings/rename",
                  "/instance/adapters/:adapter_id/settings/remove",
                  "/:org/:workspace/backlog",
-                 "/:org/:workspace/backlog/:item_id",
-                 "/:org/:workspace/work"
+                 "/:org/:workspace/backlog/:item_id"
                ],
                &{&1, @not_built}
              )

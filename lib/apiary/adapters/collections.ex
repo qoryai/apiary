@@ -82,7 +82,9 @@ defmodule Apiary.Adapters.Collections do
   # organisation.
   #
   # **A ref** names a collection of the key's adapter (`resolve/3`): the live one with that
-  # ref, or, when none is live, the one with that ref that ended last.
+  # ref, or, when none is live, the one with that ref that ended last. A disconnect names
+  # one by its ref and its connection: only the live one with that ref under that
+  # connection (`disconnect/2`).
   #
   # **For people**, each read asks `adapter.read` of the scope's organisation (members), and
   # answers nothing to anyone else, and nothing of a connection of another organisation:
@@ -156,9 +158,10 @@ defmodule Apiary.Adapters.Collections do
   #      connection's collections while a part of that connection runs. A ref live under
   #      another connection moves after the part commits (`move_here/5`): first its
   #      collection ends in a separate transaction that holds that one row, by adapter
-  #      and ref, and no connection, then the feed's counter, as a disconnect holds them
-  #      (`end_elsewhere/3`); then a transaction that holds what a part holds makes the
-  #      new one;
+  #      and ref, and no connection, then the feed's counter (`end_elsewhere/3`); then a
+  #      transaction that holds what a part holds makes the new one. A disconnect
+  #      (`disconnect/2`) holds one row too, by adapter, connection and ref, and no
+  #      connection's row, then the feed's counter;
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
   #      (`finish_part/4`);
@@ -395,7 +398,8 @@ defmodule Apiary.Adapters.Collections do
 
   # The first step of a move (`move_here/5`), for the ref `ref` of the adapter of
   # `connection`, in a separate transaction: the collection live with that ref is held
-  # as a disconnect holds it (`lock_live/2`, by adapter and ref, without its connection).
+  # by adapter and ref, under whichever connection (`lock_live/2`), with no connection
+  # held.
   # One of another connection that no listing newer than `started_at` named is ended as a
   # disconnect ends it (`end_disconnected/2`), whatever its organisation's state, and its
   # organisation's trail gets the entry `collection.move`, by the instance, about the
@@ -852,20 +856,26 @@ defmodule Apiary.Adapters.Collections do
 
   @doc false
   # disconnect/2 ends the live collection of the key's adapter named by `collection_ref`
+  # under the connection `connection_id`, its public id
   # (`Apiary.Adapters.Wire.source_disconnect/1`), for the adapter's key of `key_scope`
   # (`adapter.disconnect`), as `POST /v1/sources/disconnect` asks, with the feed's
-  # `unlinked` entry when it is linked. In this order: `{:error,
-  # :forbidden}` for a request outside the key's rights, decided before any collection is
-  # looked up; `{:ok, :unchanged}` for a ref with no live collection, which changes
-  # nothing and writes no entry (never seen, disconnected already, left out by a complete
-  # listing, ended with its connection); `{:error, :suspended}` for a live collection
-  # whose organisation is out of use, which changes nothing; `{:ok, :disconnected}`.
+  # `unlinked` entry when it is linked. It holds that one row `FOR UPDATE`, by adapter,
+  # connection and ref (`lock_live/3`), and no connection's row, then the feed's counter
+  # when it writes an entry. In this order: `{:error, :forbidden}` for a request outside the
+  # key's rights, decided before any collection is looked up; `{:ok, :unchanged}` for a
+  # ref with no live collection under that connection, which changes nothing and writes
+  # no entry (never seen, disconnected already, left out by a complete listing, ended
+  # with its connection, or live under another connection of the adapter, where it stays
+  # live), and so for a `connection_id` that names no connection of the adapter, a
+  # pending one or one that ended; `{:error, :suspended}` for a live collection under
+  # that connection whose organisation is out of use, which changes nothing;
+  # `{:ok, :disconnected}`. Never `:unknown` or `:ended`.
   @spec disconnect(Scope.t() | nil, Wire.source_disconnect()) ::
           {:ok, :disconnected | :unchanged} | {:error, :forbidden | :suspended}
-  def disconnect(key_scope, %{collection_ref: ref}) do
+  def disconnect(key_scope, %{connection_id: public_id, collection_ref: ref}) do
     with {:ok, adapter_id} <- Connections.key_rights(key_scope, @disconnect_action) do
       Repo.transact(fn ->
-        case lock_live(adapter_id, ref) do
+        case lock_live(adapter_id, public_id, ref) do
           nil ->
             {:ok, :unchanged}
 
@@ -896,10 +906,32 @@ defmodule Apiary.Adapters.Collections do
     ended
   end
 
+  # The live collection of the adapter `adapter_id` with the ref `ref`, under any of its
+  # connections, held `FOR UPDATE`, with its connection and organisation; `nil` for none.
   defp lock_live(adapter_id, ref) do
     Repo.one(
       from c in Collection,
         where: c.adapter_id == ^adapter_id and c.external_ref == ^ref and is_nil(c.ended_at),
+        lock: "FOR UPDATE",
+        preload: [connection: :organisation]
+    )
+  end
+
+  # The live collection of the adapter `adapter_id` with the ref `ref` under its
+  # connection `public_id`, held `FOR UPDATE`, with its connection and organisation;
+  # `nil` for none. The connection is found in a subquery, which holds no lock on its
+  # row, so only the collection's row is held.
+  defp lock_live(adapter_id, public_id, ref) do
+    connection_ids =
+      from k in Connection,
+        where: k.adapter_id == ^adapter_id and k.public_id == ^public_id,
+        select: k.id
+
+    Repo.one(
+      from c in Collection,
+        where:
+          c.adapter_id == ^adapter_id and c.external_ref == ^ref and is_nil(c.ended_at) and
+            c.connection_id in subquery(connection_ids),
         lock: "FOR UPDATE",
         preload: [connection: :organisation]
     )

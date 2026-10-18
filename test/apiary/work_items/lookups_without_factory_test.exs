@@ -1,7 +1,8 @@
 defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
-  # The lookups of a work item, its comments and the Work items list on an instance
-  # without the factory feature: nothing, to an owner too, and no comment written. The features are the node's, so this module is not
-  # async.
+  # The lookups of a work item, its comments, the Work items list, its Filter menu's
+  # values and the sidebar's count on an instance without the factory feature: nothing, to
+  # an owner too, and no comment written. The features are the node's, so this module is
+  # not async.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -26,11 +27,37 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
     assert WorkItems.comment(scope, work_item, "Seen on staging") == {:error, :not_found}
     assert WorkItems.delete_comment(scope, "cm_0123456789abcdef") == {:error, :not_found}
 
+    counts = %{open: 0, you: 0, declined: 0, closed: 0}
+
+    stages = %{
+      explore: 0,
+      confirm: 0,
+      shape: 0,
+      exploring: 0,
+      answers: 0,
+      no_result: 0,
+      waiting: 0,
+      waiting_you: 0,
+      ready: 0
+    }
+
     assert WorkItems.list_work_items(scope) == %{
              rows: [],
-             counts: %{open: 0, you: 0, declined: 0, closed: 0},
+             counts: counts,
+             stages: stages,
+             first: 1,
              next: nil,
              prev: nil
            }
+
+    assert WorkItems.list_bands(scope) == %{
+             bands: %{explore: [], confirm: [], shape: []},
+             counts: counts,
+             stages: stages
+           }
+
+    assert WorkItems.list_filter_values(scope, :owner) == []
+    assert WorkItems.list_filter_values(scope, :repository) == []
+    assert WorkItems.count_waiting_on(scope) == 0
   end
 end

@@ -9,12 +9,32 @@ defmodule Apiary.WorkItems.WorkListTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.Dispatches.Settle
+  alias Apiary.Nodes.Node
   alias Apiary.Sources.Item
-  alias Apiary.WorkItems.{WorkItem, WorkList}
+  alias Apiary.WorkItems.{Confirmation, WorkItem, WorkList}
 
   @moduletag needs: :factory
 
-  @empty %{rows: [], counts: %{open: 0, you: 0, declined: 0, closed: 0}, next: nil, prev: nil}
+  @no_stages %{
+    explore: 0,
+    confirm: 0,
+    shape: 0,
+    exploring: 0,
+    answers: 0,
+    no_result: 0,
+    waiting: 0,
+    waiting_you: 0,
+    ready: 0
+  }
+  @empty %{
+    rows: [],
+    counts: %{open: 0, you: 0, declined: 0, closed: 0},
+    stages: @no_stages,
+    first: 1,
+    next: nil,
+    prev: nil
+  }
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -85,6 +105,7 @@ defmodule Apiary.WorkItems.WorkListTest do
       assert undone.ended_by_id == ctx.scope.user.id
 
       [open] = list(ctx.scope).rows
+      adapter = Repo.get!(Node, ctx.open.adapter_id)
 
       assert open == %{
                id: ctx.open.public_id,
@@ -92,13 +113,18 @@ defmodule Apiary.WorkItems.WorkListTest do
                title: ctx.open.title,
                key: "#12",
                repository: "acme/shop",
+               integration: adapter.name,
                state: :exploring,
                take_in: 1,
+               status: :queued,
+               attempt: nil,
+               of: nil,
                owner_id: ctx.scope.user.id,
                taken_in_at: ctx.open.taken_in_at,
                updated_at: ctx.open.updated_at,
                ended_at: nil,
-               ended_by_id: nil
+               ended_by_id: nil,
+               ended_reason: nil
              }
     end
   end
@@ -210,17 +236,50 @@ defmodule Apiary.WorkItems.WorkListTest do
       first = list(ctx.scope)
       assert ids(first) == first_page
       assert first.prev == nil
+      assert first.first == 1
       assert is_binary(first.next)
 
       second = list(ctx.scope, after: first.next)
       assert ids(second) == rest
       assert second.next == nil
+      assert second.first == size + 1
       assert is_binary(second.prev)
 
       back = list(ctx.scope, before: second.prev)
       assert ids(back) == first_page
       assert back.prev == nil
+      assert back.first == 1
       assert back.next == first.next
+    end
+
+    test "of Waiting on you go from the earliest changed, and back", ctx do
+      waiting =
+        ctx.items
+        |> Enum.map(&Repo.get_by!(WorkItem, public_id: &1))
+        |> Enum.map(fn work_item ->
+          %{dispatch_run: dispatch_run} =
+            explore_run_fixture(work_item, result: understood_result())
+
+          Settle.settle(dispatch_run.id)
+          work_item.public_id
+        end)
+
+      # Settling wrote no work item, so the order of their last change holds.
+      oldest_first = Enum.reverse(waiting)
+      {first_page, rest} = Enum.split(oldest_first, WorkList.page_size())
+
+      first = list(ctx.scope, view: :you)
+      assert ids(first) == first_page
+      assert first.counts.you == length(waiting)
+
+      second = list(ctx.scope, view: :you, after: first.next)
+      assert ids(second) == rest
+      assert second.first == WorkList.page_size() + 1
+      assert second.next == nil
+
+      back = list(ctx.scope, view: :you, before: second.prev)
+      assert ids(back) == first_page
+      assert back.prev == nil
     end
 
     test "a cursor not in the shape given matches nothing", ctx do
@@ -235,6 +294,265 @@ defmodule Apiary.WorkItems.WorkListTest do
           ] do
         assert list(ctx.scope, params).rows == [], inspect(params)
       end
+    end
+  end
+
+  # A live work item of the scope's workspace at `status`, its runs written as their
+  # writers write them, each ended run settled (`Apiary.Dispatches.Settle`).
+  defp at!(scope, status, attrs \\ %{}) do
+    work_item = item!(scope, attrs)
+
+    runs =
+      case status do
+        :queued -> []
+        :running -> [[state: :handed_over]]
+        :confirm -> [[result: understood_result()]]
+        :questions -> [[result: questions_result()]]
+        :no_result -> [[]]
+        :lost -> [[end_cause: :lost]]
+        :used_up -> List.duplicate([result: questions_result()], 3)
+        :shape -> [[result: understood_result()]]
+      end
+
+    for opts <- runs do
+      %{dispatch_run: dispatch_run} = explore_run_fixture(work_item, opts)
+      Settle.settle(dispatch_run.id)
+    end
+
+    if status == :shape do
+      Repo.insert!(%Confirmation{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        take_in: work_item.take_in,
+        attempt: 1,
+        result: understood_result(),
+        confirmed_at: DateTime.utc_now()
+      })
+    end
+
+    Repo.get!(WorkItem, work_item.id)
+  end
+
+  defp statuses(page), do: Map.new(page.rows, &{&1.id, &1.status})
+
+  describe "the status" do
+    test "each row says where Explore stands, with its latest run", %{scope: scope} do
+      items =
+        for status <- [:queued, :running, :confirm, :questions, :used_up, :shape],
+            into: %{},
+            do: {status, at!(scope, status)}
+
+      page = list(scope)
+      expected = Map.new(items, fn {status, item} -> {item.public_id, status} end)
+      assert statuses(page) == expected
+
+      rows = Map.new(page.rows, &{&1.id, &1})
+      assert %{attempt: 3, of: 3} = rows[items.used_up.public_id]
+      assert %{attempt: 1, of: 3} = rows[items.confirm.public_id]
+      assert %{attempt: nil, of: nil} = rows[items.queued.public_id]
+    end
+
+    test "an ended row keeps the status of its last take in, and an instance's close its reason",
+         %{scope: scope} do
+      declined =
+        at!(scope, :confirm)
+        |> set!(state: :declined, declined_at: DateTime.utc_now(), declined_by_id: scope.user.id)
+
+      removed = at!(scope, :questions)
+
+      {:ok, _workspaces} =
+        Repo.transact(fn ->
+          WorkItems.close_locked([removed], {:instance, "adapter_removed"}, DateTime.utc_now())
+        end)
+
+      assert [%{status: :confirm, ended_reason: nil}] = list(scope, view: :declined).rows
+      [closed] = list(scope, view: :closed).rows
+      assert closed.id == removed.public_id
+      assert closed.status == :questions
+      assert closed.ended_by_id == nil
+      assert closed.ended_reason == "adapter_removed"
+      assert declined.state == :declined
+    end
+  end
+
+  describe "Waiting on you" do
+    setup %{scope: scope} do
+      %{user: member} = member_fixture(scope)
+      base = DateTime.utc_now()
+
+      older = at!(scope, :confirm) |> set!(updated_at: DateTime.add(base, -60, :second))
+
+      newer =
+        at!(scope, :confirm, title: "The basket loses an item")
+        |> set!(updated_at: DateTime.add(base, -30, :second))
+
+      theirs = at!(scope, :confirm, owner_id: member.id)
+
+      for status <- [:queued, :running, :questions, :used_up, :no_result, :shape],
+          do: at!(scope, status)
+
+      _declined =
+        at!(scope, :confirm)
+        |> set!(state: :declined, declined_at: base, declined_by_id: scope.user.id)
+
+      %{member: member, older: older, newer: newer, theirs: theirs}
+    end
+
+    test "holds the reader's live work items whose proposal waits at Confirm, oldest first",
+         ctx do
+      page = list(ctx.scope, view: :you)
+
+      assert ids(page) == [ctx.older.public_id, ctx.newer.public_id]
+      assert page.counts.you == 2
+      assert page.stages.waiting == 3
+      assert page.stages.waiting_you == 2
+      assert WorkItems.count_waiting_on(ctx.scope) == 2
+      assert WorkList.waiting_on(ctx.scope) == 2
+    end
+
+    test "holds the other member's work items for that member", ctx do
+      member_scope = workspace_scope(ctx.member, ctx.scope.workspace)
+
+      assert ids(list(member_scope, view: :you)) == [ctx.theirs.public_id]
+      assert WorkItems.count_waiting_on(member_scope) == 1
+    end
+
+    test "counts under the search and the filters, and nothing to anyone else", ctx do
+      assert list(ctx.scope, view: :you, owner: ctx.member.id).counts.you == 0
+      assert ids(list(ctx.scope, view: :you, search: "basket")) == [ctx.newer.public_id]
+
+      %{scope: stranger} = sign_up_fixture()
+      foreign = %{stranger | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
+      assert WorkItems.count_waiting_on(foreign) == 0
+    end
+  end
+
+  describe "the stages" do
+    setup %{scope: scope} do
+      %{user: member} = member_fixture(scope)
+
+      items =
+        for {status, owner} <- [
+              queued: nil,
+              running: nil,
+              running: nil,
+              questions: nil,
+              no_result: nil,
+              lost: nil,
+              used_up: nil,
+              confirm: nil,
+              confirm: member.id,
+              shape: nil
+            ] do
+          {status, at!(scope, status, if(owner, do: %{owner_id: owner}, else: %{}))}
+        end
+
+      %{items: items, member: member}
+    end
+
+    test "count each stage and what in it needs a look", %{scope: scope} do
+      assert list(scope).stages == %{
+               explore: 7,
+               confirm: 2,
+               shape: 1,
+               exploring: 2,
+               answers: 1,
+               no_result: 2,
+               waiting: 2,
+               waiting_you: 1,
+               ready: 1
+             }
+    end
+
+    test "narrow the Open view to one stage", %{scope: scope, items: items} do
+      of = fn statuses ->
+        for {status, item} <- items, status in statuses, do: item.public_id
+      end
+
+      assert Enum.sort(ids(list(scope, stage: :confirm))) == Enum.sort(of.([:confirm]))
+      assert ids(list(scope, %{"stage" => "shape"})) == of.([:shape])
+
+      assert Enum.sort(ids(list(scope, stage: "explore"))) ==
+               Enum.sort(of.([:queued, :running, :questions, :no_result, :lost, :used_up]))
+
+      assert list(scope, stage: "nonsense").rows == []
+      assert list(scope, view: :closed, stage: :confirm).rows == []
+      assert length(list(scope, stage: "").rows) == 10
+    end
+
+    test "bands: each stage's first rows, the reader's first", %{scope: scope, items: items} do
+      %{bands: bands, counts: counts, stages: stages} = WorkItems.list_bands(scope)
+
+      mine = for {:confirm, item} <- items, item.owner_id == scope.user.id, do: item.public_id
+      [first | _] = bands.confirm
+      assert [first.id] == mine
+      assert length(bands.confirm) == 2
+      assert length(bands.explore) == 7
+      assert ids(%{rows: bands.shape}) == for({:shape, item} <- items, do: item.public_id)
+      assert counts.open == 10
+      assert stages.explore == 7
+    end
+  end
+
+  describe "the bands" do
+    test "hold at most a band's rows, the latest changed first", %{scope: scope} do
+      base = DateTime.utc_now()
+
+      items =
+        for n <- 1..(WorkList.band_size() + 2) do
+          item!(scope) |> set!(updated_at: DateTime.add(base, -n, :second))
+        end
+
+      %{bands: bands, stages: stages} = WorkItems.list_bands(scope, search: "checkout")
+
+      assert ids(%{rows: bands.explore}) ==
+               items |> Enum.take(WorkList.band_size()) |> Enum.map(& &1.public_id)
+
+      assert stages.explore == WorkList.band_size() + 2
+      assert WorkItems.list_bands(scope, search: "nothing like it").bands.explore == []
+    end
+
+    test "are empty to anyone who may not read the work items", %{scope: scope} do
+      item!(scope)
+      %{scope: stranger} = sign_up_fixture()
+      foreign = %{stranger | organisation: scope.organisation, workspace: scope.workspace}
+
+      assert WorkItems.list_bands(foreign) == %{
+               bands: %{explore: [], confirm: [], shape: []},
+               counts: %{open: 0, you: 0, declined: 0, closed: 0},
+               stages: @no_stages
+             }
+    end
+  end
+
+  describe "the Filter menu's values" do
+    test "the owners and the repositories, most work items first", %{scope: scope} do
+      %{user: member} = member_fixture(scope)
+      item!(scope)
+      item!(scope)
+      item!(scope, owner_id: member.id, collection_title: "acme/api")
+
+      assert WorkItems.list_filter_values(scope, :owner) == [
+               %{key: scope.user.id, count: 2},
+               %{key: member.id, count: 1}
+             ]
+
+      # The repository is the title of the collection that holds the ticket now.
+      assert WorkItems.list_filter_values(scope, :repository) == [
+               %{key: "acme/shop", count: 3}
+             ]
+
+      assert WorkItems.list_filter_values(scope, :repository, "SHOP") == [
+               %{key: "acme/shop", count: 3}
+             ]
+
+      assert WorkItems.list_filter_values(scope, :repository, "api") == []
+      assert WorkItems.list_filter_values(scope, :repository, <<0xFF>>) == []
+
+      %{scope: stranger} = sign_up_fixture()
+      foreign = %{stranger | organisation: scope.organisation, workspace: scope.workspace}
+      assert WorkItems.list_filter_values(foreign, :owner) == []
     end
   end
 

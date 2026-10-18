@@ -438,46 +438,25 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :options, :list, required: true, doc: "`{name, path, chosen}` per workspace"
 
   @doc false
-  # Workspace, a list's menu (the `Menu` hook) that keeps the table to the collections of
-  # one workspace: each a choice of one, which leads to the list with it, or, chosen
-  # already, without it. The button counts the filter while one is on.
+  # Workspace, a list's menu (`filter_menu/1`, named Workspace) that keeps the table to
+  # the collections of one workspace: each a choice of one, which leads to the list with
+  # it, or, chosen already, without it. The button counts the filter while one is on.
   def workspace_filter(assigns) do
     ~H"""
-    <div
+    <.filter_menu
       id={@id}
-      class="q-listmenu dropdown dropdown-end"
-      phx-hook="Menu"
-      data-float
-      phx-mounted={JS.ignore_attributes(["class"])}
+      label={gettext("Workspace")}
+      count={Enum.count(@options, &elem(&1, 2))}
     >
-      <button
-        id={"#{@id}-button"}
-        type="button"
-        class="btn btn-sm"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      <.menu_item
+        :for={{{name, path, chosen}, n} <- Enum.with_index(@options)}
+        id={"#{@id}-#{n}"}
+        patch={path}
+        checked={chosen}
       >
-        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Workspace")}
-        <span :if={Enum.any?(@options, &elem(&1, 2))} class="q-listmenu-n">1</span>
-      </button>
-      <ul
-        class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
-        role="menu"
-        aria-label={gettext("Workspace")}
-        popover="manual"
-        phx-mounted={JS.ignore_attributes(["style"])}
-      >
-        <.menu_item
-          :for={{{name, path, chosen}, n} <- Enum.with_index(@options)}
-          id={"#{@id}-#{n}"}
-          patch={path}
-          checked={chosen}
-        >
-          {name}
-        </.menu_item>
-      </ul>
-    </div>
+        {name}
+      </.menu_item>
+    </.filter_menu>
     """
   end
 

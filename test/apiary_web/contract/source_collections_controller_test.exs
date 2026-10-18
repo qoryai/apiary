@@ -3,7 +3,8 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
   # adapter's access key, through `ApiaryWeb.Contract.AdapterRequest`: the contract's
   # fixtures accepted, and its invalid ones refused; each refusal's code and body as the
   # contract's refusal fixtures have them, signed; the time's window and the replay rule;
-  # the body's bounds; and the disconnect's signed 204 for a ref with no live collection.
+  # the body's bounds; and the disconnect's signed 204 for a ref with no live collection
+  # under the connection it names.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -346,6 +347,14 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
       for bad <- [
             fresh("invalid/sources-disconnect-with-reason.json", ctx),
+            fresh("invalid/sources-disconnect-without-connection-id.json", ctx),
+            Map.delete(body, "connection_id"),
+            Map.put(body, "connection_id", nil),
+            Map.put(body, "connection_id", ""),
+            Map.put(body, "connection_id", "ac_short"),
+            Map.put(body, "connection_id", "na_" <> binary_part(ctx.connection.public_id, 3, 16)),
+            Map.put(body, "connection_id", String.upcase(ctx.connection.public_id)),
+            Map.put(body, "connection_id", 1001),
             Map.put(body, "collection_ref", ""),
             Map.put(body, "collection_ref", String.duplicate("r", 201)),
             Map.put(body, "collection_ref", 1001),
@@ -382,6 +391,54 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
       assert conn.status == 204
       assert Repo.get!(Connection, ctx.connection.id).state == :ended
+    end
+
+    test "a ref live under another connection, and a connection_id with no live collection, are a signed 204 that changes nothing",
+         ctx do
+      # A listing of their connection that names `R_1001` moves it there.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, ctx.adapter, :pending)
+      listing = fixture("source-collections/code-host.json")
+
+      conn =
+        send_post(
+          ctx,
+          @listing,
+          Map.merge(listing, %{"time" => now_time(), "connection_id" => theirs.public_id})
+        )
+
+      assert conn.status == 204
+      assert live(ctx.connection) == []
+      assert live(theirs) == ["R_1001"]
+      before = {Repo.all(from c in Collection, order_by: c.id), Feed.entries(ctx.adapter)}
+
+      for {id, offset} <- [
+            {ctx.connection.public_id, 1},
+            {pending.public_id, 2},
+            {"ac_0000000000000000", 3}
+          ] do
+        body =
+          fresh("sources-disconnect/code-host.json", ctx)
+          |> Map.merge(%{"connection_id" => id, "time" => now_time(offset)})
+
+        conn = send_post(ctx, @disconnect, body)
+        assert conn.status == 204, id
+        assert conn.resp_body == ""
+        assert signed_answer?(conn)
+      end
+
+      assert {Repo.all(from c in Collection, order_by: c.id), Feed.entries(ctx.adapter)} ==
+               before
+
+      # Their connection, named, ends it.
+      body =
+        fresh("sources-disconnect/code-host.json", ctx)
+        |> Map.merge(%{"connection_id" => theirs.public_id, "time" => now_time(4)})
+
+      assert send_post(ctx, @disconnect, body).status == 204
+      assert live(theirs) == []
     end
 
     test "forbidden first, for any ref", ctx do

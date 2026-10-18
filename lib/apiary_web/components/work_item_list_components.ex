@@ -473,9 +473,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   @doc """
-  A work item's row: its mark, its number, its title (the only strong text), its ticket's
-  key with the integration's mark (the mark alone without a key), its status in words (Waits for you to confirm the one
-  strong status), its owner's mark, and when it last changed. The whole row is a link to
+  A work item's row: its mark, its number, its title (the only strong text; its number
+  again where the title has nothing left to show, as a text from an external system is
+  shown), its ticket's key with the integration's mark (the mark alone without a key),
+  its status in words (Waits for you to confirm the one strong status), its owner's
+  mark, and when it last changed. The whole row is a link to
   the work item (`navigate`). In a narrow list the number and the status go under the
   title. Questions, and a take in that used its runs, wait for the reader with `can_act`.
   """
@@ -498,6 +500,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
       assign(assigns,
         now: assigns.now || DateTime.utc_now(),
         owner: owner,
+        title: shown_title(work_item),
         hot: ApiaryWeb.WorkItemComponents.hot?(work_item),
         words: ApiaryWeb.WorkItemComponents.status_words(work_item)
       )
@@ -508,12 +511,16 @@ defmodule ApiaryWeb.WorkItemListComponents do
         <.work_item_mark kind={ApiaryWeb.WorkItemComponents.mark(@work_item, @can_act)} />
         <span class="q-wl-no">#{@work_item.number}</span>
         <span class="q-wl-ttl">
-          <b>{@work_item.title}</b>
+          <b>
+            <.external_text :if={@title} text={@title} />{if !@title, do: "##{@work_item.number}"}
+          </b>
           <span class="q-wl-sub">#{@work_item.number} · {@words}</span>
         </span>
         <span class="q-wl-tk">
           <BacklogComponents.integration_tile name={@integration} />
-          <span :if={@work_item[:key]} title={@work_item[:key]}>{@work_item[:key]}</span>
+          <span :if={@work_item[:key]} title={Apiary.ExternalText.line(@work_item[:key])}>
+            <.external_text text={@work_item[:key]} />
+          </span>
         </span>
         <span class="q-wl-nx">{@words}</span>
         <span
@@ -530,6 +537,15 @@ defmodule ApiaryWeb.WorkItemListComponents do
       </.link>
     </li>
     """
+  end
+
+  # The title a row shows, as a page shows a text from an external system; nil for one
+  # with nothing left to show, which the row names by its number instead.
+  defp shown_title(work_item) do
+    case Apiary.ExternalText.line(work_item.title) do
+      "" -> nil
+      title -> title
+    end
   end
 
   @doc """
