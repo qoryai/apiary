@@ -109,6 +109,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.edit",
       :"adapter.set_interval",
       :"adapter.delete",
+      :"adapter.install",
       :"adapter.connect",
       :"adapter.declare",
       :"collection.assign",
@@ -406,6 +407,15 @@ defmodule Apiary.AuditChanges do
     before = entries()
     {:ok, adapter} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
     %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
+  # The instance, by itself, installs an adapter its setting lists.
+  def make(:"adapter.install", _ctx) do
+    instance = Scope.for_instance(instance_organisation())
+    before = entries()
+    {:ok, adapter} = Adapters.install(instance, "tracker")
+
+    %{scope: instance, actor: :instance, subject: {"node", adapter.id}, before: before}
   end
 
   def make(:"adapter.edit", _ctx) do
@@ -727,6 +737,12 @@ defmodule Apiary.AuditChanges do
     workspace = due_workspace(scope)
     before = entries()
     {before, Deletion.purge_workspace(%{scope | workspace: workspace})}
+  end
+
+  # Anyone but the instance, here an owner, installs no adapter.
+  def refuse(:"adapter.install", %{scope: scope}) do
+    before = entries()
+    {before, Adapters.install(scope, "tracker")}
   end
 
   # A node's key declares no adapter.

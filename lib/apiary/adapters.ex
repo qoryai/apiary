@@ -25,6 +25,19 @@ defmodule Apiary.Adapters do
   # transaction, with the adapter's row `FOR NO KEY UPDATE`: the lock order is the
   # adapter's row, then its connections (`Apiary.Adapters.Connections`).
   #
+  # An adapter may also be **installed with Qory Apiary** (`Apiary.Adapters.Installed`): the
+  # setting `QORY_INSTALLED_ADAPTERS` lists it by name, and the instance itself, by itself,
+  # makes it (`install/2`, `adapter.install`, which only the instance's role takes) and gives
+  # it its one-time codes (`Apiary.AccessKeys.issue_installed_code/2`), in the installer's
+  # pass (`Apiary.Adapters.Installer`). Its node's `installed_as` is the name it is listed
+  # as. Such an adapter holds one key at most, gets no code from a person, and is not
+  # deleted while it is listed (`delete_adapter/2`, `{:error, :installed}`).
+  #
+  # **The lock order** of every change here: the adapter's row first, then its connections,
+  # then what hangs from them; its keys and codes after its row (`Apiary.AccessKeys`, which
+  # takes the row `FOR UPDATE`). Nothing locks a connection, a key or a code, and then its
+  # adapter.
+  #
   # At the server contract an adapter's key acts as the role `adapter_key`
   # (`Apiary.Access.role/1`), with a scope of no organisation and no workspace
   # (`Apiary.Accounts.Scope.for_access_key/1`): `for_key/2` is the adapter such a scope
@@ -53,6 +66,7 @@ defmodule Apiary.Adapters do
     ConnectPass,
     Connections,
     Feed,
+    Installed,
     Wire
   }
 
@@ -84,6 +98,24 @@ defmodule Apiary.Adapters do
   end
 
   defp signed_in_recently?(%Scope{user: user}), do: Accounts.sudo_mode?(user)
+
+  @doc false
+  # Whether `scope` may install the adapters listed in `QORY_INSTALLED_ADAPTERS` and give
+  # them their codes (`adapter.install`): the instance, by itself
+  # (`Apiary.Accounts.Scope.for_instance/2`), in the instance's organisation, on an instance
+  # with the feature `factory`. `:ok`; `{:error, :not_found}` where the feature is off;
+  # `{:error, :forbidden}` for any other scope, the instance in another organisation among
+  # them.
+  @spec authorize_install(Scope.t() | nil) :: :ok | {:error, Access.reason()}
+  def authorize_install(%Scope{instance: true, organisation: %Organisation{id: id} = org} = scope)
+      when is_binary(id) do
+    with :ok <- Access.authorize(scope, :"adapter.install", org) do
+      if id == Apiary.Edition.instance_organisation_id(), do: :ok, else: {:error, :forbidden}
+    end
+  end
+
+  def authorize_install(_scope),
+    do: if(Features.on?(:factory), do: {:error, :forbidden}, else: {:error, :not_found})
 
   @doc false
   # The scope an instance admin's change of an adapter, its keys or its codes is recorded
@@ -387,6 +419,89 @@ defmodule Apiary.Adapters do
   end
 
   @doc false
+  # Installs the adapter listed as `name` in `QORY_INSTALLED_ADAPTERS`
+  # (`Apiary.Adapters.Installed`): the instance, by itself (`authorize_install/1`,
+  # `adapter.install`), finds the adapter in use installed as `name`, or makes it: no
+  # organisation, no workspace, no maker, `installed_as` the name, and as its name the name,
+  # else `name-2`, `name-3` and on, the first no adapter in use has. A new one leaves the
+  # entry `adapter.install` by the instance, in the instance's trail, in its transaction;
+  # one found leaves none. Made beside another pass, or beside a person who takes the same
+  # name, the insert finds the conflict, reads again, and takes the adapter made or the
+  # next name.
+  # `{:ok, adapter}`; `{:error, :invalid}` for a name `Apiary.Adapters.Installed.valid_name?/1`
+  # refuses; `{:error, changeset}`; `{:error, :forbidden}`; `{:error, :not_found}` where the
+  # feature is off.
+  @spec install(Scope.t(), String.t()) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :invalid}
+  def install(%Scope{} = scope, name) do
+    if Installed.valid_name?(name) do
+      Repo.transact(fn ->
+        with :ok <- authorize_install(scope), do: find_or_install(scope, name, 3)
+      end)
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp find_or_install(scope, name, tries) do
+    case live_query() |> where([n], n.installed_as == ^name) |> Repo.one() do
+      %Node{} = adapter ->
+        {:ok, adapter}
+
+      nil when tries > 0 ->
+        changeset =
+          Node.adapter_changeset(
+            %Node{
+              kind: :adapter,
+              organisation_id: nil,
+              workspace_id: nil,
+              created_by_id: nil,
+              instance_limit: nil,
+              gateway_choice: :direct,
+              installed_as: name
+            },
+            %{name: free_name(name)}
+          )
+
+        # A conflict with an adapter in use, of the same name or installed as the same,
+        # inserts nothing and raises nothing, so the transaction goes on: read again.
+        with {:ok, %Node{id: id} = adapter} <- Repo.insert(changeset, on_conflict: :nothing) do
+          if Repo.exists?(from n in Node, where: n.id == ^id),
+            do: record_install(scope, adapter),
+            else: find_or_install(scope, name, tries - 1)
+        end
+
+      nil ->
+        {:error, :conflict}
+    end
+  end
+
+  # `name`, else `name-2`, `name-3` and on: the first no adapter in use has.
+  defp free_name(name) do
+    taken =
+      live_query()
+      |> where([n], n.name == ^name or like(n.name, ^"#{name}-%"))
+      |> select([n], n.name)
+      |> Repo.all()
+      |> MapSet.new()
+
+    Stream.iterate(1, &(&1 + 1))
+    |> Stream.map(fn
+      1 -> name
+      n -> "#{name}-#{n}"
+    end)
+    |> Enum.find(&(not MapSet.member?(taken, &1)))
+  end
+
+  defp record_install(scope, adapter) do
+    with {:ok, _entry} <-
+           Audit.record(Repo, scope, :"adapter.install", adapter, %{
+             after: Map.take(adapter, [:name, :kind, :public_id, :installed_as])
+           }),
+         do: {:ok, adapter}
+  end
+
+  @doc false
   # Renames `adapter` (`adapter.edit`, an instance admin) from `attrs`, its `name`.
   # `{:ok, adapter}`, unchanged and with no entry when the name is the same;
   # `{:error, changeset}`; `{:error, :forbidden}`; or `{:error, :not_found}`.
@@ -513,14 +628,20 @@ defmodule Apiary.Adapters do
   # whose moduledoc gives the lock order), and its runs not yet handed over end; once that
   # commits, the workspaces whose queue changed hear of it (`Apiary.Dispatches.broadcast/1`).
   # The tickets are left as they are. If a close fails, nothing of the deletion is kept.
+  # An adapter installed with Qory Apiary whose name `QORY_INSTALLED_ADAPTERS` still lists
+  # is `{:error, :installed}`, and nothing changes: the installer would make it again; once
+  # the name is off the list, it is deleted as any adapter is, and its file is left as the
+  # installer left it.
   # `{:ok, adapter}`, `{:error, :forbidden}`, or `{:error, :not_found}`.
   @spec delete_adapter(Scope.t(), Node.t()) ::
-          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_live}
+          {:ok, Node.t()}
+          | {:error, Ecto.Changeset.t() | Access.reason() | :not_live | :installed}
   def delete_adapter(%Scope{} = scope, %Node{} = adapter) do
     mutate(scope, adapter, fn recorder, current ->
       now = DateTime.utc_now()
 
-      with {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
+      with :ok <- removable(current),
+           {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
            {:ok, workspace_ids} <- WorkItems.close_for_adapter(current, now),
            {:ok, deleted} <-
@@ -550,6 +671,21 @@ defmodule Apiary.Adapters do
         refused
     end
   end
+
+  defp removable(%Node{installed_as: name}),
+    do: if(Installed.listed?(name), do: {:error, :installed}, else: :ok)
+
+  @doc false
+  # listed?/1 says whether `adapter` is installed with Qory Apiary and its name
+  # `QORY_INSTALLED_ADAPTERS` still lists (`Apiary.Adapters.Installed.listed?/1`): it is not
+  # removed while it is.
+  @spec listed?(Node.t()) :: boolean
+  def listed?(%Node{kind: :adapter, installed_as: name}), do: Installed.listed?(name)
+
+  @doc false
+  # installed?/1 says whether `adapter` is installed with Qory Apiary, listed or not.
+  @spec installed?(Node.t()) :: boolean
+  def installed?(%Node{kind: :adapter, installed_as: name}), do: is_binary(name)
 
   # Asks `authorize_instance/2` of the person as they are now, then hands `fun` the scope
   # the change is recorded with (`instance_scope/1`) and the adapter as it is now, in use,
@@ -826,10 +962,12 @@ defmodule Apiary.Adapters do
 
   @doc false
   # Makes an enrolment code for `adapter` (an instance admin after a recent sign-in), with
-  # no stored secrets: `{:ok, code_row, code}`, the code in clear this once.
+  # no stored secrets: `{:ok, code_row, code}`, the code in clear this once;
+  # `{:error, :installed}` for an adapter installed with Qory Apiary, which gets its codes
+  # from the instance.
   @spec create_code(Scope.t(), Node.t()) ::
           {:ok, EnrolmentCode.t(), String.t()}
-          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo}
+          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo | :installed}
   def create_code(%Scope{} = scope, %Node{kind: :adapter} = adapter),
     do: AccessKeys.create_enrolment_code(scope, adapter, %{})
 

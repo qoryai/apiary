@@ -735,6 +735,111 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "installed with Qory Apiary" do
+    # The installer's pass and the listing are `Apiary.Adapters.InstalledTest`'s; here, what
+    # holds whatever the setting lists: in this suite it lists none.
+
+    test "install/2 makes the adapter once, by the instance, with its entry, and finds it again" do
+      name = "tracker-#{System.unique_integer([:positive])}"
+      scope = instance_scope()
+
+      assert {:ok, %Node{installed_as: ^name, name: ^name, created_by_id: nil} = adapter} =
+               Adapters.install(scope, name)
+
+      assert {:ok, %Node{id: id}} = Adapters.install(scope, name)
+      assert id == adapter.id
+      assert Adapters.installed?(adapter)
+      refute Adapters.listed?(adapter)
+
+      assert [%Entry{actor_kind: :instance, actor_id: nil, organisation_id: trail}] =
+               Repo.all(
+                 from e in Entry,
+                   where: e.subject_id == ^adapter.id and e.action == "adapter.install"
+               )
+
+      assert trail == instance_id()
+    end
+
+    test "the name it is installed as is never cast, and a person's code for it is refused",
+         %{admin: admin} do
+      adapter = installed_adapter_fixture()
+      name = adapter.installed_as
+
+      assert {:ok, renamed} =
+               Adapters.rename_adapter(admin, adapter, %{name: "Renamed", installed_as: "other"})
+
+      assert renamed.installed_as == name
+      refute Adapters.installed?(adapter_fixture())
+
+      assert {:error, :installed} = AccessKeys.create_enrolment_code(admin, adapter, %{})
+      assert {:error, :installed} = Adapters.create_code(admin, adapter)
+      assert Repo.all(from c in EnrolmentCode, where: c.node_id == ^adapter.id) == []
+    end
+
+    test "not listed, its code that names no maker enrols nothing", %{admin: admin} do
+      adapter = installed_adapter_fixture()
+      code = EnrolmentCode.generate(:adapter)
+
+      %EnrolmentCode{
+        id: Ecto.UUID.generate(),
+        node_id: adapter.id,
+        code_sha256: EnrolmentCode.hash(code),
+        expires_at: DateTime.add(DateTime.utc_now(), 10, :minute)
+      }
+      |> Ecto.Changeset.change()
+      |> EnrolmentCode.put_integrity()
+      |> Repo.insert!()
+
+      issued = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+      pair = ed25519_key_pair()
+      assert {:error, :unauthorized} = AccessKeys.enrol(enrol_request(issued, pair))
+
+      # Not listed, it is removed as any adapter is.
+      assert {:ok, %Node{deleted_at: %DateTime{}}} = Adapters.delete_adapter(admin, adapter)
+    end
+
+    test "the schema keeps the name to adapters, well formed, one in use each" do
+      adapter = installed_adapter_fixture()
+      %{scope: scope} = sign_up_fixture()
+      node = node_fixture(scope)
+
+      assert refused(fn ->
+               Repo.update_all(from(n in Node, where: n.id == ^node.id),
+                 set: [installed_as: "tracker"]
+               )
+             end) == "nodes_installed_as_check"
+
+      for bad <- ["Tracker", "-tracker", "tracker_one", String.duplicate("a", 33)] do
+        assert refused(fn ->
+                 Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                   set: [installed_as: bad]
+                 )
+               end) == "nodes_installed_as_check"
+      end
+
+      assert refused(fn ->
+               Repo.insert_all(Node, [row(adapter, %{public_id: na_id()})])
+             end) == "nodes_installed_as_index"
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+          set: [deleted_at: DateTime.utc_now()]
+        )
+
+      assert {1, _} = Repo.insert_all(Node, [row(adapter, %{public_id: na_id()})])
+    end
+
+    test "only the instance installs, in the instance's organisation", %{admin: admin} do
+      %{scope: other} = sign_up_fixture()
+      assert {:error, :forbidden} = Adapters.install(admin, "tracker")
+
+      assert {:error, :forbidden} =
+               Adapters.install(Scope.for_instance(other.organisation), "tracker")
+
+      assert {:error, :invalid} = Adapters.install(instance_scope(), "Tracker")
+    end
+  end
+
   describe "the schema" do
     test "a node has no organisation exactly when it is an adapter, which has no workspace either",
          %{scope: scope} do

@@ -124,6 +124,7 @@ defmodule Apiary.AccessRows do
       {:"adapter.edit", yes: []},
       {:"adapter.set_interval", yes: []},
       {:"adapter.delete", yes: []},
+      {:"adapter.install", yes: [:instance, :hidden]},
       {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},
       {:"collection.set_backlog", yes: @owners ++ [:admin]},

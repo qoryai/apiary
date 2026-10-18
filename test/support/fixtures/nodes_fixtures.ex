@@ -64,6 +64,20 @@ defmodule Apiary.NodesFixtures do
     adapter
   end
 
+  @doc """
+  An adapter installed with Qory Apiary as `name`, else a fresh name, by the instance
+  (`Apiary.Adapters.install/2`): found if one in use is installed as it. Whether the name
+  is listed (`Apiary.Adapters.Installed`) is the test's to set.
+  """
+  def installed_adapter_fixture(name \\ nil) do
+    name = name || "tracker-#{System.unique_integer([:positive])}"
+
+    {:ok, adapter} =
+      Apiary.Adapters.install(Apiary.OrganisationsFixtures.instance_scope(), name)
+
+    adapter
+  end
+
   @descriptions Path.expand("../../fixtures/integration-contract", __DIR__)
 
   @doc """
