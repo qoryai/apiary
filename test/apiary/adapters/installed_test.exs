@@ -434,11 +434,14 @@ defmodule Apiary.Adapters.InstalledTest do
 
   describe "the installer's process" do
     # The process, started here, then given `stub` in its process dictionary and asked to pass.
+    # A wait for a pass has no limit but the test's timeout: a pass writes to the database
+    # and syncs the code file, which on a loaded machine can take longer than the 5 seconds
+    # `:sys.get_state/1` waits by default.
     defp pass_in_process(stub) do
       pid = start_supervised!(Installer)
       ref = Process.monitor(pid)
       # The first pass, which `init/1` asks for, done before the stub is put.
-      _state = :sys.get_state(pid)
+      _state = :sys.get_state(pid, :infinity)
 
       log =
         capture_log(fn ->
@@ -448,7 +451,7 @@ defmodule Apiary.Adapters.InstalledTest do
           end)
 
           send(pid, :pass)
-          _state = :sys.get_state(pid)
+          _state = :sys.get_state(pid, :infinity)
         end)
 
       {pid, ref, log}
