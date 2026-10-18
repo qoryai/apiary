@@ -841,7 +841,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-view-unassigned") == "Unassigned 3"
     assert has_element?(lv, ~s{#collections-view-all[aria-current="page"]})
     assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
+    assert has_element?(lv, "#collections-bar.q-int-assignbar > #collections-search.q-find")
+    refute has_element?(lv, "#collections-search.q-find-query")
     assert words(lv, "#collections-workspace-button") == "Workspace"
+    assert has_element?(lv, ~s{#collections-workspace ul[role="menu"][aria-label="Workspace"]})
 
     assert has_element?(
              lv,
@@ -983,8 +986,14 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-selected") == "5 selected"
     assert has_element?(lv, "#collections-table-every[checked]")
 
+    for title <- titles(1..5) do
+      checked = ~s{#collections-table input[aria-label="Select #{title}"][checked]}
+      assert has_element?(lv, checked)
+    end
+
     lv |> element("#collections-table-every") |> render_click()
     refute has_element?(lv, "#collections-selection")
+    refute has_element?(lv, "#collections-table tbody input[checked]")
 
     lv |> element("#collections-table-every") |> render_click()
     lv |> element("#collections-clear") |> render_click()
@@ -1496,6 +1505,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "1 repository is unassigned. Its tickets reach no backlog until an owner or an admin assigns it to a workspace."
 
     assert has_element?(lv, "#collections-views")
+    assert has_element?(lv, "#collections-bar")
+    refute has_element?(lv, "#collections-bar.q-int-assignbar")
     refute has_element?(lv, "#collections-table-every")
     refute has_element?(lv, "#collections-table input")
     refute has_element?(lv, "#collections-assign-button")
