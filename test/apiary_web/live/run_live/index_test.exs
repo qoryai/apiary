@@ -357,7 +357,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(title_only)} .q-rl-about")
     end
 
-    test "a run's title and kind are isolated, so a bidi override reorders nothing", %{
+    test "a run's title and kind are isolated, without a bidi override to reorder anything", %{
       conn: conn,
       scope: scope
     } do
@@ -366,9 +366,50 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), about: %{"title" => title, "kind" => kind})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", title)
-      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="#{title}"]))
-      assert has_element?(view, "#{row(run)} .q-rl-about bdi", kind)
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the loginredirect")
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the loginredirect"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", "Implementation")
+    end
+
+    test "a run's title, kind, runtime and host as a page shows them, and in the Filter menu",
+         %{conn: conn, scope: scope} do
+      # A bidirectional override, a zero-width space and a control character; the run's
+      # `about` keeps no control character, so the title is given one in the record.
+      run =
+        started_run(scope, shop(),
+          runtime: "\u202Eclaude\u200B\a",
+          host: "\u202Ebuild-02\u200B\a",
+          about: %{"kind" => "\u202EReview\u200B"}
+        )
+
+      run = Repo.update!(Ecto.Changeset.change(run, about_title: "\u202EFix the login\u200B\a"))
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the login\uFFFD")
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the login\uFFFD"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", ~r/^Review$/)
+      assert has_element?(view, "#{row(run)} .q-rl-c4 > span > bdi", "claude\uFFFD")
+      assert has_element?(view, "#{row(run)} .q-rl-host > bdi", "build-02\uFFFD")
+
+      assert text(view, "#filter-runtime-form") =~ "claude\uFFFD 1"
+      assert text(view, "#filter-host-form") =~ "build-02\uFFFD 1"
+    end
+
+    test "a title with nothing left to show is no title: the row is its id", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), about: %{"title" => "\u202E\u200B"})
+      view = open(conn, scope)
+
+      refute has_element?(view, "#{row(run)} .q-rowlink > bdi")
+      refute has_element?(view, "#{row(run)} .q-rowlink[title]")
+
+      assert has_element?(
+               view,
+               "#{row(run)} .q-rowlink.q-rl-id",
+               RunComponents.short_id(run.public_id)
+             )
     end
 
     test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{

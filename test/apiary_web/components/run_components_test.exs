@@ -1529,6 +1529,64 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.about_line(%{about_kind: "", about_subjects: []}) == nil
     end
 
+    # A bidirectional override, a zero-width space and a control character: what a run
+    # sent, as a page shows it (`Apiary.ExternalText.line/1`).
+    @sent "Fix\u202E the\u200B login\a"
+    @shown "Fix the login\uFFFD"
+
+    defp bdis(html),
+      do: html |> LazyHTML.from_fragment() |> LazyHTML.query("bdi") |> Enum.map(&LazyHTML.text/1)
+
+    test "the title as a page shows it, isolated in a row; one with nothing left is none" do
+      run = %{public_id: @public_id, about_title: @sent}
+      assert RunComponents.given_title(run) == @sent
+      assert RunComponents.shown_title(run) == @shown
+      assert RunComponents.run_title(run) == @shown
+      assert bdis(render_component(&RunComponents.run_name/1, run: run)) == [@shown]
+
+      blank = %{run | about_title: "\u202E\u200B"}
+      assert RunComponents.given_title(blank) == "\u202E\u200B"
+      assert RunComponents.shown_title(blank) == nil
+      assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
+
+      html = render_component(&RunComponents.run_name/1, run: blank)
+      assert bdis(html) == []
+      assert text(html) == "rn_7f3e9b20"
+    end
+
+    test "the about line, a subject's words, its tooltip and its markup as a page shows them" do
+      subject = %{
+        "type" => "pull\u200B request",
+        "ref" => "#41\u202E8\a",
+        "url" => "https://git.example.com/acme/shop/pull/418",
+        "title" => @sent
+      }
+
+      run = %{about_kind: "Re\u202Eview\a", about_subjects: [subject]}
+
+      assert RunComponents.about_line(run) == "Review\uFFFD · pull request #418\uFFFD"
+      assert RunComponents.about_line(%{about_kind: "\u200B", about_subjects: []}) == nil
+      assert RunComponents.subject_words(subject) == "pull request #418\uFFFD"
+      assert RunComponents.subject_tip(subject) == @shown <> " · git.example.com"
+      assert RunComponents.subject_tip(%{subject | "title" => "\u200B"}) == "git.example.com"
+
+      assert bdis(render_component(&RunComponents.subject_name/1, subject: subject)) ==
+               ["pull request", "#418\uFFFD"]
+    end
+
+    test "a label chip: its key and value as a page shows them, the value in its title" do
+      html =
+        render_component(&RunComponents.label_chip/1, key: "zo\u200Bne\a", value: @sent)
+
+      assert bdis(html) == ["zone\uFFFD", @shown]
+
+      assert html
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(".q-label")
+             |> LazyHTML.attribute("title") ==
+               [@shown]
+    end
+
     test "the pill hides at zero and counts in words" do
       html = render_component(&RunComponents.new_items/1, id: "pill", count: 0, target: "#main")
       refute html =~ "q-newpill-show"

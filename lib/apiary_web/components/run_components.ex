@@ -30,6 +30,7 @@ defmodule ApiaryWeb.RunComponents do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
+  import ApiaryWeb.ExternalText, only: [external_text: 1]
 
   import ApiaryWeb.CoreComponents,
     only: [
@@ -368,7 +369,7 @@ defmodule ApiaryWeb.RunComponents do
   defp state_glyph(_state), do: nil
 
   defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal) and signal != "",
-    do: signal
+    do: Apiary.ExternalText.line(signal)
 
   defp exit_word(%{state: "failed", exit_code: code})
        when is_integer(code) and code not in [0, -1],
@@ -673,19 +674,23 @@ defmodule ApiaryWeb.RunComponents do
 
   ## Label chip
 
-  @doc "One label of a run: the key on a tinted ground, the value beside it."
+  @doc """
+  One label of a run: the key on a tinted ground, the value beside it, each shown as a
+  text Forager sent is (`Apiary.ExternalText.line/1`).
+  """
   attr :key, :string, required: true
   attr :value, :string, required: true
   attr :navigate, :string, default: nil
 
   def label_chip(assigns) do
-    assigns = assign(assigns, :shown, middle(assigns.value, 32))
+    value = Apiary.ExternalText.line(assigns.value)
+    assigns = assign(assigns, value: value, shown: middle(value, 32))
 
     ~H"""
     <.link :if={@navigate} navigate={@navigate} class="q-label q-label-link" title={@value}>
-      <i>{@key}</i><b>{@shown}</b>
+      <i><.external_text text={@key} /></i><b><bdi>{@shown}</bdi></b>
     </.link>
-    <span :if={!@navigate} class="q-label" title={@value}><i>{@key}</i><b>{@shown}</b></span>
+    <span :if={!@navigate} class="q-label" title={@value}><i><.external_text text={@key} /></i><b><bdi>{@shown}</bdi></b></span>
     """
   end
 
@@ -721,36 +726,50 @@ defmodule ApiaryWeb.RunComponents do
   ## A run's title
 
   @doc """
-  A run's title: the one it gave in its `about` (`about_title`), else "Run" and its short
-  id. Every page that names a run calls it this; a row that shows the short id alone when
-  there is no title asks `given_title/1`.
+  A run's title: the one it gave in its `about` as a page shows it (`shown_title/1`), else
+  "Run" and its short id. Every page that names a run calls it this; a row that shows the
+  short id alone when there is no title asks `shown_title/1`.
   """
-  def run_title(run), do: given_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
+  def run_title(run), do: shown_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
 
-  @doc "The title a run gave in its `about`, or nil when it gave none."
+  @doc "The title a run gave in its `about`, as sent, or nil when it gave none."
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
   def given_title(_run), do: nil
 
   @doc """
-  A run's name in a row, as markup: the title it gave, isolated in a `<bdi>` so a
-  bidirectional character in it reorders nothing around it, else its short id. A tooltip
-  or a label takes `given_title/1` as plain text.
+  The title a run gave (`given_title/1`), shown as a text Forager sent is
+  (`Apiary.ExternalText.line/1`): plain text, for a tooltip, a label or a page's title.
+  Nil where it gave none, or one with nothing left to show, which is no title.
+  """
+  @spec shown_title(map) :: String.t() | nil
+  def shown_title(run) do
+    case Apiary.ExternalText.line(given_title(run)) do
+      "" -> nil
+      title -> title
+    end
+  end
+
+  @doc """
+  A run's name in a row, as markup: the title it gave (`shown_title/1`), isolated in a
+  `<bdi>` so a bidirectional character in it reorders nothing around it, else its short
+  id. A tooltip or a label takes `shown_title/1` as plain text.
   """
   attr :run, :map, required: true
 
   def run_name(assigns) do
-    assigns = assign(assigns, :title, given_title(assigns.run))
+    assigns = assign(assigns, :title, shown_title(assigns.run))
 
     ~H"""
-    <bdi :if={@title}>{@title}</bdi>{if !@title, do: short_id(@run.public_id)}
+    <.external_text text={@title} />{if !@title, do: short_id(@run.public_id)}
     """
   end
 
   @doc """
   What a run is about in one line of a list, as text: its kind, then its first two
   subjects, each its type and ref as given ("pull request #412"), then how many more there
-  are, joined by " · "; nil when it gave neither a kind nor a subject. `limit` is how many
-  subjects are named.
+  are, joined by " · "; nil when it gave neither a kind nor a subject. The kind and the
+  subjects are shown as a text Forager sent is (`Apiary.ExternalText.line/1`), and a kind
+  with nothing left to show is none. `limit` is how many subjects are named.
   """
   def about_line(run, limit \\ 2) do
     case about_parts(run, limit) do
@@ -764,7 +783,8 @@ defmodule ApiaryWeb.RunComponents do
     subjects = Map.get(run, :about_subjects) || []
     more = length(subjects) - limit
 
-    Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""]))
+    [Apiary.ExternalText.line(Map.get(run, :about_kind))]
+    |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.map(&{:kind, &1})
     |> Kernel.++(Enum.map(Enum.take(subjects, limit), &{:subject, &1}))
     |> Kernel.++(if(more > 0, do: [more_text(more)], else: []))
@@ -776,21 +796,23 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A subject in words, as text: its type and ref as given, "pull request #412", for a
-  tooltip. Qory Apiary knows no subject types, so neither is mapped or translated.
-  `subject_name/1` is the same words as markup.
+  tooltip, shown as a text Forager sent is (`Apiary.ExternalText.line/1`). Qory Apiary
+  knows no subject types, so neither is mapped or translated. `subject_name/1` is the
+  same words as markup.
   """
-  def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
+  def subject_words(subject),
+    do: Apiary.ExternalText.line("#{subject["type"]} #{subject["ref"]}")
 
   @doc """
-  A subject in words, as markup: its type and its ref, each isolated in a `<bdi>`, so a
-  bidirectional character in one (U+202E, say) reorders neither the other nor the words
-  around them.
+  A subject in words, as markup: its type and its ref, each isolated in a `<bdi>`
+  (`ApiaryWeb.ExternalText.external_text/1`), so a bidirectional character in one (U+202E,
+  say) reorders neither the other nor the words around them.
   """
   attr :subject, :map, required: true
 
   def subject_name(assigns) do
     ~H"""
-    <bdi>{@subject["type"]}</bdi> <bdi>{@subject["ref"]}</bdi>
+    <.external_text text={@subject["type"]} /> <.external_text text={@subject["ref"]} />
     """
   end
 
@@ -798,13 +820,20 @@ defmodule ApiaryWeb.RunComponents do
   The tooltip of a subject's link: its title and the host its url leads to, as the url
   parses, "Login redirects to a blank page · tracker.example.com", or the host alone. A
   subject whose url may not be a link (`ApiaryWeb.CoreComponents.external_url?/1`) has its
-  title alone, or nil. Plain text: a tooltip holds no markup.
+  title alone, or nil. Plain text: a tooltip holds no markup. Both are shown as a text
+  Forager sent is (`Apiary.ExternalText.line/1`), and a title with nothing left to show is
+  none.
   """
   def subject_tip(subject) do
     url = subject["url"]
     host = if ApiaryWeb.CoreComponents.external_url?(url), do: URI.parse(url).host
 
-    case Enum.reject([subject["title"], host], &is_nil/1) do
+    shown =
+      [subject["title"], host]
+      |> Enum.map(&Apiary.ExternalText.line/1)
+      |> Enum.reject(&(&1 in [nil, ""]))
+
+    case shown do
       [] -> nil
       parts -> Enum.join(parts, " · ")
     end
@@ -916,7 +945,7 @@ defmodule ApiaryWeb.RunComponents do
   defp exit_of(%{exited_at: nil}), do: :running
 
   defp exit_of(%{signal: signal}) when is_binary(signal) and signal != "",
-    do: {:signal, signal}
+    do: {:signal, Apiary.ExternalText.line(signal)}
 
   defp exit_of(%{exit_code: code}) when is_integer(code) and code != -1,
     do: {:code, code}
@@ -976,7 +1005,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("completed", _run), do: gettext("Completed")
 
   defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
-    do: gettext("Failed with %{signal}", signal: signal)
+    do: gettext("Failed with %{signal}", signal: Apiary.ExternalText.line(signal))
 
   defp ended_sentence("failed", %{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("Failed with exit %{code}", code: code)
@@ -1804,7 +1833,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp exit_code_note(state, %{signal: signal})
        when state in ~w(completed failed) and is_binary(signal) and signal != "",
-       do: signal
+       do: Apiary.ExternalText.line(signal)
 
   defp exit_code_note(state, %{exit_code: code})
        when state in ~w(completed failed) and is_integer(code) and code != -1,
@@ -1946,7 +1975,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp about_words(assigns) do
     ~H"""
-    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:kind, kind} -> %><bdi>{kind}</bdi><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
+    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:kind, kind} -> %><.external_text text={kind} /><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
     """
   end
 
@@ -1979,8 +2008,8 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !given_title(@run) && "q-rl-id"]}
-            title={given_title(@run)}
+            class={["q-rowlink q-rl-title", !shown_title(@run) && "q-rl-id"]}
+            title={shown_title(@run)}
           >
             <.run_name run={@run} />
           </.link>
@@ -2008,12 +2037,15 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-rl-c4 q-rl-faint" role="cell">
         <%= cond do %>
           <% @run.runtime -> %>
-            <span>{@run.runtime} {@run.runtime_version}</span>
+            <span><.external_text text={@run.runtime} />
+            <.external_text text={@run.runtime_version} /></span>
           <% true -> %>
             <span>{gettext("n/a")}</span>
         <% end %>
       </td>
-      <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">{@run.host || gettext("n/a")}</td>
+      <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">
+        <.external_text text={@run.host} />{if !@run.host, do: gettext("n/a")}
+      </td>
       <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
         <.node_name :if={@run.node_id} scope={@scope} node={Map.get(@nodes, @run.node_id)} />
         <span :if={!@run.node_id}>{gettext("n/a")}</span>
@@ -2130,9 +2162,13 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
           />
           <span :if={@preview.run.runtime}>
-            {@preview.run.runtime} {@preview.run.runtime_version}
+            <.external_text text={@preview.run.runtime} />
+            <.external_text text={@preview.run.runtime_version} />
           </span>
-          <span :if={@preview.run.host} class="font-mono text-[12px]">{@preview.run.host}</span>
+          <span
+            :if={@preview.run.host}
+            class="font-mono text-[12px]"
+          ><.external_text text={@preview.run.host} /></span>
           <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
         </p>
         <dl class="q-pv-kv">
@@ -2635,9 +2671,12 @@ defmodule ApiaryWeb.RunComponents do
               class="q-hit"
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
-              <span class="truncate" title={given_title(hit.run)}>
-                <b :if={given_title(hit.run)} class="font-medium"><bdi>{given_title(hit.run)}</bdi></b>
-                <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
+              <span class="truncate" title={shown_title(hit.run)}>
+                <b
+                  :if={shown_title(hit.run)}
+                  class="font-medium"
+                ><.external_text text={shown_title(hit.run)} /></b>
+                <span class={["font-mono text-xs text-faint", shown_title(hit.run) && "ml-1"]}>
                   {short_id(hit.run.public_id)}
                 </span>
               </span>

@@ -119,10 +119,10 @@ defmodule ApiaryWeb.RunLive.Show do
            Details in place, above the tabs. --%>
       <div id="run-page" class="q-run">
         <header class="q-run-head">
-          <h1 :if={given_title(@run)} id="run-title" tabindex="-1">
-            <bdi>{given_title(@run)}</bdi>
+          <h1 :if={shown_title(@run)} id="run-title" tabindex="-1">
+            <.external_text text={shown_title(@run)} />
           </h1>
-          <h1 :if={!given_title(@run)} id="run-title" tabindex="-1">
+          <h1 :if={!shown_title(@run)} id="run-title" tabindex="-1">
             <.rich text={rich_gettext("Run %{id}", id: {:m, @run.public_id, "font-mono text-[18px]"})} />
           </h1>
           <.about_header run={@run} />
@@ -165,9 +165,13 @@ defmodule ApiaryWeb.RunLive.Show do
                   <.target_name path={@run.target_path} system={@run.target_system} />
                 </span>
                 <span :if={@run.runtime} id="run-runtime">
-                  {join([@run.runtime, @run.runtime_version])}
+                  <.external_text text={join([@run.runtime, @run.runtime_version])} />
                 </span>
-                <span :if={@run.host} id="run-host" class="font-mono text-[12.5px]">{@run.host}</span>
+                <span
+                  :if={@run.host}
+                  id="run-host"
+                  class="font-mono text-[12.5px]"
+                ><.external_text text={@run.host} /></span>
                 <span :if={@run.started_at} id="run-started-at">
                   <span class="sr-only">{gettext("Started")}</span>
                   <.relative_time id="run-started" at={@run.started_at} />
@@ -822,18 +826,21 @@ defmodule ApiaryWeb.RunLive.Show do
           </dd>
           <dt>{gettext("Runtime")}</dt>
           <dd>
-            {@run.runtime || na()}
-            <span :if={@run.runtime_version} class="font-mono">{@run.runtime_version}</span>
+            <.external_text text={@run.runtime} />{if !@run.runtime, do: na()}
+            <span
+              :if={@run.runtime_version}
+              class="font-mono"
+            ><.external_text text={@run.runtime_version} /></span>
           </dd>
           <dt>{gettext("Host")}</dt>
-          <dd class="font-mono">{@run.host || na()}</dd>
+          <dd class="font-mono"><.external_text text={@run.host} />{if !@run.host, do: na()}</dd>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
           <dd>
             <%= cond do %>
               <% @run.wall -> %>
-                {@run.wall}
+                <.external_text text={@run.wall} />
               <% @run.state == "pending" -> %>
                 {na()}
               <% true -> %>
@@ -841,8 +848,13 @@ defmodule ApiaryWeb.RunLive.Show do
                   {gettext("None")}
                 </span>
             <% end %>
-            <span :if={@run.wall && @run.image} class="q-rail-sub font-mono" title={@run.image}>
-              {@run.image}
+            <span
+              :if={@run.wall && @run.image}
+              id="run-image"
+              class="q-rail-sub font-mono"
+              title={Apiary.ExternalText.line(@run.image)}
+            >
+              <.external_text text={@run.image} />
             </span>
           </dd>
           <%!-- The run's access key, where the reader is shown the nodes: their keys are the
@@ -886,16 +898,16 @@ defmodule ApiaryWeb.RunLive.Show do
         <h3 id="rail-labels">{gettext("Labels")}</h3>
         <dl id="run-labels" class="q-rail-kv q-rail-kv-mono">
           <%= for {key, value} <- @labels do %>
-            <dt>{key}</dt>
-            <dd title={to_string(value)}>
+            <dt><.external_text text={to_string(key)} /></dt>
+            <dd title={Apiary.ExternalText.line(to_string(value))}>
               <.link
                 :if={path = label_path(@scope, @target_page, to_string(key))}
                 navigate={path}
               >
-                {to_string(value)}
+                <.external_text text={to_string(value)} />
               </.link>
               <span :if={!label_path(@scope, @target_page, to_string(key))}>
-                {to_string(value)}
+                <.external_text text={to_string(value)} />
               </span>
             </dd>
           <% end %>
@@ -906,17 +918,22 @@ defmodule ApiaryWeb.RunLive.Show do
         <h3 id="rail-command">{gettext("Command")}</h3>
         <dl class="q-rail-kv">
           <dt>{gettext("Command")}</dt>
-          <dd class="font-mono">{@run.command || na()}</dd>
+          <dd class="font-mono">
+            <.external_text text={@run.command} />{if !@run.command, do: na()}
+          </dd>
           <dt>{gettext("Arguments")}</dt>
           <dd class="font-mono">
             <span :if={@run.args == []} class="font-sans text-faint">{gettext("none")}</span>
-            <span :for={arg <- Enum.take(@run.args, 64)} class="q-arg">{middle(arg, 600)}</span>
+            <span
+              :for={arg <- Enum.take(@run.args, 64)}
+              class="q-arg"
+            ><.external_text text={middle(Apiary.ExternalText.line(arg), 600)} /></span>
             <span :if={length(@run.args) > 64} class="font-sans text-faint">
               {gettext("and %{number} more", number: Format.number(length(@run.args) - 64))}
             </span>
           </dd>
           <dt>{gettext("Directory")}</dt>
-          <dd class="font-mono">{@run.dir || na()}</dd>
+          <dd class="font-mono"><.external_text text={@run.dir} />{if !@run.dir, do: na()}</dd>
           <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
           <dt :if={@terminal_size}>{gettext("Terminal")}</dt>
@@ -1057,8 +1074,10 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :run, :map, required: true
 
   defp forager_version(assigns) do
+    assigns = assign(assigns, :na, !assigns.run.forager_version && gettext("n/a"))
+
     ~H"""
-    {@run.forager_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
+    <.external_text text={@run.forager_version} />{@na}<span :if={@run.contract_version}> · {gettext(
       "contract %{version}",
       version: @run.contract_version
     )}</span>
@@ -2719,8 +2738,11 @@ defmodule ApiaryWeb.RunLive.Show do
   defp exited?(%Run{exited_at: exited_at}), do: exited_at != nil
 
   # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
-  # gateway's placeholder for an exit it wrote: the program's own was not recorded.
-  defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
+  # gateway's placeholder for an exit it wrote: the program's own was not recorded. A
+  # signal is shown as a text Forager sent is (`Apiary.ExternalText.line/1`).
+  defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "",
+    do: Apiary.ExternalText.line(signal)
+
   defp exit_value(%Run{exit_code: -1}), do: gettext("not recorded")
   defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
   defp exit_value(_run), do: gettext("n/a")
@@ -2732,7 +2754,7 @@ defmodule ApiaryWeb.RunLive.Show do
     if Run.current_state(run.state) == "failed" and is_nil(reason_words(run)) and
          is_nil(outcome_sentence(run)) do
       cond do
-        signal?(run) -> run.signal
+        signal?(run) -> Apiary.ExternalText.line(run.signal)
         is_integer(run.exit_code) and run.exit_code not in [0, -1] -> exit_words(run.exit_code)
         true -> nil
       end

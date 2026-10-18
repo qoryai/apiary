@@ -512,21 +512,29 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   # A section's values as `filter_options/1` takes them, `{label, value, count}`: the
   # values narrowed by its search, or else those with the most tickets, then each chosen
-  # value that neither holds, so that every chosen one shows ticked.
+  # value that neither holds, so that every chosen one shows ticked. A label is shown as a
+  # text the integration sent (`Apiary.ExternalText.line/1`); its value stays as sent,
+  # which the Backlog matches.
   defp options(options, narrowed, params, key) do
     offered = Map.get(narrowed, key) || Map.fetch!(options, key)
     keys = MapSet.new(offered, & &1.key)
 
-    Enum.map(offered, &{&1.label, &1.key, &1.count}) ++
+    Enum.map(offered, &{Apiary.ExternalText.line(&1.label), &1.key, &1.count}) ++
       for value <- Map.fetch!(params, key),
           not MapSet.member?(keys, value),
           do: {words(options, key, value), value, nil}
   end
 
   # A filter's value as the page says it: a repository by its title, a filer's name or a
-  # label as it is, a window by its words; a value that is not a string as nothing.
+  # label as it is, each shown as a text the integration sent
+  # (`Apiary.ExternalText.line/1`), a window by its words; a value that is not a string as
+  # nothing.
   defp words(options, :repository, id),
-    do: Enum.find_value(Map.fetch!(options, :repository), id, &(&1.key == id && &1.label))
+    do:
+      options
+      |> Map.fetch!(:repository)
+      |> Enum.find_value(id, &(&1.key == id && &1.label))
+      |> Apiary.ExternalText.line()
 
   defp words(_options, :updated, :invalid), do: ""
 
@@ -534,7 +542,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
     do:
       Enum.find_value(Filters.windows(), window, fn {label, value} -> value == window && label end)
 
-  defp words(_options, _key, value), do: value
+  defp words(_options, _key, value), do: Apiary.ExternalText.line(value)
 
   # What a filter is set to, in the Filter menu and on its token: nil where it is off.
   defp value_words(params, key, options) do

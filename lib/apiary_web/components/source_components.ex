@@ -4,8 +4,9 @@ defmodule ApiaryWeb.SourceComponents do
   #
   # **A ticket's text** (`body/1`) is shown as the integration sent it. Markdown is shown
   # formatted (`Apiary.Sources.Body.render/3`), with Show as written, which shows the
-  # exact text instead, and Show formatted, back; the switch happens in the browser, with
-  # no trip to the server. Plain text and a Markdown text too long to format are shown as
+  # text as written, with invisible characters dropped and control characters shown as
+  # U+FFFD instead, and Show formatted, back; the switch happens in the browser, with no
+  # trip to the server. Plain text and a Markdown text too long to format are shown as
   # written alone, with no switch; a format the console does not know, none included, is
   # shown as written under a muted line that says so. A ticket with no text says it has
   # no description. As written is the exact characters, interpolated, so HEEx escapes
@@ -191,7 +192,7 @@ defmodule ApiaryWeb.SourceComponents do
             id={"#{@id}-written"}
             class="q-ticket-written q-ticket-source hidden"
             phx-no-format
-          >{@body}</div>
+          >{Apiary.ExternalText.lines(@body)}</div>
         </div>
         """
     end

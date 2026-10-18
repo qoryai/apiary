@@ -152,7 +152,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # A collection's Backlog turned on or off: the entry is the collection's, and names it
   # by the title it had then (`name`), in the words of the source behind its connection
   # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and the
-  # domain's word.
+  # domain's word. The title is its adapter's, shown as an external system's text is
+  # (`Apiary.ExternalText.line/1`).
   @impl true
   def sentence(
         :"collection.set_backlog",
@@ -160,6 +161,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         names
       )
       when is_boolean(on) and is_binary(name) do
+    name = Apiary.ExternalText.line(name)
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     collection = SourceComponents.collection(names[:collection_nouns][entry.subject_id])
 
@@ -191,7 +193,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   # A collection ended because its adapter now lists it under another connection: the
   # entry is the collection's, in the trail of the organisation it left, and names it by
-  # the title it had then (`name`) and the adapter by its name then (`integration`).
+  # the title it had then (`name`), shown as an external system's text is
+  # (`Apiary.ExternalText.line/1`), and the adapter by its name then (`integration`).
   def sentence(
         :"collection.move",
         %{details: %{"name" => name, "integration" => integration}},
@@ -200,7 +203,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       when is_binary(name) and is_binary(integration) do
     gettext(
       "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection.",
-      collection: name,
+      collection: Apiary.ExternalText.line(name),
       integration: integration
     )
   end

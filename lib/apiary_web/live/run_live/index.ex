@@ -208,11 +208,10 @@ defmodule ApiaryWeb.RunLive.Index do
                   label={label}
                   values={List.wrap(text_param(@filters, name))}
                   options={
-                    with_chosen(
-                      facet_options(@facets, String.to_existing_atom(name)),
-                      text_param(@filters, name),
-                      text_param(@filters, name)
-                    )
+                    @facets
+                    |> facet_options(String.to_existing_atom(name))
+                    |> with_chosen(text_param(@filters, name), text_param(@filters, name))
+                    |> shown_options(name)
                   }
                   total={facet_total(@facets, String.to_existing_atom(name))}
                   query={@narrow[name]}
@@ -1566,6 +1565,14 @@ defmodule ApiaryWeb.RunLive.Index do
       do: options,
       else: [{label, value, 0} | options]
   end
+
+  # A runtime and a host are what the runs reported, shown as a text Forager sent is
+  # (`Apiary.ExternalText.line/1`); an option's value stays as sent, which the filter
+  # matches. A node is named by the organisation.
+  defp shown_options(options, name) when name in ["runtime", "host"],
+    do: for({label, value, count} <- options, do: {Apiary.ExternalText.line(label), value, count})
+
+  defp shown_options(options, _name), do: options
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: nil

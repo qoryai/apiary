@@ -160,6 +160,15 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
                "Turned off taking tickets into the Backlog from repository Shop board"
     end
 
+    test "the sentence names the title as a page shows an external system's text" do
+      %{scope: scope, entry: off} = pressed(false)
+      # A bidirectional override, a zero-width space and a control character.
+      sent = %{off | details: %{off.details | "name" => "\u202EShop board\u200B\a"}}
+
+      assert Core.sentence(:"collection.set_backlog", sent, Audit.names(scope, [sent])) ==
+               "Turned off taking tickets into the Backlog from repository Shop board\uFFFD"
+    end
+
     test "the sentence and the subject in the source's words, from its connection" do
       %{scope: scope, connection: connection, collection: collection, entry: on} = pressed(true)
       name(connection.adapter_id, "story", "stories")

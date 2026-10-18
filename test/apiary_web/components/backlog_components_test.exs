@@ -331,6 +331,73 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     end
   end
 
+  describe "what the source sent, as a page shows an external system's text" do
+    # A bidirectional override, a zero-width space and a control character, and what is
+    # left of them on the page (`Apiary.ExternalText.line/1`).
+    defp sent(text), do: "\u202E" <> text <> "\u200B\a"
+    defp shown(text), do: text <> "\uFFFD"
+
+    test "a row: isolated in <bdi>, and cleaned in its titles and its line" do
+      html =
+        row(
+          ticket(%{
+            key: sent("#1231"),
+            title: sent("Fix the login"),
+            repository: sent("acme/shop"),
+            filer: %{name: sent("deps-bot"), kind: :bot}
+          })
+        )
+
+      assert texts(html, ".q-bl-no > bdi") == [shown("#1231")]
+      assert attr(html, ".q-bl-no", "title") == [shown("#1231")]
+      assert texts(html, "a.q-bl-t > bdi") == [shown("Fix the login")]
+      assert texts(html, ".q-bl-rp > bdi") == [shown("acme/shop")]
+      assert attr(html, ".q-bl-rp", "title") == [shown("acme/shop")]
+
+      assert text(html, ".q-bl-sub") ==
+               shown("acme/shop") <> shown("#1231") <> " · by " <> shown("deps-bot") <> " · 3 min"
+
+      assert attr(html, ".q-bl-by", "title") == ["Filed by " <> shown("deps-bot")]
+      assert texts(html, ".q-bl-filer bdi") == [shown("deps-bot")]
+      assert text(html, ".q-bl-bot-av") == "d"
+    end
+
+    test "a closed row: the state word cleaned; one with nothing left to show is none" do
+      html = row(ticket(%{state: :closed, state_reason: sent("Not planned")}))
+      assert text(html, ".q-bl-w") == shown("Not planned")
+
+      html = row(ticket(%{state: :closed, state_reason: "\u202E\u200B"}))
+      assert count(html, ".q-bl-w") == 0
+      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min"
+    end
+
+    test "the ticket, over the list and as a page: isolated in <bdi>, cleaned in its titles" do
+      t =
+        ticket(%{
+          key: sent("#1231"),
+          title: sent("Fix the login"),
+          repository: sent("acme/shop"),
+          labels: [sent("bug"), "checkout"],
+          filer: %{name: sent("Lea"), kind: :person}
+        })
+
+      comment = %{id: "c1", author: sent("Sam"), at: ago(60), body: "plain"}
+      full_form = shown("acme/shop") <> shown("#1231")
+
+      for html <- [list_frame(t, [comment]), full_frame(t, [comment])] do
+        assert texts(html, "#tk-title > bdi") == [shown("Fix the login")]
+        assert texts(html, ~s(span[title="#{full_form}"] > bdi)) == [full_form]
+        assert texts(html, ".q-bl-repo > bdi") == [shown("acme/shop")]
+        assert texts(html, ".q-bl-lb > bdi") == [shown("bug"), "checkout"]
+        assert text(html, ".q-bl-meta") =~ shown("Lea") <> " filed this"
+        assert texts(html, ".q-bl-cmt b > bdi") == [shown("Sam")]
+      end
+
+      # Filed by, the last fact of the page.
+      assert texts(full_frame(t, [comment]), "#tk-facts dd:last-child > bdi") == [shown("Lea")]
+    end
+  end
+
   describe "filer/1" do
     test "a person: the person mark and the name" do
       html = render_component(&BacklogComponents.filer/1, name: "Lea", kind: :person)

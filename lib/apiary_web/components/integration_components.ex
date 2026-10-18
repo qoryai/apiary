@@ -13,7 +13,9 @@ defmodule ApiaryWeb.IntegrationComponents do
   # with items its Backlog switch and its open items, and the day it was added; where they
   # may be assigned, a checkbox on each row and one over them all. The selection's menu
   # (`assign_menu/1`) lists the workspaces to assign it to, and a list menu
-  # (`workspace_filter/1`) keeps the table to one workspace.
+  # (`workspace_filter/1`) keeps the table to one workspace. A collection's name is the
+  # title its adapter sent, shown as an external system's text is
+  # (`ApiaryWeb.ExternalText`): in its row, its checkbox's name and its switch's.
   #
   # The install block says that the integration brings the person back to the
   # organisation's page, that the collections it reaches are listed there, and that the
@@ -258,13 +260,16 @@ defmodule ApiaryWeb.IntegrationComponents do
                 type="checkbox"
                 class="checkbox checkbox-xs"
                 checked={Map.has_key?(@selected, row.id)}
-                aria-label={gettext("Select %{name}", name: row.name)}
+                aria-label={gettext("Select %{name}", name: Apiary.ExternalText.line(row.name))}
                 phx-click="select"
                 phx-value-collection={row.public_id}
               />
             </td>
             <td class="q-td-title">
-              <span class="q-title-mono block truncate" title={row.name}>{row.name}</span>
+              <span
+                class="q-title-mono block truncate"
+                title={Apiary.ExternalText.line(row.name)}
+              ><.external_text text={row.name} /></span>
               <span :if={@backlog && row.backlog} class="q-to-sm mt-1 flex items-center gap-2">
                 <.backlog_switch
                   id={"collection-#{row.public_id}-backlog-line"}
@@ -326,7 +331,12 @@ defmodule ApiaryWeb.IntegrationComponents do
   # A row's Backlog switch, the kit's track without a visible label: its name, for screen
   # readers and as its title, says whose items it takes into the Backlog.
   defp backlog_switch(assigns) do
-    assigns = assign(assigns, :label, backlog_label(assigns.items, assigns.row.name))
+    assigns =
+      assign(
+        assigns,
+        :label,
+        backlog_label(assigns.items, Apiary.ExternalText.line(assigns.row.name))
+      )
 
     ~H"""
     <button

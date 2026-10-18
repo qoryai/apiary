@@ -3139,4 +3139,79 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
   end
+
+  describe "what a run sent, as a page shows an external system's text" do
+    # A bidirectional override, a zero-width space and a control character, and what is
+    # left of them on the page (`Apiary.ExternalText.line/1`).
+    defp sent(text), do: "\u202E" <> text <> "\u200B\a"
+    defp shown(text), do: text <> "\uFFFD"
+
+    defp open(conn, scope, run) do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      lv
+    end
+
+    test "the title, the header's facts and the rail: cleaned, isolated in <bdi>", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        run_fixture(scope, %{
+          about_title: sent("Fix the login"),
+          runtime: sent("claude"),
+          runtime_version: sent("2.1.0"),
+          host: sent("dev-laptop"),
+          wall: sent("docker"),
+          image: sent("registry.example/agent:1"),
+          command: sent("claude-code"),
+          args: ["-p", sent("fix it")],
+          dir: sent("/work"),
+          forager_version: sent("v0.4.0"),
+          labels: %{sent("zone") => sent("eu-1")}
+        })
+
+      lv = open(conn, scope, run)
+
+      assert has_element?(lv, "h1#run-title > bdi", shown("Fix the login"))
+      assert page_title(lv) == shown("Fix the login") <> " · Runs · Qory Apiary"
+      assert has_element?(lv, "#run-runtime > bdi", shown("claude") <> " " <> shown("2.1.0"))
+      assert has_element?(lv, "#run-host > bdi", shown("dev-laptop"))
+
+      for value <- ["claude", "dev-laptop", "docker", "claude-code", "/work", "v0.4.0"] do
+        assert has_element?(lv, "#run-details dd > bdi", shown(value))
+      end
+
+      assert has_element?(lv, "#run-details dd > span.font-mono > bdi", shown("2.1.0"))
+      image = shown("registry.example/agent:1")
+      assert has_element?(lv, ~s(#run-image[title="#{image}"] > bdi), image)
+      assert has_element?(lv, "#run-details .q-arg > bdi", shown("fix it"))
+      assert has_element?(lv, "#run-labels dt > bdi", shown("zone"))
+      assert has_element?(lv, ~s(#run-labels dd[title="#{shown("eu-1")}"] bdi), shown("eu-1"))
+    end
+
+    test "a title with nothing left to show is no title: Run and its id", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_fixture(scope, %{about_title: "\u202E\u200B"})
+      lv = open(conn, scope, run)
+
+      refute has_element?(lv, "h1#run-title > bdi")
+      assert has_element?(lv, "h1#run-title .font-mono", run.public_id)
+      short = ApiaryWeb.RunComponents.short_id(run.public_id)
+      assert page_title(lv) == "Run #{short} · Runs · Qory Apiary"
+    end
+
+    test "a signal: cleaned in the header's exit and the rail's", %{conn: conn, scope: scope} do
+      exit = %{"state" => "failed", "signal" => sent("SIGKILL"), "duration_ms" => 1000}
+      run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
+      lv = open(conn, scope, run)
+
+      assert exit_row(lv) == shown("SIGKILL")
+      assert has_element?(lv, "#run-meta", shown("SIGKILL"))
+      refute has_element?(lv, "#run-meta", "\u202E")
+    end
+  end
 end
