@@ -50,6 +50,14 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     Scope.for_access_key(verified)
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   # One part of a listing naming `collections`, `{ref, target}` each.
   defp post(ctx, collections, opts \\ []) do
     Collections.post_listing(ctx.key_scope, %{
@@ -300,7 +308,7 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
       {:ok, :accepted} = post(ctx, [{"TRK", nil}, {"SHOP", @shop}])
       assert Collections.targets?(ctx.connection)
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "SHOP"})
+      {:ok, :disconnected} = disconnect(ctx, "SHOP")
 
       assert ids(ctx, ["SHOP"]) == []
       assert length(ids(ctx, ["TRK"])) == 1

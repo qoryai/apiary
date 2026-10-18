@@ -204,7 +204,12 @@ defmodule Apiary.Sources.IngestRacesTest do
     {:ok, :accepted} = posting(ctx.key_scope, "TRK", [item("A")]).()
 
     {disconnected, disconnect_pid} =
-      hold(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+      hold(fn ->
+        Collections.disconnect(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          collection_ref: "TRK"
+        })
+      end)
 
     assert disconnected.result == {:ok, :disconnected}
 
@@ -226,7 +231,14 @@ defmodule Apiary.Sources.IngestRacesTest do
 
     assert listed.result == {:ok, :accepted}
 
-    disconnect = start(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+    disconnect =
+      start(fn ->
+        Collections.disconnect(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          collection_ref: "TRK"
+        })
+      end)
+
     await_blocked(disconnect.backend, listed_pid)
     commit(listed)
 
@@ -330,7 +342,12 @@ defmodule Apiary.Sources.IngestRacesTest do
 
     # Its collection disconnected: not linked.
     {disconnected, disconnect_pid} =
-      hold(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+      hold(fn ->
+        Collections.disconnect(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          collection_ref: "TRK"
+        })
+      end)
 
     assert disconnected.result == {:ok, :disconnected}
 

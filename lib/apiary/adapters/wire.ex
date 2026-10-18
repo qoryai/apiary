@@ -54,8 +54,8 @@ defmodule Apiary.Adapters.Wire do
   # it is named.
   #
   # `source_disconnect/1` reads the body of `POST /v1/sources/disconnect`
-  # (`sources-disconnect.schema.json`): exactly `version` (1), `time` and
-  # `collection_ref`.
+  # (`sources-disconnect.schema.json`): exactly `version` (1), `time`, `connection_id`
+  # (`ac_` and sixteen characters, as a listing names it) and `collection_ref`.
   #
   # Their text is counted in code points, as the contract's lengths are, and none of it
   # may hold U+0000, which the database cannot keep. A part numbered past `max_part/0`,
@@ -82,7 +82,7 @@ defmodule Apiary.Adapters.Wire do
   @listing_keys ~w(complete id part started_at)
   @collection_keys ~w(ref title url)
   @target_keys ~w(path system)
-  @disconnect_keys ~w(collection_ref time version)
+  @disconnect_keys ~w(collection_ref connection_id time version)
   @max_collections 100
   @max_part 10_000
   @max_title 1024
@@ -122,7 +122,11 @@ defmodule Apiary.Adapters.Wire do
           }
         }
 
-  @type source_disconnect :: %{time: DateTime.t(), collection_ref: String.t()}
+  @type source_disconnect :: %{
+          time: DateTime.t(),
+          connection_id: String.t(),
+          collection_ref: String.t()
+        }
 
   # The shortest and the longest interval the contract allows, in seconds.
   @doc false
@@ -528,8 +532,14 @@ defmodule Apiary.Adapters.Wire do
     with true <- Enum.sort(Map.keys(body)) == @disconnect_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
+         true <- Apiary.Adapters.Connection.public_id?(body["connection_id"]),
          true <- text?(body["collection_ref"], 1, @max_ref) do
-      {:ok, %{time: time, collection_ref: body["collection_ref"]}}
+      {:ok,
+       %{
+         time: time,
+         connection_id: body["connection_id"],
+         collection_ref: body["collection_ref"]
+       }}
     else
       _ -> :error
     end
