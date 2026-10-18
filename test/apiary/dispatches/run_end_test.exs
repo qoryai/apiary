@@ -38,6 +38,21 @@ defmodule Apiary.Dispatches.RunEndTest do
   defp queue_run!(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id)
   defp dispatch!(%Dispatch{id: id}), do: Repo.get!(Dispatch, id)
   defp run!(%Run{id: id}), do: Repo.get!(Run, id)
+  defp record!(%Record{id: id}), do: Repo.get!(Record, id)
+
+  # The last good build and what was queued, as the setup kept them.
+  defp assert_build_kept(%{record: record}) do
+    kept = [:image, :size, :commit, :built_at, :reported_ref, :queued_ref, :queued_at]
+    assert Map.take(record!(record), kept) == Map.take(record, kept)
+    assert record!(record).retired_at == nil
+  end
+
+  # No run of the queue for the collection but the prebuild that was handed over.
+  defp assert_nothing_queued(%{collection: collection, handed: handed}) do
+    assert Repo.all(
+             from r in DispatchRun, where: r.source_collection_id == ^collection.id, select: r.id
+           ) == [handed.dispatch_run.id]
+  end
 
   defp release(%DispatchRun{id: id}, now \\ Dispatches.now()),
     do: Repo.transact(fn -> Dispatches.end_run_released(id, now) end)
@@ -354,6 +369,106 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert {:ok, %{run: run}} = ctx.attach.()
       assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 2100 * 1_000_000
     end
+
+    test "lost at its run key's attach_by records the build failed, lost, and queues nothing",
+         ctx do
+      attach_by = ctx.handed.run.attach_by
+
+      assert Liveness.check(attach_by) == []
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
+
+      after_it = DateTime.add(attach_by, 1, :microsecond)
+      assert [%Run{state: "lost"}] = Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+
+      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: ^after_it} =
+               record!(ctx.record)
+
+      assert_build_kept(ctx)
+      assert_nothing_queued(ctx)
+    end
+
+    test "ended by its backstop records the build failed, timed_out, and queues nothing", ctx do
+      # A release failed the build before: its reason goes with the new failure.
+      {1, _rows} =
+        Repo.update_all(from(r in Record, where: r.id == ^ctx.record.id),
+          set: [
+            failure_cause: :released,
+            failure_reason: "The job could not start.",
+            failed_at: DateTime.utc_now()
+          ]
+        )
+
+      assert {:ok, %{run: run}} = ctx.attach.()
+      failed = record!(ctx.record)
+
+      # Silent since its attach, the registered run is lost by the liveness rules at its
+      # backstop; the run of the queue waits for the backstop to pass.
+      Liveness.check(run.backstop_at)
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == failed
+
+      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
+      Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+
+      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
+               record!(ctx.record)
+
+      assert_build_kept(ctx)
+      assert_nothing_queued(ctx)
+
+      # A second check changes nothing.
+      ended = record!(ctx.record)
+      assert Liveness.check(DateTime.add(after_it, 60, :second)) == []
+      assert record!(ctx.record) == ended
+    end
+
+    test "ended by its starter's outcome, or released, records no failure here", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+      assert_ended(ctx.handed, :run_ended)
+
+      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
+      assert record!(ctx.record) == ctx.record
+      assert_nothing_queued(ctx)
+    end
+
+    test "a record that is not there is not made", ctx do
+      Repo.delete!(ctx.record)
+
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
+      assert_ended(ctx.handed, :lost)
+      assert Repo.all(from r in Record, where: r.source_collection_id == ^ctx.collection.id) == []
+    end
+  end
+
+  test "an explore run's end, lost or by its backstop, touches no environment record", ctx do
+    record =
+      Repo.insert!(%Record{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        pool_id: ctx.pool.id,
+        source_collection_id: collection_fixture(ctx.scope).id,
+        queued_ref: "env-1",
+        queued_at: DateTime.utc_now(),
+        image: @image,
+        size: 734_003_200,
+        commit: "9c1e4a7b",
+        built_at: DateTime.utc_now(),
+        reported_ref: "env-1"
+      })
+
+    unattached = handed_over!(ctx, unattached())
+    Liveness.check(DateTime.add(unattached.run.attach_by, 1, :microsecond))
+    assert_ended(unattached, :lost)
+
+    attached = handed_over!(ctx)
+    Liveness.check(DateTime.add(attached.run.backstop_at, 1, :microsecond))
+    assert_ended(attached, :lost)
+
+    assert record!(record) == record
   end
 
   describe "end_run_released/2" do

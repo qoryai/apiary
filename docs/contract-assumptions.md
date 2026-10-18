@@ -409,7 +409,11 @@ to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 handover ends it `released`; and the lost-run check ends it `lost` when its gateway never
 attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
 backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
-(Liveness). Its dispatch ends
+(Liveness). A prebuild the check ends so records that end as its last build's failure on
+the environment record of its collection and of the pool that claimed it, `lost` at its
+`attach_by` and `timed_out` at its backstop, with no reason; the record keeps its last good
+build, nothing is queued, and the check holds that record before the run of the queue, as
+a release does. Its dispatch ends
 with it, with the same end cause, a stale dispatch of it with `run_ended`, and the slot the
 dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where it is
 empty). An end after the first changes none of them. A release after the handover records

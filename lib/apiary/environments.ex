@@ -57,6 +57,16 @@ defmodule Apiary.Environments do
   # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
   # queued.
   #
+  # ## A build lost: `record_end_failure/3`
+  #
+  # `record_end_failure(record, cause, now)` records the last build as failed when the
+  # lost-run check ends a prebuild after its handover (`Apiary.Dispatches.RunEnd`), on the
+  # record of its collection and of the pool that claimed it, which the check locks with
+  # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
+  # attached it by its run key's `attach_by`, `timed_out` when it had neither an outcome
+  # nor an exit by its backstop, with `now` and no reason. The last good build is left as
+  # it was, and nothing is queued.
+  #
   # ## A run's image: `image_for/2`
   #
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
@@ -117,6 +127,23 @@ defmodule Apiary.Environments do
     {1, _rows} =
       Repo.update_all(from(r in Record, where: r.id == ^id),
         set: [failure_cause: :released, failure_reason: reason, failed_at: now, updated_at: now]
+      )
+
+    :ok
+  end
+
+  # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,
+  # as failed by the end of its prebuild, `cause` (`:lost` or `:timed_out`), at `now`,
+  # inside the caller's transaction (the moduledoc).
+  @doc false
+  @spec record_end_failure(Record.t(), :lost | :timed_out, DateTime.t()) :: :ok
+  def record_end_failure(%Record{id: id}, cause, %DateTime{} = now)
+      when is_binary(id) and cause in [:lost, :timed_out] do
+    in_transaction!("record_end_failure/3")
+
+    {1, _rows} =
+      Repo.update_all(from(r in Record, where: r.id == ^id),
+        set: [failure_cause: cause, failure_reason: nil, failed_at: now, updated_at: now]
       )
 
     :ok

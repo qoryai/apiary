@@ -87,6 +87,11 @@ defmodule Apiary.Dispatches.Slots do
   # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
   # none. A path that locks a work item locks it before any run of the queue, never after.
   #
+  # The lost-run check's end of a prebuild handed over (`Apiary.Dispatches.RunEnd`) keeps
+  # it too: the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run of
+  # the queue, its registered run and its dispatches, then the free of its run, which
+  # finds none lapsed.
+  #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first
   # wrote; a claim that takes or ends the one that waits holds its row, and whoever reads
