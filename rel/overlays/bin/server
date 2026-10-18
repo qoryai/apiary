@@ -2,4 +2,10 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")"
+
+# Erlang distribution as releases/distribution.sh sets it, also for a release whose env.sh
+# does not source that file.
+RELEASE_COMMAND=start
+. ../releases/distribution.sh
+
 PHX_SERVER=true exec ./apiary start

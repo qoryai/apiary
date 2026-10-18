@@ -29,6 +29,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
 <!-- /feature -->
 
+### Security
+
+- The release starts no Erlang distribution unless `DNS_CLUSTER_QUERY` is set: before, every
+  instance listened for other nodes with a cookie that every copy of the image holds, so
+  anything that could reach the container's network could connect as a node and run code.
+  With `DNS_CLUSTER_QUERY`, `RELEASE_COOKIE` must be set, the same secret on every node, or
+  Qory Apiary stops at start.
+
 ## [0.1.0] - 2026-10-13
 
 The first release of the open core of Qory Apiary: Qory Apiary Community, complete for

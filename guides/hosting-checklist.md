@@ -108,5 +108,6 @@ its changelog says a migration builds an index `CONCURRENTLY`: start one, wait f
 
 One node is enough for a workspace of any size this release was tested with. With more
 than one, set `DNS_CLUSTER_QUERY` so the nodes find each other and a page on one node
-hears of a run received on another. The lost-run check and the retention job are safe on
-several nodes: each change is one statement or under a lock, and one node does the work.
+hears of a run received on another, and set the same `RELEASE_COOKIE` on every node. The
+lost-run check and the retention job are safe on several nodes: each change is one
+statement or under a lock, and one node does the work.
