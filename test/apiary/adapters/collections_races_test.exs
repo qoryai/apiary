@@ -5,14 +5,14 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # in opposite orders, an assign against a listing's part, a Backlog switch and a
   # workspace's unlink against a listing's part over collections whose refs run against
   # their ids, a Backlog switch against a part of another connection of the adapter that
-  # names the switch's refs, a disconnect against a part that completes its listing, and
-  # a listing's part against a restore and a marking of workspaces, and a start that
-  # changes the adapter's items against a listing's part, a Backlog switch and an assign.
-  # Each side runs on a
-  # separate connection, outside the SQL sandbox, so each commits and each waits on the
-  # other's locks as it would in production. Not async: what these tests commit is
-  # visible to every other test while they run, and they delete it again before they
-  # end.
+  # names the switch's refs, a disconnect against a part that completes its listing, a
+  # listing's part against a restore and a marking of workspaces, a start that changes
+  # the adapter's items against a listing's part, a Backlog switch and an assign, and a
+  # collection's Backlog switch, by its id, against a listing's part, its target's switch
+  # and a start. Each side runs on a separate connection, outside the SQL sandbox, so
+  # each commits and each waits on the other's locks as it would in production. Not
+  # async: what these tests commit is visible to every other test while they run, and
+  # they delete it again before they end.
   #
   # The rules under test (`Apiary.Adapters.Collections`): one connection's parts are taken
   # one at a time, under its row; a listing never makes a collection live under a
@@ -931,6 +931,136 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
         ]
 
         together(Enum.map(Enum.take(changes, sides(5)), &safely/1))
+      end
+      |> List.flatten()
+
+    assert for({:raised, message} <- answers, do: message) == []
+
+    for {ref, id} <- Enum.zip(["A", "B", "C"], ids) do
+      statuses = statuses(ctx, ref)
+      assert statuses |> Enum.chunk_every(2, 1, :discard) |> Enum.all?(fn [a, b] -> a != b end)
+
+      linked? = Collection |> Repo.get!(id) |> Repo.preload(:adapter) |> Collection.linked?()
+      assert List.last(statuses) == if(linked?, do: "linked", else: "unlinked")
+    end
+  end
+
+  ## A collection's switch, by its id
+
+  defp by_id(ctx, id, on),
+    do: fn -> Collections.set_collection_backlog(ctx.scope, ctx.connection, id, on) end
+
+  defp switch_entries(ctx) do
+    Repo.all(
+      from e in Entry,
+        where: e.organisation_id == ^ctx.scope.organisation.id,
+        where: e.action == "collection.set_backlog",
+        order_by: [asc: e.inserted_at, asc: e.id],
+        select: {e.subject_kind, e.details["count"]}
+    )
+  end
+
+  test "a part holding collections by ref, then a collection's switch: the switch waits for the part",
+       ctx do
+    rows = against_ids(ctx)
+
+    assert through_the_middle(ctx, rows, by_id(ctx, rows.c, false)) ==
+             {{:ok, :accepted}, {:ok, 1}}
+
+    refute Repo.get!(Collection, rows.c).backlog
+    assert statuses(ctx, "C") == ["linked", "unlinked"]
+  end
+
+  test "a collection's switch held, then a part: the part waits for the switch, and each answers",
+       ctx do
+    rows = against_ids(ctx)
+
+    {switched, switch_pid} = hold(by_id(ctx, rows.b, false))
+    assert switched.result == {:ok, 1}
+
+    listed = start(safely(targeted(ctx, "second", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, switch_pid)
+    commit(switched)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    refute Repo.get!(Collection, rows.b).backlog
+    assert statuses(ctx, "B") == ["linked", "unlinked"]
+  end
+
+  test "a collection's switch held, then its target's switch: the target's waits, turns the others, and each writes one entry",
+       ctx do
+    rows = against_ids(ctx)
+
+    {by_collection, held_pid} = hold(by_id(ctx, rows.b, false))
+    assert by_collection.result == {:ok, 1}
+
+    by_target = start(safely(switch(ctx, rows.target, false)))
+    await_blocked(by_target.backend, held_pid)
+    commit(by_collection)
+
+    assert Task.await(by_target.task) == {:ok, 2}
+    assert switch_entries(ctx) == [{"collection", 1}, {"target", 2}]
+
+    for ref <- ["A", "B", "C"], do: assert(statuses(ctx, ref) == ["linked", "unlinked"])
+  end
+
+  test "a target's switch held, then a collection's switch of one of its collections: it waits, finds it as asked, and writes nothing",
+       ctx do
+    rows = against_ids(ctx)
+
+    {by_target, held_pid} = hold(switch(ctx, rows.target, false))
+    assert by_target.result == {:ok, 3}
+
+    by_collection = start(safely(by_id(ctx, rows.a, false)))
+    await_blocked(by_collection.backend, held_pid)
+    commit(by_target)
+
+    assert Task.await(by_collection.task) == {:ok, 0}
+    assert switch_entries(ctx) == [{"target", 3}]
+    assert statuses(ctx, "A") == ["linked", "unlinked"]
+  end
+
+  test "a start that turns items off held, then a collection's switch: it reads the adapter once it holds the collection, and turns on nothing",
+       ctx do
+    {:ok, :accepted} = items_part(ctx, "SHOP", true, "first", @started, nil).()
+    [shop] = ids(ctx.connection, ["SHOP"])
+    {:ok, 1} = assign(ctx, [shop], ctx.scope.workspace).()
+    {:ok, 1} = by_id(ctx, shop, false).()
+
+    {started, start_pid} = hold(start_with(ctx, "example-projects.json"))
+    assert {:ok, %Node{items: false}} = started.result
+
+    switched = start(by_id(ctx, shop, true))
+    await_blocked(switched.backend, start_pid)
+    commit(started)
+
+    assert Task.await(switched.task) == {:error, :not_found}
+    refute Repo.get!(Collection, shop).backlog
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+  end
+
+  test "parts, collections' and targets' switches, assigns and starts at once: none deadlocks, and the last entry says how each collection stands",
+       ctx do
+    rows = against_ids(ctx)
+    ids = [rows.a, rows.b, rows.c]
+
+    answers =
+      for round <- 1..20 do
+        started = DateTime.add(@started, 60 * round)
+
+        changes = [
+          by_id(ctx, Enum.random(ids), rem(round, 2) == 0),
+          targeted(ctx, "round #{round}", started),
+          switch(ctx, rows.target, rem(round, 3) != 0),
+          by_id(ctx, Enum.random(ids), rem(round, 3) == 0),
+          assign(ctx, Enum.shuffle(ids), ctx.scope.workspace),
+          start_with(
+            ctx,
+            if(rem(round, 4) == 0, do: "example-projects.json", else: "example-tracker.json")
+          )
+        ]
+
+        together(Enum.map(Enum.take(changes, sides(6)), &safely/1))
       end
       |> List.flatten()
 

@@ -136,9 +136,37 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  # A collection's Backlog turned on or off: the entry is the collection's, and names it
+  # by the title it had then (`name`), in the words of the source behind its connection
+  # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and the
+  # domain's word.
+  @impl true
+  def sentence(
+        :"collection.set_backlog",
+        %{subject_kind: "collection", details: %{"backlog" => on, "name" => name}} = entry,
+        names
+      )
+      when is_boolean(on) and is_binary(name) do
+    items = SourceComponents.items(names[:item_nouns][entry.subject_id])
+    collection = SourceComponents.collection(names[:collection_nouns][entry.subject_id])
+
+    if on,
+      do:
+        gettext("Turned on taking %{items} into the Backlog from %{collection} %{name}",
+          items: items,
+          collection: collection,
+          name: name
+        ),
+      else:
+        gettext("Turned off taking %{items} into the Backlog from %{collection} %{name}",
+          items: items,
+          collection: collection,
+          name: name
+        )
+  end
+
   # A target's Backlog turned on or off, for its collections: the entry is the target's,
   # and names its sources' items (`Apiary.Audit.names/2`'s `item_nouns`), else tickets.
-  @impl true
   def sentence(:"collection.set_backlog", %{details: %{"backlog" => on}} = entry, names)
       when is_boolean(on) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
@@ -486,6 +514,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         case names.targets[id] do
           nil -> text(gettext("A target"))
           target -> %{text: target, mono: true, href: nil}
+        end
+
+      # A source's collection, by its title as it is now, as a target's name is shown; the
+      # source's word for it once its row is gone.
+      "collection" ->
+        case names[:collections][id] do
+          title when is_binary(title) ->
+            %{text: title, mono: true, href: nil}
+
+          nil ->
+            collection = SourceComponents.collection(names[:collection_nouns][id])
+            text(gettext("Deleted %{collection}", collection: collection))
         end
 
       "rule" ->
