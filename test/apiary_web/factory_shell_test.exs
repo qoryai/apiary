@@ -47,8 +47,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # which answer anyone as a path that does not exist.
   @unbuilt_pages [
     ApiaryWeb.BacklogLive.Ticket,
-    ApiaryWeb.WorkItemLive.Index,
-    ApiaryWeb.WorkItemLive.Show
+    ApiaryWeb.WorkItemLive.Index
   ]
 
   # The modules of the feature's pages of the Instance level.
@@ -180,7 +179,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                ] ++
                  for(
                    rest <-
-                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread /targets/x1/also-read),
+                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore /work/1/explore/edit
+                        /work/1/thread /targets/x1/also-read),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )
