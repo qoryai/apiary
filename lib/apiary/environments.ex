@@ -118,21 +118,21 @@ defmodule Apiary.Environments do
   # ## A member's Rebuild: `rebuild/2`
   #
   # `rebuild(scope, target)` is the Rebuild of a target's page
-  # (`target.rebuild_environment`, asked of the target's workspace): for each live collection assigned to the target's
-  # workspace with the target's system and path and an `environment_ref`, and each live
-  # node pool of that workspace, it queues a prebuild held for the pool, changed or not,
-  # and writes the record's `queued_ref`, `queued_at` and queued target as the trigger
-  # does, making the record when there was none. A pool whose prebuild of the collection
-  # waits unclaimed is left as it is: that prebuild builds the collection's
-  # `environment_ref` already. It reads the collections, then locks their records `FOR
-  # UPDATE`, by collection and then pool, as `trigger/2` does, in one statement before
-  # anything else, then reads the collections again and keeps those of both reads: a
-  # listing that changes an `environment_ref` meanwhile is either read here, or its
-  # trigger waits for the records and queues the change after the Rebuild. A collection
-  # the second read alone finds, named, assigned or given the target meanwhile, is left
-  # out, its records never written without their lock: the trigger of that change queues
-  # its prebuilds. One audit entry about the target, with how many prebuilds it queued,
-  # and none when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
+  # (`target.rebuild_environment`, asked of the target's workspace): for each live
+  # collection assigned to the target's workspace with the target's system and path and an
+  # `environment_ref`, and each live node pool of that workspace, it queues a prebuild held
+  # for the pool, changed or not, and writes the record's `queued_ref`, `queued_at` and
+  # queued target as the trigger does, making the record when there was none. A pool whose
+  # prebuild of the collection waits unclaimed is left as it is: that prebuild builds the
+  # collection's `environment_ref` already. It reads the collections, then locks their
+  # records `FOR UPDATE`, by collection and then pool, as `trigger/2` does, in one statement
+  # before anything else, then reads the collections again and keeps those of both reads: a
+  # listing that changes an `environment_ref` meanwhile is either read here, or its trigger
+  # waits for the records and queues the change after the Rebuild. A collection the second
+  # read alone finds, named, assigned or given the target meanwhile, is left out, its
+  # records never written without their lock: the trigger of that change queues its
+  # prebuilds. One audit entry about the target, with how many prebuilds it queued, and none
+  # when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
   # `{:error, :not_found}` for a target that names no environment in its workspace, or
   # whose workspace has no node pool.
   #
