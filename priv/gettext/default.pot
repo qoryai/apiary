@@ -2242,6 +2242,13 @@ msgstr ""
 msgid "%{target} follows the workspace: %{mode}."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "%{target} now also reads %{count} target."
+msgid_plural "%{target} now also reads %{count} targets."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "%{target} now overrides the mode: enforce."
@@ -2844,6 +2851,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "A run id, a page, a target or a place"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "A run of %{target} also reads these targets of %{owner}, in this order."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -4129,6 +4141,7 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/policy_live/views.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Change"
 msgstr ""
@@ -4218,6 +4231,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change what Qory got wrong, then confirm. Qory's words stay in the Explore tab beside yours."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "Change what its runs read"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "Change what runs of %{target} read"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -7691,6 +7714,11 @@ msgstr ""
 msgid "Its runs counted apart from this take in."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Its runs read no other target."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Its runs, policy and access keys go with it, and its keys stop working; its members stay in the organisation. After the purge, %{days} later, nothing brings it back."
@@ -9981,6 +10009,11 @@ msgstr ""
 msgid "One line for each. Leave it empty when nothing is left out."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "One per line, such as %{owner}/docs: targets of %{owner} only, each once."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "One per machine, or a node pool for short-lived instances that share one key."
@@ -10109,6 +10142,7 @@ msgid "Only owners and admins change these settings."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change this."
@@ -11927,6 +11961,11 @@ msgstr ""
 msgid "Runs of %{name} go through the gateway %{gateway}, at %{url}."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of %{target} now read no other target."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of nodes and node pools on Default gateway go through the default."
@@ -12001,6 +12040,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Save"
@@ -12056,6 +12096,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
@@ -13007,6 +13048,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13016,6 +13058,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets and their policy"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Targets its runs also read"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -14638,6 +14685,11 @@ msgstr ""
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Today, %{time}"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/further_repositories.ex
+#, elixir-autogen, elixir-format
+msgid "Together with %{target}, at most 256 characters."
 msgstr ""
 
 #: lib/apiary_web/attempt_limits.ex

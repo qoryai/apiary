@@ -46,9 +46,39 @@ msgstr ""
 msgid "Enter an email address, such as dana@example.com."
 msgstr ""
 
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is %{target} itself."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is longer than 200 characters."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is not a path such as %{owner}/docs."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is not a target of %{owner}; runs of %{target} read only targets of %{owner}."
+msgstr "Line %{line} is not a repository of %{owner}; runs of %{target} read only repositories of %{owner}."
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} repeats line %{first}."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Together with %{target}, these come to %{count} characters; the most is 256."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex
