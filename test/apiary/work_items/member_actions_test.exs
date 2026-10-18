@@ -74,6 +74,21 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   defp other_workspace_scope(scope),
     do: workspace_scope(scope.user, workspace_fixture(scope.organisation))
 
+  # Ids that are no UUID: a work item carrying one is not found.
+  @malformed ["not-a-uuid", nil, %{}, 1]
+
+  # What stands for `work_item`: its row, its events, its runs, its entries in the trail,
+  # and the answers and confirmations kept.
+  defp written(work_item),
+    do: {
+      Repo.get!(WorkItem, work_item.id),
+      kinds(work_item),
+      runs(work_item),
+      Repo.aggregate(from(e in Entry, where: e.subject_id == ^work_item.id), :count),
+      Repo.aggregate(Answer, :count),
+      Repo.aggregate(Confirmation, :count)
+    }
+
   defp asked!(work_item, questions \\ ["Which basket?", "Which sale?"]),
     do: explore_run_fixture(work_item, result: questions_result(questions))
 
@@ -300,6 +315,20 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
       assert WorkItems.answer(ctx.scope, closed, 1, answers) == {:error, :not_live}
     end
+
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      asked!(ctx.work_item, ["Which basket?"])
+      before = written(ctx.work_item)
+
+      for id <- @malformed do
+        malformed = %{ctx.work_item | id: id}
+
+        assert WorkItems.answer(ctx.scope, malformed, 1, %{"1" => "Yes"}) ==
+                 {:error, :not_found}
+      end
+
+      assert written(ctx.work_item) == before
+    end
   end
 
   describe "confirm" do
@@ -385,6 +414,18 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert WorkItems.confirm(ctx.scope, running, 1) == {:error, :running}
     end
 
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      proposed!(ctx.work_item)
+      before = written(ctx.work_item)
+
+      for id <- @malformed, params <- [nil, edit_form(%{"scope_out" => "The receipt"})] do
+        malformed = %{ctx.work_item | id: id}
+        assert WorkItems.confirm(ctx.scope, malformed, 1, params) == {:error, :not_found}
+      end
+
+      assert written(ctx.work_item) == before
+    end
+
     test "on the last run, a proposal still waits for Confirm", ctx do
       explore_run_fixture(ctx.work_item, end_cause: :lost)
       explore_run_fixture(ctx.work_item, end_cause: :lost)
@@ -449,6 +490,18 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       for _ <- 1..3, do: explore_run_fixture(used, end_cause: :lost)
       assert WorkItems.explore_again(ctx.scope, used, 3) == {:error, :used_up}
       assert runs(used) |> length() == 3
+    end
+
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      explore_run_fixture(ctx.work_item, end_cause: :lost)
+      before = written(ctx.work_item)
+
+      for id <- @malformed do
+        malformed = %{ctx.work_item | id: id}
+        assert WorkItems.explore_again(ctx.scope, malformed, 1) == {:error, :not_found}
+      end
+
+      assert written(ctx.work_item) == before
     end
   end
 

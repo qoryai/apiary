@@ -63,6 +63,20 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
   defp other_workspace_scope(scope),
     do: workspace_scope(scope.user, workspace_fixture(scope.organisation))
 
+  # Ids that are no UUID: a work item carrying one is not found.
+  @malformed ["not-a-uuid", nil, %{}, 1]
+
+  # What stands for `work_item`: its row, its events, its runs, its entries in the trail
+  # and the statuses the adapter was told.
+  defp written(work_item, ticket),
+    do: {
+      Repo.get!(WorkItem, work_item.id),
+      kinds(work_item),
+      runs(work_item),
+      Repo.aggregate(from(e in Entry, where: e.subject_id == ^work_item.id), :count),
+      statuses(ticket)
+    }
+
   describe "undo" do
     test "of a first take in: undone, its waiting run ended, the adapter told", ctx do
       assert {:ok, %WorkItem{state: :undone} = undone} = WorkItems.undo(ctx.scope, ctx.work_item)
@@ -167,6 +181,17 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       %{scope: stranger} = sign_up_fixture()
       assert WorkItems.undo(stranger, live) == {:error, :not_found}
     end
+
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      before = written(ctx.work_item, ctx.ticket)
+
+      for id <- @malformed do
+        assert WorkItems.undo(ctx.scope, %{ctx.work_item | id: id}) ==
+                 {:error, :not_found}
+      end
+
+      assert written(ctx.work_item, ctx.ticket) == before
+    end
   end
 
   describe "decline" do
@@ -204,6 +229,17 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       live = work_item_fixture(ctx.scope)
       assert WorkItems.decline(other_workspace_scope(ctx.scope), live) == {:error, :not_found}
     end
+
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      before = written(ctx.work_item, ctx.ticket)
+
+      for id <- @malformed do
+        assert WorkItems.decline(ctx.scope, %{ctx.work_item | id: id}) ==
+                 {:error, :not_found}
+      end
+
+      assert written(ctx.work_item, ctx.ticket) == before
+    end
   end
 
   describe "close" do
@@ -236,6 +272,17 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
 
       live = work_item_fixture(ctx.scope)
       assert WorkItems.close(other_workspace_scope(ctx.scope), live) == {:error, :not_found}
+    end
+
+    test "of a work item whose id is no UUID, not found, nothing written", ctx do
+      before = written(ctx.work_item, ctx.ticket)
+
+      for id <- @malformed do
+        assert WorkItems.close(ctx.scope, %{ctx.work_item | id: id}) ==
+                 {:error, :not_found}
+      end
+
+      assert written(ctx.work_item, ctx.ticket) == before
     end
   end
 end

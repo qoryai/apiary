@@ -917,14 +917,16 @@ defmodule Apiary.WorkItems.Moves do
   defp valid(%Ecto.Changeset{} = changeset), do: {:error, changeset}
 
   # `work_item`, of the scope's workspace, asked `action` of, then held `FOR UPDATE` and
-  # read again: one that moved meanwhile is not found.
-  defp hold(scope, action, %WorkItem{id: id}) when is_binary(id) do
-    with {:ok, workspace} <- workspace(scope),
+  # read again: one that moved meanwhile is not found, as is one whose id is no UUID.
+  defp hold(scope, action, %WorkItem{id: id}) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, workspace} <- workspace(scope),
          %WorkItem{} = found <- in_workspace(workspace, id, false),
          :ok <- Access.authorize(scope, action, found),
          %WorkItem{} = held <- in_workspace(workspace, id, true) do
       {:ok, held}
     else
+      :error -> {:error, :not_found}
       nil -> {:error, :not_found}
       {:error, _reason} = refused -> refused
     end
