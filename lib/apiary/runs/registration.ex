@@ -97,7 +97,9 @@ defmodule Apiary.Runs.Registration do
   `configured_image`, or a prebuild of a workspace whose policy names an image) is given
   the configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
-  configuration gives such a run with an image `{"version":1,"image":…}`.
+  configuration gives such a run with an image `{"version":1,"image":…}`. A policy that
+  names an image since such a run's attach is composed without its `image`, beside the
+  run's: the rest of the policy applies at once, and its image from the next attach.
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -503,10 +505,11 @@ defmodule Apiary.Runs.Registration do
 
   @doc """
   The run configuration an attach gives a run of the key's workspace whose registration's
-  labels are `labels`, composed for it (`Apiary.Policy.ComposedConfiguration.shape/3`):
+  labels are `labels`, composed for it (`Apiary.Policy.ComposedConfiguration.shape/4`):
   `opts` say the `image` the run is given (a string, nil, or a function that reads it,
-  asked only when the image is used) and whether it is a `prebuild` (a boolean, or a
-  function that reads it). `{:ok, settings, image}`, with the image the document names at
+  asked only when the image is used), whether it is a `prebuild` (a boolean, or a
+  function that reads it), and whether the image is `fixed` for the run, as after its
+  attach (false unless given). `{:ok, settings, image}`, with the image the document names at
   its top level, nil for none, which the run keeps; a run given no image, of a workspace
   whose policy names none, is given `configuration/2`'s, the same bytes and digest.
   `{:error, :unavailable}` as `configuration/2`.
@@ -514,7 +517,13 @@ defmodule Apiary.Runs.Registration do
   @spec configuration(AccessKey.t(), term, keyword) ::
           {:ok, settings, String.t() | nil} | {:error, :unavailable}
   def configuration(access_key, labels, opts) do
-    case composed(access_key, labels, opts[:image], Keyword.get(opts, :prebuild, false)) do
+    case composed(
+           access_key,
+           labels,
+           opts[:image],
+           Keyword.get(opts, :prebuild, false),
+           Keyword.get(opts, :fixed, false)
+         ) do
       {:ok, settings, image} ->
         {:ok, settings, image}
 
@@ -530,10 +539,10 @@ defmodule Apiary.Runs.Registration do
   end
 
   # The run configuration in force for the labels, composed with the image for a run
-  # (`Apiary.Policy.ComposedConfiguration.serve/5`), the composed document kept: `{:ok,
+  # (`Apiary.Policy.ComposedConfiguration.serve/6`), the composed document kept: `{:ok,
   # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
   # composed.
-  defp composed(access_key, labels, image, prebuild?) do
+  defp composed(access_key, labels, image, prebuild?, fixed?) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
 
     case Serving.fetch(access_key, labels) do
@@ -543,7 +552,8 @@ defmodule Apiary.Runs.Registration do
                workspace_id,
                configuration,
                image,
-               prebuild?
+               prebuild?,
+               fixed?
              ) do
           :as_is ->
             {:ok, settings(configuration.document, configuration.digest, true), nil}
@@ -553,7 +563,14 @@ defmodule Apiary.Runs.Registration do
         end
 
       {:error, :unmanaged} ->
-        case ComposedConfiguration.serve(organisation_id, workspace_id, nil, image, prebuild?) do
+        case ComposedConfiguration.serve(
+               organisation_id,
+               workspace_id,
+               nil,
+               image,
+               prebuild?,
+               fixed?
+             ) do
           :as_is ->
             :unmanaged
 
@@ -613,7 +630,8 @@ defmodule Apiary.Runs.Registration do
         with {:ok, settings, _image} <-
                configuration(access_key, run.registration_labels,
                  image: run.configured_image,
-                 prebuild: fn -> ComposedConfiguration.prebuild?(run) end
+                 prebuild: fn -> ComposedConfiguration.prebuild?(run) end,
+                 fixed: true
                ),
              do: {:ok, settings}
 
@@ -922,7 +940,8 @@ defmodule Apiary.Runs.Registration do
              Sender.place_key(run, access_key),
              run.registration_labels,
              run.configured_image,
-             fn -> ComposedConfiguration.prebuild?(run) end
+             fn -> ComposedConfiguration.prebuild?(run) end,
+             true
            ) do
         {:ok, settings, _image} ->
           {:ok, %{settings | settings: with_variables(settings.settings, run)}}

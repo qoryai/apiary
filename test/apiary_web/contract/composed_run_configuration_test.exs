@@ -504,20 +504,68 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert composed_rows(ctx) == []
     end
 
-    test "made mid-run takes the top-level image off a run's reloads (V-798)", ctx do
-      managed!(ctx)
+    test "made mid-run keeps the run's image on its reloads, and applies the rest (V-837)",
+         ctx do
+      policy = managed!(ctx)
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
       assert attach(ctx, run_id, run_key).status == 200
       assert run(run_id).configured_image == @image
 
-      naming!(ctx)
-      assert batch_digest(ctx, run_id, 2) == Render.digest(@naming)
+      assert Jason.decode!(policy.document)["security_policy"]["egress"]["allow"] == [
+               "api.example"
+             ]
+
+      naming = naming!(ctx)
+
+      composed =
+        ComposedConfiguration.compose(ComposedConfiguration.without_image(@naming), @image)
+
+      digest = Render.digest(composed)
+      refute digest == run(run_id).attach_answer_digest
+
+      # The batch tells the run its policy moved; the reload is the policy in force without
+      # its image, beside the run's image, under a digest of its own.
+      assert batch_digest(ctx, run_id, 2) == digest
 
       reloaded = reload(ctx, run_id)
-      assert reloaded.resp_body == reload_bytes(@naming, run(run_id))
-      assert digest_header(reloaded) == [Render.digest(@naming)]
+      assert reloaded.status == 200
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert digest_header(reloaded) == [digest]
+      assert Schema.validate(reloaded.resp_body) == :ok
       refute_two_images(reloaded.resp_body)
+
+      decoded = Jason.decode!(reloaded.resp_body)
+      assert decoded["image"] == @image
+      refute Map.has_key?(decoded["security_policy"], "image")
+      assert decoded["security_policy"]["egress"]["allow"] == ["api.example", "cdn.example"]
+
+      assert [%ComposedConfiguration{image: @image} = row] =
+               Enum.filter(composed_rows(ctx), &(&1.digest == digest))
+
+      assert row.run_configuration_id == naming.id
+
+      # The run reports what it reloaded: it is behind nothing.
+      {key, seed} = ctx.gateway_key
+      event = wire_event(run_id, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
+      conn = signed_post(build_conn(), key.key_id, seed, [event], run_configuration: digest)
+      assert response(conn, 202) == ""
+      assert get_resp_header(conn, "x-qory-run-configuration") == [digest]
+
+      assert %{drift: false, reported: reported, in_force: in_force} =
+               Policy.digests(ctx.scope, run(run_id))
+
+      assert reported == naming.digest
+      assert in_force == naming.digest
+
+      # The next run starts in the policy's image: no top-level image (V-798).
+      {next_id, next_key} = explore!(ctx)
+      attached = attach(ctx, next_id, next_key)
+      assert attached.status == 200
+      assert attached.resp_body == attach_bytes(@naming, run(next_id))
+      assert digest_header(attached) == [naming.digest]
+      refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
+      assert run(next_id).configured_image == nil
     end
   end
 end

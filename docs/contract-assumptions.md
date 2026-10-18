@@ -585,8 +585,12 @@ and `{"version":1,"image":"…"}` where the workspace serves no run configuratio
 are canonical, as a stored document's are, and its digest is theirs. A composed document is
 kept by its digest, one per document of a workspace (`composed_run_configurations`), with
 the configuration it was composed from, and goes with that configuration and with the
-workspace. Where the workspace's policy names an image (`security_policy.image`), no run is
-given one beside it: the run starts in the policy's, and the two never both name one. A
+workspace. Where the workspace's policy names an image (`security_policy.image`) at a
+run's attach, no run is given one beside it: the run starts in the policy's, and the two
+never both name one. Where the policy comes to name one after the run's attach, the run's
+reloads keep its image at the top level and are given the policy in force without its
+`image`: the rest of the policy applies at once, the policy's image from the next attach,
+and the two still never both name one. A
 prebuild whose workspace's policy names an image is given that policy without its `image`,
 the rest as stored, so a prebuild always builds on the pool's default. Every other run, a
 run a node registered itself, a run with no recorded image and a prebuild under a policy
@@ -679,7 +683,9 @@ longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
 attach composed its configuration is given the configuration in force now composed the
 same way, with the image it was given at its attach, under the composed digest: Forager
 fixes the image when the run starts, so every reload names the same one, and a policy
-change is the only reason the digest moves. A reload on a workspace with no policy, or a
+change is the only reason the digest moves. A policy that names an image since the attach
+is composed without its `image` (The image, above), under a digest that maps back to the
+policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`; a run given an image is answered
 `{"version":1,"image":"…"}` there, never `404`. A policy removed mid-run never loosens a run that's
 already started, and the next run gets the new state when it registers. When the

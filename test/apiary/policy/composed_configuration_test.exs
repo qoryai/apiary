@@ -118,13 +118,40 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       # A prebuild of a policy that names none is asked nothing, and given it as it is.
       assert ComposedConfiguration.shape(@document, nil, fn -> flunk("asked") end) == :as_is
 
-      for {document, image, prebuild?} <- [{@naming, @image, false}, {@naming, nil, true}],
-          {:composed, bytes, _image} <- [ComposedConfiguration.shape(document, image, prebuild?)] do
+      for {document, image, prebuild?, fixed?} <- [
+            {@naming, @image, false, false},
+            {@naming, nil, true, false},
+            {@naming, @image, false, true}
+          ],
+          {:composed, bytes, _image} <- [
+            ComposedConfiguration.shape(document, image, prebuild?, fixed?)
+          ] do
         decoded = Jason.decode!(bytes)
 
         refute Map.has_key?(decoded, "image") and
                  Map.has_key?(decoded["security_policy"], "image")
       end
+    end
+
+    test "whose image is fixed, under a policy that names one since, keeps it beside the policy without the policy's (V-837)" do
+      without = ComposedConfiguration.without_image(@naming)
+
+      assert ComposedConfiguration.shape(@naming, @image, false, true) ==
+               {:composed, ComposedConfiguration.compose(without, @image), @image}
+
+      assert ComposedConfiguration.digest(@naming, @image, false, true) ==
+               Render.digest(ComposedConfiguration.compose(without, @image))
+
+      # A run with no image of its own is given the policy as it is; a prebuild the
+      # policy without its image, as before.
+      assert ComposedConfiguration.shape(@naming, nil, false, true) == :as_is
+
+      assert ComposedConfiguration.shape(@naming, nil, true, true) ==
+               {:composed, without, nil}
+
+      # A policy that names no image is composed as at the attach.
+      assert ComposedConfiguration.shape(@document, @image, false, true) ==
+               ComposedConfiguration.shape(@document, @image, false)
     end
   end
 

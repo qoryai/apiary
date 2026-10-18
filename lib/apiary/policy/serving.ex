@@ -125,8 +125,12 @@ defmodule Apiary.Policy.Serving do
   defp digest(organisation_id, workspace_id, target_id, run) do
     case Policy.in_force(organisation_id, workspace_id, target_id) do
       {:ok, %RunConfiguration{document: document, digest: digest}} ->
-        ComposedConfiguration.digest(document, configured_image(run), fn -> prebuild?(run) end) ||
-          digest
+        ComposedConfiguration.digest(
+          document,
+          configured_image(run),
+          fn -> prebuild?(run) end,
+          true
+        ) || digest
 
       {:error, _reason} ->
         nil
