@@ -35,7 +35,10 @@ defmodule Apiary.Adapters.SyncTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{adapter: adapter, access_key: key} = connectable_adapter_fixture(%{name: "Acme tracker"})
+
+    %{adapter: adapter, access_key: key} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     %{
@@ -251,6 +254,51 @@ defmodule Apiary.Adapters.SyncTest do
       end
     end
 
+    test "stores the source role's access line at each start, and only an adapter holds one",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      line =
+        "In Example Tracker, open Settings, then Connected adapters, to change which " <>
+          "projects the adapter reads."
+
+      # Before its first start, none.
+      assert reload(adapter).source_access == nil
+
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
+      assert declared.source_access == line
+      assert reload(adapter).source_access == line
+
+      # The next start replaces it, whatever it says; no source role, no line.
+      boards =
+        Apiary.DescriptionFixtures.contract_description()
+        |> put_in(["roles", "source", "access"], "Ask an owner to change the boards.")
+
+      for {name, description, expected} <- [
+            {"another line", boards, "Ask an owner to change the boards."},
+            {"example-projects.json", "example-projects.json", line},
+            {"acme-tracker.json", "acme-tracker.json", nil},
+            {"example-tracker.json", "example-tracker.json", line}
+          ] do
+        assert {:ok, _} =
+                 Adapters.declare(key_scope, %{
+                   declaration()
+                   | description: read_description(description)
+                 })
+
+        assert reload(adapter).source_access == expected, name
+      end
+
+      # It is no part of the trail's entries.
+      assert [entry] = entries(:"adapter.declare")
+      refute Map.has_key?(entry.after, "source_access")
+
+      # Only an adapter holds one (`nodes_source_access_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert_raise Postgrex.Error, ~r/nodes_source_access_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [source_access: line])
+        end
+      end
+    end
+
     test "keeps the interval an instance admin chose, even below a later minimum",
          %{admin: admin, adapter: adapter, key_scope: key_scope} do
       {:ok, _} = Adapters.declare(key_scope, declaration())
@@ -463,7 +511,7 @@ defmodule Apiary.Adapters.SyncTest do
   describe "last_seen/2" do
     test "the latest use of the adapter's keys, revoked ones included, or nil",
          %{scope: scope, admin: admin, adapter: adapter, key: key} do
-      other = adapter_fixture(name: "Acme chat")
+      other = adapter_fixture(name: unique_adapter_name("Acme chat"))
 
       assert Adapters.last_seen(admin, adapter) == {:ok, nil}
       assert Adapters.last_seen(admin, [adapter, other]) == {:ok, %{}}

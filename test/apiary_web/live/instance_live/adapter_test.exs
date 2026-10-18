@@ -29,7 +29,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     %{
       admin: admin,
       conn: log_in_user(build_conn(), admin.user),
-      adapter: adapter_fixture(%{name: "Shop tracker"})
+      adapter: adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
     }
   end
 
@@ -58,8 +58,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
          %{conn: conn, adapter: adapter} do
       {:ok, lv, _html} = live(conn, page_path(adapter))
 
-      assert has_element?(lv, "h1", "Shop tracker")
-      assert page_title(lv) =~ "Shop tracker · Adapters · Instance settings"
+      assert has_element?(lv, "h1", adapter.name)
+      assert page_title(lv) =~ "#{adapter.name} · Adapters · Instance settings"
       assert words(lv, "#adapter-meta") =~ ~r/^Added by .+, .+ · #{adapter.public_id}$/
       assert has_element?(lv, ~s{#adapter-tabs-overview[aria-current="page"]}, "Overview")
       assert has_element?(lv, ~s{#adapter-tabs-keys[href="#{page_path(adapter, "/keys")}"]})
@@ -78,7 +78,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     test "with a key, says when it was last seen, or Never seen, and shows the install address it declared",
          %{conn: conn, admin: admin} do
       %{adapter: adapter, access_key: key} =
-        connectable_adapter_fixture(%{name: "Platform tracker"})
+        connectable_adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
 
       {:ok, lv, html} = live(conn, page_path(adapter))
 
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, "#adapter-overview-state") =~ ~r/^Last seen \S/
       assert has_element?(lv, "#adapter-state-seen")
 
-      other = adapter_fixture(%{name: "Shop tracker 2"})
+      other = adapter_fixture(%{name: unique_adapter_name("Shop tracker 2")})
       {:ok, lv, _html} = live(conn, page_path(other))
       assert words(lv, "#adapter-overview-state") =~ "No key yet"
 
@@ -146,8 +146,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
 
       assert has_element?(lv, ~s{#adapter-tabs-settings[aria-current="page"]})
-      assert page_title(lv) =~ "Settings · Shop tracker · Adapters"
-      assert words(lv, "#adapter-name") == "Name Shop tracker Rename…"
+      assert page_title(lv) =~ "Settings · #{adapter.name} · Adapters"
+      assert words(lv, "#adapter-name") == "Name #{adapter.name} Rename…"
 
       assert words(lv, "#adapter-danger") ==
                "Danger zone Remove this adapter Its keys are revoked, and every organisation's installation of it ends. This cannot be undone. Remove adapter…"
@@ -242,7 +242,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
         |> form("#adapter-interval-form", sync: %{sync_interval: "7200"})
         |> render_submit()
 
-      assert html =~ "Shop tracker is saved."
+      assert html =~ "#{adapter.name} is saved."
       assert has_element?(lv, ~s{#adapter-interval-form option[value="7200"][selected]})
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 7200
 
@@ -284,7 +284,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
       assert selected(lv) == [{"Every 2 hours", "7200"}]
 
-      assert submit(lv, "") =~ "Shop tracker is saved."
+      assert submit(lv, "") =~ "#{adapter.name} is saved."
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
       assert selected(lv) == [{"Every hour (its default)", ""}]
 
@@ -302,7 +302,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert choices(lv) == @choices
       assert selected(lv) == [{"Every hour (its default)", ""}]
 
-      assert submit(lv, "") =~ "Shop tracker is saved."
+      assert submit(lv, "") =~ "#{adapter.name} is saved."
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 3600
       assert left(adapter) == {[], []}
     end
@@ -312,7 +312,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
 
       html = submit(lv, "")
-      assert html =~ "Shop tracker is saved."
+      assert html =~ "#{adapter.name} is saved."
       refute html =~ "is invalid"
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == nil
       assert left(adapter) == {[], []}
@@ -321,7 +321,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
 
       html = submit(lv, "7200")
-      assert html =~ "Shop tracker is saved."
+      assert html =~ "#{adapter.name} is saved."
       refute html =~ "is invalid"
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 7200
       assert left(adapter) == {[], []}
@@ -359,7 +359,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
 
       html = submit(lv, "600")
-      assert html =~ "Shop tracker is saved."
+      assert html =~ "#{adapter.name} is saved."
       refute html =~ "is invalid"
       assert Adapters.get_adapter(admin, adapter.public_id).sync_interval == 600
       assert left(adapter) == {[], []}
@@ -414,10 +414,11 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       admin: admin,
       adapter: adapter
     } do
+      renamed = unique_adapter_name("Platform tracker")
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
 
-      assert has_element?(lv, "h1", "Rename Shop tracker")
-      assert page_title(lv) =~ "Rename Shop tracker · Adapters"
+      assert has_element?(lv, "h1", "Rename #{adapter.name}")
+      assert page_title(lv) =~ "Rename #{adapter.name} · Adapters"
 
       assert words(lv, ".q-settings-head-sub") ==
                "Organisations see the new name on their Integrations page and when they install it."
@@ -430,12 +431,12 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
                ~s{#adapter-rename-save-cancel[href="#{page_path(adapter, "/settings")}"]}
              )
 
-      lv |> form("#adapter-rename-form", adapter: %{name: "Platform tracker"}) |> render_submit()
+      lv |> form("#adapter-rename-form", adapter: %{name: renamed}) |> render_submit()
       assert_patch(lv, page_path(adapter, "/settings"))
-      assert render(lv) =~ "Platform tracker is renamed."
-      assert words(lv, "#adapter-name-value") == "Platform tracker"
-      assert has_element?(lv, "h1", "Platform tracker")
-      assert Adapters.get_adapter(admin, adapter.public_id).name == "Platform tracker"
+      assert render(lv) =~ "#{renamed} is renamed."
+      assert words(lv, "#adapter-name-value") == renamed
+      assert has_element?(lv, "h1", renamed)
+      assert Adapters.get_adapter(admin, adapter.public_id).name == renamed
     end
 
     test "the name saved unchanged closes the form and says nothing", %{
@@ -445,21 +446,21 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     } do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
 
-      lv |> form("#adapter-rename-form", adapter: %{name: "Shop tracker"}) |> render_submit()
+      lv |> form("#adapter-rename-form", adapter: %{name: adapter.name}) |> render_submit()
       assert_patch(lv, page_path(adapter, "/settings"))
       refute render(lv) =~ "is renamed."
-      assert words(lv, "#adapter-name-value") == "Shop tracker"
-      assert Adapters.get_adapter(admin, adapter.public_id).name == "Shop tracker"
+      assert words(lv, "#adapter-name-value") == adapter.name
+      assert Adapters.get_adapter(admin, adapter.public_id).name == adapter.name
     end
 
     test "a name taken by another adapter, or too long, is said under the field",
          %{conn: conn, admin: admin, adapter: adapter} do
-      adapter_fixture(%{name: "Platform tracker"})
+      taken = adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
 
       html =
         lv
-        |> form("#adapter-rename-form", adapter: %{name: "Platform tracker"})
+        |> form("#adapter-rename-form", adapter: %{name: taken.name})
         |> render_submit()
 
       assert html =~ "has already been taken"
@@ -470,7 +471,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
         |> render_change()
 
       assert html =~ "should be at most 64 character(s)"
-      assert Adapters.get_adapter(admin, adapter.public_id).name == "Shop tracker"
+      assert Adapters.get_adapter(admin, adapter.public_id).name == adapter.name
     end
   end
 
@@ -480,7 +481,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       %{scope: scope} = sign_up_fixture()
 
       %{adapter: adapter, access_key: key} =
-        connectable_adapter_fixture(%{name: "Platform tracker"})
+        connectable_adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
 
       {:ok, code, _code} = Adapters.create_code(admin, adapter)
       {connection, _nonce} = connection_fixture(scope, adapter, :listed)
@@ -488,8 +489,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
 
-      assert has_element?(lv, "h1", "Remove Platform tracker?")
-      assert page_title(lv) =~ "Remove Platform tracker · Adapters"
+      assert has_element?(lv, "h1", "Remove #{adapter.name}?")
+      assert page_title(lv) =~ "Remove #{adapter.name} · Adapters"
       assert words(lv, ".q-settings-head-sub") == "This happens at once:"
 
       assert words(lv, "#adapter-remove-follows") ==
@@ -499,7 +500,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert words(lv, "#adapter-remove-follows li:nth-child(2)") ==
                "Its open work items, in every organisation, are closed as a member would close them. If it is added again, taking in one of its tickets makes a new work item."
 
-      assert has_element?(lv, "#adapter-remove-button", "Remove Platform tracker")
+      assert has_element?(lv, "#adapter-remove-button", "Remove #{adapter.name}")
 
       assert has_element?(
                lv,
@@ -509,7 +510,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       removed = lv |> element("#adapter-remove-button") |> render_click()
       assert {:error, {:live_redirect, %{to: "/instance/adapters"}}} = removed
       {:ok, _list, html} = follow_redirect(removed, conn)
-      assert html =~ "Platform tracker is removed."
+      assert html =~ "#{adapter.name} is removed."
       assert Adapters.get_adapter(admin, adapter.public_id) == nil
       assert Repo.get!(AccessKey, key.id).revoked_at
       assert Repo.get!(EnrolmentCode, code.id).cancelled_at
@@ -535,8 +536,12 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
   test "an act without its page open does nothing", %{conn: conn, admin: admin, adapter: adapter} do
     {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
     render_click(lv, "remove", %{})
-    render_submit(lv, "rename", %{"adapter" => %{"name" => "Platform tracker"}})
-    assert Adapters.get_adapter(admin, adapter.public_id).name == "Shop tracker"
+
+    render_submit(lv, "rename", %{
+      "adapter" => %{"name" => unique_adapter_name("Platform tracker")}
+    })
+
+    assert Adapters.get_adapter(admin, adapter.public_id).name == adapter.name
 
     declare(adapter, sync_default_interval: 3600, sync_minimum_interval: 900)
     {:ok, lv, _html} = live(conn, page_path(adapter))

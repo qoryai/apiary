@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.ShowTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Phoenix.Component, only: [sigil_H: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.ConnectionsFixtures
@@ -29,12 +30,12 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   end
 
   # github_description/0 with a yes/no setting its credential role lists, described.
-  defp flag_description do
+  defp flag_description(hint \\ "Logs every request it makes.") do
     github_description()
     |> put_in(["settings", "properties", "verbose"], %{
       "title" => "Verbose",
       "type" => "boolean",
-      "description" => "Logs every request it makes."
+      "description" => hint
     })
   end
 
@@ -72,6 +73,21 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "#breadcrumb a[href='#{ipath(scope, runtime)}'][data-phx-link=patch]"
              )
     end
+  end
+
+  test "a name an external system gave, or one saved before the rules, is shown isolated and without its invisible characters" do
+    connection = %Connection{kind: "service", name: "Sentry#{<<0x202E::utf8>>} EU\e"}
+    names = ApiaryWeb.IntegrationLive.Common.names(connection)
+    assert names == {"Sentry EU\u{FFFD}", nil}
+    assert ApiaryWeb.IntegrationLive.Common.label(connection) == "Sentry EU\u{FFFD}"
+
+    assigns = %{names: names}
+
+    html =
+      ~H"<ApiaryWeb.IntegrationLive.Common.name names={@names} />"
+      |> rendered_to_string()
+
+    assert html =~ ~r|<bdi[^>]*>Sentry EU\x{FFFD}</bdi>|u
   end
 
   describe "Overview" do
@@ -405,6 +421,14 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
       {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
       assert has_element?(lv, "#delete-connection-button", "Remove API…")
+    end
+
+    test "a setting's hint is shown as an integration's text is", %{conn: conn, scope: scope} do
+      release = ready_release!(scope, flag_description("Logs every\u202E request\u0085"))
+      {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
+
+      assert has_element?(lv, "#connection-setting-verbose-hint", "Logs every request\u{FFFD}")
     end
 
     test "a yes/no setting says what it is, and is saved as no", %{conn: conn, scope: scope} do

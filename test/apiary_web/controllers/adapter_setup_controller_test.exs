@@ -19,7 +19,9 @@ defmodule ApiaryWeb.AdapterSetupControllerTest do
   @moduletag needs: :factory
 
   setup do
-    %{adapter: adapter, access_key: key} = settable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: adapter, access_key: key} =
+      settable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     admin = instance_admin_scope()
     %{adapter: adapter, key: key, admin: admin, conn: log_in_user(build_conn(), admin.user)}
   end

@@ -146,6 +146,8 @@ defmodule ApiaryWeb do
       import ApiaryWeb.PageComponents
       # Whole translated sentences with marked-up parts
       import ApiaryWeb.RichText
+      # A text of one line an external system sent, isolated and shown safely
+      import ApiaryWeb.ExternalText
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
