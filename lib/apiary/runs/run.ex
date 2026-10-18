@@ -14,8 +14,8 @@ defmodule Apiary.Runs.Run do
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
-  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
-  are the registration's: written once, when the run registers,
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
+  `registration_variables`) are the registration's: written once, when the run registers,
   and kept by a rebuild. A run that registered is projected from sequence 1, which its
   registration stands for (`projected_from/1`). A run that registered through a gateway
   keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild
@@ -134,6 +134,14 @@ defmodule Apiary.Runs.Run do
     field :registration_digest, :binary
     field :registration_interval_seconds, :integer
     field :registration_answer_digest, :string
+
+    # The run variables Qory set for a run of a workspace's queue when it registered it,
+    # each name with its value (`Apiary.Runs.RunVariables`): given to the run after its run
+    # configuration's last member at its attach and at every reload it is answered, under
+    # the stored configuration's digest (`Apiary.Runs.Attach`,
+    # `Apiary.Runs.Registration.fetch/3`). Written once with the registration and never
+    # changed; nil for every other run. Not folded: a rebuild keeps it.
+    field :registration_variables, :map
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the

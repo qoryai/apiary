@@ -90,7 +90,9 @@ defmodule Apiary.Runs.Registration do
   `fetch/3` is the reload: the run configuration in force for a run, read by its
   registration's labels, for the active keys of the node that registered it alone, or of
   the gateway that attached it and its attaching instance for a run through a gateway
-  (`Apiary.Runs.Sender`).
+  (`Apiary.Runs.Sender`). A run Qory set run variables for (`Apiary.Runs.Run`,
+  `registration_variables`) is given them after the document's last member, as its
+  attach was, under the stored document's digest.
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -105,7 +107,7 @@ defmodule Apiary.Runs.Registration do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Run, RunKey, Sender}
+  alias Apiary.Runs.{About, Answer, Batch, Run, RunKey, RunVariables, Sender}
 
   # The body's members, by the names the contract gives them.
   @version "version"
@@ -794,7 +796,7 @@ defmodule Apiary.Runs.Registration do
          true <- Sender.serves?(run, access_key) || :not_served do
       case Serving.fetch(Sender.place_key(run, access_key), run.registration_labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
-          {:ok, settings(document, digest, true)}
+          {:ok, settings(with_variables(document, run), digest, true)}
 
         {:error, :unmanaged} ->
           without_run_configuration()
@@ -809,6 +811,15 @@ defmodule Apiary.Runs.Registration do
   rescue
     _exception -> {:error, :unavailable}
   end
+
+  # A reload's bytes: the stored document, with the run variables Qory set for the run, as
+  # its attach was given them (`Apiary.Runs.Attach.answer_body/4`). The digest stays the
+  # stored document's.
+  defp with_variables(document, %Run{registration_variables: variables}),
+    do:
+      Answer.append_members(document, [
+        {"variables", variables && RunVariables.document(variables)}
+      ])
 
   # Who may reload a run: an active key of the node that registered it, and no other; for a
   # run through a gateway, the instance of the gateway that attached it. A reload reads,
