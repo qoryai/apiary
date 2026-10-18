@@ -33,6 +33,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
+    ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController
   ]
@@ -176,7 +177,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/settings/remove"}
                ] ++
                  for(
-                   rest <- ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread),
+                   rest <-
+                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread /targets/x1/also-read),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )

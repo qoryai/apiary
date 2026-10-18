@@ -3,11 +3,9 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   The form page of what a target's runs also read, its further repositories
   (`/:org/:workspace/targets/tg_…/also-read`): a page of its own, as every form is
   (`ApiaryWeb.PageComponents.page_form/1`), opened from Change on the target's Overview
-  (`ApiaryWeb.TargetLive.Show`). A page of the target, as its Overview is, it is routed
-  with the target's pages' feature, `observability`, and what it shows and changes are the
-  `factory` feature's: it mounts on `work_item.read` and asks
-  `target.set_further_repositories`, both of `factory`, so without that feature, or where
-  it is hidden from the reader, it is not found.
+  (`ApiaryWeb.TargetLive.Show`), with the `factory` feature: without it, or where it is
+  hidden from the reader, the page is not found. It mounts on `work_item.read`, as the
+  Backlog card of the Overview asks.
 
   One text area, one path a line, in the order the runs read them, its first field taking
   the focus. Save writes the whole list (`Apiary.Targets.set_further_repositories/3`) and
@@ -18,7 +16,7 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   admins) and is not found for anyone else, as an id of no target of the workspace is.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :observability
+  use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
   import ApiaryWeb.TargetComponents
