@@ -541,7 +541,9 @@ defmodule Apiary.Audit do
   that ends in `_id` in its `details`, `before` or `after`: the other side of a change
   that concerns two organisations, which an edition records. For the target of each
   entry that turned a Backlog on or off (`collection.set_backlog`), what its sources call
-  its items, where they name it (Apiary.Adapters.target_item_nouns/2). Only what the scope's
+  its items, where they name it (Apiary.Adapters.target_item_nouns/2), and for the work
+  item of each take in (`work_item.take_in`), what its source calls its items, where it
+  names them (Apiary.WorkItems.item_nouns/2). Only what the scope's
   organisation holds is looked up, people and those organisations aside; in the instance's
   organisation, the nodes and access keys of the instance, which no organisation holds,
   too. A person whose account is deleted, a key or a row
@@ -577,6 +579,15 @@ defmodule Apiary.Audit do
       ids.(
         &[
           if(&1.subject_kind == "target" and &1.action == "collection.set_backlog",
+            do: &1.subject_id
+          )
+        ]
+      )
+
+    taken_in =
+      ids.(
+        &[
+          if(&1.subject_kind == "work_item" and &1.action == "work_item.take_in",
             do: &1.subject_id
           )
         ]
@@ -641,7 +652,11 @@ defmodule Apiary.Audit do
           )
         ),
       organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name})),
-      item_nouns: Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets)
+      item_nouns:
+        Map.merge(
+          Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets),
+          Apiary.WorkItems.item_nouns(organisation_id, taken_in)
+        )
     }
   end
 

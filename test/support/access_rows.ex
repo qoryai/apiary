@@ -130,6 +130,7 @@ defmodule Apiary.AccessRows do
       {:"work_item.read", yes: @owners ++ [:member, :admin]},
       {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
       {:"work_item.undo", yes: @owners ++ [:member, :admin]},
+      {:"work_item.decline", yes: @owners ++ [:member, :admin]},
       {:"work_item.close", yes: @owners ++ [:member, :admin]},
       {:"work_item.comment", yes: @owners ++ [:member, :admin]},
       # Asked of the workspace, as a page asks whether to show the button at all: the role

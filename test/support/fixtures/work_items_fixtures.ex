@@ -156,6 +156,37 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   @doc """
+  A ticket in the Backlog of the scope's workspace, which a member may take in: an open
+  item of a new collection linked to that workspace, with a target, of `connection` (else
+  of a new connection of the scope's organisation). `attrs` takes `connection` and
+  `collection` (attrs of the collection, `source_collection_fixture/3`), and overrides any
+  field of the item.
+  """
+  def backlog_ticket_fixture(%Scope{} = scope, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    connection = Map.get_lazy(attrs, :connection, fn -> ticket_connection_fixture(scope) end)
+    unique = System.unique_integer([:positive])
+
+    collection =
+      source_collection_fixture(
+        scope,
+        connection,
+        Enum.into(Map.get(attrs, :collection, %{}), %{
+          target_system: "forge.example.com",
+          target_path: "acme/shop-#{unique}"
+        })
+      )
+
+    source_item_fixture(
+      scope,
+      attrs
+      |> Map.drop([:connection])
+      |> Map.put(:collection, collection)
+      |> Map.put_new(:external_ref, "acme/shop-#{unique}#12")
+    )
+  end
+
+  @doc """
   A connected connection of the scope's organisation to a new adapter of the instance,
   the kind of row a work item's ticket comes through, written straight to the database
   so that it needs no feature on (`Apiary.NodesFixtures.connection_fixture/3` goes

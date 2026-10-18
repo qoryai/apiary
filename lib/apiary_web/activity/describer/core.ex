@@ -64,6 +64,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"collection.set_backlog"), do: backlog_label(nil)
 
   def label(:"target.set_further_repositories"), do: gettext("Also read")
+  def label(:"work_item.take_in"), do: gettext("Work item taken in")
+  def label(:"work_item.undo"), do: gettext("Take in undone")
+  def label(:"work_item.decline"), do: gettext("Work item declined")
+  def label(:"work_item.close"), do: gettext("Work item closed")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
@@ -88,16 +92,21 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # and integrations' only where the reader is shown them, and the nodes' and their access
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
-  # show, by their labels. Of the feature `factory`'s actions only the work item comments',
-  # the assigning of collections, the turning of a target's Backlog on or off, the
-  # handover of a claimed run, its release and the choosing of what a target's runs also
-  # read have labels yet, so the filter offers those alone, where the reader is shown the
-  # feature (the page asks it); the others' entries show as any change.
+  # show, by their labels. Of the feature `factory`'s actions only those of a person on the
+  # work items (a take in, its undo, a decline, a close and the comments), the assigning
+  # of collections, the turning of a target's Backlog on or off, the handover of a claimed
+  # run, its release and the choosing of what a target's runs also read have labels yet,
+  # so the filter offers those alone, where the reader is shown the feature (the page asks
+  # it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
       :factory ->
         action in [
+          :"work_item.take_in",
+          :"work_item.undo",
+          :"work_item.decline",
+          :"work_item.close",
           :"work_item.comment",
           :"work_item.comment_delete",
           :"collection.assign",
@@ -142,6 +151,16 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       paths ->
         gettext("Changed what its runs read: %{paths}", paths: Enum.join(paths, ", "))
     end
+  end
+
+  # A ticket taken in names the items of the work item's source (`Apiary.Audit.names/2`'s
+  # `item_nouns`), else tickets; a take in again is the work item's.
+  def sentence(:"work_item.take_in", %{details: %{"again" => true}}, _names),
+    do: gettext("Took a work item in again")
+
+  def sentence(:"work_item.take_in", entry, names) do
+    items = SourceComponents.items(names[:item_nouns][entry.subject_id])
+    gettext("Took in one of the Backlog's %{items} as a work item", items: items)
   end
 
   def sentence(action, entry, _names) do
@@ -290,6 +309,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
            count
          )
 
+  defp said(:"work_item.undo", _details, _actor),
+    do: gettext("Undid a take in, before a run started")
+
+  defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
+  defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")
 
@@ -435,6 +460,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
             text(gettext("An integration"))
         end
 
+      # A work item is not named yet: the page its stable address opens has no route, so
+      # the entry shows its sentence and no subject until that page comes.
       _other ->
         nil
     end

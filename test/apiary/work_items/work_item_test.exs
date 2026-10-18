@@ -773,4 +773,85 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert %{data: [_]} = errors_on(changeset)
     end
   end
+
+  describe "the first instruction" do
+    test "holds tab, line feed and carriage return, and none of the characters a run's input refuses" do
+      assert WorkItem.take_in_changeset(
+               %WorkItem{},
+               snapshot(%{first_instruction: "One\tline\r\nand the next, ünïcödé."})
+             ).valid?
+
+      for {text, message} <- [
+            {"a\u0000b", "must not contain control characters"},
+            {"a\u001Bb", "must not contain control characters"},
+            {"a\u007Fb", "must not contain control characters"},
+            {"a\u0085b", "must not contain control characters"},
+            {"a\u00ADb", "must not contain invisible characters"},
+            {"a\u200Bb", "must not contain invisible characters"},
+            {"a\u202Eb", "must not contain invisible characters"},
+            {"a\u2066b", "must not contain invisible characters"},
+            {"a\uFEFFb", "must not contain invisible characters"}
+          ] do
+        changeset = WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{first_instruction: text}))
+        assert %{first_instruction: [^message]} = errors_on(changeset), inspect(text)
+
+        again =
+          WorkItem.take_in_again_changeset(
+            %WorkItem{take_in: 1},
+            again(%{first_instruction: text})
+          )
+
+        assert %{first_instruction: [^message]} = errors_on(again), inspect(text)
+      end
+    end
+
+    test "is refused, not raised on, when it is not UTF-8" do
+      changeset =
+        WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{first_instruction: <<0xFF>>}))
+
+      refute changeset.valid?
+    end
+  end
+
+  describe "take_in_again_changeset/2" do
+    test "counts the take in one more and keeps the adapter and the ref" do
+      work_item = %WorkItem{
+        take_in: 2,
+        adapter_id: Ecto.UUID.generate(),
+        external_ref: "acme/shop#13"
+      }
+
+      changeset =
+        WorkItem.take_in_again_changeset(
+          work_item,
+          again(%{adapter_id: Ecto.UUID.generate(), external_ref: "acme/shop#99"})
+        )
+
+      assert changeset.valid?
+      assert get_change(changeset, :take_in) == 3
+      assert get_field(changeset, :adapter_id) == work_item.adapter_id
+      assert get_field(changeset, :external_ref) == "acme/shop#13"
+    end
+
+    test "asks for the snapshot and the owner, within their bounds" do
+      changeset = WorkItem.take_in_again_changeset(%WorkItem{take_in: 1}, %{})
+      assert %{connection_id: [_], item_id: [_], title: [_], owner_id: [_]} = errors_on(changeset)
+
+      changeset =
+        WorkItem.take_in_again_changeset(
+          %WorkItem{take_in: 1},
+          again(%{title: String.duplicate("t", 1025), url: "http://forge.example.com/a"})
+        )
+
+      assert %{title: [_], url: [_]} = errors_on(changeset)
+    end
+  end
+
+  # A take in again's snapshot within every bound, with `attrs` over it.
+  defp again(attrs) do
+    attrs
+    |> snapshot()
+    |> Map.drop([:adapter_id, :external_ref])
+    |> Map.merge(Map.take(Map.new(attrs), [:adapter_id, :external_ref]))
+  end
 end

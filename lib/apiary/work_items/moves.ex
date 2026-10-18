@@ -1,0 +1,803 @@
+defmodule Apiary.WorkItems.Moves do
+  # Moves holds what a person does to a workspace's work items, each in one transaction
+  # with its event, its run of the queue, its feed entry and its entry in the audit trail:
+  # taking a ticket in, taking it in again, undoing a take in, declining and closing.
+  # `Apiary.WorkItems` names each function and what it answers; this module says how.
+  #
+  # ## Who may
+  #
+  # Each asks `Apiary.Access.authorize/3` first, inside its transaction: a take in and a
+  # take in again `work_item.take_in` of the scope's workspace, where the work item will
+  # be; an undo, a decline and a close `work_item.undo`, `work_item.decline` and
+  # `work_item.close` of the work item, which must be in the scope's workspace. Each
+  # writes its entry in the trail with the change (`Apiary.Audit.record/6`), about the work
+  # item: a take in again with `details` `again: true`.
+  #
+  # ## What a take in reads
+  #
+  # The ticket is named by the id Qory Apiary gives its record (`tk_…`). It is taken in
+  # only while it is in the Backlog of the scope's workspace: its connection connected,
+  # its collection live and assigned to that workspace, the record not disconnected; else
+  # `:not_found`. A collection assigned there that is not linked, its Backlog switch off or
+  # with no items, it or its adapter (`Apiary.Adapters.Collection.linked?/1`), is
+  # `:not_linked`. A ticket closed at its source is `:ticket_closed`. The work item's
+  # target is the ticket's target, else its collection's; with neither, `:no_target`; one
+  # a run's variables refuse (`Apiary.Runs.RunVariables`), `:target_invalid`. Its
+  # owner is the person the page names, the one taking it in unless named, who must act
+  # in the workspace (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
+  # The page gives the owner and the first instruction under atom keys or their strings.
+  # Its first instruction is the one the page gives, empty for none, within the bounds of
+  # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
+  #
+  # ## The order of the locks
+  #
+  # Every move takes its locks in the order the core keeps for everything that holds more
+  # than one of them (`Apiary.Adapters.Collections` names it in full): the ticket's
+  # connection `FOR SHARE`, so no listing's part, item or end of it runs meanwhile; the
+  # ticket's collection `FOR SHARE`, so no assign, move, Backlog switch or end changes its
+  # link meanwhile, its adapter's `items` read after it; then the work item `FOR UPDATE`;
+  # then, only right after the work item, the workspace's counter of numbers
+  # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
+  # the queue (`Apiary.Dispatches`); then the adapter's feed counter, last
+  # (`Apiary.Adapters.Feed`). An undo, a decline and a close take no connection or
+  # collection: the work item, then its runs. No workspace row is locked: an assign holds
+  # its workspace `FOR SHARE` before the collections, and a move must never wait on it
+  # holding a collection. No collection or target is locked after a work item.
+  #
+  # ## Take in
+  #
+  # A first take in finds no work item of the ticket in the organisation, by its adapter
+  # and its ref, live or not. It makes one, `:exploring`, numbered next in the workspace,
+  # take in 1, taken in by the person now, with its `:taken_in` event (`data`
+  # `{"take_in": 1, "before": null}`), queues its first run (`Apiary.Dispatches.queue/2`),
+  # and tells the adapter `taken_in` (`Apiary.Adapters.Feed`). A work item of the ticket
+  # that exists, in any workspace and any state, is `{:error, {:taken, work_item}}`; so is
+  # a take in that loses the race to another: the unique index on (`organisation_id`,
+  # `adapter_id`, `external_ref`) refuses the second, which rolls back, and the winner is
+  # read once it has. The work item comes as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone, as the
+  # Backlog shows it; a take in again's `{:taken, work_item}` too.
+  #
+  # ## Take in again
+  #
+  # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
+  # a live one `{:error, {:taken, work_item}}`. An ended one, declined, closed or undone,
+  # becomes `:exploring` again, its take in counted one more, pointed at the ticket's
+  # current record and its connection, with the ticket's title and address and its
+  # collection's title as they are now, and the target, the owner, the first instruction,
+  # who took it in and when of this take in. A work item of another workspace moves to the
+  # scope's, numbered next there; its old number is never given again, and its runs stay
+  # in the workspace they were queued in. Its `:taken_in` event keeps how it had ended,
+  # `before` (its state, when and by whom it ended, who had taken it in and when, its
+  # owner and its target), for an undo. Its first run is queued, run 1 of the new count.
+  # The adapter is told `taken_in` only for one that had ended undone, whose label came
+  # off; a declined or closed one kept its label, and nothing is sent.
+  #
+  # ## Undo
+  #
+  # An undo works on a live work item while no claim holds a run of its take in
+  # (`Apiary.Dispatches.cancel_for_undo/1`, `{:error, :claimed}` otherwise), and ends its
+  # waiting runs. A first take in becomes `:undone`, and the adapter is told `undone`. A
+  # take in again goes back to how it had ended, from its event's `before`: declined or
+  # closed with when and by whom, and its owner, its target and who had taken it in, and
+  # nothing is sent, as the label stayed; one that had ended undone becomes `:undone`
+  # again, and the adapter is told `undone`, as its take in again put the label back on.
+  # A work item moved by its take in again stays in the workspace it moved to, with its
+  # new number. The first instruction stays the one of the take in undone: it is given to
+  # no run until a take in again gives a new one.
+  #
+  # ## Decline and close
+  #
+  # A decline works on a live work item none of whose runs of its take in waits, is
+  # claimed or is handed over, else `:running`: it becomes `:declined`, by the person,
+  # now, with its event, and nothing is sent, as the label stays. A close works on a live
+  # work item, whatever its runs (`Apiary.WorkItems.close_locked/3`).
+  #
+  # ## What is told
+  #
+  # Once the transaction commits, each workspace whose Backlog shows the ticket is sent
+  # `{:tickets_changed, ids}` on the Backlog's topic (`Apiary.Sources.Topic`), and the
+  # workspace the work item is in, and the one it moved from, `{:work_items_changed, ids}`
+  # on its work items' topic (`Apiary.WorkItems.topic/1`): public ids only. A close also
+  # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`).
+  #
+  # The feature is hidden from the documentation, so the module is too.
+  @moduledoc false
+
+  import Ecto.Query, warn: false
+
+  alias Apiary.{Access, Audit, Dispatches, Organisations, Repo, WorkItems}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Connection, Feed}
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Nodes.Node
+  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.RunVariables
+  alias Apiary.Sources.{Item, Topic}
+  alias Apiary.WorkItems.{Number, State, WorkItem, WorkItemEvent}
+
+  @typedoc "Why a take in, or a take in again, is refused."
+  @type take_in_refusal ::
+          :not_found
+          | :forbidden
+          | :not_linked
+          | :ticket_closed
+          | :no_target
+          | :target_invalid
+          | :owner
+          | :not_taken
+          | {:taken, WorkItem.t()}
+          | Ecto.Changeset.t()
+
+  @typedoc """
+  What the page gives a take in: the owner, and the first instruction, under atom keys or
+  their strings.
+  """
+  @type take_in_attrs :: %{
+          optional(:owner_id | String.t()) => Ecto.UUID.t(),
+          optional(:first_instruction | String.t()) => String.t()
+        }
+
+  ## Take in
+
+  @doc false
+  @spec take_in(Scope.t(), String.t(), take_in_attrs) ::
+          {:ok, WorkItem.t()} | {:error, take_in_refusal}
+  def take_in(%Scope{} = scope, item_id, attrs) when is_map(attrs) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             :ok <- none_yet(scope, ticket),
+             :ok <- open(ticket),
+             {:ok, target} <- target(ticket),
+             {:ok, owner_id} <- owner(scope, attrs) do
+          make(scope, workspace, ticket, target, owner_id, attrs)
+        end
+      end)
+
+    case result do
+      {:ok, {work_item, told}} ->
+        tell(told)
+        {:ok, work_item}
+
+      {:error, {:raced, ticket}} ->
+        {:error, {:taken, WorkItems.as_seen(scope, by_key(ticket, false))}}
+
+      {:error, _refusal} = refused ->
+        refused
+    end
+  end
+
+  # A new work item of the ticket, its event, its first run, its feed entry and its entry
+  # in the trail.
+  defp make(scope, workspace, ticket, target, owner_id, attrs) do
+    %{item: item, collection: collection, adapter: adapter} = ticket
+    now = DateTime.utc_now()
+
+    changeset =
+      %WorkItem{
+        organisation_id: workspace.organisation_id,
+        workspace_id: workspace.id,
+        state: :exploring,
+        taken_in_by_id: scope.user.id,
+        taken_in_at: now
+      }
+      |> WorkItem.take_in_changeset(%{
+        connection_id: collection.connection_id,
+        adapter_id: collection.adapter_id,
+        item_id: item.id,
+        external_ref: item.external_ref,
+        url: item.url,
+        title: item.title,
+        collection_title: collection.title,
+        target_system: target.system,
+        target_path: target.path,
+        owner_id: owner_id,
+        first_instruction: instruction(attrs)
+      })
+
+    with {:ok, changeset} <- valid(changeset),
+         {:ok, work_item} <- insert(changeset, workspace, ticket),
+         :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
+         {:ok, _run} <- Dispatches.queue(work_item, 1),
+         {:ok, _seq} <- feed(adapter, work_item, "taken_in"),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
+             after: %{state: :exploring},
+             details: %{"take_in" => 1}
+           }) do
+      {:ok,
+       {work_item,
+        %{
+          work_items: [{work_item.workspace_id, work_item.public_id}],
+          tickets: [{collection.workspace_id, item.public_id}]
+        }}}
+    end
+  end
+
+  # The number is taken once the changeset holds, right after the work item it numbers:
+  # one refused gives none back, as none was taken.
+  defp insert(changeset, workspace, ticket) do
+    changeset
+    |> Ecto.Changeset.put_change(:number, Number.next(workspace))
+    |> Repo.insert()
+    |> case do
+      {:ok, work_item} ->
+        {:ok, work_item}
+
+      {:error, %Ecto.Changeset{errors: errors} = refused} ->
+        case errors[:external_ref] do
+          {_message, opts} when is_list(opts) ->
+            if opts[:constraint] == :unique,
+              do: {:error, {:raced, ticket}},
+              else: {:error, refused}
+
+          nil ->
+            {:error, refused}
+        end
+    end
+  end
+
+  ## Take in again
+
+  @doc false
+  @spec take_in_again(Scope.t(), String.t(), take_in_attrs) ::
+          {:ok, WorkItem.t()} | {:error, take_in_refusal}
+  def take_in_again(%Scope{} = scope, item_id, attrs) when is_map(attrs) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             {:ok, ended} <- ended(scope, ticket),
+             :ok <- open(ticket),
+             {:ok, target} <- target(ticket),
+             {:ok, owner_id} <- owner(scope, attrs) do
+          again(scope, workspace, ended, ticket, target, owner_id, attrs)
+        end
+      end)
+
+    case result do
+      {:ok, {work_item, told}} ->
+        tell(told)
+        {:ok, work_item}
+
+      {:error, _refusal} = refused ->
+        refused
+    end
+  end
+
+  # The ended work item of the ticket, held `FOR UPDATE`: `:not_taken` for none, and
+  # `{:taken, work_item}` for a live one, as the person sees it (`Apiary.WorkItems.as_seen/2`).
+  defp ended(scope, ticket) do
+    case by_key(ticket, true) do
+      nil ->
+        {:error, :not_taken}
+
+      %WorkItem{state: state} = work_item ->
+        if State.next(state, :take_in_again) == {:ok, :exploring},
+          do: {:ok, work_item},
+          else: {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
+    end
+  end
+
+  defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do
+    %{item: item, collection: collection, adapter: adapter} = ticket
+    now = DateTime.utc_now()
+    take_in = ended.take_in + 1
+
+    changeset =
+      ended
+      |> WorkItem.take_in_again_changeset(%{
+        connection_id: collection.connection_id,
+        item_id: item.id,
+        url: item.url,
+        title: item.title,
+        collection_title: collection.title,
+        target_system: target.system,
+        target_path: target.path,
+        owner_id: owner_id,
+        first_instruction: instruction(attrs)
+      })
+      |> Ecto.Changeset.change(
+        state: :exploring,
+        declined_at: nil,
+        declined_by_id: nil,
+        closed_at: nil,
+        closed_by_id: nil,
+        taken_in_by_id: scope.user.id,
+        taken_in_at: now
+      )
+
+    with {:ok, changeset} <- valid(changeset),
+         {:ok, work_item} <- changeset |> move(ended, workspace) |> Repo.update(),
+         :ok <-
+           event(work_item, :taken_in, scope, now, %{
+             "take_in" => take_in,
+             "before" => before(ended)
+           }),
+         {:ok, _run} <- Dispatches.queue(work_item, take_in),
+         {:ok, _seq} <- feed_if(ended.state == :undone, adapter, work_item, "taken_in"),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
+             before: %{state: ended.state},
+             after: %{state: :exploring},
+             details: %{"again" => true, "take_in" => take_in}
+           }) do
+      {:ok,
+       {work_item,
+        %{
+          work_items:
+            Enum.uniq([
+              {work_item.workspace_id, work_item.public_id},
+              {ended.workspace_id, work_item.public_id}
+            ]),
+          tickets: [{collection.workspace_id, item.public_id}]
+        }}}
+    end
+  end
+
+  # A work item of another workspace moves to the scope's, numbered next there, right
+  # after the work item is held.
+  defp move(changeset, %WorkItem{workspace_id: workspace_id}, %Workspace{id: workspace_id}),
+    do: changeset
+
+  defp move(changeset, _ended, %Workspace{} = workspace),
+    do:
+      Ecto.Changeset.change(changeset, workspace_id: workspace.id, number: Number.next(workspace))
+
+  # How `work_item` had ended, for the undo of the take in again that leaves it.
+  defp before(%WorkItem{} = work_item) do
+    {at, by_id} =
+      case work_item.state do
+        :declined -> {work_item.declined_at, work_item.declined_by_id}
+        :closed -> {work_item.closed_at, work_item.closed_by_id}
+        :undone -> {nil, nil}
+      end
+
+    %{
+      "state" => Atom.to_string(work_item.state),
+      "at" => at && DateTime.to_iso8601(at),
+      "by_id" => by_id,
+      "taken_in_by_id" => work_item.taken_in_by_id,
+      "taken_in_at" => DateTime.to_iso8601(work_item.taken_in_at),
+      "owner_id" => work_item.owner_id,
+      "target_system" => work_item.target_system,
+      "target_path" => work_item.target_path
+    }
+  end
+
+  ## Undo
+
+  @doc false
+  @spec undo(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :claimed}
+  def undo(%Scope{} = scope, %WorkItem{} = work_item) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, held} <- hold(scope, :"work_item.undo", work_item),
+             :ok <- live(held),
+             :ok <- Dispatches.cancel_for_undo(held) do
+          undone(scope, held)
+        end
+      end)
+
+    finish(result)
+  end
+
+  defp undone(scope, held) do
+    now = DateTime.utc_now()
+    before = before_of(held)
+    {:ok, state} = State.next(:exploring, :undo, before && before.state)
+
+    changes =
+      case before do
+        %{state: ended} when ended in [:declined, :closed] ->
+          [state: state] ++ ended_fields(ended, before) ++ taken_in_fields(before)
+
+        %{state: :undone} ->
+          [state: state] ++ taken_in_fields(before)
+
+        nil ->
+          [state: state]
+      end
+
+    tell_undone? = is_nil(before) or before.state == :undone
+
+    with {:ok, work_item} <- held |> Ecto.Changeset.change(changes) |> Repo.update(),
+         :ok <- event(work_item, :undone, scope, now, %{"take_in" => work_item.take_in}),
+         {:ok, _seq} <- feed_if(tell_undone?, adapter_of(work_item), work_item, "undone"),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.undo", work_item, %{
+             before: %{state: :exploring},
+             after: %{state: state},
+             details: %{"take_in" => work_item.take_in}
+           }) do
+      {:ok, {work_item, told(work_item)}}
+    end
+  end
+
+  # How the latest take in of `work_item` found it, from its `:taken_in` event: nil for a
+  # first take in.
+  defp before_of(%WorkItem{id: id, take_in: take_in}) do
+    data =
+      Repo.one(
+        from e in WorkItemEvent,
+          where: e.work_item_id == ^id and e.kind == :taken_in,
+          where: fragment("?->>'take_in' = ?", e.data, ^Integer.to_string(take_in)),
+          order_by: [desc: e.at, desc: e.id],
+          limit: 1,
+          select: e.data
+      )
+
+    case data do
+      %{"before" => %{"state" => state} = before}
+      when state in ["declined", "closed", "undone"] ->
+        %{
+          state: String.to_existing_atom(state),
+          at: time(before["at"]),
+          by_id: before["by_id"],
+          taken_in_by_id: before["taken_in_by_id"],
+          taken_in_at: time(before["taken_in_at"]),
+          owner_id: before["owner_id"],
+          target_system: before["target_system"],
+          target_path: before["target_path"]
+        }
+
+      _first ->
+        nil
+    end
+  end
+
+  defp time(nil), do: nil
+
+  defp time(text) when is_binary(text) do
+    {:ok, at} = Ecto.Type.cast(:utc_datetime_usec, text)
+    at
+  end
+
+  defp ended_fields(:declined, before), do: [declined_at: before.at, declined_by_id: before.by_id]
+  defp ended_fields(:closed, before), do: [closed_at: before.at, closed_by_id: before.by_id]
+
+  defp taken_in_fields(before) do
+    [
+      taken_in_by_id: before.taken_in_by_id,
+      taken_in_at: before.taken_in_at,
+      owner_id: before.owner_id,
+      target_system: before.target_system,
+      target_path: before.target_path
+    ]
+  end
+
+  ## Decline
+
+  @doc false
+  @spec decline(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :running}
+  def decline(%Scope{} = scope, %WorkItem{} = work_item) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, held} <- hold(scope, :"work_item.decline", work_item),
+             :ok <- live(held),
+             :ok <- no_run(held) do
+          declined(scope, held)
+        end
+      end)
+
+    finish(result)
+  end
+
+  # No run of the work item's take in waits, is claimed or is handed over: those there
+  # are held `FOR UPDATE`, by id, as a close holds them, so a claim that took one first is
+  # seen claimed.
+  defp no_run(%WorkItem{id: id, take_in: take_in}) do
+    running =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          where: fragment("? IN ('waiting', 'claimed', 'handed_over')", r.state),
+          order_by: r.id,
+          lock: "FOR UPDATE",
+          select: r.id
+      )
+
+    if running == [], do: :ok, else: {:error, :running}
+  end
+
+  defp declined(scope, held) do
+    now = DateTime.utc_now()
+    {:ok, state} = State.next(held.state, :decline)
+
+    with {:ok, work_item} <-
+           held
+           |> Ecto.Changeset.change(state: state, declined_at: now, declined_by_id: scope.user.id)
+           |> Repo.update(),
+         :ok <- event(work_item, :declined, scope, now, %{}),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.decline", work_item, %{
+             before: %{state: :exploring},
+             after: %{state: state}
+           }) do
+      {:ok, {work_item, told(work_item)}}
+    end
+  end
+
+  ## Close
+
+  @doc false
+  @spec close(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live}
+  def close(%Scope{} = scope, %WorkItem{} = work_item) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, held} <- hold(scope, :"work_item.close", work_item),
+             {:ok, workspace_ids} <-
+               WorkItems.close_locked([held], {:person, scope.user.id}, DateTime.utc_now()),
+             closed = Repo.get!(WorkItem, held.id),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.close", closed, %{
+                 before: %{state: held.state},
+                 after: %{state: closed.state}
+               }) do
+          {:ok, {closed, Map.put(told(closed), :queues, workspace_ids)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  ## Reading and holding
+
+  # The scope's workspace, of its organisation.
+  defp workspace(%Scope{
+         organisation: %Organisation{id: organisation_id},
+         workspace: %Workspace{organisation_id: organisation_id} = workspace,
+         user: %{id: user_id}
+       })
+       when is_binary(user_id),
+       do: {:ok, workspace}
+
+  defp workspace(%Scope{}), do: {:error, :not_found}
+
+  # The ticket `item_id` while it is in the Backlog of `workspace`, its connection held
+  # `FOR SHARE`, then its collection, read again under its lock (the moduledoc): the item,
+  # its collection and its adapter; `:not_linked` for a collection assigned there that is
+  # not linked.
+  defp hold_ticket(
+         %Scope{organisation: %Organisation{id: organisation_id}},
+         %Workspace{id: workspace_id},
+         item_id
+       ) do
+    with true <- Item.public_id?(item_id),
+         %{} = found <-
+           Repo.one(
+             from i in Item,
+               join: c in Collection,
+               on: c.id == i.collection_id and c.organisation_id == i.organisation_id,
+               where: i.public_id == ^item_id and i.organisation_id == ^organisation_id,
+               select: %{id: i.id, collection_id: c.id, connection_id: c.connection_id}
+           ),
+         %Connection{} <-
+           Repo.one(
+             from k in Connection,
+               where: k.id == ^found.connection_id and k.state == :connected,
+               where: is_nil(k.ended_at),
+               lock: "FOR SHARE"
+           ),
+         %Collection{ended_at: nil, workspace_id: ^workspace_id} = collection <-
+           Repo.one(from c in Collection, where: c.id == ^found.collection_id, lock: "FOR SHARE"),
+         %Item{disconnected_at: nil} = item <- Repo.get(Item, found.id) do
+      collection = Repo.preload(collection, :adapter, force: true)
+
+      if Collection.linked?(collection),
+        do: {:ok, %{item: item, collection: collection, adapter: collection.adapter}},
+        else: {:error, :not_linked}
+    else
+      _not_in_the_backlog -> {:error, :not_found}
+    end
+  end
+
+  # The work item of the ticket, by its organisation, its adapter and its ref, the key
+  # that makes it one per ticket; held `FOR UPDATE` when `lock?`.
+  defp by_key(%{item: %Item{} = item}, lock?) do
+    query =
+      from w in WorkItem,
+        where:
+          w.organisation_id == ^item.organisation_id and w.adapter_id == ^item.adapter_id and
+            w.external_ref == ^item.external_ref
+
+    query = if lock?, do: lock(query, "FOR UPDATE"), else: query
+    Repo.one(query)
+  end
+
+  # No work item of the ticket yet; else `{:taken, work_item}`, as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone.
+  defp none_yet(scope, ticket) do
+    case by_key(ticket, true) do
+      nil -> :ok
+      %WorkItem{} = work_item -> {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
+    end
+  end
+
+  defp open(%{item: %Item{state: :open}}), do: :ok
+  defp open(_ticket), do: {:error, :ticket_closed}
+
+  # The work item's target: the ticket's target, else its collection's.
+  defp target(%{item: item, collection: collection}) do
+    target =
+      cond do
+        is_binary(item.target_system) ->
+          %{system: item.target_system, path: item.target_path}
+
+        is_binary(collection.target_system) ->
+          %{system: collection.target_system, path: collection.target_path}
+
+        true ->
+          nil
+      end
+
+    with :ok <- check_target(target), do: {:ok, target}
+  end
+
+  # Whether a run can be given the target: one there is, which its run's variables hold
+  # (`Apiary.Runs.RunVariables.for_target/2`, as a handover asks it).
+  defp check_target(%{system: system, path: path} = target)
+       when is_binary(system) and is_binary(path) do
+    case RunVariables.for_target(target) do
+      {:ok, _variables} -> :ok
+      {:error, _invalid} -> {:error, :target_invalid}
+    end
+  end
+
+  defp check_target(_none), do: {:error, :no_target}
+
+  # The owner the page names, else the person taking it in, who acts in the workspace.
+  defp owner(%Scope{user: %{id: user_id}} = scope, attrs) do
+    case attr(attrs, :owner_id) do
+      nil ->
+        {:ok, user_id}
+
+      ^user_id ->
+        {:ok, user_id}
+
+      owner_id when is_binary(owner_id) ->
+        if Enum.any?(Organisations.list_workspace_members(scope), &(&1.user_id == owner_id)),
+          do: {:ok, owner_id},
+          else: {:error, :owner}
+
+      _other ->
+        {:error, :owner}
+    end
+  end
+
+  defp instruction(attrs) do
+    case attr(attrs, :first_instruction) do
+      nil -> ""
+      text -> text
+    end
+  end
+
+  # What the page gives under `key`, an atom, or its string, as a form's params name it.
+  defp attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
+
+  defp valid(%Ecto.Changeset{valid?: true} = changeset), do: {:ok, changeset}
+  defp valid(%Ecto.Changeset{} = changeset), do: {:error, changeset}
+
+  # `work_item`, of the scope's workspace, asked `action` of, then held `FOR UPDATE` and
+  # read again: one that moved meanwhile is not found.
+  defp hold(scope, action, %WorkItem{id: id}) when is_binary(id) do
+    with {:ok, workspace} <- workspace(scope),
+         %WorkItem{} = found <- in_workspace(workspace, id, false),
+         :ok <- Access.authorize(scope, action, found),
+         %WorkItem{} = held <- in_workspace(workspace, id, true) do
+      {:ok, held}
+    else
+      nil -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+    end
+  end
+
+  defp in_workspace(%Workspace{id: workspace_id, organisation_id: organisation_id}, id, lock?) do
+    query =
+      from w in WorkItem,
+        where:
+          w.id == ^id and w.organisation_id == ^organisation_id and
+            w.workspace_id == ^workspace_id
+
+    query = if lock?, do: lock(query, "FOR UPDATE"), else: query
+    Repo.one(query)
+  end
+
+  defp live(%WorkItem{state: state}),
+    do: if(State.live?(state), do: :ok, else: {:error, :not_live})
+
+  defp adapter_of(%WorkItem{adapter_id: adapter_id}), do: Repo.get!(Node, adapter_id)
+
+  ## Writing
+
+  defp event(work_item, kind, %Scope{user: %{id: user_id}}, now, data) do
+    %WorkItemEvent{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id
+    }
+    |> WorkItemEvent.changeset(%{
+      kind: kind,
+      actor_kind: :person,
+      actor_id: user_id,
+      at: now,
+      data: data
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, _event} -> :ok
+      {:error, _changeset} = refused -> refused
+    end
+  end
+
+  defp feed(%Node{} = adapter, work_item, status) do
+    Feed.append(adapter, %{
+      kind: "work_item",
+      work_item_id: work_item.public_id,
+      ref: work_item.external_ref,
+      status: status,
+      url: WorkItems.stable_url(work_item)
+    })
+  end
+
+  defp feed_if(true, adapter, work_item, status), do: feed(adapter, work_item, status)
+  defp feed_if(false, _adapter, _work_item, _status), do: {:ok, nil}
+
+  ## Telling
+
+  # The workspaces to tell of a change to `work_item`: the one it is in, and each whose
+  # Backlog shows its ticket's live record.
+  defp told(%WorkItem{} = work_item) do
+    tickets =
+      Repo.all(
+        from i in Item,
+          join: c in Collection,
+          on: c.id == i.collection_id and c.organisation_id == i.organisation_id,
+          where:
+            i.organisation_id == ^work_item.organisation_id and
+              i.adapter_id == ^work_item.adapter_id and
+              i.external_ref == ^work_item.external_ref,
+          where: is_nil(i.disconnected_at) and is_nil(c.ended_at) and not is_nil(c.workspace_id),
+          select: {c.workspace_id, i.public_id}
+      )
+
+    %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: tickets}
+  end
+
+  defp finish({:ok, {work_item, told}}) do
+    tell(told)
+    {:ok, work_item}
+  end
+
+  defp finish({:error, _refusal} = refused), do: refused
+
+  # Sent once the change commits: ids only, grouped by workspace.
+  defp tell(told) do
+    for {workspace_id, ids} <- group(told.work_items) do
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        WorkItems.topic(workspace_id),
+        {:work_items_changed, ids}
+      )
+    end
+
+    for {workspace_id, ids} <- group(told.tickets) do
+      Phoenix.PubSub.broadcast(Apiary.PubSub, Topic.topic(workspace_id), {:tickets_changed, ids})
+    end
+
+    Dispatches.broadcast(Map.get(told, :queues, []))
+  end
+
+  defp group(pairs) do
+    pairs
+    |> Enum.uniq()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+end
