@@ -1,12 +1,13 @@
 defmodule Apiary.Adapters.InstalledTest do
   # The adapters installed with Qory Apiary: the setting that lists them and its checks at
-  # boot (`Apiary.Adapters.Installed`), the file a code is written to (`CodeFile`), and the
-  # installer's pass (`Apiary.Adapters.Installer.pass/0`): the adapter made once for each
+  # boot (`Apiary.Adapters.Installed`), the folders made at boot, the file a code is written
+  # to, in a folder per adapter (`CodeFile`), and the installer's pass
+  # (`Apiary.Adapters.Installer.pass/0`) and process: the adapter made once for each
   # name, its code while it has no key, kept, renewed or made again, the entries it leaves
   # and those it does not, the enrolment with the file's code, the codes cancelled once a
   # key is live or the name is taken off, a revocation that brings a code at once, and the
-  # refusals while a name is listed. Not async: the names and the directory are the whole
-  # node's.
+  # refusals while a name is listed, and a pass that fails of any kind. Not async: the names
+  # and the directory are the whole node's.
   use Apiary.DataCase, async: false
 
   import ExUnit.CaptureLog
@@ -14,7 +15,7 @@ defmodule Apiary.Adapters.InstalledTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{AccessKeys, Adapters}
+  alias Apiary.{AccessKeys, Adapters, Edition}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Adapters.{Installed, Installer}
   alias Apiary.Adapters.Installed.CodeFile
@@ -47,6 +48,25 @@ defmodule Apiary.Adapters.InstalledTest do
   end
 
   defp list(names), do: Application.put_env(:apiary, :installed_adapters, names)
+
+  defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
+
+  # An edition whose instance cannot be found: a pass exits before any name's.
+  defmodule ExitsBeforeNames do
+    def instance_organisation_id, do: exit(:stopped)
+  end
+
+  # An edition that exits when the instance installs an adapter: a name's pass exits.
+  defmodule ExitsOnInstall do
+    def check(_scope, :"adapter.install", _subject), do: exit(:stopped)
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  # An edition that throws when the instance installs an adapter.
+  defmodule ThrowsOnInstall do
+    def check(_scope, :"adapter.install", _subject), do: throw(:stopped)
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
 
   defp installed(name),
     do: Repo.one!(from n in Node, where: n.installed_as == ^name and is_nil(n.deleted_at))
@@ -161,15 +181,81 @@ defmodule Apiary.Adapters.InstalledTest do
       Application.delete_env(:apiary, :enrolment_dir_setting)
       assert Installed.dir() == "/run/qory/enrolment"
     end
+
+    test "stops the boot on a directory that is not an absolute path, names listed or not" do
+      for value <- ["enrolment", "./enrolment", "../run/qory", "~/enrolment"],
+          names <- [nil, "tracker"] do
+        Application.put_env(:apiary, :enrolment_dir_setting, value)
+        error = assert_raise ArgumentError, fn -> boot(names) end
+
+        assert error.message =~
+                 "environment variable QORY_ENROLMENT_DIR is not valid: " <>
+                   "#{inspect(value)} is not an absolute path.",
+               value
+      end
+
+      for value <- [nil, "", " ", "/run/qory/enrolment", " /srv/enrolment "] do
+        Application.put_env(:apiary, :enrolment_dir_setting, value)
+        assert boot("tracker") == ["tracker"], inspect(value)
+      end
+    end
+  end
+
+  describe "the folders at boot" do
+    test "are made for each name listed, 0755, and those there are kept", %{dir: dir} do
+      list(["tracker", "wiki"])
+      File.mkdir!(Path.join(dir, "wiki"))
+      File.write!(Path.join([dir, "wiki", "code"]), "kept\n")
+
+      assert Installed.make_folders() == :ok
+      assert Enum.sort(File.ls!(dir)) == ["tracker", "wiki"]
+      assert mode(Path.join(dir, "tracker")) == 0o755
+      assert File.ls!(Path.join(dir, "tracker")) == []
+      assert File.read!(Path.join([dir, "wiki", "code"])) == "kept\n"
+    end
+
+    test "one that cannot be made is said, the others made, and nothing stops", %{dir: dir} do
+      list(["tracker", "wiki"])
+      elsewhere = Path.join(dir, "elsewhere")
+      File.mkdir!(elsewhere)
+      File.ln_s!(elsewhere, Path.join(dir, "tracker"))
+
+      log = capture_log(fn -> assert Installed.make_folders() == :ok end)
+
+      assert log =~
+               "could not make the folder of the installed adapter tracker, " <>
+                 "#{Path.join(dir, "tracker")}: not a directory; " <>
+                 "trying again when its one-time code is written"
+
+      assert File.dir?(Path.join(dir, "wiki"))
+      assert File.ls!(elsewhere) == []
+
+      Application.put_env(:apiary, :enrolment_dir_setting, Path.join(dir, "missing"))
+      log = capture_log(fn -> assert Installed.make_folders() == :ok end)
+      assert log =~ "could not make the folder of the installed adapter wiki"
+      assert log =~ "no such file or directory"
+    end
+
+    test "make none where no name is listed", %{dir: dir} do
+      list([])
+      assert Installed.make_folders() == :ok
+      assert File.ls!(dir) == []
+    end
   end
 
   describe "the code file" do
-    test "is written whole, 0644, with one newline, and nothing else is left", %{dir: dir} do
+    test "is written whole, 0644, with one newline, in the adapter's folder, made 0755",
+         %{dir: dir} do
+      assert CodeFile.folder("tracker") == Path.join(dir, "tracker")
+      assert CodeFile.path("tracker") == Path.join([dir, "tracker", "code"])
+
       assert CodeFile.write("tracker", "first") == :ok
       assert CodeFile.write("tracker", "second") == :ok
-      assert File.read!(Path.join(dir, "tracker.code")) == "second\n"
-      assert Bitwise.band(File.stat!(Path.join(dir, "tracker.code")).mode, 0o777) == 0o644
-      assert File.ls!(dir) == ["tracker.code"]
+      assert File.read!(Path.join([dir, "tracker", "code"])) == "second\n"
+      assert mode(Path.join([dir, "tracker", "code"])) == 0o644
+      assert mode(Path.join(dir, "tracker")) == 0o755
+      assert File.ls!(dir) == ["tracker"]
+      assert File.ls!(Path.join(dir, "tracker")) == ["code"]
       assert CodeFile.exists?("tracker")
     end
 
@@ -178,15 +264,32 @@ defmodule Apiary.Adapters.InstalledTest do
       Application.put_env(:apiary, :enrolment_dir_setting, Path.join(dir, "missing"))
       assert {:error, :enoent} = CodeFile.write("tracker", "second")
       Application.put_env(:apiary, :enrolment_dir_setting, dir)
-      assert File.ls!(dir) == ["tracker.code"]
-      assert File.read!(Path.join(dir, "tracker.code")) == "first\n"
+      assert File.ls!(dir) == ["tracker"]
+      assert File.ls!(Path.join(dir, "tracker")) == ["code"]
+      assert File.read!(Path.join([dir, "tracker", "code"])) == "first\n"
     end
 
-    test "is deleted, a missing one too" do
+    test "is refused where a symbolic link or a file is in the place of the folder",
+         %{dir: dir} do
+      elsewhere = Path.join(dir, "elsewhere")
+      File.mkdir!(elsewhere)
+      File.ln_s!(elsewhere, Path.join(dir, "tracker"))
+      File.write!(Path.join(dir, "wiki"), "")
+
+      assert CodeFile.write("tracker", "first") == {:error, :enotdir}
+      assert CodeFile.write("wiki", "first") == {:error, :enotdir}
+      assert File.ls!(elsewhere) == []
+      assert File.read!(Path.join(dir, "wiki")) == ""
+      refute CodeFile.exists?("tracker")
+    end
+
+    test "is deleted, a missing one too, and the folder stays", %{dir: dir} do
       assert CodeFile.write("tracker", "first") == :ok
       assert CodeFile.delete("tracker") == :ok
       refute CodeFile.exists?("tracker")
+      assert File.ls!(Path.join(dir, "tracker")) == []
       assert CodeFile.delete("tracker") == :ok
+      assert CodeFile.delete("wiki") == :ok
     end
   end
 
@@ -205,8 +308,9 @@ defmodule Apiary.Adapters.InstalledTest do
 
       fingerprint = Apiary.SigningKey.fingerprint()
       assert file(name) =~ ~r/\Aqeci_[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\n\z/
-      assert Bitwise.band(File.stat!(CodeFile.path(name)).mode, 0o777) == 0o644
-      assert File.ls!(dir) == [name <> ".code"]
+      assert mode(CodeFile.path(name)) == 0o644
+      assert File.ls!(dir) == [name]
+      assert File.ls!(Path.join(dir, name)) == ["code"]
 
       [head, _fingerprint] = String.split(code_in_file(name), ".", parts: 2)
       assert [%EnrolmentCode{created_by_id: nil} = row] = outstanding(adapter)
@@ -282,8 +386,38 @@ defmodule Apiary.Adapters.InstalledTest do
       assert entries(:"access_key.create_code", adapter) == []
 
       line = Installer.failure_line(name, {:code_file, :enoent})
-      assert line =~ "could not write the one-time code of the installed adapter #{name}"
+
+      assert line ==
+               "could not write the one-time code of the installed adapter #{name} to " <>
+                 "#{Path.join([dir, "missing", name])}: no such file or directory; trying again"
+
       refute line =~ "qeci_"
+    end
+
+    test "says a symbolic link in the place of the folder, and writes nothing through it",
+         %{name: name, dir: dir} do
+      elsewhere = Path.join(dir, "elsewhere")
+      File.mkdir!(elsewhere)
+      File.ln_s!(elsewhere, Path.join(dir, name))
+
+      assert Installer.pass() == {:ok, [{name, {:code_file, :enotdir}}]}
+      assert outstanding(installed(name)) == []
+      assert File.ls!(elsewhere) == []
+
+      assert Installer.failure_line(name, {:code_file, :enotdir}) =~
+               "could not write the one-time code of the installed adapter #{name} to " <>
+                 "#{Path.join(dir, name)}: not a directory; trying again"
+    end
+
+    test "a name's pass that exits or throws is the name's failure, with its kind alone",
+         %{name: name} do
+      Edition.put_test_stub(ExitsOnInstall)
+      assert Installer.pass() == {:ok, [{name, {:caught, :exit}}]}
+      Edition.put_test_stub(ThrowsOnInstall)
+      assert Installer.pass() == {:ok, [{name, {:caught, :throw}}]}
+
+      assert Installer.failure_line(name, {:caught, :exit}) ==
+               "could not install the adapter #{name}: :exit; trying again"
     end
 
     test "logs no code", %{name: name} do
@@ -295,6 +429,47 @@ defmodule Apiary.Adapters.InstalledTest do
     @tag with_features: [:observability, :security]
     test "does nothing where the instance has no adapters" do
       assert Installer.pass() == :off
+    end
+  end
+
+  describe "the installer's process" do
+    # The process, started here, then given `stub` in its process dictionary and asked to pass.
+    defp pass_in_process(stub) do
+      pid = start_supervised!(Installer)
+      ref = Process.monitor(pid)
+      # The first pass, which `init/1` asks for, done before the stub is put.
+      _state = :sys.get_state(pid)
+
+      log =
+        capture_log(fn ->
+          :sys.replace_state(pid, fn state ->
+            :ok = Edition.put_test_stub(stub)
+            state
+          end)
+
+          send(pid, :pass)
+          _state = :sys.get_state(pid)
+        end)
+
+      {pid, ref, log}
+    end
+
+    test "stays up when a whole pass exits, and says its kind alone" do
+      {pid, ref, log} = pass_in_process(ExitsBeforeNames)
+
+      assert Process.alive?(pid)
+      refute_received {:DOWN, ^ref, :process, ^pid, _reason}
+      assert log =~ "could not install the adapters: :exit; trying again"
+      refute log =~ "stopped"
+    end
+
+    test "stays up when a name's pass exits, and says its kind alone", %{name: name} do
+      {pid, ref, log} = pass_in_process(ExitsOnInstall)
+
+      assert Process.alive?(pid)
+      refute_received {:DOWN, ^ref, :process, ^pid, _reason}
+      assert log =~ "could not install the adapter #{name}: :exit; trying again"
+      refute log =~ "stopped"
     end
   end
 

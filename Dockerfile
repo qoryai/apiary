@@ -114,7 +114,8 @@ ENV APIARY_KEYS_DIR=/var/lib/apiary/keys
 
 # The one-time codes of the adapters installed with Qory Apiary, in QORY_ENROLMENT_DIR
 # (`Apiary.Adapters.Installed`). The directory belongs to nobody, mode 0755, so the release
-# writes the codes, and an adapter that mounts the same volume reads them.
+# makes a folder in it per adapter and writes each code there; each adapter mounts only
+# its folder.
 RUN mkdir -p /run/qory/enrolment \
   && chown nobody /run/qory/enrolment \
   && chmod 0755 /run/qory/enrolment

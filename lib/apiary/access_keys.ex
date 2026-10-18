@@ -545,9 +545,10 @@ defmodule Apiary.AccessKeys do
   #
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) gets its codes from
   # the instance, by itself, in the installer's pass (`Apiary.Adapters.Installer`): a code
-  # that names no maker (`created_by_id` nil), written to the adapter's file
-  # (`Apiary.Adapters.Installed.CodeFile`) and nowhere else. The code in clear is never
-  # returned, kept in a process's state, logged, or put in an audit entry.
+  # that names no maker (`created_by_id` nil), written to the adapter's file, `code` in a
+  # folder per adapter, which only that adapter mounts (`Apiary.Adapters.Installed.CodeFile`),
+  # and nowhere else. The code in clear is never returned, kept in a process's state,
+  # logged, or put in an audit entry.
   #
   # **Locks.** As for every change of a node's keys and codes: the adapter's row
   # `FOR UPDATE` first, then its codes `FOR UPDATE`. An enrolment takes the same row, then

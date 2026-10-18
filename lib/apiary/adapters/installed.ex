@@ -2,15 +2,23 @@ defmodule Apiary.Adapters.Installed do
   # The adapters installed with Qory Apiary: those the setting `QORY_INSTALLED_ADAPTERS`
   # lists by name (`names/0`), which run beside the instance, in the same Compose project
   # or stack, and reach it with a key they make themselves, from a one-time code Qory Apiary
-  # writes for them to `QORY_ENROLMENT_DIR` (`dir/0`), as `<name>.code`
-  # (`Apiary.Adapters.Installed.CodeFile`). No person runs a command for them.
+  # writes for them to `QORY_ENROLMENT_DIR` (`dir/0`), as `<name>/code`, in a folder per
+  # adapter, which only that adapter mounts (`Apiary.Adapters.Installed.CodeFile`). No
+  # person runs a command for them.
   #
   # **The setting.** Names separated by commas, each a lower-case letter, then lower-case
   # letters, digits and hyphens, 32 characters at most (`valid_name?/1`), none twice;
   # unset or blank names none. `config/runtime.exs` keeps the value as it is, and `boot!/0`
   # checks it when the application starts, after the features (`Apiary.Features.boot!/0`):
   # a malformed name, a name listed twice, or any name on an instance without the feature
-  # `factory`, stops the boot. The list is fixed while the instance runs.
+  # `factory`, stops the boot. The list is fixed while the instance runs. `boot!/0` stops
+  # the boot too on a `QORY_ENROLMENT_DIR` that is set and is not an absolute path, names
+  # listed or not.
+  #
+  # **The folders.** Right after `boot!/0`, `make_folders/0` makes the folder of each name
+  # listed where it is missing, so that an adapter that mounts it finds it as soon as the
+  # instance has booted, before it is set up. A folder it cannot make is said in the log
+  # and does not stop the boot: a write of a code makes it again.
   #
   # **What follows from it.** Once the instance is set up, the installer
   # (`Apiary.Adapters.Installer`) makes one adapter for each name listed
@@ -32,6 +40,10 @@ defmodule Apiary.Adapters.Installed do
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
+
+  require Logger
+
+  alias Apiary.Adapters.Installed.CodeFile
 
   @default_dir "/run/qory/enrolment"
   @name ~r/\A[a-z][a-z0-9-]{0,31}\z/
@@ -107,11 +119,13 @@ defmodule Apiary.Adapters.Installed do
   @doc false
   # Reads `QORY_INSTALLED_ADAPTERS` as `config/runtime.exs` left it, checks it and fixes
   # the names for the life of the node. Called at boot, after the features: raises on a
-  # value `parse/1` refuses, and on a list of any name while the instance does not have the
-  # feature `factory`, so the instance does not start.
+  # value `parse/1` refuses, on a list of any name while the instance does not have the
+  # feature `factory`, and on a `QORY_ENROLMENT_DIR` set to a path that is not absolute,
+  # so the instance does not start.
   @spec boot!() :: [String.t()]
   def boot! do
     names = setting() |> parse() |> names!()
+    dir!()
 
     if names != [] and not Apiary.Features.on?(:factory) do
       raise ArgumentError, """
@@ -124,6 +138,50 @@ defmodule Apiary.Adapters.Installed do
     Application.put_env(:apiary, :installed_adapters, names)
     names
   end
+
+  # A `QORY_ENROLMENT_DIR` set to a relative path names a directory that moves with the
+  # working directory: refused, names listed or not, as a pass deletes codes there for the
+  # names taken off the list too. Unset and blank keep the default, which is absolute.
+  defp dir! do
+    dir = dir()
+
+    if Path.type(dir) != :absolute do
+      reason = "#{inspect(dir)} is not an absolute path"
+
+      raise ArgumentError, """
+      environment variable QORY_ENROLMENT_DIR is not valid: #{reason}.
+      Leave it unset for #{@default_dir}, or give the full path of a directory, for example:
+      QORY_ENROLMENT_DIR=#{@default_dir}
+      """
+    end
+
+    :ok
+  end
+
+  @doc false
+  # Makes the folder of each name `names/0` lists where it is missing
+  # (`Apiary.Adapters.Installed.CodeFile.make_folder/1`). Called at boot, right after
+  # `boot!/0`. A folder it cannot make is said in the log, one line for each, with the
+  # reason alone, and stops nothing: the write of a code makes it again. `:ok`.
+  @spec make_folders() :: :ok
+  def make_folders do
+    for name <- names() do
+      case CodeFile.make_folder(name) do
+        :ok -> :ok
+        {:error, reason} -> Logger.error(folder_line(name, reason))
+      end
+    end
+
+    :ok
+  end
+
+  @doc false
+  # The line that says the folder of the adapter installed as `name` could not be made.
+  @spec folder_line(String.t(), atom) :: String.t()
+  def folder_line(name, reason),
+    do:
+      "could not make the folder of the installed adapter #{name}, #{CodeFile.folder(name)}: " <>
+        "#{:file.format_error(reason)}; trying again when its one-time code is written"
 
   defp setting, do: Application.get_env(:apiary, :installed_adapters_setting)
 

@@ -67,15 +67,16 @@ config :apiary, :features_setting, System.get_env("QORY_FEATURES")
 # commas (tracker,wiki): each name a lower-case letter, then lower-case letters, digits and
 # hyphens, 32 characters at most, none twice. Unset or blank names none. Once the instance
 # is set up, Qory Apiary adds an adapter for each name, and, while it has no key in use,
-# writes a one-time code for it to QORY_ENROLMENT_DIR as <name>.code, where the adapter
+# writes a one-time code for it to QORY_ENROLMENT_DIR as <name>/code, where the adapter
 # reads it. Taking a name off removes nothing: the adapter stays until it is removed under
 # Instance settings › Adapters. Read in every environment, as QORY_FEATURES is;
 # `Apiary.Adapters.Installed.boot!/0` checks it at boot and stops a boot it refuses, a
 # list on an instance without the feature adapters belong to included.
 config :apiary, :installed_adapters_setting, System.get_env("QORY_INSTALLED_ADAPTERS")
 
-# QORY_ENROLMENT_DIR is the directory those codes are written to, /run/qory/enrolment
-# when unset or blank. Qory Apiary writes there; each installed adapter reads its file.
+# QORY_ENROLMENT_DIR is the directory those codes are written to, an absolute path,
+# /run/qory/enrolment when unset or blank. Qory Apiary makes a folder in it per adapter
+# and writes there; each installed adapter mounts only its folder.
 config :apiary, :enrolment_dir_setting, System.get_env("QORY_ENROLMENT_DIR")
 
 # AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
