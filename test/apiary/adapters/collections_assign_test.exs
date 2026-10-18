@@ -77,6 +77,19 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
   defp names(rows), do: Enum.map(rows, & &1.name)
 
+  defp refs(from, to), do: for(n <- from..to, do: "R" <> String.pad_leading("#{n}", 3, "0"))
+
+  # How many live rows the pages of `opts` hold, every page walked from the first, a page
+  # after the last row of the one before.
+  defp walked(scope, connection, opts, after_id \\ nil, count \\ 0) do
+    raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
+    count = count + Enum.count(raw, &is_nil(&1.ended_at))
+
+    if length(raw) < Collections.page_size(),
+      do: count,
+      else: walked(scope, connection, opts, List.last(raw).public_id, count)
+  end
+
   defp workspace_of(ctx, ref), do: Repo.get!(Collection, id(ctx, ref)).workspace_id
 
   defp collection_entries(adapter),
@@ -264,10 +277,169 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       assert Collections.counts(ctx.scope, ctx.connection) == %{
                total: 4,
                unassigned: 2,
-               by_workspace: %{ctx.workspace.id => 1, ctx.other_workspace.id => 1}
+               by_workspace: %{ctx.workspace.id => 1, ctx.other_workspace.id => 1},
+               ended: 1
              }
 
       assert Collections.count_unassigned(ctx.scope, ctx.connection) == 2
+    end
+
+    test "the ended count: each ref whose collections all ended, once; one live again counts not",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B", "C", "D"]))
+
+      # A ended; B ended and is live again; C ended twice; D is live.
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "A"})
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "B"})
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "C"})
+      {:ok, :accepted} = post(ctx, titled(["B", "C"]), id: "again")
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "C"})
+
+      assert %{total: 2, unassigned: 2, ended: 2} = Collections.counts(ctx.scope, ctx.connection)
+
+      shown_ended =
+        Collections.list_collections(ctx.scope, ctx.connection, view: :all)
+        |> Enum.filter(& &1.ended_at)
+        |> names()
+
+      assert shown_ended == ["Title of A", "Title of C"]
+
+      # Nothing to another organisation's people, nor of another organisation's connection.
+      %{scope: other} = sign_up_fixture()
+      workspace_fixture(other.organisation)
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["X"])))
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "X"})
+
+      assert %{ended: 1} = Collections.counts(other, theirs)
+      assert %{ended: 0, total: 0} = Collections.counts(other, ctx.connection)
+      assert %{ended: 0, total: 0} = Collections.counts(ctx.scope, theirs)
+    end
+
+    test "the count of a search: the live rows of every page, for each view, search and workspace",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(Enum.shuffle(refs(1, 120))))
+
+      # 60 in the workspace and 10 in the other; R111 to R120 ended, then R120 live again.
+      {:ok, 60} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, refs(1, 60)),
+          ctx.workspace
+        )
+
+      {:ok, 10} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, refs(61, 70)),
+          ctx.other_workspace
+        )
+
+      for ref <- refs(111, 120),
+          do: {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: ref})
+
+      {:ok, :accepted} = post(ctx, titled(["R120"]), id: "again")
+
+      for {opts, count} <- [
+            {[], 111},
+            {[view: :all], 111},
+            {[view: :unassigned], 41},
+            {[view: :assigned], 70},
+            {[search: "r0"], 99},
+            {[search: "  R11 "], 1},
+            {[workspace: ctx.workspace], 60},
+            {[workspace: ctx.other_workspace.id], 10},
+            {[view: :assigned, search: "R06"], 10},
+            {[view: :assigned, workspace: ctx.workspace, search: "R05"], 10},
+            {[view: :unassigned, workspace: ctx.workspace], 0},
+            {[workspace: "not an id"], 0},
+            {[search: <<0xFF>>], 0}
+          ] do
+        assert Collections.count_collections(ctx.scope, ctx.connection, opts) == count,
+               inspect(opts)
+
+        assert walked(ctx.scope, ctx.connection, opts) == count, inspect(opts)
+      end
+
+      assert Collections.count_collections(ctx.scope, ctx.connection) == 111
+
+      assert_raise ArgumentError, fn ->
+        Collections.count_collections(ctx.scope, ctx.connection, view: :ended)
+      end
+
+      # 0 to another organisation's people, of another organisation's connection, and to a
+      # person not shown the feature.
+      %{scope: other} = sign_up_fixture()
+      workspace_fixture(other.organisation)
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["X"])))
+
+      assert Collections.count_collections(other, theirs) == 1
+      assert Collections.count_collections(other, ctx.connection) == 0
+      assert Collections.count_collections(ctx.scope, theirs) == 0
+
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:factory])
+      hidden = Apiary.Access.reload(ctx.scope)
+      assert Collections.count_collections(hidden, ctx.connection) == 0
+    end
+
+    test "the order with those linked to no workspace first, paged across the two groups; the default unchanged",
+         ctx do
+      all = refs(1, 80)
+      {:ok, :accepted} = post(ctx, titled(Enum.shuffle(all)))
+      {odd, even} = all |> Enum.with_index() |> Enum.split_with(&(rem(elem(&1, 1), 2) == 0))
+      unassigned = Enum.map(odd, &elem(&1, 0))
+      assigned = Enum.map(even, &elem(&1, 0))
+
+      {:ok, 40} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, assigned),
+          ctx.workspace
+        )
+
+      title = &("Title of " <> &1)
+      list = &Collections.list_collections(ctx.scope, ctx.connection, &1)
+      public_id = &Repo.get!(Collection, id(ctx, &1)).public_id
+      expected = Enum.map(unassigned ++ assigned, title)
+
+      first = list.(order: :unassigned_first)
+      assert names(first) == Enum.take(expected, 50)
+
+      second = list.(order: :unassigned_first, after: List.last(first).public_id)
+      assert names(second) == Enum.drop(expected, 50)
+
+      # From the last of those linked to none to the first linked to one, whose title sorts
+      # before it; and on from the middle of either group.
+      assert List.last(unassigned) == "R079"
+
+      assert names(list.(order: :unassigned_first, after: public_id.("R079"))) ==
+               Enum.map(assigned, title)
+
+      assert names(list.(order: :unassigned_first, after: public_id.("R039"))) ==
+               expected |> Enum.drop(20) |> Enum.take(50)
+
+      assert names(list.(order: :unassigned_first, after: public_id.("R080"))) == []
+
+      assert names(list.(order: :unassigned_first, view: :assigned, after: public_id.("R040"))) ==
+               Enum.map(Enum.drop(assigned, 20), title)
+
+      # The default: by title, then id, as without the option.
+      assert list.(order: :title) == list.([])
+      assert names(list.([])) == Enum.map(Enum.take(all, 50), title)
+
+      assert names(list.(after: public_id.("R079"))) == [title.("R080")]
+
+      assert names(list.(order: :title, after: public_id.("R050"))) ==
+               Enum.map(Enum.drop(all, 50), title)
+
+      for order <- [:newest, nil, "unassigned_first"] do
+        assert_raise ArgumentError, fn -> list.(order: order) end
+      end
     end
 
     test "the listing-complete marker: kept from the first listing that completes", ctx do
@@ -290,7 +462,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["THEIRS"])))
 
-      nothing = %{total: 0, unassigned: 0, by_workspace: %{}}
+      nothing = %{total: 0, unassigned: 0, by_workspace: %{}, ended: 0}
       assert Collections.list_collections(other, ctx.connection) == []
       assert Collections.counts(other, ctx.connection) == nothing
       assert Collections.count_unassigned(other, ctx.connection) == 0

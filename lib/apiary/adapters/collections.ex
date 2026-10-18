@@ -248,11 +248,15 @@ defmodule Apiary.Adapters.Collections do
           backlog: %{on: boolean} | nil
         }
 
-  @typedoc "How many live collections a connection reaches: all, unassigned, by workspace id."
+  @typedoc """
+  How many live collections a connection reaches: all, unassigned, by workspace id; and
+  how many refs it reaches only through collections that ended (`ended`).
+  """
   @type counts :: %{
           total: non_neg_integer,
           unassigned: non_neg_integer,
-          by_workspace: %{Ecto.UUID.t() => pos_integer}
+          by_workspace: %{Ecto.UUID.t() => pos_integer},
+          ended: non_neg_integer
         }
 
   @typedoc "Why a ref is refused for items and comments, in the contract's order."
@@ -1000,8 +1004,8 @@ defmodule Apiary.Adapters.Collections do
   @doc false
   # list_collections/3 is a page of the collections of `connection`, of the scope's
   # organisation, to a person who may read the instance's adapters there (`adapter.read`):
-  # at most `page_size/0` rows, by title, then id; `[]` to anyone else, and for a
-  # connection of another organisation. `opts`:
+  # at most `page_size/0` rows, in the order `order:` names; `[]` to anyone else, and for
+  # a connection of another organisation. `opts`:
   #
   #   * `view:` `:all` (the default): each ref the connection's listings named once, its
   #     live collection, or, when none is live, the one that ended last; `:unassigned`,
@@ -1011,7 +1015,12 @@ defmodule Apiary.Adapters.Collections do
   #     UTF-8 with no NUL, else nothing matches;
   #   * `workspace:` a workspace of the organisation, or its id: those linked to it;
   #   * `after:` the public id (`sc_…`) of the last row of the page before, for the next;
-  #     one that names no collection of the connection gives `[]`.
+  #     one that names no collection of the connection gives `[]`;
+  #   * `order:` `:title` (the default), by title, then id; `:unassigned_first`, those
+  #     linked to no workspace first, then those linked to one, each by title, then id.
+  #     The page after `after:` starts past that row in the same order: its link to a
+  #     workspace or none, its title, its id. Another order raises `ArgumentError`, as
+  #     another view does.
   #
   # A page of `page_size/0` rows may have more after it; a shorter one is the last. Each
   # row's `backlog` is its switch, which `set_collection_backlog/4` turns (`row/0`).
@@ -1037,18 +1046,41 @@ defmodule Apiary.Adapters.Collections do
   @spec page_size() :: pos_integer
   def page_size, do: @page_size
 
-  defp page_query(%Connection{id: connection_id} = connection, opts) do
+  defp page_query(%Connection{} = connection, opts) do
+    order = Keyword.get(opts, :order, :title)
+
+    connection
+    |> found_query(opts)
+    |> sort(order)
+    |> after_row(connection, Keyword.get(opts, :after), order)
+    |> join(:left, [c], w in assoc(c, :workspace))
+    |> join(:inner, [c], n in assoc(c, :adapter))
+    |> limit(@page_size)
+    |> preload([_c, w, n], workspace: w, adapter: n)
+  end
+
+  # The collections of `connection` that the filters of `opts` find, `view:`, `search:`
+  # and `workspace:`, unordered: what `list_collections/3` pages through and
+  # `count_collections/3` counts.
+  defp found_query(%Connection{id: connection_id}, opts) do
     from(c in Collection, where: c.connection_id == ^connection_id)
     |> view(Keyword.get(opts, :view, :all), connection_id)
     |> search(Keyword.get(opts, :search))
     |> in_workspace(Keyword.get(opts, :workspace))
-    |> after_row(connection, Keyword.get(opts, :after))
-    |> join(:left, [c], w in assoc(c, :workspace))
-    |> join(:inner, [c], n in assoc(c, :adapter))
-    |> order_by([c], asc: c.title, asc: c.id)
-    |> limit(@page_size)
-    |> preload([_c, w, n], workspace: w, adapter: n)
   end
+
+  defp sort(query, :title), do: order_by(query, [c], asc: c.title, asc: c.id)
+
+  defp sort(query, :unassigned_first),
+    do:
+      order_by(query, [c],
+        asc: fragment("? IS NOT NULL", c.workspace_id),
+        asc: c.title,
+        asc: c.id
+      )
+
+  defp sort(_query, _order),
+    do: raise(ArgumentError, "an order is :title or :unassigned_first")
 
   defp view(query, :all, connection_id) do
     # Per ref, the live one first, then the one that ended last.
@@ -1104,24 +1136,42 @@ defmodule Apiary.Adapters.Collections do
     end
   end
 
-  defp after_row(query, _connection, nil), do: query
+  defp after_row(query, _connection, nil, _order), do: query
 
-  defp after_row(query, %Connection{id: connection_id}, public_id) do
+  defp after_row(query, %Connection{id: connection_id}, public_id, order) do
     with true <- Collection.public_id?(public_id),
-         {title, id} <-
+         {assigned, title, id} <-
            Repo.one(
              from c in Collection,
                where: c.public_id == ^public_id and c.connection_id == ^connection_id,
-               select: {c.title, c.id}
+               select: {not is_nil(c.workspace_id), c.title, c.id}
            ) do
-      where(
-        query,
-        [c],
-        fragment("(?, ?) > (?, ?)", c.title, c.id, ^title, type(^id, :binary_id))
-      )
+      past(query, order, assigned, title, id)
     else
       _none -> where(query, false)
     end
+  end
+
+  # The rows past the one whose link to a workspace or none, title and id are `assigned`,
+  # `title` and `id`, in `order`.
+  defp past(query, :title, _assigned, title, id),
+    do:
+      where(query, [c], fragment("(?, ?) > (?, ?)", c.title, c.id, ^title, type(^id, :binary_id)))
+
+  defp past(query, :unassigned_first, assigned, title, id) do
+    where(
+      query,
+      [c],
+      fragment(
+        "(? IS NOT NULL, ?, ?) > (?, ?, ?)",
+        c.workspace_id,
+        c.title,
+        c.id,
+        ^assigned,
+        ^title,
+        type(^id, :binary_id)
+      )
+    )
   end
 
   defp row(%Collection{} = collection, tickets) do
@@ -1170,32 +1220,69 @@ defmodule Apiary.Adapters.Collections do
   end
 
   @doc false
+  # count_collections/3 is how many live collections of `connection` the filters of
+  # `opts` find, to a person who may read the instance's adapters in the scope's
+  # organisation (`adapter.read`): `view:`, `search:` and `workspace:` as
+  # `list_collections/3` takes them, the rows of all its pages counted, its ended ones left
+  # out; `after:` and `order:` are not read. 0 to anyone else, and for a connection of
+  # another organisation.
+  @spec count_collections(Scope.t(), Connection.t(), keyword) :: non_neg_integer
+  def count_collections(scope, connection, opts \\ [])
+
+  def count_collections(%Scope{} = scope, %Connection{} = connection, opts) when is_list(opts) do
+    if readable?(scope, connection) do
+      connection
+      |> found_query(opts)
+      |> where([c], is_nil(c.ended_at))
+      |> Repo.aggregate(:count)
+    else
+      0
+    end
+  end
+
+  @doc false
   # counts/2 is how many live collections `connection` reaches, to a person who may read
   # the instance's adapters in the scope's organisation (`adapter.read`): `total`, those
   # linked to no workspace (`unassigned`), and those linked to each workspace, by its id
-  # (`by_workspace`, a workspace with none left out). All 0 to anyone else, and for a
-  # connection of another organisation. An ended collection is counted nowhere.
+  # (`by_workspace`, a workspace with none left out). An ended collection is counted in
+  # none of these; `ended` is how many refs the connection's listings named whose
+  # collections all ended, the refs the `:all` view of `list_collections/3` shows as
+  # ended. All 0 to anyone else, and for a connection of another organisation.
   @spec counts(Scope.t(), Connection.t()) :: counts
   def counts(%Scope{} = scope, %Connection{id: connection_id} = connection) do
-    by_workspace =
-      if readable?(scope, connection) do
-        Repo.all(
-          from c in Collection,
-            where: c.connection_id == ^connection_id and is_nil(c.ended_at),
-            group_by: c.workspace_id,
-            select: {c.workspace_id, count(c.id)}
-        )
-      else
-        []
-      end
+    {by_workspace, ended} =
+      if readable?(scope, connection),
+        do: {live_by_workspace(connection_id), ended_refs(connection_id)},
+        else: {[], 0}
 
     {unassigned, assigned} = Enum.split_with(by_workspace, &is_nil(elem(&1, 0)))
 
     %{
       total: by_workspace |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
       unassigned: unassigned |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
-      by_workspace: Map.new(assigned)
+      by_workspace: Map.new(assigned),
+      ended: ended
     }
+  end
+
+  # The live collections of the connection `connection_id`, counted by workspace id, nil
+  # for those linked to none.
+  defp live_by_workspace(connection_id) do
+    Repo.all(
+      from c in Collection,
+        where: c.connection_id == ^connection_id and is_nil(c.ended_at),
+        group_by: c.workspace_id,
+        select: {c.workspace_id, count(c.id)}
+    )
+  end
+
+  # The refs of the connection `connection_id` the `:all` view shows as ended: those with
+  # no live collection.
+  defp ended_refs(connection_id) do
+    from(c in Collection, where: c.connection_id == ^connection_id)
+    |> view(:all, connection_id)
+    |> where([c], not is_nil(c.ended_at))
+    |> Repo.aggregate(:count)
   end
 
   @doc false
