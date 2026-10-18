@@ -203,9 +203,17 @@ defmodule Apiary.Environments.RebuildTest do
     assert Environments.rebuild(scope, target(scope)) == {:error, :not_found}
   end
 
-  test "not found: a target of another workspace, or of another organisation", %{target: target} do
+  test "not found: a target of another workspace, or of another organisation",
+       %{scope: scope, shop: shop, target: target} do
+    second = workspace_fixture(scope.organisation)
+    owner_there = %{scope | workspace: second}
+    assert Environments.rebuild(owner_there, target) == {:error, :not_found}
+
     %{scope: other} = sign_up_fixture()
     assert Environments.rebuild(other, target) == {:error, :not_found}
+
+    assert waiting(shop) == []
+    assert entries(target) == []
   end
 
   test "the action: members, the feature factory, asked of the workspace, audited" do

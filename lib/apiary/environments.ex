@@ -117,11 +117,14 @@ defmodule Apiary.Environments do
   # does, making the record when there was none. A pool whose prebuild of the collection
   # waits unclaimed is left as it is: that prebuild builds the collection's
   # `environment_ref` already. It reads the collections, then locks their records `FOR
-  # UPDATE`, by collection and then pool, as `trigger/2` does, before anything else, then
-  # reads the collections again: a listing that changes an `environment_ref` meanwhile is
-  # either read here, or its trigger waits for the records and queues the change after the
-  # Rebuild. One audit entry about the target, with how many prebuilds it queued, and none
-  # when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
+  # UPDATE`, by collection and then pool, as `trigger/2` does, in one statement before
+  # anything else, then reads the collections again and keeps those of both reads: a
+  # listing that changes an `environment_ref` meanwhile is either read here, or its
+  # trigger waits for the records and queues the change after the Rebuild. A collection
+  # the second read alone finds, named, assigned or given the target meanwhile, is left
+  # out, its records never written without their lock: the trigger of that change queues
+  # its prebuilds. One audit entry about the target, with how many prebuilds it queued,
+  # and none when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
   # `{:error, :not_found}` for a target that names no environment in its workspace, or
   # whose workspace has no node pool.
   #
@@ -342,7 +345,7 @@ defmodule Apiary.Environments do
       with :ok <- Access.authorize(scope, :"target.rebuild_environment", target),
            [_ | _] = seen <- Repo.all(named_collections(target)),
            :ok <- lock_records(seen),
-           [_ | _] = collections <- Repo.all(named_collections(target)),
+           [_ | _] = collections <- held(Repo.all(named_collections(target)), seen),
            [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
         now = DateTime.utc_now()
         queued = for collection <- collections, run <- requeue(collection, pools, now), do: run
@@ -353,6 +356,12 @@ defmodule Apiary.Environments do
         {:error, _reason} = refused -> refused
       end
     end)
+  end
+
+  # Those of `collections` the first read found too, whose records are held.
+  defp held(collections, seen) do
+    ids = MapSet.new(seen, & &1.id)
+    Enum.filter(collections, &MapSet.member?(ids, &1.id))
   end
 
   # The live collections assigned to the workspace of `target` with its system and path,
