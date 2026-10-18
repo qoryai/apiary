@@ -11273,6 +11273,11 @@ msgstr ""
 msgid "Powered by Qory Apiary"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Prebuilt for this target"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Prefer a password? You can set one in account settings."
@@ -14567,6 +14572,7 @@ msgstr ""
 msgid "The policy event was pruned with the run's events on %{date}."
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The pool's default image."

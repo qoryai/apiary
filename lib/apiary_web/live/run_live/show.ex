@@ -798,6 +798,7 @@ defmodule ApiaryWeb.RunLive.Show do
       assign(assigns,
         labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
         key_shown: Apiary.Features.visible?(assigns.scope, :nodes),
+        image_source: image_source(assigns.scope, assigns.run),
         # The terminal's size is the log's, as the Terminal tab is.
         terminal_size:
           assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
@@ -853,14 +854,36 @@ defmodule ApiaryWeb.RunLive.Show do
                   {gettext("None")}
                 </span>
             <% end %>
-            <span
-              :if={@run.wall && @run.image}
-              id="run-image"
-              class="q-rail-sub font-mono"
-              title={Apiary.ExternalText.line(@run.image)}
-            >
-              <.external_text text={@run.image} />
-            </span>
+            <%= case @image_source do %>
+              <% :configured -> %>
+                <span
+                  :if={@run.wall}
+                  id="run-image"
+                  class="q-rail-sub font-mono"
+                  title={@run.configured_image}
+                >
+                  {@run.configured_image}
+                </span>
+                <span :if={@run.wall} id="run-image-source" class="q-rail-sub">
+                  {gettext("Prebuilt for this target")}
+                </span>
+              <% source -> %>
+                <span
+                  :if={@run.wall && @run.image}
+                  id="run-image"
+                  class="q-rail-sub font-mono"
+                  title={Apiary.ExternalText.line(@run.image)}
+                >
+                  <.external_text text={@run.image} />
+                </span>
+                <span
+                  :if={@run.wall && @run.image && source == :pool_default}
+                  id="run-image-source"
+                  class="q-rail-sub"
+                >
+                  {gettext("The pool's default image.")}
+                </span>
+            <% end %>
           </dd>
           <%!-- The run's access key, where the reader is shown the nodes: their keys are the
           part `nodes` an edition may hide (`Apiary.Features.visible?/2`). --%>
@@ -1075,6 +1098,22 @@ defmodule ApiaryWeb.RunLive.Show do
     </aside>
     """
   end
+
+  # Which image the rail shows under the Wall, and what it says of it. Only a run of the
+  # workspace's queue, which the `factory` feature makes, is given an image or starts in
+  # its policy's: where the reader is not shown the feature, every run shows the image it
+  # reported, with no line under it. `:configured` is the image Qory gave the run at its
+  # attach, which it started in whatever it reported; `:pool_default`, a run of the queue
+  # given none and not started in its policy's image, which starts in its pool's default
+  # image; `:reported`, any other run.
+  defp image_source(scope, run) do
+    if Apiary.Features.visible?(scope, :factory), do: image_source(run), else: :reported
+  end
+
+  defp image_source(%Run{configured_image: image}) when is_binary(image), do: :configured
+  defp image_source(%Run{started_image_from: "policy"}), do: :reported
+  defp image_source(%Run{dispatch_run_id: id}) when is_binary(id), do: :pool_default
+  defp image_source(%Run{}), do: :reported
 
   # The Forager that reported the run, as it sent its version, and the contract it spoke;
   # n/a for a version it did not send, or one with nothing left to show
