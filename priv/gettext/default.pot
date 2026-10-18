@@ -697,6 +697,11 @@ msgstr ""
 msgid "%{items} that closed after they reached the backlog."
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"

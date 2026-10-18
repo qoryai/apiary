@@ -266,9 +266,10 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
     test "each view holds its tickets and says its count, Open first", ctx do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
-      assert words(view, "#backlog-views") == "Open 3 Taken in 1 Declined 1 Closed 1"
+      # Open leaves out the tickets Taken in and Declined hold.
+      assert words(view, "#backlog-views") == "Open 1 Taken in 1 Declined 1 Closed 1"
       assert has_element?(view, ~s(#backlog-view-open[aria-current="page"]))
-      assert rows(view) == ids([ctx.open, ctx.taken, ctx.declined])
+      assert rows(view) == ids([ctx.open])
 
       for {key, items} <- [taken: [ctx.taken], declined: [ctx.declined], closed: [ctx.closed]] do
         view |> element("#backlog-view-#{key}") |> render_click()
@@ -279,7 +280,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       end
 
       # The counts stay those of every view.
-      assert words(view, "#backlog-views") == "Open 3 Taken in 1 Declined 1 Closed 1"
+      assert words(view, "#backlog-views") == "Open 1 Taken in 1 Declined 1 Closed 1"
     end
 
     test "a row is drawn by its ticket's record id, with its work item and its state word",
@@ -288,14 +289,18 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert has_element?(view, row(ctx.closed), "Not planned")
       refute has_element?(view, "#ticket-#{ctx.closed.key}")
 
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
       assert has_element?(view, "#{row(ctx.declined)} .q-bl-wi-declined")
 
       # Who declined it by the local part of their address, never the address.
       [local, _domain] = String.split(ctx.scope.user.email, "@")
       assert has_element?(view, row(ctx.declined), "Declined by #{local}")
       refute view |> element(row(ctx.declined)) |> render() =~ ctx.scope.user.email
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=taken"))
       assert has_element?(view, "#{row(ctx.taken)} a.q-bl-wi")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
       assert has_element?(view, "#{row(ctx.open)} .q-bl-take", "Take in")
 
       # The title opens the ticket by its record's id, never by the source's.
@@ -706,10 +711,8 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert words(view, "#backlog-view-line") ==
                "Tickets that closed after they reached the backlog."
 
-      for other <- ~w(taken declined) do
-        {:ok, view, _html} = live(conn, page(scope, "?view=#{other}"))
-        refute has_element?(view, "#backlog-view-line"), other
-      end
+      {:ok, view, _html} = live(conn, page(scope, "?view=taken"))
+      refute has_element?(view, "#backlog-view-line")
     end
 
     test "in the source's words for its items", %{
@@ -728,6 +731,53 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       assert words(view, "#backlog-view-line") ==
                "Bugs that closed after they reached the backlog."
+    end
+  end
+
+  describe "the Declined view's line" do
+    setup %{connection: connection} do
+      %{adapter: Repo.get!(Node, connection.adapter_id)}
+    end
+
+    test "says which tickets Declined holds and where they stay open, on Declined alone",
+         ctx do
+      work_item(ctx.scope, ticket(ctx.shop), :declined)
+
+      for view <- ["open", "taken", "closed"] do
+        {:ok, view_page, _html} = live(ctx.conn, page(ctx.scope, "?view=#{view}"))
+        refute has_element?(view_page, "#backlog-view-line", "declined"), view
+      end
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      view |> element("#backlog-view-declined") |> render_click()
+
+      assert words(view, "#backlog-view-line") ==
+               "Tickets whose work item a member declined after Explore. They stay open on " <>
+                 "#{ctx.adapter.name}, and Open leaves them out. Take in again brings back " <>
+                 "the same work item."
+    end
+
+    test "in the source's words for its items", %{connection: connection} = ctx do
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
+          set: [item_noun_one: "bug", item_noun_other: "bugs"]
+        )
+
+      work_item(ctx.scope, ticket(ctx.shop), :declined)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
+
+      assert words(view, "#backlog-view-line") =~
+               ~r/^Bugs whose work item a member declined after Explore\. They stay open on /
+    end
+
+    test "is left out where several integrations connect the organisation, none named", ctx do
+      work_item(ctx.scope, ticket(ctx.shop), :declined)
+      other = ticket_connection_fixture(ctx.scope)
+      ticket(source_collection_fixture(ctx.scope, other, %{title: "acme/web"}))
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
+      assert rows(view) |> length() == 1
+      refute has_element?(view, "#backlog-view-line")
     end
   end
 

@@ -9,7 +9,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # with several, the words are not a link.
   #
   # **The list.** The views as tabs, each with its count (Open, Taken in, Declined,
-  # Closed), with a line under them on Closed that says which tickets it holds, Search,
+  # Closed), with a line under them on Closed, and on Declined where one integration
+  # connects the organisation, that says which tickets it holds, Search,
   # one Filter menu (Repository, Filed by, its bots each with a neutral tile, Label,
   # Updated), Sort (Recently updated, Newest, Most comments), the filters in force as
   # tokens under the bar, each with its ×, then Clear and how many tickets match, a page
@@ -198,6 +199,18 @@ defmodule ApiaryWeb.BacklogLive.Index do
           >
             {gettext("%{items} that closed after they reached the backlog.",
               items: SourceComponents.items_label(@item_noun)
+            )}
+          </p>
+
+          <p
+            :if={@params.view == :declined and @integration}
+            id="backlog-view-line"
+            class="text-[0.8125rem] text-muted"
+          >
+            {gettext(
+              "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item.",
+              items: SourceComponents.items_label(@item_noun),
+              integration: @integration.name
             )}
           </p>
 

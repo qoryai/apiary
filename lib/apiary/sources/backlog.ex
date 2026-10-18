@@ -28,11 +28,12 @@ defmodule Apiary.Sources.Backlog do
   # still its work item. A work item of another workspace of the organisation shows its
   # state alone, with no number, page or name of that workspace.
   #
-  # **Views** (`list_tickets/2`): `:open`, every ticket open at its source; `:taken`, the
-  # open ones whose work item is live; `:declined`, the open ones whose work item was
-  # declined; `:closed`, every ticket closed at its source; `:all`, every one. The counts
-  # of each view, and the total, come from one grouped query, under the same search and
-  # filters as the page, without its view.
+  # **Views** (`list_tickets/2`): `:open`, the tickets open at their source with no work
+  # item, or one undone or closed; `:taken`, the open ones whose work item is live;
+  # `:declined`, the open ones whose work item was declined; `:closed`, every ticket
+  # closed at its source; `:all`, every one. An open ticket is in one of Open, Taken in
+  # and Declined. The counts of each view, and the total, come from one grouped query,
+  # under the same search and filters as the page, without its view.
   #
   # **The facts** (`backlog_facts/1`) name the integrations the organisation is connected
   # through, each by its adapter's name and public id, read with the connections.
@@ -438,7 +439,15 @@ defmodule Apiary.Sources.Backlog do
           is_nil(k.ended_at) and is_nil(i.disconnected_at)
   end
 
-  defp view(query, :open), do: where(query, [item: i], i.state == :open)
+  # With no work item the left join gives NULL, so `is_nil(w.id)`: a NOT IN would leave
+  # those tickets out.
+  defp view(query, :open),
+    do:
+      where(
+        query,
+        [item: i, work_item: w],
+        i.state == :open and (is_nil(w.id) or w.state in [:undone, :closed])
+      )
 
   defp view(query, :taken),
     do: where(query, [item: i, work_item: w], i.state == :open and w.state == :exploring)
@@ -702,14 +711,18 @@ defmodule Apiary.Sources.Backlog do
     |> Enum.reduce(@no_counts, fn {state, work_item_state, n}, counts ->
       counts
       |> Map.update!(:total, &(&1 + n))
-      |> Map.update!(state, &(&1 + n))
-      |> taken(state, work_item_state, n)
+      |> held(state, work_item_state, n)
     end)
   end
 
-  defp taken(counts, :open, :exploring, n), do: Map.update!(counts, :taken, &(&1 + n))
-  defp taken(counts, :open, :declined, n), do: Map.update!(counts, :declined, &(&1 + n))
-  defp taken(counts, _state, _work_item_state, _n), do: counts
+  # The view a ticket's state and its work item's put it in: an open one in one of Open,
+  # Taken in and Declined, a closed one in Closed.
+  defp held(counts, :open, work_item_state, n) when work_item_state in [nil, :undone, :closed],
+    do: Map.update!(counts, :open, &(&1 + n))
+
+  defp held(counts, :open, :exploring, n), do: Map.update!(counts, :taken, &(&1 + n))
+  defp held(counts, :open, :declined, n), do: Map.update!(counts, :declined, &(&1 + n))
+  defp held(counts, :closed, _work_item_state, n), do: Map.update!(counts, :closed, &(&1 + n))
 
   defp select_row(query, %Scope{organisation: organisation, workspace: workspace}) do
     path = "/" <> organisation.slug <> "/" <> workspace.slug <> "/work/"
@@ -1009,9 +1022,9 @@ defmodule Apiary.Sources.Backlog do
   # (`integrations`, `t:integration/0`); how many live collections of such a connection
   # are linked to the workspace, with their Backlog on and with items
   # (`linked_collections`); whether an adapter's listing has named such a connection
-  # (`listed?`, its `listed_at`); and how many open tickets the Backlog holds
-  # (`open_tickets`). Nothing connected, no integration, nothing linked, nothing listed
-  # and none open to anyone else.
+  # (`listed?`, its `listed_at`); and how many tickets the Backlog holds open at their
+  # source (`open_tickets`), whatever their work item. Nothing connected, no integration,
+  # nothing linked, nothing listed and none open to anyone else.
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
