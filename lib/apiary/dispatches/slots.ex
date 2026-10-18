@@ -3,8 +3,9 @@ defmodule Apiary.Dispatches.Slots do
 
   # The slots of a node pool's instance limit its claims take (the provisioner contract's
   # `claim.schema.json`): each dispatch takes one at its claim, and its slot is freed
-  # once, at the first of its release, the lapse of its lease before its handover, its end
-  # before its handover because its work item was closed or undone, or its run's end.
+  # once, at the first of its release (`Apiary.Dispatches.Release`), the lapse of its
+  # lease before its handover, its end before its handover because its work item was
+  # closed or undone, or its run's end.
   # A dispatch holds its slot while `slot_freed_at` is nil, and `slot_freed_at` is set
   # once: every write here sets it only where it is nil, so a slot freed twice keeps the
   # first time.
@@ -73,6 +74,18 @@ defmodule Apiary.Dispatches.Slots do
   # then its run of the queue `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), then its
   # dispatch, and only then, beyond these, the gateway's row `FOR SHARE` and the run it
   # registers, as a run of the queue is locked before the run registered for it.
+  #
+  # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
+  # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close
+  # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/2` hold a work
+  # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
+  # has it. Then the free of its run, which locks that record again where its lease
+  # lapsed, its run of the queue, its dispatch, and after its handover the run
+  # registered for it (`Apiary.Dispatches.RunEnd.released/2`). A prebuild given back with
+  # retry before its handover locks the one that waits of its collection and pool after
+  # its dispatch (`wait_again/3`): under the record it holds, which every path that locks
+  # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
+  # none. A path that locks a work item locks it before any run of the queue, never after.
   #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first
@@ -196,7 +209,7 @@ defmodule Apiary.Dispatches.Slots do
             set: [state: :waiting, updated_at: now]
           )
 
-        :ok = wait_once(prebuilds, records.queued_refs, now)
+        _superseded = wait_again(prebuilds, records.queued_refs, now)
         workspaces = Enum.uniq(stale_workspaces ++ workspaces)
 
         # Another batch, after the last run of this one, while a whole one lapsed.
@@ -260,15 +273,27 @@ defmodule Apiary.Dispatches.Slots do
     }
   end
 
-  # Of the lapsed claimed `prebuilds`, under the lock of their environment records, per
-  # collection and pool: while another prebuild waits, each ends `superseded`, and the
-  # one that waits takes the record's `queued_ref`; else one waits again, with its
-  # `run_id` and its `queued_at`, and the record's `queued_ref`: the one queued for that
-  # `queued_ref`, or else the one queued last; the others end `superseded`. Their stale
-  # dispatches end with them (`run_ended`).
-  defp wait_once([], _queued_refs, _now), do: :ok
+  # wait_again/3 takes the claimed `prebuilds`, whose dispatch lapsed or was released
+  # with retry before its handover, back to the queue, under the lock of their
+  # environment records, which the caller holds, per collection and pool: while another
+  # prebuild waits, each ends `superseded`, and the one that waits takes the record's
+  # `queued_ref`; else one waits again, with its `run_id` and its `queued_at`, and the
+  # record's `queued_ref`: the one queued for that `queued_ref`, or else the one queued
+  # last; the others end `superseded`. `queued_refs` is each record's `queued_ref` by
+  # `{collection_id, pool_id}`. Their stale dispatches end with them (`run_ended`). The
+  # ids of the runs that ended `superseded`.
+  @doc false
+  @spec wait_again(
+          [DispatchRun.t()],
+          %{optional({Ecto.UUID.t(), Ecto.UUID.t()}) => String.t() | nil},
+          DateTime.t()
+        ) ::
+          [Ecto.UUID.t()]
+  def wait_again([], _queued_refs, %DateTime{}), do: []
 
-  defp wait_once(prebuilds, queued_refs, now) do
+  def wait_again(prebuilds, queued_refs, %DateTime{} = now) when is_list(prebuilds) do
+    in_transaction!()
+
     superseded =
       prebuilds
       |> Enum.group_by(&{&1.source_collection_id, &1.pool_id})
@@ -292,7 +317,7 @@ defmodule Apiary.Dispatches.Slots do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
-    :ok
+    superseded
   end
 
   # The runs of one collection and pool that end `superseded`, the one that waits written.

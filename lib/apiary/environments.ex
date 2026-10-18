@@ -46,6 +46,17 @@ defmodule Apiary.Environments do
   # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
   # transaction: two calls would lock in two orders.
   #
+  # ## A build given back: `lock_record/2` and `record_release_failure/3`
+  #
+  # `lock_record(pool_id, collection_id)` locks the record of a prebuild's pool and
+  # collection `FOR UPDATE`, inside the caller's transaction: a starter's release of the
+  # prebuild holds it before the free of its run and before its run of the queue, as a
+  # free of lapsed leases holds it (`Apiary.Dispatches.Release`, `Apiary.Dispatches.Slots`).
+  # `record_release_failure(record, reason, now)` then records the last build as failed,
+  # `released`, with the starter's `reason` and `now`: the last good build, `image`,
+  # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
+  # queued.
+  #
   # ## A run's image: `image_for/2`
   #
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
@@ -76,6 +87,39 @@ defmodule Apiary.Environments do
         where: r.source_collection_id == ^collection_id,
         order_by: [asc: r.inserted_at, asc: r.id]
     )
+  end
+
+  ## A build given back
+
+  # lock_record/2 locks the record of the pool `pool_id` and the collection
+  # `collection_id` `FOR UPDATE`, inside the caller's transaction: the record, or nil.
+  @doc false
+  @spec lock_record(Ecto.UUID.t(), Ecto.UUID.t()) :: Record.t() | nil
+  def lock_record(pool_id, collection_id) when is_binary(pool_id) and is_binary(collection_id) do
+    in_transaction!("lock_record/2")
+
+    Repo.one(
+      from r in Record,
+        where: r.pool_id == ^pool_id and r.source_collection_id == ^collection_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  # record_release_failure/3 records the last build of `record`, locked by
+  # `lock_record/2`, as failed by the starter's release, with its `reason`, at `now`,
+  # inside the caller's transaction (the moduledoc).
+  @doc false
+  @spec record_release_failure(Record.t(), String.t(), DateTime.t()) :: :ok
+  def record_release_failure(%Record{id: id}, reason, %DateTime{} = now)
+      when is_binary(id) and is_binary(reason) do
+    in_transaction!("record_release_failure/3")
+
+    {1, _rows} =
+      Repo.update_all(from(r in Record, where: r.id == ^id),
+        set: [failure_cause: :released, failure_reason: reason, failed_at: now, updated_at: now]
+      )
+
+    :ok
   end
 
   ## A run's image
