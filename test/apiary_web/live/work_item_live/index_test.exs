@@ -523,11 +523,13 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "Waiting on you shows no Sort and stays oldest first", ctx do
-      first = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
-      second = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 40, 45)
+      # Oldest first by the last change, unlike either order by creation.
+      a = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
+      b = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 30, 45)
+      c = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 60, 40)
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=you&sort=created"))
-      assert rows(view) == ids([first, second])
+      assert rows(view) == ids([a, b, c])
       refute has_element?(view, "#work-items-sort")
     end
   end

@@ -333,9 +333,11 @@ defmodule Apiary.WorkItems.WorkListTest do
     end
 
     test "leaves Waiting on you oldest first", ctx do
-      first = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
-      second = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 40, 45)
-      oldest_first = [first.public_id, second.public_id]
+      # Oldest first by the last change, unlike either order by creation.
+      a = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
+      b = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 30, 45)
+      c = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 60, 40)
+      oldest_first = [a.public_id, b.public_id, c.public_id]
 
       assert ids(list(ctx.scope, view: :you)) == oldest_first
       assert ids(list(ctx.scope, view: :you, sort: :created)) == oldest_first
