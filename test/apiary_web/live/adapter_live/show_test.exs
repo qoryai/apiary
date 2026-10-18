@@ -761,10 +761,13 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
            ]
 
     lv |> element("#collections-workspace-1") |> render_click()
-    assert_patch(lv, page(scope, adapter) <> "?workspace=#{platform.id}")
+    assert_patch(lv, page(scope, adapter) <> "?workspace_id=#{platform.id}")
     assert Enum.drop(rows(lv), 1) == ["acme/shop Platform — Today"]
     assert has_element?(lv, ~s{#collections-workspace-1[aria-checked="true"]})
     assert words(lv, "#collections-workspace-button") == "Workspace 1"
+
+    {:ok, visited, _html} = live(conn, page(scope, adapter) <> "?workspace_id=#{platform.id}")
+    assert Enum.drop(rows(visited), 1) == ["acme/shop Platform — Today"]
 
     lv |> element("#collections-workspace-1") |> render_click()
     assert_patch(lv, page(scope, adapter))

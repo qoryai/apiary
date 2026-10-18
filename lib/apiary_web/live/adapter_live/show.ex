@@ -113,7 +113,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       page: page_param(params["page"]),
       view: if(params["view"] == "unassigned", do: :unassigned, else: :all),
       q: search_param(params["q"]),
-      workspace: if(is_binary(params["workspace"]), do: params["workspace"])
+      workspace: if(is_binary(params["workspace_id"]), do: params["workspace_id"])
     }
 
     {:noreply, socket |> assign(:query, query) |> listing()}
@@ -860,13 +860,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The path of the integration's page with `query`, its defaults (the first page, every
-  # collection, no search, no workspace) left out.
+  # collection, no search, no workspace) left out. The workspace goes as `workspace_id`,
+  # since a `workspace` parameter names the path's workspace (`ApiaryWeb.UserAuth`).
   defp page_path(show, query) do
     params =
-      for key <- [:view, :q, :workspace, :page],
+      for {key, name} <- [view: :view, q: :q, workspace: :workspace_id, page: :page],
           value = Map.get(query, key),
           value not in [nil, 1, :all],
-          do: {key, value}
+          do: {name, value}
 
     case params do
       [] -> show
