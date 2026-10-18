@@ -42,7 +42,8 @@ defmodule Apiary.WorkItems do
   #
   # ## Reading: the list and the lookups
   #
-  # `list_work_items(scope, params)` is a page of the Work items list
+  # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/3` its
+  # Open view by stage and `list_filter_values/3` what its Filter menu offers
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
   # `get_for_ticket/2` find one work item for a page. Each answers nothing to a person who
   # may not read the workspace's work items (`work_item.read`).
@@ -111,10 +112,11 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # How many of the scope's workspace's work items wait on the scope's person: the count
-  # beside the sidebar's Work items. Nothing waits on a person before the stages that ask
-  # one something, so it is 0.
+  # beside the sidebar's Work items, and the Work items list's Waiting on you. They are the
+  # live work items the person owns whose proposal waits at Confirm
+  # (`Apiary.WorkItems.WorkList.waiting_on/1`); 0 to a person who may not read them.
   @spec count_waiting_on(Scope.t()) :: non_neg_integer
-  def count_waiting_on(%Scope{}), do: 0
+  def count_waiting_on(%Scope{} = scope), do: WorkList.waiting_on(scope)
 
   ## What a person does
 
@@ -292,6 +294,21 @@ defmodule Apiary.WorkItems do
   @spec list_work_items(Scope.t(), map | keyword, DateTime.t()) :: WorkList.page()
   def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
     do: WorkList.list(scope, params, now)
+
+  @doc false
+  # list_bands/3 is the Work items list's Open view of the scope's workspace by stage
+  # (`Apiary.WorkItems.WorkList.bands/3`).
+  @spec list_bands(Scope.t(), map | keyword, DateTime.t()) :: WorkList.bands()
+  def list_bands(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
+    do: WorkList.bands(scope, params, now)
+
+  @doc false
+  # list_filter_values/3 is what the Work items list's Filter menu offers for `kind`
+  # (`Apiary.WorkItems.WorkList.filter_values/3`).
+  @spec list_filter_values(Scope.t(), :owner | :repository, String.t() | nil) ::
+          [WorkList.value()]
+  def list_filter_values(%Scope{} = scope, kind, query \\ nil),
+    do: WorkList.filter_values(scope, kind, query)
 
   @doc false
   # get_by_number/2 is the work item of the scope's workspace numbered `number`, to a
