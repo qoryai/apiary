@@ -732,6 +732,10 @@ defmodule ApiaryWeb.RunComponents do
 
   def middle(value, _max), do: value
 
+  # `middle/2` of a text Forager sent, as an external system's text is shown
+  # (`Apiary.ExternalText.line/1`).
+  defp shown_middle(value, max), do: value |> Apiary.ExternalText.line() |> middle(max)
+
   @doc "A run's `public_id` short: `rn_` and its first eight characters."
   def short_id(public_id) when is_binary(public_id), do: String.slice(public_id, 0, 11)
   def short_id(_public_id), do: gettext("n/a")
@@ -2199,7 +2203,10 @@ defmodule ApiaryWeb.RunComponents do
                 @preview.run.denied_count
               )}
             </span>
-            <span :for={d <- @preview.denials} class="q-pv-dest"><bdi>{d.host}</bdi>:{d.port}</span>
+            <span
+              :for={d <- @preview.denials}
+              class="q-pv-dest"
+            ><.external_text text={d.host} />:{d.port}</span>
             <span :if={@preview.more_denials > 0} class="q-pv-more">
               {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
                 number: Format.number(@preview.more_denials)
@@ -2567,9 +2574,9 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-toggle"}
           class="q-expander"
           phx-click={@toggle}
-          phx-value-host={@c.host}
+          phx-value-host={@c.raw_host}
           phx-value-port={@c.port}
-          phx-value-path={@c.path}
+          phx-value-path={@c.raw_path}
           aria-expanded={to_string(@open != nil)}
           aria-controls={"#{@id}-runs"}
           aria-label={gettext("Runs that reached %{destination}", destination: destination_words(@c))}
@@ -2718,9 +2725,9 @@ defmodule ApiaryWeb.RunComponents do
             id={"#{@id}-more"}
             class="q-link q-hits-more"
             phx-click={@more}
-            phx-value-host={@c.host}
+            phx-value-host={@c.raw_host}
             phx-value-port={@c.port}
-            phx-value-path={@c.path}
+            phx-value-path={@c.raw_path}
           >
             {ngettext(
               "Show %{number} more",
@@ -2746,28 +2753,42 @@ defmodule ApiaryWeb.RunComponents do
   # The rule the reason names links to the rule in force only when they are one: a record
   # that names a rule since replaced is about the past. A rule just added has the after
   # line's link, and a locked one its refusal's.
-  defp rule_link(%{rule_option: option, rule_path: path, entry_host: host}, %{rule: host})
+  defp rule_link(
+         %{rule_option: option, rule_path: path, entry_host: host},
+         %{raw_rule: host}
+       )
        when option in [:can_allow, :can_deny, :above_deny] and is_binary(path) and
               is_binary(host),
        do: path
 
   defp rule_link(_act, _c), do: nil
 
-  # Both spellings of a connection, as one map with every key present.
+  # Both spellings of a connection, as one map with every key present. Its host, path,
+  # tool and rules are texts Forager sent, shown as an external system's text is
+  # (`Apiary.ExternalText.present/1`): one with nothing left to show is none. A host the
+  # wall refused for its form is shown as sent, since its form is the reason the row
+  # gives. What a row is found by, acted on and copied as is its host, path and rule as
+  # sent (`raw_host`, `raw_path`, `raw_rule`).
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
-    tool = blank(get.([:tool, :last_tool]))
+    tool = Apiary.ExternalText.present(get.([:tool, :last_tool]))
     decision = get.([:decision, :last_decision])
+    host = get.([:host])
+    path = get.([:path]) || ""
+    rule = blank(get.([:rule, :last_rule]))
 
     %{
-      host: get.([:host]),
+      host: shown_host(host, rule),
+      raw_host: host,
       port: get.([:port]),
-      path: get.([:path]) || "",
+      path: Apiary.ExternalText.present(path) || "",
+      raw_path: path,
       method: get.([:method]),
       request_method: get.([:request_method, :last_request_method]),
       decision: decision,
-      rule: blank(get.([:rule, :last_rule])),
-      path_rule: blank(get.([:path_rule, :last_path_rule])),
+      rule: Apiary.ExternalText.present(rule),
+      raw_rule: rule,
+      path_rule: Apiary.ExternalText.present(get.([:path_rule, :last_path_rule])),
       credential: blank(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
@@ -2786,6 +2807,9 @@ defmodule ApiaryWeb.RunComponents do
 
   defp blank(""), do: nil
   defp blank(value), do: value
+
+  defp shown_host(host, "wall:host-form"), do: host
+  defp shown_host(host, _rule), do: Apiary.ExternalText.present(host)
 
   defp share(allowed, denied) when allowed + denied > 0,
     do: round(allowed * 100 / (allowed + denied))
@@ -2831,7 +2855,7 @@ defmodule ApiaryWeb.RunComponents do
   defp destination_title(%{c: %{invocation: true}} = assigns) do
     ~H"""
     <span class="q-cx-tl">
-      <.destination c={@c} /><.host_copy :if={@copy_id} id={@copy_id} host={@c.host} />
+      <.destination c={@c} /><.host_copy :if={@copy_id} id={@copy_id} c={@c} />
     </span>
     """
   end
@@ -2857,7 +2881,7 @@ defmodule ApiaryWeb.RunComponents do
       <span class="q-cx-h"><bdi>{@c.host}</bdi><span class="q-cx-p">:{@c.port}</span><.host_copy
         :if={@copy_id}
         id={@copy_id}
-        host={@c.host}
+        c={@c}
       /></span>
       <span :if={@trail} class="q-cx-path">{middle(@trail, 96)}</span>
     </span>
@@ -2865,12 +2889,13 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   attr :id, :string, required: true
-  attr :host, :string, required: true
+  attr :c, :map, required: true
 
-  # The host's copy icon, on its line: it copies the host, which Allow, Deny and the
-  # `host:` filter act on, and its name and hint say so. "Copied" is said in the shell's
-  # one announcer, never in a live region of each row (docs/ui.md). Its empty title keeps
-  # the destination's own from showing over its hint.
+  # The host's copy icon, on its line: it copies the host as sent, which Allow, Deny and
+  # the `host:` filter act on, and its name and hint say so, with the host as the row
+  # shows it. "Copied" is said in the shell's one announcer, never in a live region of
+  # each row (docs/ui.md). Its empty title keeps the destination's own from showing over
+  # its hint.
   defp host_copy(assigns) do
     ~H"""
     <button
@@ -2878,10 +2903,10 @@ defmodule ApiaryWeb.RunComponents do
       id={@id}
       phx-hook="CopyToClipboard"
       class="copy-btn q-cx-copy row-reveal tooltip tooltip-right"
-      data-copy={@host}
+      data-copy={@c.raw_host}
       data-copied-words={gettext("Copied")}
-      data-tip={gettext("Copy %{host}", host: @host)}
-      aria-label={gettext("Copy %{host}", host: @host)}
+      data-tip={gettext("Copy %{host}", host: @c.host)}
+      aria-label={gettext("Copy %{host}", host: @c.host)}
       title=""
     >
       <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-3.5" /></span>
@@ -3850,7 +3875,7 @@ defmodule ApiaryWeb.RunComponents do
       <header class="q-rp-head">
         <h3 id={"#{@id}-title"}>
           <.spliced text={gettext("Allow %{host}", host: hole())}>
-            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
+            <span class="q-rp-host"><bdi>{shown_middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3886,7 +3911,7 @@ defmodule ApiaryWeb.RunComponents do
               do: gettext("%{host} stays denied", host: hole()),
               else: gettext("%{host} stays allowed", host: hole())
           }>
-            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
+            <span class="q-rp-host"><bdi>{shown_middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3962,8 +3987,8 @@ defmodule ApiaryWeb.RunComponents do
             <.spliced text={panel_title(@deny, @what && @what.kind == :path)}>
               <span
                 class="q-rp-host"
-                title={@panel.host}
-              ><bdi>{middle(@panel.host, 40)}</bdi></span>
+                title={Apiary.ExternalText.line(@panel.host)}
+              ><bdi>{shown_middle(@panel.host, 40)}</bdi></span>
             </.spliced>
           </h3>
         </header>
@@ -3986,7 +4011,7 @@ defmodule ApiaryWeb.RunComponents do
           </legend>
           <p id={"#{@id}-what"} class="q-rp-what">
             <b>{gettext("This path")}</b>
-            <.mono bare class="q-rule">{middle(@panel.path, 64)}</.mono>
+            <.mono bare class="q-rule">{shown_middle(@panel.path, 64)}</.mono>
             {if @deny,
               do: gettext("is taken out of the paths in force for the host."),
               else: gettext("is added to the paths in force for the host.")}

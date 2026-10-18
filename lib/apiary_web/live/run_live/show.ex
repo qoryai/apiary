@@ -151,18 +151,24 @@ defmodule ApiaryWeb.RunLive.Show do
                 />
                 <span :if={program_exit(@run)}>{program_exit(@run)}</span>
                 <.link
-                  :if={target_link(@target_page)}
+                  :if={target_link(@target_page) && shown_target_path(@run)}
                   id="run-target"
                   navigate={target_link(@target_page)}
                   class="q-run-target"
                 >
                   <.target_name
-                    path={@run.target_path}
+                    path={shown_target_path(@run)}
                     system={@target_shared && @run.target_system}
                   />
                 </.link>
-                <span :if={!target_link(@target_page) && @run.target_path} id="run-target">
-                  <.target_name path={@run.target_path} system={@run.target_system} />
+                <span
+                  :if={!target_link(@target_page) && shown_target_path(@run)}
+                  id="run-target"
+                >
+                  <.target_name
+                    path={shown_target_path(@run)}
+                    system={@run.target_system}
+                  />
                 </span>
                 <span :if={@run.runtime} id="run-runtime">
                   <.external_text text={join([@run.runtime, @run.runtime_version])} />
@@ -1559,6 +1565,11 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp target_link({_id, path}), do: path
+
+  # The run's target path as a text Forager sent is shown
+  # (`Apiary.ExternalText.present/1`): nil for one with nothing left to show, which is no
+  # target.
+  defp shown_target_path(run), do: Apiary.ExternalText.present(run.target_path)
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do

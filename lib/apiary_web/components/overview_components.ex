@@ -496,18 +496,20 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # The run's target path is a text Forager sent (`shown/1`): one with nothing left to
+  # show is no target.
   defp attention_where(%{item: %{kind: kind, run: run}} = assigns)
        when kind in [:quiet, :lost, :behind] do
-    assigns = assign(assigns, :run, run)
+    assigns = assign(assigns, run: run, path: shown(run.target_path))
 
     ~H"""
     <.target_name
-      :if={@run.target_system && @run.target_path}
+      :if={@run.target_system && @path}
       system={@run.target_system}
-      path={@run.target_path}
+      path={@path}
       shared={@shared}
     />
-    <span :if={!(@run.target_system && @run.target_path)} class="q-faint">
+    <span :if={!(@run.target_system && @path)} class="q-faint">
       {gettext("no target")}
     </span>
     """

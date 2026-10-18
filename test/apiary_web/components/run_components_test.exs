@@ -1863,9 +1863,11 @@ defmodule ApiaryWeb.RunComponentsTest do
   end
 
   describe "a connection's host is isolated, so a bidi character reorders nothing" do
-    # A right-to-left override in Forager's string, and markup that must stay text.
+    # A right-to-left override in Forager's string, and markup that must stay text; the
+    # page drops the override (`Apiary.ExternalText.line/1`) and isolates what is left.
     @host "evil\u202Elpmaxe.<script>"
-    @escaped "evil\u202Elpmaxe.&lt;script&gt;"
+    @shown "evillpmaxe.<script>"
+    @escaped "evillpmaxe.&lt;script&gt;"
 
     defp bidi_row(variant, connection \\ %{}) do
       base = %{
@@ -1912,16 +1914,16 @@ defmodule ApiaryWeb.RunComponentsTest do
       for variant <- ~w(table workspace),
           connection <- [%{}, %{path: "/v1/<b>", request_method: "GET"}] do
         html = bidi_row(variant, connection)
-        assert isolated(html, ".q-cx-h > bdi") == [@host], variant
-        assert html =~ "<bdi>#{@escaped}</bdi><span class=\"q-cx-p\">:443</span>", variant
+        assert isolated(html, ".q-cx-h > bdi") == [@shown], variant
+        assert html =~ "#{@escaped}</bdi><span class=\"q-cx-p\">:443</span>", variant
         refute html =~ "<script>", variant
       end
     end
 
     test "in the timeline's row, a tool invocation's too" do
       html = bidi_row("inline")
-      assert isolated(html, ".q-dest > bdi") == [@host]
-      assert html =~ "<bdi>#{@escaped}</bdi><span class=\"text-faint\">:443</span>"
+      assert isolated(html, ".q-dest > bdi") == [@shown]
+      assert html =~ "#{@escaped}</bdi><span class=\"text-faint\">:443</span>"
       refute html =~ "<script>"
 
       html =
@@ -1934,17 +1936,18 @@ defmodule ApiaryWeb.RunComponentsTest do
           request_method: "PUT"
         })
 
-      assert isolated(html, ".q-dest-tool .q-on > bdi") == [@host]
-      assert html =~ "<span class=\"q-on\"><bdi>#{@escaped}</bdi>:443</span>"
+      assert isolated(html, ".q-dest-tool .q-on > bdi") == [@shown]
+      assert html =~ "#{@escaped}</bdi>:443</span>"
       refute html =~ "<script>"
     end
 
     test "a host cut long right after an unclosed override keeps it inside the isolate" do
-      # 18 letters, the override as the 19th character: the cut keeps 19 and the ellipsis.
+      # 18 letters, the override as the 19th character: the page drops it before the cut,
+      # which keeps 19 and the ellipsis.
       long = String.duplicate("a", 18) <> "\u202E" <> String.duplicate("b", 30) <> ".<script>"
-      cut = RunComponents.middle(long, 40)
+      cut = RunComponents.middle(Apiary.ExternalText.line(long), 40)
       assert String.ends_with?(String.slice(long, 0, 19), "\u202E")
-      assert cut =~ "\u202E…"
+      assert cut =~ "ab…"
 
       panel = %{
         anchor: "a-allow",
@@ -1962,8 +1965,9 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       html = render_component(&RunComponents.rule_panel/1, panel: panel)
       assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [cut]
-      # The isolate closes before the rest of the sentence, so the override reaches nothing.
-      assert html =~ ~r|<bdi>a{18}\x{202E}…b*\.&lt;script&gt;</bdi></span>|u
+      # The isolate closes before the rest of the sentence, and no override is left in it.
+      assert html =~ ~r|<bdi>a{18}b…b*\.&lt;script&gt;</bdi></span>|u
+      refute html =~ "\u202E"
 
       assert isolated(html, "#rule-panel-title")
              |> hd()
@@ -1973,7 +1977,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "<script>"
 
       html = bidi_row("workspace", %{host: long})
-      assert isolated(html, ".q-cx-h > bdi") == [long]
+      assert isolated(html, ".q-cx-h > bdi") == [Apiary.ExternalText.line(long)]
       assert html =~ "</bdi><span class=\"q-cx-p\">:443</span>"
     end
 
@@ -2013,10 +2017,118 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       for panel <- panels do
         html = render_component(&RunComponents.rule_panel/1, panel: panel)
-        assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [@host], inspect(panel)
-        assert html =~ "<bdi>#{@escaped}</bdi>"
+
+        assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [@shown],
+               inspect(panel)
+
+        assert html =~ "#{@escaped}</bdi>"
         refute html =~ "<script>"
       end
+    end
+  end
+
+  describe "a connection's texts, as a page shows an external system's text" do
+    # What Forager sent with a bidirectional override, a zero-width space or a control
+    # character in it, and what is left of them on the page.
+    defp cx(connection, variant) do
+      base = %{
+        host: "api.example",
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        attempts: 1,
+        allowed: 1,
+        denied: 0,
+        runs: 1,
+        last_decision: "allowed",
+        last_rule: "api.example",
+        last_outcome: "connected",
+        last_mode: "enforce",
+        first_seen_at: ~U[2026-09-20 14:02:20Z],
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      assigns = %{c: Map.merge(base, connection), variant: variant}
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="cx-1" connection={@c} variant={@variant} />
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    defp texts(doc, selector),
+      do: doc |> LazyHTML.query(selector) |> Enum.map(&LazyHTML.text/1)
+
+    test "a host with a bidirectional control: cleaned to read, as sent to act on" do
+      sent = "api\u202E.example\u200B"
+
+      for variant <- ~w(table workspace) do
+        doc = cx(%{host: sent, last_rule: sent}, variant)
+
+        assert texts(doc, ".q-cx-h > bdi") == ["api.example"]
+        assert attr_of(doc, ".q-cx-t", "title") == ["api.example:443"]
+        assert attr_of(doc, "#cx-1-copy", "data-copy") == [sent]
+        assert attr_of(doc, "#cx-1-copy", "aria-label") == ["Copy api.example"]
+        assert text(LazyHTML.to_html(doc)) =~ "Rule api.example"
+        refute text(LazyHTML.to_html(doc)) =~ "\u202E"
+      end
+
+      workspace = cx(%{host: sent}, "workspace")
+      assert attr_of(workspace, "#cx-1-toggle", "phx-value-host") == [sent]
+    end
+
+    test "a path with a control character: cleaned to read, as sent to act on" do
+      sent = "/v1/\aitems"
+
+      denied = %{
+        path: sent,
+        request_method: "GET",
+        last_decision: "denied",
+        last_path_rule: "",
+        allowed: 0,
+        denied: 1
+      }
+
+      assert texts(cx(denied, "table"), ".q-cx-path") == ["GET /v1/\uFFFDitems"]
+
+      doc = cx(denied, "workspace")
+      assert texts(doc, ".q-cx-path") == ["/v1/\uFFFDitems"]
+      assert attr_of(doc, ".q-cx-t", "title") == ["api.example:443 /v1/\uFFFDitems"]
+      assert attr_of(doc, "#cx-1-toggle", "phx-value-path") == [sent]
+      assert text(LazyHTML.to_html(doc)) =~ "Host allowed, no path rule matches."
+    end
+
+    test "a tool and a rule: cleaned; one with nothing left to show is none" do
+      event = %{
+        host: "localhost",
+        port: 8080,
+        path: "/hook",
+        method: "POST",
+        request_method: "POST",
+        decision: "allowed",
+        rule: "local\u202Ehost\a",
+        tool: "\u202Ehook-relay\a",
+        mode: "enforce",
+        outcome: "connected",
+        at: ~U[2026-09-20 14:02:20Z]
+      }
+
+      inline = fn event ->
+        assigns = %{event: event}
+
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-1" connection={@event} variant="inline" />
+        """)
+      end
+
+      html = inline.(event)
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, ".q-tool-name") == ["hook-relay\uFFFD"]
+      assert text(html) =~ "Handed to hook-relay\uFFFD by rule localhost\uFFFD"
+
+      html = inline.(%{event | tool: "\u202E\u200B", rule: " \u200B"})
+      refute html =~ "q-dest-tool"
+      assert text(html) =~ "No rule matches."
     end
   end
 end

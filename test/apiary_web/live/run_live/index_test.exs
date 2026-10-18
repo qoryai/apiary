@@ -1945,8 +1945,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
-      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
-      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443"
+      # The preview drops the override (`Apiary.ExternalText.line/1`), and isolates the
+      # rest.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", shown)
+      assert render(view) =~ "evillpmaxe.&lt;script&gt;</bdi>:443"
+      refute render(view) =~ "\u202E"
       refute render(view) =~ "elpmaxe.<script>"
     end
 

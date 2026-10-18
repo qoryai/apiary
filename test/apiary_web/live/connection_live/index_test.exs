@@ -578,10 +578,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
 
       view = open(conn, scope)
-      assert has_element?(view, ".q-cx-h > bdi", host)
+      # The row drops the override (`Apiary.ExternalText.line/1`) and isolates the rest.
+      assert has_element?(view, ".q-cx-h > bdi", "evillpmaxe.<script>")
 
       assert render(view) =~
-               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
+               "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
 
       view |> form("#connections-query", %{"q" => "evil"}) |> render_change()
       render_async(view, 2_000)

@@ -2369,4 +2369,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     conn = log_in_user(build_conn(), Apiary.AccountsFixtures.user_fixture())
     assert conn |> get(~p"/#{scope.organisation}/#{scope.workspace}") |> html_response(404)
   end
+
+  test "a lost run's target path: cleaned; one with nothing left to show is no target", %{
+    conn: conn,
+    scope: scope
+  } do
+    at = &%{target_system: "git.example", target_path: &1}
+    named = lost_run(scope, at.("acme/\u202Eshop\a"))
+    blank = lost_run(scope, at.("\u202E\u200B"))
+    view = open(conn, scope)
+
+    assert text(view, "#att-run-#{named.public_id} .q-ar-where") == "acme/shop\uFFFD"
+    assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "no repository"
+  end
 end

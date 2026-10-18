@@ -2150,6 +2150,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
       escaped = "evil\u202Elpmaxe.&lt;script&gt;"
+      # A connection's row drops the override (`Apiary.ExternalText.line/1`).
+      shown = "evillpmaxe.<script>"
+      shown_escaped = "evillpmaxe.&lt;script&gt;"
 
       run =
         projected(scope, [
@@ -2171,16 +2174,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # Two allowed connections to the host read as one group, the denied one as a row.
       assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", host)
-      assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", host)
-      assert has_element?(lv, "#e-4 .q-dest > bdi", host)
+      assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", shown)
+      assert has_element?(lv, "#e-4 .q-dest > bdi", shown)
       assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-port\">:443</span>"
       refute html =~ "elpmaxe.<script>"
 
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
-      assert has_element?(lv, ".q-cx-h > bdi", host)
-      assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-cx-p\">:443</span>"
+      assert has_element?(lv, ".q-cx-h > bdi", shown)
+      assert html =~ "#{shown_escaped}</bdi><span class=\"q-cx-p\">:443</span>"
       refute html =~ "elpmaxe.<script>"
     end
 
@@ -2218,7 +2221,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
       assert has_element?(lv, ".q-cx-h > bdi", cut)
-      assert html =~ "<bdi>#{cut}</bdi><span class=\"q-cx-p\">:443</span>"
+      assert html =~ "#{cut}</bdi><span class=\"q-cx-p\">:443</span>"
       refute html =~ String.duplicate("a", 253)
     end
   end
@@ -3258,6 +3261,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert exit_row(lv) == "137"
       assert has_element?(lv, "#run-meta", "exit 137")
       refute render(element(lv, "#run-meta")) =~ "\u202E"
+    end
+
+    test "the target path: cleaned; one with nothing left to show is no target", %{
+      conn: conn,
+      scope: scope
+    } do
+      at = &%{target_system: "git.example", target_path: &1}
+      run = run_fixture(scope, at.(sent("acme/shop")))
+      lv = open(conn, scope, run)
+      assert has_element?(lv, "#run-target .q-tname", shown("acme/shop"))
+      refute render(element(lv, "#run-target")) =~ "\u202E"
+
+      run = run_fixture(scope, at.("\u202E\u200B"))
+      refute has_element?(open(conn, scope, run), "#run-target")
     end
   end
 end
