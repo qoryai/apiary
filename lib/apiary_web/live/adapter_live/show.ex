@@ -244,9 +244,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
     do: {:noreply, assign(socket, :menu_q, search_param(q))}
 
   # Assigns the selection to the workspace picked from the menu, then says what went
-  # where. A refusal (the connection ended, a workspace or a collection gone meanwhile)
-  # leaves the page as it now stands.
-  def handle_event("assign", %{"workspace" => id}, %{assigns: %{picks: true}} = socket) do
+  # where; a refusal says why nothing was assigned. Either way the page shows the
+  # collections as they now stand.
+  def handle_event(
+        "assign",
+        %{"workspace" => id},
+        %{assigns: %{picks: true, connection: %Connection{}}} = socket
+      ) do
     %{current_scope: scope, connection: connection, selected: selected} = socket.assigns
     workspace = Enum.find(socket.assigns.workspaces, &(&1.id == id))
 
@@ -261,8 +265,16 @@ defmodule ApiaryWeb.AdapterLive.Show do
           assigned(socket.assigns.adapter, Map.values(selected), workspace)
         )
       else
-        false -> socket
-        {:error, reason} -> put_flash(socket, :error, refused(socket.assigns, reason))
+        false ->
+          socket
+
+        {:error, :forbidden} ->
+          socket
+          |> assign(:may_assign, false)
+          |> put_flash(:error, refused(socket.assigns, :forbidden))
+
+        {:error, reason} ->
+          put_flash(socket, :error, refused(socket.assigns, reason))
       end
 
     {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload()}
@@ -301,15 +313,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # The organisation's workspaces, while installed, for what the lead says; once a listing
   # names the connection, the counts, whether a listing is complete, and the page of rows
-  # the query asks for.
+  # the query asks for. Until then, or once the connection is gone, nothing is selected,
+  # nor can be.
   defp listing(%{assigns: %{state: state}} = socket) when state in [:waiting, :listed] do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     workspaces = Organisations.list_workspaces(scope)
     socket = assign(socket, workspaces: workspaces, lead: lead(scope, adapter, workspaces))
-    if state == :listed, do: rows(socket), else: socket
+    if state == :listed, do: rows(socket), else: unpicked(socket)
   end
 
-  defp listing(socket), do: assign(socket, :lead, nil)
+  defp listing(socket), do: socket |> assign(:lead, nil) |> unpicked()
+
+  defp unpicked(socket), do: assign(socket, picks: false, selected: %{})
 
   defp rows(socket) do
     %{current_scope: scope, connection: connection, workspaces: workspaces} = socket.assigns

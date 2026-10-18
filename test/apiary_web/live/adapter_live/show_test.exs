@@ -792,6 +792,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Only owners and admins of #{scope.organisation.name} assign repositories."
 
     refute has_element?(lv, "#collections-selection")
+    refute has_element?(lv, "#collections-table input")
+    refute has_element?(lv, "#collections-assign-button")
     assert Collections.counts(scope, connection).unassigned == 2
   end
 
@@ -867,6 +869,47 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
     assert words(lv, "#flash-error") =~ out_of_date
     assert Collections.counts(scope, connection).unassigned == 1
+  end
+
+  test "an assign pressed after the connection ended leaves the page up, and assigns nothing",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    pick(lv, "acme/api")
+    pick(lv, "acme/shop")
+
+    :ok =
+      set(connection, state: :ended, ended_at: DateTime.utc_now(), ended_reason: :replaced)
+
+    send(lv.pid, {:connection_changed, %{connection_id: connection.id, adapter_id: adapter.id}})
+    refute has_element?(lv, "#collections-table")
+    refute has_element?(lv, "#collections-selection")
+
+    render_click(lv, "assign", %{"workspace" => platform.id})
+    assert Process.alive?(lv.pid)
+    refute has_element?(lv, "#flash-info")
+    assert Collections.counts(scope, connection).by_workspace == %{}
+  end
+
+  test "an assign forced by a member, or naming another organisation's workspace, assigns nothing",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(member_conn(scope), page(scope, adapter))
+
+    render_click(lv, "select", %{"collection" => public_id(connection, "acme/api")})
+    render_click(lv, "select_all", %{})
+    render_click(lv, "assign", %{"workspace" => platform.id})
+    refute has_element?(lv, "#flash-info")
+    assert Collections.counts(scope, connection).unassigned == 2
+
+    %{workspace: elsewhere} = sign_up_fixture()
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    pick(lv, "acme/api")
+    render_click(lv, "assign", %{"workspace" => elsewhere.id})
+    refute has_element?(lv, "#flash-info")
+    assert words(lv, "#flash-error") =~ "Nothing was assigned: the page was out of date."
+    assert Collections.counts(scope, connection).unassigned == 2
   end
 
   test "a page past the last one with rows shows the last that has some, or none", %{
