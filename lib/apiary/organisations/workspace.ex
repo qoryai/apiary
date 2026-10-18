@@ -74,9 +74,7 @@ defmodule Apiary.Organisations.Workspace do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:name)
     |> unique_constraint([:organisation_id, :name],
       error_key: :name,
       message: dgettext_noop("errors", "is already the name of a workspace in this organisation")

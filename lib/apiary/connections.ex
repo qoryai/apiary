@@ -321,11 +321,9 @@ defmodule Apiary.Connections do
 
     create(scope, attrs, fn connection, organisation_id ->
       with {:ok, title, fields} <- service(organisation_id, attrs) do
-        {:ok,
-         struct(
-           %{connection | kind: "service", name: blank_to_nil(attrs["name"]) || title},
-           fields
-         )}
+        # A name given is left to `attrs_changeset/3`, which casts it, so it is checked.
+        name = if blank_to_nil(attrs["name"]), do: nil, else: title
+        {:ok, struct(%{connection | kind: "service", name: name}, fields)}
       end
     end)
   end
@@ -402,9 +400,7 @@ defmodule Apiary.Connections do
     |> validate_required([:name, :applies_to])
     |> validate_inclusion(:applies_to, Connection.applies())
     |> validate_length(:name, min: 1, max: 128, count: :codepoints)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]*\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:name)
     |> validate_length(:argument, min: 1, max: 4096, count: :bytes)
   end
 
