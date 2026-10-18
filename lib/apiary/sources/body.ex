@@ -29,9 +29,9 @@ defmodule Apiary.Sources.Body do
   #     which refuses some of these, so a link that is kept always keeps its address. A
   #     link's title is dropped.
   #   * An image is never shown. It is a link to its URL whose words are "Image: <alt>",
-  #     or "Image" where it has no alt text. Where the URL is not one a link may have, or
-  #     the image is inside a link, it is those words alone, unlinked, so no link is
-  #     inside another.
+  #     or "Image" where it has no alt text, or one of whitespace alone. Where the URL is
+  #     not one a link may have, or the image is inside a link, it is those words alone,
+  #     unlinked, so no link is inside another.
   #   * Headings move down two levels, so a ticket's `#` never outranks the page's: `#`
   #     is an `h3`, `##` an `h4`, `###` an `h5`, and `####` to `######` an `h6`.
   #   * A task box is no form field: a mark a screen reader skips, then Done or Not done
@@ -252,11 +252,13 @@ defmodule Apiary.Sources.Body do
   end
 
   defp shown(%MDEx.Image{url: url} = image, in_link, _depth) do
-    alt = image.nodes |> plain_text() |> Apiary.ExternalText.lines()
+    # An alt text that is empty or only whitespace, once shown, is none
+    # (`Apiary.ExternalText.present_lines/1`).
+    alt = image.nodes |> plain_text() |> Apiary.ExternalText.present_lines()
 
     # Text, which the renderer escapes, so the alt text is never markup.
     words =
-      if alt == "",
+      if alt == nil,
         do: pgettext("ticket image", "Image"),
         else: pgettext("ticket image", "Image: %{alt}", alt: alt)
 

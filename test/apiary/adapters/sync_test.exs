@@ -7,15 +7,19 @@ defmodule Apiary.Adapters.SyncTest do
   use Apiary.DataCase, async: true
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
-  import Apiary.DescriptionFixtures, only: [read_description: 0, read_description: 1]
+
+  import Apiary.DescriptionFixtures,
+    only: [contract_description: 0, read_description: 0, read_description: 1]
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, Adapters, Edition}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Feed
+  alias Apiary.Adapters.{Collections, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
 
@@ -296,6 +300,110 @@ defmodule Apiary.Adapters.SyncTest do
         assert_raise Postgrex.Error, ~r/nodes_source_access_check/, fn ->
           Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [source_access: line])
         end
+      end
+    end
+
+    test "a start that changes the access line or a word tells each connected organisation once",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      %{scope: other} = sign_up_fixture()
+      %{scope: unconnected} = sign_up_fixture()
+      {listed, _nonce} = connection_fixture(scope, adapter, :listed)
+      {pending, _nonce} = connection_fixture(other, adapter, :pending)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
+
+      for subscriber <- [scope, other, unconnected],
+          do: assert(Collections.subscribe(subscriber) == :ok)
+
+      start = fn description ->
+        assert {:ok, _} = Adapters.declare(key_scope, %{declaration() | description: description})
+
+        receive_all = fn receive_all, acc ->
+          receive do
+            {kind, _payload} = message when kind in [:connection_changed, :collections_changed] ->
+              receive_all.(receive_all, [message | acc])
+          after
+            0 -> Enum.sort(acc)
+          end
+        end
+
+        receive_all.(receive_all, [])
+      end
+
+      told =
+        Enum.sort(
+          for connection <- [listed, pending],
+              do: {:connection_changed, %{connection_id: connection.id, adapter_id: adapter.id}}
+        )
+
+      # Each start changes one field of the source role from the start before it.
+      put = &put_in(&1, ["roles", "source", &2], &3)
+      access = put.(contract_description(), "access", "Ask an owner to change the boards.")
+      tasks = put.(access, "item_noun", %{"one" => "task", "other" => "tasks"})
+      boards = put.(tasks, "collection_noun", %{"one" => "board", "other" => "boards"})
+
+      # Only the access line, then only the words for the items, then only those for the
+      # collections: each organisation with a connection hears once, the other none.
+      assert start.(read_description(access)) == told
+      assert start.(read_description(tasks)) == told
+      assert start.(read_description(boards)) == told
+
+      # The same start again, and one that changes its connect address alone: none.
+      assert start.(read_description(boards)) == []
+
+      assert {:ok, _} =
+               Adapters.declare(key_scope, %{
+                 declaration()
+                 | connect_url: "https://b.example/c",
+                   description: read_description(boards)
+               })
+
+      refute_received {:connection_changed, _payload}
+    end
+
+    test "a start whose connections the database fails to read answers as stored, and logs it",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      {_connection, _nonce} = connection_fixture(scope, adapter, :listed)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert Collections.subscribe(scope) == :ok
+
+      line = "Ask an owner to change the boards."
+
+      description =
+        contract_description()
+        |> put_in(["roles", "source", "access"], line)
+        |> read_description()
+
+      for failure <- [
+            %DBConnection.ConnectionError{message: "connection closed"},
+            %Postgrex.Error{postgres: %{code: :query_canceled, message: "a detail of the row"}}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+        log =
+          capture_log(fn ->
+            assert {:ok, %Node{source_access: ^line}} =
+                     Adapters.declare(key_scope, %{declaration() | description: description},
+                       connections: fn _adapter -> raise failure end
+                     )
+          end)
+
+        assert reload(adapter).source_access == line
+        assert log =~ "could not tell the organisations connected to adapter #{adapter.public_id}"
+        # The error's kind alone: never its message.
+        refute log =~ "connection closed"
+        refute log =~ "a detail of the row"
+        refute_received {:connection_changed, _payload}
+      end
+
+      # Anything else is no failure of the database, and is not caught.
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+      assert_raise RuntimeError, fn ->
+        Adapters.declare(key_scope, %{declaration() | description: description},
+          connections: fn _adapter -> raise "not a database failure" end
+        )
       end
     end
 

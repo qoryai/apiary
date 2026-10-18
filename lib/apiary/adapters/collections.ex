@@ -126,7 +126,10 @@ defmodule Apiary.Adapters.Collections do
   #     changes as its page shows it (`broadcast_connection/1`): a press of Install that
   #     takes or makes it, or that replaces it (its end), its return that connects it, its
   #     end by the adapter, by the adapter's deletion or by its organisation's purge, the
-  #     first listing that names it and each listing of it that completes.
+  #     first listing that names it, each listing of it that completes, and a start of its
+  #     adapter that changes the source's line on access or its words for its items or its
+  #     collections (`Apiary.Adapters.declare/2`), which tells each organisation with a
+  #     connection to the adapter once.
   #
   # Locks, in one order for every change here, so none waits on another in turn:
   #

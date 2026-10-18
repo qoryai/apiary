@@ -1084,16 +1084,16 @@ defmodule ApiaryWeb.OverviewComponents do
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
   else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
   a text Forager sent is (`Apiary.ExternalText.line/1`). A title or a command line with
-  nothing left to show is none.
+  nothing left to show, or only whitespace, is none (`Apiary.ExternalText.present/1`).
   """
   def row_title(run), do: shown_title(run) || shown_command(run) || short_id(run.public_id)
 
   # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
-  # left to show.
+  # left to show, or only whitespace.
   defp shown_title(run), do: shown(given_title(run))
 
   # A run's command line, as a page shows it, cut to 40 characters; nil where it has none,
-  # or one with nothing left to show.
+  # or one with nothing left to show, or only whitespace.
   defp shown_command(%{command: command, args: args}) when is_binary(command) do
     case shown(Enum.join([command | args || []], " ")) do
       nil -> nil
@@ -1103,12 +1103,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp shown_command(_run), do: nil
 
-  defp shown(text) do
-    case Apiary.ExternalText.line(text) do
-      "" -> nil
-      shown -> shown
-    end
-  end
+  defp shown(text), do: Apiary.ExternalText.present(text)
 
   ## Active targets
 
