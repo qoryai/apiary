@@ -12,4 +12,4 @@
 # a run configuration and a policy may name the image by a reference pinned by digest,
 # and Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
 # QORY_RUN_REPOSITORIES.
-049d4771c5d3c68e667d0834c52451223c70e682
+c196a788c644033be1eb07ac84e074c9a7545bf7
