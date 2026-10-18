@@ -30,6 +30,13 @@ defmodule Apiary.Policy.Serving do
   baseline's otherwise. A gateway that is told a digest it does not hold fetches again, so
   the answer errs towards the digest it holds only while the target is unknown, and the
   next batch says the truth.
+
+  A run whose answers are composed for it (`Apiary.Policy.ComposedConfiguration`: a run
+  given an image at its attach, or a prebuild of a workspace whose policy names an image)
+  is answered the digest of the document composed from the configuration in force, as its
+  reload is given it: computed, never stored here. So the run reloads only when the
+  policy changes, and is given the same image each time. A reported digest of a document
+  composed from a configuration in force is in force too.
   """
 
   import Ecto.Query, warn: false
@@ -40,7 +47,7 @@ defmodule Apiary.Policy.Serving do
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy
-  alias Apiary.Policy.RunConfiguration
+  alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Run, Target}
 
@@ -91,54 +98,62 @@ defmodule Apiary.Policy.Serving do
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
+    run = run || stored_run(workspace_id, batch)
 
-    with nil <- known_target(workspace_id, run, batch),
+    with nil <- known_target(run),
          nil <- started_target(access_key, batch),
          true <- is_binary(reported) and Regex.match?(@digest, reported),
          true <- in_force?(workspace_id, reported) do
       reported
     else
       target_id when is_binary(target_id) ->
-        digest(organisation_id, workspace_id, target_id)
+        digest(organisation_id, workspace_id, target_id, run)
 
       {:registered, labels} ->
-        digest(organisation_id, workspace_id, target_id(access_key, labels))
+        digest(organisation_id, workspace_id, target_id(access_key, labels), run)
 
       _unknown ->
-        digest(organisation_id, workspace_id, nil)
+        digest(organisation_id, workspace_id, nil, run)
     end
   rescue
     _exception -> nil
   end
 
-  defp digest(organisation_id, workspace_id, target_id) do
+  # The digest of what the run is answered on a reload: the configuration in force,
+  # composed for the run with the image it was given, or as a prebuild's
+  # (`Apiary.Policy.ComposedConfiguration`), computed and never stored here.
+  defp digest(organisation_id, workspace_id, target_id, run) do
     case Policy.in_force(organisation_id, workspace_id, target_id) do
-      {:ok, %RunConfiguration{digest: digest}} -> digest
-      {:error, _reason} -> nil
+      {:ok, %RunConfiguration{document: document, digest: digest}} ->
+        ComposedConfiguration.digest(document, configured_image(run), fn -> prebuild?(run) end) ||
+          digest
+
+      {:error, _reason} ->
+        nil
     end
+  end
+
+  defp configured_image(%Run{configured_image: image}), do: image
+  defp configured_image(nil), do: nil
+
+  defp prebuild?(%Run{} = run), do: ComposedConfiguration.prebuild?(run)
+  defp prebuild?(nil), do: false
+
+  # A run the batch names whose row the caller does not hold (a pruned run is looked up
+  # by the batch's subject), with what the digest is decided by; nil when there is none.
+  defp stored_run(workspace_id, %Batch{subject: subject}) do
+    Repo.one(
+      from r in Run,
+        where: r.workspace_id == ^workspace_id and r.node_run_id == ^subject,
+        select: struct(r, [:target_id, :registration_labels, :configured_image, :dispatch_run_id])
+    )
   end
 
   # For a run that registered, its registration's labels, which name its target whatever
   # its events say; for any other, the target the run's row holds.
-  defp known_target(_workspace_id, %Run{registration_labels: %{} = labels}, _batch),
-    do: {:registered, labels}
-
-  defp known_target(_workspace_id, %Run{target_id: target_id}, _batch)
-       when is_binary(target_id),
-       do: target_id
-
-  defp known_target(_workspace_id, %Run{}, _batch), do: nil
-
-  defp known_target(workspace_id, nil, %Batch{subject: subject}) do
-    run =
-      Repo.one(
-        from r in Run,
-          where: r.workspace_id == ^workspace_id and r.node_run_id == ^subject,
-          select: struct(r, [:target_id, :registration_labels])
-      )
-
-    if run, do: known_target(workspace_id, run, nil)
-  end
+  defp known_target(%Run{registration_labels: %{} = labels}), do: {:registered, labels}
+  defp known_target(%Run{target_id: target_id}) when is_binary(target_id), do: target_id
+  defp known_target(_run), do: nil
 
   defp started_target(access_key, %Batch{events: events}) do
     with %{data: %{"labels" => labels}} <- Enum.find(events, &(&1.type == @started)) do
@@ -148,8 +163,17 @@ defmodule Apiary.Policy.Serving do
     end
   end
 
-  # Whether the digest is the newest version's of the baseline or of any target.
+  # Whether the digest is the newest version's of the baseline or of any target, or a
+  # document's composed from one that is (`Apiary.Policy.ComposedConfiguration`).
   defp in_force?(workspace_id, digest) do
+    newest?(workspace_id, digest) or
+      case ComposedConfiguration.policy_digests(workspace_id, [digest]) do
+        %{^digest => policy_digest} -> newest?(workspace_id, policy_digest)
+        _none -> false
+      end
+  end
+
+  defp newest?(workspace_id, digest) do
     Repo.exists?(
       from c in RunConfiguration,
         as: :configuration,

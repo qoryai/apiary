@@ -179,7 +179,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp kept(organisation_id, workspace_id, configuration, image, bytes) do
     digest = Render.digest(bytes)
 
-    row = %__MODULE__{
+    row = %{
+      id: Ecto.UUID.generate(),
       organisation_id: organisation_id,
       workspace_id: workspace_id,
       run_configuration_id: configuration && configuration.id,
@@ -189,12 +190,13 @@ defmodule Apiary.Policy.ComposedConfiguration do
       inserted_at: DateTime.utc_now()
     }
 
-    case Repo.insert(row,
+    case Repo.insert_all(__MODULE__, [row],
            on_conflict: :nothing,
-           conflict_target: [:organisation_id, :workspace_id, :digest]
+           conflict_target: [:organisation_id, :workspace_id, :digest],
+           returning: true
          ) do
-      {:ok, %__MODULE__{id: id} = inserted} when is_binary(id) -> inserted
-      {:ok, _not_inserted} -> fetch(workspace_id, digest)
+      {1, [inserted]} -> inserted
+      {0, []} -> fetch(workspace_id, digest)
     end
   end
 
