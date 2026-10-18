@@ -22,8 +22,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # - for a prebuild, its starter's `prebuilt` (`prebuilt/2`, from
   #   `Apiary.Dispatches.Prebuilt`): `prebuilt`. The run of the queue and its dispatch end
   #   and the slot is freed, but the registered run is left as it is: nothing is set on it,
-  #   and its starter's outcome, which the contract has follow the prebuilt, decides its
-  #   state as any outcome does, with no end of the queue written again. A gateway that
+  #   and its starter's outcome decides its state as any outcome does, with no end of the
+  #   queue written again. A gateway that
   #   never attached it is refused `410` from then on (`Apiary.Runs.Attach`); one that
   #   attached it keeps it. The lost-run check passes it by, as it ended, so it records no
   #   failure for it either, and a registered run with neither an outcome nor an exit is

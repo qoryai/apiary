@@ -43,8 +43,8 @@ defmodule Apiary.Dispatches.Prebuilt do
   #
   # The run of the queue ends, `prebuilt` (`Apiary.Dispatches.RunEnd.prebuilt/2`): the
   # dispatch ends with it, `prebuilt`, and its slot is freed once. The registered run is
-  # left as it is, to its starter's outcome, which the contract has follow the prebuilt
-  # and which decides its state; nothing reads it as cancelled. A registered run whose
+  # left as it is, to its starter's outcome, which decides its state as any outcome does;
+  # nothing reads it as cancelled. A registered run whose
   # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
   # written. Then the build is recorded on the
   # record of the prebuild's pool and collection (`Apiary.Environments.record_build/4`):

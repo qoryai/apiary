@@ -413,9 +413,9 @@ attached it by its `attach_by`, or when it has neither an outcome nor an exit by
 backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
 (Liveness). A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
 registered run ends: the registered run is left as it is, to its starter's outcome, which
-the contract has follow the prebuilt and which decides its state as any outcome does; the
-lost-run check passes it by from then on, and the liveness rules alone find it lost should
-neither an outcome nor an exit come. A prebuild the check ends so records that end as its last build's
+decides its state as any outcome does; the lost-run check passes it by from then on, and the
+liveness rules alone find it lost should neither an outcome nor an exit come. A prebuild the
+lost-run check ends `lost` records that end as its last build's
 failure on the environment record of its collection and of the pool that claimed it, `lost`
 at its `attach_by` and `timed_out` at its backstop, with no reason; the record keeps its last
 good build, nothing is queued, and the check holds that record before the run of the queue,
