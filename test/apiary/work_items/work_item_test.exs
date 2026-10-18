@@ -521,14 +521,15 @@ defmodule Apiary.WorkItems.WorkItemTest do
   end
 
   describe "work_item_events" do
-    test "the kind is taken_in, declined, closed or undone", %{work_item: item} do
+    test "the kind is taken_in, declined, closed, undone, answered, confirmed or explore_again",
+         %{work_item: item} do
       event = event_of(item)
 
       refused("work_item_events_kind_check", fn ->
-        update!("work_item_events", event.id, "kind = 'answered'")
+        update!("work_item_events", event.id, "kind = 'shaped'")
       end)
 
-      for kind <- ~w(declined closed undone) do
+      for kind <- ~w(declined closed undone answered confirmed explore_again) do
         assert %{num_rows: 1} = update!("work_item_events", event.id, "kind = $2", [kind])
       end
     end

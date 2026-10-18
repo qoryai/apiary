@@ -24,7 +24,8 @@ defmodule Apiary.Dispatches.Inputs do
   #     (`Apiary.Sources.Item`, `Apiary.Sources.Comment`);
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
-  #   - `answers`: none;
+  #   - `answers`: the answers given within the run's take in, oldest first
+  #     (`Apiary.WorkItems.take_in_answers/2`);
   #   - `target`: the work item's target, the handover answer's `target`.
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
@@ -103,13 +104,20 @@ defmodule Apiary.Dispatches.Inputs do
 
   # Who took the work item in, by their account.
   defp taken_in_by(%WorkItem{taken_in_by_id: id}) do
-    name =
-      case id && Repo.get(User, id) do
-        %User{deleted_at: nil, email: email} when is_binary(email) -> User.short_name(email)
-        _deleted -> @former_member
-      end
-
+    name = person_name(id)
     if name?(name), do: {:ok, name}, else: {:error, :inputs_invalid}
+  end
+
+  # person_name/1 is the name the input gives the person whose account is `id`: the local
+  # part of its email address, or the fixed words `former member` for an account deleted,
+  # or for none.
+  @doc false
+  @spec person_name(Ecto.UUID.t() | nil) :: String.t()
+  def person_name(id) do
+    case id && Repo.get(User, id) do
+      %User{deleted_at: nil, email: email} when is_binary(email) -> User.short_name(email)
+      _deleted -> @former_member
+    end
   end
 
   defp name?(name),
@@ -178,7 +186,7 @@ defmodule Apiary.Dispatches.Inputs do
        ])},
       {"comments", comments},
       {"comments_omitted", omitted},
-      {"answers", []},
+      {"answers", WorkItems.take_in_answers(work_item, dispatch_run.take_in)},
       {"target",
        Jason.OrderedObject.new([
          {"system", work_item.target_system},

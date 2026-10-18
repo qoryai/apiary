@@ -1,7 +1,9 @@
 defmodule Apiary.WorkItems.Moves do
   # Moves holds what a person does to a workspace's work items, each in one transaction
   # with its event, its run of the queue, its feed entry and its entry in the audit trail:
-  # taking a ticket in, taking it in again, undoing a take in, declining and closing.
+  # taking a ticket in, taking it in again, undoing a take in, declining and closing; and
+  # what a member gives Explore: answering a run's questions, confirming a run's proposal,
+  # changed or not, and running Explore again.
   # `Apiary.WorkItems` names each function and what it answers; this module says how.
   #
   # ## Who may
@@ -9,7 +11,9 @@ defmodule Apiary.WorkItems.Moves do
   # Each asks `Apiary.Access.authorize/3` first, inside its transaction: a take in and a
   # take in again `work_item.take_in` of the scope's workspace, where the work item will
   # be; an undo, a decline and a close `work_item.undo`, `work_item.decline` and
-  # `work_item.close` of the work item, which must be in the scope's workspace. Each
+  # `work_item.close` of the work item, which must be in the scope's workspace; an answer,
+  # a confirmation and a run of Explore again `work_item.answer`, `work_item.confirm` and
+  # `work_item.explore_again` of the work item, likewise. Each
   # writes its entry in the trail with the change (`Apiary.Audit.record/6`), about the work
   # item: a take in again with `details` `again: true`.
   #
@@ -40,7 +44,11 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter, last
   # (`Apiary.Adapters.Feed`). An undo, a decline and a close take no connection or
-  # collection: the work item, then its runs. No workspace row is locked: an assign holds
+  # collection: the work item, then its runs. An answer, a confirmation and a run of
+  # Explore again take the work item alone, then queue through
+  # `Apiary.Dispatches.queue_next/2`, which takes the work item again, in the same
+  # transaction, before it reads the runs; they lock no run, as a run that ended stays
+  # ended and a new run is only written under the work item's lock. No workspace row is locked: an assign holds
   # its workspace `FOR SHARE` before the collections, and a move must never wait on it
   # holding a collection. No collection or target is locked after a work item.
   #
@@ -89,9 +97,41 @@ defmodule Apiary.WorkItems.Moves do
   # ## Decline and close
   #
   # A decline works on a live work item none of whose runs of its take in waits, is
-  # claimed or is handed over, else `:running`: it becomes `:declined`, by the person,
-  # now, with its event, and nothing is sent, as the label stays. A close works on a live
-  # work item, whatever its runs (`Apiary.WorkItems.close_locked/3`).
+  # claimed or is handed over, else `:running`, and whose take in is not confirmed, else
+  # `:confirmed`: a decline is offered where Explore waits for a member, and a confirmed
+  # work item waits for Shape. It becomes `:declined`, by the person, now, with its
+  # event, which records the stage Explore was at (`"stage"`, `"explore"` or `"confirm"`,
+  # `Apiary.WorkItems.Explore.stage/1`), and nothing is sent, as the label stays. A close
+  # works on a live work item, whatever its runs (`Apiary.WorkItems.close_locked/3`),
+  # and its event records the stage too, `"shape"` once confirmed.
+  #
+  # ## What a member gives Explore
+  #
+  # Each works on a live work item whose take in is still the one the page read
+  # (`take_in` of the work item it is given), and on the latest run of that take in, by
+  # its `attempt`, which the page names: another take in or another latest run is
+  # `:stale`. Where Explore stands is read under the work item's lock
+  # (`Apiary.WorkItems.Explore.current/2`): a run not ended, or one that reads as running,
+  # is `:running`; at the run limit, `:used_up`; anywhere else than the step's place,
+  # `:not_waiting`. Each writes its event and its entry in the trail, and marks the work
+  # item changed (`updated_at`); none sends a feed entry, as the label stays.
+  #
+  #   * An answer (`answer/4`) works where the latest run asked its questions: every
+  #     question answered (`Apiary.WorkItems.Proposal.check_answers/2`, else
+  #     `{:invalid, errors}`, by position, or `{:invalid, :form}`). It keeps each answer
+  #     with its question (`Apiary.WorkItems.Answer`), and queues the take in's next run
+  #     (`Apiary.Dispatches.queue_next/2`), which reads them
+  #     (`Apiary.WorkItems.take_in_answers/2`). Its event, `:answered`, has the take in,
+  #     the attempt answered and the count.
+  #   * A confirmation (`confirm/4`) works where the latest run's proposal waits: as it
+  #     stands, or with the changes the edit page gives
+  #     (`Apiary.WorkItems.Proposal.changes/2`, else `{:invalid, errors}` by field, or
+  #     `{:invalid, :form}`). It keeps the run's result and the changes
+  #     (`Apiary.WorkItems.Confirmation`); the work item is then ready for Shape. Its
+  #     event, `:confirmed`, has the take in, the attempt and the fields changed.
+  #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
+  #     was lost or was cancelled, while a run is left: it queues the take in's next run.
+  #     Its event, `:explore_again`, has the take in and the attempt of the new run.
   #
   # ## What is told
   #
@@ -114,7 +154,8 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.RunVariables
   alias Apiary.Sources.{Item, Topic}
-  alias Apiary.WorkItems.{Number, State, WorkItem, WorkItemEvent}
+  alias Apiary.WorkItems.{Answer, Confirmation, Explore, Number, Proposal, State, WorkItem}
+  alias Apiary.WorkItems.WorkItemEvent
 
   @typedoc "Why a take in, or a take in again, is refused."
   @type take_in_refusal ::
@@ -475,14 +516,16 @@ defmodule Apiary.WorkItems.Moves do
 
   @doc false
   @spec decline(Scope.t(), WorkItem.t()) ::
-          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :running}
+          {:ok, WorkItem.t()}
+          | {:error, :not_found | :forbidden | :not_live | :running | :confirmed}
   def decline(%Scope{} = scope, %WorkItem{} = work_item) do
     result =
       Repo.transact(fn ->
         with {:ok, held} <- hold(scope, :"work_item.decline", work_item),
              :ok <- live(held),
-             :ok <- no_run(held) do
-          declined(scope, held)
+             :ok <- no_run(held),
+             {:ok, stage} <- not_confirmed(held) do
+          declined(scope, held, stage)
         end
       end)
 
@@ -506,7 +549,15 @@ defmodule Apiary.WorkItems.Moves do
     if running == [], do: :ok, else: {:error, :running}
   end
 
-  defp declined(scope, held) do
+  # The stage Explore is at, unless the take in is confirmed.
+  defp not_confirmed(held) do
+    case Explore.current(held, DateTime.utc_now()).status do
+      :shape -> {:error, :confirmed}
+      status -> {:ok, Explore.stage(status)}
+    end
+  end
+
+  defp declined(scope, held, stage) do
     now = DateTime.utc_now()
     {:ok, state} = State.next(held.state, :decline)
 
@@ -514,7 +565,7 @@ defmodule Apiary.WorkItems.Moves do
            held
            |> Ecto.Changeset.change(state: state, declined_at: now, declined_by_id: scope.user.id)
            |> Repo.update(),
-         :ok <- event(work_item, :declined, scope, now, %{}),
+         :ok <- event(work_item, :declined, scope, now, %{"stage" => Atom.to_string(stage)}),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.decline", work_item, %{
              before: %{state: :exploring},
@@ -547,6 +598,186 @@ defmodule Apiary.WorkItems.Moves do
 
     finish(result)
   end
+
+  ## What a member gives Explore
+
+  @typedoc "Why an answer, a confirmation or a run of Explore again is refused."
+  @type step_refusal ::
+          :not_found
+          | :forbidden
+          | :not_live
+          | :stale
+          | :running
+          | :used_up
+          | :not_waiting
+          | {:invalid, map | :form}
+          | Ecto.Changeset.t()
+
+  @doc false
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map) ::
+          {:ok, WorkItem.t()} | {:error, step_refusal}
+  def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
+    result =
+      Repo.transact(fn ->
+        now = DateTime.utc_now()
+
+        with {:ok, held, current} <- hold_step(scope, :"work_item.answer", work_item, now),
+             :ok <- waiting(current, [:questions], attempt),
+             {:ok, checked} <-
+               invalid(Proposal.check_answers(Proposal.questions(current.step.result), answers)),
+             :ok <- keep_answers(held, scope, attempt, checked, now),
+             data = %{"take_in" => held.take_in, "attempt" => attempt, "count" => length(checked)},
+             :ok <- event(held, :answered, scope, now, data),
+             {:ok, _run} <- next_run(held),
+             {:ok, work_item} <- touch(held, now),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.answer", work_item, %{details: data}) do
+          {:ok, {work_item, told(work_item)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  @doc false
+  @spec confirm(Scope.t(), WorkItem.t(), pos_integer, map | nil) ::
+          {:ok, WorkItem.t()} | {:error, step_refusal}
+  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params) do
+    result =
+      Repo.transact(fn ->
+        now = DateTime.utc_now()
+
+        with {:ok, held, current} <- hold_step(scope, :"work_item.confirm", work_item, now),
+             :ok <- waiting(current, [:confirm], attempt),
+             {:ok, changes} <- proposal_changes(current.step, params),
+             :ok <- keep_confirmation(held, scope, current.step, changes, now),
+             changed = changes |> Proposal.encode() |> Map.keys() |> Enum.sort(),
+             data = %{"take_in" => held.take_in, "attempt" => attempt, "changed" => changed},
+             :ok <- event(held, :confirmed, scope, now, data),
+             {:ok, work_item} <- touch(held, now),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.confirm", work_item, %{details: data}) do
+          {:ok, {work_item, told(work_item)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  @doc false
+  @spec explore_again(Scope.t(), WorkItem.t(), pos_integer) ::
+          {:ok, WorkItem.t()} | {:error, step_refusal}
+  def explore_again(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
+    result =
+      Repo.transact(fn ->
+        now = DateTime.utc_now()
+
+        with {:ok, held, current} <- hold_step(scope, :"work_item.explore_again", work_item, now),
+             :ok <- waiting(current, [:no_result, :lost, :cancelled], attempt),
+             {:ok, run} <- next_run(held),
+             data = %{"take_in" => held.take_in, "attempt" => run.attempt},
+             :ok <- event(held, :explore_again, scope, now, data),
+             {:ok, work_item} <- touch(held, now),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.explore_again", work_item, %{details: data}) do
+          {:ok, {work_item, told(work_item)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  # `work_item` held as `hold/3` holds it, live, of the take in the page read, with where
+  # Explore stands for it at `now`, read under its lock.
+  defp hold_step(scope, action, %WorkItem{take_in: take_in} = work_item, now) do
+    with {:ok, held} <- hold(scope, action, work_item),
+         :ok <- live(held) do
+      if held.take_in == take_in,
+        do: {:ok, held, Explore.current(held, now)},
+        else: {:error, :stale}
+    end
+  end
+
+  # The latest run of the take in is the one the page named, and Explore stands at one of
+  # `places`.
+  defp waiting(%{step: %{attempt: attempt}, status: status}, places, attempt) do
+    cond do
+      status in places -> :ok
+      status in [:queued, :running] -> {:error, :running}
+      status == :used_up -> {:error, :used_up}
+      true -> {:error, :not_waiting}
+    end
+  end
+
+  defp waiting(_current, _places, _attempt), do: {:error, :stale}
+
+  defp invalid({:ok, _checked} = ok), do: ok
+  defp invalid({:error, :invalid}), do: {:error, {:invalid, :form}}
+  defp invalid({:error, errors}) when is_map(errors), do: {:error, {:invalid, errors}}
+
+  defp proposal_changes(_step, nil), do: {:ok, %{}}
+
+  defp proposal_changes(step, params),
+    do: invalid(Proposal.changes(Proposal.from_result(step.result), params))
+
+  # The take in's next run (`Apiary.Dispatches.queue_next/2`): a take in with no run yet
+  # does not wait for a member.
+  defp next_run(held) do
+    case Dispatches.queue_next(held, held.take_in) do
+      {:ok, run} -> {:ok, run}
+      {:error, :no_run} -> {:error, :not_waiting}
+      {:error, _refusal} = refused -> refused
+    end
+  end
+
+  defp keep_answers(held, scope, attempt, checked, now) do
+    rows =
+      for {position, question, answer} <- checked do
+        %{
+          id: Ecto.UUID.generate(),
+          organisation_id: held.organisation_id,
+          workspace_id: held.workspace_id,
+          work_item_id: held.id,
+          take_in: held.take_in,
+          attempt: attempt,
+          position: position,
+          question: question,
+          answer: answer,
+          answered_by_id: scope.user.id,
+          answered_at: now
+        }
+      end
+
+    {count, _rows} = Repo.insert_all(Answer, rows)
+    if count == length(rows), do: :ok, else: {:error, :not_waiting}
+  end
+
+  defp keep_confirmation(held, scope, step, changes, now) do
+    %Confirmation{
+      id: Ecto.UUID.generate(),
+      organisation_id: held.organisation_id,
+      workspace_id: held.workspace_id,
+      work_item_id: held.id,
+      take_in: held.take_in,
+      attempt: step.attempt,
+      result: step.result,
+      changes: Proposal.encode(changes),
+      confirmed_by_id: scope.user.id,
+      confirmed_at: now
+    }
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.unique_constraint(:take_in,
+      name: :work_item_confirmations_work_item_id_take_in_index
+    )
+    |> Repo.insert()
+    |> case do
+      {:ok, _confirmation} -> :ok
+      {:error, _changeset} = refused -> refused
+    end
+  end
+
+  # The work item, marked changed at `now`.
+  defp touch(held, now), do: held |> Ecto.Changeset.change(updated_at: now) |> Repo.update()
 
   ## Reading and holding
 

@@ -340,7 +340,7 @@ defmodule Apiary.WorkItems.CloseTest do
   end
 
   describe "close_locked/3" do
-    test "a person's close names them, and its event has no reason", ctx do
+    test "a person's close names them, and its event has no reason, only the stage", ctx do
       work_item = taken!(ctx.first, ctx.first_connection)
       user_id = ctx.first.user.id
 
@@ -357,7 +357,7 @@ defmodule Apiary.WorkItems.CloseTest do
       assert [%WorkItemEvent{actor_kind: :person, actor_id: ^user_id, data: data}] =
                closes(work_item)
 
-      assert data == %{}
+      assert data == %{"stage" => "explore"}
     end
 
     test "refuses a work item that is not live, writing nothing", ctx do
