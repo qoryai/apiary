@@ -11,10 +11,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #
   #   * not installed: no connection, a pending one whose latest pass came back refused
   #     or cancelled, which the return's flash says why, or one started before today;
-  #   * ended: with no connection, the latest one ended because the integration reported
-  #     the installation gone: on which day, and, for an adapter with items, that the
-  #     items it brought in left every backlog while the work items taken in stay, in the
-  #     adapter's words for its items;
+  #   * ended: with no connection, the latest one, once connected, ended because the
+  #     integration reported the installation gone: on which day, and, once a listing
+  #     named it, for an adapter with items, that the items it brought in left every
+  #     backlog while the work items taken in stay, in the adapter's words for its items.
+  #     One that ended before it connected is not installed;
   #   * pending, started today, its pass still good: who started the install and when,
   #     and that it may be finished on the integration or started again; with the pass
   #     expired, that it expired. Both say to press Install, so whoever may not connect
@@ -96,7 +97,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
        may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
        selected: %{},
        late: false,
-       timer: false,
+       timer: nil,
        sending: false,
        query: %{page: 1, view: :all, q: nil, workspace: nil},
        lead: nil
@@ -154,11 +155,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # Starts the minute the page waits for the first listing, once, as the page opens in
-  # that state or comes to it.
-  defp wait(%{assigns: %{state: :waiting, timer: false}} = socket) do
+  # that state or comes to it; `timer` keeps the minute's timer.
+  defp wait(%{assigns: %{state: :waiting, timer: nil}} = socket) do
     if connected?(socket) do
-      Process.send_after(self(), :late, @late_after)
-      assign(socket, :timer, true)
+      assign(socket, :timer, Process.send_after(self(), :late, @late_after))
     else
       socket
     end
@@ -166,9 +166,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp wait(socket), do: socket
 
-  # The organisation's latest connection to the adapter ended because the adapter said
-  # the installation was gone.
-  defp reported_gone?(%Connection{ended_reason: :adapter_reported}), do: true
+  # The organisation's latest connection to the adapter, once connected, ended because
+  # the adapter said the installation was gone.
+  defp reported_gone?(%Connection{ended_reason: :adapter_reported, connected_at: %DateTime{}}),
+    do: true
+
   defp reported_gone?(_ended), do: false
 
   defp state(nil), do: :not_installed
@@ -727,7 +729,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         integration: adapter.name
       )
 
-    if Adapters.items?(adapter) do
+    if ended.listed_at && Adapters.items?(adapter) do
       gone <>
         " " <>
         gettext(

@@ -6,7 +6,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # the foot notes, the members' by the organisation's workspaces; behind the feature, for
   # members.
   # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
-  # installed, Install, which posts to the Install path, or not ready yet.
+  # installed, Install, which posts to the Install path, or not ready yet; with every one
+  # installed, a line that says so.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -255,6 +256,21 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       assert has_element?(lv, ~s{a#{id}-cancel[href="#{list_path(scope)}"]})
       refute has_element?(lv, "#{id}-not-ready")
       refute has_element?(lv, "#add-#{installed.public_id}")
+      refute has_element?(lv, "#add-none")
+    end
+
+    test "with every integration installed, says so", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      refute has_element?(lv, "#add-none")
+
+      for name <- ["Acme tracker", "Platform tracker"] do
+        %{adapter: adapter} = connectable_adapter_fixture(%{name: name})
+        connection_fixture(scope, adapter, :listed)
+      end
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      assert words(lv, "#add-none") == "All integrations are installed."
+      refute has_element?(lv, "[id^=add-na_]")
     end
 
     test "Install sends the person on to the integration, saying so meanwhile", %{

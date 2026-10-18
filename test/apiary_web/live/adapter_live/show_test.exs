@@ -245,6 +245,30 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone."
   end
 
+  test "ended on the integration: before it connected, not installed; before a listing, no backlogs",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    ended_at = ~U[2026-03-14 09:00:00.000000Z]
+    {connection, _nonce} = connection_fixture(scope, adapter, :pending)
+    set(connection, state: :ended, ended_at: ended_at, ended_reason: :adapter_reported)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") == "Not installed."
+    assert has_element?(lv, "#integration-install")
+
+    gone =
+      "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone."
+
+    set(connection, connected_at: ~U[2026-03-13 09:00:00.000000Z])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") == gone
+
+    set(connection, listed_at: ~U[2026-03-13 09:01:00.000000Z])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") ==
+             gone <>
+               " The tickets Acme tracker brought in left every backlog; work items already taken in stay."
+  end
+
   test "an end for another reason, or a connection after it, says no end", %{
     conn: conn,
     scope: scope,
@@ -286,6 +310,24 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     conn = follow_trigger_action(form, conn)
     assert conn.request_path == page(scope, adapter) <> "/install"
     assert conn.resp_body =~ "https://tracker.example.com/connect?state="
+  end
+
+  test "waiting, the page starts the minute to the line to install again once, as it opens",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    timer = :sys.get_state(lv.pid).socket.assigns.timer
+    assert is_reference(timer)
+    assert Process.read_timer(timer) in 55_000..60_000
+
+    send(
+      lv.pid,
+      {:connection_changed, %{connection_id: connection.id, adapter_id: adapter.id}}
+    )
+
+    assert has_element?(lv, "#collections-waiting")
+    assert :sys.get_state(lv.pid).socket.assigns.timer == timer
   end
 
   test "the collections are named in the adapter's words", %{
