@@ -4,9 +4,9 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   # answers, Confirm as it stands and with changes, Decline, Close, Run Explore again),
   # each refused without words where the page read an earlier state, and the form's
   # errors under its fields; the page read again on a message of its work item, with the
-  # scope first, as after a refused action; a run's link only where the reader may read
-  # the runs of the workspace it ran in, after the work item moved; and a close by the
-  # instance.
+  # scope first, as after a refused action; people by their short name, and a former
+  # member as one; a run's link only where the reader may read the runs of the workspace
+  # it ran in, after the work item moved; and a close by the instance.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -383,6 +383,57 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       render_hook(view, "close", %{"number" => "#{work_item.number}"})
       assert_redirect(view, ~p"/")
       assert state(work_item) == :exploring
+    end
+  end
+
+  describe "people" do
+    defp thread_path(scope, work_item), do: page(scope, work_item.number, "/thread")
+
+    defp author(view, comment) do
+      view
+      |> element("#work-item-thread-#{comment.public_id}")
+      |> render()
+    end
+
+    test "a member is named by their short name, never their address", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = queued(scope)
+      member = member_fixture(scope, :member)
+      {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
+
+      {:ok, view, html} = live(conn, thread_path(scope, work_item))
+      assert author(view, comment) =~ Apiary.Accounts.User.short_name(member.user.email)
+      refute html =~ member.user.email
+      refute render(view) =~ member.user.email
+    end
+
+    test "a member removed while their account is in use is a former member", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = queued(scope)
+      member = member_fixture(scope, :member)
+      {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
+      Repo.delete!(member.membership)
+
+      {:ok, view, _html} = live(conn, thread_path(scope, work_item))
+      line = author(view, comment)
+      assert line =~ "Former member"
+      refute line =~ Apiary.Accounts.User.short_name(member.user.email)
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      work_item = queued(scope)
+      member = member_fixture(scope, :member)
+      {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
+      {:ok, _deleted} = Apiary.Accounts.delete_user(member.user)
+
+      {:ok, view, _html} = live(conn, thread_path(scope, work_item))
+      line = author(view, comment)
+      assert line =~ "Former member"
+      refute line =~ Apiary.Accounts.User.short_name(member.user.email)
     end
   end
 
