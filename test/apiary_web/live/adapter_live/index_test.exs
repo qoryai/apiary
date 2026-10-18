@@ -1,8 +1,10 @@
 defmodule ApiaryWeb.AdapterLive.IndexTest do
   # Organisation settings › Integrations (`ApiaryWeb.AdapterLive.Index`): the list
   # (`:index`), the instance's adapters by name, each installed in the organisation or
-  # not, Add for an owner or an admin, the chevron to an installed one's page, and the foot
-  # notes, the members' by the organisation's workspaces; behind the feature, for members.
+  # not, with how many collections it reaches and, with several workspaces, how many are
+  # unassigned; Add for an owner or an admin, the chevron to an installed one's page, and
+  # the foot notes, the members' by the organisation's workspaces; behind the feature, for
+  # members.
   # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
   # installed, Install, which posts to the Install path, or not ready yet.
   use ApiaryWeb.ConnCase, async: true
@@ -10,6 +12,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{Edition, EditionStubs}
 
@@ -83,12 +86,70 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert has_element?(lv, ~s{a#{id}-name[href="#{show}"]}, "Acme tracker")
     assert has_element?(lv, ~s{a#{id}-open[href="#{show}"][aria-label="Open Acme tracker"]})
     refute has_element?(lv, "#{id}-add")
-    refute has_element?(lv, "#{id}-state")
+    assert words(lv, "#{id}-state") == "Installed · 0 repositories"
 
     id = "#integration-#{pending.public_id}"
     assert words(lv, "#{id}-state") == "Not installed"
     assert has_element?(lv, "#{id}-add")
     refute has_element?(lv, "#{id}-open")
+  end
+
+  test "an installed one says how many collections it reaches, in its words", %{
+    conn: conn,
+    scope: scope
+  } do
+    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: shop} = connectable_adapter_fixture(%{name: "Shop tracker"})
+    %{adapter: platform} = connectable_adapter_fixture(%{name: "Platform tracker"})
+    shop = describe_source(shop, "example-tracker.json")
+    {acme_connection, _nonce} = connection_fixture(scope, acme, :listed)
+    {shop_connection, _nonce} = connection_fixture(scope, shop, :listed)
+    connection_fixture(scope, platform, :connected)
+
+    for _ <- 1..3, do: source_collection_fixture(scope, acme_connection)
+    source_collection_fixture(scope, shop_connection)
+    # One ended is counted nowhere.
+    source_collection_fixture(scope, acme_connection, %{
+      ended_at: DateTime.utc_now(),
+      ended_reason: :not_listed
+    })
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 3 repositories"
+    assert words(lv, "#integration-#{shop.public_id}-state") == "Installed · 1 project"
+    assert words(lv, "#integration-#{platform.public_id}-state") == "Installed · 0 repositories"
+  end
+
+  test "with several workspaces, how many are unassigned, when any is", %{
+    conn: conn,
+    scope: scope
+  } do
+    Edition.put_test_stub(EditionStubs.ManyWorkspaces)
+    workspace_fixture(scope.organisation, "Platform")
+    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    {connection, _nonce} = connection_fixture(scope, acme, :listed)
+    for _ <- 1..2, do: source_collection_fixture(scope, connection)
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 2 repositories"
+
+    source_collection_fixture(scope, connection, %{workspace_id: nil})
+    {:ok, lv, _html} = live(conn, list_path(scope))
+
+    assert words(lv, "#integration-#{acme.public_id}-state") ==
+             "Installed · 3 repositories, 1 unassigned"
+
+    assert has_element?(lv, "#integration-#{acme.public_id}-state b", "1")
+  end
+
+  test "with one workspace, none is said unassigned", %{conn: conn, scope: scope} do
+    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    {connection, _nonce} = connection_fixture(scope, acme, :listed)
+    source_collection_fixture(scope, connection, %{workspace_id: nil})
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 repository"
   end
 
   test "names the collections as the adapters do, when they all name the same", %{

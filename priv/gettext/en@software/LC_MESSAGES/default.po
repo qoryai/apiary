@@ -7239,6 +7239,20 @@ msgstr ""
 msgid "Installed by %{person} today."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Installed · %{number} %{collection}"
+msgid_plural "Installed · %{number} %{collections}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Installed · %{number} %{collection}, %{unassigned} unassigned"
+msgid_plural "Installed · %{number} %{collections}, %{unassigned} unassigned"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance"
@@ -16378,6 +16392,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "cancelled %{when}"
 msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "source collection, when its adapter names none"
+msgid "collection"
+msgstr "repository"
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex

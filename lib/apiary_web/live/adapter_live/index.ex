@@ -8,12 +8,15 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # (`adapter.read`, members), behind the `factory` feature. Each adapter in use is a row,
   # by name: its name, and whether it is installed in the organisation, which it is while
   # the organisation's connection to it is connected (`Apiary.Adapters.Connections`); a
-  # pending one is not installed yet. An installed one's name, and its chevron, lead to
-  # its page (`ApiaryWeb.AdapterLive.Show`); one not installed offers Add to whoever may
-  # connect one (`adapter.connect`, owners and admins), which leads to Add an integration.
-  # Under the table, what an integration installed here does, and, for whoever may not
-  # connect one, who does: with several workspaces, who assigns their collections too.
-  # The words for the collections are the adapters', when they all name the same.
+  # pending one is not installed yet. An installed one says how many collections it
+  # reaches, in its words (`Apiary.Adapters.Collections.counts/2`), and, with several
+  # workspaces, how many of them are assigned to none, when any is. Its name, and its
+  # chevron, lead to its page (`ApiaryWeb.AdapterLive.Show`); one not installed offers Add
+  # to whoever may connect one (`adapter.connect`, owners and admins), which leads to Add
+  # an integration. Under the table, what an integration installed here does, and, for
+  # whoever may not connect one, who does: with several workspaces, who assigns their
+  # collections too. Those words for the collections are the adapters', when they all
+  # name the same.
   #
   # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
   # it is a path that does not exist. Each adapter not installed is a block
@@ -31,7 +34,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
   on_mount {ApiaryWeb.Access, :"adapter.read"}
 
   alias Apiary.{Access, Adapters, Organisations}
-  alias Apiary.Adapters.Connections
+  alias Apiary.Adapters.{Collections, Connections}
   alias ApiaryWeb.{IntegrationComponents, SettingsComponents}
 
   @impl true
@@ -48,9 +51,12 @@ defmodule ApiaryWeb.AdapterLive.Index do
       for adapter <- adapters do
         connection = Map.get(live, adapter.id)
 
+        installed = match?(%{state: :connected}, connection)
+
         %{
           adapter: adapter,
-          installed: match?(%{state: :connected}, connection),
+          installed: installed,
+          counts: installed && Collections.counts(scope, connection),
           ready: new? and IntegrationComponents.ready?(adapter)
         }
       end
@@ -170,6 +176,13 @@ defmodule ApiaryWeb.AdapterLive.Index do
             >
               <i aria-hidden="true"></i><span>{gettext("Not installed")}</span>
             </span>
+            <span
+              :if={row.installed}
+              id={"integration-#{row.adapter.public_id}-state"}
+              class="q-sdot q-sdot-completed"
+            >
+              <i aria-hidden="true"></i><.rich text={installed_words(row, @several)} />
+            </span>
           </:col>
           <:action :let={row}>
             <.button
@@ -219,11 +232,47 @@ defmodule ApiaryWeb.AdapterLive.Index do
     """
   end
 
-  # The word for many of the integrations' collections: what `noun` says
-  # (`Apiary.Adapters`'s `%{one:, other:}`), else the domain's word.
-  # Swap for SourceComponents.collection/1 and collections/1 once they're on next.
-  defp collection_word(%{other: other}, :other), do: other
+  # An installed integration's state: how many collections it reaches, in its words, and,
+  # with several workspaces, how many of them are assigned to none, when any is.
+  defp installed_words(
+         %{adapter: adapter, counts: %{total: total, unassigned: unassigned}},
+         several
+       ) do
+    noun = Adapters.collection_noun(adapter)
+    words = [collection: collection_word(noun, 1), collections: collection_word(noun, :other)]
 
-  defp collection_word(nil, :other),
+    if several and unassigned > 0 do
+      rich_ngettext(
+        "Installed · %{number} %{collection}, %{unassigned} unassigned",
+        "Installed · %{number} %{collections}, %{unassigned} unassigned",
+        total,
+        number: Format.number(total),
+        collection: words[:collection],
+        collections: words[:collections],
+        unassigned: {:b, Format.number(unassigned), "font-normal text-primary-soft-content"}
+      )
+    else
+      rich_ngettext(
+        "Installed · %{number} %{collection}",
+        "Installed · %{number} %{collections}",
+        total,
+        number: Format.number(total),
+        collection: words[:collection],
+        collections: words[:collections]
+      )
+    end
+  end
+
+  # The word for one of the integrations' collections (a count of 1) or for many
+  # (`:other`, or any other count): what `noun` says (`Apiary.Adapters`'s
+  # `%{one:, other:}`), else the domain's word.
+  # Swap for SourceComponents.collection/1 and collections/1 once they're on next.
+  defp collection_word(%{one: one}, 1), do: one
+  defp collection_word(%{other: other}, _n), do: other
+
+  defp collection_word(nil, 1),
+    do: pgettext("source collection, when its adapter names none", "collection")
+
+  defp collection_word(nil, _n),
     do: pgettext("source collection, when its adapter names none", "collections")
 end
