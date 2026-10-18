@@ -170,7 +170,8 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Prebuilt, Release, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Prebuilt, Release, RunEnd, Settle}
+  alias Apiary.Dispatches.Slots
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -843,12 +844,27 @@ defmodule Apiary.Dispatches do
   def unsubscribe(workspace_id) when is_binary(workspace_id),
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id))
 
-  # broadcast/1 tells each of `workspace_ids` that its queue or its slots changed.
+  # broadcast/1 tells each workspace whose id `told` holds that its queue or its slots
+  # changed, and each work item `told` names as `{:work_item, workspace_id, public_id}`,
+  # whose run settled (`Apiary.Dispatches.Settle`), that it changed, on the topic of the
+  # work items of its workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`,
+  # public ids only, one message per workspace.
   @doc false
-  @spec broadcast([Ecto.UUID.t()]) :: :ok
-  def broadcast(workspace_ids) when is_list(workspace_ids) do
-    for workspace_id <- Enum.uniq(workspace_ids),
+  @spec broadcast([Ecto.UUID.t() | Settle.told()]) :: :ok
+  def broadcast(told) when is_list(told) do
+    {work_items, workspace_ids} = told |> Enum.uniq() |> Enum.split_with(&is_tuple/1)
+
+    for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})
+
+    for {workspace_id, ids} <-
+          Enum.group_by(work_items, &elem(&1, 1), &elem(&1, 2)) do
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Apiary.WorkItems.topic(workspace_id),
+        {:work_items_changed, ids}
+      )
+    end
 
     :ok
   end

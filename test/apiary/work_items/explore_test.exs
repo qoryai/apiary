@@ -3,7 +3,8 @@ defmodule Apiary.WorkItems.ExploreTest do
   # the runs, their registered runs and their result events, with no database.
   use ExUnit.Case, async: true
 
-  import Apiary.WorkItemsFixtures, only: [understood_result: 0, questions_result: 0]
+  import Apiary.WorkItemsFixtures,
+    only: [understood_result: 0, questions_result: 0, questions_result: 1]
 
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.{Event, Run}
@@ -159,6 +160,65 @@ defmodule Apiary.WorkItems.ExploreTest do
       # A result that comes in the window counts at once.
       assert place(ended, waiting, result_event(understood_result())) ==
                %{place: :proposal, outcome: :proposal}
+    end
+  end
+
+  describe "step/4 with what the run of the queue keeps" do
+    defp stored(outcome, result \\ nil),
+      do: %{dispatch_run(:ended, :run_ended) | result_outcome: outcome, result: result}
+
+    test "the stored outcome wins over the result event" do
+      kept = questions_result(["Which shelf?"])
+
+      step =
+        Explore.step(stored(:questions, kept), run(), result_event(understood_result()), @now)
+
+      assert %{place: :questions, outcome: :questions, result: ^kept} = step
+
+      for outcome <- [:none, :error, :refused] do
+        assert place(stored(outcome), run(), result_event(understood_result())) ==
+                 %{place: :no_result, outcome: outcome}
+      end
+    end
+
+    test "a stored proposal or questions reads from the row, its events pruned" do
+      pruned = run(events_pruned_at: @now)
+
+      assert %{place: :proposal, outcome: :proposal, result: %{"verdict" => "understood"}} =
+               Explore.step(stored(:proposal, understood_result()), pruned, nil, @now)
+
+      assert %{place: :questions, result: %{"questions" => [_, _]}} =
+               Explore.step(stored(:questions, questions_result()), pruned, nil, @now)
+    end
+
+    test "a stored proposal or questions whose result was cleared reads as a pruned run" do
+      for outcome <- [:proposal, :questions] do
+        assert %{place: :no_result, outcome: :none, result: nil} =
+                 Explore.step(stored(outcome), run(events_pruned_at: @now), nil, @now)
+
+        assert place(stored(outcome), run(state: "cancelled")) ==
+                 %{place: :cancelled, outcome: nil}
+
+        assert place(stored(outcome), run(state: "lost", lost_at: @now)) ==
+                 %{place: :lost, outcome: nil}
+      end
+    end
+
+    test "a stored outcome without a result reads as cancelled or lost as its run does" do
+      assert place(stored(:none), run(state: "cancelled")) == %{place: :cancelled, outcome: nil}
+
+      assert place(stored(:error), run(state: "lost", lost_at: @now)) ==
+               %{place: :lost, outcome: nil}
+    end
+
+    test "none stored falls back to the result event, and to the window before it" do
+      waiting = run(exit_state: nil, outcome_received_at: DateTime.add(@now, -599, :second))
+      assert place(stored(nil), waiting) == %{place: :running, outcome: nil}
+
+      assert place(stored(nil), waiting, result_event(understood_result())) ==
+               %{place: :proposal, outcome: :proposal}
+
+      assert place(stored(nil), run(), nil) == %{place: :no_result, outcome: :none}
     end
   end
 

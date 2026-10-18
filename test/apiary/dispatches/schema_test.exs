@@ -210,11 +210,16 @@ defmodule Apiary.Dispatches.SchemaTest do
         assert %{num_rows: 1} = update!("dispatch_runs", run.id, "state = $2", [state])
       end
 
+      # A cause its handover gives comes with the outcome error (`result_outcome`).
       for cause <- DispatchRun.end_causes() do
         assert %{num_rows: 1} =
-                 update!("dispatch_runs", run.id, "state = 'ended', end_cause = $2", [
-                   Atom.to_string(cause)
-                 ])
+                 update!(
+                   "dispatch_runs",
+                   run.id,
+                   "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
+                     "('variables_invalid', 'ticket_gone', 'inputs_invalid') THEN 'error' END",
+                   [Atom.to_string(cause)]
+                 )
 
         assert %DispatchRun{state: :ended, end_cause: ^cause} = Repo.get!(DispatchRun, run.id)
       end
@@ -234,6 +239,146 @@ defmodule Apiary.Dispatches.SchemaTest do
       refused("dispatch_runs_ended_check", fn ->
         update!("dispatch_runs", run.id, "state = 'claimed', end_cause = 'released'")
       end)
+    end
+
+    test "has an outcome only once ended run_ended or by its handover, an error for the latter",
+         %{scope: scope} do
+      run = queued!(scope)
+
+      # Waiting, or ended for any cause but run_ended and the handover's, it has none.
+      refused("dispatch_runs_result_outcome_check", fn ->
+        update!("dispatch_runs", run.id, "result_outcome = 'none'")
+      end)
+
+      for cause <- ~w(released closed undone lost collection_ended superseded prebuilt) do
+        refused("dispatch_runs_result_outcome_check", fn ->
+          update!(
+            "dispatch_runs",
+            run.id,
+            "state = 'ended', end_cause = $2, result_outcome = 'none'",
+            [cause]
+          )
+        end)
+      end
+
+      # Ended run_ended: none until it is settled, then any of the five.
+      assert %{num_rows: 1} =
+               update!("dispatch_runs", run.id, "state = 'ended', end_cause = 'run_ended'")
+
+      for outcome <- ~w(proposal questions error none refused) do
+        assert %{num_rows: 1} =
+                 update!("dispatch_runs", run.id, "result_outcome = $2", [outcome])
+
+        assert %DispatchRun{result_outcome: kept} = Repo.get!(DispatchRun, run.id)
+        assert Atom.to_string(kept) == outcome
+      end
+
+      refused("dispatch_runs_result_outcome_check", fn ->
+        update!("dispatch_runs", run.id, "result_outcome = 'maybe'")
+      end)
+
+      # Ended by its handover: always error.
+      for cause <- ~w(variables_invalid ticket_gone inputs_invalid) do
+        for outcome <- [nil, "none", "proposal"] do
+          refused("dispatch_runs_result_outcome_error_check", fn ->
+            update!("dispatch_runs", run.id, "end_cause = $2, result_outcome = $3", [
+              cause,
+              outcome
+            ])
+          end)
+        end
+
+        assert %{num_rows: 1} =
+                 update!("dispatch_runs", run.id, "end_cause = $2, result_outcome = 'error'", [
+                   cause
+                 ])
+      end
+    end
+
+    test "keeps a result, a JSON object of at most 1 MiB, with a proposal or questions alone",
+         %{scope: scope} do
+      run = queued!(scope)
+
+      assert %{num_rows: 1} =
+               update!(
+                 "dispatch_runs",
+                 run.id,
+                 "state = 'ended', end_cause = 'run_ended', result_outcome = 'proposal', " <>
+                   "result = $2",
+                 [%{"verdict" => "understood"}]
+               )
+
+      assert %DispatchRun{result: %{"verdict" => "understood"}} = Repo.get!(DispatchRun, run.id)
+
+      assert %{num_rows: 1} =
+               update!("dispatch_runs", run.id, "result_outcome = 'questions'")
+
+      # Cleared, the outcome stays.
+      assert %{num_rows: 1} = update!("dispatch_runs", run.id, "result = NULL")
+
+      assert %DispatchRun{result_outcome: :questions, result: nil} =
+               Repo.get!(DispatchRun, run.id)
+
+      for outcome <- [nil, "error", "none", "refused"] do
+        refused("dispatch_runs_result_kept_check", fn ->
+          update!("dispatch_runs", run.id, "result_outcome = $2, result = '{}'", [outcome])
+        end)
+      end
+
+      for result <- [[], "text", 1] do
+        refused("dispatch_runs_result_check", fn ->
+          update!("dispatch_runs", run.id, "result_outcome = 'proposal', result = $2", [result])
+        end)
+      end
+
+      # 1 MiB as the database encodes it: `{"a": "…"}` is 9 bytes and the text.
+      for {bytes, fun} <- [
+            {1_048_576 - 9, &assert(%{num_rows: 1} = &1.())},
+            {1_048_576 - 8, &refused("dispatch_runs_result_check", &1)}
+          ] do
+        fun.(fn ->
+          update!("dispatch_runs", run.id, "result_outcome = 'proposal', result = $2", [
+            %{"a" => String.duplicate("a", bytes)}
+          ])
+        end)
+      end
+    end
+
+    @tag needs: :factory
+    test "a prebuild has no outcome, whatever its end", %{scope: scope} do
+      %{pool: pool} = pool!(scope)
+      collection = collection_fixture(scope)
+
+      {:ok, run} =
+        %DispatchRun{organisation_id: scope.organisation.id, workspace_id: scope.workspace.id}
+        |> DispatchRun.prebuild_changeset(%{
+          source_collection_id: collection.id,
+          pool_id: pool.id,
+          environment_ref: "env-1",
+          queued_at: now()
+        })
+        |> Repo.insert()
+
+      for cause <- ~w(run_ended variables_invalid inputs_invalid) do
+        assert %{num_rows: 1} =
+                 update!("dispatch_runs", run.id, "state = 'ended', end_cause = $2", [cause])
+
+        refused("dispatch_runs_result_outcome_check", fn ->
+          update!("dispatch_runs", run.id, "result_outcome = 'error'")
+        end)
+      end
+    end
+
+    test "settles through a partial index of the runs ended run_ended with no outcome yet" do
+      %{rows: [[definition]]} =
+        Repo.query!(
+          "SELECT indexdef FROM pg_indexes WHERE indexname = 'dispatch_runs_unsettled_index'"
+        )
+
+      assert definition =~ "(id)"
+      assert definition =~ "end_cause = 'run_ended'::text"
+      assert definition =~ "result_outcome IS NULL"
+      assert definition =~ "step <> 'prebuild'::text"
     end
 
     test "names a work item of its organisation alone", %{scope: scope} do
