@@ -698,6 +698,11 @@ msgstr ""
 msgid "%{label} is revoked."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{list} and %{last}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{list} and %{number} more"
@@ -1152,6 +1157,27 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection}"
 msgid_plural "%{number} %{collections}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} is unassigned."
+msgid_plural "%{number} %{collections} are unassigned."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} is unassigned. Its %{items} reach no backlog until an owner or an admin assigns it to a workspace."
+msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no backlog until an owner or an admin assigns each to a workspace."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} is unassigned. Its %{items} reach no backlog until you assign it to a workspace."
+msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no backlog until you assign each to a workspace."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1802,6 +1828,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} selected"
 msgid_plural "%{number} selected"
@@ -2224,6 +2251,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{seconds} s"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{shown} of %{total} shown"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -3462,6 +3494,7 @@ msgid "Alive, last event %{duration} ago"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -3944,12 +3977,37 @@ msgstr[1] ""
 msgid "Asking"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Assign %{number} %{collection} to"
+msgid_plural "Assign %{number} %{collections} to"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Assign to workspace"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Assigned %{count} collection to a workspace"
 msgid_plural "Assigned %{count} collections to a workspace"
 msgstr[0] "Assigned %{count} repository to a workspace"
 msgstr[1] "Assigned %{count} repositories to a workspace"
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned %{names} to %{workspace}."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned %{number} %{collection} to %{workspace}."
+msgid_plural "Assigned %{number} %{collections} to %{workspace}."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4540,6 +4598,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Clear instance…"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clear selection"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -6369,6 +6432,11 @@ msgstr ""
 msgid "Filters"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Find a %{collection}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Find a %{filter}"
@@ -7705,6 +7773,13 @@ msgstr ""
 msgctxt "plain"
 msgid "It would overlap with %{names} where both apply: the same runtime, the same program, or a host in common."
 msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Its %{items} go with it. Work items already taken in stay where they are."
+msgid_plural "Their %{items} go with them. Work items already taken in stay where they are."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -12337,6 +12412,21 @@ msgstr ""
 msgid "Sees the runs and changes the policy's unlocked rules"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Select %{collections} to assign them"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Select %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Select every %{collection} shown"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Send a new link"
@@ -12686,6 +12776,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Show the workspaces of %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Show them"
 msgstr ""
 
 #: lib/apiary_web/live/narrowing.ex
@@ -14373,6 +14468,11 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "These %{collections} are each assigned to one workspace."
 msgstr ""
 
@@ -14923,6 +15023,7 @@ msgstr ""
 #: lib/apiary/runs.ex
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Unassigned"
@@ -15223,6 +15324,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex

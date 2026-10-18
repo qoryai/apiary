@@ -6,7 +6,9 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   # block to an owner or an admin; installed, the wait for the first listing and, a minute
   # on, the line to install again; the return's flash; behind the feature, for members.
   # Once listed, the collections: still arriving, then complete, live, a page at a time,
-  # with the lead for one workspace, or for an adapter with no items.
+  # with the lead for one workspace, or for an adapter with no items; a search. With
+  # several workspaces: the warning, the views, the workspace filter, the selection and
+  # its menu, which assigns them.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -73,6 +75,26 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     :ok
   end
+
+  # The organisation with a second workspace, Platform, and a connection to `adapter`
+  # whose complete listing names `names`, each unassigned.
+  defp several(scope, adapter, key, names) do
+    :ok = Edition.put_test_stub(EditionStubs.ManyWorkspaces)
+    platform = workspace_fixture(scope.organisation, "Platform")
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, names, 1, true)
+    {connection, platform}
+  end
+
+  defp pick(lv, name) do
+    lv
+    |> element(~s{#collections-table input[aria-label="Select #{name}"]})
+    |> render_click()
+  end
+
+  defp public_id(connection, title),
+    do:
+      Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id, title: title).public_id
 
   defp titles(range), do: for(n <- range, do: "acme/repo-" <> String.pad_leading("#{n}", 3, "0"))
 
@@ -536,6 +558,275 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
            ]
 
     assert words(lv, "#collections-count") == "1 repository"
+  end
+
+  test "several workspaces: the lead, the warning, the views, the filter and the checkboxes", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    several(scope, adapter, key, ["acme/api", "acme/shop", "acme/web"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-lead") ==
+             "These repositories are each assigned to one workspace, and their tickets come into that workspace's backlog while their Backlog switches are on."
+
+    assert words(lv, "#collections-unassigned") ==
+             "3 repositories are unassigned. Their tickets reach no backlog until you assign each to a workspace. Show them"
+
+    assert words(lv, "#collections-view-all") == "All 3"
+    assert words(lv, "#collections-view-unassigned") == "Unassigned 3"
+    assert has_element?(lv, ~s{#collections-view-all[aria-current="page"]})
+    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
+    assert words(lv, "#collections-workspace-button") == "Workspace"
+
+    assert has_element?(
+             lv,
+             ~s{#collections-assign-button[disabled][title="Select repositories to assign them"]},
+             "Assign to workspace"
+           )
+
+    assert words(lv, "#collections-assign-hint") == "Select repositories to assign them"
+    refute has_element?(lv, "#collections-count")
+    refute has_element?(lv, "#collections-selection")
+
+    assert has_element?(
+             lv,
+             ~s{#collections-table-every[aria-label="Select every repository shown"]}
+           )
+
+    assert rows(lv) == [
+             "Repository Workspace Open tickets Added",
+             "acme/api Unassigned — Today",
+             "acme/shop Unassigned — Today",
+             "acme/web Unassigned — Today"
+           ]
+  end
+
+  test "select, then assign from the menu: a flash says what went where", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop", "acme/web"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    pick(lv, "acme/shop")
+    assert words(lv, "#collections-selected") == "1 selected"
+    assert words(lv, "#collections-count") == "3 of 3 shown"
+
+    assert has_element?(
+             lv,
+             ~s{#collection-#{public_id(connection, "acme/shop")}[aria-selected="true"]}
+           )
+
+    refute has_element?(lv, "#collections-views")
+    refute has_element?(lv, "#collections-show-unassigned")
+
+    assert has_element?(
+             lv,
+             ~s{#collections-assign ul[role="menu"][aria-label="Assign 1 repository to"]}
+           )
+
+    assert words(lv, "#collections-assign-#{platform.id}") == "Platform 0 repositories"
+
+    assert words(lv, "#collections-assign .q-int-assign-foot") ==
+             "Its tickets go with it. Work items already taken in stay where they are."
+
+    pick(lv, "acme/web")
+    assert words(lv, "#collections-selected") == "2 selected"
+
+    assert words(lv, "#collections-assign .q-int-assign-foot") ==
+             "Their tickets go with them. Work items already taken in stay where they are."
+
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+
+    assert words(lv, "#flash-info") =~ "Assigned acme/shop and acme/web to Platform."
+    refute has_element?(lv, "#collections-selection")
+
+    assert words(lv, "#collections-unassigned") =~
+             "1 repository is unassigned. Its tickets reach no backlog until you assign it to a workspace."
+
+    assert rows(lv) == [
+             "Repository Workspace Open tickets Added",
+             "acme/api Unassigned — Today",
+             "acme/shop Platform — Today",
+             "acme/web Platform — Today"
+           ]
+
+    pick(lv, "acme/api")
+    pick(lv, "acme/shop")
+    pick(lv, "acme/web")
+
+    lv |> element("#collections-assign-#{scope.workspace.id}") |> render_click()
+
+    assert words(lv, "#flash-info") =~
+             "Assigned acme/api, acme/shop and acme/web to #{scope.workspace.name}."
+
+    refute has_element?(lv, "#collections-unassigned")
+    assert words(lv, "#collections-view-unassigned") == "Unassigned 0"
+  end
+
+  test "every row shown at once, and more than three in the flash by number", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {_connection, platform} = several(scope, adapter, key, titles(1..5))
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    lv |> element("#collections-table-every") |> render_click()
+    assert words(lv, "#collections-selected") == "5 selected"
+    assert has_element?(lv, "#collections-table-every[checked]")
+
+    lv |> element("#collections-table-every") |> render_click()
+    refute has_element?(lv, "#collections-selection")
+
+    lv |> element("#collections-table-every") |> render_click()
+    lv |> element("#collections-clear") |> render_click()
+    refute has_element?(lv, "#collections-selection")
+
+    lv |> element("#collections-table-every") |> render_click()
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert words(lv, "#flash-info") =~ "Assigned 5 repositories to Platform."
+  end
+
+  test "Show them opens the unassigned view; the filter keeps one workspace's", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop", "acme/web"])
+
+    shop =
+      Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id, title: "acme/shop")
+
+    {:ok, _changed} = Collections.assign_collections(scope, connection, [shop.id], platform)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    lv |> element("#collections-show-unassigned") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?view=unassigned")
+    assert has_element?(lv, ~s{#collections-view-unassigned[aria-current="page"]})
+    refute has_element?(lv, "#collections-show-unassigned")
+
+    assert Enum.drop(rows(lv), 1) == [
+             "acme/api Unassigned — Today",
+             "acme/web Unassigned — Today"
+           ]
+
+    lv |> element("#collections-workspace-1") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?workspace=#{platform.id}")
+    assert Enum.drop(rows(lv), 1) == ["acme/shop Platform — Today"]
+    assert has_element?(lv, ~s{#collections-workspace-1[aria-checked="true"]})
+    assert words(lv, "#collections-workspace-button") == "Workspace 1"
+
+    lv |> element("#collections-workspace-1") |> render_click()
+    assert_patch(lv, page(scope, adapter))
+    assert length(rows(lv)) == 4
+  end
+
+  test "a search finds collections by name, a page at a time", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..120) ++ ["acme/shop"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    lv |> form("#collections-search", %{q: "shop"}) |> render_change()
+    assert_patch(lv, page(scope, adapter) <> "?q=shop")
+    assert Enum.drop(rows(lv), 1) == ["acme/shop #{scope.workspace.name} — Today"]
+    refute has_element?(lv, "#collections-pager")
+
+    lv |> form("#collections-search", %{q: "repo"}) |> render_change()
+    assert words(lv, "#collections-pager-footer") == "1–50 of 120"
+    lv |> element("#collections-pager-next") |> render_click()
+    lv |> element("#collections-pager-next") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?q=repo&page=3")
+    assert words(lv, "#collections-pager-footer") == "101–120 of 120"
+
+    lv |> form("#collections-search", %{q: " "}) |> render_change()
+    assert_patch(lv, page(scope, adapter))
+  end
+
+  test "a member reads the warning in its words, with no checkboxes and nothing to assign", %{
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    several(scope, adapter, key, ["acme/api"])
+    {:ok, lv, _html} = live(member_conn(scope), page(scope, adapter))
+
+    assert words(lv, "#collections-unassigned") ==
+             "1 repository is unassigned. Its tickets reach no backlog until an owner or an admin assigns it to a workspace."
+
+    assert has_element?(lv, "#collections-views")
+    refute has_element?(lv, "#collections-table-every")
+    refute has_element?(lv, "#collections-table input")
+    refute has_element?(lv, "#collections-assign-button")
+    render_click(lv, "select_all", %{})
+    refute has_element?(lv, "#collections-selection")
+  end
+
+  test "an adapter with no items: the warning's first sentence only, and no foot in the menu", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    adapter = describe_source(adapter, "example-projects.json")
+    several(scope, adapter, key, ["Support", "Sales"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-lead") == "These projects are each assigned to one workspace."
+    assert words(lv, "#collections-unassigned") == "2 projects are unassigned. Show them"
+    assert hd(rows(lv)) == "Project Workspace Added"
+
+    pick(lv, "Sales")
+    assert words(lv, "#collections-assign ul") =~ "Assign 1 project to"
+    refute has_element?(lv, "#collections-assign .q-int-assign-foot")
+  end
+
+  test "while a listing is still arriving, nothing can be selected or assigned", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    :ok = Edition.put_test_stub(EditionStubs.ManyWorkspaces)
+    platform = workspace_fixture(scope.organisation, "Platform")
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", "acme/shop"], 1, false)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert has_element?(lv, "#collections-filling")
+    assert words(lv, "#collections-count") == "2 so far"
+    assert has_element?(lv, "#collections-search")
+    refute has_element?(lv, "#collections-views")
+    refute has_element?(lv, "#collections-unassigned")
+    refute has_element?(lv, "#collections-workspace")
+    refute has_element?(lv, "#collections-assign-button")
+    refute has_element?(lv, "#collections-table input")
+
+    assert Enum.drop(rows(lv), 1) == [
+             "acme/api Unassigned — Today",
+             "acme/shop Unassigned — Today"
+           ]
+
+    render_click(lv, "select", %{"collection" => public_id(connection, "acme/api")})
+    render_click(lv, "assign", %{"workspace" => platform.id})
+    refute has_element?(lv, "#collections-selection")
+    assert Collections.counts(scope, connection).unassigned == 2
+
+    post(key, connection, ["acme/web"], 2, true)
+    assert has_element?(lv, "#collections-views")
+    assert words(lv, "#collections-unassigned") =~ "3 repositories are unassigned."
   end
 
   test "a member reads where it stands, with no install block and no Install", %{

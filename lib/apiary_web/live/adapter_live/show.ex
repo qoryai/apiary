@@ -34,7 +34,20 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # with no items, only that each is assigned to one workspace. The lead and the foot note
   # show while the page waits too. Past a page, the pager walks the pages, from the first,
   # as the list pages by the row before (`?page=`). Ended collections are not shown: the
-  # counts leave them out too.
+  # counts leave them out too. A search finds collections by their names (`?q=`).
+  #
+  # With several workspaces, the lead says that each is assigned to one workspace and, for
+  # an adapter with items, that their items come into that workspace's backlog while their
+  # Backlog switches are on. Once a listing is complete, a warning says how many are
+  # unassigned, and, for an adapter with items, that their items reach no backlog until
+  # they are assigned, by the person or by an owner or an admin. Views over the table
+  # show every one or the unassigned ones (`?view=unassigned`), the warning's Show them
+  # leads to the second, and a menu keeps those of one workspace (`?workspace=`).
+  # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
+  # those shown, then picks a workspace from the selection's menu, Assign to workspace
+  # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where.
+  # Before anything is selected, the menu's button shows disabled. While a listing is
+  # still arriving, nothing can be selected, and there is no warning, view or filter.
   #
   # While it is not installed, the install block follows
   # (`ApiaryWeb.IntegrationComponents`), to whoever may connect one (`adapter.connect`,
@@ -80,20 +93,39 @@ defmodule ApiaryWeb.AdapterLive.Show do
        paths: IntegrationComponents.paths(scope, adapter),
        adapter: adapter,
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
+       may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
+       selected: %{},
        late: false,
        timer: false,
        sending: false,
-       query: %{page: 1},
+       query: %{page: 1, view: :all, q: nil, workspace: nil},
        lead: nil
      )
      |> load()}
   end
 
-  # The page of the collections the address asks for (`?page=`, from 1).
+  # The collections the address asks for: the page (`?page=`, from 1), the view
+  # (`?view=unassigned`), the search (`?q=`) and the workspace (`?workspace=`, its id).
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, socket |> assign(:query, %{page: page_param(params["page"])}) |> listing()}
+    query = %{
+      page: page_param(params["page"]),
+      view: if(params["view"] == "unassigned", do: :unassigned, else: :all),
+      q: search_param(params["q"]),
+      workspace: if(is_binary(params["workspace"]), do: params["workspace"])
+    }
+
+    {:noreply, socket |> assign(:query, query) |> listing()}
   end
+
+  defp search_param(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp search_param(_value), do: nil
 
   defp page_param(value) when is_binary(value) do
     case Integer.parse(value) do
@@ -167,6 +199,69 @@ defmodule ApiaryWeb.AdapterLive.Show do
       else: {:noreply, socket}
   end
 
+  def handle_event("search", %{"q" => q}, socket) do
+    query = %{socket.assigns.query | q: search_param(q), page: 1}
+    {:noreply, push_patch(socket, to: page_path(socket.assigns.paths.show, query))}
+  end
+
+  def handle_event("select", %{"collection" => public_id}, %{assigns: %{picks: true}} = socket) do
+    %{rows: rows, selected: selected} = socket.assigns
+
+    case Enum.find(rows, &(&1.public_id == public_id)) do
+      nil ->
+        {:noreply, socket}
+
+      %{id: id} = row ->
+        selected =
+          if Map.has_key?(selected, id),
+            do: Map.delete(selected, id),
+            else: Map.put(selected, id, row.name)
+
+        {:noreply, assign(socket, :selected, selected)}
+    end
+  end
+
+  def handle_event("select_all", _params, %{assigns: %{picks: true}} = socket) do
+    %{rows: rows, selected: selected} = socket.assigns
+    shown = Map.new(rows, &{&1.id, &1.name})
+
+    selected =
+      if map_size(shown) > 0 and Enum.all?(Map.keys(shown), &Map.has_key?(selected, &1)),
+        do: Map.drop(selected, Map.keys(shown)),
+        else: Map.merge(selected, shown)
+
+    {:noreply, assign(socket, :selected, selected)}
+  end
+
+  def handle_event("clear_selection", _params, socket),
+    do: {:noreply, assign(socket, :selected, %{})}
+
+  # Assigns the selection to the workspace picked from the menu, then says what went
+  # where. A refusal (the connection ended, a workspace or a collection gone meanwhile)
+  # leaves the page as it now stands.
+  def handle_event("assign", %{"workspace" => id}, %{assigns: %{picks: true}} = socket) do
+    %{current_scope: scope, connection: connection, selected: selected} = socket.assigns
+    workspace = Enum.find(socket.assigns.workspaces, &(&1.id == id))
+
+    socket =
+      with %{} <- workspace,
+           true <- map_size(selected) > 0,
+           {:ok, _changed} <-
+             Collections.assign_collections(scope, connection, Map.keys(selected), workspace) do
+        put_flash(
+          socket,
+          :info,
+          assigned(socket.assigns.adapter, Map.values(selected), workspace)
+        )
+      else
+        _refused -> socket
+      end
+
+    {:noreply, socket |> assign(:selected, %{}) |> reload()}
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   @impl true
   def handle_info(:late, socket) do
     {:noreply, assign(socket, :late, socket.assigns.state == :waiting)}
@@ -209,15 +304,38 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp listing(socket), do: assign(socket, :lead, nil)
 
   defp rows(socket) do
-    %{current_scope: scope, connection: connection, query: query} = socket.assigns
+    %{current_scope: scope, connection: connection, workspaces: workspaces} = socket.assigns
     counts = Collections.counts(scope, connection)
-    total = counts.total
-    {page, rows, before} = walk(scope, connection, [], query.page)
+    complete = Collections.listing_complete?(connection)
+    several = complete and length(workspaces) > 1
+    query = narrow(socket.assigns.query, several, workspaces)
+
+    opts =
+      for {key, value} <- [view: query.view, search: query.q, workspace: query.workspace],
+          value != nil,
+          do: {key, value}
+
+    {page, rows, before, last?} = walk(scope, connection, opts, query.page)
+
+    total =
+      cond do
+        query.q && last? -> before + length(rows)
+        query.q -> found(scope, connection, opts)
+        query.view == :unassigned -> counts.unassigned
+        query.workspace -> Map.get(counts.by_workspace, query.workspace, 0)
+        true -> counts.total
+      end
+
+    shown = Map.new(rows, &{&1.id, &1.name})
 
     assign(socket,
       counts: counts,
-      complete: Collections.listing_complete?(connection),
+      complete: complete,
+      several: several,
+      picks: several and socket.assigns.may_assign,
+      query: query,
       rows: rows,
+      selected: Map.take(socket.assigns.selected, Map.keys(shown)),
       pager: %{
         page: page,
         first: before + 1,
@@ -229,10 +347,24 @@ defmodule ApiaryWeb.AdapterLive.Show do
     )
   end
 
+  # The query as the page can show it: the views and the workspace filter only with
+  # several workspaces once a listing is complete, the workspace one of the organisation's
+  # and in the view of every collection.
+  defp narrow(query, several, workspaces) do
+    workspace =
+      several && query.view == :all && Enum.find(workspaces, &(&1.id == query.workspace))
+
+    %{
+      query
+      | view: if(several, do: query.view, else: :all),
+        workspace: if(workspace, do: workspace.id)
+    }
+  end
+
   # The page `page` of the connection's live collections `opts` asks for, walked to a page
   # at a time from the first, as the list pages by the row before; the last page there is,
   # if `page` is past it. `{page, its live rows, how many live rows the pages before it
-  # hold}`.
+  # hold, whether it is the last}`.
   defp walk(scope, connection, opts, page) do
     size = Collections.page_size()
 
@@ -241,9 +373,19 @@ defmodule ApiaryWeb.AdapterLive.Show do
       rows = Enum.filter(raw, &is_nil(&1.ended_at))
 
       if n == page or length(raw) < size,
-        do: {:halt, {n, rows, before}},
+        do: {:halt, {n, rows, before, length(raw) < size}},
         else: {:cont, {List.last(raw).public_id, before + length(rows)}}
     end)
+  end
+
+  # How many live collections of the connection `opts` finds, every page walked.
+  defp found(scope, connection, opts, after_id \\ nil, count \\ 0) do
+    raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
+    count = count + Enum.count(raw, &is_nil(&1.ended_at))
+
+    if length(raw) < Collections.page_size(),
+      do: count,
+      else: found(scope, connection, opts, List.last(raw).public_id, count)
   end
 
   @impl true
@@ -347,11 +489,157 @@ defmodule ApiaryWeb.AdapterLive.Show do
             {@lead}
           </p>
 
+          <.notice
+            :if={@state == :listed && @several && @counts.unassigned > 0}
+            kind={:warning}
+            class="mb-3"
+          >
+            <div id="collections-unassigned" class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <span>{unassigned_words(@adapter, @counts.unassigned, @may_assign)}</span>
+              <.link
+                :if={@may_assign && @query.view != :unassigned && @selected == %{}}
+                id="collections-show-unassigned"
+                patch={page_path(@paths.show, %{@query | view: :unassigned, workspace: nil, page: 1})}
+                class="ml-auto font-medium whitespace-nowrap underline underline-offset-2"
+              >
+                {gettext("Show them")}
+              </.link>
+            </div>
+          </.notice>
+
           <div :if={@state == :listed} id="collections-bar" class="q-bar mb-3">
-            <span class="q-grow"></span>
-            <span id="collections-count" class="q-int-count">
-              {count_words(@adapter, @complete, @counts.total)}
-            </span>
+            <%= if @selected != %{} do %>
+              <div
+                id="collections-selection"
+                class="q-int-selbar"
+                role="toolbar"
+                aria-labelledby="collections-selected"
+              >
+                <span id="collections-selected">
+                  {ngettext("%{number} selected", "%{number} selected", map_size(@selected),
+                    number: Format.number(map_size(@selected))
+                  )}
+                </span>
+                <IntegrationComponents.assign_menu
+                  id="collections-assign"
+                  heading={
+                    ngettext(
+                      "Assign %{number} %{collection} to",
+                      "Assign %{number} %{collections} to",
+                      map_size(@selected),
+                      number: Format.number(map_size(@selected)),
+                      collection: collection_word(@adapter, 1),
+                      collections: collection_word(@adapter, :other)
+                    )
+                  }
+                  workspaces={
+                    for workspace <- @workspaces do
+                      {workspace,
+                       count_words(@adapter, true, Map.get(@counts.by_workspace, workspace.id, 0))}
+                    end
+                  }
+                  foot={
+                    Adapters.items?(@adapter) &&
+                      ngettext(
+                        "Its %{items} go with it. Work items already taken in stay where they are.",
+                        "Their %{items} go with them. Work items already taken in stay where they are.",
+                        map_size(@selected),
+                        items: SourceComponents.items(Adapters.item_noun(@adapter))
+                      )
+                  }
+                />
+                <button
+                  id="collections-clear"
+                  type="button"
+                  class="btn btn-ghost btn-sm q-int-clear"
+                  phx-click="clear_selection"
+                  aria-label={gettext("Clear selection")}
+                >
+                  <.icon name="hero-x-mark-micro" class="size-4" /><span class="q-int-clear-l">{gettext(
+                    "Clear selection"
+                  )}</span>
+                </button>
+              </div>
+              <span class="q-grow"></span>
+              <span id="collections-count" class="q-int-count">
+                {gettext("%{shown} of %{total} shown",
+                  shown: Format.number(length(@rows)),
+                  total: Format.number(@counts.total)
+                )}
+              </span>
+            <% else %>
+              <.views :if={@several} id="collections-views" label={gettext("Views")}>
+                <:view
+                  id="collections-view-all"
+                  patch={page_path(@paths.show, %{@query | view: :all, workspace: nil, page: 1})}
+                  count={Format.number(@counts.total)}
+                  current={@query.view == :all}
+                >
+                  {gettext("All")}
+                </:view>
+                <:view
+                  id="collections-view-unassigned"
+                  patch={
+                    page_path(@paths.show, %{@query | view: :unassigned, workspace: nil, page: 1})
+                  }
+                  count={Format.number(@counts.unassigned)}
+                  current={@query.view == :unassigned}
+                >
+                  {gettext("Unassigned")}
+                </:view>
+              </.views>
+              <span :if={@several} class="q-grow"></span>
+              <.list_search
+                id="collections-search"
+                label={gettext("Find a %{collection}", collection: collection_word(@adapter, 1))}
+                value={@query.q}
+              />
+              <IntegrationComponents.workspace_filter
+                :if={@several}
+                id="collections-workspace"
+                options={
+                  for workspace <- @workspaces do
+                    chosen = @query.workspace == workspace.id
+
+                    {workspace.name,
+                     page_path(@paths.show, %{
+                       @query
+                       | view: :all,
+                         workspace: if(!chosen, do: workspace.id),
+                         page: 1
+                     }), chosen}
+                  end
+                }
+              />
+              <span :if={@picks} class="contents">
+                <button
+                  id="collections-assign-button"
+                  type="button"
+                  class="btn btn-sm"
+                  disabled
+                  title={
+                    gettext("Select %{collections} to assign them",
+                      collections: collection_word(@adapter, :other)
+                    )
+                  }
+                  aria-describedby="collections-assign-hint"
+                >
+                  {gettext("Assign to workspace")}<.icon
+                    name="hero-chevron-down-micro"
+                    class="size-4"
+                  />
+                </button>
+                <span id="collections-assign-hint" class="sr-only">
+                  {gettext("Select %{collections} to assign them",
+                    collections: collection_word(@adapter, :other)
+                  )}
+                </span>
+              </span>
+              <span :if={!@several} class="q-grow"></span>
+              <span :if={!@several} id="collections-count" class="q-int-count">
+                {count_words(@adapter, @complete, @counts.total)}
+              </span>
+            <% end %>
           </div>
 
           <IntegrationComponents.collections_table
@@ -363,6 +651,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
             open={
               Adapters.items?(@adapter) &&
                 gettext("Open %{items}", items: SourceComponents.items(Adapters.item_noun(@adapter)))
+            }
+            picks={@picks}
+            selected={@selected}
+            every={
+              gettext("Select every %{collection} shown", collection: collection_word(@adapter, 1))
             }
           />
 
@@ -451,7 +744,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # What being assigned means, above the table: for an adapter with no items, that each
   # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's backlog.
+  # assigned to it, and its items come into that workspace's backlog; with several, that
+  # each is assigned to one, and their items come into its backlog while their Backlog
+  # switches are on.
   defp lead(scope, adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
@@ -470,9 +765,83 @@ defmodule ApiaryWeb.AdapterLive.Show do
           items: SourceComponents.items(Adapters.item_noun(adapter))
         )
 
+      length(workspaces) > 1 ->
+        gettext(
+          "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on.",
+          collections: collection_word(adapter, :other),
+          items: SourceComponents.items(Adapters.item_noun(adapter))
+        )
+
       true ->
         nil
     end
+  end
+
+  # How many collections are unassigned, and, for an adapter with items, that their items
+  # reach no backlog until they are assigned: by the person, who may assign them, or by an
+  # owner or an admin.
+  defp unassigned_words(adapter, number, may_assign) do
+    words = [
+      number: Format.number(number),
+      collection: collection_word(adapter, 1),
+      collections: collection_word(adapter, :other),
+      items: SourceComponents.items(Adapters.item_noun(adapter))
+    ]
+
+    cond do
+      not Adapters.items?(adapter) ->
+        ngettext(
+          "%{number} %{collection} is unassigned.",
+          "%{number} %{collections} are unassigned.",
+          number,
+          words
+        )
+
+      may_assign ->
+        ngettext(
+          "%{number} %{collection} is unassigned. Its %{items} reach no backlog until you assign it to a workspace.",
+          "%{number} %{collections} are unassigned. Their %{items} reach no backlog until you assign each to a workspace.",
+          number,
+          words
+        )
+
+      true ->
+        ngettext(
+          "%{number} %{collection} is unassigned. Its %{items} reach no backlog until an owner or an admin assigns it to a workspace.",
+          "%{number} %{collections} are unassigned. Their %{items} reach no backlog until an owner or an admin assigns each to a workspace.",
+          number,
+          words
+        )
+    end
+  end
+
+  # The flash after assigning: the names of what went where, up to three, else how many.
+  defp assigned(_adapter, names, workspace) when length(names) <= 3 do
+    gettext("Assigned %{names} to %{workspace}.",
+      names: names |> Enum.sort() |> join_names(),
+      workspace: workspace.name
+    )
+  end
+
+  defp assigned(adapter, names, workspace) do
+    number = length(names)
+
+    ngettext(
+      "Assigned %{number} %{collection} to %{workspace}.",
+      "Assigned %{number} %{collections} to %{workspace}.",
+      number,
+      number: Format.number(number),
+      collection: collection_word(adapter, 1),
+      collections: collection_word(adapter, :other),
+      workspace: workspace.name
+    )
+  end
+
+  defp join_names([name]), do: name
+
+  defp join_names(names) do
+    {list, [last]} = Enum.split(names, -1)
+    gettext("%{list} and %{last}", list: Enum.join(list, ", "), last: last)
   end
 
   # The count beside the table: while a listing is still to complete, how many so far;
@@ -488,9 +857,16 @@ defmodule ApiaryWeb.AdapterLive.Show do
     )
   end
 
-  # The path of the integration's page with `query`, its defaults left out.
+  # The path of the integration's page with `query`, its defaults (the first page, every
+  # collection, no search, no workspace) left out.
   defp page_path(show, query) do
-    case for({key, value} <- query, value not in [nil, 1], do: {key, value}) do
+    params =
+      for key <- [:view, :q, :workspace, :page],
+          value = Map.get(query, key),
+          value not in [nil, 1, :all],
+          do: {key, value}
+
+    case params do
       [] -> show
       params -> show <> "?" <> URI.encode_query(params)
     end
