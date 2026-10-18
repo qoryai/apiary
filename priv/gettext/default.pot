@@ -10397,11 +10397,6 @@ msgstr ""
 msgid "Open %{integration}"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Open %{items}"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{name}'s policy"
@@ -10481,6 +10476,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Open the target to see it"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Open tickets"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

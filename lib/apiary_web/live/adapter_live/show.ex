@@ -650,10 +650,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             label={collection_label(@adapter)}
             rows={@rows}
             column={collection_label(@adapter, 1)}
-            open={
-              Adapters.items?(@adapter) &&
-                gettext("Open %{items}", items: SourceComponents.items(Adapters.item_noun(@adapter)))
-            }
+            open={Adapters.items?(@adapter) && gettext("Open tickets")}
             picks={@picks}
             selected={@selected}
             every={
