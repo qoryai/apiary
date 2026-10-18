@@ -406,11 +406,13 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
 #: lib/apiary/secrets/secret.ex
+#: lib/apiary/work_items/work_item.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain control characters"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
+#: lib/apiary/work_items/work_item.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain invisible characters"
 msgstr ""

@@ -466,6 +466,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"collection.assign",
         :"work_item.take_in",
         :"work_item.undo",
+        :"work_item.decline",
         :"work_item.close",
         :"work_item.comment",
         :"work_item.comment_delete"

@@ -1,7 +1,32 @@
 defmodule Apiary.WorkItems do
   # WorkItems holds a workspace's work items (`Apiary.WorkItems.WorkItem`): what the
-  # sidebar counts, how the pages name a work item's ticket, and the close of a work
-  # item; taking in, undoing, a person's close and the comments come with their pages.
+  # sidebar counts, how the pages name a work item's ticket, the work items a page reads,
+  # and what a person does to them.
+  #
+  # ## What a person does: take in, take in again, undo, decline, close
+  #
+  # `take_in(scope, item_id, attrs)` takes the ticket `item_id` (`tk_…`) of the Backlog of
+  # the scope's workspace in as a new work item, with its first run queued;
+  # `take_in_again(scope, item_id, attrs)` brings back the ended work item of that ticket,
+  # in the organisation, live again in the scope's workspace, with a new count of runs;
+  # `undo(scope, work_item)` undoes the latest take in while no claim holds its run;
+  # `decline(scope, work_item)` declines a live work item while none of its runs is live;
+  # `close(scope, work_item)` closes a live one. `attrs` holds the owner (`owner_id`) and
+  # the first instruction (`first_instruction`) the page gives. Each runs in one
+  # transaction with its event, its run, its feed entry and its entry in the trail, asks
+  # its action of `Apiary.Access`, and tells the pages once it commits.
+  # `Apiary.WorkItems.Moves` says how, what each refuses, and the order of its locks.
+  #
+  # The pages hear of a change to a workspace's work items on its topic (`topic/1`,
+  # `subscribe/1`): `{:work_items_changed, ids}`, the work items' public ids, sent once the
+  # change commits.
+  #
+  # ## Reading: the list and the lookups
+  #
+  # `list_work_items(scope, params)` is a page of the Work items list
+  # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
+  # `get_for_ticket/2` find one work item for a page. Each answers nothing to a person who
+  # may not read the workspace's work items (`work_item.read`).
   #
   # ## Closing: `close_locked/3` and `close_for_adapter/2`
   #
@@ -24,14 +49,21 @@ defmodule Apiary.WorkItems do
   # (`Apiary.Adapters.delete_adapter/2`). Closed, declined and undone work items are left
   # as they are.
   #
-  # **The lock order.** A close takes its locks in one order: the connections first (the
-  # removal ends them before it closes), then the work items `FOR UPDATE` in the order of
-  # their ids, then their runs of the queue `FOR UPDATE` in the order of their ids, then
-  # the dispatches of those runs, written. The slots of a node pool's instance limit that
-  # the ended dispatches held are freed by a write of the dispatches that frees each one
-  # once (`Apiary.Dispatches.Slots`), with no lock on the pool's row: a claim holds its
-  # pool before the runs it lapses, so a close that held runs and then waited on a pool
-  # could wait on a claim that waits on it.
+  # **The lock order.** The core takes its locks in one order, which
+  # `Apiary.Adapters.Collections` writes out in full: the adapter's row, its connections,
+  # the workspaces `FOR SHARE`, the collections, the targets, then the work items
+  # `FOR UPDATE`, by id when there are several, then a workspace's counter of numbers
+  # (`Apiary.WorkItems.Number`), taken only right after its work item, then the
+  # environment records, the runs of the queue and their dispatches
+  # (`Apiary.Dispatches.Slots`), and the adapter's feed counter, last. No collection or
+  # target is locked after a work item. A close takes the connections first (the removal
+  # ends them before it closes), then the work items `FOR UPDATE` in the order of their
+  # ids, then their runs of the queue `FOR UPDATE` in the order of their ids, then the
+  # dispatches of those runs, written. The slots of a node pool's instance limit that the
+  # ended dispatches held are freed by a write of the dispatches that frees each one once
+  # (`Apiary.Dispatches.Slots`), with no lock on the pool's row: a claim holds its pool
+  # before the runs it lapses, so a close that held runs and then waited on a pool could
+  # wait on a claim that waits on it.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -44,7 +76,7 @@ defmodule Apiary.WorkItems do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.Item
-  alias Apiary.WorkItems.{State, WorkItem, WorkItemEvent}
+  alias Apiary.WorkItems.{Moves, State, WorkItem, WorkItemEvent, WorkList}
 
   @typedoc """
   Who closes a work item: a person, by the id of their account, or the instance, with the
@@ -59,11 +91,193 @@ defmodule Apiary.WorkItems do
   @spec count_waiting_on(Scope.t()) :: non_neg_integer
   def count_waiting_on(%Scope{}), do: 0
 
+  ## What a person does
+
+  @doc false
+  # take_in/3 takes the ticket `item_id` (`tk_…`) of the Backlog of the scope's workspace
+  # in as a new work item (`Apiary.WorkItems.Moves`): `{:ok, work_item}`, or a refusal.
+  @spec take_in(Scope.t(), String.t(), Moves.take_in_attrs()) ::
+          {:ok, WorkItem.t()} | {:error, Moves.take_in_refusal()}
+  def take_in(%Scope{} = scope, item_id, attrs \\ %{}),
+    do: Moves.take_in(scope, item_id, Map.new(attrs))
+
+  @doc false
+  # take_in_again/3 brings back the ended work item of the ticket `item_id`, live again in
+  # the scope's workspace (`Apiary.WorkItems.Moves`): `{:ok, work_item}`, or a refusal.
+  @spec take_in_again(Scope.t(), String.t(), Moves.take_in_attrs()) ::
+          {:ok, WorkItem.t()} | {:error, Moves.take_in_refusal()}
+  def take_in_again(%Scope{} = scope, item_id, attrs \\ %{}),
+    do: Moves.take_in_again(scope, item_id, Map.new(attrs))
+
+  @doc false
+  # undo/2 undoes the latest take in of `work_item` while no claim holds its run
+  # (`Apiary.WorkItems.Moves`).
+  @spec undo(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :claimed}
+  defdelegate undo(scope, work_item), to: Moves
+
+  @doc false
+  # decline/2 declines `work_item` while none of its runs is live (`Apiary.WorkItems.Moves`).
+  @spec decline(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live | :running}
+  defdelegate decline(scope, work_item), to: Moves
+
+  @doc false
+  # close/2 closes `work_item`, as the scope's person (`close_locked/3`,
+  # `Apiary.WorkItems.Moves`).
+  @spec close(Scope.t(), WorkItem.t()) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | :not_live}
+  defdelegate close(scope, work_item), to: Moves
+
+  @doc false
+  # take_in_answers/2 is the answers given to the questions of take in `take_in` of
+  # `work_item`, in the order they were given, for the input of its next run. The answers
+  # come with the member actions that give them; until then a take in has none.
+  @spec take_in_answers(WorkItem.t(), pos_integer) :: [map]
+  def take_in_answers(%WorkItem{}, take_in) when is_integer(take_in) and take_in >= 1, do: []
+
+  ## What the pages hear
+
+  @doc false
+  # topic/1 is the topic of the work items of the workspace `workspace_id`.
+  @spec topic(Ecto.UUID.t()) :: String.t()
+  def topic(workspace_id) when is_binary(workspace_id), do: "work_items:" <> workspace_id
+
+  @doc false
+  # subscribe/1 subscribes the caller to the topic of the work items of the scope's
+  # workspace, for a person who may read them (`work_item.read`, asked of the person as
+  # they are now): `:ok`, or `Apiary.Access`'s refusal.
+  @spec subscribe(Scope.t()) :: :ok | {:error, Access.reason()}
+  def subscribe(%Scope{workspace: %Workspace{id: workspace_id} = workspace} = scope) do
+    with :ok <- Access.authorize(scope, :"work_item.read", workspace),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id))
+  end
+
+  def subscribe(%Scope{}), do: {:error, :not_found}
+
+  ## Reading
+
+  @doc false
+  # list_work_items/3 is a page of the Work items list of the scope's workspace
+  # (`Apiary.WorkItems.WorkList`).
+  @spec list_work_items(Scope.t(), map | keyword, DateTime.t()) :: WorkList.page()
+  def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
+    do: WorkList.list(scope, params, now)
+
+  @doc false
+  # get_by_number/2 is the work item of the scope's workspace numbered `number`, to a
+  # person who may read its work items; nil otherwise, and for no such number.
+  @spec get_by_number(Scope.t(), term) :: WorkItem.t() | nil
+  def get_by_number(%Scope{} = scope, number) do
+    with {:ok, number} <- number(number),
+         {:ok, organisation_id, workspace_id} <- workspace(scope) do
+      Repo.one(
+        from w in WorkItem,
+          where:
+            w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id and
+              w.number == ^number
+      )
+    else
+      _none -> nil
+    end
+  end
+
+  defp number(number) when is_integer(number) and number >= 1, do: {:ok, number}
+
+  defp number(text) when is_binary(text) and byte_size(text) <= 19 do
+    case Integer.parse(text) do
+      {number, ""} when number >= 1 -> {:ok, number}
+      _not -> :error
+    end
+  end
+
+  defp number(_other), do: :error
+
+  @doc false
+  # get_by_public_id/2 is the work item of the scope's organisation whose public id is
+  # `public_id` (`wi_…`), in whichever of its workspaces it is now, with that workspace,
+  # to a person who may read the work items there: the address the work item's stable url
+  # (`stable_url/1`) leads to. nil otherwise.
+  @spec get_by_public_id(Scope.t(), term) :: WorkItem.t() | nil
+  def get_by_public_id(%Scope{organisation: %Organisation{id: organisation_id}} = scope, id) do
+    with true <- Apiary.PublicId.valid?(WorkItem.prefix(), id),
+         %WorkItem{} = work_item <-
+           Repo.one(
+             from w in WorkItem,
+               where: w.public_id == ^id and w.organisation_id == ^organisation_id,
+               preload: :workspace
+           ),
+         true <-
+           Access.can?(%{scope | workspace: work_item.workspace}, :"work_item.read", work_item) do
+      work_item
+    else
+      _none -> nil
+    end
+  end
+
+  def get_by_public_id(%Scope{}, _id), do: nil
+
+  @doc false
+  # get_for_ticket/2 is the work item of the ticket `item_id` (`tk_…`) of a collection
+  # assigned to the scope's workspace: the one of the ticket's organisation, adapter and
+  # ref, in any workspace of the organisation and in any state, as the Backlog shows it. A
+  # page shows one of another workspace by its state alone. nil for none, and to a person
+  # who may not read the workspace's work items.
+  @spec get_for_ticket(Scope.t(), term) :: WorkItem.t() | nil
+  def get_for_ticket(%Scope{} = scope, item_id) do
+    with true <- Item.public_id?(item_id),
+         {:ok, organisation_id, workspace_id} <- workspace(scope) do
+      Repo.one(
+        from i in Item,
+          join: c in Collection,
+          on: c.id == i.collection_id and c.organisation_id == i.organisation_id,
+          join: w in WorkItem,
+          on:
+            w.organisation_id == i.organisation_id and w.adapter_id == i.adapter_id and
+              w.external_ref == i.external_ref,
+          where:
+            i.public_id == ^item_id and i.organisation_id == ^organisation_id and
+              c.workspace_id == ^workspace_id,
+          select: w
+      )
+    else
+      _none -> nil
+    end
+  end
+
+  @doc false
+  # item_nouns/2 is what the sources of the work items `ids` of the organisation
+  # `organisation_id` call their items, by work item, for those whose adapter names them
+  # (`Apiary.Adapters.item_noun/1`): how the Activity page names a ticket taken in.
+  @spec item_nouns(Ecto.UUID.t(), [Ecto.UUID.t()]) :: %{
+          Ecto.UUID.t() => %{one: String.t(), other: String.t()}
+        }
+  def item_nouns(_organisation_id, []), do: %{}
+
+  def item_nouns(organisation_id, ids) when is_binary(organisation_id) and is_list(ids) do
+    from(w in WorkItem,
+      join: n in Node,
+      on: n.id == w.adapter_id,
+      where: w.organisation_id == ^organisation_id and w.id in ^ids,
+      select: {w.id, n}
+    )
+    |> Repo.all()
+    |> Enum.flat_map(fn {id, adapter} ->
+      case Apiary.Adapters.item_noun(adapter) do
+        nil -> []
+        noun -> [{id, noun}]
+      end
+    end)
+    |> Map.new()
+  end
+
   @doc false
   # ticket_names/2 is how the work item pages name the ticket of each of `work_items`, by
-  # the work item's id: its `key` at the source, such as `"#1204"`, or nil, and the
+  # the work item's id: its `key` at the source, such as `"#1204"`, or nil, the
   # `collection_title`, the title of the collection that holds it, as the Backlog draws
-  # them. The ticket's ref at the source is never in it.
+  # them, and `ticket_id`, the public id (`tk_…`) of its live record, which the Backlog
+  # opens it by (Take in again), or nil when no record of it is live. The ticket's ref at
+  # the source is never in it.
   #
   # A work item's ticket is the record of the work item's organisation, adapter and ref,
   # as the Backlog links them, of a collection assigned to the work item's workspace,
@@ -76,7 +290,11 @@ defmodule Apiary.WorkItems do
   # may read its work items (`work_item.read`); any other gets no entry. One query names
   # them all, whatever their number.
   @spec ticket_names(Scope.t(), [WorkItem.t()]) :: %{
-          Ecto.UUID.t() => %{key: String.t() | nil, collection_title: String.t()}
+          Ecto.UUID.t() => %{
+            key: String.t() | nil,
+            collection_title: String.t(),
+            ticket_id: String.t() | nil
+          }
         }
   def ticket_names(%Scope{} = scope, work_items) when is_list(work_items) do
     ids = for %WorkItem{id: id} when is_binary(id) <- work_items, uniq: true, do: id
@@ -85,12 +303,18 @@ defmodule Apiary.WorkItems do
       {[_ | _], {:ok, organisation_id, workspace_id}} ->
         from(w in WorkItem,
           as: :work_item,
-          left_lateral_join: t in subquery(ticket()),
+          left_lateral_join: t in subquery(ticket_query()),
           on: true,
           where:
             w.id in ^ids and w.organisation_id == ^organisation_id and
               w.workspace_id == ^workspace_id,
-          select: {w.id, %{key: t.key, collection_title: coalesce(t.title, w.collection_title)}}
+          select:
+            {w.id,
+             %{
+               key: t.key,
+               collection_title: coalesce(t.title, w.collection_title),
+               ticket_id: fragment("CASE WHEN ? THEN ? END", t.live, t.public_id)
+             }}
         )
         |> Repo.all()
         |> Map.new()
@@ -100,9 +324,13 @@ defmodule Apiary.WorkItems do
     end
   end
 
-  # The ticket of the work item named `:work_item` in the query around it: the key and the
-  # collection's title of its live record, else of the one that ended last.
-  defp ticket do
+  @doc false
+  # ticket_query/0 is the ticket of the work item named `:work_item` in the query around
+  # it, for a lateral join: the key, the collection's title and the public id of its live
+  # record, else of the one that ended last, and whether it is live, as `ticket_names/2`
+  # and the Work items list read it.
+  @spec ticket_query() :: Ecto.Query.t()
+  def ticket_query do
     from i in Item,
       join: c in Collection,
       on: c.id == i.collection_id and c.organisation_id == i.organisation_id,
@@ -122,7 +350,14 @@ defmodule Apiary.WorkItems do
         desc: i.id
       ],
       limit: 1,
-      select: %{key: i.key, title: c.title}
+      select: %{
+        key: i.key,
+        title: c.title,
+        public_id: i.public_id,
+        live:
+          is_nil(i.disconnected_at) and is_nil(c.ended_at) and k.state == :connected and
+            is_nil(k.ended_at)
+      }
   end
 
   @doc false

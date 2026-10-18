@@ -356,10 +356,14 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers the work item comments, the assigning of repositories and the Backlog switch by their words, and no other action of the feature",
+    test "the Activity filter offers a person's actions on the work items, the assigning of repositories and the Backlog switch by their words, and no other action of the feature",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
+      assert {"work_item.take_in", "Work item taken in"} in options
+      assert {"work_item.undo", "Take in undone"} in options
+      assert {"work_item.decline", "Work item declined"} in options
+      assert {"work_item.close", "Work item closed"} in options
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
       assert {"collection.assign", "Repositories assigned"} in options
@@ -371,6 +375,10 @@ defmodule ApiaryWeb.FactoryShellTest do
       for action <- Audit.audited_actions(),
           Apiary.Access.feature(action) == :factory,
           action not in [
+            :"work_item.take_in",
+            :"work_item.undo",
+            :"work_item.decline",
+            :"work_item.close",
             :"work_item.comment",
             :"work_item.comment_delete",
             :"collection.assign",

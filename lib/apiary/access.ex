@@ -376,6 +376,10 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @members
     ),
+    Action.new(:"work_item.decline", "decline a work item",
+      feature: :factory,
+      roles: @members
+    ),
     Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
     Action.new(:"work_item.comment", "comment on a work item",
       feature: :factory,

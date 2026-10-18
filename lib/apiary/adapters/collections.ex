@@ -137,13 +137,19 @@ defmodule Apiary.Adapters.Collections do
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
   #      (`finish_part/4`);
-  #   5. the environment records of the collections an assign assigns or moves to a
+  #   5. the work items, `FOR UPDATE`, by id, where a change holds several
+  #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
+  #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
+  #      a work item;
+  #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
+  #      right after the work item it numbers;
+  #   7. the environment records of the collections an assign assigns or moves to a
   #      workspace, or a part makes or updates, `FOR UPDATE`, by collection and then pool,
   #      then the prebuilds their trigger queues or ends (`Apiary.Environments.trigger/2`;
   #      `Apiary.Dispatches.Slots` names the order from the records on): an assign takes
   #      them after its targets (`relink/5`), and a part after its targets, so after every
   #      collection it holds, its ends included (`finish_part/4`);
-  #   6. the adapter's feed counter, last.
+  #   8. the adapter's feed counter, last.
   #
   # A start that changes the adapter's `items` holds, after its row, the adapter's
   # connections that have not ended `FOR SHARE`, by id, then every live collection of
