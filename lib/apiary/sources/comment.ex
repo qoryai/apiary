@@ -1,6 +1,6 @@
 defmodule Apiary.Sources.Comment do
   # A comment on an item (`Apiary.Sources.Item`), as the adapter sent it. The table and
-  # its rules are `20261017190000_keep_source_items`'s.
+  # its rules are `20261017143000_keep_source_items`'s.
   #
   # `external_ref` is the adapter's ref for it, 1 to 200 characters, unique on its item.
   # `url` is its page at the source, `https://`, 2,048 characters at most. `author_name`,
@@ -11,7 +11,7 @@ defmodule Apiary.Sources.Comment do
   # from a later one. `deleted_at` is for a comment deleted at its source, or left out of
   # a complete set of the item's comments: the column marks it, so that its row can stay.
   # `deleted_by_complete_at` is for one that such a set left out and marked: the set's
-  # `complete.since`, from `20261017191500_keep_when_a_complete_set_left_a_comment_out`;
+  # `complete.since`, from `20261017151000_keep_when_a_complete_set_left_a_comment_out`;
   # only a comment marked deleted has it.
   #
   # A comment is of its item's organisation, held to it by the composite key, and goes

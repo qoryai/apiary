@@ -92,6 +92,10 @@ defmodule Apiary.Nodes.Node do
     field :sync_default_interval, :integer
     field :sync_minimum_interval, :integer
     field :sync_sends_changes, :boolean
+    # An adapter's alone (`nodes_setup_url_check`): where an instance admin is sent to set
+    # it up at the system it reads from, as its latest start-up declared it; nil while it
+    # declares none.
+    field :setup_url, :string
     # An adapter's alone (`nodes_items_check`): what its description's source role says of
     # its items, its words for one and for many, both or neither (nil for the default),
     # and whether it reports items, false for a source that reports collections and no
@@ -104,6 +108,11 @@ defmodule Apiary.Nodes.Node do
     # domain's word), beside `items` false too.
     field :collection_noun_one, :string
     field :collection_noun_other, :string
+    # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
+    # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
+    # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
+    # by `Apiary.Adapters.install/2`, and never cast from what a person or an adapter sends.
+    field :installed_as, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -199,7 +208,7 @@ defmodule Apiary.Nodes.Node do
   # without control characters, unique among the instance's adapters in use. A new one
   # (no public id yet) is given its kind's public id, `na_`; its place, no organisation and
   # no workspace, is the caller's to set, and nothing here casts it, its kind, its limit,
-  # its choice of gateway or its address.
+  # its choice of gateway, its address or the name it is installed as (`installed_as`).
   @spec adapter_changeset(t, map) :: Ecto.Changeset.t()
   def adapter_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
@@ -216,6 +225,7 @@ defmodule Apiary.Nodes.Node do
     )
     |> check_constraint(:name, name: :nodes_adapter_name_check)
     |> check_constraint(:workspace_id, name: :nodes_place_check)
+    |> check_constraint(:installed_as, name: :nodes_installed_as_check)
     |> then(&if(is_nil(adapter.public_id), do: put_public_id(&1), else: &1))
   end
 
@@ -249,18 +259,44 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:connect_url, name: :nodes_adapter_check)
   end
 
+  # `https://`, an authority with no `@` and no whitespace, then nothing, or a path or a
+  # query without whitespace, and no fragment: as `nodes_setup_url_check` has it.
+  @setup_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?][^#[:space:]]*)?\z}u
+
   @doc false
   # The changeset of what an adapter declares each time it starts
   # (`Apiary.Adapters.declare/2`): its connect address (`connect_url_changeset/2`) and how
   # it pulls changes, `sync_default_interval` and `sync_minimum_interval`, whole seconds
   # from 60 to 86,400, the minimum at most the default, and `sync_sends_changes`. Each is
   # required. The database holds the intervals it has to the same range, and the minimum
-  # to at most the default (`nodes_sync_check`).
+  # to at most the default (`nodes_sync_check`). And where an instance admin is sent to
+  # set it up, `setup_url`, which it declares only while it is not set up: as a connect
+  # address is, but with no fragment, at most `max_url/0` characters; nil clears it
+  # (`nodes_setup_url_check`).
   @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
   def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
     |> connect_url_changeset(attrs)
-    |> cast(attrs, [:sync_default_interval, :sync_minimum_interval, :sync_sends_changes])
+    |> cast(attrs, [
+      :setup_url,
+      :sync_default_interval,
+      :sync_minimum_interval,
+      :sync_sends_changes
+    ])
+    |> validate_length(:setup_url, max: @max_url)
+    |> validate_change(:setup_url, fn :setup_url, url ->
+      cond do
+        not String.starts_with?(url, "https://") ->
+          [setup_url: dgettext_noop("errors", "must start with https://")]
+
+        not (url =~ @setup_url) ->
+          [setup_url: dgettext_noop("errors", "has invalid format")]
+
+        true ->
+          []
+      end
+    end)
+    |> check_constraint(:setup_url, name: :nodes_setup_url_check)
     |> validate_required([
       :connect_url,
       :sync_default_interval,

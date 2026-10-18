@@ -9,11 +9,13 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   # Each adapter is a row, by name: its name, which leads to its Overview, its public id,
   # how often it pulls, or that it has not declared it yet, and its state
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it was last seen,
-  # or Never seen, all the rows' times read at once. Where the table is narrow, the Pulls
-  # and State columns give way to one line under the name: how often it pulls, then its
-  # state; or, before it declares, its state, then "not declared yet". With none, the page
-  # says there is no adapter yet. The instance has no catalogue of adapters to add yet, so
-  # the page lists none.
+  # or Never seen, all the rows' times read at once; and Set up, while the adapter declares
+  # where to be set up, holds a key in use and, installed with Qory Apiary, is still listed
+  # (`ApiaryWeb.AdapterComponents.settable?/3`). Where the table is narrow, the Pulls and
+  # State columns give way to one line under the name: how often it pulls, then its state;
+  # or, before it declares, its state, then "not declared yet". With none, the page says
+  # there is no adapter yet. The instance has no catalogue of adapters to add yet, so the
+  # page lists none.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -33,13 +35,17 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
     {:ok, seen} = Adapters.last_seen(scope, list)
 
     adapters =
-      for adapter <- list,
-          do: %{
-            adapter: adapter,
-            connected: AccessKeys.active_key?(adapter),
-            seen: Map.get(seen, adapter.id),
-            every: AdapterComponents.pulls_every(AdapterComponents.sync_of(adapter))
-          }
+      for adapter <- list do
+        connected = AccessKeys.active_key?(adapter)
+
+        %{
+          adapter: adapter,
+          connected: connected,
+          settable: AdapterComponents.settable?(adapter, connected, Adapters.listed?(adapter)),
+          seen: Map.get(seen, adapter.id),
+          every: AdapterComponents.pulls_every(AdapterComponents.sync_of(adapter))
+        }
+      end
 
     {:ok,
      assign(socket,
@@ -104,6 +110,14 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
               seen={row.seen}
             />
           </:col>
+          <:action :let={row} :if={Enum.any?(@adapters, & &1.settable)}>
+            <AdapterComponents.setup_form
+              :if={row.settable}
+              id={"adapter-#{row.adapter.public_id}-setup"}
+              adapter={row.adapter}
+              back="list"
+            />
+          </:action>
         </.table>
 
         <.empty_state

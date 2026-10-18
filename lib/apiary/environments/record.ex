@@ -1,7 +1,7 @@
 defmodule Apiary.Environments.Record do
   # The environment record of a collection (`Apiary.Adapters.Collection`) for one node
   # pool of the collection's workspace: one per pool and collection. The table and its
-  # rules are `20261017200100_keep_environments`'s.
+  # rules are `20261017155000_keep_environments`'s.
   #
   # `queued_ref`, `queued_at`, `queued_target_system` and `queued_target_path` are the
   # collection's `environment_ref` and target the last prebuild for the pool was queued

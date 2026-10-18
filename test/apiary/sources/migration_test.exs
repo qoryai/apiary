@@ -6,17 +6,22 @@ defmodule Apiary.Sources.MigrationTest do
   # `work_item_events` and `dispatch_runs` under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  @items {20_261_017_190_000, Apiary.Repo.Migrations.KeepSourceItems, "keep_source_items"}
-  @again {20_261_017_190_100, Apiary.Repo.Migrations.TakeWorkItemsInAgain,
+  @items {20_261_017_143_000, Apiary.Repo.Migrations.KeepSourceItems, "keep_source_items"}
+  @again {20_261_017_144_000, Apiary.Repo.Migrations.TakeWorkItemsInAgain,
           "take_work_items_in_again"}
-  @listed {20_261_017_191_000, Apiary.Repo.Migrations.KeepWhenAnItemWasLastListed,
+  @listed {20_261_017_150_000, Apiary.Repo.Migrations.KeepWhenAnItemWasLastListed,
            "keep_when_an_item_was_last_listed"}
-  @left_out {20_261_017_191_500, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
+  @left_out {20_261_017_151_000, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
              "keep_when_a_complete_set_left_a_comment_out"}
-  @prebuilds {20_261_017_200_200, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
+  @prebuilds {20_261_017_160_000, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
 
   @tables ~w(source_items source_item_comments source_item_listings)
   @functions ~w(source_item_public_id source_parts_valid source_texts_valid)

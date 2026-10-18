@@ -7,6 +7,11 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # `access_key_enrolment_codes` under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -21,22 +26,22 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
              "validate_an_adapter_s_checks"}
   @ticket {20_261_017_090_000, Apiary.Repo.Migrations.NameAWorkItemSTicketByItsConnection,
            "name_a_work_item_s_ticket_by_its_connection"}
-  @collections {20_261_017_170_300, Apiary.Repo.Migrations.KeepAnAdapterSCollections,
+  @collections {20_261_017_141_000, Apiary.Repo.Migrations.KeepAnAdapterSCollections,
                 "keep_an_adapter_s_collections"}
-  @items {20_261_017_190_000, Apiary.Repo.Migrations.KeepSourceItems, "keep_source_items"}
-  @again {20_261_017_190_100, Apiary.Repo.Migrations.TakeWorkItemsInAgain,
+  @items {20_261_017_143_000, Apiary.Repo.Migrations.KeepSourceItems, "keep_source_items"}
+  @again {20_261_017_144_000, Apiary.Repo.Migrations.TakeWorkItemsInAgain,
           "take_work_items_in_again"}
-  @listing {20_261_017_190_500, Apiary.Repo.Migrations.KeepWhenAConnectionSListingCompleted,
+  @listing {20_261_017_145_000, Apiary.Repo.Migrations.KeepWhenAConnectionSListingCompleted,
             "keep_when_a_connection_s_listing_completed"}
-  @listed {20_261_017_191_000, Apiary.Repo.Migrations.KeepWhenAnItemWasLastListed,
+  @listed {20_261_017_150_000, Apiary.Repo.Migrations.KeepWhenAnItemWasLastListed,
            "keep_when_an_item_was_last_listed"}
-  @left_out {20_261_017_191_500, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
+  @left_out {20_261_017_151_000, Apiary.Repo.Migrations.KeepWhenACompleteSetLeftACommentOut,
              "keep_when_a_complete_set_left_a_comment_out"}
 
-  @environment_ref {20_261_017_200_000, Apiary.Repo.Migrations.KeepACollectionSEnvironmentRef,
+  @environment_ref {20_261_017_154_000, Apiary.Repo.Migrations.KeepACollectionSEnvironmentRef,
                     "keep_a_collection_s_environment_ref"}
-  @environments {20_261_017_200_100, Apiary.Repo.Migrations.KeepEnvironments, "keep_environments"}
-  @prebuilds {20_261_017_200_200, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
+  @environments {20_261_017_155_000, Apiary.Repo.Migrations.KeepEnvironments, "keep_environments"}
+  @prebuilds {20_261_017_160_000, Apiary.Repo.Migrations.QueuePrebuilds, "queue_prebuilds"}
 
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)
   @checks ~w(access_keys_place_check access_key_enrolment_codes_place_check

@@ -9,6 +9,14 @@ defmodule ApiaryWeb.AdapterComponents do
   # `ApiaryWeb.AdapterLive.AccessKey` (Access key), so both draw the same header and tabs
   # from here.
   #
+  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) says so in place of
+  # who added it.
+  #
+  # Set up (`setup_form/1`) starts an adapter's set-up at the system it reads from, a POST
+  # to `ApiaryWeb.AdapterSetupController`; a page shows it only while the adapter
+  # declares where to be set up (`setup_url`), holds a key in use, and, when it is
+  # installed with Qory Apiary, is still listed (`settable?/3`).
+  #
   # An adapter's state is "No key yet" while it holds no active key, with the dot of a
   # state that needs someone. Once it holds one, it is a node's: when it was last seen,
   # the latest use of one of its keys (`Apiary.Adapters.last_seen/2`), or "Never seen"
@@ -30,7 +38,7 @@ defmodule ApiaryWeb.AdapterComponents do
   @doc false
   # The paths of the pages of Instance settings › Adapters: the list, and the adapter's
   # (by its public id) Overview, Access key tab, command page, Settings tab, Rename and
-  # Remove.
+  # Remove; and the path Set up posts to (`setup`).
   @spec paths(Node.t() | String.t()) :: %{atom => String.t()}
   def paths(%Node{public_id: public_id}), do: paths(public_id)
 
@@ -40,12 +48,50 @@ defmodule ApiaryWeb.AdapterComponents do
     %{
       list: ~p"/instance/adapters",
       overview: overview,
+      setup: overview <> "/setup",
       keys: overview <> "/keys",
       new_code: overview <> "/keys/new-code",
       settings: overview <> "/settings",
       rename: overview <> "/settings/rename",
       remove: overview <> "/settings/remove"
     }
+  end
+
+  @doc false
+  # Whether Set up shows for `adapter`: while it declares where to be set up
+  # (`setup_url`, which it declares only while it is not set up) and holds a key in use
+  # (`connected`, `Apiary.AccessKeys.active_key?/1`), as `Apiary.Adapters.setup/2` asks;
+  # and, for an adapter installed with Qory Apiary, while its name is still listed
+  # (`listed`, `Apiary.Adapters.listed?/1`): once it is off the list, the adapter is
+  # turned off there, and Set up would take the instance admin to no adapter.
+  @spec settable?(Node.t(), boolean, boolean) :: boolean
+  def settable?(%Node{setup_url: url, installed_as: installed_as}, connected, listed),
+    do: is_binary(url) and connected == true and (is_nil(installed_as) or listed == true)
+
+  attr :id, :string, required: true
+  attr :adapter, Node, required: true
+  attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
+
+  @doc false
+  # Set up for `adapter`: a form that posts to its set-up's path, `paths/1`'s `setup`,
+  # with the session's CSRF token, and the instance admin is sent on to the adapter
+  # (`ApiaryWeb.AdapterSetupController`).
+  def setup_form(assigns) do
+    ~H"""
+    <.form
+      for={to_form(%{}, as: :setup)}
+      id={@id}
+      action={paths(@adapter).setup}
+      method="post"
+      novalidate
+      class="contents"
+    >
+      <input :if={@back} type="hidden" name="back" value={@back} />
+      <.button id={"#{@id}-button"} type="submit" size="xs">
+        <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Set up")}
+      </.button>
+    </.form>
+    """
   end
 
   @doc false
@@ -66,11 +112,15 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :adapter, Node, required: true, doc: "the adapter, with the account that added it"
 
   @doc false
-  # The line under an adapter's name: who added it and when, then its public id.
+  # The line under an adapter's name: who added it and when, or, for an adapter installed
+  # with Qory Apiary, that it was and when; then its public id.
   def adapter_meta(assigns) do
     ~H"""
     <span id="adapter-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <span id="adapter-added">
+      <span :if={@adapter.installed_as} id="adapter-added">
+        {gettext("Installed with Qory Apiary, %{date}", date: Format.date(@adapter.inserted_at))}
+      </span>
+      <span :if={!@adapter.installed_as} id="adapter-added">
         {gettext("Added by %{person}, %{date}",
           person: People.email(@adapter.created_by) || People.former_member(),
           date: Format.date(@adapter.inserted_at)

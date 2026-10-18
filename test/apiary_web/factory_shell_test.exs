@@ -4,8 +4,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
-  # Adapters; and the Activity filter's
-  # words for the work item comments, the handover, the release and the prebuilt.
+  # Adapters; and the Activity filter's words for the work item comments, the handover,
+  # the release, the prebuilt, an adapter installed and a set-up started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -35,7 +35,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.AdapterRedirectController,
-    ApiaryWeb.AdapterInstallController
+    ApiaryWeb.AdapterInstallController,
+    ApiaryWeb.AdapterSetupController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -174,7 +175,9 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/keys/codes/x1/revoke"},
                  {:get, managed <> "/settings"},
                  {:get, managed <> "/settings/rename"},
-                 {:get, managed <> "/settings/remove"}
+                 {:get, managed <> "/settings/remove"},
+                 # Set up, which starts an adapter's set-up at the system it reads from.
+                 {:post, managed <> "/setup"}
                ] ++
                  for(
                    rest <-
@@ -366,7 +369,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers by their words a person's work item actions, the assigning of repositories, the Backlog switch, the handover, the release, the prebuilt and what runs also read, and no other",
+    test "the Activity filter offers the actions on work items, the assigning, the Backlog switch, the handover, the release, the prebuilt, also read, an adapter installed and a set-up started by their words, and no other",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -386,6 +389,9 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"target.set_further_repositories", "Also read"} in options
 
+      assert {"adapter.install", "Adapter installed"} in options
+      assert {"adapter.setup", "Adapter set-up started"} in options
+
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
@@ -402,7 +408,9 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"dispatch.handover",
             :"dispatch.release",
             :"dispatch.prebuilt",
-            :"target.set_further_repositories"
+            :"target.set_further_repositories",
+            :"adapter.install",
+            :"adapter.setup"
           ],
           do: refute(action in offered, "#{action}")
     end

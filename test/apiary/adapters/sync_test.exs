@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.SyncTest do
   # What an adapter declares as it starts, and how often it pulls: `declare/2` under the
-  # adapter's key, `sync_settings/2` and `update_sync_interval/3` for an instance admin,
-  # each change in the instance's trail and, for the interval, in the adapter's change
-  # feed; and when the adapter was last seen (`last_seen/2`).
+  # adapter's key, its setup_url among what it stores, `sync_settings/2` and
+  # `update_sync_interval/3` for an instance admin, each change in the instance's trail
+  # and, for the interval, in the adapter's change feed; and when the adapter was last
+  # seen (`last_seen/2`).
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -100,6 +101,68 @@ defmodule Apiary.Adapters.SyncTest do
       assert second.before == %{"connect_url" => "https://tracker-adapter.acme.example/connect"}
       assert second.after == %{"connect_url" => "https://b.example/c"}
       assert feed(adapter) == [{1, "sync", %{"interval" => nil}}]
+    end
+
+    test "stores the setup_url declared; a declaration without one clears it, each change in the trail",
+         %{adapter: adapter, key_scope: key_scope} do
+      url = "https://tracker-adapter.acme.example/setup?site=main"
+
+      assert {:ok, %Node{setup_url: ^url}} =
+               Adapters.declare(key_scope, Map.put(declaration(), :setup_url, url))
+
+      assert reload(adapter).setup_url == url
+      assert [first] = entries(:"adapter.declare")
+      assert first.after["setup_url"] == url
+
+      # Set up at its source, the adapter declares no setup_url: it is cleared.
+      assert {:ok, %Node{setup_url: nil}} =
+               Adapters.declare(key_scope, Map.put(declaration(), :setup_url, nil))
+
+      assert reload(adapter).setup_url == nil
+      assert [_, second] = entries(:"adapter.declare")
+      assert second.before == %{"setup_url" => url}
+      assert second.after == %{"setup_url" => nil}
+
+      # A declaration with no setup_url member at all clears it too.
+      assert {:ok, _} = Adapters.declare(key_scope, Map.put(declaration(), :setup_url, url))
+      assert reload(adapter).setup_url == url
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert reload(adapter).setup_url == nil
+      assert length(entries(:"adapter.declare")) == 4
+    end
+
+    test "the database holds a setup_url to an https address with no fragment, on adapters alone",
+         %{scope: scope, adapter: adapter} do
+      at = from(n in Node, where: n.id == ^adapter.id)
+
+      for url <- [
+            "https://tracker.example.com",
+            "https://tracker.example.com:8443/setup?site=main",
+            "https://tracker.example.com/" <> String.duplicate("a", 2048 - 28)
+          ] do
+        assert {1, _} = Repo.update_all(at, set: [setup_url: url])
+      end
+
+      for url <- [
+            "https://tracker.example.com/setup#start",
+            "https://tracker.example.com#",
+            "http://tracker.example.com/setup",
+            "https://user@tracker.example.com/setup",
+            "https://tracker.example.com/se tup",
+            "https://tracker.example.com/" <> String.duplicate("a", 2048 - 27)
+          ] do
+        assert_raise Postgrex.Error, ~r/nodes_setup_url_check/, fn ->
+          Repo.update_all(at, set: [setup_url: url])
+        end
+      end
+
+      node = Apiary.NodesFixtures.node_fixture(scope)
+
+      assert_raise Postgrex.Error, ~r/nodes_setup_url_check/, fn ->
+        Repo.update_all(from(n in Node, where: n.id == ^node.id),
+          set: [setup_url: "https://tracker.example.com/setup"]
+        )
+      end
     end
 
     test "stores the source role's words and items at each start, the latest start's alone",
@@ -237,7 +300,10 @@ defmodule Apiary.Adapters.SyncTest do
             {%{sync_minimum_interval: 59}, :sync_minimum_interval},
             {%{sync_minimum_interval: 3601}, :sync_minimum_interval},
             {%{sync_sends_changes: nil}, :sync_sends_changes},
-            {%{connect_url: "http://a.example/c"}, :connect_url}
+            {%{connect_url: "http://a.example/c"}, :connect_url},
+            {%{setup_url: "http://a.example/setup"}, :setup_url},
+            {%{setup_url: "https://a.example/setup#start"}, :setup_url},
+            {%{setup_url: "https://a.example/" <> String.duplicate("a", 2048)}, :setup_url}
           ] do
         changeset =
           Node.declaration_changeset(

@@ -429,6 +429,10 @@ defmodule ApiaryWeb.Routes do
           get "/instance", InstanceController, :show
           # Instance › Mail's test link, which turns mail on for the admin who saved it.
           get "/instance/mail/confirm/:token", InstanceMailController, :turn_on
+          # Set up, with the `factory` feature: an instance admin starts an adapter's
+          # set-up, by its public id (`na_…`), and is sent on to its `setup_url`. A POST,
+          # with the session's CSRF token.
+          post "/instance/adapters/:adapter_id/setup", AdapterSetupController, :create
 
           live_session :instance,
             on_mount: [

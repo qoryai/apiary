@@ -20,8 +20,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # pool (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at` is when it took that
   # `environment_ref`: when it was queued, and again whenever the ref changes while it
   # waits, or as it waits again with its environment record's `queued_ref`
-  # (`Apiary.Dispatches.Slots`); `queued_at` stays as it was, so the ref's time is this. Every other run is held for no pool and
-  # has none of the three (`20261017200200_queue_prebuilds`).
+  # (`Apiary.Dispatches.Slots`); `queued_at` stays as it was, so the ref's time is this.
+  # Every other run is held for no pool and has none of the three
+  # (`20261017160000_queue_prebuilds`).
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`

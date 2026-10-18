@@ -1,8 +1,8 @@
 defmodule Apiary.AdaptersWithoutFactoryTest do
-  # An instance without the feature adapters belong to: no adapter is made or changed,
-  # none of their keys or codes is made, enrolled, revoked or cancelled, even by an instance
-  # admin. The adapters there already stay as they are. Not async: the features are the
-  # whole node's.
+  # An instance without the feature adapters belong to: no adapter is made, changed or set
+  # up, none of their keys or codes is made, enrolled, revoked or cancelled, even by an
+  # instance admin. The adapters there already stay as they are. Not async: the features
+  # are the whole node's.
   use Apiary.DataCase, async: false
 
   import Ecto.Query
@@ -94,6 +94,23 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     end
 
     assert Repo.get!(Node, adapter.id).deleted_at == nil
+  end
+
+  test "no adapter's set-up is started, even by an instance admin, and nothing is recorded",
+       %{scope: scope, admin: admin, connectable: %{adapter: adapter}} do
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+        set: [setup_url: "https://tracker.example.com/setup"]
+      )
+
+    for asker <- [admin, scope] do
+      assert Adapters.setup(asker, adapter) == {:error, :not_found}
+    end
+
+    assert Repo.aggregate(
+             from(e in Apiary.Audit.Entry, where: e.action == "adapter.setup"),
+             :count
+           ) == 0
   end
 
   test "when an adapter was last seen is read by nobody, even an instance admin",

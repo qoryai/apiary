@@ -417,9 +417,10 @@ defmodule ApiaryWeb.RefusalsRows do
 
   # Reads: a page asks them on mount and for what it shows, and changes nothing; their
   # refusals are the Access hook's (`test/apiary_web/access_test.exs`). The instance's own
-  # jobs: no page offers them. The server contract: an access key's, at a signed request,
-  # which the contract's tests refuse (`test/apiary_web/contract/`), and a node pool's
-  # (`test/apiary/pool_key_role_test.exs`). Taken on the strength
+  # jobs, the installer's pass among them: no page offers them. The server contract: an
+  # access key's, at a signed request, which the contract's tests refuse
+  # (`test/apiary_web/contract/`), and a node pool's (`test/apiary/pool_key_role_test.exs`).
+  # Taken on the strength
   # of an invitation's token, which no role is: nobody is refused it by their level. The
   # release commands: run on the instance's host by whoever controls it, never offered by
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
@@ -433,7 +434,9 @@ defmodule ApiaryWeb.RefusalsRows do
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
-  # `test/apiary_web/live/instance_live/mail_test.exs`).
+  # `test/apiary_web/live/instance_live/mail_test.exs`). Starting an adapter's set-up is a
+  # controller's POST too, not a page's event: its tests refuse it to anyone but an
+  # instance admin (`test/apiary_web/controllers/adapter_setup_controller_test.exs`).
   @impl true
   def exempt do
     %{
@@ -448,7 +451,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.read",
         :"work_item.read"
       ],
-      jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
+      jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune", :"adapter.install"],
       contract: [
         :"run.post_events",
         :"run_configuration.fetch",
@@ -476,6 +479,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.set_interval",
         :"adapter.delete",
         :"adapter.connect",
+        :"adapter.setup",
         :"collection.assign",
         :"work_item.take_in",
         :"work_item.undo",

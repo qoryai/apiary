@@ -14,7 +14,7 @@ defmodule Apiary.Adapters.Connection do
   # ahead (`Apiary.Adapters.Connections.start/3`). `listed_at` is when the adapter's first
   # listing that names it was accepted, and `listing_completed_at` when a listing of it
   # last became complete (`Apiary.Adapters.Collections.post_listing/2`), from
-  # `20261017190500_keep_when_a_connection_s_listing_completed`. `pass_nonce` is the 16
+  # `20261017145000_keep_when_a_connection_s_listing_completed`. `pass_nonce` is the 16
   # bytes of the nonce of the latest connect pass made for it, and `pass_nonce_used_at`
   # when a return under that nonce came back. `pass_expires_at` is when that latest pass expires, to the second, as
   # the pass says (`Apiary.Adapters.ConnectPass`), or `nil` for a connection made before
