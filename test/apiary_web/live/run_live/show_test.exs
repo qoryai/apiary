@@ -671,7 +671,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#e-11 .q-well", "response")
       assert has_element?(lv, "#e-11 .q-well .q-key", "\"file_path\"")
       refute has_element?(lv, "#e-11 details[open]")
-      # the end of a call is not an item of its own
+      # the end of a call is not a separate item
       refute has_element?(lv, "#e-12")
 
       assert has_element?(lv, "#e-25 summary .q-s", "CheckoutForm in /work/shop/src")
@@ -1736,7 +1736,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         handler,
         [:apiary, :repo, :query],
         fn _event, _measurements, metadata, _config ->
-          # The sidebar's count of alive runs comes on a timer of its own, in the page's
+          # The sidebar's count of alive runs comes on a separate timer, in the page's
           # process; it is tagged, and is not what this budget is about.
           if self() == page and not (metadata[:options][:sidebar] == true) do
             :counters.add(counter, 1, 1)
@@ -1866,7 +1866,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       %{run: run}
     end
 
-    test "the later connection is an item at its own sequence, and ?seq=5 is that item", %{
+    test "the later connection is an item at sequence 5, and ?seq=5 is that item", %{
       conn: conn,
       run: run,
       scope: scope
@@ -2135,7 +2135,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              )
 
       assert has_element?(lv, "#terminal [data-announce][aria-live='polite']")
-      # one tab stop: xterm's own input, which the hook names with its keys
+      # one tab stop: the input xterm makes, which the hook names with its keys
       refute has_element?(lv, "#terminal [data-screen][tabindex]")
 
       hook = File.read!(Path.expand("../../../../assets/js/hooks/terminal.js", __DIR__))
@@ -2281,7 +2281,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                ~s(#e-4-cx-5 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
              )
 
-      # The refused request is a denial of its own, never folded into the group, and names
+      # The refused request is a separate denial, never folded into the group, and names
       # the tool only as the one it did not reach.
       assert has_element?(lv, "#e-6-cx.q-cx-denied .q-dest", "files.tools.internal")
       refute has_element?(lv, "#e-6-cx .q-dest-tool")
@@ -2830,7 +2830,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          %{conn: conn, scope: scope} do
       # {exit, state, reason words, Exit row, the header's exit}
       for {exit, state, words, exit_row, header_exit} <- [
-            # time limit: Cancelled · time limit reached; Exit the program's own
+            # time limit: Cancelled · time limit reached; Exit is the program's signal
             {%{"state" => "cancelled", "reason" => "timeout", "signal" => "SIGTERM"}, "Cancelled",
              "time limit reached", "SIGTERM", nil},
             # an older Forager's time limit
@@ -2850,8 +2850,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "Cancelled", "stopped, no outcome given", "not recorded", nil},
             {%{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}, "Cancelled",
              "stopped, no outcome given", "not recorded", nil},
-            # stopped where it was started: Cancelled · interrupted; Exit the program's own,
-            # an exit 0 that is no success, its own 130 on a SIGINT, the session's signal
+            # stopped where it was started: Cancelled · interrupted; Exit is what the program exited with,
+            # an exit 0 that is no success, the program's 130 on a SIGINT, the session's signal
             {%{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 0}, "Cancelled",
              "interrupted", "0", nil},
             {%{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 130},
@@ -2868,7 +2868,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                "exit_code" => -1,
                "signal" => "SIGTERM"
              }, "Cancelled", "interrupted", "SIGTERM", nil},
-            # the starter's own outcome and reason
+            # the outcome and reason the starter gave
             {%{"state" => "succeeded", "reason" => "all_checks_passed", "exit_code" => 0},
              "Completed", "all checks passed", "0", nil},
             {%{"state" => "failed", "reason" => "checks_failed", "exit_code" => 0}, "Failed",
@@ -2898,7 +2898,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "events refused", "not recorded", nil},
             {%{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}, "Lost",
              "end not recorded", "not recorded", nil},
-            # the program's own exit, unchanged
+            # the program's exit, unchanged
             {%{"state" => "succeeded", "exit_code" => 0}, "Completed", nil, "0", nil},
             {%{"state" => "failed", "exit_code" => 1}, "Failed", nil, "1", "exit 1"},
             {%{"state" => "failed", "exit_code" => -1, "signal" => "SIGKILL"}, "Failed", nil,
@@ -3356,18 +3356,19 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "a result with nothing left to show says nothing of how the run ended", %{
+    test "a result with nothing left to show is marked where it says how the run ended", %{
       conn: conn,
       scope: scope
     } do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.result", %{"outcome" => "error", "result" => "\u202E\u200B"}},
+          {2, "session.result", %{"outcome" => "error", "result" => " \u00A0"}},
           {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
 
-      refute has_element?(open(conn, scope, run), "#run-why")
+      lv = open(conn, scope, run)
+      assert has_element?(lv, ~s(#run-why .q-run-why-t[title="\uFFFD"]), "\uFFFD")
     end
 
     test "a runtime other than Claude Code, in the sentence that says so: cleaned", %{
@@ -3385,7 +3386,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "code.q-rule", "\u202E")
     end
 
-    test "the target path: cleaned; one with nothing left to show is no target", %{
+    test "the target path: cleaned; one sent with nothing left to show is marked", %{
       conn: conn,
       scope: scope
     } do
@@ -3396,7 +3397,58 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute render(element(lv, "#run-target")) =~ "\u202E"
 
       run = run_fixture(scope, at.("\u202E\u200B"))
+      lv = open(conn, scope, run)
+      assert has_element?(lv, "#run-target .q-tname", "\uFFFD\uFFFD")
+      refute render(element(lv, "#run-target")) =~ "\u202E"
+
+      run = run_fixture(scope, %{target_system: nil, target_path: nil})
       refute has_element?(open(conn, scope, run), "#run-target")
+    end
+
+    test "a host, runtime, command and directory sent blank are marked; never sent, n/a", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        run_fixture(scope, %{
+          runtime: "\u200B",
+          runtime_version: nil,
+          host: " \u00A0",
+          command: "\u3000",
+          dir: "\u202E"
+        })
+
+      lv = open(conn, scope, run)
+
+      assert has_element?(lv, "#run-runtime > bdi", "\uFFFD")
+      assert has_element?(lv, "#run-host > bdi", "\uFFFD")
+
+      details = lv |> element("#run-details") |> render() |> LazyHTML.from_fragment()
+      cells = details |> LazyHTML.query("dd > bdi") |> Enum.map(&LazyHTML.text/1)
+      # The runtime, the host, the command and the directory.
+      assert Enum.count(cells, &(&1 == "\uFFFD")) == 4
+
+      none = run_fixture(scope, %{runtime: nil, host: nil, command: nil, dir: nil})
+      lv = open(conn, scope, none)
+      refute has_element?(lv, "#run-runtime")
+      refute has_element?(lv, "#run-host")
+      refute render(element(lv, "#run-details")) =~ "\uFFFD"
+    end
+
+    test "an ending whose words have nothing left to show is marked, never the item before",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.turn_failed", %{"error" => "the earlier words"}},
+          {3, "session.result", %{"outcome" => "error", "result" => "\u202E\u200B"}},
+          {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(conn, scope, run)
+      assert has_element?(lv, "#run-why .q-run-why-t", "\uFFFD")
+      refute has_element?(lv, "#run-why", "the earlier words")
+      assert has_element?(lv, ~s(#run-why .q-run-why-t[title="\uFFFD\uFFFD"]))
     end
   end
 end

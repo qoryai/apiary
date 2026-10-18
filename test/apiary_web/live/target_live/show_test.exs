@@ -187,7 +187,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute has_element?(view, "#nav-targets[aria-current=page]")
   end
 
-  test "a denied host is isolated, so a bidi override reorders nothing",
+  test "a denied host is cleaned and isolated, so nothing is reordered",
        %{conn: conn, scope: scope} do
     host = "evil\u202Elpmaxe.<script>"
 
@@ -198,12 +198,13 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     billing = Targets.get(scope, "github.example", "acme/billing")
     view = open(conn, TargetComponents.target_path(scope, billing))
 
-    assert has_element?(view, "#target-denied .q-tgt-dn-dest > bdi", host)
+    # The override is dropped (`Apiary.ExternalText.sent/1`), the rest isolated.
+    assert has_element?(view, "#target-denied .q-tgt-dn-dest > bdi", "evillpmaxe.<script>")
 
     assert render(view) =~
-             "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"text-faint\">:443"
+             "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"text-faint\">:443"
 
-    refute render(view) =~ "elpmaxe.<script>"
+    refute view |> element("#target-denied") |> render() =~ "\u202E"
   end
 
   test "a path no other target has: named by the path alone, and the lists are narrowed to it",
@@ -241,6 +242,36 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     # The sidebar is the workspace's, plain: nothing on a target's page carries it.
     assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")
     assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
+  end
+
+  test "the target's system, path, machines and runtimes: cleaned; a host sent blank is marked",
+       %{conn: conn, scope: scope} do
+    system = "git\u202E.example"
+    path = "acme/\u202Edocs\u200B"
+    started_run(scope, repo(system, path), host: "ci\u202E-07", runtime: "claude\u200B")
+    started_run(scope, repo(system, path), host: " \u00A0", ago: 120)
+    docs = Targets.get(scope, system, path)
+    view = open(conn, TargetComponents.target_path(scope, docs))
+
+    assert page_title(view) =~ "acme/docs"
+    about = view |> element("#target-about") |> render()
+    assert about =~ "git.example"
+    assert about =~ "acme/docs"
+    assert about =~ "ci-07"
+    assert about =~ "claude"
+    assert has_element?(view, "#target-about .q-tgt-pl-name > bdi", "\uFFFD")
+    refute about =~ ~r/[\x{202E}\x{200B}]/u
+    refute page_title(view) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "the Policy tab names the target cleaned in its title", %{conn: conn, scope: scope} do
+    started_run(scope, repo("git.example", "acme/\u202Ewiki\u200B"))
+    wiki = Targets.get(scope, "git.example", "acme/\u202Ewiki\u200B")
+    view = open(conn, TargetComponents.target_path(scope, wiki, ["policy"]))
+
+    assert page_title(view) =~ "Policy · acme/wiki"
+    refute page_title(view) =~ ~r/[\x{202E}\x{200B}]/u
   end
 
   @tag needs: :security

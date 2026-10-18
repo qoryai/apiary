@@ -57,11 +57,25 @@ defmodule ApiaryWeb.TargetComponents do
   the path is `shared` by another target of the workspace,
   `git.example/acme/shop`. A nil system writes the path alone. The exported policy file
   keeps the full name.
+
+  The system and the path are texts Forager sent: each is written as a page shows one
+  (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  nothing is left of it, while what decides whether the system is written is the path as
+  sent. The name is words to read, never a value to match or address a target by.
   """
   @spec target_label(String.t() | nil, String.t(), shared | nil) :: String.t()
   def target_label(system, path, shared) when is_binary(path) do
-    if with_system?(system, path, shared), do: "#{system}/#{path}", else: path
+    if with_system?(system, path, shared),
+      do: "#{shown_sent(system)}/#{shown_sent(path)}",
+      else: shown_sent(path)
   end
+
+  # A text Forager sent, as `target_label/3` and a run's row write it: as a page shows one,
+  # or marked where nothing is left of it, since it was sent; "" stays "", and nil nil.
+  defp shown_sent(text) when is_binary(text) and text != "",
+    do: Apiary.ExternalText.present(text) || Apiary.ExternalText.marked(text)
+
+  defp shown_sent(text), do: text
 
   @doc """
   with_system?/3 is the one test of a target's name (`target_label/3`,
@@ -198,10 +212,11 @@ defmodule ApiaryWeb.TargetComponents do
         </.link>
       </:col>
       <:col :let={run} label={gettext("Runtime")} kind="faint" from="md" class="whitespace-nowrap">
-        {Enum.join(Enum.reject([run.runtime, run.runtime_version], &is_nil/1), " ")}
+        <.external_text text={shown_sent(run.runtime)} />
+        <.external_text text={shown_sent(run.runtime_version)} />
       </:col>
       <:col :let={run} label={gettext("Host")} kind="faint" from="md" class="whitespace-nowrap">
-        <span class="q-mono">{run.host}</span>
+        <span class="q-mono"><.external_text text={shown_sent(run.host)} /></span>
       </:col>
       <:col :let={run} label={gettext("Started")} class="whitespace-nowrap">
         <.relative_time at={run.started_at || run.inserted_at} />

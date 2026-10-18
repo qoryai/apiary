@@ -841,6 +841,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         for {_label, host, runs} <- Enum.take(facet.options, @suggest_size),
             do: %{
               value: host,
+              label: shown(host),
               detail:
                 ngettext("%{number} run", "%{number} runs", runs, number: Format.number(runs))
             }
@@ -1490,10 +1491,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     |> Enum.count(&(&1.key != :started or Filters.any_range?(filters)))
   end
 
-  # A filter's value as a section and a token show it: a host or a target may be a text
-  # Forager sent, shown as one is (`Apiary.ExternalText.present/1`), or marked
-  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since the filter matches
-  # it as sent. The page's texts are unchanged by it.
+  # A filter's value as a section, a token and a suggested host show it: a host or a
+  # target may be a text Forager sent, shown as one is (`Apiary.ExternalText.present/1`),
+  # or marked (`Apiary.ExternalText.marked/1`) where nothing is left of it, since the
+  # filter matches it as sent, and a suggestion chooses it as sent. The page's texts are
+  # unchanged by it.
   defp shown(value) when is_binary(value) and value != "",
     do: Apiary.ExternalText.present(value) || Apiary.ExternalText.marked(value)
 
@@ -1642,7 +1644,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           assign(assigns,
             path: name,
             system: nil,
-            label: name,
+            label: shown_target_label(nil, name, true),
             shared_alone: false,
             page: nil,
             policy: nil,

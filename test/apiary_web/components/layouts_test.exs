@@ -1234,8 +1234,8 @@ defmodule ApiaryWeb.LayoutsTest do
       assert html =~ ~s(href="#{workspace_path(scope, "/targets/tg_0000000000000001")}")
       assert before?(html, "acme/shop", "acme/api")
       # The system shows where the same path is in another system, and nowhere else.
-      assert html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/shop}
-      refute html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/api}
+      assert html =~ ~r{q-nav-pin-sys"><bdi[^>]*>github.example</bdi>/</span><bdi[^>]*>acme/shop}
+      refute html =~ ~r{q-nav-pin-sys"><bdi[^>]*>github.example</bdi>/</span><bdi[^>]*>acme/api}
 
       refute shell(scope, :runs, %{}) =~ "nav-group-pinned"
       # an organisation's page lists none

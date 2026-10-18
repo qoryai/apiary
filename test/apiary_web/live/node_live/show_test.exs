@@ -21,6 +21,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
   setup :register_and_log_in_user
 
+  # A fragment without its ids and the values its controls send, which keep what Forager
+  # sent as it was sent.
+  defp strip_ids(html), do: String.replace(html, ~r/ (id|phx-value-[a-z]+|href)="[^"]*"/, "")
+
   describe "Overview" do
     test "names the node, its kind and its maker, under three tabs", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
@@ -445,6 +449,21 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       {:ok, _} = Nodes.update_node(scope, pool, %{instance_limit: ""})
       send(lv.pid, :tick)
       assert has_element?(lv, "#node-state", "2 running")
+    end
+
+    test "a running instance's id and Forager's version: cleaned, in its row and its title",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners", instance_limit: 10)
+      node_run_fixture(pool, "i\u202E_9", %{forager_version: "0.7\u200B.0"})
+      node_run_fixture(pool, "\u200B")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_9'] > bdi", "i_9")
+      assert has_element?(lv, "#node-running tr", "0.7.0")
+      # An id sent with nothing left to show is marked.
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='\uFFFD'] > bdi", "\uFFFD")
+      refute lv |> element("#node-running") |> render() |> strip_ids() =~ ~r/[\x{202E}\x{200B}]/u
     end
 
     test "a pool whose instances were pruned says when its key was last used, not Never seen",

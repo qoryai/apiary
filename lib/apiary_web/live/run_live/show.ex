@@ -157,7 +157,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   class="q-run-target"
                 >
                   <.target_name
-                    path={shown_target_path(@run)}
+                    path={@run.target_path}
                     system={@target_shared && @run.target_system}
                   />
                 </.link>
@@ -165,13 +165,12 @@ defmodule ApiaryWeb.RunLive.Show do
                   :if={!target_link(@target_page) && shown_target_path(@run)}
                   id="run-target"
                 >
-                  <.target_name
-                    path={shown_target_path(@run)}
-                    system={@run.target_system}
-                  />
+                  <.target_name path={@run.target_path} system={@run.target_system} />
                 </span>
                 <span :if={@run.runtime} id="run-runtime">
-                  <.external_text text={join([@run.runtime, @run.runtime_version])} />
+                  <.external_text text={
+                    join([shown_sent(@run.runtime), shown_sent(@run.runtime_version)])
+                  } />
                 </span>
                 <span
                   :if={@run.host}
@@ -1570,10 +1569,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp target_link({_id, path}), do: path
 
-  # The run's target path as a text Forager sent is shown
-  # (`Apiary.ExternalText.present/1`): nil for one with nothing left to show, which is no
-  # target.
-  defp shown_target_path(run), do: Apiary.ExternalText.present(run.target_path)
+  # The run's target path as a text Forager sent is shown (`shown_sent/1`): marked where
+  # nothing is left of it, since it was sent; nil for a run with none.
+  defp shown_target_path(run), do: shown_sent(run.target_path)
 
   # A text Forager sent, as the page shows it (`Apiary.ExternalText.present/1`), or marked
   # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since it was sent; nil
@@ -1753,10 +1751,12 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp ending_of(%{kind: :tool, status: :failed} = item) do
+    tool = shown_sent(item.tool)
+
     text =
       if is_binary(item.summary) and item.summary != "",
-        do: gettext("%{tool} failed: %{summary}", tool: item.tool, summary: item.summary),
-        else: gettext("%{tool} failed", tool: item.tool)
+        do: gettext("%{tool} failed: %{summary}", tool: tool, summary: shown_sent(item.summary)),
+        else: gettext("%{tool} failed", tool: tool)
 
     ending(item, text)
   end
@@ -1764,22 +1764,21 @@ defmodule ApiaryWeb.RunLive.Show do
   defp ending_of(_item), do: nil
 
   # The item's words are texts the runtime sent, shown as one is
-  # (`Apiary.ExternalText.lines/1`), on one line: an item with nothing left to show says
-  # nothing, and the item before it is read.
+  # (`Apiary.ExternalText.lines/1`), on one line. Words with nothing left to show are
+  # marked (`Apiary.ExternalText.marked/1`), since the item sent them: the ending names
+  # this item, never the one before it.
   defp ending(item, text) do
-    case one_line(text) do
-      "" -> nil
-      line -> %{seq: item.seq, text: line}
-    end
+    line =
+      case text |> Apiary.ExternalText.lines() |> one_line() do
+        "" -> text |> Apiary.ExternalText.marked() |> one_line()
+        line -> line
+      end
+
+    %{seq: item.seq, text: line}
   end
 
-  defp one_line(text) do
-    text
-    |> Apiary.ExternalText.lines()
-    |> String.replace(~r/\s+/u, " ")
-    |> String.trim()
-    |> String.slice(0, 400)
-  end
+  defp one_line(text),
+    do: text |> String.replace(~r/\s+/u, " ") |> String.trim() |> String.slice(0, 400)
 
   defp assign_window_counts(socket) do
     %{index: index, win_first: first, win_last: last, run: run} = socket.assigns
@@ -2043,8 +2042,8 @@ defmodule ApiaryWeb.RunLive.Show do
     shared = socket.assigns.target_shared
     path = row.path || ""
     # The page holds the target's policy; the workspace's is read when a panel opens,
-    # since what a rule for the workspace would be is decided by the workspace's own
-    # paths.
+    # since what a rule for the workspace would be is decided by the paths of the
+    # workspace's policy.
     baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,

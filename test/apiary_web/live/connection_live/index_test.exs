@@ -587,12 +587,48 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view |> form("#connections-query", %{"q" => "evil"}) |> render_change()
       render_async(view, 2_000)
 
-      assert has_element?(view, "#connections-query-host-0 .q-suggest-v > bdi", host)
+      # The suggestion reads cleaned, isolated; what it chooses is the host as sent.
+      assert has_element?(
+               view,
+               "#connections-query-host-0 .q-suggest-v > bdi",
+               "evillpmaxe.<script>"
+             )
 
       assert render(view) =~
-               "<span class=\"q-suggest-v\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi></span>"
+               "<span class=\"q-suggest-v\"><bdi>evillpmaxe.&lt;script&gt;</bdi></span>"
+
+      assert view
+             |> element("#connections-query-host-0")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.attribute("data-value") == [host]
 
       refute render(view) =~ "elpmaxe.<script>"
+    end
+
+    test "a suggested host with nothing left to show reads marked, and chooses the host as sent",
+         %{conn: conn, scope: scope} do
+      host = "evil\u200B"
+      blank = "\u200B\u2066"
+      started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
+      started_run(scope, shop(), egress: [%{"host" => blank, "rule" => ""}])
+
+      view = open(conn, scope)
+      view |> form("#connections-query", %{"q" => "\u200B"}) |> render_change()
+      render_async(view, 2_000)
+
+      options =
+        view
+        |> element("#connections-query-hosts")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[role=option]")
+
+      labels = options |> LazyHTML.query(".q-suggest-v > bdi") |> Enum.map(&LazyHTML.text/1)
+      values = LazyHTML.attribute(options, "data-value")
+
+      assert Enum.zip(values, labels) |> Enum.sort() ==
+               Enum.sort([{host, "evil"}, {blank, "\uFFFD\uFFFD"}])
     end
 
     test "a host's option, a token, a run's target and the narrowed names as a page shows them",
@@ -616,8 +652,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       id = dst(host)
       view |> element("##{id}-toggle") |> render_click()
       assert text(view, "##{id}-run-#{run.public_id}") =~ "acme/shop"
-      # A path with nothing left to show is no target.
-      assert text(view, "##{id}-run-#{blank.public_id}") =~ "Unassigned"
+      # A path sent with nothing left to show is marked, never Unassigned.
+      blank_hit = text(view, "##{id}-run-#{blank.public_id}")
+      assert blank_hit =~ "\uFFFD"
+      refute blank_hit =~ "Unassigned"
 
       narrowed =
         open(
@@ -1109,6 +1147,22 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view |> form("#connections-query", %{"q" => "repo:github.com/acme/shop"}) |> render_submit()
       assert_patch(view, workspace_path(scope, "/network?target=#{shop}"))
+    end
+
+    test "a typed name that names no target is named cleaned in the Runs link's label", %{
+      conn: conn,
+      scope: scope
+    } do
+      typed = "acme/\u202Enowhere\u200B"
+
+      view =
+        open(
+          conn,
+          workspace_path(scope, "/network?" <> URI.encode_query(%{"q" => "target:#{typed}"}))
+        )
+
+      assert attribute(view, "#connections-target-runs", "aria-label") ==
+               "Runs, narrowed to acme/nowhere"
     end
 
     test "a target chosen in the Filter menu takes the place of a typed name, and the free text stays",

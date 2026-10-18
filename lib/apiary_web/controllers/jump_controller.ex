@@ -220,8 +220,8 @@ defmodule ApiaryWeb.JumpController do
       if Access.can?(scope, :"run.read", workspace) do
         for target <- Runs.search_targets(scope, text, @per_group) do
           item(
-            target.path,
-            target.system,
+            Apiary.ExternalText.sent(target.path),
+            Apiary.ExternalText.sent(target.system),
             ApiaryWeb.TargetComponents.target_path(scope, target),
             "hero-folder"
           )
@@ -255,10 +255,10 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  # Where a run ran, else its state's word: a path with nothing left to show, or only
-  # whitespace, is no path (`Apiary.ExternalText.present/1`).
+  # Where a run ran, else its state's word: a path sent with nothing left to show is
+  # marked, since it was sent (`Apiary.ExternalText.sent/1`).
   defp run_detail(run) do
-    case Apiary.ExternalText.present(run.target_path) do
+    case Apiary.ExternalText.sent(run.target_path) do
       nil -> ApiaryWeb.RunComponents.state_label(run.state)
       path -> path
     end

@@ -2074,12 +2074,14 @@ defmodule ApiaryWeb.Layouts do
             navigate={pin.href}
             aria-current={pin.id == @target && "page"}
             class="q-nav-item"
-            title={"#{pin.system}/#{pin.path}"}
+            title={ApiaryWeb.TargetComponents.target_label(pin.system, pin.path, true)}
             phx-mounted={JS.ignore_attributes(["title"])}
           >
             <.icon name="hero-folder" class="q-nav-icon size-[18px]" />
             <span class="q-nav-text q-nav-pin">
-              <span :if={pin.shared} class="q-nav-pin-sys">{pin.system}/</span>{pin.path}
+              <span :if={pin.shared} class="q-nav-pin-sys"><.external_text text={pin.system} />/</span><.external_text text={
+                pin.path
+              } />
             </span>
           </.link>
         </nav>

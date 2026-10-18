@@ -242,7 +242,7 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "/acme/shop/nodes"
   end
 
-  test "the line of what a run receives, in the page's own words" do
+  test "the line of what a run receives, in the words the page gives" do
     assigns = %{}
 
     html =

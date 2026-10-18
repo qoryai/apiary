@@ -1299,8 +1299,8 @@ server, with an allowlist of tags, attributes and URL schemes, after every other
 Links are `https` only, and any other link is its words. An image is never shown: it
 becomes a link to it, and raw HTML is not rendered. Task boxes and tables get words for a
 screen reader. Show as written shows the text as written, with invisible characters
-dropped and control characters shown as U+FFFD, interpolated, and plain text is only ever
-interpolated.
+dropped and control characters shown as U+FFFD, except tabs and line breaks, which it
+keeps, interpolated, and plain text is only ever interpolated.
 
 ### Storybook
 

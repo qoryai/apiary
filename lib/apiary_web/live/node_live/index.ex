@@ -711,11 +711,18 @@ defmodule ApiaryWeb.NodeLive.Index do
               <% {:instance, _node, instance} -> %>
                 <span class="q-nm pl-5 font-normal">
                   <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
-                  <span class="q-cut" title={instance.name || instance.instance_id}>
-                    {instance.name || instance.instance_id}
+                  <span
+                    class="q-cut"
+                    title={instance.name || Apiary.ExternalText.sent(instance.instance_id)}
+                  >
+                    <bdi>{instance.name || Apiary.ExternalText.sent(instance.instance_id)}</bdi>
                   </span>
-                  <span :if={instance.name} class="q-side q-mono" title={instance.instance_id}>
-                    {instance.instance_id}
+                  <span
+                    :if={instance.name}
+                    class="q-side q-mono"
+                    title={Apiary.ExternalText.sent(instance.instance_id)}
+                  >
+                    <.external_text text={instance.instance_id} />
                   </span>
                 </span>
               <% {:more, node, more} -> %>
@@ -769,9 +776,9 @@ defmodule ApiaryWeb.NodeLive.Index do
           <:col :let={row} label={gettext("Forager")} kind="faint" from="md">
             <%= case row do %>
               <% {:node, node} -> %>
-                {forager_version(@activity[node.id])}
+                <.external_text text={forager_version(@activity[node.id])} />
               <% {:instance, _node, instance} -> %>
-                {instance.forager_version}
+                <.external_text text={instance.forager_version} />
               <% _more -> %>
             <% end %>
           </:col>

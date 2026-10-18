@@ -1046,7 +1046,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
               else: "pending"
           } />
           <span class="q-dest">
-            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
+            <.external_text text={destination.host} /><span :if={destination.path} class="text-muted"><.external_text text={
+              destination.path
+            } /></span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,

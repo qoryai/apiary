@@ -191,6 +191,207 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     )
   end
 
+  describe "the timeline's items, texts the run's report sent" do
+    test "a tool call: its tool and its summary cleaned, isolated in <bdi>" do
+      html =
+        item_html("dev.qory.session.tool_started", %{
+          "tool" => dirty("Bash"),
+          "input" => %{"command" => dirty("ls")}
+        })
+
+      assert texts(html, ".q-k-mono > bdi") == [clean("Bash")]
+      assert texts(html, ".q-s-mono > bdi") == [clean("ls")]
+      refute_dirty(html |> query("summary") |> LazyHTML.to_html())
+    end
+
+    test "a tool call's pattern and path: each cleaned; one sent blank is marked" do
+      html =
+        item_html("dev.qory.session.tool_started", %{
+          "tool" => "Grep",
+          "input" => %{"pattern" => dirty("TODO"), "path" => " "}
+        })
+
+      assert texts(html, ".q-s-mono > bdi") == [clean("TODO"), @shown_control]
+      assert texts(html, ".q-k-mono > bdi") == ["Grep"]
+
+      blank = item_html("dev.qory.session.tool_started", %{"tool" => @zwsp})
+      assert texts(blank, ".q-k-mono > bdi") == [@shown_control]
+    end
+
+    test "a session started: its model, source and directory cleaned" do
+      html =
+        item_html("dev.qory.session.started", %{
+          "model" => dirty("opus"),
+          "source" => dirty("startup"),
+          "cwd" => dirty("/work")
+        })
+
+      assert texts(html, ".q-s bdi") == [clean("opus"), clean("startup"), clean("/work")]
+      refute_dirty(html)
+
+      blank = item_html("dev.qory.session.started", %{"model" => " ", "cwd" => @zwsp})
+      assert texts(blank, ".q-s bdi") == [@shown_control, @shown_control]
+    end
+
+    test "what a prompt said: cleaned, its line breaks kept; one sent blank is marked" do
+      html =
+        item_html("dev.qory.session.prompt_submitted", %{
+          "prompt" => "Fix the build\n\t" <> dirty("now")
+        })
+
+      assert texts(html, ".q-say") == ["Fix the build\n\t" <> clean("now")]
+      refute_dirty(html)
+
+      for blank <- @blanks do
+        html = item_html("dev.qory.session.prompt_submitted", %{"prompt" => blank})
+        assert html |> texts(".q-say") |> Enum.map(&String.trim/1) |> Enum.all?(&(&1 != ""))
+        assert LazyHTML.text(query(html, ".q-say")) =~ @shown_control
+      end
+    end
+
+    test "a notification, a failed turn and a result's outcome: cleaned" do
+      html =
+        item_html("dev.qory.session.notification", %{
+          "kind" => dirty("idle"),
+          "message" => dirty("waiting")
+        })
+
+      assert texts(html, ".q-s") |> Enum.map(&String.trim/1) == [
+               clean("idle") <> " · " <> clean("waiting")
+             ]
+
+      html =
+        item_html("dev.qory.session.turn_failed", %{
+          "error" => dirty("rate_limit"),
+          "message" => " "
+        })
+
+      assert texts(html, ".q-s") |> Enum.map(&String.trim/1) == [
+               clean("rate_limit") <> " · " <> @shown_control
+             ]
+
+      html = item_html("dev.qory.session.result", %{"outcome" => dirty("error")})
+      assert LazyHTML.text(query(html, ".q-s")) =~ clean("error")
+
+      for html <- [html] do
+        refute_dirty(html)
+      end
+    end
+
+    test "a subagent's id: cleaned, isolated in <bdi>" do
+      html =
+        item_html("dev.qory.session.subagent_started", %{
+          "agent_id" => dirty("agent-1"),
+          "agent_type" => "Explore"
+        })
+
+      assert texts(html, ".q-s > bdi") == [clean("agent-1")]
+      refute_dirty(html)
+    end
+
+    test "a run started: its runtime, version, host and wall cleaned; a host sent blank marked" do
+      html =
+        item_html("dev.qory.run.started", %{
+          "runtime" => dirty("claude"),
+          "runtime_version" => dirty("2.1"),
+          "host" => dirty("dev-box"),
+          "wall" => dirty("docker")
+        })
+
+      said = LazyHTML.text(query(html, ".q-s"))
+
+      for part <- ["claude", "2.1", "dev-box", "docker"],
+          do: assert(said =~ clean(part), part)
+
+      refute_dirty(html)
+
+      blank = item_html("dev.qory.run.started", %{"runtime" => "claude", "host" => @zwsp})
+      assert LazyHTML.text(query(blank, ".q-s")) =~ "on #{@shown_control}"
+      refute LazyHTML.text(query(blank, ".q-s")) =~ "n/a"
+    end
+
+    test "a policy applied: its mode, tools, argument, hosts and terminated hosts cleaned" do
+      html =
+        item_html("dev.qory.run.policy_applied", %{
+          "mode" => dirty("enforce"),
+          "allow" => ["api.example"],
+          "deny" => [],
+          "source" => "config",
+          "tools" => [
+            %{
+              "name" => dirty("files"),
+              "argument" => dirty("acme"),
+              "hosts" => [dirty("f.example")]
+            }
+          ],
+          "terminated" => [dirty("t.example")]
+        })
+
+      assert LazyHTML.text(query(html, ".q-s")) =~ clean("enforce")
+      assert texts(html, "#e-1-tools .font-mono > bdi") == [clean("files")]
+      assert texts(html, "#e-1-tools code.q-rule > bdi") == [clean("acme")]
+      assert attributes(html, "#e-1-tools code.q-rule", "title") == [clean("acme")]
+      assert LazyHTML.text(query(html, "#e-1-tools")) =~ "(#{clean("f.example")})"
+      assert LazyHTML.text(query(html, ".q-s")) =~ clean("t.example")
+      refute_dirty(html)
+    end
+
+    test "a tool's output: cleaned, its line breaks kept; one sent blank is marked" do
+      html = tool_html(%{"response" => "ok\n\t" <> dirty("done")})
+
+      assert texts(html, ".q-well pre") == ["ok\n\t" <> clean("done")]
+      refute_dirty(html)
+
+      for blank <- [" ", "  \n", @zwsp, @rlo <> @zwsp] do
+        for response <- [blank, %{"stdout" => blank}] do
+          html = tool_html(%{"response" => response})
+
+          assert [shown] = texts(html, ".q-well pre")
+          assert shown =~ @shown_control
+          refute String.trim(shown) == ""
+        end
+      end
+    end
+  end
+
+  # A tool call and its end, as the timeline folds them into one item.
+  defp tool_html(finished) do
+    events = [
+      %{
+        sequence: 1,
+        type: "dev.qory.session.tool_started",
+        time: @t0,
+        data: %{"tool" => "Bash", "tool_use_id" => "a"}
+      },
+      %{
+        sequence: 2,
+        type: "dev.qory.session.tool_finished",
+        time: @t0,
+        data: Map.merge(%{"tool" => "Bash", "tool_use_id" => "a"}, finished)
+      }
+    ]
+
+    light =
+      for event <- events,
+          do: %{
+            sequence: event.sequence,
+            type: event.type,
+            time: event.time,
+            tool_use_id: "a",
+            tool: "Bash"
+          }
+
+    index = Timeline.index(light)
+    [item] = Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1)}))
+
+    render_component(&RunPageComponents.timeline_item/1,
+      id: "e-1",
+      item: item,
+      started_at: @t0,
+      seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+    )
+  end
+
   describe "the timeline's group of connections" do
     # Two allowed connections to `host`, calls to `tool` where one is given, which the
     # timeline folds into one group.
@@ -222,9 +423,9 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       refute_dirty(html |> query(".q-cx-sum") |> LazyHTML.to_html())
     end
 
-    test "says n/a in its summary for a blank host, as for none" do
-      for blank <- @blanks do
-        assert texts(group_html(blank), ".q-cx-sum .q-dest > bdi") == ["n/a"]
+    test "marks a host sent blank in its summary, never n/a" do
+      for {blank, marked} <- [{" ", "\uFFFD"}, {@zwsp, "\uFFFD"}, {@rlo <> @zwsp, "\uFFFD\uFFFD"}] do
+        assert texts(group_html(blank), ".q-cx-sum .q-dest > bdi") == [marked]
       end
     end
 
