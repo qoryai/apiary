@@ -2098,7 +2098,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(LazyHTML.to_html(doc)) =~ "Host allowed, no path rule matches."
     end
 
-    test "a tool and a rule: cleaned; one with nothing left to show is none" do
+    test "a tool and a rule: cleaned; the case is what was sent, whatever is left" do
       event = %{
         host: "localhost",
         port: 8080,
@@ -2126,9 +2126,34 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert texts(doc, ".q-tool-name") == ["hook-relay\uFFFD"]
       assert text(html) =~ "Handed to hook-relay\uFFFD by rule localhost\uFFFD"
 
-      html = inline.(%{event | tool: "\u202E\u200B", rule: " \u200B"})
-      refute html =~ "q-dest-tool"
-      assert text(html) =~ "No rule matches."
+      # Nothing left to show of the tool or the rule: still a call to a tool, by a rule.
+      html = inline.(%{event | tool: "\u202E\u200B", rule: "\u200B"})
+      assert html =~ "q-dest-tool"
+      assert text(html) =~ "Handed to"
+      refute text(html) =~ "No rule matches."
+      refute html =~ "\u202E"
+    end
+
+    test "a denied path with nothing left to show: no path rule, never the host's" do
+      for variant <- ~w(table workspace) do
+        doc =
+          cx(
+            %{
+              path: "\u202E\u200B",
+              request_method: "GET",
+              last_decision: "denied",
+              last_rule: "api.example",
+              last_path_rule: "",
+              allowed: 0,
+              denied: 1
+            },
+            variant
+          )
+
+        words = text(LazyHTML.to_html(doc))
+        assert words =~ "Host allowed, no path rule matches.", variant
+        refute words =~ "Rule api.example", variant
+      end
     end
 
     test "a host the wall refused for its form: as sent, inside a <bdi> where it shows" do

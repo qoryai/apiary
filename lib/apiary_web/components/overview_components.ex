@@ -412,7 +412,10 @@ defmodule ApiaryWeb.OverviewComponents do
   # (`Apiary.Policy.denied_destinations/2`).
   defp attention_subject(%{item: %{kind: :denied} = item} = assigns) do
     assigns = assign(assigns, :d, shown_destination(item))
-    if assigns.d.tool, do: denied_tool_subject(assigns), else: denied_subject(assigns)
+
+    if is_binary(item[:tool]),
+      do: denied_tool_subject(assigns),
+      else: denied_subject(assigns)
   end
 
   defp attention_subject(%{item: %{kind: kind}} = assigns)
@@ -494,6 +497,12 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp host_form?(%{wall: %{rule: "wall:host-form"}}), do: true
   defp host_form?(_item), do: false
+
+  # A denied destination's host in an act's name, where `<bdi>` cannot go: as an external
+  # system's text is (`Apiary.ExternalText.line/1`), but as sent where the wall refused
+  # it for its form.
+  defp label_host(item),
+    do: if(host_form?(item), do: item.host, else: Apiary.ExternalText.line(item.host))
 
   attr :item, :map, required: true
   attr :shared, :any, required: true
@@ -809,6 +818,7 @@ defmodule ApiaryWeb.OverviewComponents do
       assign(assigns,
         level: level,
         new_rule_path: new_rule_path,
+        host: label_host(assigns.item),
         tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
       )
 
@@ -826,7 +836,7 @@ defmodule ApiaryWeb.OverviewComponents do
       }
       class="q-act"
       title={@tip}
-      aria-label={gettext("Allow %{host} in %{name}'s policy", host: @item.host, name: @level.name)}
+      aria-label={gettext("Allow %{host} in %{name}'s policy", host: @host, name: @level.name)}
     >
       {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
@@ -851,7 +861,7 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-act"
       aria-label={
         gettext("Allow %{host} for %{target}",
-          host: @item.host,
+          host: label_host(@item),
           target: ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)
         )
       }
@@ -870,7 +880,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
+      aria-label={gettext("Allow %{host} for the workspace", host: label_host(@item))}
       aria-expanded={to_string(@item[:expanded] == true)}
       aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
@@ -886,7 +896,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Allow %{host}, choose a scope", host: @item.host)}
+      aria-label={gettext("Allow %{host}, choose a scope", host: label_host(@item))}
       aria-expanded={to_string(@item[:expanded] == true)}
       aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "choose"})}

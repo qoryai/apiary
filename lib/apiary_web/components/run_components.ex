@@ -2768,14 +2768,17 @@ defmodule ApiaryWeb.RunComponents do
   # (`Apiary.ExternalText.present/1`): one with nothing left to show is none. A host the
   # wall refused for its form is shown as sent, since its form is the reason the row
   # gives. What a row is found by, acted on and copied as is its host, path and rule as
-  # sent (`raw_host`, `raw_path`, `raw_rule`).
+  # sent (`raw_host`, `raw_path`, `raw_rule`), and so is which case a row is and which
+  # words it says: its reason, its tool and whether it is a tool invocation are decided
+  # by what was sent (`raw_path_rule`, `raw_tool`), never by what is left to show.
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
-    tool = Apiary.ExternalText.present(get.([:tool, :last_tool]))
+    tool = blank(get.([:tool, :last_tool]))
     decision = get.([:decision, :last_decision])
     host = get.([:host])
     path = get.([:path]) || ""
     rule = blank(get.([:rule, :last_rule]))
+    path_rule = blank(get.([:path_rule, :last_path_rule]))
 
     %{
       host: shown_host(host, rule),
@@ -2788,11 +2791,13 @@ defmodule ApiaryWeb.RunComponents do
       decision: decision,
       rule: Apiary.ExternalText.present(rule),
       raw_rule: rule,
-      path_rule: Apiary.ExternalText.present(get.([:path_rule, :last_path_rule])),
+      path_rule: Apiary.ExternalText.present(path_rule),
+      raw_path_rule: path_rule,
       credential: blank(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
-      tool: tool,
+      tool: Apiary.ExternalText.present(tool),
+      raw_tool: tool,
       invocation: Runs.tool_invocation?(tool, decision),
       status: get.([:status, :last_status]),
       request_id: get.([:request_id]),
@@ -2978,7 +2983,7 @@ defmodule ApiaryWeb.RunComponents do
         gettext("Closed when a new policy denied the host.")
 
     tool =
-      c.decision == "denied" && c.tool &&
+      c.decision == "denied" && c.raw_tool &&
         plain_text(rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, c.tool}))
 
     words = [main, closed, tool] |> List.flatten() |> Enum.reject(&(&1 in [nil, false, ""]))
@@ -2989,7 +2994,7 @@ defmodule ApiaryWeb.RunComponents do
   defp rule_words(c) do
     [
       gettext("Rule") <> " " <> (c.rule || ""),
-      c.path_rule && gettext("path") <> " " <> c.path_rule,
+      c.raw_path_rule && gettext("path") <> " " <> (c.path_rule || ""),
       c.decision == "allowed" && c.credential && gettext("secret") <> " " <> c.credential
     ]
     |> Enum.reject(&(&1 in [nil, false]))
@@ -3069,7 +3074,7 @@ defmodule ApiaryWeb.RunComponents do
     <b :if={@c.decision == "denied"}>{gettext("Denied.")}</b>
     <.rich :if={@c.decision == "allowed" && @c.invocation} text={handed_sentence(@c, false)} />
     <b :if={@c.decision == "allowed" && !@c.invocation}>{gettext("Allowed.")}</b>
-    <span :if={@c.decision == "denied" && @c.tool} class="q-for-tool">
+    <span :if={@c.decision == "denied" && @c.raw_tool} class="q-for-tool">
       <.rich text={rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, @c.tool})} />
     </span>
     """
@@ -3101,7 +3106,7 @@ defmodule ApiaryWeb.RunComponents do
         <b>{no_path_rule_sentence(@past)}</b> {mode_sentence(@c.mode, :denies, @past)}
       <% :denied_by_rule -> %>
         {gettext("Rule")}
-        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
+        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.raw_path_rule}>, {gettext(
           "path"
         )}
         <.rule value={@c.path_rule} /></span>
@@ -3121,7 +3126,7 @@ defmodule ApiaryWeb.RunComponents do
         <span :if={@variant == "inline"}><b>{gettext("Allowed")}</b> {gettext("by rule")}</span><span :if={
           @variant != "inline"
         }>{gettext("Rule")}</span>
-        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
+        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.raw_path_rule}>, {gettext(
           "path"
         )}
         <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("secret")}
@@ -3132,21 +3137,24 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@c.decision == "allowed" && @c.outcome == "refused"}>
       {gettext("Closed when a new policy denied the host.")}
     </span>
-    <span :if={@c.decision == "denied" && @c.tool} class="q-for-tool">
+    <span :if={@c.decision == "denied" && @c.raw_tool} class="q-for-tool">
       <.rich text={rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, @c.tool})} />
     </span>
     """
   end
 
-  defp reason_kind(%{decision: "denied", rule: "wall:own-address"}), do: :own_address
-  defp reason_kind(%{decision: "denied", rule: "wall:host-form"}), do: :host_form
-  defp reason_kind(%{decision: "denied", path_rule: "wall:ambiguous-path"}), do: :ambiguous_path
-  defp reason_kind(%{decision: "denied", rule: nil}), do: :denied_no_rule
+  defp reason_kind(%{decision: "denied", raw_rule: "wall:own-address"}), do: :own_address
+  defp reason_kind(%{decision: "denied", raw_rule: "wall:host-form"}), do: :host_form
+
+  defp reason_kind(%{decision: "denied", raw_path_rule: "wall:ambiguous-path"}),
+    do: :ambiguous_path
+
+  defp reason_kind(%{decision: "denied", raw_rule: nil}), do: :denied_no_rule
 
   # A request inside a terminated tunnel was denied on its path: the row names the path,
   # the host's rule let the connection in, and no path entry matched. A denial without a
   # path is the host's, by a deny entry, and the rule is that entry.
-  defp reason_kind(%{decision: "denied", path: path, path_rule: path_rule})
+  defp reason_kind(%{decision: "denied", raw_path: path, raw_path_rule: path_rule})
        when is_binary(path) and path != "" and path_rule in [nil, ""],
        do: :denied_no_path_rule
 
@@ -3155,9 +3163,9 @@ defmodule ApiaryWeb.RunComponents do
   # A tool invocation was for the tool: that is what the reason says, and whether it
   # reached the tool (`handed_sentence/1`). A request a path rule refused is no tool
   # invocation and took a denial's reason above; `reason/1` adds whose host it was for.
-  defp reason_kind(%{invocation: true, rule: nil}), do: :tool_no_rule
+  defp reason_kind(%{invocation: true, raw_rule: nil}), do: :tool_no_rule
   defp reason_kind(%{invocation: true}), do: :tool_by_rule
-  defp reason_kind(%{decision: "allowed", rule: nil}), do: :allowed_no_rule
+  defp reason_kind(%{decision: "allowed", raw_rule: nil}), do: :allowed_no_rule
   defp reason_kind(%{decision: "allowed"}), do: :allowed_by_rule
   defp reason_kind(_c), do: :unknown
 
@@ -3174,13 +3182,13 @@ defmodule ApiaryWeb.RunComponents do
 
   defp handed_sentence(c, false), do: rich_gettext("For %{tool}", tool: {:b, c.tool})
 
-  defp handed(%{rule: nil, path_rule: nil} = c),
+  defp handed(%{raw_rule: nil, raw_path_rule: nil} = c),
     do: rich_gettext("Handed to %{tool}", tool: {:b, c.tool})
 
-  defp handed(%{rule: nil} = c),
+  defp handed(%{raw_rule: nil} = c),
     do: rich_gettext("Handed to %{tool}, path %{path}", tool: {:b, c.tool}, path: {:part, :path})
 
-  defp handed(%{path_rule: nil} = c),
+  defp handed(%{raw_path_rule: nil} = c),
     do:
       rich_gettext("Handed to %{tool} by rule %{rule}", tool: {:b, c.tool}, rule: {:part, :rule})
 
@@ -3192,13 +3200,13 @@ defmodule ApiaryWeb.RunComponents do
     )
   end
 
-  defp meant(%{rule: nil, path_rule: nil} = c),
+  defp meant(%{raw_rule: nil, raw_path_rule: nil} = c),
     do: rich_gettext("For %{tool}", tool: {:b, c.tool})
 
-  defp meant(%{rule: nil} = c),
+  defp meant(%{raw_rule: nil} = c),
     do: rich_gettext("For %{tool}, path %{path}", tool: {:b, c.tool}, path: {:part, :path})
 
-  defp meant(%{path_rule: nil} = c),
+  defp meant(%{raw_path_rule: nil} = c),
     do: rich_gettext("For %{tool} by rule %{rule}", tool: {:b, c.tool}, rule: {:part, :rule})
 
   defp meant(c) do
@@ -3632,9 +3640,12 @@ defmodule ApiaryWeb.RunComponents do
   def rule_actions(%{rule_option: :wall} = assigns) do
     c = assigns.connection
 
+    # Which wall it was is read from what Forager sent (`normalise/1`'s `raw_rule`).
+    get = fn keys -> Enum.find_value(keys, &Map.get(c, &1)) end
+
     reason = %{
-      rule: Map.get(c, :rule) || Map.get(c, :last_rule),
-      path_rule: Map.get(c, :path_rule) || Map.get(c, :last_path_rule)
+      rule: get.([:raw_rule, :rule, :last_rule]),
+      path_rule: get.([:raw_path_rule, :path_rule, :last_path_rule])
     }
 
     assigns = assign(assigns, :tip, wall_tip(reason) || gettext("No rule changes this"))
