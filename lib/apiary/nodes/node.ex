@@ -34,6 +34,8 @@ defmodule Apiary.Nodes.Node do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
+  alias Apiary.Integrations.Description
+
   @typedoc "A node or a node pool of a workspace."
   @type t :: %__MODULE__{}
 
@@ -97,6 +99,11 @@ defmodule Apiary.Nodes.Node do
     field :item_noun_one, :string
     field :item_noun_other, :string
     field :items, :boolean, default: true
+    # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
+    # words for one collection and for many, both or neither (nil for the default, the
+    # domain's word), beside `items` false too.
+    field :collection_noun_one, :string
+    field :collection_noun_other, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -284,23 +291,40 @@ defmodule Apiary.Nodes.Node do
 
   @doc false
   # The changeset of what the source role of an adapter's description says of its items
-  # (`Apiary.Integrations.Description.item_noun/1` and `items?/1`, which the description's
-  # schema has checked): its words for one item and for many, or none, and whether it
-  # reports items. The database holds them to the same (`nodes_items_check`). No page or
-  # request calls it: the core reads no adapter's description. A change of `items` changes whether the adapter's collections are linked, and whoever
-  # writes it writes the feed's entries for them in the same transaction
-  # (`Apiary.Adapters.Collections`).
-  @spec source_role_changeset(t, Apiary.Integrations.Description.t()) :: Ecto.Changeset.t()
-  def source_role_changeset(%__MODULE__{kind: :adapter} = adapter, description) do
-    item_noun = Apiary.Integrations.Description.item_noun(description)
+  # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1` and
+  # `collection_noun/1`, which the description's schema has checked): its words for one
+  # item and for many, or none, whether it reports items, and its words for one
+  # collection and for many, or none. A description with no source role gives the
+  # defaults: no words, and items. The database holds them to the same
+  # (`nodes_items_check`, `nodes_collection_noun_check`). `Apiary.Adapters.declare/2`
+  # calls it at each start, on the changeset of the declaration, so the latest start's
+  # description replaces what an earlier one said; given an adapter, it starts from the
+  # adapter's changeset. A change of `items`
+  # changes whether the adapter's collections are linked, and whoever writes it writes the
+  # feed's entries for them in the same transaction
+  # (`Apiary.Adapters.Collections.relink_adapter/2`).
+  @spec source_role_changeset(t | Ecto.Changeset.t(), Description.t()) ::
+          Ecto.Changeset.t()
+  def source_role_changeset(%__MODULE__{kind: :adapter} = adapter, description),
+    do: adapter |> change() |> source_role_changeset(description)
 
-    adapter
+  def source_role_changeset(
+        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
+        description
+      ) do
+    item_noun = Description.item_noun(description)
+    collection_noun = Description.collection_noun(description)
+
+    changeset
     |> change(
       item_noun_one: item_noun && item_noun.one,
       item_noun_other: item_noun && item_noun.other,
-      items: Apiary.Integrations.Description.items?(description)
+      items: Description.items?(description),
+      collection_noun_one: collection_noun && collection_noun.one,
+      collection_noun_other: collection_noun && collection_noun.other
     )
     |> check_constraint(:items, name: :nodes_items_check)
+    |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
   end
 
   @doc false

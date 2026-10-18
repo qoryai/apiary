@@ -21,11 +21,20 @@ defmodule Apiary.Integrations.Description do
   matches the schema's pattern and its value is within the bounds. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
-  Of the `source` role, two members are read out (`item_noun/1`, `items?/1`): its words
-  for one item and for many, `item_noun`, `one` and `other`, each 1 to 32 lower-case
-  letters in words joined by single spaces or hyphens, never "work item" or "work items";
-  and `items`, which, when there, is `false`: the source reports collections and no items,
-  and names no words for them. The schema holds both to that.
+  Of the `source` role, three members are read out (`item_noun/1`, `items?/1`,
+  `collection_noun/1`): its words for one item and for many, `item_noun`, `one` and
+  `other`, each 1 to 32 characters: lower-case letters in words joined by single spaces
+  or hyphens, never "work item" or "work items"; `items`, which, when there, is `false`: the source
+  reports collections and no items, and names no words for them; and its words for one
+  collection and for many, `collection_noun`, `one` and `other`, the same shape as
+  `item_noun`'s with no word refused, beside `items: false` too. The schema holds all
+  three to that.
+
+  A description of more than 262144 bytes (256 KiB), as `parse/1` is given it, is refused
+  before it is decoded, `{:error, {:description_invalid, [:too_large]}}`: the schema's
+  description bounds its raw bytes so, and only the bytes as they were sent can be
+  measured, since an encoding of the decoded document writes its numbers and its
+  whitespace otherwise.
 
   A description is refused before the schema when it holds a list of more than 1024
   entries, an object of more than 1024 members, more than 4096 values in all, a string of
@@ -64,14 +73,16 @@ defmodule Apiary.Integrations.Description do
             settings: [],
             item_noun: nil,
             items: true,
+            collection_noun: nil,
             document: nil
 
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
   `domains`, `program_version`, every role it names, its secrets (each `name`, and `title`,
   the secret's title or else its name), the names of its plain settings, its source
-  role's words for its items (`item_noun`, nil where it names none) and whether that
-  source reports items (`items`, true without a source role), and the decoded document.
+  role's words for its items (`item_noun`, nil where it names none), whether that source
+  reports items (`items`, true without a source role), its words for its collections
+  (`collection_noun`, nil where it names none), and the decoded document.
   """
   @type t :: %__MODULE__{
           name: String.t(),
@@ -84,13 +95,18 @@ defmodule Apiary.Integrations.Description do
           settings: [String.t()],
           item_noun: item_noun | nil,
           items: boolean,
+          collection_noun: collection_noun | nil,
           document: map
         }
 
   @typedoc "A source's words for one of its items and for many, as its description gives them."
   @type item_noun :: %{one: String.t(), other: String.t()}
 
+  @typedoc "A source's words for one collection and for many, as its description gives them."
+  @type collection_noun :: %{one: String.t(), other: String.t()}
+
   @settings_max 65_536
+  @max_bytes 262_144
 
   # The limits of a description, and of the plain settings checked against its schema,
   # before a schema is applied (see the module's documentation and `check_settings/2`).
@@ -127,7 +143,8 @@ defmodule Apiary.Integrations.Description do
   """
   @spec parse(binary) :: {:ok, t} | {:error, {atom, term}}
   def parse(bytes) when is_binary(bytes) do
-    with {:ok, document} <- decode(bytes),
+    with :ok <- within_bytes(bytes),
+         {:ok, document} <- decode(bytes),
          :ok <- schema(document),
          [] <- problems(document) do
       {:ok, read(document)}
@@ -136,6 +153,13 @@ defmodule Apiary.Integrations.Description do
       problems when is_list(problems) -> {:error, {:description_invalid, problems}}
     end
   end
+
+  @doc "max_bytes/0 is the most bytes of a description `parse/1` reads, 262144."
+  @spec max_bytes() :: pos_integer
+  def max_bytes, do: @max_bytes
+
+  defp within_bytes(bytes) when byte_size(bytes) <= @max_bytes, do: :ok
+  defp within_bytes(_bytes), do: {:error, {:description_invalid, [:too_large]}}
 
   # The bytes are decoded twice: once keeping every member of each object in order, to
   # find a name held twice, then as maps, which keep only one value of a name, for the
@@ -246,14 +270,15 @@ defmodule Apiary.Integrations.Description do
       secrets: for(name <- secrets, do: %{name: name, title: title(properties[name], name)}),
       settings:
         properties |> Map.keys() |> Enum.reject(&(&1 in secrets or &1 in files)) |> Enum.sort(),
-      item_noun: read_item_noun(get_in(document, ["roles", "source", "item_noun"])),
+      item_noun: read_noun(get_in(document, ["roles", "source", "item_noun"])),
       items: get_in(document, ["roles", "source", "items"]) != false,
+      collection_noun: read_noun(get_in(document, ["roles", "source", "collection_noun"])),
       document: document
     }
   end
 
-  defp read_item_noun(%{"one" => one, "other" => other}), do: %{one: one, other: other}
-  defp read_item_noun(nil), do: nil
+  defp read_noun(%{"one" => one, "other" => other}), do: %{one: one, other: other}
+  defp read_noun(nil), do: nil
 
   @doc """
   item_noun/1 is the source role's words for one of its items and for many,
@@ -270,6 +295,14 @@ defmodule Apiary.Integrations.Description do
   """
   @spec items?(t) :: boolean
   def items?(%__MODULE__{items: items}), do: items
+
+  @doc """
+  collection_noun/1 is the source role's words for one of its collections and for many,
+  `%{one: one, other: other}`, or nil when it names none, as for a description with no
+  source role.
+  """
+  @spec collection_noun(t) :: collection_noun | nil
+  def collection_noun(%__MODULE__{collection_noun: collection_noun}), do: collection_noun
 
   defp title(%{"title" => title}, name) when is_binary(title),
     do: if(String.trim(title) == "", do: name, else: title)

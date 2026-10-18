@@ -7,6 +7,7 @@ defmodule Apiary.Adapters.SyncTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DescriptionFixtures, only: [read_description: 0, read_description: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -19,13 +20,17 @@ defmodule Apiary.Adapters.SyncTest do
 
   @moduletag needs: :factory
 
-  @declaration %{
+  @base %{
     time: ~U[2026-10-15 12:00:00Z],
     connect_url: "https://tracker-adapter.acme.example/connect",
     default_interval: 3600,
     minimum_interval: 900,
     sends_changes: true
   }
+
+  # A declaration as `Apiary.Adapters.Wire.declaration/1` reads one, with the contract's
+  # description of an example tracker.
+  defp declaration, do: Map.put(@base, :description, read_description())
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -56,7 +61,7 @@ defmodule Apiary.Adapters.SyncTest do
   describe "declare/2" do
     test "stores the declaration, leaves one entry by the key, and tells the feed the default once",
          %{adapter: adapter, key: key, key_scope: key_scope} do
-      assert {:ok, declared} = Adapters.declare(key_scope, @declaration)
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
 
       assert %Node{
                connect_url: "https://tracker-adapter.acme.example/connect",
@@ -83,13 +88,13 @@ defmodule Apiary.Adapters.SyncTest do
       assert feed(adapter) == [{1, "sync", %{"interval" => nil}}]
 
       # The same declaration again changes nothing: no entry, no feed entry.
-      assert {:ok, _} = Adapters.declare(key_scope, @declaration)
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
       assert length(entries(:"adapter.declare")) == 1
       assert feed(adapter) == [{1, "sync", %{"interval" => nil}}]
 
       # A changed one leaves its entry with what changed alone, and tells the feed nothing.
       assert {:ok, _} =
-               Adapters.declare(key_scope, %{@declaration | connect_url: "https://b.example/c"})
+               Adapters.declare(key_scope, %{declaration() | connect_url: "https://b.example/c"})
 
       assert [_, second] = entries(:"adapter.declare")
       assert second.before == %{"connect_url" => "https://tracker-adapter.acme.example/connect"}
@@ -97,14 +102,92 @@ defmodule Apiary.Adapters.SyncTest do
       assert feed(adapter) == [{1, "sync", %{"interval" => nil}}]
     end
 
+    test "stores the source role's words and items at each start, the latest start's alone",
+         %{adapter: adapter, key_scope: key_scope} do
+      words = fn node ->
+        node = reload(node)
+
+        {node.item_noun_one, node.item_noun_other, node.items, node.collection_noun_one,
+         node.collection_noun_other}
+      end
+
+      # Before its first start, the defaults: no words, and items.
+      assert words.(adapter) == {nil, nil, true, nil, nil}
+
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert words.(adapter) == {"issue", "issues", true, "project", "projects"}
+      assert Adapters.item_noun(reload(adapter)) == %{one: "issue", other: "issues"}
+      assert Adapters.collection_noun(reload(adapter)) == %{one: "project", other: "projects"}
+
+      # The next start replaces them, whatever it says.
+      for {name, expected} <- [
+            {"example-work-items.json", {"task", "tasks", true, "work item", "work-items"}},
+            {"example-projects.json", {nil, nil, false, "project", "projects"}},
+            {"acme-tracker.json", {nil, nil, true, nil, nil}},
+            {"example-tracker.json", {"issue", "issues", true, "project", "projects"}}
+          ] do
+        assert {:ok, _} =
+                 Adapters.declare(key_scope, %{
+                   declaration()
+                   | description: read_description(name)
+                 })
+
+        assert words.(adapter) == expected, name
+      end
+
+      # None of it is in the trail's entries: the first start's is the only one.
+      assert [entry] = entries(:"adapter.declare")
+      refute Enum.any?(Map.keys(entry.after), &String.contains?(&1, "noun"))
+      refute Map.has_key?(entry.after, "items")
+    end
+
+    test "the database holds the words for collections to the contract's, beside no items too",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      {:ok, _} =
+        Adapters.declare(key_scope, %{
+          declaration()
+          | description: read_description("example-projects.json")
+        })
+
+      set = fn node, fields ->
+        Repo.update_all(from(n in Node, where: n.id == ^node.id), set: fields)
+      end
+
+      # No word is refused: "work item" names a collection as well as any.
+      assert {1, _} =
+               set.(adapter,
+                 collection_noun_one: "work item",
+                 collection_noun_other: "work-items"
+               )
+
+      for fields <- [
+            [collection_noun_one: "Project"],
+            [collection_noun_other: "code  bases"],
+            [collection_noun_one: "-project"],
+            [collection_noun_one: String.duplicate("z", 33)],
+            [collection_noun_one: ""],
+            [collection_noun_one: nil]
+          ] do
+        assert_raise Postgrex.Error, ~r/nodes_collection_noun_check/, fn ->
+          set.(adapter, fields)
+        end
+      end
+
+      pool = pool_fixture(scope)
+
+      assert_raise Postgrex.Error, ~r/nodes_collection_noun_check/, fn ->
+        set.(pool, collection_noun_one: "project", collection_noun_other: "projects")
+      end
+    end
+
     test "keeps the interval an instance admin chose, even below a later minimum",
          %{admin: admin, adapter: adapter, key_scope: key_scope} do
-      {:ok, _} = Adapters.declare(key_scope, @declaration)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
       {:ok, _} = Adapters.update_sync_interval(admin, adapter, %{sync_interval: 900})
 
       {:ok, _} =
         Adapters.declare(key_scope, %{
-          @declaration
+          declaration()
           | minimum_interval: 1800,
             default_interval: 7200
         })
@@ -121,14 +204,14 @@ defmodule Apiary.Adapters.SyncTest do
       %{access_key: node_key} = node_key_fixture(scope, node_fixture(scope))
       {:ok, node_key} = AccessKeys.fetch_for_verification(node_key.key_id)
 
-      assert Adapters.declare(Scope.for_access_key(node_key), @declaration) ==
+      assert Adapters.declare(Scope.for_access_key(node_key), declaration()) ==
                {:error, :not_found}
 
-      assert {:error, _} = Adapters.declare(admin, @declaration)
-      assert {:error, _} = Adapters.declare(scope, @declaration)
+      assert {:error, _} = Adapters.declare(admin, declaration())
+      assert {:error, _} = Adapters.declare(scope, declaration())
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
-      assert Adapters.declare(key_scope, @declaration) == {:error, :not_found}
+      assert Adapters.declare(key_scope, declaration()) == {:error, :not_found}
 
       assert %Node{connect_url: "https://tracker.example.com/connect", sync_default_interval: nil} =
                reload(adapter)
@@ -177,7 +260,7 @@ defmodule Apiary.Adapters.SyncTest do
 
     test "after it: the declared default and minimum, the choice, and the choices from the minimum",
          %{admin: admin, adapter: adapter, key_scope: key_scope} do
-      {:ok, _} = Adapters.declare(key_scope, @declaration)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
 
       assert Adapters.sync_settings(admin, adapter) ==
                {:ok,
@@ -191,7 +274,7 @@ defmodule Apiary.Adapters.SyncTest do
 
       # A minute's minimum offers every step; a default off the ladder is offered too.
       {:ok, _} =
-        Adapters.declare(key_scope, %{@declaration | minimum_interval: 60, default_interval: 120})
+        Adapters.declare(key_scope, %{declaration() | minimum_interval: 60, default_interval: 120})
 
       assert {:ok, %{choices: [60, 120, 300, 600, 900, 1800, 3600, 7200, 21_600, 43_200, 86_400]}} =
                Adapters.sync_settings(admin, adapter)
@@ -199,7 +282,7 @@ defmodule Apiary.Adapters.SyncTest do
       # A day's minimum offers a day alone.
       {:ok, _} =
         Adapters.declare(key_scope, %{
-          @declaration
+          declaration()
           | minimum_interval: 86_400,
             default_interval: 86_400
         })
@@ -219,7 +302,7 @@ defmodule Apiary.Adapters.SyncTest do
 
   describe "update_sync_interval/3" do
     setup %{key_scope: key_scope} do
-      {:ok, _} = Adapters.declare(key_scope, @declaration)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
       :ok
     end
 

@@ -175,7 +175,8 @@ defmodule ApiaryWeb.Contract.AdapterRequestFixturesTest do
           "default_interval" => 900,
           "minimum_interval" => 300,
           "sends_changes" => false
-        }
+        },
+        "description" => Apiary.DescriptionFixtures.contract_description()
       }
 
       conn =

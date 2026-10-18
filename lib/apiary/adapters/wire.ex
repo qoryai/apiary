@@ -11,7 +11,9 @@ defmodule Apiary.Adapters.Wire do
   # any object inside it, which a parser that keeps the last of them cannot tell
   # (`definitions.schema.json`: "no object repeats a member, at any depth"). A number
   # written with a fraction or an exponent decodes as a float, which no integer field
-  # accepts, so `900.0` and `9e2` are refused where an integer is due.
+  # accepts, so `900.0` and `9e2` are refused where an integer is due. Each integer field
+  # is checked so, one by one; the numbers inside an adapter's `description` are no such
+  # field, and follow `description.schema.json`, which allows a fraction or an exponent.
   #
   # `time/1` reads a time as the contract writes it (`$defs/time`): RFC 3339 in UTC with
   # whole seconds, `2026-10-15T12:00:00Z`, never a leap second (`:60`), and nothing else.
@@ -22,10 +24,17 @@ defmodule Apiary.Adapters.Wire do
   # followed by two hexadecimal digits, a host, a port from 1 to 65,535 when one is
   # written, and no user information.
   #
-  # `declaration/1` reads the body of `POST /v1/adapter` (`adapter.schema.json`): exactly
-  # `version` (1), `time`, `connect_url` and `sync`, which holds exactly
-  # `default_interval` and `minimum_interval`, integers from 60 to 86,400, the minimum at
-  # most the default, and `sends_changes`, a boolean.
+  # `declaration/1` reads the raw body of `POST /v1/adapter` (`adapter.schema.json`),
+  # decoded as `decode/1` decodes it: exactly `version` (1), `time`, `connect_url`, `sync`,
+  # which holds exactly `default_interval` and `minimum_interval`, integers from 60 to
+  # 86,400, the minimum at most the default, and `sends_changes`, a boolean, and
+  # `description`, the description the adapter's program prints, which
+  # `Apiary.Integrations.Description.parse/1` reads and checks. It is given the
+  # description's value as the body carries it, its bytes from the first of the value to
+  # the last, found by a scan of the raw body (`member_value/2`), so the description's
+  # limit on its raw bytes, 256 KiB, is measured on what the adapter sent: an encoding of
+  # the decoded value would write its numbers and its whitespace otherwise, `1e5` as
+  # `1.0e5`.
   #
   # `listing/1` reads the body of `POST /v1/source-collections`
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
@@ -55,7 +64,7 @@ defmodule Apiary.Adapters.Wire do
   @max_url 2048
   @min_interval 60
   @max_interval 86_400
-  @declaration_keys ~w(connect_url sync time version)
+  @declaration_keys ~w(connect_url description sync time version)
   @sync_keys ~w(default_interval minimum_interval sends_changes)
   @listing_body_keys ~w(collections connection_id listing time version)
   @listing_keys ~w(complete id part started_at)
@@ -73,7 +82,8 @@ defmodule Apiary.Adapters.Wire do
           connect_url: String.t(),
           default_interval: pos_integer,
           minimum_interval: pos_integer,
-          sends_changes: boolean
+          sends_changes: boolean,
+          description: Apiary.Integrations.Description.t()
         }
 
   @type target :: %{system: String.t(), path: String.t()}
@@ -186,12 +196,13 @@ defmodule Apiary.Adapters.Wire do
     end
   end
 
-  # The body of `POST /v1/adapter`, decoded (`decode/1`): `{:ok, declaration}` or
-  # `:error`.
+  # The raw body of `POST /v1/adapter`: `{:ok, declaration}` or `:error`. The description
+  # is read last, once every other member is as the contract has it.
   @doc false
   @spec declaration(term) :: {:ok, declaration} | :error
-  def declaration(%{} = body) do
-    with true <- Enum.sort(Map.keys(body)) == @declaration_keys,
+  def declaration(raw) when is_binary(raw) do
+    with {:ok, body} <- decode(raw),
+         true <- Enum.sort(Map.keys(body)) == @declaration_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          true <- url?(body["connect_url"]),
@@ -202,21 +213,158 @@ defmodule Apiary.Adapters.Wire do
          true <- default in @min_interval..@max_interval,
          true <- minimum in @min_interval..@max_interval,
          true <- minimum <= default,
-         sends_changes when is_boolean(sends_changes) <- sync["sends_changes"] do
+         sends_changes when is_boolean(sends_changes) <- sync["sends_changes"],
+         {:ok, value} <- member_value(raw, "description"),
+         {:ok, description} <- Apiary.Integrations.Description.parse(value) do
       {:ok,
        %{
          time: time,
          connect_url: body["connect_url"],
          default_interval: default,
          minimum_interval: minimum,
-         sends_changes: sends_changes
+         sends_changes: sends_changes,
+         description: description
        }}
     else
       _ -> :error
     end
   end
 
-  def declaration(_body), do: :error
+  def declaration(_raw), do: :error
+
+  # The bytes of the value of the top-level member `name` of `raw`, as `raw` carries them:
+  # from the first byte of the value to its last, without the whitespace around it.
+  # `{:ok, bytes}`, or `:error` where the object has no such member.
+  #
+  # Meant for a `raw` that `decode/1` read: a JSON object that Jason accepted, with no
+  # member twice, so the scan does not check the grammar again; on any other `raw` it
+  # answers `:error` where it cannot read on, and never raises, but what it finds there
+  # means nothing. It reads each member's
+  # name as Jason does, its escapes read, so a name written `"descr\u0069ption"` is found
+  # as `description`, and steps over each value: a string to its closing quote, past every
+  # escaped character; an object or a list to the bracket that closes it, counting the
+  # brackets outside strings; any other value to the first byte that cannot be in it.
+  # Each step looks for its next byte with `:binary.match/3`, so the scan is linear in the
+  # size of `raw`, at most the 1 MiB `ApiaryWeb.Contract.RawBody` reads.
+  @doc false
+  @spec member_value(binary, String.t()) :: {:ok, binary} | :error
+  def member_value(raw, name) when is_binary(raw) and is_binary(name) do
+    patterns = %{
+      string: :binary.compile_pattern(["\"", "\\"]),
+      nested: :binary.compile_pattern(["\"", "{", "[", "}", "]"]),
+      scalar: :binary.compile_pattern([",", "}", "]", " ", "\t", "\n", "\r"])
+    }
+
+    case skip_space(raw) do
+      "{" <> rest -> members(rest, name, patterns)
+      _other -> :error
+    end
+  end
+
+  def member_value(_raw, _name), do: :error
+
+  defp members(rest, name, patterns) do
+    with "\"" <> _ = rest <- skip_space(rest),
+         {key, rest} <- string_span(rest, patterns),
+         ":" <> rest <- skip_space(rest),
+         value = skip_space(rest),
+         after_value when is_binary(after_value) <- skip_value(value, patterns),
+         {:ok, key} <- Jason.decode(key) do
+      bytes = binary_part(value, 0, byte_size(value) - byte_size(after_value))
+
+      case {key == name, skip_space(after_value)} do
+        {true, _rest} -> {:ok, bytes}
+        {false, "," <> rest} -> members(rest, name, patterns)
+        {false, _end_of_object} -> :error
+      end
+    else
+      _end_of_object_or_unreadable -> :error
+    end
+  end
+
+  # JSON's whitespace: space, tab, line feed and carriage return.
+  defp skip_space(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: skip_space(rest)
+  defp skip_space(rest), do: rest
+
+  # `{string, rest}`: the string `rest` starts with, its quotes included, and what follows;
+  # `:error` where it does not close.
+  defp string_span("\"" <> body = rest, patterns) do
+    case string_length(body, 0, patterns) do
+      length when is_integer(length) ->
+        {binary_part(rest, 0, length + 1), binary_part(body, length, byte_size(body) - length)}
+
+      :error ->
+        :error
+    end
+  end
+
+  # The bytes of a string's body from the byte `at` up to its closing quote, that quote
+  # included, counted from the body's first byte; `:error` where it does not close.
+  defp string_length(body, at, _patterns) when at >= byte_size(body), do: :error
+
+  defp string_length(body, at, patterns) do
+    case :binary.match(body, patterns.string, scope: {at, byte_size(body) - at}) do
+      {found, _} ->
+        case :binary.at(body, found) do
+          ?" -> found + 1
+          ?\\ -> string_length(body, found + 2, patterns)
+        end
+
+      :nomatch ->
+        :error
+    end
+  end
+
+  # What follows the value `rest` starts with, or `:error` where it does not end.
+  defp skip_value("\"" <> _ = rest, patterns) do
+    case string_span(rest, patterns) do
+      {_string, after_string} -> after_string
+      :error -> :error
+    end
+  end
+
+  defp skip_value(<<open, _::binary>> = rest, patterns) when open in [?{, ?[],
+    do: skip_nested(rest, 1, 1, patterns)
+
+  defp skip_value(rest, patterns) do
+    case :binary.match(rest, patterns.scalar) do
+      {at, _} -> binary_part(rest, at, byte_size(rest) - at)
+      :nomatch -> ""
+    end
+  end
+
+  # What follows the object or list `rest` starts with, `depth` brackets open before the
+  # byte `at`, or `:error` where it does not close.
+  defp skip_nested(rest, 0, at, _patterns), do: binary_part(rest, at, byte_size(rest) - at)
+  defp skip_nested(rest, _depth, at, _patterns) when at >= byte_size(rest), do: :error
+
+  defp skip_nested(rest, depth, at, patterns) do
+    case :binary.match(rest, patterns.nested, scope: {at, byte_size(rest) - at}) do
+      {found, _} -> skip_nested_at(rest, depth, found, patterns)
+      :nomatch -> :error
+    end
+  end
+
+  defp skip_nested_at(rest, depth, found, patterns) do
+    case :binary.at(rest, found) do
+      ?" ->
+        tail = binary_part(rest, found + 1, byte_size(rest) - found - 1)
+
+        case string_length(tail, 0, patterns) do
+          length when is_integer(length) ->
+            skip_nested(rest, depth, found + 1 + length, patterns)
+
+          :error ->
+            :error
+        end
+
+      close when close in [?}, ?]] ->
+        skip_nested(rest, depth - 1, found + 1, patterns)
+
+      _open ->
+        skip_nested(rest, depth + 1, found + 1, patterns)
+    end
+  end
 
   # The highest part number of a listing that is read.
   @doc false

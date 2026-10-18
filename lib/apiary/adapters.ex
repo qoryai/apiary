@@ -30,8 +30,9 @@ defmodule Apiary.Adapters do
   # (`Apiary.Accounts.Scope.for_access_key/1`): `for_key/2` is the adapter such a scope
   # stands for, once the action is allowed. It acts for an organisation only through a
   # connection (`Apiary.Adapters.Connections.connection_for_key/3`). Each time it starts it
-  # declares its connect address and how it pulls (`declare/2`, `adapter.declare`); an
-  # instance admin then chooses how often it pulls among the choices that declaration
+  # declares its connect address, how it pulls and its description, of which the source
+  # role's words and `items` are kept (`declare/2`, `adapter.declare`); an instance admin
+  # then chooses how often it pulls among the choices that declaration
   # allows (`sync_settings/2`, `update_sync_interval/3`, `adapter.set_interval`), which
   # the adapter learns from its change feed (`Apiary.Adapters.Feed`). When it was last
   # seen is its keys' latest use (`last_seen/2`).
@@ -181,12 +182,28 @@ defmodule Apiary.Adapters do
   # to a person who may read its work items (`work_item.read`): the adapters, in use, of
   # the live collections of a connected connection assigned to it. nil to anyone else.
   @spec workspace_item_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
-  def workspace_item_noun(
-        %Scope{
-          organisation: %Organisation{id: organisation_id},
-          workspace: %Workspace{organisation_id: organisation_id} = workspace
-        } = scope
-      ) do
+  def workspace_item_noun(%Scope{} = scope) do
+    if adapters = workspace_sources(scope), do: shared_item_noun(adapters)
+  end
+
+  @doc false
+  # organisation_item_noun/1 is `shared_item_noun/1` of the sources of the scope's
+  # organisation, to a person who may read its Activity (`audit.read`): the adapters, in
+  # use, of its connected connections. nil to anyone else.
+  @spec organisation_item_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
+  def organisation_item_noun(%Scope{} = scope) do
+    if adapters = organisation_sources(scope), do: shared_item_noun(adapters)
+  end
+
+  # The adapters, in use, of the live collections of a connected connection assigned to
+  # the scope's workspace, to a person who may read its work items (`work_item.read`);
+  # nil to anyone else.
+  defp workspace_sources(
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{organisation_id: organisation_id} = workspace
+         } = scope
+       ) do
     if Access.can?(scope, :"work_item.read", workspace) do
       live_query()
       |> join(:inner, [n], c in Collection, on: c.adapter_id == n.id)
@@ -200,18 +217,14 @@ defmodule Apiary.Adapters do
       )
       |> distinct(true)
       |> Repo.all()
-      |> shared_item_noun()
     end
   end
 
-  def workspace_item_noun(%Scope{}), do: nil
+  defp workspace_sources(%Scope{}), do: nil
 
-  @doc false
-  # organisation_item_noun/1 is `shared_item_noun/1` of the sources of the scope's
-  # organisation, to a person who may read its Activity (`audit.read`): the adapters, in
-  # use, of its connected connections. nil to anyone else.
-  @spec organisation_item_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
-  def organisation_item_noun(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
+  # The adapters, in use, of the scope's organisation's connected connections, to a
+  # person who may read its Activity (`audit.read`); nil to anyone else.
+  defp organisation_sources(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
     if Access.can?(scope, :"audit.read", scope.organisation) do
       live_query()
       |> join(:inner, [n], k in Connection, on: k.adapter_id == n.id)
@@ -221,11 +234,10 @@ defmodule Apiary.Adapters do
       )
       |> distinct(true)
       |> Repo.all()
-      |> shared_item_noun()
     end
   end
 
-  def organisation_item_noun(%Scope{}), do: nil
+  defp organisation_sources(%Scope{}), do: nil
 
   @doc false
   # target_item_nouns/2 is, for each of `target_ids`, targets of the organisation
@@ -259,6 +271,57 @@ defmodule Apiary.Adapters do
       end
     end)
     |> Map.new()
+  end
+
+  ## The words for a source's collections
+
+  @doc false
+  # collection_noun/1 is what `adapter` calls one of its collections and many, as its
+  # description's source role names them (`Apiary.Nodes.Node`'s `collection_noun_one` and
+  # `collection_noun_other`): `%{one: one, other: other}`, lower case, shown as plain
+  # text; nil where it names none, for the default, the domain's word for a collection.
+  # An adapter with no items names its collections too.
+  @spec collection_noun(Node.t()) :: %{one: String.t(), other: String.t()} | nil
+  def collection_noun(%Node{
+        kind: :adapter,
+        collection_noun_one: one,
+        collection_noun_other: other
+      })
+      when is_binary(one) and is_binary(other),
+      do: %{one: one, other: other}
+
+  def collection_noun(%Node{kind: :adapter}), do: nil
+
+  @doc false
+  # shared_collection_noun/1 is the words a page about the collections of many sources
+  # uses, of `adapters`: those of every one of them, with items or not, since a source
+  # with no items still reports collections, when each names the same
+  # (`collection_noun/1`); nil, the domain's word, otherwise, and when there is none.
+  @spec shared_collection_noun([Node.t()]) :: %{one: String.t(), other: String.t()} | nil
+  def shared_collection_noun(adapters) when is_list(adapters) do
+    case adapters |> Enum.map(&collection_noun/1) |> Enum.uniq() do
+      [%{} = noun] -> noun
+      _none_or_several -> nil
+    end
+  end
+
+  @doc false
+  # workspace_collection_noun/1 is `shared_collection_noun/1` of the sources of the
+  # scope's workspace, as `workspace_item_noun/1` reads them, to a person who may read its
+  # work items (`work_item.read`). nil to anyone else.
+  @spec workspace_collection_noun(Scope.t()) :: %{one: String.t(), other: String.t()} | nil
+  def workspace_collection_noun(%Scope{} = scope) do
+    if adapters = workspace_sources(scope), do: shared_collection_noun(adapters)
+  end
+
+  @doc false
+  # organisation_collection_noun/1 is `shared_collection_noun/1` of the sources of the
+  # scope's organisation, as `organisation_item_noun/1` reads them, to a person who may
+  # read its Activity (`audit.read`). nil to anyone else.
+  @spec organisation_collection_noun(Scope.t()) ::
+          %{one: String.t(), other: String.t()} | nil
+  def organisation_collection_noun(%Scope{} = scope) do
+    if adapters = organisation_sources(scope), do: shared_collection_noun(adapters)
   end
 
   ## Changes
@@ -631,18 +694,28 @@ defmodule Apiary.Adapters do
   # Stores what the adapter of `scope`, an adapter's key
   # (`Apiary.Accounts.Scope.for_access_key/1`), declared as it started
   # (`Apiary.Adapters.Wire.declaration/1`): its connect address and how it pulls
-  # (`adapter.declare`, `for_key/2`). One transaction, with the adapter's row held
-  # `FOR NO KEY UPDATE`, as an instance admin's change holds it, so a declaration and a
-  # change of the interval come one after the other; an adapter deleted meanwhile is
-  # `{:error, :not_found}`.
+  # (`adapter.declare`, `for_key/2`), and what its description's source role says. One
+  # transaction, with the adapter's row held `FOR NO KEY UPDATE`, as an instance admin's
+  # change holds it, so a declaration and a change of the interval come one after the
+  # other; an adapter deleted meanwhile is `{:error, :not_found}`.
   #
-  # A declaration that changes something leaves an entry in the instance's trail whose
-  # actor is the key; one that changes nothing leaves none. The adapter's first
-  # declaration appends `{kind: "sync", interval: nil}` to its change feed, its default,
-  # and a later one appends nothing: as the contract has it, the feed carries the interval
-  # at the first declaration and whenever a person changes it. The interval an instance
-  # admin chose stays whatever a later declaration says; the adapter raises one below its
-  # minimum to that minimum.
+  # A declaration that changes its connect address or how it pulls leaves an entry in the
+  # instance's trail whose actor is the key; one that changes neither leaves none. The
+  # adapter's first declaration appends `{kind: "sync", interval: nil}` to its change
+  # feed, its default, and a later one appends nothing: as the contract has it, the feed
+  # carries the interval at the first declaration and whenever a person changes it. The
+  # interval an instance admin chose stays whatever a later declaration says; the adapter
+  # raises one below its minimum to that minimum.
+  #
+  # Each start also stores what its description's source role says
+  # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
+  # reports items, and its words for its collections, each replacing what the start before
+  # said; a description with no source role stores the defaults, no words and items. They
+  # are no part of the trail's entry. A start that changes `items` writes the feed's
+  # `linked` or `unlinked` entry for each live collection whose link that changes, in the
+  # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
+  # declaration's `sync` entry, so that the feed counter is taken after the collections,
+  # last, as the lock order has it; after the commit those collections are broadcast.
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
   @spec declare(Scope.t(), Wire.declaration()) ::
@@ -663,12 +736,22 @@ defmodule Apiary.Adapters do
                sync_minimum_interval: declaration.minimum_interval,
                sync_sends_changes: declaration.sends_changes
              })
+             |> Node.source_role_changeset(declaration.description)
              |> Repo.update(),
            :ok <- record_declaration(scope, current, declared),
+           {:ok, relinked} <- Collections.relink_adapter(current, declared),
            :ok <- tell_first(current, declared) do
-        {:ok, declared}
+        {:ok, {declared, relinked}}
       end
     end)
+    |> case do
+      {:ok, {declared, relinked}} ->
+        :ok = Collections.broadcast_relinked(relinked)
+        {:ok, declared}
+
+      {:error, _reason} = refused ->
+        refused
+    end
   end
 
   defp record_declaration(scope, current, declared) do

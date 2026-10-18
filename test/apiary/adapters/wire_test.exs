@@ -4,50 +4,316 @@ defmodule Apiary.Adapters.WireTest do
   # turn, with every value that is not exactly what the contract allows.
   use ExUnit.Case, async: true
 
+  import Apiary.DescriptionFixtures, only: [contract_description: 0, contract_description: 1]
+
   alias Apiary.Adapters.Wire
+  alias Apiary.Integrations.Description
 
   @fixtures Path.expand("../../fixtures/integration-contract/adapter", __DIR__)
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
 
-  @valid %{
+  @base %{
     "version" => 1,
     "time" => "2026-10-15T12:00:00Z",
     "connect_url" => "https://tracker-adapter.acme.example/connect",
     "sync" => %{"default_interval" => 900, "minimum_interval" => 300, "sends_changes" => false}
   }
 
+  # A valid body: `@base` with the contract's description of an example tracker.
+  defp valid, do: Map.put(@base, "description", contract_description())
+
   defp declaration(body), do: body |> Jason.encode!() |> read()
 
-  defp read(raw) do
-    with {:ok, body} <- Wire.decode(raw), do: Wire.declaration(body)
-  end
+  defp read(raw), do: Wire.declaration(raw)
 
-  defp put_sync(key, value), do: put_in(@valid, ["sync", key], value)
+  defp put_sync(key, value), do: put_in(valid(), ["sync", key], value)
 
   describe "the contract's fixtures" do
     test "the declarations of fixtures/adapter/adapter are accepted as written" do
       assert {:ok, declaration} = read(fixture("adapter/acme-tracker.json"))
 
-      assert declaration == %{
+      assert %{
                time: ~U[2026-10-15 12:00:00Z],
                connect_url: "https://tracker-adapter.acme.example/connect",
                default_interval: 900,
                minimum_interval: 300,
-               sends_changes: false
-             }
+               sends_changes: false,
+               description: %Description{name: "example-tracker"} = description
+             } = declaration
+
+      assert Enum.sort(Map.keys(declaration)) ==
+               ~w(connect_url default_interval description minimum_interval sends_changes time)a
+
+      assert Description.item_noun(description) == %{one: "issue", other: "issues"}
+      assert Description.collection_noun(description) == %{one: "project", other: "projects"}
+      assert Description.items?(description)
 
       assert {:ok, %{default_interval: 3600, minimum_interval: 60, sends_changes: true}} =
                read(fixture("adapter/code-host.json"))
     end
 
-    test "the schema's refusal and the control plane's are refused" do
-      for path <- [
-            "invalid/adapter-sync-without-sends-changes.json",
-            "refused-by-control-plane/adapter-integer-with-fraction.json",
-            "refused-by-control-plane/adapter-repeated-member.json"
+    test "a description's numbers follow the description schema: 1e3 and 0.5 are read" do
+      assert {:ok, %{description: description}} = read(fixture("adapter/settings-numbers.json"))
+
+      assert description.document["settings"]["properties"]["weight"] ==
+               %{"type" => "number", "maximum" => 1.0e3, "multipleOf" => 0.5}
+    end
+
+    test "the schema's refusals and the control plane's are refused" do
+      names =
+        Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) ++
+          Path.wildcard(Path.join(@fixtures, "refused-by-control-plane/adapter-*.json"))
+
+      assert Enum.map(names, &Path.relative_to(&1, @fixtures)) == [
+               "invalid/adapter-description-item-noun-upper-case.json",
+               "invalid/adapter-description-string.json",
+               "invalid/adapter-description-version-2.json",
+               "invalid/adapter-description-without-roles.json",
+               "invalid/adapter-sync-without-sends-changes.json",
+               "invalid/adapter-without-description.json",
+               "refused-by-control-plane/adapter-integer-with-fraction.json",
+               "refused-by-control-plane/adapter-repeated-member.json"
+             ]
+
+      for name <- names, do: assert(read(File.read!(name)) == :error, name)
+    end
+  end
+
+  describe "the description" do
+    # `valid()` encoded, with the description's value written as `raw`.
+    defp with_description(raw) do
+      marker = "description-placeholder"
+
+      valid()
+      |> Map.put("description", marker)
+      |> Jason.encode!()
+      |> String.replace(~s("#{marker}"), raw)
+    end
+
+    test "is required, and must be one the description reader accepts" do
+      assert declaration(Map.delete(valid(), "description")) == :error
+
+      for value <- [nil, "x", [], 1, %{}, Map.delete(contract_description(), "roles")] do
+        assert declaration(Map.put(valid(), "description", value)) == :error, inspect(value)
+      end
+
+      for name <- ~w(invalid/description-source-item-noun-upper-case.json
+                     invalid/description-source-collection-noun-empty.json
+                     refused-by-reader/description-member-repeated.json) do
+        raw = File.read!(Path.expand("../../fixtures/integration-contract/" <> name, __DIR__))
+        assert read(with_description(raw)) == :error, name
+      end
+    end
+
+    test "with no source role, it gives the defaults" do
+      assert {:ok, %{description: description}} =
+               declaration(
+                 Map.put(valid(), "description", contract_description("acme-tracker.json"))
+               )
+
+      assert Description.item_noun(description) == nil
+      assert Description.collection_noun(description) == nil
+      assert Description.items?(description)
+    end
+
+    test "is taken as the body writes it: its whitespace, escapes and numbers as sent" do
+      raw = Jason.encode!(contract_description(), pretty: true)
+      assert {:ok, _} = read(with_description(raw))
+
+      # A member name written with an escape is the same member.
+      escaped =
+        String.replace(with_description(raw), ~s("description":), ~s("descr\\u0069ption":),
+          global: false
+        )
+
+      assert escaped =~ ~s("descr\\u0069ption")
+      assert {:ok, %{description: %Description{}}} = read(escaped)
+
+      # A number with an exponent inside the description is the description schema's to
+      # read, and it allows one.
+      with_exponent =
+        contract_description()
+        |> put_in(["settings", "properties"], %{
+          "weight" => %{"type" => "number", "maximum" => "max"}
+        })
+        |> Jason.encode!()
+        |> String.replace(~s("max"), "1e3")
+
+      assert {:ok, %{description: description}} = read(with_description(with_exponent))
+      assert description.document["settings"]["properties"]["weight"]["maximum"] == 1.0e3
+    end
+
+    test "is refused with a member twice, at any depth inside it" do
+      raw = Jason.encode!(contract_description())
+
+      for repeated <- [
+            String.replace(raw, ~s("version":1), ~s("version":1,"version":1)),
+            String.replace(raw, ~s("type":"object"), ~s("type":"object","type":"object")),
+            String.replace(raw, ~s("one":"issue"), ~s("one":"issue","one":"bug"))
           ] do
-        assert read(fixture(path)) == :error, path
+        assert repeated != raw
+        assert read(with_description(repeated)) == :error, repeated
+      end
+    end
+
+    test "is at most 262144 bytes as the body carries it, never as it encodes again" do
+      # 4000 numbers written `1e5`, three bytes each, which Jason writes again as `1.0e5`,
+      # five, in a role the schema does not name, and strings of at most 16384 bytes to
+      # bring the value to exactly 262144 bytes: encoded again, it is 8000 bytes longer.
+      with_pad = fn pad ->
+        contract_description()
+        |> put_in(["roles", "acme_role"], %{
+          "numbers" => List.duplicate(List.duplicate("n", 1000), 4),
+          "pad" => pad
+        })
+        |> Jason.encode!()
+        |> String.replace(~s("n"), "1e5")
+      end
+
+      # Inside its brackets the pad's list holds `count` strings, each with its quotes, and
+      # a comma between two: `needed` bytes in all.
+      needed = 262_144 - byte_size(with_pad.([]))
+      count = div(needed, 16_384 + 3) + 1
+      letters = needed - 3 * count + 1
+
+      lengths =
+        for i <- 1..count, do: div(letters, count) + if(i <= rem(letters, count), do: 1, else: 0)
+
+      at_limit = with_pad.(Enum.map(lengths, &String.duplicate("p", &1)))
+
+      assert byte_size(at_limit) == 262_144
+      assert Enum.max(lengths) <= 16_384
+
+      # Its values, counted as the reader counts them, stay under the reader's 4096: the
+      # value is read, or refused, for its size alone.
+      values = at_limit |> Jason.decode!() |> count_values()
+      assert values < 4096, "#{values} values"
+      assert byte_size(at_limit |> Jason.decode!() |> Jason.encode!()) == 262_144 + 8000
+
+      assert {:ok, %{description: description}} = read(with_description(at_limit))
+
+      assert description.document["roles"]["acme_role"]["numbers"] ==
+               List.duplicate(List.duplicate(1.0e5, 1000), 4)
+
+      # Whitespace around the value is the body's, not the value's.
+      assert {:ok, _} = read(with_description("\n  " <> at_limit <> "  \n"))
+
+      # One byte more, whitespace inside the value included, is refused.
+      over = String.replace_suffix(at_limit, "}", " }")
+      assert byte_size(over) == 262_145
+      assert Jason.decode!(over) == Jason.decode!(at_limit)
+      assert read(with_description(over)) == :error
+      assert Description.parse(over) == {:error, {:description_invalid, [:too_large]}}
+    end
+  end
+
+  # The values of a decoded document, the document itself, every entry and every
+  # member's value, as `Apiary.Kinds.Bounds` counts them.
+  defp count_values(%{} = map),
+    do: 1 + (map |> Map.values() |> Enum.map(&count_values/1) |> Enum.sum())
+
+  defp count_values(list) when is_list(list),
+    do: 1 + (list |> Enum.map(&count_values/1) |> Enum.sum())
+
+  defp count_values(_scalar), do: 1
+
+  describe "the scan for the description's bytes" do
+    test "steps over the strings, objects and lists before it, whatever they hold" do
+      raw =
+        ~S({"a":"{[\"}]\\","b":{"c":"}\"{","d":[1,"]",{"e":"\\\""}]},) <>
+          ~S("description" : {"x":"}{\""} , "z":1})
+
+      assert {:ok, _} = Wire.decode(raw)
+      assert Wire.member_value(raw, "description") == {:ok, ~S({"x":"}{\""})}
+    end
+
+    test "takes the top-level member, not one nested before it" do
+      raw =
+        ~S({"meta":{"description":"inner","list":[{"description":[1]}]},"description":[2,3]})
+
+      assert {:ok, _} = Wire.decode(raw)
+      assert Wire.member_value(raw, "description") == {:ok, "[2,3]"}
+      assert Wire.member_value(~S({"a":{"description":1}}), "description") == :error
+      assert Wire.member_value(~S({"Description":1}), "description") == :error
+    end
+
+    test "finds the member last, its value without the whitespace around it" do
+      assert Wire.member_value(~s({"a":1,"description":"text"\n}), "description") ==
+               {:ok, ~s("text")}
+
+      assert Wire.member_value(~s({"description":12.5e3}), "description") == {:ok, "12.5e3"}
+      assert Wire.member_value(~s({"a":[],"description":true }), "description") == {:ok, "true"}
+      assert Wire.member_value(~s({"description":{}}), "description") == {:ok, "{}"}
+    end
+
+    test "reads a member's name with its escapes" do
+      assert Wire.member_value(~S({"descr\u0069ption":{"y":1}}), "description") ==
+               {:ok, ~S({"y":1})}
+
+      assert Wire.member_value(~S({"description\/":1,"description":2}), "description") ==
+               {:ok, "2"}
+    end
+
+    test "answers :error, never raises, on a body it cannot read" do
+      for raw <- [
+            "",
+            " ",
+            "{",
+            "[]",
+            ~S({"a"),
+            ~S({"a":),
+            ~S({"a":"x),
+            "{\"a\":\"\\",
+            ~S({"a":{),
+            ~S({"a":{"b":"}),
+            ~S({"a":[1,{]),
+            ~S({"descr\u00),
+            ~s(\uFEFF{"description":1}),
+            ~s({"a":1,\f"description":1}),
+            ~s({"a"\f:1,"description":1})
+          ] do
+        assert Wire.member_value(raw, "description") == :error, inspect(raw)
+      end
+
+      assert Wire.member_value(nil, "description") == :error
+    end
+
+    test "a declaration is read with its description first, in the middle or last" do
+      description =
+        put_in(contract_description(), ["roles", "acme_role"], %{
+          "text" => "}{\"][\\",
+          "description" => %{"description" => "inner"}
+        })
+
+      members = valid() |> Map.put("description", description) |> Enum.sort()
+
+      {[{"description", _} = first], rest} =
+        Enum.split_with(members, &(elem(&1, 0) == "description"))
+
+      for order <- [
+            [first | rest],
+            Enum.take(rest, 2) ++ [first | Enum.drop(rest, 2)],
+            rest ++ [first]
+          ] do
+        raw = order |> Jason.OrderedObject.new() |> Jason.encode!()
+        assert {:ok, %{description: got}} = read(raw), raw
+        assert got.document == description
+      end
+    end
+
+    test "a body with a byte order mark or whitespace JSON does not have is refused" do
+      raw = Jason.encode!(valid())
+      assert {:ok, _} = read(raw)
+
+      for changed <- [
+            "\uFEFF" <> raw,
+            String.replace(raw, ~s(,"description":), ~s(,\f"description":)),
+            String.replace(raw, ~s(,"description":), ~s(,\u00A0"description":)),
+            String.replace(raw, ~s(,"description":), ~s(,\v"description":))
+          ] do
+        assert changed != raw
+        assert read(changed) == :error, inspect(changed)
       end
     end
   end
@@ -64,23 +330,23 @@ defmodule Apiary.Adapters.WireTest do
           ~s({"a":{"b":1,"b":2}}),
           ~s({"a":[{"b":1,"b":2}]})
         ] do
-      assert with({:ok, body} <- Wire.decode(raw), do: Wire.declaration(body)) == :error, raw
+      assert Wire.declaration(raw) == :error, raw
     end
 
     assert Wire.decode(nil) == :error
   end
 
   test "exactly the members the contract names, at the top and in sync" do
-    assert {:ok, _} = declaration(@valid)
+    assert {:ok, _} = declaration(valid())
 
-    for key <- Map.keys(@valid) do
-      assert declaration(Map.delete(@valid, key)) == :error, "without #{key}"
+    for key <- Map.keys(valid()) do
+      assert declaration(Map.delete(valid(), key)) == :error, "without #{key}"
     end
 
-    assert declaration(Map.put(@valid, "name", "Acme")) == :error
+    assert declaration(Map.put(valid(), "name", "Acme")) == :error
 
-    for key <- Map.keys(@valid["sync"]) do
-      assert declaration(update_in(@valid, ["sync"], &Map.delete(&1, key))) == :error,
+    for key <- Map.keys(valid()["sync"]) do
+      assert declaration(update_in(valid(), ["sync"], &Map.delete(&1, key))) == :error,
              "without sync.#{key}"
     end
 
@@ -88,14 +354,14 @@ defmodule Apiary.Adapters.WireTest do
   end
 
   test "version is the integer 1" do
+    # Jason writes 1.0 as `1.0`, so the body carries the version with a fraction.
+    assert Jason.encode!(Map.put(valid(), "version", 1.0)) =~ ~s("version":1.0})
+
     for version <- [2, 0, "1", 1.0, nil, true] do
-      assert declaration(Map.put(@valid, "version", version)) == :error, inspect(version)
+      assert declaration(Map.put(valid(), "version", version)) == :error, inspect(version)
     end
 
-    assert read(
-             ~s({"version":1.0,"time":"2026-10-15T12:00:00Z","connect_url":"https://a.example/c","sync":{"default_interval":900,"minimum_interval":300,"sends_changes":false}})
-           ) ==
-             :error
+    assert {:ok, _} = read(Jason.encode!(valid()))
   end
 
   test "time is RFC 3339 in UTC with whole seconds" do
@@ -111,7 +377,7 @@ defmodule Apiary.Adapters.WireTest do
           1_792_065_600,
           nil
         ] do
-      assert declaration(Map.put(@valid, "time", time)) == :error, inspect(time)
+      assert declaration(Map.put(valid(), "time", time)) == :error, inspect(time)
     end
   end
 
@@ -126,7 +392,7 @@ defmodule Apiary.Adapters.WireTest do
             "https://192.0.2.10/connect"
           ] do
         assert Wire.url?(url), url
-        assert {:ok, %{connect_url: ^url}} = declaration(Map.put(@valid, "connect_url", url))
+        assert {:ok, %{connect_url: ^url}} = declaration(Map.put(valid(), "connect_url", url))
       end
 
       long = "https://a.example/" <> String.duplicate("a", 2048 - 18)
@@ -162,7 +428,7 @@ defmodule Apiary.Adapters.WireTest do
             42
           ] do
         refute Wire.url?(url), inspect(url)
-        assert declaration(Map.put(@valid, "connect_url", url)) == :error, inspect(url)
+        assert declaration(Map.put(valid(), "connect_url", url)) == :error, inspect(url)
       end
     end
   end
@@ -172,7 +438,7 @@ defmodule Apiary.Adapters.WireTest do
       for {default, minimum} <- [{60, 60}, {86_400, 86_400}, {86_400, 60}, {900, 900}] do
         assert {:ok, %{default_interval: ^default, minimum_interval: ^minimum}} =
                  declaration(
-                   put_in(@valid, ["sync"], %{
+                   put_in(valid(), ["sync"], %{
                      "default_interval" => default,
                      "minimum_interval" => minimum,
                      "sends_changes" => true
@@ -189,12 +455,15 @@ defmodule Apiary.Adapters.WireTest do
     end
 
     test "an interval written with a fraction or an exponent is refused" do
-      for written <- ["900.0", "9e2", "9E2", "900e0"] do
-        raw =
-          ~s({"version":1,"time":"2026-10-15T12:00:00Z","connect_url":"https://a.example/c",) <>
-            ~s("sync":{"default_interval":#{written},"minimum_interval":300,"sends_changes":false}})
+      raw = Jason.encode!(valid())
+      assert {:ok, %{default_interval: 900}} = read(raw)
 
-        assert read(raw) == :error, written
+      for written <- ["900.0", "9e2", "9E2", "900e0"] do
+        changed =
+          String.replace(raw, ~s("default_interval":900,), ~s("default_interval":#{written},))
+
+        assert changed != raw, written
+        assert read(changed) == :error, written
       end
     end
 
@@ -206,7 +475,7 @@ defmodule Apiary.Adapters.WireTest do
 
     test "sync is an object" do
       for value <- [[], "x", nil, 900] do
-        assert declaration(Map.put(@valid, "sync", value)) == :error, inspect(value)
+        assert declaration(Map.put(valid(), "sync", value)) == :error, inspect(value)
       end
     end
   end

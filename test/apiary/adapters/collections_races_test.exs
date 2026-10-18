@@ -6,7 +6,9 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # workspace's unlink against a listing's part over collections whose refs run against
   # their ids, a Backlog switch against a part of another connection of the adapter that
   # names the switch's refs, a disconnect against a part that completes its listing, and
-  # a listing's part against a restore and a marking of workspaces. Each side runs on a
+  # a listing's part against a restore and a marking of workspaces, and a start that
+  # changes the adapter's items against a listing's part, a Backlog switch and an assign.
+  # Each side runs on a
   # separate connection, outside the SQL sandbox, so each commits and each waits on the
   # other's locks as it would in production. Not async: what these tests commit is
   # visible to every other test while they run, and they delete it again before they
@@ -22,12 +24,17 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # under another connection stays with it and its row is never held by the part; a
   # listing's part writes every collection it writes, its ends included, before it takes
   # the adapter's feed counter; a listing's part holds every workspace it holds in one
-  # statement, by id, as a marking holds them.
+  # statement, by id, as a marking holds them; a start that changes the adapter's items
+  # holds the adapter's row first, then its connections, then every live collection of
+  # theirs, and a listing's part holds the adapter's row `FOR SHARE` before its
+  # connection, so the two come one after the other; a switch reads the adapters again
+  # once it holds its collections.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.Races
+  import Apiary.DescriptionFixtures, only: [read_description: 1]
 
   alias Apiary.{AccessKeys, Deletion, Edition, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
@@ -760,5 +767,181 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert {:ok, %Workspace{}} = Task.await(marked.task)
     [new] = ids(ctx.connection, ["NEW"])
     assert Repo.get!(Collection, new).workspace_id == ctx.scope.workspace.id
+  end
+
+  ## A start that changes the adapter's items
+
+  # A start of the adapter with the description fixture `name`
+  # (`Apiary.Adapters.declare/2`): `example-projects.json` says it has no items,
+  # `example-tracker.json` that it has.
+  defp start_with(ctx, name),
+    do: fn ->
+      Apiary.Adapters.declare(ctx.key_scope, %{
+        time: DateTime.utc_now(:second),
+        connect_url: "https://tracker-adapter.acme.example/connect",
+        default_interval: 900,
+        minimum_interval: 300,
+        sends_changes: false,
+        description: read_description(name)
+      })
+    end
+
+  # A part naming `ref`, with `items` false or true, and `target`.
+  defp items_part(ctx, ref, items, id, started_at, target),
+    do: fn ->
+      Collections.post_listing(ctx.key_scope, %{
+        time: DateTime.utc_now(:second),
+        connection_id: ctx.connection.public_id,
+        collections: [
+          %{ref: ref, url: "https://t.example/" <> ref, title: ref, target: target, items: items}
+        ],
+        listing: %{id: id, part: 1, started_at: started_at, complete: false}
+      })
+    end
+
+  # `SHOP`, with the target `@shop`, assigned to the scope's workspace, with no items as
+  # its listing says: not linked, and no entry.
+  defp itemless_shop(ctx) do
+    {:ok, :accepted} = items_part(ctx, "SHOP", false, "first", @started, @shop).()
+    [shop] = ids(ctx.connection, ["SHOP"])
+    {:ok, 1} = assign(ctx, [shop], ctx.scope.workspace).()
+    assert collection_entries(ctx.adapter) == []
+    shop
+  end
+
+  defp statuses(ctx, ref),
+    do:
+      for(
+        %{"collection_ref" => ^ref, "status" => status} <- collection_entries(ctx.adapter),
+        do: status
+      )
+
+  test "a start that turns items off held, then a part that gives a collection items: the part waits on the adapter's row, and links nothing",
+       ctx do
+    shop = itemless_shop(ctx)
+
+    {started, start_pid} = hold(start_with(ctx, "example-projects.json"))
+    assert {:ok, %Node{items: false}} = started.result
+
+    listed = start(items_part(ctx, "SHOP", true, "second", DateTime.add(@started, 60), @shop))
+    await_blocked(listed.backend, start_pid)
+    commit(started)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert Repo.get!(Collection, shop).items
+    assert statuses(ctx, "SHOP") == []
+  end
+
+  test "a part that gives a collection items held, then a start that turns items off: the start waits, and unlinks what the part linked",
+       ctx do
+    shop = itemless_shop(ctx)
+
+    {listed, listed_pid} =
+      hold(items_part(ctx, "SHOP", true, "second", DateTime.add(@started, 60), @shop))
+
+    assert listed.result == {:ok, :accepted}
+
+    started = start(start_with(ctx, "example-projects.json"))
+    await_blocked(started.backend, listed_pid)
+    commit(listed)
+
+    assert {:ok, %Node{items: false}} = Task.await(started.task)
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+
+    refute Collection |> Repo.get!(shop) |> Repo.preload(:adapter) |> Collection.linked?()
+  end
+
+  test "a start that turns items off held, then a switch that read the adapter before it: the switch reads it again once it holds the collection, and turns on nothing",
+       ctx do
+    {:ok, :accepted} = items_part(ctx, "SHOP", true, "first", @started, @shop).()
+    [shop] = ids(ctx.connection, ["SHOP"])
+    {:ok, 1} = assign(ctx, [shop], ctx.scope.workspace).()
+
+    target =
+      Repo.get_by!(Target,
+        workspace_id: ctx.scope.workspace.id,
+        system: @shop.system,
+        path: @shop.path
+      )
+
+    {:ok, 1} = switch(ctx, target, false).()
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+
+    {started, start_pid} = hold(start_with(ctx, "example-projects.json"))
+    assert {:ok, %Node{items: false}} = started.result
+
+    # The switch finds the collection, its adapter with items still, with no lock, then
+    # waits on the collection the start holds.
+    switched = start(switch(ctx, target, true))
+    await_blocked(switched.backend, start_pid)
+    commit(started)
+
+    assert Task.await(switched.task) == {:error, :not_found}
+    refute Repo.get!(Collection, shop).backlog
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+  end
+
+  test "a switch held, then a start that turns items off: the start waits for the switch, and unlinks what it linked",
+       ctx do
+    {:ok, :accepted} = items_part(ctx, "SHOP", true, "first", @started, @shop).()
+    [shop] = ids(ctx.connection, ["SHOP"])
+    {:ok, 1} = assign(ctx, [shop], ctx.scope.workspace).()
+
+    target =
+      Repo.get_by!(Target,
+        workspace_id: ctx.scope.workspace.id,
+        system: @shop.system,
+        path: @shop.path
+      )
+
+    {:ok, 1} = switch(ctx, target, false).()
+
+    {switched, switch_pid} = hold(switch(ctx, target, true))
+    assert switched.result == {:ok, 1}
+
+    started = start(start_with(ctx, "example-projects.json"))
+    await_blocked(started.backend, switch_pid)
+    commit(switched)
+
+    assert {:ok, %Node{items: false}} = Task.await(started.task)
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked", "linked", "unlinked"]
+  end
+
+  test "starts that turn items off and on, parts, switches and assigns at once: none deadlocks, and the last entry says how each collection stands",
+       ctx do
+    rows = against_ids(ctx)
+    ids = [rows.a, rows.b, rows.c]
+
+    answers =
+      for round <- 1..20 do
+        started = DateTime.add(@started, 60 * round)
+
+        changes = [
+          start_with(
+            ctx,
+            if(rem(round, 2) == 0, do: "example-tracker.json", else: "example-projects.json")
+          ),
+          targeted(ctx, "round #{round}", started),
+          switch(ctx, rows.target, rem(round, 3) != 0),
+          assign(ctx, Enum.shuffle(ids), ctx.scope.workspace),
+          start_with(
+            ctx,
+            if(rem(round, 2) == 0, do: "example-projects.json", else: "example-tracker.json")
+          )
+        ]
+
+        together(Enum.map(Enum.take(changes, sides(5)), &safely/1))
+      end
+      |> List.flatten()
+
+    assert for({:raised, message} <- answers, do: message) == []
+
+    for {ref, id} <- Enum.zip(["A", "B", "C"], ids) do
+      statuses = statuses(ctx, ref)
+      assert statuses |> Enum.chunk_every(2, 1, :discard) |> Enum.all?(fn [a, b] -> a != b end)
+
+      linked? = Collection |> Repo.get!(id) |> Repo.preload(:adapter) |> Collection.linked?()
+      assert List.last(statuses) == if(linked?, do: "linked", else: "unlinked")
+    end
   end
 end

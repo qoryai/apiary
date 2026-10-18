@@ -732,7 +732,8 @@ defmodule Apiary.AuditChanges do
       connect_url: "https://tracker-adapter.acme.example/connect",
       default_interval: 900,
       minimum_interval: 300,
-      sends_changes: false
+      sends_changes: false,
+      description: Apiary.DescriptionFixtures.read_description()
     }
   end
 

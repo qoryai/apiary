@@ -243,7 +243,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
           "default_interval" => 900,
           "minimum_interval" => 300,
           "sends_changes" => false
-        }
+        },
+        "description" => Apiary.DescriptionFixtures.contract_description()
       }
 
       raw = Jason.encode!(body)

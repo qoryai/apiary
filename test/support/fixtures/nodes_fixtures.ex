@@ -68,10 +68,13 @@ defmodule Apiary.NodesFixtures do
 
   @doc """
   Records on `adapter` what the source role of the integrations contract's description
-  fixture `name` says of its items (`Apiary.Nodes.Node.source_role_changeset/2`), as
-  nothing in the product does: `example-tracker.json` names them issue and issues,
-  `example-projects.json` says it has none, `acme-tracker.json` says neither. Returns the
-  adapter as it now is.
+  fixture `name` says of its items and its collections
+  (`Apiary.Nodes.Node.source_role_changeset/2`), as a start does
+  (`Apiary.Adapters.declare/2`), but with no feed entry for a change of its `items`:
+  `example-tracker.json` names its items issue and issues and its collections project
+  and projects, `example-projects.json` says it has no items and names its collections
+  project and projects, `acme-tracker.json` names none and has items. Returns the adapter
+  as it now is.
   """
   def describe_source(%Node{kind: :adapter} = adapter, name) do
     {:ok, description} =

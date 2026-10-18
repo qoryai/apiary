@@ -10,6 +10,7 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
   import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+  import Apiary.DescriptionFixtures, only: [contract_description: 0]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -42,7 +43,8 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
           "default_interval" => 900,
           "minimum_interval" => 300,
           "sends_changes" => false
-        }
+        },
+        "description" => contract_description()
       },
       attrs
     )
@@ -83,7 +85,12 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
                connect_url: "https://tracker-adapter.acme.example/connect",
                sync_default_interval: 900,
                sync_minimum_interval: 300,
-               sync_sends_changes: false
+               sync_sends_changes: false,
+               item_noun_one: "issue",
+               item_noun_other: "issues",
+               items: true,
+               collection_noun_one: "project",
+               collection_noun_other: "projects"
              } = reload(ctx.adapter)
 
       assert %DateTime{} = used_at(ctx.key)
@@ -296,6 +303,72 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
       assert reload(ctx.adapter).sync_default_interval == nil
       assert used_at(ctx.key) == nil
       assert seen_count() == 0
+    end
+
+    test "a description missing, or one the contract refuses, is 400 invalid_request, signed, after the signature and before the time",
+         ctx do
+      source = contract_description()["roles"]["source"]
+
+      bodies = [
+        Map.delete(body(), "description"),
+        Map.put(body(), "description", "description.json"),
+        Map.put(body(), "description", Map.put(contract_description(), "version", 2)),
+        Map.put(
+          body(),
+          "description",
+          put_in(contract_description(), ["roles", "source"], Map.put(source, "items", true))
+        ),
+        Map.put(
+          body(),
+          "description",
+          put_in(
+            contract_description(),
+            ["roles", "source", "collection_noun"],
+            %{"one" => "Project", "other" => "projects"}
+          )
+        )
+      ]
+
+      for body <- bodies do
+        conn = declare(ctx, body)
+        assert json_response(conn, 400) == @invalid, inspect(body)
+        assert signed_answer?(conn)
+
+        # The body is refused before its time is looked at: a stale one changes nothing.
+        stale = Map.put(body, "time", now_time(-301))
+        assert json_response(declare(ctx, stale), 400) == @invalid
+
+        # The signature is verified first: a bad one is the unsigned 401.
+        conn = declare(ctx, body, signature: String.duplicate("A", 86))
+        assert json_response(conn, 401) == @unauthorized
+        assert unsigned_answer?(conn)
+      end
+
+      assert reload(ctx.adapter).sync_default_interval == nil
+      assert reload(ctx.adapter).item_noun_one == nil
+      assert used_at(ctx.key) == nil
+      assert seen_count() == 0
+    end
+
+    test "a description's numbers follow the description schema, and a member twice in it is refused",
+         ctx do
+      raw = Jason.encode!(body())
+
+      with_exponent =
+        String.replace(
+          raw,
+          ~s("settings":{"type":"object"}),
+          ~s("settings":{"type":"object","properties":{"weight":{"type":"number","maximum":1e3}}})
+        )
+
+      assert with_exponent != raw
+      assert declare(ctx, with_exponent).status == 204
+
+      repeated =
+        String.replace(raw, ~s("one":"issue"), ~s("one":"issue","one":"bug"))
+
+      assert repeated != raw
+      assert json_response(declare(ctx, repeated), 400) == @invalid
     end
   end
 

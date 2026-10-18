@@ -33,8 +33,11 @@ defmodule Apiary.Adapters.Collections do
   # A part that turns a linked collection's `items` to false writes its `unlinked` entry,
   # and one that turns it back to true writes its `linked` entry, while it is assigned
   # and its Backlog is on; neither leaves an entry in the organisation's trail, and
-  # neither changes `backlog`. A collection with no items, or of an adapter with none, is
-  # never linked, so its assign, move, unassign or end writes no entry either.
+  # neither changes `backlog`. A start of the adapter whose description changes its
+  # `items` writes the same entries for each of its live collections that is assigned, has
+  # its Backlog on and has items (`relink_adapter/2`), with no entry in any trail either.
+  # A collection with no items, or of an adapter with none, is never linked, so its
+  # assign, move, unassign or end writes no entry either.
   #
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
   # for deletion, a collection a part makes is assigned to it as it is made, with the
@@ -86,8 +89,10 @@ defmodule Apiary.Adapters.Collections do
   #
   #   * `{:collections_changed, %{connection_id: id, collection_ids: ids}}`, the ids of the
   #     collections of the connection `id` that a listing's part made, updated or ended,
-  #     or that an assign linked, moved or unlinked; one message per part that changed
-  #     any, and per assign that changed any, none for one that changed none;
+  #     that an assign linked, moved or unlinked, that a Backlog switch turned on or off,
+  #     or whose link a start of their adapter changed; one message per part that changed
+  #     any, and per assign, switch or start that changed any of the connection's, none
+  #     for one that changed none;
   #   * `{:connection_changed, %{connection_id: id, adapter_id: id}}`, when the connection
   #     changes as its page shows it (`broadcast_connection/1`): a press of Install that
   #     takes or makes it, or that replaces it (its end), its return that connects it, its
@@ -96,6 +101,11 @@ defmodule Apiary.Adapters.Collections do
   #
   # Locks, in one order for every change here, so none waits on another in turn:
   #
+  #   0. the adapter's row, first, as `Apiary.Adapters.Connections` holds it before its
+  #      connections: every start holds it `FOR NO KEY UPDATE` (`Apiary.Adapters.declare/2`),
+  #      before the rows `relink_adapter/2` holds when it changes the adapter's `items`,
+  #      and a listing's part `FOR SHARE` (`hold_adapter/1`), before its connection; no
+  #      other change here holds it;
   #   1. the connections: a listing's part holds its connection `FOR UPDATE`, and no other
   #      connection; an assign its connection `FOR SHARE`; a Backlog switch
   #      (`set_backlog/3`) and a workspace's unlink (`unlink_workspace/2`) the connections
@@ -111,13 +121,37 @@ defmodule Apiary.Adapters.Collections do
   #      others it names with an insert that leaves a ref live under another connection
   #      as it is and never locks its row (`ON CONFLICT DO NOTHING`); that insert only
   #      waits for a change writing the row to end, and it runs before the part writes the
-  #      collections it holds (`put_collections/4`). A change that holds collections by id
+  #      collections it holds (`put_collections/5`). A change that holds collections by id
   #      holds their connections first, so it holds none of a connection's collections
   #      while a part of that connection runs;
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
   #      (`finish_part/3`);
   #   5. the adapter's feed counter, last.
+  #
+  # A start that changes the adapter's `items` holds, after its row, the adapter's
+  # connections that have not ended `FOR SHARE`, by id, then every live collection of
+  # theirs `FOR UPDATE`, by id, and no workspace (`relink_adapter/2`). Every other read of
+  # an adapter's `items` here takes no lock, and is safe against such a start because it
+  # comes after the collection it decides for is held, so it reads the adapter as the start
+  # left it, or before the start, which then waits for that collection and sees what was
+  # written:
+  #
+  #   * an assign reads it once it holds its collections (`relink/5`);
+  #   * a Backlog switch reads the target's collections and their adapters with no lock
+  #     first (`target_collections/1`), then reads the adapters again once it holds the
+  #     collections, and leaves out those whose adapter has no items
+  #     (`lock_target_collections/3`);
+  #   * an end, a disconnect and a workspace's unlink read it once they hold, or have
+  #     written, the collections they end or unlink (`tell_unlinked/1`);
+  #   * a post of items or of comments decides on a collection once it holds it
+  #     `FOR SHARE` (`verdict/3`, from `Apiary.Sources.Ingest`; its look before that lock
+  #     only refuses early, and is asked again under it), so an item taken in before the
+  #     start's `unlinked` entry goes on, as one taken in before a Backlog is turned off;
+  #   * a listing's part does not read it so: the collections a part makes are new rows,
+  #     which a start cannot hold, so the part holds the adapter `FOR SHARE` before its
+  #     connection, and reads its `items` from that row;
+  #   * the pages' reads (`backlog_switch/2`, the lists and counts) change nothing.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -204,12 +238,14 @@ defmodule Apiary.Adapters.Collections do
         listing: part
       }) do
     Repo.transact(fn ->
-      with {:ok, found, _scope} <-
+      with {:ok, adapter_id} <- Connections.key_rights(key_scope, @listing_action),
+           adapter = hold_adapter(adapter_id),
+           {:ok, found, _scope} <-
              Connections.connection_for_key(key_scope, public_id, @listing_action),
            {:ok, connection} <- Connections.mark_listed(found),
            {:ok, listing} <- record_part(connection, part) do
         now = DateTime.utc_now()
-        put = put_collections(connection, collections, part.started_at, now)
+        put = put_collections(connection, adapter, collections, part.started_at, now)
         {ended, completed?} = complete(connection, listing, now)
         :ok = finish_part(connection, put, ended)
         ids = Enum.map(put.put, & &1.id) ++ Enum.map(ended, & &1.id)
@@ -226,6 +262,13 @@ defmodule Apiary.Adapters.Collections do
         refused
     end
   end
+
+  # The adapter `adapter_id`, held `FOR SHARE`, first of all a part holds, so a start that
+  # changes its `items` (`relink_adapter/2`) and the part come one after the other: the
+  # part reads the adapter's `items` from this row, and what it writes of each collection
+  # it makes is linked or not as that start left it.
+  defp hold_adapter(adapter_id),
+    do: Repo.one!(from n in Node, where: n.id == ^adapter_id, lock: "FOR SHARE")
 
   # Adds the part's number to its listing's bookkeeping, under the connection's lock:
   # `{:ok, listing}`, as it now stands, or `{:error, :invalid}` for a part that disagrees
@@ -329,11 +372,18 @@ defmodule Apiary.Adapters.Collections do
   # collections held are updated after the insert, so while it runs they are held but not
   # yet written, and the insert of a part of another connection that meets one of them
   # does not wait on this part; once they are written, such an insert waits for this
-  # part to end. Last, the adapter is read, with no lock, for its `items`.
-  defp put_collections(_connection, [], _started_at, _now),
+  # part to end. Each collection is given `adapter`, which the part holds `FOR SHARE`
+  # (`hold_adapter/1`), for its `items`.
+  defp put_collections(_connection, _adapter, [], _started_at, _now),
     do: %{put: [], made: MapSet.new(), assigned: %{}, workspaces: %{}}
 
-  defp put_collections(%Connection{} = connection, collections, started_at, now) do
+  defp put_collections(
+         %Connection{} = connection,
+         %Node{} = adapter,
+         collections,
+         started_at,
+         now
+       ) do
     organisation_id = connection.organisation_id
     only = only_workspace(organisation_id)
     assigned = assigned_before(connection, collections)
@@ -402,8 +452,6 @@ defmodule Apiary.Adapters.Collections do
         returning: @put_fields
       )
 
-    adapter = Repo.get!(Node, connection.adapter_id)
-
     %{
       put: Enum.map(made ++ updated, &%{&1 | adapter: adapter}),
       made: MapSet.new(made, & &1.id),
@@ -412,7 +460,7 @@ defmodule Apiary.Adapters.Collections do
     }
   end
 
-  # After every collection write of a part, `put_collections/4`'s and `complete/3`'s, so
+  # After every collection write of a part, `put_collections/5`'s and `complete/3`'s, so
   # the part holds the targets and the adapter's feed counter after them all, as the
   # module's lock order says: each collection made in a workspace, and each one in a
   # workspace whose target the part changes, makes its target there
@@ -719,6 +767,74 @@ defmodule Apiary.Adapters.Collections do
   end
 
   def lookup(_adapter_id, _collection_ref), do: nil
+
+  ## A start that changes its adapter's items
+
+  @doc false
+  # relink_adapter/2, inside the transaction of a start of the adapter (`before`, as it
+  # stood, and `adapter`, as the start wrote it; `Apiary.Adapters.declare/2`), which holds
+  # its row `FOR NO KEY UPDATE`: when the start changed its `items`, true to false or false
+  # to true, it holds the connections of the adapter that have not ended `FOR SHARE`, by
+  # id, then every live collection of theirs `FOR UPDATE`, by id, and writes the feed's
+  # `unlinked` entry for each that was linked, or its `linked` entry for each that now is:
+  # those assigned to a workspace, with their Backlog on and with items. Its `backlog` and
+  # its workspace stay as they are, and the organisation's trail gets no entry, as for a
+  # listing's part that changes a collection's `items`. A work item already taken in from
+  # one of them goes on, as when its Backlog is turned off. `{:ok, changed}`, the
+  # collections whose link changed, for `broadcast_relinked/1` once the start commits;
+  # `{:ok, []}` when `items` did not change, which holds nothing more.
+  #
+  # Every live collection is held, not only those it changes, so that no change of a
+  # collection's link reads the adapter's `items` while the start is writing it: an
+  # assign, a switch, an unlink, an end, a disconnect and a post of items or comments read
+  # the adapter once they hold their collections, so they either read it before the start,
+  # which then waits for them and sees what they wrote, or after it commits (the module's
+  # lock order).
+  @spec relink_adapter(Node.t(), Node.t()) :: {:ok, [Collection.t()]}
+  def relink_adapter(%Node{kind: :adapter, id: id, items: same}, %Node{id: id, items: same}),
+    do: {:ok, []}
+
+  def relink_adapter(%Node{kind: :adapter, id: id}, %Node{kind: :adapter, id: id} = adapter) do
+    connection_ids =
+      Repo.all(
+        from k in Connection,
+          where: k.adapter_id == ^id and is_nil(k.ended_at),
+          order_by: k.id,
+          select: k.id,
+          lock: "FOR SHARE"
+      )
+
+    held =
+      Repo.all(
+        from c in Collection,
+          where: c.adapter_id == ^id and c.connection_id in ^connection_ids,
+          where: is_nil(c.ended_at),
+          order_by: c.id,
+          lock: "FOR UPDATE"
+      )
+
+    # With the adapter's items, as the start wrote them, each is linked when it is
+    # assigned, with its Backlog on and with items; with the others, none is.
+    changed = Enum.filter(held, &Collection.linked?(%{&1 | adapter: %{adapter | items: true}}))
+    :ok = tell(changed, if(adapter.items, do: "linked", else: "unlinked"))
+    {:ok, changed}
+  end
+
+  @doc false
+  # After a start that changed its adapter's `items` commits (`relink_adapter/2`): the
+  # collections whose link it changed, broadcast by connection.
+  @spec broadcast_relinked([Collection.t()]) :: :ok
+  def broadcast_relinked(collections) do
+    for {connection_id, of_connection} <- Enum.group_by(collections, & &1.connection_id) do
+      :ok =
+        broadcast_collections(
+          %Connection{id: connection_id, organisation_id: hd(of_connection).organisation_id},
+          Enum.map(of_connection, & &1.id)
+        )
+    end
+
+    :ok
+  end
 
   ## Ends
 
@@ -1352,7 +1468,14 @@ defmodule Apiary.Adapters.Collections do
   # The collections `found` of `target_collections/1`, `{id, connection_id}`, of the
   # `connections` held, each held `FOR UPDATE`, by id, and read again once held, so one
   # that ended, moved, changed its target, lost its items, or whose connection ended
-  # meanwhile is left out.
+  # meanwhile is left out; then, in the next statement, their adapters, so one whose
+  # adapter lost its items meanwhile is left out too. That read takes no lock, and needs
+  # none: a start that changes an adapter's `items` holds every live collection of the
+  # adapter `FOR UPDATE` before it commits (`relink_adapter/2`), so while these are held
+  # it has either committed, and this statement, which begins after the lock, reads its
+  # `items`, or it commits after this transaction, and its entries follow the switch's.
+  # The adapter is never held here: a start holds it before the collections, and the
+  # switch, which holds the collections first, would wait on it in turn.
   defp lock_target_collections(%Target{} = target, found, connections) do
     connected =
       for %Connection{state: :connected, ended_at: nil, id: id} <- connections,
@@ -1361,14 +1484,25 @@ defmodule Apiary.Adapters.Collections do
 
     ids = for {id, connection_id} <- found, MapSet.member?(connected, connection_id), do: id
 
-    Repo.all(
-      from c in Collection,
-        where: c.id in ^ids,
-        where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at) and c.items,
-        where: c.target_system == ^target.system and c.target_path == ^target.path,
-        order_by: c.id,
-        lock: "FOR UPDATE"
-    )
+    held =
+      Repo.all(
+        from c in Collection,
+          where: c.id in ^ids,
+          where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at) and c.items,
+          where: c.target_system == ^target.system and c.target_path == ^target.path,
+          order_by: c.id,
+          lock: "FOR UPDATE"
+      )
+
+    with_items =
+      Repo.all(
+        from n in Node,
+          where: n.id in ^Enum.uniq(Enum.map(held, & &1.adapter_id)) and n.items,
+          select: n.id
+      )
+      |> MapSet.new()
+
+    Enum.filter(held, &MapSet.member?(with_items, &1.adapter_id))
   end
 
   # Turns `changed`, held, on or off, with its entry, then the feed's entries, the

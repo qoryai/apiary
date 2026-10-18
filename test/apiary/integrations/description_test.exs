@@ -29,14 +29,14 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert names ==
                ~w(acme-chat.json acme-tracker.json example-projects.json example-tracker.json
-                  github.json unknown-role.json)
+                  example-work-items.json github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 38
+      assert length(names) == 46
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -55,7 +55,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 23
+      assert length(names) == 31
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -80,7 +80,16 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"item-noun-work-item", :not, "#/roles/source/item_noun/one"},
             {"item-noun-work-items-hyphen", :not, "#/roles/source/item_noun/other"},
             {"items-false-with-item-noun", :jsv@if, "#/roles/source"},
-            {"items-true", :const, "#/roles/source/items"}
+            {"items-true", :const, "#/roles/source/items"},
+            {"collection-noun-33-characters", :maxLength, "#/roles/source/collection_noun/one"},
+            {"collection-noun-double-space", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-empty", :minLength, "#/roles/source/collection_noun/other"},
+            {"collection-noun-leading-hyphen", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-no-other", :required, "#/roles/source/collection_noun"},
+            {"collection-noun-non-ascii", :pattern, "#/roles/source/collection_noun/one"},
+            {"collection-noun-undefined-member", :additionalProperties,
+             "#/roles/source/collection_noun"},
+            {"collection-noun-upper-case", :pattern, "#/roles/source/collection_noun/one"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -125,6 +134,45 @@ defmodule Apiary.Integrations.DescriptionTest do
         assert {:ok, description} = parse_fixture(name)
         assert Description.item_noun(description) == nil, name
         assert Description.items?(description), name
+        assert Description.collection_noun(description) == nil, name
+      end
+    end
+
+    test "a source role's words for its collections, beside items: false too" do
+      assert {:ok, tracker} = parse_fixture("example-tracker.json")
+      assert Description.collection_noun(tracker) == %{one: "project", other: "projects"}
+
+      assert {:ok, projects} = parse_fixture("example-projects.json")
+      refute Description.items?(projects)
+      assert Description.collection_noun(projects) == %{one: "project", other: "projects"}
+
+      # No word is refused for a collection: "work item" is a collection's word here.
+      assert {:ok, work_items} = parse_fixture("example-work-items.json")
+      assert Description.item_noun(work_items) == %{one: "task", other: "tasks"}
+      assert Description.collection_noun(work_items) == %{one: "work item", other: "work-items"}
+    end
+
+    test "collection_noun's words: lower-case words joined by one space or hyphen" do
+      {:ok, tracker} = parse_fixture("example-tracker.json")
+
+      with_noun = fn noun ->
+        tracker.document
+        |> put_in(["roles", "source", "collection_noun"], noun)
+        |> Jason.encode!()
+        |> Description.parse()
+      end
+
+      for word <- ["a", "code base", "work item", "work-items", String.duplicate("z", 32)] do
+        assert {:ok, read} = with_noun.(%{"one" => word, "other" => word}), word
+        assert Description.collection_noun(read) == %{one: word, other: word}
+      end
+
+      for word <-
+            ["", "Board", "board ", "code  base", "-board", "board2", "projèt"] ++
+              [String.duplicate("z", 33)] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 with_noun.(%{"one" => "board", "other" => word}),
+               word
       end
     end
 
@@ -641,6 +689,17 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     defp values(value) when is_list(value), do: 1 + (value |> Enum.map(&values/1) |> Enum.sum())
     defp values(_value), do: 1
+
+    test "a description of 262144 bytes is read, and one of a byte more refused unread" do
+      text = encode(tracker_description())
+      # JSON allows whitespace after the document: it counts as the document's bytes.
+      padded = text <> String.duplicate(" ", 262_144 - byte_size(text))
+      assert byte_size(padded) == Description.max_bytes()
+      assert {:ok, %Description{}} = Description.parse(padded)
+
+      assert Description.parse(padded <> " ") ==
+               {:error, {:description_invalid, [:too_large]}}
+    end
 
     test "a description over the limits is refused by them" do
       for text <- attacks() do
