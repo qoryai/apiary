@@ -662,6 +662,11 @@ msgstr ""
 msgid "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} then brings you back here."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "%{interval} (its default)"
@@ -1993,6 +1998,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{observe} is the workspace's default"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} can have one installation of %{integration}."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -7067,6 +7077,11 @@ msgstr ""
 msgid "If its %{items} only track bugs, turn this off. Work items already taken in stay."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "If nothing appears, install again."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -7192,9 +7207,25 @@ msgstr ""
 msgid "In this browser"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Install"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Install address"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Installed by %{person} on %{date}."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Installed by %{person} today."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -9654,6 +9685,21 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not installed"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Not installed."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Not installed. %{person} started an install today at %{time} that isn't finished: finish it on %{integration}, or press Install to start again."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Not installed. %{person}'s install, started today at %{time}, expired before it was finished. Press Install to start again."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -13215,6 +13261,11 @@ msgstr ""
 msgid "That workspace is not one of this organisation's."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "The %{collections} it reaches are listed on this page."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The %{integration} installation ended on %{date}, when %{integration} reported it gone."
@@ -15096,6 +15147,11 @@ msgstr ""
 msgid "Views"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for %{integration} to send its %{collections}…"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for %{name} to run it. This page shows when it is connected."
@@ -16308,6 +16364,7 @@ msgid "cancelled %{when}"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collections"
