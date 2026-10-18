@@ -175,22 +175,46 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     end
   end
 
-  describe "the timeline's Run ended" do
-    @t0 ~U[2026-10-09 12:00:00Z]
+  @t0 ~U[2026-10-09 12:00:00Z]
 
-    defp run_ended(data) do
-      type = "dev.qory.run.exited"
-      event = %{sequence: 1, type: type, time: @t0, data: data}
-      index = Timeline.index([%{sequence: 1, type: type, time: @t0}])
-      [item] = Timeline.build(index.items, %{1 => Timeline.slim(event)})
+  # The timeline's item of one event of `type` with `data`, as the run page draws it.
+  defp item_html(type, data) do
+    event = %{sequence: 1, type: type, time: @t0, data: data}
+    index = Timeline.index([%{sequence: 1, type: type, time: @t0}])
+    [item] = Timeline.build(index.items, %{1 => Timeline.slim(event)})
 
-      render_component(&RunPageComponents.timeline_item/1,
-        id: "e-1",
-        item: item,
-        started_at: @t0,
-        seq_path: fn seq -> "/runs/r?seq=#{seq}" end
-      )
+    render_component(&RunPageComponents.timeline_item/1,
+      id: "e-1",
+      item: item,
+      started_at: @t0,
+      seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+    )
+  end
+
+  describe "the timeline's Session ended" do
+    defp session_ended(data), do: item_html("dev.qory.session.ended", data)
+
+    test "shows the reason cleaned, isolated in <bdi>" do
+      html = session_ended(%{"reason" => dirty("logout")})
+
+      assert texts(html, ".q-s > bdi") == [clean("logout")]
+      refute_dirty(html)
     end
+
+    test "reads a blank reason as none, as an item with no reason draws" do
+      none = session_ended(%{})
+      assert texts(none, ".q-s") |> Enum.map(&String.trim/1) == [""]
+
+      for blank <- @blanks do
+        html = session_ended(%{"reason" => blank})
+        assert query(html, ".q-s > bdi") |> Enum.count() == 0
+        assert texts(html, ".q-s") |> Enum.map(&String.trim/1) == [""]
+      end
+    end
+  end
+
+  describe "the timeline's Run ended" do
+    defp run_ended(data), do: item_html("dev.qory.run.exited", data)
 
     test "shows the signal cleaned, isolated in <bdi>" do
       html = run_ended(%{"state" => "failed", "signal" => dirty("SIGTERM"), "exit_code" => 143})

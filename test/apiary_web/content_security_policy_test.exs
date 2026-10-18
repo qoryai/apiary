@@ -66,20 +66,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
              @skipped,
              Map.new(
                [
-                 "/:org/settings/integrations",
-                 "/:org/settings/integrations/new",
-                 "/:org/settings/integrations/:adapter_id",
-                 "/instance/adapters",
                  "/instance/adapters/new/:entry",
-                 "/instance/adapters/:adapter_id",
-                 "/instance/adapters/:adapter_id/keys",
-                 "/instance/adapters/:adapter_id/keys/new-code",
-                 "/instance/adapters/:adapter_id/keys/:key_id/revoke",
-                 "/instance/adapters/:adapter_id/keys/codes/:code_id/revoke",
-                 "/instance/adapters/:adapter_id/settings",
-                 "/instance/adapters/:adapter_id/settings/rename",
-                 "/instance/adapters/:adapter_id/settings/remove",
-                 "/:org/:workspace/backlog",
                  "/:org/:workspace/backlog/:item_id"
                ],
                &{&1, @not_built}
@@ -443,6 +430,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
   defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
   defp value_of("node_id", _path, p), do: p.node_id
+  # An adapter's key and waiting code, on its Access key tab.
+  defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
+  defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
@@ -596,20 +586,34 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     defp stories, do: {[], []}
   end
 
-  # The records of the `factory` feature: an adapter, and a work item whose proposal waits
-  # at Confirm, so its page draws every part and its edit page is there; or placeholders
-  # where the instance has not got it, whose pages answer as paths that do not exist.
+  # The records of the `factory` feature: an adapter with a key and a waiting code, so its
+  # Access key tab and the pages that revoke them are there, and a work item whose proposal
+  # waits at Confirm, so its page draws every part and its edit page is there; or
+  # placeholders where the instance has not got it, whose pages answer as paths that do
+  # not exist.
   defp factory_params(scope) do
     if Features.on?(:factory) do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: understood_result())
 
+      admin = instance_admin_scope()
+      adapter = adapter_fixture(%{name: "Acme tracker"})
+      %{access_key: adapter_key} = enrolled_key_fixture(admin, adapter)
+      {:ok, adapter_code, _code} = Apiary.Adapters.create_code(admin, adapter)
+
       %{
-        adapter_id: adapter_fixture(%{name: "Acme tracker"}).public_id,
+        adapter_id: adapter.public_id,
+        adapter_key_id: adapter_key.key_id,
+        adapter_code_id: adapter_code.id,
         work_item_number: work_item.number
       }
     else
-      %{adapter_id: "na_x", work_item_number: 1}
+      %{
+        adapter_id: "na_x",
+        adapter_key_id: "x1",
+        adapter_code_id: Ecto.UUID.generate(),
+        work_item_number: 1
+      }
     end
   end
 

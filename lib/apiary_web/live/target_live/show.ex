@@ -27,8 +27,8 @@ defmodule ApiaryWeb.TargetLive.Show do
     it and its adapter have items, the Backlog card: one switch, whether its tickets come
     into the workspace's Backlog, named with its source's word for them, which owners and
     admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
-    and anyone else reads, disabled, with who may change it. After it, where the reader is
-    shown the work items, what its runs also read (`Apiary.Targets.further_repositories/1`),
+    and anyone else reads, disabled, with who may change it. After it, where the reader may
+    see it, what its runs also read (`Apiary.Targets.further_repositories/1`),
     one path a line, with Change, for those who may change it
     (`target.set_further_repositories`), which leads to its form page
     (`ApiaryWeb.TargetLive.FurtherRepositories`).

@@ -913,10 +913,15 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The end of a session: the reason the runtime gave, a text the run's report sent, shown
+  # as one (`Apiary.ExternalText.present/1`); one with nothing left to show, or only
+  # whitespace, is no reason, and the item says nothing after its kind, as without one.
   defp item_body(%{item: %{kind: :session_ended}} = assigns) do
+    assigns = assign(assigns, :reason, ExternalText.present(assigns.item.reason))
+
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Session ended")}>
-      {@item.reason}
+      <.external_text text={@reason} />
     </.head>
     """
   end
@@ -1633,7 +1638,7 @@ defmodule ApiaryWeb.RunPageComponents do
   ## About
 
   # What the run said it is about (`about` of its `run.started`, as `Apiary.Runs.Fold`
-  # kept it). A subject is its type and ref as given, "pull request #412": Qory knows no
+  # kept it). A subject is its type and ref as given, "ticket 412": Qory knows no
   # subject types. Its url is a link out only when it may be one (`external_link/1`). The
   # kind, a subject's type, ref and title, and the details' keys and values are texts the
   # run's report sent, shown as such (`Apiary.ExternalText`): a kind or a title with nothing
