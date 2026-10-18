@@ -7,8 +7,9 @@
 //
 // With `data-float` the list floats: it is a `popover="manual"` shown in the top layer
 // while open, placed under its trigger, right edges aligned (above it when there is no
-// room below), so a table's scroll region never clips a row's menu. It stays where the
-// DOM has it, so focus and clicks inside it are still the menu's.
+// room below; 8px from the viewport's left edge when right-aligned would start nearer),
+// so a table's scroll region never clips a row's menu. It stays where the DOM has it, so
+// focus and clicks inside it are still the menu's.
 
 const GAP = 4
 // The least room between a floating list and the viewport's edges.

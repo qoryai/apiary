@@ -1,6 +1,6 @@
 // Where a floating menu's list goes (assets/js/hooks/menu.js, `spot`): under its trigger,
 // right edges aligned, and never nearer than 8px to the viewport's left edge.
-// `node --test assets/js/test/` (no npm).
+// `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"

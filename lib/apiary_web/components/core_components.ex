@@ -1571,7 +1571,7 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   defp col_header(headers, %{key: key}) when is_binary(key),
-    do: Enum.find(headers, &(&1.col == key))
+    do: Enum.find(headers, &(&1[:col] == key))
 
   defp col_header(_headers, _col), do: nil
 

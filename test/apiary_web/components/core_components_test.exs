@@ -74,7 +74,7 @@ defmodule ApiaryWeb.CoreComponentsTest do
   end
 
   describe "an input with more than one error" do
-    test "shows each, with an id of its own, and is described by all of them" do
+    test "shows each, with a separate id, and is described by all of them" do
       form =
         Phoenix.Component.to_form(%{"email" => "dana"},
           as: :user,
@@ -269,14 +269,18 @@ defmodule ApiaryWeb.CoreComponentsTest do
 
   describe "a list's bar with the Assign to workspace button" do
     # Opt-in by a class on the bar: no other bar's search changes, and a phone keeps the
-    # search on a line of its own.
-    test "narrows its search to 260px from 768px, and the assign menu's search is 260px" do
+    # search on a separate line.
+    test "narrows its search to 260px from 768px; the assign menu's search fills its item, up to 260px" do
       css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
 
       assert css =~
                ~r/@media \(min-width: 768px\) \{\s*\.q-bar\.q-int-assignbar > \.q-find \{\s*width: min\(260px, 100%\);\s*\}\s*\}/
 
-      assert css =~ ~r/\n  \.q-int-assign \.q-filter-search \{\s*width: 260px;\s*\}/
+      assert css =~
+               ~r/\n  \.q-int-assign li > form \{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-int-assign \.q-filter-search \{\s*width: 100%;\s*max-width: 260px;\s*\}/
     end
   end
 
