@@ -666,7 +666,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
             </div>
           </.notice>
 
-          <div :if={@state == :listed} id="collections-bar" class="q-bar mb-3">
+          <div
+            :if={@state == :listed}
+            id="collections-bar"
+            class={["q-bar mb-3", @picks && "q-int-assignbar"]}
+          >
             <%= if @selected != %{} do %>
               <div
                 id="collections-selection"
