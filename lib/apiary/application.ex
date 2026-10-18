@@ -120,8 +120,23 @@ defmodule Apiary.Application do
       setup() ++
       [
         # Start to serve requests, typically the last entry
-        ApiaryWeb.Endpoint
+        endpoint()
       ]
+  end
+
+  # The endpoint, once an `https:` in its configuration has the bound on a fragmented
+  # message that config/config.exs gives `http:` (`ApiaryWeb.Endpoint.bound_https/1`).
+  # Kept in the application's environment, which the endpoint reads as it starts. Without
+  # an `https:`, the environment is left as it is.
+  defp endpoint do
+    config = Application.get_env(:apiary, ApiaryWeb.Endpoint, [])
+    bounded = ApiaryWeb.Endpoint.bound_https(config)
+
+    if bounded != config do
+      Application.put_env(:apiary, ApiaryWeb.Endpoint, bounded)
+    end
+
+    ApiaryWeb.Endpoint
   end
 
   # Oban's configuration with the crontab built here, the core's and the edition's, so an
