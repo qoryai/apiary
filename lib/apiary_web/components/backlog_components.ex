@@ -10,10 +10,11 @@ defmodule ApiaryWeb.BacklogComponents do
   # interpolates it, so HEEx escapes it, and never puts it in a `class` or a `style`, or
   # in a url other than the link out ("Open on %{integration}"), which the core's https
   # rule checks and `CoreComponents.external_link/1` draws. This module calls no `raw/1`.
-  # It is shown as an external system's text is: a line in markup isolated in `<bdi>`
+  # It is shown as an external system's text is: the ticket's key, title, repository,
+  # filer, labels and comments' authors in markup isolated in `<bdi>`
   # (`ApiaryWeb.ExternalText.external_text/1`), and `Apiary.ExternalText.line/1` in an
-  # attribute or a sentence, the ticket's key, title, repository, filer, labels, state
-  # word and comments' authors among them. What the page is given stays as it was sent.
+  # attribute or a sentence, and for a closed row's state word. What the page is given
+  # stays as it was sent.
   # A ticket's text and its comments' are the page's to render, into the `rendered_body`
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
@@ -248,12 +249,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
   # A text the integration sent, as a page shows it; nil where there is none, or where
   # nothing is left to show.
-  defp shown(text) do
-    case Apiary.ExternalText.line(text) do
-      "" -> nil
-      shown -> shown
-    end
-  end
+  defp shown(text), do: Apiary.ExternalText.present(text)
 
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the

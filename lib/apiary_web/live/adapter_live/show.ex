@@ -336,7 +336,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         socket =
           case Collections.set_collection_backlog(scope, connection, row.id, on) do
             {:ok, count} ->
-              turned(socket, count, on, row.name, adapter)
+              turned(socket, count, on, Apiary.ExternalText.line(row.name), adapter)
 
             {:error, :forbidden} ->
               socket
@@ -691,8 +691,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
                       "Assign %{number} %{collections} to",
                       map_size(@selected),
                       number: Format.number(map_size(@selected)),
-                      collection: collection_word(@adapter, 1),
-                      collections: collection_word(@adapter, :other)
+                      collection: sent_word(@adapter, 1),
+                      collections: sent_word(@adapter, :other)
                     )
                   }
                   find={length(@workspaces) > 8}
@@ -1135,6 +1135,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
   defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
   defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
+
+  # `collection_word/2` as a text the source sent is shown (`Apiary.ExternalText.line/1`).
+  defp sent_word(adapter, n),
+    do: adapter |> collection_word(n) |> Apiary.ExternalText.line()
 
   defp noun(adapter), do: Adapters.collection_noun(adapter)
 end

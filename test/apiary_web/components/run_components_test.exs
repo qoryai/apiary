@@ -1548,6 +1548,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.given_title(blank) == "\u202E\u200B"
       assert RunComponents.shown_title(blank) == nil
       assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
+      assert RunComponents.shown_title(%{run | about_title: " \u200B "}) == nil
 
       html = render_component(&RunComponents.run_name/1, run: blank)
       assert bdis(html) == []
@@ -1585,6 +1586,36 @@ defmodule ApiaryWeb.RunComponentsTest do
              |> LazyHTML.query(".q-label")
              |> LazyHTML.attribute("title") ==
                [@shown]
+    end
+
+    test "a signal as a page shows it; one with nothing left reads as the exit code" do
+      badge = fn assigns -> text(render_component(&RunComponents.run_state/1, assigns)) end
+      failed = [state: "failed", exit_code: 137]
+      assert badge.(failed ++ [signal: "SIG\u202EKILL\a"]) == "Failed SIGKILL\uFFFD"
+      assert badge.(failed ++ [signal: "\u202E\u200B"]) == "Failed exit 137"
+      assert badge.(failed ++ [signal: " \u200B "]) == "Failed exit 137"
+
+      run = %{state: "failed", reason: nil, quiet_seconds: nil, exit_code: 137}
+      signalled = Map.put(run, :signal, "SIG\u202EKILL\a")
+      blank = Map.put(run, :signal, "\u202E\u200B")
+      assert RunComponents.exit_note(signalled) == "SIGKILL\uFFFD"
+      assert RunComponents.exit_note(blank) == "exit 137"
+      assert RunComponents.shown_signal(blank) == nil
+
+      differs = %{
+        outcome_state: "succeeded",
+        state: "succeeded",
+        exit_state: "failed",
+        exited_at: DateTime.utc_now(),
+        exit_code: 137,
+        signal: "\u202E\u200B"
+      }
+
+      assert RunComponents.outcome_sentence(differs) ==
+               "Succeeded, as its starter said; the runtime exited 137"
+
+      assert RunComponents.outcome_sentence(%{differs | signal: "SIG\u202EKILL\a"}) ==
+               "Succeeded, as its starter said; the runtime ended with SIGKILL\uFFFD"
     end
 
     test "the pill hides at zero and counts in words" do

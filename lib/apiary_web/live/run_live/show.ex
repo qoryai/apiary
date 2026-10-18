@@ -1070,14 +1070,17 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
-  # The Forager that reported the run, and the contract it spoke.
+  # The Forager that reported the run, as it sent its version, and the contract it spoke;
+  # n/a for a version it did not send, or one with nothing left to show
+  # (`Apiary.ExternalText.present/1`).
   attr :run, :map, required: true
 
   defp forager_version(assigns) do
-    assigns = assign(assigns, :na, !assigns.run.forager_version && gettext("n/a"))
+    version = Apiary.ExternalText.present(assigns.run.forager_version)
+    assigns = assign(assigns, version: version, na: if(!version, do: gettext("n/a")))
 
     ~H"""
-    <.external_text text={@run.forager_version} />{@na}<span :if={@run.contract_version}> · {gettext(
+    <.external_text text={@version} />{@na}<span :if={@run.contract_version}> · {gettext(
       "contract %{version}",
       version: @run.contract_version
     )}</span>
@@ -2510,7 +2513,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp state_sentence("failed", run) do
     cond do
       is_nil(program_exit(run)) -> gettext("Run failed.")
-      signal?(run) -> gettext("Run failed with %{signal}.", signal: run.signal)
+      signal?(run) -> gettext("Run failed with %{signal}.", signal: shown_signal(run))
       true -> gettext("Run failed with exit %{code}.", code: run.exit_code)
     end
   end
@@ -2739,13 +2742,18 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
   # gateway's placeholder for an exit it wrote: the program's own was not recorded. A
-  # signal is shown as a text Forager sent is (`Apiary.ExternalText.line/1`).
-  defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "",
-    do: Apiary.ExternalText.line(signal)
+  # signal is shown as a text Forager sent is, and one with nothing left to show is none
+  # (`shown_signal/1`).
+  defp exit_value(%Run{} = run) do
+    if signal = shown_signal(run), do: signal, else: exit_code_value(run)
+  end
 
-  defp exit_value(%Run{exit_code: -1}), do: gettext("not recorded")
-  defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
-  defp exit_value(_run), do: gettext("n/a")
+  defp exit_code_value(%Run{exit_code: -1}), do: gettext("not recorded")
+
+  defp exit_code_value(%Run{exit_code: code}) when is_integer(code),
+    do: Integer.to_string(code)
+
+  defp exit_code_value(_run), do: gettext("n/a")
 
   # The program's exit after a failed run's state, when the program exited
   # non-zero by itself and no reason words stand: "exit 1", "SIGKILL". Nil otherwise.
@@ -2754,7 +2762,7 @@ defmodule ApiaryWeb.RunLive.Show do
     if Run.current_state(run.state) == "failed" and is_nil(reason_words(run)) and
          is_nil(outcome_sentence(run)) do
       cond do
-        signal?(run) -> Apiary.ExternalText.line(run.signal)
+        signal?(run) -> shown_signal(run)
         is_integer(run.exit_code) and run.exit_code not in [0, -1] -> exit_words(run.exit_code)
         true -> nil
       end
@@ -2763,7 +2771,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp exit_words(code), do: gettext("exit %{code}", code: code)
 
-  defp signal?(%Run{signal: signal}), do: is_binary(signal) and signal != ""
+  defp signal?(%Run{} = run), do: shown_signal(run) != nil
 
   defp connections_count(%{denied: denied}) when denied > 0,
     do: ngettext("%{number} denied", "%{number} denied", denied, number: Format.number(denied))

@@ -3195,13 +3195,15 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       scope: scope
     } do
-      run = run_fixture(scope, %{about_title: "\u202E\u200B"})
-      lv = open(conn, scope, run)
+      for title <- ["\u202E\u200B", " \u200B "] do
+        run = run_fixture(scope, %{about_title: title})
+        lv = open(conn, scope, run)
 
-      refute has_element?(lv, "h1#run-title > bdi")
-      assert has_element?(lv, "h1#run-title .font-mono", run.public_id)
-      short = ApiaryWeb.RunComponents.short_id(run.public_id)
-      assert page_title(lv) == "Run #{short} · Runs · Qory Apiary"
+        refute has_element?(lv, "h1#run-title > bdi")
+        assert has_element?(lv, "h1#run-title .font-mono", run.public_id)
+        short = ApiaryWeb.RunComponents.short_id(run.public_id)
+        assert page_title(lv) == "Run #{short} · Runs · Qory Apiary"
+      end
     end
 
     test "a signal: cleaned in the header's exit and the rail's", %{conn: conn, scope: scope} do
@@ -3212,6 +3214,50 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert exit_row(lv) == shown("SIGKILL")
       assert has_element?(lv, "#run-meta", shown("SIGKILL"))
       refute has_element?(lv, "#run-meta", "\u202E")
+    end
+
+    test "the Forager cell: the version cleaned; n/a for one with nothing left", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {version, cell} <- [
+            {sent("v0.4.0"), shown("v0.4.0") <> " · contract 1"},
+            {"\u202E\u200B", "n/a · contract 1"},
+            {nil, "n/a · contract 1"}
+          ] do
+        run = run_fixture(scope, %{forager_version: version, contract_version: 1})
+        html = render(open(conn, scope, run))
+        cell_re = ~r{<dt>Forager</dt>\s*(<dd class="font-mono">.*?</dd>)}s
+        [_, dd] = Regex.run(cell_re, html)
+
+        assert dd |> LazyHTML.from_fragment() |> LazyHTML.text() == cell
+      end
+    end
+
+    test "the announcer says a signal cleaned", %{conn: conn, scope: scope} do
+      run = projected(scope, [{1, "run.started", started_data()}])
+      {:ok, lv, _html} = run_page(conn, scope, run)
+      exit = %{"state" => "failed", "signal" => sent("SIGKILL"), "exit_code" => -1}
+      project_more(run, [{2, "run.exited", exit}])
+      flush(lv)
+
+      assert words_of(lv, "#run-announcer") == "Run failed with #{shown("SIGKILL")}."
+    end
+
+    test "a signal with nothing left to show reads as the exit code", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data()}])
+      {:ok, lv, _html} = run_page(conn, scope, run)
+      exit = %{"state" => "failed", "signal" => "\u202E\u200B", "exit_code" => 137}
+      project_more(run, [{2, "run.exited", exit}])
+      flush(lv)
+
+      assert words_of(lv, "#run-announcer") == "Run failed with exit 137."
+      assert exit_row(lv) == "137"
+      assert has_element?(lv, "#run-meta", "exit 137")
+      refute render(element(lv, "#run-meta")) =~ "\u202E"
     end
   end
 end

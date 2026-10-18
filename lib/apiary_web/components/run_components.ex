@@ -87,7 +87,7 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:quiet?, quiet?)
       |> assign(:color, state_color(assigns.state, quiet?))
       |> assign(:glyph, state_glyph(assigns.state))
-      |> assign(:code, exit_word(assigns))
+      |> assign(:code, exit_word(with_shown_signal(assigns)))
 
     ~H"""
     <span class={["inline-flex items-center gap-2 align-middle", @class]}>
@@ -368,14 +368,27 @@ defmodule ApiaryWeb.RunComponents do
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
   defp state_glyph(_state), do: nil
 
-  defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal) and signal != "",
-    do: Apiary.ExternalText.line(signal)
+  defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal), do: signal
 
   defp exit_word(%{state: "failed", exit_code: code})
        when is_integer(code) and code not in [0, -1],
        do: gettext("exit %{code}", code: code)
 
   defp exit_word(_assigns), do: nil
+
+  @doc """
+  The signal that ended a run, shown as a text Forager sent is
+  (`Apiary.ExternalText.present/1`): nil where it sent none, or one with nothing left to
+  show, or only whitespace, which is no signal, so the run's exit code is said instead.
+  """
+  @spec shown_signal(map) :: String.t() | nil
+  def shown_signal(run), do: Apiary.ExternalText.present(Map.get(run, :signal))
+
+  # The run, or a component's assigns, with its signal as a page shows it
+  # (`shown_signal/1`), so that the clauses that say a signal say it, and one that is none
+  # gives way to those of the exit code.
+  defp with_shown_signal(%{} = run), do: Map.put(run, :signal, shown_signal(run))
+  defp with_shown_signal(run), do: run
 
   defp quiet_tip(interval) when is_integer(interval) do
     gettext(
@@ -738,16 +751,12 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The title a run gave (`given_title/1`), shown as a text Forager sent is
-  (`Apiary.ExternalText.line/1`): plain text, for a tooltip, a label or a page's title.
-  Nil where it gave none, or one with nothing left to show, which is no title.
+  (`Apiary.ExternalText.present/1`): plain text, for a tooltip, a label or a page's title.
+  Nil where it gave none, or one with nothing left to show, or only whitespace, which is
+  no title.
   """
   @spec shown_title(map) :: String.t() | nil
-  def shown_title(run) do
-    case Apiary.ExternalText.line(given_title(run)) do
-      "" -> nil
-      title -> title
-    end
-  end
+  def shown_title(run), do: Apiary.ExternalText.present(given_title(run))
 
   @doc """
   A run's name in a row, as markup: the title it gave (`shown_title/1`), isolated in a
@@ -890,7 +899,8 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" -> %>
           <span>{gettext("Alive")}</span>
         <% true -> %>
-          <span>{outcome_sentence(@run) || ended_sentence(current_state(@state), @run)}</span>
+          <span>{outcome_sentence(@run) ||
+            ended_sentence(current_state(@state), with_shown_signal(@run))}</span>
       <% end %>
     </span>
     """
@@ -939,13 +949,12 @@ defmodule ApiaryWeb.RunComponents do
   defp runtime_exit(run) do
     if not is_nil(Map.get(run, :refused_at)),
       do: :no_runtime,
-      else: exit_of(run)
+      else: exit_of(with_shown_signal(run))
   end
 
   defp exit_of(%{exited_at: nil}), do: :running
 
-  defp exit_of(%{signal: signal}) when is_binary(signal) and signal != "",
-    do: {:signal, Apiary.ExternalText.line(signal)}
+  defp exit_of(%{signal: signal}) when is_binary(signal), do: {:signal, signal}
 
   defp exit_of(%{exit_code: code}) when is_integer(code) and code != -1,
     do: {:code, code}
@@ -1004,8 +1013,8 @@ defmodule ApiaryWeb.RunComponents do
 
   defp ended_sentence("completed", _run), do: gettext("Completed")
 
-  defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
-    do: gettext("Failed with %{signal}", signal: Apiary.ExternalText.line(signal))
+  defp ended_sentence("failed", %{signal: signal}) when is_binary(signal),
+    do: gettext("Failed with %{signal}", signal: signal)
 
   defp ended_sentence("failed", %{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("Failed with exit %{code}", code: code)
@@ -1828,12 +1837,12 @@ defmodule ApiaryWeb.RunComponents do
   its exit, "exit 1", "SIGKILL", for a run that completed or failed; nil otherwise.
   """
   def exit_note(run) do
-    reason_words(run) || exit_code_note(current_state(run.state), run)
+    reason_words(run) || exit_code_note(current_state(run.state), with_shown_signal(run))
   end
 
   defp exit_code_note(state, %{signal: signal})
-       when state in ~w(completed failed) and is_binary(signal) and signal != "",
-       do: Apiary.ExternalText.line(signal)
+       when state in ~w(completed failed) and is_binary(signal),
+       do: signal
 
   defp exit_code_note(state, %{exit_code: code})
        when state in ~w(completed failed) and is_integer(code) and code != -1,
