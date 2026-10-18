@@ -108,6 +108,21 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     assert entry.details == %{"again" => true, "take_in" => 2}
   end
 
+  test "takes the owner and the first instruction under the string keys a form gives", ctx do
+    {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
+    %{user: member} = member_fixture(ctx.scope)
+
+    {:ok, again} =
+      WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{
+        "owner_id" => member.id,
+        "first_instruction" => "Only the basket."
+      })
+
+    assert again.id == closed.id
+    assert again.owner_id == member.id
+    assert again.first_instruction == "Only the basket."
+  end
+
   test "takes the ticket's title and address and its collection's title as they are now", ctx do
     {:ok, _closed} = WorkItems.close(ctx.scope, ctx.work_item)
 

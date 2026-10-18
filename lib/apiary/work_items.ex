@@ -78,6 +78,9 @@ defmodule Apiary.WorkItems do
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.{Moves, State, WorkItem, WorkItemEvent, WorkList}
 
+  # The largest number a work item has, the column's: a bigint.
+  @max_number 9_223_372_036_854_775_807
+
   @typedoc """
   Who closes a work item: a person, by the id of their account, or the instance, with the
   reason it gives.
@@ -182,9 +185,12 @@ defmodule Apiary.WorkItems do
     end
   end
 
-  defp number(number) when is_integer(number) and number >= 1, do: {:ok, number}
+  # A number the column holds, a bigint: an integer up to its largest, or text of at most
+  # 18 digits, as the Work items list reads one.
+  defp number(number) when is_integer(number) and number in 1..@max_number//1,
+    do: {:ok, number}
 
-  defp number(text) when is_binary(text) and byte_size(text) <= 19 do
+  defp number(text) when is_binary(text) and byte_size(text) <= 18 do
     case Integer.parse(text) do
       {number, ""} when number >= 1 -> {:ok, number}
       _not -> :error
@@ -220,9 +226,10 @@ defmodule Apiary.WorkItems do
   @doc false
   # get_for_ticket/2 is the work item of the ticket `item_id` (`tk_…`) of a collection
   # assigned to the scope's workspace: the one of the ticket's organisation, adapter and
-  # ref, in any workspace of the organisation and in any state, as the Backlog shows it. A
-  # page shows one of another workspace by its state alone. nil for none, and to a person
-  # who may not read the workspace's work items.
+  # ref, in any workspace of the organisation and in any state, as the Backlog shows it
+  # (`as_seen/2`): the whole work item when it is in the scope's workspace and the person
+  # may read it there, else a work item with its state alone. nil for none, and to a
+  # person who may not read the workspace's work items.
   @spec get_for_ticket(Scope.t(), term) :: WorkItem.t() | nil
   def get_for_ticket(%Scope{} = scope, item_id) do
     with true <- Item.public_id?(item_id),
@@ -240,10 +247,33 @@ defmodule Apiary.WorkItems do
               c.workspace_id == ^workspace_id,
           select: w
       )
+      |> case do
+        nil -> nil
+        %WorkItem{} = work_item -> as_seen(scope, work_item)
+      end
     else
       _none -> nil
     end
   end
+
+  @doc false
+  # as_seen/2 is `work_item` as a person of the scope's workspace sees it, as the Backlog
+  # shows a ticket's work item: the whole work item when it is in the scope's workspace and
+  # the person may read it there (`work_item.read`, asked of it); else a work item with
+  # its state alone, no id, public id, number or workspace of it.
+  @spec as_seen(Scope.t(), WorkItem.t()) :: WorkItem.t()
+  def as_seen(
+        %Scope{workspace: %Workspace{id: workspace_id}} = scope,
+        %WorkItem{workspace_id: workspace_id} = work_item
+      ) do
+    if Access.can?(scope, :"work_item.read", work_item),
+      do: work_item,
+      else: state_only(work_item)
+  end
+
+  def as_seen(%Scope{}, %WorkItem{} = work_item), do: state_only(work_item)
+
+  defp state_only(%WorkItem{state: state}), do: %WorkItem{state: state}
 
   @doc false
   # item_nouns/2 is what the sources of the work items `ids` of the organisation

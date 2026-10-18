@@ -10,7 +10,7 @@ defmodule Apiary.WorkItems.TakeInTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
@@ -92,6 +92,19 @@ defmodule Apiary.WorkItems.TakeInTest do
 
       assert {work_item.target_system, work_item.target_path} ==
                {"code.example.org", "acme/basket"}
+    end
+
+    test "takes the owner and the first instruction under the string keys a form gives", ctx do
+      %{user: member} = member_fixture(ctx.scope)
+
+      {:ok, work_item} =
+        WorkItems.take_in(ctx.scope, ctx.ticket.public_id, %{
+          "owner_id" => member.id,
+          "first_instruction" => "Look at the basket first."
+        })
+
+      assert work_item.owner_id == member.id
+      assert work_item.first_instruction == "Look at the basket first."
     end
 
     test "takes the owner and the first instruction the page gives", ctx do
@@ -307,8 +320,19 @@ defmodule Apiary.WorkItems.TakeInTest do
     end
 
     test "find nothing for another number, a malformed one, or another id", ctx do
-      for number <- [2, 0, -1, "1a", "", nil, String.duplicate("9", 40)] do
-        assert WorkItems.get_by_number(ctx.scope, number) == nil
+      for number <- [
+            2,
+            0,
+            -1,
+            "1a",
+            "",
+            nil,
+            String.duplicate("9", 40),
+            "9999999999999999999",
+            9_223_372_036_854_775_808,
+            Integer.pow(10, 40)
+          ] do
+        assert WorkItems.get_by_number(ctx.scope, number) == nil, inspect(number)
       end
 
       assert WorkItems.get_by_public_id(ctx.scope, "wi_0000000000000000") == nil
@@ -329,6 +353,46 @@ defmodule Apiary.WorkItems.TakeInTest do
       # The stable address finds it in whichever workspace it is now.
       id = ctx.work_item.id
       assert %WorkItem{id: ^id} = WorkItems.get_by_public_id(elsewhere, ctx.work_item.public_id)
+    end
+
+    test "find nothing for a person who may not read the workspace's work items", ctx do
+      %{scope: other} = sign_up_fixture()
+      foreign = %{other | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
+
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:factory])
+      hidden = Apiary.Access.reload(ctx.scope)
+
+      for scope <- [foreign, hidden] do
+        assert WorkItems.get_by_number(scope, 1) == nil
+        assert WorkItems.get_by_public_id(scope, ctx.work_item.public_id) == nil
+        assert WorkItems.get_for_ticket(scope, ctx.ticket.public_id) == nil
+      end
+    end
+
+    test "a work item of another workspace comes by its state alone, from its ticket and from a take in",
+         ctx do
+      elsewhere = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+
+      # A record of the same ticket in a collection of the other workspace.
+      record =
+        backlog_ticket_fixture(elsewhere,
+          connection: ctx.connection,
+          external_ref: ctx.ticket.external_ref
+        )
+
+      state_only = %WorkItem{state: :exploring}
+      assert WorkItems.get_for_ticket(elsewhere, record.public_id) == state_only
+      assert WorkItems.take_in(elsewhere, record.public_id) == {:error, {:taken, state_only}}
+
+      assert WorkItems.take_in_again(elsewhere, record.public_id) ==
+               {:error, {:taken, state_only}}
+
+      # In its own workspace, the whole work item.
+      id = ctx.work_item.id
+
+      assert {:error, {:taken, %WorkItem{id: ^id}}} =
+               WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
     end
 
     test "take_in_answers/2 is none until the questions come", ctx do

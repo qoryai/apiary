@@ -25,6 +25,7 @@ defmodule Apiary.WorkItems.Moves do
   # a run's variables refuse (`Apiary.Runs.RunVariables`), `:target_invalid`. Its
   # owner is the person the page names, the one taking it in unless named, who must act
   # in the workspace (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
+  # The page gives the owner and the first instruction under atom keys or their strings.
   # Its first instruction is the one the page gives, empty for none, within the bounds of
   # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
   #
@@ -53,7 +54,9 @@ defmodule Apiary.WorkItems.Moves do
   # that exists, in any workspace and any state, is `{:error, {:taken, work_item}}`; so is
   # a take in that loses the race to another: the unique index on (`organisation_id`,
   # `adapter_id`, `external_ref`) refuses the second, which rolls back, and the winner is
-  # read once it has.
+  # read once it has. The work item comes as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone, as the
+  # Backlog shows it; a take in again's `{:taken, work_item}` too.
   #
   # ## Take in again
   #
@@ -126,10 +129,13 @@ defmodule Apiary.WorkItems.Moves do
           | {:taken, WorkItem.t()}
           | Ecto.Changeset.t()
 
-  @typedoc "What the page gives a take in: the owner, and the first instruction."
+  @typedoc """
+  What the page gives a take in: the owner, and the first instruction, under atom keys or
+  their strings.
+  """
   @type take_in_attrs :: %{
-          optional(:owner_id) => Ecto.UUID.t(),
-          optional(:first_instruction) => String.t()
+          optional(:owner_id | String.t()) => Ecto.UUID.t(),
+          optional(:first_instruction | String.t()) => String.t()
         }
 
   ## Take in
@@ -143,7 +149,7 @@ defmodule Apiary.WorkItems.Moves do
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
-             :ok <- none_yet(ticket),
+             :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
              {:ok, target} <- target(ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
@@ -157,7 +163,7 @@ defmodule Apiary.WorkItems.Moves do
         {:ok, work_item}
 
       {:error, {:raced, ticket}} ->
-        {:error, {:taken, by_key(ticket, false)}}
+        {:error, {:taken, WorkItems.as_seen(scope, by_key(ticket, false))}}
 
       {:error, _refusal} = refused ->
         refused
@@ -245,7 +251,7 @@ defmodule Apiary.WorkItems.Moves do
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
-             {:ok, ended} <- ended(ticket),
+             {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
              {:ok, target} <- target(ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
@@ -264,8 +270,8 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   # The ended work item of the ticket, held `FOR UPDATE`: `:not_taken` for none, and
-  # `{:taken, work_item}` for a live one.
-  defp ended(ticket) do
+  # `{:taken, work_item}` for a live one, as the person sees it (`Apiary.WorkItems.as_seen/2`).
+  defp ended(scope, ticket) do
     case by_key(ticket, true) do
       nil ->
         {:error, :not_taken}
@@ -273,7 +279,7 @@ defmodule Apiary.WorkItems.Moves do
       %WorkItem{state: state} = work_item ->
         if State.next(state, :take_in_again) == {:ok, :exploring},
           do: {:ok, work_item},
-          else: {:error, {:taken, work_item}}
+          else: {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
     end
   end
 
@@ -606,10 +612,12 @@ defmodule Apiary.WorkItems.Moves do
     Repo.one(query)
   end
 
-  defp none_yet(ticket) do
+  # No work item of the ticket yet; else `{:taken, work_item}`, as the person sees it
+  # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone.
+  defp none_yet(scope, ticket) do
     case by_key(ticket, true) do
       nil -> :ok
-      %WorkItem{} = work_item -> {:error, {:taken, work_item}}
+      %WorkItem{} = work_item -> {:error, {:taken, WorkItems.as_seen(scope, work_item)}}
     end
   end
 
@@ -647,7 +655,7 @@ defmodule Apiary.WorkItems.Moves do
 
   # The owner the page names, else the person taking it in, who acts in the workspace.
   defp owner(%Scope{user: %{id: user_id}} = scope, attrs) do
-    case Map.get(attrs, :owner_id) do
+    case attr(attrs, :owner_id) do
       nil ->
         {:ok, user_id}
 
@@ -665,11 +673,14 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   defp instruction(attrs) do
-    case Map.get(attrs, :first_instruction) do
+    case attr(attrs, :first_instruction) do
       nil -> ""
       text -> text
     end
   end
+
+  # What the page gives under `key`, an atom, or its string, as a form's params name it.
+  defp attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 
   defp valid(%Ecto.Changeset{valid?: true} = changeset), do: {:ok, changeset}
   defp valid(%Ecto.Changeset{} = changeset), do: {:error, changeset}

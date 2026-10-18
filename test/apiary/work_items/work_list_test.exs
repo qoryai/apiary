@@ -8,7 +8,7 @@ defmodule Apiary.WorkItems.WorkListTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.{WorkItem, WorkList}
 
@@ -238,14 +238,32 @@ defmodule Apiary.WorkItems.WorkListTest do
     end
   end
 
-  test "an empty page to a person who may not read the work items, or with no workspace", %{
-    scope: scope
-  } do
-    item!(scope)
-    %{scope: stranger} = sign_up_fixture()
+  describe "an empty page" do
+    setup %{scope: scope} do
+      item!(scope)
+      assert [_row] = list(scope).rows
+      :ok
+    end
 
-    assert list(%{scope | organisation: stranger.organisation}) == @empty
-    assert list(%{scope | workspace: nil}) == @empty
-    assert list(stranger) == @empty
+    test "to a person with no membership in the organisation of the workspace", %{scope: scope} do
+      %{scope: stranger} = sign_up_fixture()
+      foreign = %{stranger | organisation: scope.organisation, workspace: scope.workspace}
+
+      assert list(foreign) == @empty
+    end
+
+    test "to a person who is not shown the feature", %{scope: scope} do
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:factory])
+
+      assert list(Apiary.Access.reload(scope)) == @empty
+    end
+
+    test "for a workspace of another organisation, or none", %{scope: scope} do
+      %{scope: stranger} = sign_up_fixture()
+
+      assert list(%{scope | organisation: stranger.organisation}) == @empty
+      assert list(%{scope | workspace: nil}) == @empty
+    end
   end
 end
