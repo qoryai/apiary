@@ -124,20 +124,24 @@ defmodule Apiary.Environments do
   # for the pool, changed or not, and writes the record's `queued_ref`, `queued_at` and
   # queued target as the trigger does, making the record when there was none. A pool whose
   # prebuild of the collection waits unclaimed is left as it is: that prebuild builds the
-  # collection's `environment_ref` already. It locks the collections `FOR SHARE`, by id, as
-  # its first read, then their records `FOR UPDATE`, by collection and then pool, as
-  # `trigger/2` does, in one statement, then writes the records and queues the prebuilds:
-  # the order of `Apiary.Dispatches.Slots`, collections before records before runs, so a
-  # listing's part or an assign, which holds a collection `FOR UPDATE` before its trigger
-  # locks the records, and a Rebuild take turns. A part or an assign that changes a
-  # collection's `environment_ref` either commits first, and the Rebuild reads the
-  # collection as it left it, or waits for the Rebuild to commit, and its trigger then
+  # collection's `environment_ref` already. Before the records, it locks the connections
+  # of the collections `FOR SHARE`, by id, then the collections `FOR SHARE`, by id, in the
+  # order a Backlog switch holds them (`Apiary.Adapters.Collections`); then their records
+  # `FOR UPDATE`, by collection and then pool, as `trigger/2` does, in one statement; then
+  # it writes the records and queues the prebuilds: the order of
+  # `Apiary.Dispatches.Slots`, connections before collections before records before runs.
+  # So a listing's part, which holds its connection `FOR UPDATE` and then its collections
+  # by ref before its trigger locks the records, an assign, which holds its connection
+  # and then its collections by id, and a Rebuild take turns. A part or an assign that
+  # changes a collection's `environment_ref` either commits first, and the Rebuild reads
+  # the collection as it left it, or waits for the Rebuild to commit, and its trigger then
   # queues the change. A collection that a change not committed when the Rebuild reads
-  # names, assigns or gives the target is not read: the trigger of that change queues its
-  # prebuilds. One audit entry about the target, with how many prebuilds it queued, and
-  # none when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
-  # `{:error, :not_found}` for a target that names no environment in its workspace, or
-  # whose workspace has no node pool.
+  # names, assigns or gives the target, or one of a connection the Rebuild did not hold,
+  # is not read: the trigger of that change queues its prebuilds. One audit entry about
+  # the target, with how many prebuilds it queued, and none when it queued none. It
+  # answers `{:ok, count}`, `Apiary.Access`'s refusal, or `{:error, :not_found}` for a
+  # target that names no environment in its workspace, or whose workspace has no node
+  # pool.
   #
   # ## What a target's page says: `section/2`
   #
@@ -167,7 +171,7 @@ defmodule Apiary.Environments do
 
   alias Apiary.{Access, Audit, Dispatches, Features, Policy, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Collection
+  alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
@@ -389,8 +393,7 @@ defmodule Apiary.Environments do
   def rebuild(%Scope{} = scope, %Target{} = target) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"target.rebuild_environment", target),
-           [_ | _] = collections <-
-             Repo.all(from c in named_collections(target), lock: "FOR SHARE"),
+           [_ | _] = collections <- hold_named(target),
            :ok <- lock_records(collections),
            [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
         now = DateTime.utc_now()
@@ -417,6 +420,34 @@ defmodule Apiary.Environments do
   # Those of them that name an `environment_ref`.
   defp named_collections(%Target{} = target),
     do: from(c in target_collections(target), where: not is_nil(c.environment_ref))
+
+  # The named collections of `target`, held `FOR SHARE`, by id, after their connections,
+  # `FOR SHARE`, by id, as a Backlog switch holds them (`Apiary.Adapters.Collections`): a
+  # listing's part holds its connection `FOR UPDATE` before its collections, by ref, so
+  # the Rebuild waits for the part at the connection, before it holds any collection. A
+  # collection of a connection the first read did not find is left out, as its
+  # connection is not held.
+  defp hold_named(%Target{organisation_id: organisation_id} = target) do
+    connection_ids =
+      Repo.all(from c in named_collections(target), select: c.connection_id)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    held =
+      Repo.all(
+        from k in Connection,
+          where: k.id in ^connection_ids and k.organisation_id == ^organisation_id,
+          order_by: k.id,
+          lock: "FOR SHARE",
+          select: k.id
+      )
+
+    Repo.all(
+      from c in named_collections(target),
+        where: c.connection_id in ^held,
+        lock: "FOR SHARE"
+    )
+  end
 
   # Writes the record of `collection`, held, for each of `pools` whose prebuild of it does
   # not wait, whatever it was queued for, and queues a prebuild held for each of them.
