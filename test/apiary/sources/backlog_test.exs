@@ -14,6 +14,7 @@ defmodule Apiary.Sources.BacklogTest do
 
   alias Apiary.{Edition, EditionStubs, Repo}
   alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Nodes.Node
   alias Apiary.Sources.{Backlog, Comment, Item, Topic}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.People
@@ -156,6 +157,7 @@ defmodule Apiary.Sources.BacklogTest do
 
   describe "views and counts" do
     setup %{scope: scope, collection: collection} do
+      undone = ticket(collection, minutes: 6)
       open = ticket(collection, minutes: 5)
       taken = ticket(collection, minutes: 4)
       declined = ticket(collection, minutes: 3)
@@ -163,12 +165,14 @@ defmodule Apiary.Sources.BacklogTest do
       closed = ticket(collection, minutes: 1, state: :closed, state_reason: "Not planned")
       closed_taken = ticket(collection, minutes: 0, state: :closed)
 
+      work_item(scope, undone, :undone)
       work_item(scope, taken)
       work_item(scope, declined, :declined)
       work_item(scope, ended, :closed)
       work_item(scope, closed_taken)
 
       %{
+        undone: undone,
         open: open,
         taken: taken,
         declined: declined,
@@ -180,10 +184,11 @@ defmodule Apiary.Sources.BacklogTest do
 
     test "each view holds its tickets, newest change first; the counts come with every page",
          ctx do
-      counts = %{open: 4, taken: 1, declined: 1, closed: 2, total: 6}
+      counts = %{open: 3, taken: 1, declined: 1, closed: 2, total: 7}
       page = list(ctx.scope)
 
-      assert ids(page) == Enum.map([ctx.open, ctx.taken, ctx.declined, ctx.ended], & &1.public_id)
+      # Open: open at the source with no work item, or one undone or closed.
+      assert ids(page) == Enum.map([ctx.undone, ctx.open, ctx.ended], & &1.public_id)
       assert page.counts == counts
       assert page.next == nil
 
@@ -193,10 +198,34 @@ defmodule Apiary.Sources.BacklogTest do
       assert ids(list(ctx.scope, view: :closed)) ==
                [ctx.closed.public_id, ctx.closed_taken.public_id]
 
-      assert length(list(ctx.scope, view: :all).rows) == 6
-      assert list(ctx.scope, view: :taken).counts == counts
+      assert length(list(ctx.scope, view: :all).rows) == 7
+
+      for view <- [:taken, :declined, :closed, :all] do
+        assert list(ctx.scope, view: view).counts == counts, inspect(view)
+      end
+
       # A view it does not know is the default.
       assert ids(list(ctx.scope, view: "elsewhere")) == ids(page)
+    end
+
+    test "an open ticket is in one view of Open, Taken in and Declined, by its work item",
+         ctx do
+      views = fn item ->
+        for view <- [:open, :taken, :declined, :closed],
+            item.public_id in ids(list(ctx.scope, view: view)),
+            do: view
+      end
+
+      assert views.(ctx.open) == [:open]
+      assert views.(ctx.undone) == [:open]
+      assert views.(ctx.ended) == [:open]
+      assert views.(ctx.taken) == [:taken]
+      assert views.(ctx.declined) == [:declined]
+      assert views.(ctx.closed) == [:closed]
+      assert views.(ctx.closed_taken) == [:closed]
+
+      # The facts say how many are open at their source, whatever their work item.
+      assert Backlog.backlog_facts(ctx.scope).open_tickets == 5
     end
 
     test "a row carries the ticket and its work item as the components draw them", ctx do
@@ -228,7 +257,10 @@ defmodule Apiary.Sources.BacklogTest do
       assert row.updated_at == ctx.declined.source_updated_at
       assert number == declined_item.number
       assert declined_path == path <> Integer.to_string(number)
-      assert row.work_item.declined_by == scope.user.email
+      # Who declined it by the local part of their address, as the policy pages name
+      # people.
+      [local, "example.com"] = String.split(scope.user.email, "@")
+      assert row.work_item.declined_by == local
       refute Map.has_key?(row, :body)
 
       assert rows[ctx.taken.public_id].work_item == %{
@@ -245,7 +277,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert %{state: :exploring, declined_by: nil} = rows[ctx.closed_taken.public_id].work_item
     end
 
-    test "a declined work item names a deleted account as a former member, and no one where no person declined it",
+    test "a declined work item names its person by the local part of their address, a deleted account as a former member, and no one where no person declined it",
          ctx do
       %{user: decliner} = member_fixture(ctx.scope, :member)
       by_person = ticket(ctx.collection)
@@ -267,7 +299,8 @@ defmodule Apiary.Sources.BacklogTest do
         Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
       end
 
-      assert declined_by.(by_person) == decliner.email
+      [local, "example.com"] = String.split(decliner.email, "@")
+      assert declined_by.(by_person) == local
       assert declined_by.(by_nobody) == nil
 
       decliner
@@ -283,6 +316,80 @@ defmodule Apiary.Sources.BacklogTest do
       [row] = list(ctx.scope, filed_by: "deploy-bot").rows
       assert row.id == bot.public_id
       assert row.filer == %{name: "deploy-bot", kind: :bot}
+    end
+  end
+
+  describe "the integration" do
+    # The integration of `connection`, as a row names it: its adapter's name and public
+    # id.
+    defp integration(connection) do
+      adapter = Repo.get!(Node, connection.adapter_id)
+      %{name: adapter.name, id: adapter.public_id}
+    end
+
+    # The repository's queries `fun` makes in this process, by their count.
+    defp queries(fun) do
+      handler = "backlog-queries-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, _metadata, _config ->
+          if self() == test, do: send(test, :query)
+        end,
+        nil
+      )
+
+      try do
+        fun.()
+      after
+        :telemetry.detach(handler)
+      end
+
+      count_queries(0)
+    end
+
+    defp count_queries(n) do
+      receive do
+        :query -> count_queries(n + 1)
+      after
+        0 -> n
+      end
+    end
+
+    test "a row and a ticket name the integration they came through", ctx do
+      elsewhere = ticket_connection_fixture(ctx.scope)
+      api = source_collection_fixture(ctx.scope, elsewhere, %{title: "acme/api"})
+      shop_item = ticket(ctx.collection)
+      api_item = ticket(api)
+      rows = Map.new(list(ctx.scope).rows, &{&1.id, &1.integration})
+
+      assert rows[shop_item.public_id] == integration(ctx.connection)
+      assert rows[api_item.public_id] == integration(elsewhere)
+      assert integration(ctx.connection) != integration(elsewhere)
+      assert %{id: "na_" <> _} = integration(ctx.connection)
+
+      assert Backlog.get_ticket(ctx.scope, api_item.public_id).integration ==
+               integration(elsewhere)
+    end
+
+    test "is read with the rows: a page of many rows asks as many queries as one of one",
+         ctx do
+      ticket(ctx.collection)
+      one = queries(fn -> assert length(list(ctx.scope).rows) == 1 end)
+
+      for _ <- 1..9,
+          do:
+            ticket(
+              ticket_connection_fixture(ctx.scope)
+              |> then(&source_collection_fixture(ctx.scope, &1))
+            )
+
+      many = queries(fn -> assert length(list(ctx.scope).rows) == 10 end)
+
+      assert one > 0
+      assert many == one
     end
   end
 
@@ -319,6 +426,56 @@ defmodule Apiary.Sources.BacklogTest do
                closed: 0,
                total: 1
              }
+    end
+
+    test "matches the full form, the repository's title followed by the key", ctx do
+      api = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/api"})
+      odd = source_collection_fixture(ctx.scope, ctx.connection, %{title: "a_b%c"})
+      shop = ticket(ctx.collection, key: "#1231", title: "Discount codes")
+      longer = ticket(ctx.collection, key: "#12310", title: "Basket badge")
+      api_item = ticket(api, key: "#1231", title: "Rate limits")
+      keyless = ticket(ctx.collection, key: nil, title: "Slow page")
+      odd_item = ticket(odd, key: "#9", title: "Odd title")
+      other = ticket(odd, key: "#8", title: "Other title")
+
+      search = fn text -> list(ctx.scope, search: text) |> ids() |> Enum.sort() end
+
+      assert search.("acme/shop#1231") == Enum.sort([shop.public_id, longer.public_id])
+      assert search.("ACME/SHOP#12310") == [longer.public_id]
+      assert search.("acme/api#1231") == [api_item.public_id]
+      assert search.("p#1231") == [shop.public_id, longer.public_id] |> Enum.sort()
+      assert search.("acme/shop#9") == []
+
+      # The repository's title alone is the full form of a ticket with no key.
+      assert keyless.public_id in search.("acme/shop")
+      assert search.("shopslow") == []
+
+      # `%` and `_` in a repository's title match themselves.
+      assert search.("a_b%c#9") == [odd_item.public_id]
+      assert search.("a_b%c#8") == [other.public_id]
+      assert search.("axb%c#9") == []
+      assert search.("a_bxc#9") == []
+
+      # The ref the source gave is never searched: it is no text the page shows.
+      assert search.(odd_item.external_ref) == []
+    end
+
+    test "a full form past the bound, not UTF-8 or with a NUL matches nothing", ctx do
+      long =
+        source_collection_fixture(ctx.scope, ctx.connection, %{title: String.duplicate("r", 1020)})
+
+      item = ticket(long, key: "#12345")
+
+      assert ids(list(ctx.scope, search: String.duplicate("r", 1018) <> "rr#12")) ==
+               [item.public_id]
+
+      for text <- [
+            String.duplicate("r", 1020) <> "#12345",
+            "acme/shop#1" <> <<0>>,
+            "acme/shop#" <> <<0xFF>>
+          ] do
+        assert list(ctx.scope, search: text).rows == [], inspect(text)
+      end
     end
 
     test "a search too long, not UTF-8, with a NUL or not text matches nothing", ctx do
@@ -810,12 +967,12 @@ defmodule Apiary.Sources.BacklogTest do
       first = list_at(scope, params, @at)
       second = list_at(scope, Keyword.put(params, :after, first.next), @at)
 
-      assert first.counts == %{open: 57, taken: 1, declined: 1, closed: 1, total: 58}
+      assert first.counts == %{open: 55, taken: 1, declined: 1, closed: 1, total: 58}
       assert second.counts == first.counts
       assert {first.first, length(first.rows)} == {1, 50}
-      assert {second.first, length(second.rows), second.next} == {51, 7, nil}
+      assert {second.first, length(second.rows), second.next} == {51, 5, nil}
 
-      expected = (inside ++ [taken, declined]) |> sorted({:updated, :desc})
+      expected = sorted(inside, {:updated, :desc})
       assert ids(first) ++ ids(second) == Enum.map(expected, & &1.public_id)
 
       # Newer from the second page is the first, read again under the window.
@@ -1064,8 +1221,14 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.filter_values(ctx.scope, :label, nil) == []
       assert Backlog.filter_values(ctx.scope, :repository, nil) == []
 
-      assert Backlog.backlog_facts(ctx.scope) ==
-               %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+      assert Backlog.backlog_facts(ctx.scope) == %{
+               connected?: false,
+               integrations: [],
+               assigned_collections: 0,
+               linked_collections: 0,
+               listed?: false,
+               open_tickets: 0
+             }
 
       # Its work item stays.
       assert Repo.get_by!(WorkItem, item_id: item.id)
@@ -1079,7 +1242,9 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert ids(list(ctx.scope, view: :all)) == [kept.public_id]
       assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
-      assert Backlog.backlog_facts(ctx.scope).linked_collections == 1
+
+      assert %{assigned_collections: 1, linked_collections: 1} =
+               Backlog.backlog_facts(ctx.scope)
     end
 
     test "the tickets of a collection with its Backlog off, in every read; its work item stays",
@@ -1100,12 +1265,14 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert [%{label: "acme/api"}] = Backlog.filter_values(ctx.scope, :repository, nil)
 
-      assert Backlog.backlog_facts(ctx.scope) == %{
+      assert %{
                connected?: true,
+               integrations: [_integration],
+               assigned_collections: 2,
                linked_collections: 1,
                listed?: false,
                open_tickets: 1
-             }
+             } = Backlog.backlog_facts(ctx.scope)
 
       # Its work item stays, as it is.
       assert %WorkItem{state: :exploring} = Repo.get_by!(WorkItem, item_id: item.id)
@@ -1146,7 +1313,14 @@ defmodule Apiary.Sources.BacklogTest do
         first: 0
       }
 
-      no_facts = %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+      no_facts = %{
+        connected?: false,
+        integrations: [],
+        assigned_collections: 0,
+        linked_collections: 0,
+        listed?: false,
+        open_tickets: 0
+      }
 
       # Another organisation's person, in their scope and in a scope of ours.
       foreign = %{other | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
@@ -1184,7 +1358,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert taken.item_id == old.id
 
       assert [%{id: id, work_item: %{number: number, state: :exploring}}] =
-               list(ctx.scope).rows
+               list(ctx.scope, view: :taken).rows
 
       assert {id, number} == {new.public_id, taken.number}
 
@@ -1200,14 +1374,24 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.get_ticket(ctx.scope, other.public_id).work_item == nil
     end
 
-    test "of another workspace shows its state alone", ctx do
-      item = ticket(ctx.collection)
+    test "of another workspace shows its state alone, and puts its ticket in a view by it",
+         ctx do
+      declined = ticket(ctx.collection, minutes: 2)
+      taken = ticket(ctx.collection, minutes: 1)
       workspace = workspace_fixture(ctx.scope.organisation, "Second")
       there = workspace_scope(ctx.scope.user, workspace)
-      work_item(there, item, :declined)
+      work_item(there, declined, :declined)
+      work_item(there, taken)
 
       assert [%{work_item: %{number: nil, state: :declined, path: nil, declined_by: nil}}] =
-               list(ctx.scope).rows
+               list(ctx.scope, view: :declined).rows
+
+      assert [%{work_item: %{number: nil, state: :exploring, path: nil}}] =
+               list(ctx.scope, view: :taken).rows
+
+      page = list(ctx.scope)
+      assert page.rows == []
+      assert page.counts == %{open: 0, taken: 1, declined: 1, closed: 0, total: 2}
     end
 
     test "of another organisation, on the same adapter with the same ref, is not the ticket's",
@@ -1323,26 +1507,111 @@ defmodule Apiary.Sources.BacklogTest do
     test "nothing connected, then connected, listed, linked and with open tickets" do
       %{scope: scope} = sign_up_fixture()
 
-      assert Backlog.backlog_facts(scope) ==
-               %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+      assert Backlog.backlog_facts(scope) == %{
+               connected?: false,
+               integrations: [],
+               assigned_collections: 0,
+               linked_collections: 0,
+               listed?: false,
+               open_tickets: 0
+             }
 
       connection = ticket_connection_fixture(scope)
+      adapter = Repo.get!(Node, connection.adapter_id)
+      integrations = [%{name: adapter.name, id: adapter.public_id}]
 
-      assert Backlog.backlog_facts(scope) ==
-               %{connected?: true, linked_collections: 0, listed?: false, open_tickets: 0}
+      assert Backlog.backlog_facts(scope) == %{
+               connected?: true,
+               integrations: integrations,
+               assigned_collections: 0,
+               linked_collections: 0,
+               listed?: false,
+               open_tickets: 0
+             }
 
       connection |> Ecto.Changeset.change(listed_at: DateTime.utc_now()) |> Repo.update!()
       collection = source_collection_fixture(scope, connection)
       source_collection_fixture(scope, connection, %{workspace_id: nil})
 
-      assert Backlog.backlog_facts(scope) ==
-               %{connected?: true, linked_collections: 1, listed?: true, open_tickets: 0}
+      assert Backlog.backlog_facts(scope) == %{
+               connected?: true,
+               integrations: integrations,
+               assigned_collections: 1,
+               linked_collections: 1,
+               listed?: true,
+               open_tickets: 0
+             }
 
       ticket(collection)
       ticket(collection, state: :closed)
 
-      assert Backlog.backlog_facts(scope) ==
-               %{connected?: true, linked_collections: 1, listed?: true, open_tickets: 1}
+      assert Backlog.backlog_facts(scope) == %{
+               connected?: true,
+               integrations: integrations,
+               assigned_collections: 1,
+               linked_collections: 1,
+               listed?: true,
+               open_tickets: 1
+             }
+    end
+
+    test "count the live collections assigned to the workspace, whatever their Backlog",
+         ctx do
+      # Assigned and linked; assigned with its Backlog off; assigned without items.
+      off = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/api"})
+      off |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
+      bare = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      bare |> Ecto.Changeset.change(items: false) |> Repo.update!()
+
+      # Not counted: an ended one, an unassigned one, another workspace's, one through an
+      # adapter without items, and another organisation's.
+      end_collection(source_collection_fixture(ctx.scope, ctx.connection))
+      source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      workspace = workspace_fixture(ctx.scope.organisation, "Platform")
+      there = workspace_scope(ctx.scope.user, workspace)
+      source_collection_fixture(there, ctx.connection)
+      plain = ticket_connection_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
+
+      source_collection_fixture(ctx.scope, plain)
+      %{scope: elsewhere} = sign_up_fixture()
+      source_collection_fixture(elsewhere, ticket_connection_fixture(elsewhere))
+
+      assert %{assigned_collections: 3, linked_collections: 1} =
+               Backlog.backlog_facts(ctx.scope)
+
+      assert %{assigned_collections: 1, linked_collections: 1} = Backlog.backlog_facts(there)
+
+      assert %{assigned_collections: 1, linked_collections: 1} =
+               Backlog.backlog_facts(elsewhere)
+    end
+
+    test "name each integration the organisation is connected through, by name", ctx do
+      rename = fn connection, name ->
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
+            set: [name: name]
+          )
+
+        %{name: name, id: Repo.get!(Node, connection.adapter_id).public_id}
+      end
+
+      zulu = rename.(ctx.connection, "Zulu tracker")
+      second = ticket_connection_fixture(ctx.scope)
+      alpha = rename.(second, "Alpha tracker")
+      ended = ticket_connection_fixture(ctx.scope)
+      rename.(ended, "Ended tracker")
+      end_connection(ended)
+
+      %{scope: elsewhere} = sign_up_fixture()
+      theirs = rename.(ticket_connection_fixture(elsewhere), "Another organisation's")
+
+      # The connected ones alone, by name; another organisation's facts name its
+      # integration.
+      assert Backlog.backlog_facts(ctx.scope).integrations == [alpha, zulu]
+      assert Backlog.backlog_facts(elsewhere).integrations == [theirs]
     end
   end
 

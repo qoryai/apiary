@@ -1141,11 +1141,17 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a filter offers, inside the chip's dialog or a section of the Filter menu: a box that
-  narrows the options on the server once there are more than eight (`narrow` is its
-  event), the options as a form of checkboxes or radios (and dates), which sends `event`
-  on a change with the filter's name in `_filter`, and "Show more" (`more`, its event,
-  with the name as `name`) while the values outnumber the options. The ids start with
-  `id`: `<id>-form`, `<id>-narrow`, `<id>-search`, `<id>-more`.
+  narrows the options on the server once there are more than eight, or always with
+  `always_find` (`narrow` is its event), the options as a form of checkboxes or radios
+  (and dates), which sends `event` on a change with the filter's name in `_filter`, and
+  "Show more" (`more`, its event, with the name as `name`) while the values outnumber the
+  options. The ids start with `id`: `<id>-form`, `<id>-narrow`, `<id>-search`,
+  `<id>-more`.
+
+  `tile` is an optional mark before each option's words where the options have no
+  `groups`, such as a filer's tile on the Backlog: it is given the option, `{label, value,
+  count}`, and may draw nothing for it. Without it, an option is its box, its words and
+  its count alone.
   """
   attr :id, :string, required: true
   attr :name, :string, required: true
@@ -1165,6 +1171,12 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the narrowing box's name; nil says Find a <label>"
 
+  attr :always_find, :boolean,
+    default: false,
+    doc: "draws the narrowing box whatever the number of options"
+
+  slot :tile, doc: "a mark before an option's words, given the option; none by default"
+
   def filter_options(assigns) do
     assigns =
       assigns
@@ -1177,7 +1189,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <form
-      :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
+      :if={@always_find or @query not in [nil, ""] or (@total || length(@options)) > 8}
       id={"#{@id}-narrow"}
       phx-change={@narrow}
       phx-submit={@narrow}
@@ -1220,7 +1232,7 @@ defmodule ApiaryWeb.RunComponents do
             do: gettext("Nothing to filter by yet"),
             else: gettext("Nothing matches")}
         </li>
-        <li :for={{label, value, count} <- @options}>
+        <li :for={{label, value, count} = option <- @options}>
           <label class="q-filter-option" data-menu-close={!@multiple}>
             <input
               type={if @multiple, do: "checkbox", else: "radio"}
@@ -1229,6 +1241,9 @@ defmodule ApiaryWeb.RunComponents do
               checked={to_string(value) in @values}
               class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
             />
+            <%= if @tile != [] do %>
+              {render_slot(@tile, option)}
+            <% end %>
             <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
             <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
               {count_label(count)}

@@ -687,6 +687,21 @@ msgstr ""
 msgid "%{interval}, and changes are sent as they happen"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} from the %{assigned}. Take one in to make it a work item."
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} that closed after they reached the backlog."
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -1157,6 +1172,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection}"
 msgid_plural "%{number} %{collections}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} assigned to %{workspace}"
+msgid_plural "%{number} %{collections} assigned to %{workspace}"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4808,12 +4830,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
 msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgctxt "ticket"
-msgid "Collection"
-msgstr "Repository"
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10809,6 +10825,11 @@ msgstr ""
 msgid "Organisation settings › %{page}"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation settings › Integrations › %{integration}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation's deletion cancelled"
@@ -11770,15 +11791,15 @@ msgstr ""
 msgid "Remove runtime…"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the %{collection} filter"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the allow rule %{host}?"
 msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the collection filter"
-msgstr "Remove the repository filter"
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -11798,6 +11819,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the filter %{filter}"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the label filter"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the updated filter"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
