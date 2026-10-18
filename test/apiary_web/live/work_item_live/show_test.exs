@@ -97,6 +97,22 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
              )
     end
 
+    test "a take in whose first run is not written yet reads as queued, on every tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope)
+
+      for tail <- ["", "/explore", "/thread"] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number, tail))
+        assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+      end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-run", "Run 1 of 3")
+      assert has_element?(view, "#work-item-explore-run", "Queued")
+    end
+
     test "a number no work item of the workspace has is not found", %{conn: conn, scope: scope} do
       for number <- ["99", "0", "x", "1" <> String.duplicate("0", 30)] do
         assert_raise ApiaryWeb.NotFound, fn -> live(conn, page(scope, number)) end

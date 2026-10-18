@@ -14,7 +14,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # **What it reads.** The work item by its number (`Apiary.WorkItems.get_by_number/2`),
   # where Explore stands (`explore/3`), its ticket (`ticket/3`), the names of its ticket
   # (`ticket_names/2`) and whether the Backlog can take it in again (`backlog_off/2`),
-  # each with the page's scope; the Thread's events only on the Thread
+  # each with the page's scope; the Thread's events and comments only on the Thread
   # (`thread_entries/3`, the one place they are read). `ApiaryWeb.WorkItemLive.View`
   # turns them into what the components draw. A number that names no work item the
   # reader may read is not found.
@@ -30,8 +30,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # item again and draws where it stands now. Only a form whose fields are wrong says so,
   # under its fields. An event that names another number than the page's does nothing.
   #
-  # People's comments, and the count beside the Thread's tab (`comment_count`), are a
-  # later step of this page: the count is 0.
+  # **People's comments** (`ApiaryWeb.WorkItemLive.Comments`) are in the Thread, in the
+  # order they were written among its events, with the composer under it for a reader
+  # who may comment; their count (`Apiary.WorkItems.count_comments/2`) is beside the
+  # Thread's tab on every tab. The page keeps the work item it read as `:work_item` and
+  # the comments' assigns, and passes their events to that module; Cancel closes the
+  # question showing, the page's or a comment's.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -43,10 +47,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, WorkItems}
-  alias ApiaryWeb.WorkItemLive.View
+  alias ApiaryWeb.WorkItemLive.{Comments, View}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
   @edit_keys ["understanding", "scope_in", "scope_out", "approach"]
+  @comment_events Comments.events() -- ["cancel_question"]
   @actions ~w(undo ask_decline decline ask_close close confirm explore_again answer change_proposal confirm_changes)
 
   @impl true
@@ -70,7 +75,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       <.work_item_frame label={gettext("Work item #%{number}", number: @number)}>
         <:header>
           <.work_item_header
-            work_item={@work_item}
+            work_item={@item}
             integration={@source.integration}
             link={
               url(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/work/#{@number}")
@@ -94,7 +99,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
           />
           <.end_notice
-            work_item={@work_item}
+            work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
             backlog_off={@backlog_off}
@@ -105,7 +110,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         </:header>
         <:rail :if={@tab != :edit}>
           <.step_card
-            work_item={@work_item}
+            work_item={@item}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
             backlog_off={@backlog_off}
@@ -120,7 +125,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
           />
           <.work_item_details
-            work_item={@work_item}
+            work_item={@item}
             ticket={@source.ticket}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
@@ -133,7 +138,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           <%= if @tab == :edit do %>
             <.proposal_edit
               number={@number}
-              proposal={@work_item.run.proposal}
+              proposal={@item.run.proposal}
               values={@edit_values}
               errors={@edit_errors}
               explore_path={tab_path(@current_scope, @number, :explore)}
@@ -151,7 +156,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             />
             <.ticket_tab
               :if={@tab == :ticket and @source.ticket != nil}
-              work_item={@work_item}
+              work_item={@item}
               ticket={@source.ticket}
               comments={@source.comments}
               integration={@source.integration}
@@ -161,7 +166,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             />
             <.explore_tab
               :if={@tab == :explore}
-              work_item={@work_item}
+              work_item={@item}
               earlier_runs={@earlier_runs}
               earlier_take_ins={@earlier_take_ins}
               changes={@changes}
@@ -174,14 +179,35 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               now={@now}
             />
             <.thread :if={@tab == :thread}>
-              <.thread_event
-                :for={{event, i} <- Enum.with_index(@thread, 1)}
-                id={"work-item-thread-ev-#{i}"}
-                integration={@source.integration}
-                now={@now}
-                {event}
-              />
+              <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
+                <Comments.comment_line
+                  :if={event.kind == :comment}
+                  entry={event}
+                  scope={@current_scope}
+                  person={&View.person(@people, &1)}
+                  deleting={@deleting_comment}
+                  now={@now}
+                />
+                <.thread_event
+                  :if={event.kind != :comment}
+                  id={"work-item-thread-ev-#{i}"}
+                  integration={@source.integration}
+                  now={@now}
+                  {event}
+                />
+              <% end %>
             </.thread>
+            <Comments.composer
+              :if={@tab == :thread}
+              can_comment={@can_comment}
+              key={@composer_key}
+              value={@composer_value}
+              error={@composer_error}
+              number={@number}
+              workspace={@current_scope.workspace.name}
+              reader={View.person(@people, @current_scope.user.id).name}
+              item_noun={@source.item_noun}
+            />
           <% end %>
         </:body>
       </.work_item_frame>
@@ -203,8 +229,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         if connected?(socket), do: WorkItems.subscribe(scope)
 
         {:ok,
-         assign(socket,
+         socket
+         |> Comments.mount()
+         |> assign(
            row: row,
+           work_item: row,
            number: row.number,
            tab: :ticket,
            asking: nil,
@@ -230,9 +259,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp editable(%{assigns: %{row: nil}} = socket), do: socket
 
   defp editable(%{assigns: %{tab: :edit}} = socket) do
-    %{work_item: work_item, can: can, number: number} = socket.assigns
+    %{item: item, can: can, number: number} = socket.assigns
 
-    if work_item.status == :confirm and can.act,
+    if item.status == :confirm and can.act,
       do: assign(socket, :page_title, edit_title(number)),
       else: push_patch(socket, to: tab_path(scope(socket), number, :explore))
   end
@@ -242,14 +271,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   ## What a reader does
 
   @impl true
+  def handle_event("cancel_question", _params, socket),
+    do: {:noreply, assign(socket, asking: nil, deleting_comment: nil)}
+
+  def handle_event(event, params, socket) when event in @comment_events,
+    do: Comments.handle_event(event, params, socket)
+
   def handle_event(event, %{"number" => number} = params, socket) when event in @actions do
     if number == Integer.to_string(socket.assigns.number),
       do: act(event, params, socket),
       else: {:noreply, socket}
   end
-
-  def handle_event("cancel_question", _params, socket),
-    do: {:noreply, assign(socket, :asking, nil)}
 
   def handle_event("show_earlier_comments", _params, socket),
     do: {:noreply, socket |> assign(:all_comments, true) |> load()}
@@ -336,7 +368,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The attempt of the latest run as the page read it; with none, nothing to do.
   defp with_attempt(socket, fun) do
-    case socket.assigns.work_item.run do
+    case socket.assigns.item.run do
       %{attempt: attempt} when is_integer(attempt) -> fun.(attempt)
       _none -> {:noreply, socket}
     end
@@ -348,7 +380,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # A form that names another question or gives no text: each question of the latest run
   # without a text is to be answered.
   defp form_errors(socket, answers) do
-    for question <- socket.assigns.work_item.run[:questions] || [],
+    for question <- socket.assigns.item.run[:questions] || [],
         not is_binary(answers[question.public_id]),
         into: %{},
         do: {question.public_id, :blank}
@@ -426,11 +458,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           names[:ticket_id] &&
             ~p"/#{scope.organisation}/#{scope.workspace}/backlog?#{[ticket: names[:ticket_id]]}",
         previous: explore.previous,
-        work_item: page.work_item,
+        item: page.work_item,
+        work_item: row,
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
         changes: page.changes,
         thread: page.thread,
+        people: page.people,
+        comment_count: WorkItems.count_comments(scope, row),
+        can_comment: Comments.can_comment?(scope, row),
+        deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
         can: can(scope, row, explore.status)
       )
     else
@@ -441,8 +478,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # The Thread's events: the one place the page reads them.
-  defp thread_entries(scope, row, now), do: WorkItems.explore_thread(scope, row, now)
+  # The Thread: what happened at Explore and people's comments, the one place the page
+  # reads them.
+  defp thread_entries(scope, row, now), do: WorkItems.thread(scope, row, now)
 
   # What the reader may do here: undo, close, and act at the step it stands at.
   defp can(scope, row, status) do

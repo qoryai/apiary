@@ -53,13 +53,14 @@ defmodule ApiaryWeb.WorkItemLive.View do
   @doc false
   # page/5 is everything the page draws of the work item `row`: the work item map, the
   # take in's earlier runs, the earlier take ins, the changes of its confirmation, and the
-  # Thread's events (`thread` of `Apiary.WorkItems.explore_thread/3`, or none), with the
-  # names its ticket has (`Apiary.WorkItems.ticket_names/2`).
+  # Thread (`thread` of `Apiary.WorkItems.thread/3`, or none), with the
+  # names its ticket has (`Apiary.WorkItems.ticket_names/2`); and the people it names, for
+  # `person/2`.
   @spec page(Scope.t(), Apiary.WorkItems.WorkItem.t(), map, [map], map) :: map
   def page(%Scope{} = scope, row, explore, thread, names) do
     ctx = context(scope, row, explore, thread)
     runs = Enum.map(explore.earlier_runs, &run(&1, ctx))
-    latest = explore.run && latest_run(explore.run, explore, ctx)
+    latest = if explore.run, do: latest_run(explore.run, explore, ctx), else: no_run()
 
     %{
       work_item: work_item(row, explore, names, latest, ctx),
@@ -69,7 +70,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
         Map.new(explore.changes, fn {field, %{value: value, by_id: by_id}} ->
           {field, %{value: value, by: person(ctx.people, by_id)}}
         end),
-      thread: thread(thread, row, names, ctx)
+      thread: thread(thread, row, names, ctx),
+      people: ctx.people
     }
   end
 
@@ -85,7 +87,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
         Enum.map(all_runs, & &1.answered_by_id) ++
         Enum.flat_map(take_ins, &[&1.taken_in_by_id, &1.ended_by_id]) ++
         Enum.map(Map.values(explore.changes), & &1.by_id) ++
-        Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]])
+        Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]]) ++
+        ApiaryWeb.WorkItemLive.Comments.people_ids(thread) ++
+        [scope.user && scope.user.id]
 
     workspace_ids =
       Enum.map(all_runs, & &1.workspace_id) ++
@@ -185,6 +189,31 @@ defmodule ApiaryWeb.WorkItemLive.View do
     |> Map.put(:answers_by, Enum.map(explore.answers_by_ids, &person(ctx.people, &1)))
   end
 
+  # The take in's first run before it exists, as Explore stands then (queued): its place,
+  # of the most a take in has, and nothing it gave.
+  defp no_run do
+    %{
+      id: nil,
+      path: nil,
+      workspace_id: nil,
+      attempt: 1,
+      of: Apiary.Dispatches.of(),
+      state: nil,
+      place: :queued,
+      started_at: nil,
+      ended_at: nil,
+      duration_ms: nil,
+      duration: nil,
+      outcome: nil,
+      proposal: nil,
+      understanding: nil,
+      questions: [],
+      answered_by: nil,
+      answered_at: nil,
+      answers_by: []
+    }
+  end
+
   defp run(run, ctx) do
     Map.merge(run, %{
       path: run_path(ctx, run),
@@ -210,11 +239,14 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   # The Thread's events as `ApiaryWeb.WorkItemComponents.thread_event/1` takes them, each
   # a map of its attributes. A decline that recorded no stage it has words for has no
-  # line.
+  # line. A comment stays as it is, for `ApiaryWeb.WorkItemLive.Comments.comment_line/1`.
   defp thread(entries, row, names, ctx) do
     entries
     |> Enum.reject(&(&1.kind == :declined and &1.stage not in [:explore, :confirm]))
-    |> Enum.map(&event(&1, row, names, ctx))
+    |> Enum.map(fn
+      %{kind: :comment} = comment -> comment
+      entry -> event(entry, row, names, ctx)
+    end)
   end
 
   defp event(entry, row, names, ctx) do

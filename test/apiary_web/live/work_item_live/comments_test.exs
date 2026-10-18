@@ -5,8 +5,6 @@ defmodule ApiaryWeb.WorkItemLive.CommentsTest do
   # text with none, More where the reader may delete, the delete question and Cancel, the
   # deleted line, the count beside the Thread's tab, and another reader's page drawn
   # again live.
-  #
-  # The page draws the Thread once Show is built; until then this module is skipped.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -18,7 +16,6 @@ defmodule ApiaryWeb.WorkItemLive.CommentsTest do
   alias Apiary.WorkItems.Comment
 
   @moduletag needs: :factory
-  @moduletag skip: "runs once the Show page draws the Thread"
 
   setup :register_and_log_in_user
 
