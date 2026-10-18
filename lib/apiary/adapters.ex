@@ -944,6 +944,10 @@ defmodule Apiary.Adapters do
   # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
   # declaration's `sync` entry, so that the feed counter is taken after the collections,
   # last, as the lock order has it; after the commit those collections are broadcast.
+  # A start that changes the source's line on access or its words for its items or its
+  # collections tells, after the commit, each organisation with a connection to the
+  # adapter that its connection changed, once (`connection_changed`), so an open page of
+  # the integration shows them; a start that changes none of them tells none.
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
   @spec declare(Scope.t(), Wire.declaration()) ::
@@ -970,17 +974,45 @@ defmodule Apiary.Adapters do
            :ok <- record_declaration(scope, current, declared),
            {:ok, relinked} <- Collections.relink_adapter(current, declared),
            :ok <- tell_first(current, declared) do
-        {:ok, {declared, relinked}}
+        {:ok, {declared, relinked, shown_changed?(current, declared)}}
       end
     end)
     |> case do
-      {:ok, {declared, relinked}} ->
+      {:ok, {declared, relinked, shown_changed?}} ->
         :ok = Collections.broadcast_relinked(relinked)
+        if shown_changed?, do: :ok = broadcast_shown(declared)
         {:ok, declared}
 
       {:error, _reason} = refused ->
         refused
     end
+  end
+
+  # What an integration's page shows of a start: the source's line on access and its words
+  # for its items and its collections.
+  @shown [
+    :source_access,
+    :item_noun_one,
+    :item_noun_other,
+    :collection_noun_one,
+    :collection_noun_other
+  ]
+
+  defp shown_changed?(current, declared),
+    do: Map.take(current, @shown) != Map.take(declared, @shown)
+
+  # After the start commits: tells each organisation with a connection to the adapter that
+  # it changed (`Apiary.Adapters.Collections.broadcast_connection/1`), once, naming its
+  # connection that has not ended, else the one that ended last.
+  defp broadcast_shown(%Node{id: adapter_id}) do
+    from(c in Connection,
+      where: c.adapter_id == ^adapter_id,
+      distinct: c.organisation_id,
+      order_by: [desc_nulls_first: c.ended_at, desc: c.inserted_at],
+      select: %{id: c.id, organisation_id: c.organisation_id, adapter_id: c.adapter_id}
+    )
+    |> Repo.all()
+    |> Enum.each(&(:ok = Collections.broadcast_connection(&1)))
   end
 
   defp record_declaration(scope, current, declared) do
