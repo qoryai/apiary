@@ -427,6 +427,28 @@ defmodule Apiary.ContractFixtures do
     end
   end
 
+  @doc """
+  The contract's recorded runs, `fixtures/run/<id>/events.jsonl`, sorted; none without
+  Forager's contract directory.
+  """
+  def recorded_runs do
+    case contract_dir() do
+      nil -> []
+      dir -> dir |> Path.join("fixtures/run/*/events.jsonl") |> Path.wildcard() |> Enum.sort()
+    end
+  end
+
+  @doc """
+  served_record?/1 says whether the record in `file` is of a run a server accepted: its
+  first line is `dev.qory.run.registered`, which a gateway writes, sequence 1, only once
+  the server accepted the run's registration. A record without it is of a run that had
+  no server, and is never replayed through one.
+  """
+  def served_record?(file) do
+    first = file |> File.read!() |> String.split("\n", trim: true) |> List.first()
+    match?(%{"type" => "dev.qory.run.registered"}, first && Jason.decode!(first))
+  end
+
   @doc "contract_json!/1 decodes `fixtures/<path>` of Forager's contract directory."
   def contract_json!(path), do: path |> contract_file!() |> Jason.decode!()
 

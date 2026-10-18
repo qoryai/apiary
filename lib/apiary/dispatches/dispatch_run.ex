@@ -42,8 +42,21 @@ defmodule Apiary.Dispatches.DispatchRun do
   # none or to another workspace, has no target or no `environment_ref`, or its
   # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
   # lapsed while another prebuild of its collection and pool waited or went back to
-  # waiting (`Apiary.Dispatches.Slots`).
-  @end_causes [:released, :closed, :undone, :run_ended, :lost, :collection_ended, :superseded]
+  # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
+  # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
+  # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone.
+  @end_causes [
+    :released,
+    :closed,
+    :undone,
+    :run_ended,
+    :lost,
+    :collection_ended,
+    :superseded,
+    :variables_invalid,
+    :ticket_gone,
+    :inputs_invalid
+  ]
 
   # The step that builds a collection's environment for a node pool.
   @prebuild "prebuild"
