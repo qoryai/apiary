@@ -254,16 +254,17 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       end
     end
 
-    test "a failure kept beside the last good image shows both",
+    test "a failure after the last good image shows beside it",
          %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope)
       shop = collection(scope)
+      at = DateTime.add(DateTime.utc_now(), -600, :second)
 
       record!(
         scope,
         pool,
         shop,
-        built(DateTime.utc_now(), failure_cause: :timed_out, failed_at: DateTime.utc_now())
+        built(at, failure_cause: :timed_out, failed_at: DateTime.add(at, 60, :second))
       )
 
       view = open(conn, path)
@@ -274,6 +275,43 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
                "#{pool_id(pool)}-failure",
                "The last build failed: it ran past 35 minutes."
              )
+    end
+
+    test "two collections of the target: a build of one after the other's failure leaves no failure line; a failure after the build shows",
+         %{conn: conn, scope: scope, path: path} do
+      pool = pool_fixture(scope)
+      first = collection(scope)
+      second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
+      earlier = DateTime.add(DateTime.utc_now(), -600, :second)
+      later = DateTime.add(earlier, 300, :second)
+
+      failed =
+        record!(scope, pool, first, %{failure_cause: :timed_out, failed_at: earlier})
+
+      image = record!(scope, pool, second, built(later))
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(pool)}-image")
+      refute has_element?(view, "#{pool_id(pool)}-failure")
+
+      failed |> Ecto.Changeset.change(failed_at: later) |> Repo.update!()
+      image |> Ecto.Changeset.change(built_at: earlier) |> Repo.update!()
+      view = open(conn, path)
+      assert has_element?(view, "#{pool_id(pool)}-image")
+
+      assert has_element?(
+               view,
+               "#{pool_id(pool)}-failure",
+               "The last build failed: it ran past 35 minutes."
+             )
+    end
+
+    test "a pool's name is written as text", %{conn: conn, scope: scope, path: path} do
+      pool = pool_fixture(scope, name: "<b>mac</b>-pool")
+      collection(scope)
+      view = open(conn, path)
+
+      assert has_element?(view, "#{pool_id(pool)} h3", "<b>mac</b>-pool")
+      refute has_element?(view, "#{pool_id(pool)} h3 b")
     end
 
     test "retired: the target names no environment any more",

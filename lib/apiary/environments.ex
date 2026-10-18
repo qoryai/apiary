@@ -109,8 +109,8 @@ defmodule Apiary.Environments do
   #
   # ## A member's Rebuild: `rebuild/2`
   #
-  # `rebuild(scope, target)` is the Rebuild of a target's page (`target.rebuild_environment`,
-  # asked of the target's workspace): for each live collection assigned to the target's
+  # `rebuild(scope, target)` is the Rebuild of a target's page
+  # (`target.rebuild_environment`, asked of the target's workspace): for each live collection assigned to the target's
   # workspace with the target's system and path and an `environment_ref`, and each live
   # node pool of that workspace, it queues a prebuild held for the pool, changed or not,
   # and writes the record's `queued_ref`, `queued_at` and queued target as the trigger
@@ -142,7 +142,9 @@ defmodule Apiary.Environments do
   # where it was built for the target and `:other_target` where it was built for another
   # target or none, `:default` with no such build. Where the target names none, `serves`
   # is `:retired` where a record of the pool is retired, else `:default`. `failure` is the
-  # cause of the last failure those records keep, nil for none; `running` and `waiting`
+  # cause of the last failure those records keep, where it failed after the newest build
+  # any of them keeps, nil for none: a build of one collection made after another
+  # collection's build failed leaves no failure to say; `running` and `waiting`
   # are whether a prebuild of those collections, held for the pool, is claimed or handed
   # over, and waits unclaimed.
 
@@ -541,7 +543,7 @@ defmodule Apiary.Environments do
       image: built && built.image,
       built_at: built && built.built_at,
       commit: built && built.commit,
-      failure: last_failure(records),
+      failure: last_failure(records, newest_built_at(records)),
       running: Enum.any?(runs, &(elem(&1, 2) in [:claimed, :handed_over])),
       waiting: Enum.any?(runs, &(elem(&1, 2) == :waiting))
     }
@@ -559,12 +561,25 @@ defmodule Apiary.Environments do
       else: :other_target
   end
 
-  defp last_failure(records) do
+  # The newest `built_at` of `records`, retired or not, nil where none keeps a build.
+  defp newest_built_at(records) do
+    records
+    |> Enum.map(& &1.built_at)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
+  end
+
+  # The cause of the newest failure of `records`, where it failed after `built_at`, the
+  # newest build any of them keeps; nil otherwise.
+  defp last_failure(records, built_at) do
     case records
          |> Enum.filter(&(&1.failure_cause != nil))
          |> Enum.max_by(& &1.failed_at, DateTime, fn -> nil end) do
-      nil -> nil
-      %Record{failure_cause: cause} -> cause
+      %Record{failure_cause: cause, failed_at: failed_at} ->
+        if is_nil(built_at) or DateTime.after?(failed_at, built_at), do: cause
+
+      nil ->
+        nil
     end
   end
 
