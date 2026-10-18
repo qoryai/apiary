@@ -343,7 +343,10 @@ defmodule ApiaryWeb.Contract.SourceItemsSignedTest do
     Application.put_env(:apiary, :contract_now, fn -> @signed_at end)
 
     %{scope: scope} = sign_up_fixture()
-    %{adapter: adapter} = connectable_adapter_fixture(%{name: "Acme tracker"})
+
+    %{adapter: adapter} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     collection = source_collection_fixture(scope, connection, %{external_ref: "R_1001"})
 

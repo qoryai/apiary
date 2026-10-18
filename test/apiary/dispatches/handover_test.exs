@@ -668,7 +668,7 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       {1, _rows} =
         Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^member.id),
-          set: [email: "ann\u202Ex@example.com"]
+          set: [email: "ann\u202Ex#{System.unique_integer([:positive])}@example.com"]
         )
 
       Repo.insert!(%Apiary.WorkItems.Answer{

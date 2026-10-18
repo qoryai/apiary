@@ -20,7 +20,9 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
   setup :register_and_log_in_user
 
   setup do
-    %{adapter: adapter} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: adapter} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     %{adapter: adapter}
   end
 
