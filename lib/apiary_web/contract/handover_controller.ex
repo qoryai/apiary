@@ -54,7 +54,7 @@ defmodule ApiaryWeb.Contract.HandoverController do
   defp accepted(conn, dispatch_id) do
     meta = %{revision: conn.assigns.contract_version, body: conn.assigns.raw_body}
 
-    case Dispatches.handover(conn.assigns.access_key, dispatch_id, meta) do
+    case handover(conn.assigns.access_key, dispatch_id, meta) do
       {:ok, handed_over} -> answer(conn, handed_over)
       {:error, :unauthorized} -> refuse(conn, 401, "unauthorized")
       {:error, :forbidden} -> refuse(conn, 403, "forbidden")
@@ -63,10 +63,16 @@ defmodule ApiaryWeb.Contract.HandoverController do
       {:error, reason} when reason in @conflicts -> refuse(conn, 409, Atom.to_string(reason))
       {:error, :unavailable} -> refuse(conn, 503, "unavailable")
     end
+  end
+
+  # The handover alone answers `503` for an exception: once it has answered, the run may
+  # be handed over, so nothing after it is answered so.
+  defp handover(access_key, dispatch_id, meta) do
+    Dispatches.handover(access_key, dispatch_id, meta)
   rescue
     exception ->
       Logger.error("a handover could not be answered: #{inspect(exception.__struct__)}")
-      refuse(conn, 503, "unavailable")
+      {:error, :unavailable}
   end
 
   defp answer(conn, %{run: run, run_key: run_key, dispatch_run: dispatch_run} = handed_over) do

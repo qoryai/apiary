@@ -83,8 +83,10 @@ defmodule Apiary.Dispatches.Handover do
   #
   # A refusal commits what the lapse of step 3 wrote, and an end what it ended. Once the
   # transaction commits, the run is broadcast as changed and the workspaces whose queue or
-  # slots changed are told. An exception is logged by its module alone, never the key, the
-  # body or the input, and is `{:error, :unavailable}`.
+  # slots changed are told. An exception in the transaction rolls it back, is logged by
+  # its module alone, never the key, the body or the input, and is
+  # `{:error, :unavailable}`. The broadcast and the telling, after the commit, never change
+  # the answer: a failure of either is logged by its module, or its kind, alone.
   #
   # Locks, in the order `Apiary.Dispatches.Slots` gives: the environment records a lapse
   # needs, the run of the queue, the dispatch, the gateway's row `FOR SHARE`, then the
@@ -107,6 +109,11 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
+  # What the log says when an action's transaction fails.
+  @failed %{
+    "dispatch.dispatched": "a dispatched could not be recorded",
+    "dispatch.handover": "a handover could not be made"
+  }
   # The attach window of a run registered by its handover, in seconds.
   @attach_seconds 600
 
@@ -153,8 +160,6 @@ defmodule Apiary.Dispatches.Handover do
     else
       {:error, :forbidden}
     end
-  rescue
-    exception -> unavailable("a dispatched could not be recorded", exception)
   end
 
   # handover/3 hands the run of the dispatch `dispatch_id` of the pool of `access_key`
@@ -182,8 +187,6 @@ defmodule Apiary.Dispatches.Handover do
     else
       {:error, :forbidden}
     end
-  rescue
-    exception -> unavailable("a handover could not be made", exception)
   end
 
   ## What both ask first
@@ -191,6 +194,8 @@ defmodule Apiary.Dispatches.Handover do
   # The transaction of the moduledoc's six first steps, then `fun` on what they hold.
   # `fun` answers `{:done, value, changed}`, committed; `{:refused, reason}` or
   # `{:ended, changed}`, committed, as a refusal; or `{:error, :unavailable}`, rolled back.
+  # An exception rolls it back and is `{:error, :unavailable}`: only a failure here is
+  # answered so, as what follows the commit never fails the answer.
   defp transact(key_id, dispatch_id, action, fun) do
     Repo.transact(fn ->
       with {:ok, key} <- Dispatches.current_key(key_id),
@@ -211,15 +216,17 @@ defmodule Apiary.Dispatches.Handover do
         end
       end
     end)
+  rescue
+    exception -> unavailable(@failed[action], exception)
   end
 
   defp answered({:ok, {:done, value, changed}}) do
-    Dispatches.broadcast(changed)
+    broadcast(changed)
     value
   end
 
   defp answered({:ok, {:refused, reason, changed}}) do
-    Dispatches.broadcast(changed)
+    broadcast(changed)
     {:error, reason}
   end
 
@@ -488,13 +495,33 @@ defmodule Apiary.Dispatches.Handover do
     {:error, :unavailable}
   end
 
-  # Bookkeeping after the commit: it never fails the handover.
+  # Bookkeeping after the commit: it never fails the answer. A failure is logged by its
+  # module, or its kind, alone.
+  defp broadcast(workspace_ids) do
+    Dispatches.broadcast(workspace_ids)
+  rescue
+    exception -> not_told(exception)
+  catch
+    kind, _reason -> not_told(kind)
+  end
+
+  # Bookkeeping after the commit: it never fails the handover. A failure is logged by its
+  # module, or its kind, alone.
   defp broadcast_run({:ok, %{run: run}} = handed_over) do
     Runs.broadcast_changed(run)
     handed_over
   rescue
-    _exception -> handed_over
+    exception ->
+      not_told(exception)
+      handed_over
+  catch
+    kind, _reason ->
+      not_told(kind)
+      handed_over
   end
 
   defp broadcast_run(refused), do: refused
+
+  defp not_told(%{__struct__: module}), do: not_told(module)
+  defp not_told(what), do: Logger.error("a change could not be told: #{inspect(what)}")
 end

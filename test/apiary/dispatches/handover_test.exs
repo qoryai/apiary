@@ -502,7 +502,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert {:ok, _handed} = handover(ctx.key, dispatch)
     end
 
-    test "a run that cannot be stored is unavailable, signed last, and nothing is written", ctx do
+    test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
       dispatch = claimed!(ctx)
       :ok = dispatched(ctx.key, dispatch)

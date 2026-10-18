@@ -18,6 +18,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo}
+  alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Run, RunKey}
@@ -303,6 +304,38 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert refused?(handover(ctx, dispatch), 409, "lease_expired")
     end
 
+    test "of a run that cannot be stored is 503 unavailable, signed, not stored, and writes nothing",
+         ctx do
+      {_work_item, queued} = queued!(ctx)
+      dispatch = started!(ctx)
+
+      # A row of the run's id in the workspace already, which no product path writes: the
+      # registered run cannot be inserted.
+      in_the_way =
+        Repo.insert!(%Run{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          node_run_id: queued.run_id,
+          state: "pending"
+        })
+
+      {conn, log} = ExUnit.CaptureLog.with_log(fn -> handover(ctx, dispatch) end)
+
+      assert refused?(conn, 503, "unavailable")
+      assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
+      refute log =~ queued.run_id
+      assert Repo.aggregate(Run, :count) == 1
+      assert Repo.aggregate(from(e in Entry, where: e.action == "dispatch.handover"), :count) == 0
+
+      assert %Dispatch{handed_over_at: nil, ended_at: nil, slot_freed_at: nil} =
+               Repo.get!(Dispatch, dispatch.id)
+
+      assert Repo.get!(DispatchRun, queued.id).state == :claimed
+
+      Repo.delete!(in_the_way)
+      assert handover(ctx, dispatch).status == 200
+    end
+
     test "under a bad signature is 401, unsigned", ctx do
       queued!(ctx)
       dispatch = started!(ctx)
@@ -356,6 +389,30 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
         )
 
       assert refused?(dispatched(ctx, prebuild, revision: "2"), 410, "gone")
+    end
+
+    test "with a lease lapsed is 409 lease_expired, signed, the lapse committed", ctx do
+      {_work_item, queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      now = DateTime.utc_now()
+
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+          set: [
+            claimed_at: DateTime.add(now, -700, :second),
+            lease_until: %{
+              DateTime.truncate(DateTime.add(now, -60, :second), :second)
+              | microsecond: {0, 6}
+            }
+          ]
+        )
+
+      assert refused?(dispatched(ctx, dispatch), 409, "lease_expired")
+
+      assert %Dispatch{stale_at: %DateTime{}, dispatched_at: nil} =
+               Repo.get!(Dispatch, dispatch.id)
+
+      assert Repo.get!(DispatchRun, queued.id).state == :waiting
     end
   end
 
