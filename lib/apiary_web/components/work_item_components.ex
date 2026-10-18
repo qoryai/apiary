@@ -70,12 +70,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   # Everything a ticket holds came from an integration and is untrusted, and what a person
   # wrote is too: a component only interpolates it, so HEEx escapes it. A ticket's text
   # and its comments are rendered by `SourceComponents.body/1`, the one renderer that
-  # sanitises formatted text.
+  # sanitises formatted text. A line the ticket's source sent (its title, its key, its
+  # collection's title, a filer's or an author's name, a label) is shown as
+  # `Apiary.ExternalText.line/1` gives it, isolated in `<bdi>` where markup can go
+  # (`ApiaryWeb.ExternalText.external_text/1`); a title with nothing left to show is none.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
   use ApiaryWeb, :html
 
+  alias Apiary.ExternalText
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
@@ -216,6 +220,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   def you?(%{you: true}), do: true
   def you?(_person), do: false
 
+  # The ticket's title as a page shows it (`Apiary.ExternalText.line/1`): nil for one
+  # with nothing left to show, as for none.
+  defp shown_title(title) do
+    case ExternalText.line(title) do
+      "" -> nil
+      title -> title
+    end
+  end
+
   # Whether the instance closed it when its integration was removed: the one close without
   # a person that has words.
   defp instance_removed?(work_item), do: work_item[:ended_reason] == :adapter_removed
@@ -306,11 +319,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         number: work_item.number,
+        title: shown_title(work_item.title),
         ended: ended?(work_item),
         href: if(out?(work_item[:url]), do: work_item.url),
         open_title:
           gettext("Open %{ref} on %{integration}",
-            ref: BacklogComponents.full_form(work_item),
+            ref: ExternalText.line(BacklogComponents.full_form(work_item)),
             integration: assigns.integration
           )
       )
@@ -319,14 +333,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     <div id={@id} class="q-wi-top">
       <div class="q-wi-grow">
         <h1 id={"#{@id}-title"} class="q-wi-title outline-none" tabindex="-1">
-          {@work_item.title}<span class="q-wi-no">#{@number}</span>
+          <.external_text :if={@title} text={@title} /><span class="q-wi-no">#{@number}</span>
         </h1>
         <div class="q-wi-meta-wrap">
           <p id={"#{@id}-meta"} class="q-wi-meta">
             <.work_item_status work_item={@work_item} can_act={@can_act} />
             <span>
               <.external_link href={@href} class="q-wi-ref" title={@href && @open_title}>
-                <BacklogComponents.integration_tile name={@integration} />{@work_item[:key]}
+                <BacklogComponents.integration_tile name={@integration} /><.external_text text={
+                  @work_item[:key]
+                } />
               </.external_link>
             </span>
             <span>{owner_phrase(@work_item.owner)}</span>
@@ -1551,7 +1567,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.rich text={@summary}>
           <:part name={:ref}>
             <span class="q-wi-refm">
-              <BacklogComponents.integration_tile name={@integration} />{@work_item[:key]}
+              <BacklogComponents.integration_tile name={@integration} /><.external_text text={
+                @work_item[:key]
+              } />
             </span>
           </:part>
         </.rich>
@@ -1572,13 +1590,15 @@ defmodule ApiaryWeb.WorkItemComponents do
           <span class="q-wi-l1">
             <BacklogComponents.integration_tile name={@integration} />
             <.external_link :if={@work_item[:key]} href={@href} class="q-wi-tkr">
-              {@work_item[:key]}
+              <.external_text text={@work_item[:key]} />
             </.external_link>
           </span>
           <span :if={@ticket_line} class="q-wi-sub"><.rich text={@ticket_line} /></span>
         </dd>
         <dt>{SourceComponents.collection_label(@collection_noun)}</dt>
-        <dd id={"#{@id}-repository"} class="q-mono">{@work_item.repository}</dd>
+        <dd id={"#{@id}-repository"} class="q-mono">
+          <.external_text text={@work_item.repository} />
+        </dd>
         <dt>{gettext("Taken in")}</dt>
         <dd id={"#{@id}-taken-in"}><span><.rich text={@taken_in} /></span></dd>
         <dt>{gettext("First instruction")}</dt>
@@ -1610,13 +1630,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         rich_gettext(
           "On %{integration}, no longer connected · %{name} filed it %{when}",
           integration: integration,
-          name: ticket.filer.name,
+          name: ExternalText.line(ticket.filer.name),
           when: filed
         ),
       else:
         rich_gettext("On %{integration} · %{name} filed it %{when}",
           integration: integration,
-          name: ticket.filer.name,
+          name: ExternalText.line(ticket.filer.name),
           when: filed
         )
   end
@@ -3163,12 +3183,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         count: count,
         earlier: max(count - length(assigns.comments), 0),
         href: if(out?(assigns.work_item[:url]), do: assigns.work_item.url),
-        full_form: BacklogComponents.full_form(assigns.work_item),
+        full_form: ExternalText.line(BacklogComponents.full_form(assigns.work_item)),
         # The Backlog's line; the space before its "·" does not break, so a wrapped line
         # never starts with it.
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
-            name: ticket.filer.name,
+            name: ExternalText.line(ticket.filer.name),
             filed_ago: Format.time_ago(ticket.filed_at, now, case: :inline),
             updated_ago: Format.time_ago(ticket.updated_at, now, case: :inline)
           )
@@ -3201,7 +3221,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       </div>
       <dl :if={@ticket.labels != []} class="q-wi-facts">
         <dt>{pgettext("ticket", "Labels")}</dt>
-        <dd>{Enum.join(@ticket.labels, ", ")}</dd>
+        <dd>{Enum.map_join(@ticket.labels, ", ", &ExternalText.line/1)}</dd>
       </dl>
       <div class="q-wi-text">
         <SourceComponents.body
@@ -3238,8 +3258,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           class="q-wi-cmt"
         >
           <div class="q-wi-who">
-            <.avatar name={comment.author} size="xs" />
-            <b>{comment.author}</b>
+            <.avatar name={ExternalText.line(comment.author)} size="xs" />
+            <b><.external_text text={comment.author} /></b>
             <span class="q-faint">{time_tag(comment.at, Format.time_ago(comment.at, @now))}</span>
           </div>
           <div class="q-wi-cmt-txt">
@@ -3397,7 +3417,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             <:part name={:ref}>
               <span class="q-wi-ev-ref">
                 <BacklogComponents.integration_tile name={@integration} />
-                <.external_link :if={@key} href={@href}>{@key}</.external_link>
+                <.external_link :if={@key} href={@href}><.external_text text={@key} /></.external_link>
               </span>
             </:part>
           </.rich>

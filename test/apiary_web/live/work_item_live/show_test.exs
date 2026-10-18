@@ -69,6 +69,34 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert render(view) =~ "You took this in from"
     end
 
+    test "the ticket's title as a page shows it, and none where nothing is left", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = queued(scope)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [title: "Totals \u202Eoff\u202C by a cent"]
+      )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+      refute html =~ "\u202E"
+      assert has_element?(view, "#work-item-head-title bdi", "Totals off by a cent")
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [title: "\u202E\u200B"]
+      )
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+      refute has_element?(view, "#work-item-head-title bdi")
+
+      assert has_element?(
+               view,
+               "#work-item-head-title",
+               "#" <> Integer.to_string(work_item.number)
+             )
+    end
+
     test "a number no work item of the workspace has is not found", %{conn: conn, scope: scope} do
       for number <- ["99", "0", "x", "1" <> String.duplicate("0", 30)] do
         assert_raise ApiaryWeb.NotFound, fn -> live(conn, page(scope, number)) end

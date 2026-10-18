@@ -1465,4 +1465,42 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, "#work-item-details-ticket .q-wi-sub") == 0
     end
   end
+
+  describe "a source's text, as a page shows it" do
+    test "the title, the key, the collection, the filer, an author and a label: no invisible character, each isolated" do
+      w =
+        work_item(%{
+          title: "Totals \u202Eoff\u202C by a cent",
+          key: "#12\u200B04",
+          repository: "acme/\u2066shop"
+        })
+
+      head = header(w)
+      assert text(head, "h1") == "Totals off by a cent#88"
+      assert count(head, "h1 bdi") == 1
+      assert text(head, "a.q-wi-ref bdi") == "#1204"
+      assert attr(head, "a.q-wi-ref", "title") == ["Open acme/shop#1204 on GitHub"]
+
+      html = details(w, ticket: ticket(%{filer: %{name: "Pri\u202Eya"}}))
+      assert text(html, "#work-item-details-repository bdi") == "acme/shop"
+      assert text(html, "#work-item-details-ticket .q-wi-sub") =~ "Priya filed it"
+      refute html =~ "\u202E"
+
+      tab =
+        ticket_tab(
+          ticket: ticket(%{filer: %{name: "Pri\u202Eya"}, labels: ["bu\u200Bg"]}),
+          comments: [hd(comments()) |> Map.put(:author, "Mi\u202Erek")]
+        )
+
+      refute tab =~ "\u202E"
+      refute tab =~ "\u200B"
+      assert tab =~ "Mirek"
+    end
+
+    test "a title with nothing left to show is none: the number alone" do
+      html = header(work_item(%{title: "\u202E\u200B\u2066"}))
+      assert text(html, "h1") == "#88"
+      assert count(html, "h1 bdi") == 0
+    end
+  end
 end
