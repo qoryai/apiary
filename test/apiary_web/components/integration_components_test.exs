@@ -19,7 +19,6 @@ defmodule ApiaryWeb.IntegrationComponentsTest do
       name: "\u202Eacme/shop\u200B\a",
       workspace: nil,
       backlog: %{on: true},
-      ended_at: nil,
       open_tickets: 0,
       added_at: DateTime.utc_now()
     }

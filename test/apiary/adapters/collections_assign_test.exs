@@ -87,15 +87,15 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
   defp refs(from, to), do: for(n <- from..to, do: "R" <> String.pad_leading("#{n}", 3, "0"))
 
-  # How many live rows the pages of `opts` hold, every page walked from the first, a page
-  # after the last row of the one before.
+  # How many rows the pages of `opts` have, every page read from the first, a page after
+  # the last row of the one before.
   defp walked(scope, connection, opts, after_id \\ nil, count \\ 0) do
-    raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
-    count = count + Enum.count(raw, &is_nil(&1.ended_at))
+    rows = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
+    count = count + length(rows)
 
-    if length(raw) < Collections.page_size(),
+    if length(rows) < Collections.page_size(),
       do: count,
-      else: walked(scope, connection, opts, List.last(raw).public_id, count)
+      else: walked(scope, connection, opts, List.last(rows).public_id, count)
   end
 
   defp workspace_of(ctx, ref), do: Repo.get!(Collection, id(ctx, ref)).workspace_id
@@ -142,6 +142,20 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       end
     end
 
+    test "the page after a row that ended since its page was read starts past that row", ctx do
+      refs = refs(1, 60)
+      {:ok, :accepted} = post(ctx, titled(refs))
+
+      first = Collections.list_collections(ctx.scope, ctx.connection)
+      assert List.last(names(first)) == "Title of R050"
+      {:ok, :disconnected} = disconnect(ctx, "R050")
+
+      after_ended =
+        Collections.list_collections(ctx.scope, ctx.connection, after: List.last(first).public_id)
+
+      assert names(after_ended) == for(ref <- Enum.drop(refs, 50), do: "Title of " <> ref)
+    end
+
     test "a cursor naming another connection's collection gives nothing", ctx do
       {:ok, :accepted} = post(ctx, titled(["A", "B"]))
 
@@ -167,7 +181,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       assert names(Collections.list_collections(ctx.scope, later)) == ["Title of C"]
     end
 
-    test "a row: its ids, title, address, workspace, times, end and open tickets", ctx do
+    test "a row: its ids, title, address, workspace, times and open tickets", ctx do
       {:ok, :accepted} = post(ctx, [{"TRK", "Tracker"}])
 
       {:ok, 1} =
@@ -187,10 +201,10 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
                url: "https://tracker.acme.example/TRK",
                workspace: %Workspace{id: workspace_id},
                last_listed_at: @started,
-               ended_at: nil,
-               ended_reason: nil,
                open_tickets: 0
              } = row
+
+      refute Map.has_key?(row, :ended_at)
 
       assert {public_id, workspace_id} == {collection.public_id, ctx.workspace.id}
       assert row.added_at == collection.inserted_at
@@ -223,11 +237,16 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       assert search.(String.duplicate("s", 100_000)) == []
     end
 
-    test "the views and the workspace filter; an ended ref shows once, as it ended last", ctx do
-      {:ok, :accepted} = post(ctx, titled(["A", "B", "C", "D", "E"]))
+    test "the views, the search and the workspace filter: live collections only", ctx do
+      {:ok, :accepted} = post(ctx, titled(["A", "B", "C", "D", "E", "F"]))
 
-      {:ok, 1} =
-        Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["A"]), ctx.workspace)
+      {:ok, 2} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, ["A", "D"]),
+          ctx.workspace
+        )
 
       {:ok, 1} =
         Collections.assign_collections(
@@ -237,16 +256,20 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
           ctx.other_workspace
         )
 
+      # D, assigned, and F, unassigned, ended; E ended and is live again.
       {:ok, :disconnected} = disconnect(ctx, "D")
       {:ok, :disconnected} = disconnect(ctx, "E")
+      {:ok, :disconnected} = disconnect(ctx, "F")
       {:ok, :accepted} = post(ctx, titled(["E"]), id: "again")
 
       list = &names(Collections.list_collections(ctx.scope, ctx.connection, &1))
-      rows = Collections.list_collections(ctx.scope, ctx.connection, view: :all)
+      live_e = id(ctx, "E")
 
-      assert names(rows) == for(ref <- ~w(A B C D E), do: "Title of " <> ref)
-      assert [%{ended_reason: :disconnected}] = Enum.filter(rows, & &1.ended_at)
-      assert Enum.find(rows, &(&1.name == "Title of E")).ended_at == nil
+      assert list.([]) == for(ref <- ~w(A B C E), do: "Title of " <> ref)
+      assert list.(view: :all) == list.([])
+
+      assert [%{id: ^live_e}] =
+               Collections.list_collections(ctx.scope, ctx.connection, search: "of e")
 
       assert list.(view: :unassigned) == ["Title of C", "Title of E"]
       assert list.(view: :assigned) == ["Title of A", "Title of B"]
@@ -255,6 +278,13 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       assert list.(view: :unassigned, workspace: ctx.workspace) == []
       assert list.(workspace: "not an id") == []
       assert list.(view: :assigned, search: "b") == ["Title of B"]
+
+      for view <- [:all, :unassigned, :assigned] do
+        assert list.(view: view, search: "of d") == [], inspect(view)
+        assert list.(view: view, search: "of f") == [], inspect(view)
+      end
+
+      assert list.(view: :assigned, workspace: ctx.workspace, search: "of") == ["Title of A"]
 
       assert_raise ArgumentError, fn ->
         Collections.list_collections(ctx.scope, ctx.connection, view: :ended)
@@ -305,12 +335,10 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
       assert %{total: 2, unassigned: 2, ended: 2} = Collections.counts(ctx.scope, ctx.connection)
 
-      shown_ended =
-        Collections.list_collections(ctx.scope, ctx.connection, view: :all)
-        |> Enum.filter(& &1.ended_at)
-        |> names()
-
-      assert shown_ended == ["Title of A", "Title of C"]
+      assert names(Collections.list_collections(ctx.scope, ctx.connection)) == [
+               "Title of B",
+               "Title of D"
+             ]
 
       # Nothing to another organisation's people, nor of another organisation's connection.
       %{scope: other} = sign_up_fixture()

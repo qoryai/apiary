@@ -46,12 +46,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # the collections show; there is none without a line, or for one with nothing left to
   # show, or only whitespace. Past a page, the pager walks the pages, from the first, as
   # the list pages by the row before (`?page=`). Ended collections are not shown: the
-  # counts leave them out too, and a line under the table says how many there are. A run
-  # of them that fills a page of the list goes into the page after it, so no page is empty
-  # while collections are left after it. A page past the last one with collections shows
-  # that one, and the address then names it. A search finds collections by their names
-  # (`?q=`), and one that finds none says so, on any page. The foot notes' block shows
-  # only while one of its notes does.
+  # counts leave them out too, and a line under the table says how many there are. A page
+  # past the last one with collections shows that one, and the address then names it. A
+  # search finds collections by their names (`?q=`), and one that finds none says so, on
+  # any page. The foot notes' block shows only while one of its notes does.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -490,10 +488,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
     }
   end
 
-  # The page `page` of the connection's live collections `opts` asks for, walked to a page
-  # at a time from the first, as the list pages by the row before (`fetch/4`); the last
-  # page with live rows, if `page` is past it. `{page, its live rows, how many live rows
-  # the pages before it hold}`.
+  # The page `page` of the connection's live collections `opts` asks for, read a page at a
+  # time from the first, as the list pages by the row before (`fetch/4`); the last page
+  # with rows, if `page` is past it. `{page, its rows, how many rows the pages before it
+  # have}`.
   defp walk(scope, connection, opts, page) do
     Enum.reduce_while(1..page//1, {nil, 0, nil}, fn n, {after_id, before, previous} ->
       case fetch(scope, connection, opts, after_id) do
@@ -509,19 +507,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
     end)
   end
 
-  # The live rows of the page after the row `after_id`: the list's pages from there, until
-  # one holds a live row or is the last, so a full page of ended rows goes into the page
-  # after it. `{its live rows, the public id of the last row read, whether no row is left
-  # after it}`: a short page is the last one, and a full page may have none after it.
+  # The rows of the page after the row `after_id`. `{its rows, the public id of its last
+  # row, whether no row is left after it}`: a short page is the last one, and a full page
+  # may have none after it.
   defp fetch(scope, connection, opts, after_id) do
-    raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
-    rows = Enum.filter(raw, &is_nil(&1.ended_at))
-    last = length(raw) < Collections.page_size()
-    next = if raw == [], do: after_id, else: List.last(raw).public_id
-
-    if rows == [] and not last,
-      do: fetch(scope, connection, opts, next),
-      else: {rows, next, last}
+    rows = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
+    next = if rows == [], do: after_id, else: List.last(rows).public_id
+    {rows, next, length(rows) < Collections.page_size()}
   end
 
   @impl true
