@@ -179,9 +179,9 @@ defmodule ApiaryWeb.AdapterLive.Index do
             <span
               :if={row.installed}
               id={"integration-#{row.adapter.public_id}-state"}
-              class="q-sdot q-sdot-completed"
+              class="q-sdot q-sdot-completed !items-start !whitespace-normal"
             >
-              <i aria-hidden="true"></i><span><.rich text={installed_words(row, @several)} /></span>
+              <i aria-hidden="true" class="mt-[5px]"></i><span><.rich text={installed_words(row, @several)} /></span>
             </span>
           </:col>
           <:action :let={row}>
