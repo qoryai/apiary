@@ -2058,7 +2058,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog."
+msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -14715,7 +14715,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on."
+msgid "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
