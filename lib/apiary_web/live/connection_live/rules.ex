@@ -86,14 +86,18 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The version a digest names for the target (or the baseline, `nil`): `%{n, digest,
   scope, target_id, label, path, rendered_at}`, or nil when this workspace rendered
-  nothing with that digest. One indexed read. `shared` as `version_of/4` takes it.
+  nothing with that digest. A digest of a document composed for a run names the version
+  it was composed from, the one in force when the same bytes came from several; a digest
+  a version was stored under always names that version (`Apiary.Policy.policy_digest/2`).
+  Two indexed reads. `shared` as
+  `version_of/4` takes it.
   """
   def version(scope, target, digest, shared \\ nil)
 
   def version(_scope, _target, digest, _shared) when not is_binary(digest), do: nil
 
   def version(scope, target, digest, shared) do
-    case Policy.configuration_for_digest(scope, target, digest) do
+    case Policy.configuration_for_digest(scope, target, Policy.policy_digest(scope, digest)) do
       {:ok, configuration} -> version_of(scope, configuration, target, shared)
       _ -> nil
     end

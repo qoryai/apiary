@@ -2322,9 +2322,10 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  defp reloaded_at(%{assigns: %{run: run, digests: digests, policy: %{sequence: sequence}}})
+  # `applied` is the policy part of what the run applied (`Apiary.Policy.digests/2`).
+  defp reloaded_at(%{assigns: %{digests: digests, policy: %{sequence: sequence}}})
        when is_integer(sequence) do
-    if is_binary(digests.in_force) and run.run_configuration_digest == digests.in_force,
+    if is_binary(digests.in_force) and digests.applied == digests.in_force,
       do: sequence
   end
 

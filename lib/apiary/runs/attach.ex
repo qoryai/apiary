@@ -77,6 +77,18 @@ defmodule Apiary.Runs.Attach do
   starts, so they change no digest: a run is never told its configuration moved because
   of them.
 
+  A run a workspace's queue handed over that is not a prebuild is given the image the node
+  pool that claimed it recorded for the run's target, the one its registration's labels
+  name, on its environment record, fixed at the attach (`runs.configured_image`): its
+  configuration is composed with that image at the top level, beside the
+  `security_policy` (`Apiary.Policy.ComposedConfiguration`), and the digest is the
+  composed document's. A prebuild whose workspace's policy names an image is given the
+  policy without it. A workspace's policy that names an image gives no run an image. Any
+  other run, and a run with no recorded image, is given the configuration as stored. Every
+  run keeps what it started in, which its reloads carry (`runs.started_image_from`,
+  `runs.started_image`): the image it was given at the top level, the image the policy it
+  was given names, or none.
+
   The gateway's row is read `FOR SHARE` in the attach's transaction, the way a gateway's
   deletion holds it (`Apiary.Gateways`), and the clock after it: a deletion either finds
   the run it would attach, or the attach finds the gateway deleted.
@@ -91,12 +103,14 @@ defmodule Apiary.Runs.Attach do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Dispatches, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Gateways, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
+  alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, RunVariables, Sender}
 
   @version "version"
@@ -350,7 +364,7 @@ defmodule Apiary.Runs.Attach do
           {:error, :run_attached}
 
         true ->
-          take(access_key, run, attach, meta, now)
+          take(access_key, run, workspace, attach, meta, now)
       end
     end)
   end
@@ -402,9 +416,16 @@ defmodule Apiary.Runs.Attach do
     end
   end
 
-  defp take(access_key, run, attach, meta, now) do
-    with {:ok, settings} <-
-           Registration.configuration(Sender.place_key(run, access_key), run.registration_labels) do
+  defp take(access_key, run, workspace, attach, meta, now) do
+    dispatched = dispatched(run)
+
+    with {:ok, settings, image} <-
+           Registration.configuration(Sender.place_key(run, access_key), run.registration_labels,
+             image: fn -> image(run, workspace, dispatched) end,
+             prebuild: prebuild?(dispatched)
+           ) do
+      {started_from, started_image} = started(settings.settings, image)
+
       run =
         run
         |> Ecto.Changeset.change(
@@ -414,7 +435,10 @@ defmodule Apiary.Runs.Attach do
           gateway_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
-          backstop_at: backstop_at(run, now),
+          backstop_at: backstop_at(dispatched, now),
+          configured_image: image,
+          started_image_from: started_from,
+          started_image: started_image,
           updated_at: now
         )
         |> Repo.update!()
@@ -423,15 +447,61 @@ defmodule Apiary.Runs.Attach do
     end
   end
 
+  # What the run starts in, which its reloads carry (`Apiary.Runs.Run`): the image it is
+  # given at the top level, else the image the `security_policy` it is given names, else
+  # none.
+  defp started(_document, image) when is_binary(image), do: {"top_level", image}
+
+  defp started(document, nil) do
+    case ComposedConfiguration.policy_image(document) do
+      nil -> {"none", nil}
+      image -> {"policy", image}
+    end
+  end
+
+  # For a run a workspace's queue handed over, its step and the node pool that claimed
+  # it, whose dispatch was handed over; nil for any other run.
+  defp dispatched(%Run{dispatch_run_id: nil}), do: nil
+
+  defp dispatched(%Run{dispatch_run_id: id}) do
+    Repo.one(
+      from r in DispatchRun,
+        left_join: d in Dispatch,
+        on: d.dispatch_run_id == r.id and not is_nil(d.handed_over_at),
+        where: r.id == ^id,
+        order_by: [desc: d.handed_over_at],
+        limit: 1,
+        select: %{step: r.step, pool_id: d.pool_id}
+    )
+  end
+
+  defp prebuild?(%{step: step}), do: step == DispatchRun.prebuild()
+  defp prebuild?(nil), do: false
+
+  # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
+  # the image the pool that claimed it recorded for the run's target, the one its
+  # registration's labels name (`Apiary.Environments.image_for/2`); nil for any other run,
+  # which starts in the pool's default.
+  defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
+       when is_binary(pool_id) do
+    with false <- step == DispatchRun.prebuild(),
+         %Node{kind: :pool} = pool <- Repo.get(Node, pool_id),
+         {:ok, target} <- Domain.target(workspace, run.registration_labels) do
+      Environments.image_for(pool, target)
+    else
+      _none -> nil
+    end
+  end
+
+  defp image(_run, _workspace, _dispatched), do: nil
+
   # A run a workspace's queue handed over is lost should it have neither an outcome nor an
   # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
   # has no such deadline.
-  defp backstop_at(%Run{dispatch_run_id: nil}, _now), do: nil
+  defp backstop_at(nil, _now), do: nil
 
-  defp backstop_at(%Run{dispatch_run_id: id}, now) do
-    step = Repo.one(from d in DispatchRun, where: d.id == ^id, select: d.step)
-    DateTime.add(now, Dispatches.backstop_seconds(step), :second)
-  end
+  defp backstop_at(%{step: step}, now),
+    do: DateTime.add(now, Dispatches.backstop_seconds(step), :second)
 
   # The instance id the request was signed with, when it can be kept; nil otherwise, so the
   # run's next request from its gateway gives it one.

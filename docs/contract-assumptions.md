@@ -173,7 +173,8 @@ Every answer after the `401` is signed.
 Every `202`, and the `410` of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the
 workspace's discovery answer carries, and, for a workspace whose policy somebody has made,
 `X-Qory-Run-Configuration`, the digest of the run configuration for the repository the
-run registered with (see "Assumed" for a run that did not register). A workspace nobody has
+run registered with, composed for the run as its reload is (The image, under The run
+endpoint) (see "Assumed" for a run that did not register). A workspace nobody has
 given a policy is never answered the second. No other status carries it. No error body
 repeats anything that was sent.
 
@@ -493,9 +494,12 @@ is answered as before. The prebuild's environment record
 then keeps the build: the image, its size, its commit, when it was recorded, the
 `environment_ref` reported, as it is even where it differs from the record's `queued_ref`,
 and the target it was built for, the registered run's target, which its handover named
-from the collection's target as it was then. The last failure is cleared, `retired_at` is
-left as it is, and nothing is queued, so a reported ref that differs never queues a
-prebuild again. The record also keeps when the prebuild that made the image took the
+from the collection's target as it was then. The last failure is cleared and nothing is
+queued, so a reported ref that differs never queues a prebuild again. `retired_at` is
+cleared only when the prebuild took its `environment_ref` after the record was retired: the
+ref came back and this build is of it, so the record is served again. A prebuild that took
+its ref before the retirement, claimed before the ref went absent and landing late, is
+stored and the record stays retired, even when a new ref has come since. The record also keeps when the prebuild that made the image took the
 `environment_ref` it built: when it was queued, or later, when the ref changed while it
 waited or it waited again with the record's `queued_ref` (`dispatch_runs.environment_ref_at`;
 its `queued_at`, which orders the queue, stays). A `prebuilt`, or a release's failure, of a
@@ -575,6 +579,52 @@ A workspace whose policy nobody has made, or any workspace on an instance withou
 run configuration: a registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
+**The image.** A run of a workspace's queue that is not a prebuild (A run of the queue,
+above) is given the image the node pool that claimed it recorded for the run's repository,
+the one its registration's labels name (`Apiary.Environments.image_for/2`): the newest
+build of the pool that is not retired and was built for that repository; with none, no
+image, and the run starts in the pool's default. The image is chosen once, at the attach,
+and kept on the run (`runs.configured_image`). The run's configuration is then composed
+for it (`Apiary.Policy.ComposedConfiguration`), `image` beside `security_policy` and never
+inside it, the workspace's document otherwise unchanged:
+
+```json
+{"version":1,"image":"registry.example.com/acme/shop-env@sha256:<64 hex>","security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
+```
+
+and `{"version":1,"image":"…"}` where the workspace serves no run configuration. Its bytes
+are canonical, as a stored document's are, and its digest is theirs. A composed document is
+kept by its digest and the configuration it was composed from, one row per document and
+configuration of a workspace (`composed_run_configurations`), since leaving a policy's
+`image` out can make two configurations give the same bytes; a row goes with its
+configuration and with the workspace. Where the workspace's policy names an image (`security_policy.image`) at a
+run's attach, no run is given one beside it: the run starts in the policy's, and the two
+never both name one. The attach keeps what the run started in (`runs.started_image_from`
+and `runs.started_image`): the image given at the top level, the image its policy named, or
+none. Forager fixes the image when the run starts: it takes a reload only when the reload
+names, at the top level, the image the start named there, or none as the start did, and
+selects the image the run started in. So when the policy in force names another image than
+the run started in, or none where the run started in one, or one where it started in none,
+the reload carries the start's image that way. A run given an image at the top level keeps
+it there, beside the policy in force without its `image`. A run that started in the image
+its policy named is given the policy in force with that image as its `image`, and nothing
+at the top level. A run that started in no image is given the policy in force without its
+`image`. The rest of the policy applies at once, the policy's image from the next attach,
+and the two still never both name one. A policy that selects what the run started in is
+reloaded byte for byte as stored. A run that attached before the start was kept is reloaded
+as it was. A
+prebuild whose workspace's policy names an image is given that policy without its `image`,
+the rest as stored, so a prebuild always builds on the pool's default. Every other run, a
+run a node registered itself, a run with no recorded image and a prebuild under a policy
+that names none among them, is given the stored bytes, under their digest, as above, until
+its policy comes to select another image than it started in. A
+run is behind when the digest it reported is not the one it would be answered now, the
+configuration in force composed for it as its reload would be. A page that names the
+version a digest stands for reads a composed digest as the configuration it was composed
+from, the one in force when the same bytes came from several; a digest a configuration was
+stored under always names that configuration. The events endpoint takes a reported digest
+as in force only when it is what the run would be answered now.
+
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
 answered with no run configuration: a signed `200`, `application/json`,
 `{"version":1,"run_id":"<run_id>","run_key":"qrk_…"}`, with `X-Qory-Configuration` and
@@ -636,10 +686,14 @@ answer is the run configuration in force for the run's labels, read under the ru
 workspace and organisation, its bytes with `,"labels":…` and `,"about":…` added before the
 closing brace, each only when the registration had some, with `X-Qory-Run-Configuration`
 and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
-batches carry the same digest, and `X-Qory-Configuration`. The run keeps `attached_at`,
-`attach_interval_seconds`, the digest given (`attach_answer_digest`), the instance id the
-attach was signed with (`gateway_instance_id`), and the attach's Forager version (the
-`User-Agent`'s first) and contract version.
+batches carry the same digest, and `X-Qory-Configuration`. For a run given an image, and a
+prebuild under a policy that names one, the configuration is the composed document and the
+digest is the composed document's (The image, above); a repeat is given it by the stored digest. The run keeps
+`attached_at`, `attach_interval_seconds`, the digest given (`attach_answer_digest`), the
+instance id the attach was signed with (`gateway_instance_id`), the attach's Forager
+version (the `User-Agent`'s first) and contract version, the image it was given at the top
+level (`configured_image`), nil for none, and what it started in (`started_image_from`:
+`top_level`, `policy` or `none`; `started_image`, nil for none).
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
 to the active keys of the node that registered the run, or, for a run through a gateway,
@@ -653,9 +707,19 @@ without a registration, even for the key they came with, and a `run_id` that is 
 run registered with, and no others, with the headers above. A run whose events retention
 has pruned is reloaded all the same: `200`, never `410`. A run through a gateway that may no
 longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
-`{"error":"workspace_not_served"}`, never its policy, before any `404` below. A reload on a workspace with no policy, or a
-policy removed mid-run, answers `404`. A policy removed mid-run never loosens a run that's
-already started, and the next run gets the new state when it registers. When the
+`{"error":"workspace_not_served"}`, never its policy, before any `404` below. A run whose
+attach composed its configuration is given the configuration in force now composed the
+same way, with the image it was given at its attach, under the composed digest: Forager
+fixes the image when the run starts, so every reload names the same one, and a policy
+change is the only reason the digest moves. A policy in force that selects another image
+than the run started in is composed with the start's image (The image, above), under a
+digest that maps back to the policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
+policy removed mid-run, answers `404`, a run given an image included; only a run whose
+attach was answered `{"version":1,"image":"…"}`, its image where the workspace served no
+run configuration, is answered that again there, and only while the workspace has never
+stored a run configuration: once the workspace has a policy, a run may have taken it on a
+reload, so a reload that finds it no longer served answers `404` for that run too. A policy
+removed mid-run never loosens a run that has already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
 any answer but `200` is a reload that failed: the policy in force stays, and it is tried
 again on the next answer.
