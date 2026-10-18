@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.ActivityTargetSetFurtherRepositoriesTest do
-  # The Activity line of `target.set_further_repositories`: its sentence, the list as it is
-  # after the change, or that its runs read no other, in the software domain's words, read
-  # from the entry the change wrote; and its subject, the target by its name.
+  # The Activity line of `target.set_further_repositories`: its label, offered in the
+  # filter; its sentence, the list as it is after the change, or that its runs read no
+  # other, in the software domain's words, read from the entry the change wrote; and its
+  # subject, the target by its name.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -30,6 +31,13 @@ defmodule ApiaryWeb.ActivityTargetSetFurtherRepositoriesTest do
         order_by: [desc: e.inserted_at, desc: e.id],
         limit: 1
     )
+  end
+
+  test "the label, offered in the filter" do
+    %{scope: scope} = sign_up_fixture()
+
+    assert Core.label(:"target.set_further_repositories") == "Also read"
+    assert Core.offered?(scope, :"target.set_further_repositories")
   end
 
   test "the sentence names the list after the change, or that its runs read no other" do

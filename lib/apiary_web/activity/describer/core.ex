@@ -63,6 +63,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
 
+  def label(:"target.set_further_repositories"), do: gettext("Also read")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(_action), do: nil
@@ -86,8 +87,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only the work item comments',
-  # the assigning of collections and the turning of a target's Backlog on or off have
-  # labels yet, so the filter offers those alone,
+  # the assigning of collections, the turning of a target's Backlog on or off and the
+  # choosing of what a target's runs also read have labels yet, so the filter offers
+  # those alone,
   # where the reader is shown the feature (the page asks it); the others' entries show as
   # any change.
   @impl true
@@ -98,7 +100,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment",
           :"work_item.comment_delete",
           :"collection.assign",
-          :"collection.set_backlog"
+          :"collection.set_backlog",
+          :"target.set_further_repositories"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->

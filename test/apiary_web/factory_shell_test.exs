@@ -374,6 +374,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
+      assert {"target.set_further_repositories", "Also read"} in options
+
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
@@ -382,7 +384,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment",
             :"work_item.comment_delete",
             :"collection.assign",
-            :"collection.set_backlog"
+            :"collection.set_backlog",
+            :"target.set_further_repositories"
           ],
           do: refute(action in offered, "#{action}")
     end

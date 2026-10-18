@@ -3699,6 +3699,11 @@ msgstr ""
 msgid "Already have an account?"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Also read"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "Always"
