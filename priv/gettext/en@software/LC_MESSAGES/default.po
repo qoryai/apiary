@@ -3162,6 +3162,7 @@ msgstr ""
 msgid "Adapters"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Add"
@@ -3720,6 +3721,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "An integration"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "An integration installed here serves each workspace through the %{collections} assigned to it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -7088,6 +7094,11 @@ msgctxt "ticket image"
 msgid "Image: %{alt}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "In %{organisation}"
+msgstr ""
+
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace}: %{reason}"
@@ -7225,12 +7236,19 @@ msgstr ""
 msgid "Instance settings › %{page}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Integration"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Integration changed"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
@@ -9633,6 +9651,11 @@ msgstr "Not in force: a rule on this repository decides it"
 msgid "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not installed"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not locked"
@@ -10182,6 +10205,11 @@ msgctxt "work item view"
 msgid "Open"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{integration}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{name}'s policy"
@@ -10466,6 +10494,16 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins can change these."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} install integrations and assign their %{collections} to workspaces."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} install integrations."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -14313,6 +14351,11 @@ msgstr ""
 msgid "This instance no longer accepts integrations from this source."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "This instance's integrations, and whether each is installed for %{organisation}."
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "This invitation is no longer valid"
@@ -16263,6 +16306,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "cancelled %{when}"
 msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "source collection, when its adapter names none"
+msgid "collections"
+msgstr "repositories"
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format

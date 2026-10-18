@@ -1,19 +1,167 @@
 defmodule ApiaryWeb.AdapterLive.Index do
   # Organisation settings › Integrations: the list of the instance's adapters, as the
-  # organisation's people read them, and Add an integration, where an owner or an admin
-  # connects the organisation to one (`:index`, `:new`). Making one is the instance
+  # organisation's people read them (`:index`), and Add an integration, where an owner or
+  # an admin connects the organisation to one (`:new`). Making one is the instance
   # admins' (`ApiaryWeb.AdapterLive.AccessKey`, Add in Instance settings › Adapters).
   #
-  # It answers as a path that does not exist until its page is built here. The feature is
-  # hidden from the documentation, so the module is too.
+  # The list is for whoever may read the instance's adapters in the organisation
+  # (`adapter.read`, members), behind the `factory` feature. Each adapter in use is a row,
+  # by name: its name, and whether it is installed in the organisation, which it is while
+  # the organisation's connection to it is connected (`Apiary.Adapters.Connections`); a
+  # pending one is not installed yet. An installed one's name, and its chevron, lead to
+  # its page (`ApiaryWeb.AdapterLive.Show`); one not installed offers Add to whoever may
+  # connect one (`adapter.connect`, owners and admins), which leads to Add an integration.
+  # Under the table, what an integration installed here does, and, for whoever may not
+  # connect one, who does: with several workspaces, who assigns their collections too.
+  # The words for the collections are the adapters', when they all name the same.
+  #
+  # Add an integration answers as a path that does not exist until it is built here.
+  #
+  # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :factory
 
-  @impl true
-  def mount(_params, _session, _socket), do: raise(ApiaryWeb.NotFound)
+  on_mount {ApiaryWeb.Access, :"adapter.read"}
+
+  alias Apiary.{Access, Adapters, Organisations}
+  alias Apiary.Adapters.Connections
+  alias ApiaryWeb.{IntegrationComponents, SettingsComponents}
 
   @impl true
-  def render(assigns), do: ~H""
+  def mount(_params, _session, socket) do
+    if socket.assigns.live_action == :new, do: raise(ApiaryWeb.NotFound)
+
+    scope = socket.assigns.current_scope
+    adapters = Adapters.list_adapters(scope)
+    live = Connections.live_by_adapter(scope)
+
+    rows =
+      for adapter <- adapters do
+        connection = Map.get(live, adapter.id)
+        %{adapter: adapter, installed: match?(%{state: :connected}, connection)}
+      end
+
+    {:ok,
+     assign(socket,
+       page_title: IntegrationComponents.page_title(scope, []),
+       sections: SettingsComponents.sections(scope, :organisation),
+       paths: IntegrationComponents.paths(scope),
+       rows: rows,
+       noun: Adapters.shared_collection_noun(adapters),
+       connects: Access.can?(scope, :"adapter.connect", scope.organisation),
+       several: length(Organisations.list_workspaces(scope)) > 1
+     )}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:organisation}
+      sections={@sections}
+      section={:integrations}
+    >
+      <.settings_page section={:integrations} title={gettext("Integrations")} measure="list">
+        <:subtitle>
+          {gettext("This instance's integrations, and whether each is installed for %{organisation}.",
+            organisation: @current_scope.organisation.name
+          )}
+        </:subtitle>
+
+        <.table
+          id="integrations"
+          label={gettext("Integrations")}
+          rows={@rows}
+          row_id={&"integration-#{&1.adapter.public_id}"}
+        >
+          <:col :let={row} label={gettext("Integration")} kind="title">
+            <.link
+              :if={row.installed}
+              id={"integration-#{row.adapter.public_id}-name"}
+              navigate={IntegrationComponents.paths(@current_scope, row.adapter).show}
+              class="inline-flex min-w-0 items-center gap-2.5 hover:underline"
+            >
+              <IntegrationComponents.mark /><span class="truncate">{row.adapter.name}</span>
+            </.link>
+            <span
+              :if={!row.installed}
+              id={"integration-#{row.adapter.public_id}-name"}
+              class="inline-flex min-w-0 items-center gap-2.5"
+            >
+              <IntegrationComponents.mark /><span class="truncate">{row.adapter.name}</span>
+            </span>
+          </:col>
+          <:col
+            :let={row}
+            label={gettext("In %{organisation}", organisation: @current_scope.organisation.name)}
+          >
+            <span
+              :if={!row.installed}
+              id={"integration-#{row.adapter.public_id}-state"}
+              class="q-sdot"
+            >
+              <i aria-hidden="true"></i><span>{gettext("Not installed")}</span>
+            </span>
+          </:col>
+          <:action :let={row}>
+            <.button
+              :if={!row.installed && @connects}
+              id={"integration-#{row.adapter.public_id}-add"}
+              size="xs"
+              navigate={@paths.new}
+            >
+              {gettext("Add")}
+            </.button>
+            <.button
+              :if={row.installed}
+              id={"integration-#{row.adapter.public_id}-open"}
+              variant="ghost"
+              size="xs"
+              class="btn-square"
+              navigate={IntegrationComponents.paths(@current_scope, row.adapter).show}
+              aria-label={gettext("Open %{integration}", integration: row.adapter.name)}
+            >
+              <.icon name="hero-chevron-right-micro" class="size-4" />
+            </.button>
+          </:action>
+        </.table>
+
+        <div class="mt-3 grid gap-1.5">
+          <p id="integrations-serve" class="q-foot-note">
+            {gettext(
+              "An integration installed here serves each workspace through the %{collections} assigned to it.",
+              collections: collection_word(@noun, :other)
+            )}
+          </p>
+          <p :if={!@connects && !@several} id="integrations-who" class="q-foot-note">
+            {gettext("Owners and admins of %{organisation} install integrations.",
+              organisation: @current_scope.organisation.name
+            )}
+          </p>
+          <p :if={!@connects && @several} id="integrations-who" class="q-foot-note">
+            {gettext(
+              "Owners and admins of %{organisation} install integrations and assign their %{collections} to workspaces.",
+              organisation: @current_scope.organisation.name,
+              collections: collection_word(@noun, :other)
+            )}
+          </p>
+        </div>
+      </.settings_page>
+    </Layouts.app>
+    """
+  end
+
+  # The word for many of the integrations' collections: what `noun` says
+  # (`Apiary.Adapters`'s `%{one:, other:}`), else the domain's word.
+  # Swap for SourceComponents.collection/1 and collections/1 once they're on next.
+  defp collection_word(%{other: other}, :other), do: other
+
+  defp collection_word(nil, :other),
+    do: pgettext("source collection, when its adapter names none", "collections")
 end
