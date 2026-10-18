@@ -290,6 +290,11 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
       assert has_element?(view, "#{row(ctx.declined)} .q-bl-wi-declined")
+
+      # Who declined it by the local part of their address, never the address.
+      [local, _domain] = String.split(ctx.scope.user.email, "@")
+      assert has_element?(view, row(ctx.declined), "Declined by #{local}")
+      refute view |> element(row(ctx.declined)) |> render() =~ ctx.scope.user.email
       assert has_element?(view, "#{row(ctx.taken)} a.q-bl-wi")
       assert has_element?(view, "#{row(ctx.open)} .q-bl-take", "Take in")
 
@@ -514,6 +519,19 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert_patch(view, page(ctx.scope, "?q=Ticket"))
       assert rows(view) == ids([ctx.lea_shop, ctx.lea_api, ctx.bot_api])
       refute has_element?(view, "#backlog-tokens")
+    end
+
+    test "Filed by always has Find a name; the other sections only above eight values",
+         ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      # Two filers, Lea and deps-bot.
+      assert length(texts(view, "#backlog-filter-filed_by-form .q-filter-option")) == 2
+      assert has_element?(view, ~s(#backlog-filter-filed_by-search[placeholder="Find a name"]))
+
+      for key <- ["repository", "label", "updated"] do
+        refute has_element?(view, "#backlog-filter-#{key}-search"), key
+      end
     end
 
     test "Find a name narrows Filed by's values on the server", ctx do

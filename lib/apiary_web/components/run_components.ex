@@ -1141,11 +1141,11 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a filter offers, inside the chip's dialog or a section of the Filter menu: a box that
-  narrows the options on the server once there are more than eight (`narrow` is its
-  event), the options as a form of checkboxes or radios (and dates), which sends `event`
-  on a change with the filter's name in `_filter`, and "Show more" (`more`, its event,
-  with the name as `name`) while the values outnumber the options. The ids start with
-  `id`: `<id>-form`, `<id>-narrow`, `<id>-search`, `<id>-more`.
+  narrows the options on the server once there are more than eight, or always with
+  `always_find` (`narrow` is its event), the options as a form of checkboxes or radios
+  (and dates), which sends `event` on a change with the filter's name in `_filter`, and
+  "Show more" (`more`, its event, with the name as `name`) while the values outnumber the
+  options. The ids start with `id`: `<id>-form`, `<id>-narrow`, `<id>-search`, `<id>-more`.
 
   `tile` is an optional mark before each option's words where the options have no
   `groups`, such as a filer's tile on the Backlog: it is given the option, `{label, value,
@@ -1170,6 +1170,10 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the narrowing box's name; nil says Find a <label>"
 
+  attr :always_find, :boolean,
+    default: false,
+    doc: "draws the narrowing box whatever the number of options"
+
   slot :tile, doc: "a mark before an option's words, given the option; none by default"
 
   def filter_options(assigns) do
@@ -1184,7 +1188,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <form
-      :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
+      :if={@always_find or @query not in [nil, ""] or (@total || length(@options)) > 8}
       id={"#{@id}-narrow"}
       phx-change={@narrow}
       phx-submit={@narrow}

@@ -111,6 +111,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
                   options={options(@options, @narrowed, @params, key)}
                   query={@narrow[Atom.to_string(key)]}
                   search_label={key == :filed_by && gettext("Find a name")}
+                  always_find={key == :filed_by}
                 >
                   <:tile :let={{_label, value, _count}} :if={key == :filed_by}>
                     <BacklogComponents.bot_tile

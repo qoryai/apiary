@@ -1432,6 +1432,38 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "filter_options/1's narrowing box" do
+    defp narrowing(attrs) do
+      assigns =
+        Keyword.merge(
+          [id: "f", name: "filed_by", label: "Filed by", values: [], multiple: true],
+          attrs
+        )
+
+      render_component(&RunComponents.filter_options/1, assigns)
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("form#f-narrow input#f-search")
+      |> Enum.count()
+    end
+
+    test "without always_find, is drawn above eight options or for a search alone" do
+      few = for n <- 1..2, do: {"Filer #{n}", "Filer #{n}", 1}
+      many = for n <- 1..9, do: {"Filer #{n}", "Filer #{n}", 1}
+
+      assert narrowing(options: few) == 0
+      assert narrowing(options: Enum.take(many, 8)) == 0
+      assert narrowing(options: many) == 1
+      assert narrowing(options: few, query: "Fil") == 1
+      assert narrowing(options: few, total: 9) == 1
+      assert narrowing(options: few, always_find: false) == 0
+    end
+
+    test "always_find draws it whatever the number of options, none among them" do
+      assert narrowing(options: [], always_find: true) == 1
+      assert narrowing(options: [{"Lea", "Lea", 2}], always_find: true) == 1
+    end
+  end
+
   describe "chips" do
     test "a long label value is cut in the middle, the whole value in the title" do
       value = String.duplicate("a", 20) <> String.duplicate("z", 20)

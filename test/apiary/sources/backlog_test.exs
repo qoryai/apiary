@@ -229,7 +229,9 @@ defmodule Apiary.Sources.BacklogTest do
       assert row.updated_at == ctx.declined.source_updated_at
       assert number == declined_item.number
       assert declined_path == path <> Integer.to_string(number)
-      assert row.work_item.declined_by == scope.user.email
+      # Who declined it by the local part of their address, as the policy pages name people.
+      [local, "example.com"] = String.split(scope.user.email, "@")
+      assert row.work_item.declined_by == local
       refute Map.has_key?(row, :body)
 
       assert rows[ctx.taken.public_id].work_item == %{
@@ -246,7 +248,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert %{state: :exploring, declined_by: nil} = rows[ctx.closed_taken.public_id].work_item
     end
 
-    test "a declined work item names a deleted account as a former member, and no one where no person declined it",
+    test "a declined work item names its person by the local part of their address, a deleted account as a former member, and no one where no person declined it",
          ctx do
       %{user: decliner} = member_fixture(ctx.scope, :member)
       by_person = ticket(ctx.collection)
@@ -268,7 +270,8 @@ defmodule Apiary.Sources.BacklogTest do
         Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
       end
 
-      assert declined_by.(by_person) == decliner.email
+      [local, "example.com"] = String.split(decliner.email, "@")
+      assert declined_by.(by_person) == local
       assert declined_by.(by_nobody) == nil
 
       decliner
