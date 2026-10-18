@@ -415,6 +415,57 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       said = said_of(conn, scope, user, fn -> :ok end)
       assert_named(said, name(user))
     end
+
+    test "an owner of 16 characters that is no id lists nothing, and breaks nothing",
+         %{conn: conn, scope: scope} do
+      item!(scope)
+      {:ok, view, _html} = live(conn, page(scope, "?owner[]=0123456789abcdef"))
+      assert rows(view) == []
+      assert texts(view, "#work-items-stages-confirm .q-wl-attn") == []
+    end
+
+    test "an owner's id in capitals names that owner on Confirm's line",
+         %{conn: conn, scope: scope} do
+      %{user: member} = member_fixture(scope, :member)
+      at!(scope, :confirm, owner_id: member.id)
+
+      {:ok, view, _html} = live(conn, page(scope, "?owner[]=#{String.upcase(member.id)}"))
+
+      assert texts(view, "#work-items-stages-confirm .q-wl-attn") == [
+               "1 waits for #{name(member)}"
+             ]
+    end
+
+    test "many owners in the address read no account of theirs", %{conn: conn, scope: scope} do
+      item!(scope)
+      forged = for _ <- 1..150, do: Ecto.UUID.generate()
+      test = self()
+      handler = "work-items-users-#{System.unique_integer()}"
+
+      # How many of the forged ids each query of the users table carries, from any process:
+      # the page's runs in its own.
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          params = List.flatten([metadata[:params] || [], metadata[:cast_params] || []])
+          read = Enum.count(forged, &(&1 in params or Ecto.UUID.dump!(&1) in params))
+          if metadata[:source] == "users" and read > 0, do: send(test, {:users_read, read})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      query = Enum.map_join(forged, "&", &"owner[]=#{&1}")
+      {:ok, view, _html} = live(conn, page(scope, "?" <> query))
+      assert rows(view) == []
+      refute_received {:users_read, _count}
+
+      # One owner alone is read, for Confirm's line.
+      {:ok, _view, _html} = live(conn, page(scope, "?owner[]=#{hd(forged)}"))
+      assert_received {:users_read, 1}
+    end
   end
 
   describe "Search and the Filter menu" do

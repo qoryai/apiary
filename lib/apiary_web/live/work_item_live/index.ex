@@ -357,7 +357,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
-    people = people(rows, params.owner, socket.assigns.options.owner)
+    people = people(rows, one_owner(params), socket.assigns.options.owner)
 
     assign(socket,
       list: list,
@@ -434,16 +434,16 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   ## People
 
-  # The people the rows name, their owners and who ended them, and the owners the list is
-  # filtered to, by account id, with the owners the Filter menu offers: `%{id => name}`.
-  # A filtered owner that is not an id is left out, and its line says "Former member".
-  defp people(rows, filtered, offered) do
+  # The people the rows name, their owners and who ended them, and the one owner the list
+  # is filtered to (`one_owner/1`), whom Confirm's line names, by account id, with the
+  # owners the Filter menu offers: `%{id => name}`.
+  defp people(rows, owner, offered) do
     known = Map.new(offered, &{&1.key, &1.label})
 
     ids =
       rows
       |> Enum.flat_map(&[&1.owner_id, &1.ended_by_id])
-      |> Enum.concat(Enum.filter(filtered, &match?({:ok, _}, Ecto.UUID.cast(&1))))
+      |> Enum.concat([owner])
       |> Enum.reject(&(is_nil(&1) or Map.has_key?(known, &1)))
       |> Enum.uniq()
 
@@ -496,13 +496,24 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp waiting(%{waiting_you: n}, _params, _people) when n > 0, do: %{count: n, for: :you}
 
   defp waiting(%{waiting: n}, params, people) when n > 0 do
-    case params.owner do
-      [id] -> %{count: n, for: Map.get(people, id) || People.former_member()}
-      _many -> %{count: n, for: :member}
+    case one_owner(params) do
+      nil -> %{count: n, for: :member}
+      id -> %{count: n, for: Map.get(people, id) || People.former_member()}
     end
   end
 
   defp waiting(_stages, _params, _people), do: nil
+
+  # The one owner the list is filtered to, as the id `Ecto.UUID.cast/1` gives for the
+  # value: nil for no owner, for several, and for a value that is not an id.
+  defp one_owner(%{owner: [value]}) do
+    case Ecto.UUID.cast(value) do
+      {:ok, id} -> id
+      :error -> nil
+    end
+  end
+
+  defp one_owner(_params), do: nil
 
   # Whether the list is one stage alone, a page of the Open view.
   defp stage_alone?(params), do: params.view == :open and params.stage in @stages
