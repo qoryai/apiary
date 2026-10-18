@@ -711,6 +711,45 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-view-unassigned") == "Unassigned 0"
   end
 
+  test "with more than eight workspaces, a field in the assign menu finds one", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {_connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    pick(lv, "acme/api")
+    refute has_element?(lv, "#collections-assign-find")
+
+    for n <- 1..7, do: workspace_fixture(scope.organisation, "Team #{n}")
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    pick(lv, "acme/api")
+
+    assert has_element?(
+             lv,
+             ~s{#collections-assign-find-input[placeholder="Find a workspace"][aria-label="Find a workspace"]}
+           )
+
+    assert lv |> element("#collections-assign ul") |> render() =~ "Team 7"
+
+    lv |> form("#collections-assign-find", %{q: " plat "}) |> render_change()
+    assert has_element?(lv, "#collections-assign-#{platform.id}")
+    refute lv |> element("#collections-assign ul") |> render() =~ "Team 7"
+    refute has_element?(lv, "#collections-assign-none")
+
+    lv |> form("#collections-assign-find", %{q: "billing"}) |> render_change()
+    assert words(lv, "#collections-assign-none") == "No workspace matches."
+    refute has_element?(lv, "#collections-assign-#{platform.id}")
+
+    lv |> form("#collections-assign-find", %{q: "PLATFORM"}) |> render_change()
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert words(lv, "#flash-info") =~ "Assigned acme/api to Platform."
+
+    pick(lv, "acme/shop")
+    assert lv |> element("#collections-assign ul") |> render() =~ "Team 7"
+  end
+
   test "every row shown at once, and more than three in the flash by number", %{
     conn: conn,
     scope: scope,

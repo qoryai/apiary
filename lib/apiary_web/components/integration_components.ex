@@ -285,11 +285,15 @@ defmodule ApiaryWeb.IntegrationComponents do
     doc: "`{workspace, how many it holds, in words}` each"
 
   attr :foot, :any, default: nil, doc: "what moves with them; no line without one"
+  attr :find, :boolean, default: false, doc: "whether a field finds a workspace by name"
+  attr :query, :string, default: nil, doc: "what the field holds"
 
   @doc false
   # Assign to workspace, the selection's one action: a menu (the `Menu` hook) under its
   # heading, a workspace per item with how many it holds on the right (`"assign"`, the
   # workspace's id as `workspace`), then a rule and a faint line on what moves with them.
+  # With `find`, a field under the heading narrows the workspaces (`"find_workspace"`,
+  # its text as `q`); when none is left, a line says so.
   def assign_menu(assigns) do
     ~H"""
     <div
@@ -317,6 +321,34 @@ defmodule ApiaryWeb.IntegrationComponents do
         phx-mounted={JS.ignore_attributes(["style"])}
       >
         <.menu_heading title={@heading} />
+        <li :if={@find} role="presentation">
+          <form
+            id={"#{@id}-find"}
+            phx-change="find_workspace"
+            phx-submit="find_workspace"
+            novalidate
+          >
+            <input
+              id={"#{@id}-find-input"}
+              type="search"
+              name="q"
+              value={@query}
+              class="input input-sm q-filter-search"
+              placeholder={gettext("Find a workspace")}
+              aria-label={gettext("Find a workspace")}
+              phx-debounce="200"
+              autocomplete="off"
+            />
+          </form>
+        </li>
+        <li
+          :if={@workspaces == []}
+          id={"#{@id}-none"}
+          role="presentation"
+          class="px-2 py-1.5 text-xs text-faint"
+        >
+          {gettext("No workspace matches.")}
+        </li>
         <.menu_item
           :for={{workspace, count} <- @workspaces}
           id={"#{@id}-#{workspace.id}"}

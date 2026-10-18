@@ -6511,6 +6511,7 @@ msgstr ""
 msgid "Find a variable by name or value"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9560,6 +9561,7 @@ msgctxt "plain"
 msgid "No workspace is chosen yet, so it applies to none."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "No workspace matches."

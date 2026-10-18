@@ -96,6 +96,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
        selected: %{},
+       menu_q: nil,
        late: false,
        timer: nil,
        sending: false,
@@ -238,6 +239,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   def handle_event("clear_selection", _params, socket),
     do: {:noreply, assign(socket, :selected, %{})}
 
+  # The assign menu's field: the workspaces whose names hold its text.
+  def handle_event("find_workspace", %{"q" => q}, socket),
+    do: {:noreply, assign(socket, :menu_q, search_param(q))}
+
   # Assigns the selection to the workspace picked from the menu, then says what went
   # where. A refusal (the connection ended, a workspace or a collection gone meanwhile)
   # leaves the page as it now stands.
@@ -260,7 +265,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         {:error, reason} -> put_flash(socket, :error, refused(socket.assigns, reason))
       end
 
-    {:noreply, socket |> assign(:selected, %{}) |> reload()}
+    {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload()}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
@@ -535,8 +540,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
                       collections: collection_word(@adapter, :other)
                     )
                   }
+                  find={length(@workspaces) > 8}
+                  query={@menu_q}
                   workspaces={
-                    for workspace <- @workspaces do
+                    for workspace <- @workspaces, named?(workspace, @menu_q) do
                       {workspace,
                        count_words(@adapter, true, Map.get(@counts.by_workspace, workspace.id, 0))}
                     end
@@ -843,6 +850,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
       workspace: workspace.name
     )
   end
+
+  # Whether the workspace's name holds `text`, any case; every one for none.
+  defp named?(_workspace, nil), do: true
+
+  defp named?(workspace, text),
+    do: String.contains?(String.downcase(workspace.name), String.downcase(text))
 
   # The flash when an assign is refused: it assigns all or nothing, so nothing moved.
   # A workspace or a collection gone since the page was drawn, or a selection past the
