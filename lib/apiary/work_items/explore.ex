@@ -50,6 +50,9 @@ defmodule Apiary.WorkItems.Explore do
   # latest run's place, `:proposal` read as `:confirm`; and `:used_up` for a latest run at
   # `:questions`, `:no_result`, `:lost` or `:cancelled` whose attempt is its `of`, the run
   # limit, where no run is left. A take in with no run yet is `:queued`.
+  # `with_status/1` derives the same status in SQL, for a list of work items, from what
+  # the runs of the queue keep: a run whose outcome is not stored yet reads as running
+  # there until it is.
   #
   # `stage/1` is the stage a status is at, as a decline or a close records it: `:shape`
   # once confirmed, `:confirm` while the proposal waits, `:explore` otherwise.
@@ -65,6 +68,17 @@ defmodule Apiary.WorkItems.Explore do
   alias Apiary.Runs.{Event, Run}
   alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
 
+  @statuses [
+    :queued,
+    :running,
+    :confirm,
+    :questions,
+    :no_result,
+    :lost,
+    :cancelled,
+    :used_up,
+    :shape
+  ]
   @run_states %{
     "pending" => :pending,
     "running" => :running,
@@ -220,6 +234,111 @@ defmodule Apiary.WorkItems.Explore do
   def stage(:shape), do: :shape
   def stage(:confirm), do: :confirm
   def stage(_status), do: :explore
+
+  ## The status in SQL
+
+  # with_status/1 is `query`, whose work items are bound as `:work_item`, with each work
+  # item's status as `status/2` gives it, derived in SQL: bound as `:explore_status`, its
+  # one column `status`, the status's name as text (`status_name/1`). One `LEFT JOIN
+  # LATERAL` per work item: the latest run of the queue of its current take in, its
+  # highest `attempt`, read backwards through the unique index on (`work_item_id`,
+  # `take_in`, `attempt`), with its registered run, and whether that take in is confirmed.
+  # A run ended by its outcome or its exit reads from what the run of the queue keeps
+  # (`Apiary.Dispatches.Settle`): one whose outcome is not stored yet reads as running
+  # until it is, where `status/2`, which reads its result event, reads a result that
+  # came, or a run settled since, at once. The status of an ended work item is that of
+  # its last take in, which `status/2` does not give. For example, the live work items
+  # of a workspace that wait for a member, with their status:
+  #
+  #     from(w in WorkItem, as: :work_item, where: w.workspace_id == ^workspace_id)
+  #     |> Explore.with_status()
+  #     |> where([work_item: w], w.state == :exploring)
+  #     |> where([explore_status: s], s.status in ^Explore.status_names([:confirm, :questions]))
+  #     |> select([work_item: w, explore_status: s], {w.public_id, s.status})
+  #
+  # and `status_of/1` reads a `status` back.
+  @doc false
+  @spec with_status(Ecto.Queryable.t()) :: Ecto.Query.t()
+  def with_status(query) do
+    cancelled = Run.with_old_names(["cancelled"])
+    lost = Run.with_old_names(["lost"])
+
+    from [work_item: w] in query,
+      left_lateral_join:
+        s in fragment(
+          """
+          SELECT CASE
+            WHEN EXISTS (
+              SELECT 1 FROM work_item_confirmations AS c
+              WHERE c.work_item_id = ? AND c.take_in = ?
+            ) THEN 'shape'
+            WHEN l.place IS NULL THEN 'queued'
+            WHEN l.place = 'proposal' THEN 'confirm'
+            WHEN l.place IN ('questions', 'no_result', 'lost', 'cancelled') AND l.attempt >= l.of
+              THEN 'used_up'
+            ELSE l.place
+          END AS status
+          FROM (SELECT 1) AS one
+          LEFT JOIN LATERAL (
+            SELECT d.attempt, d.of, CASE
+              WHEN d.state IN ('waiting', 'claimed') THEN 'queued'
+              WHEN d.state = 'handed_over' THEN 'running'
+              WHEN d.end_cause = 'lost' THEN 'lost'
+              WHEN d.end_cause IN ('released', 'closed', 'undone') THEN 'cancelled'
+              WHEN d.end_cause <> 'run_ended' THEN 'no_result'
+              WHEN d.result_outcome IS NULL THEN 'running'
+              WHEN d.result_outcome IN ('proposal', 'questions') AND d.result IS NOT NULL
+                THEN d.result_outcome
+              WHEN r.state = ANY(?) THEN 'cancelled'
+              WHEN r.state = ANY(?) THEN 'lost'
+              ELSE 'no_result'
+            END AS place
+            FROM dispatch_runs AS d
+            LEFT JOIN runs AS r ON r.dispatch_run_id = d.id
+            WHERE d.work_item_id = ? AND d.take_in = ?
+            ORDER BY d.attempt DESC
+            LIMIT 1
+          ) AS l ON true
+          """,
+          w.id,
+          w.take_in,
+          type(^cancelled, {:array, :string}),
+          type(^lost, {:array, :string}),
+          w.id,
+          w.take_in
+        ),
+      on: true,
+      as: :explore_status
+  end
+
+  # statuses/1 is the status of each of the work items `ids`, by id, as `with_status/1`
+  # derives it: `%{id => status}`, with no entry for an id that names no work item.
+  @doc false
+  @spec statuses([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => status}
+  def statuses(ids) when is_list(ids) do
+    from(w in WorkItem, as: :work_item, where: w.id in ^ids)
+    |> with_status()
+    |> select([work_item: w, explore_status: s], {w.id, s.status})
+    |> Repo.all()
+    |> Map.new(fn {id, name} -> {id, status_of(name)} end)
+  end
+
+  # status_name/1 is the text `with_status/1` gives for `status`, and status_names/1 the
+  # texts of `statuses`, for a query's filter.
+  @doc false
+  @spec status_name(status) :: String.t()
+  def status_name(status) when status in @statuses, do: Atom.to_string(status)
+
+  @doc false
+  @spec status_names([status]) :: [String.t()]
+  def status_names(statuses) when is_list(statuses), do: Enum.map(statuses, &status_name/1)
+
+  # status_of/1 is the status whose text `with_status/1` gives as `name`.
+  @doc false
+  @spec status_of(String.t()) :: status
+  for status <- @statuses do
+    def status_of(unquote(Atom.to_string(status))), do: unquote(status)
+  end
 
   ## Reading
 
