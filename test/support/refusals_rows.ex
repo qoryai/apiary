@@ -486,7 +486,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"work_item.decline",
         :"work_item.close",
         :"work_item.comment",
-        :"work_item.comment_delete"
+        :"work_item.comment_delete",
+        :"target.rebuild_environment"
       ]
     }
   end

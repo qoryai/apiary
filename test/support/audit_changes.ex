@@ -128,7 +128,8 @@ defmodule Apiary.AuditChanges do
       :"dispatch.handover",
       :"dispatch.release",
       :"target.set_further_repositories",
-      :"dispatch.prebuilt"
+      :"dispatch.prebuilt",
+      :"target.rebuild_environment"
     ] ++ @work_item_moves ++ @stand_ins
   end
 
@@ -514,6 +515,16 @@ defmodule Apiary.AuditChanges do
     target = prepare(:"target.set_further_repositories", ctx)
     before = entries()
     {:ok, _saved} = Targets.set_further_repositories(ctx.scope, target, "acme/docs")
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
+  # A member asks for a build of the environment of a target of the workspace, whose
+  # collection names one, for the workspace's node pool, in the workspace's trail, about
+  # the target.
+  def make(:"target.rebuild_environment", ctx) do
+    target = prepare(:"target.rebuild_environment", ctx)
+    before = entries()
+    {:ok, 1} = Apiary.Environments.rebuild(ctx.scope, target)
     %{scope: ctx.scope, subject: {"target", target.id}, before: before}
   end
 
@@ -962,6 +973,27 @@ defmodule Apiary.AuditChanges do
     Targets.get(scope, "code.example.com", "acme/shop")
   end
 
+  # A target of the scope's workspace, a node pool there, then a collection assigned there
+  # with the target and an `environment_ref`, made after the pool, so nothing is queued
+  # for it yet.
+  defp prepare(:"target.rebuild_environment", %{scope: scope}) do
+    pool_fixture(scope)
+
+    collection_fixture(scope,
+      external_ref: "SHOP",
+      target_system: "code.example.com",
+      target_path: "acme/shop",
+      environment_ref: "env-1"
+    )
+
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "code.example.com", path: "acme/shop"}
+      ])
+
+    Targets.get(scope, "code.example.com", "acme/shop")
+  end
+
   # A collection with a target, listed for the organisation's connection and assigned to
   # the scope's workspace, which makes the target there.
   defp prepare(:"collection.set_backlog", %{scope: scope}) do
@@ -1123,6 +1155,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"target.set_further_repositories", scope, target),
     do: Targets.set_further_repositories(scope, target, "acme/docs")
+
+  defp attempt(:"target.rebuild_environment", scope, target),
+    do: Apiary.Environments.rebuild(scope, target)
 
   defp attempt(:"work_item.take_in", scope, ticket),
     do: Apiary.WorkItems.take_in(scope, ticket.public_id)

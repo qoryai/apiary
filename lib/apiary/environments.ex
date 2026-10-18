@@ -6,7 +6,8 @@ defmodule Apiary.Environments do
   # pool, and what was asked of it.
   #
   # The reads here serve the paths that queue, record and use a build: they ask nothing
-  # of `Apiary.Access`, and whoever answers a person with them asks it first.
+  # of `Apiary.Access`, and whoever answers a person with them asks it first. A person's
+  # Rebuild (`rebuild/2`) asks it itself.
   #
   # ## The trigger: `trigger/2` and `trigger_for_pool/2`
   #
@@ -105,13 +106,34 @@ defmodule Apiary.Environments do
   # failure stay as they are, and the run ends as it would otherwise. A record that is
   # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
   # every writer writes it as before.
+  #
+  # ## A member's Rebuild: `rebuild/2`
+  #
+  # `rebuild(scope, target)` is the Rebuild of a target's page (`target.rebuild_environment`,
+  # asked of the target's workspace): for each live collection assigned to the target's
+  # workspace with the target's system and path and an `environment_ref`, and each live
+  # node pool of that workspace, it queues a prebuild held for the pool, changed or not,
+  # and writes the record's `queued_ref`, `queued_at` and queued target as the trigger
+  # does, making the record when there was none. A pool whose prebuild of the collection
+  # waits unclaimed is left as it is: that prebuild builds the collection's
+  # `environment_ref` already. It reads the collections, then locks their records `FOR
+  # UPDATE`, by collection and then pool, as `trigger/2` does, before anything else, then
+  # reads the collections again: a listing that changes an `environment_ref` meanwhile is
+  # either read here, or its trigger waits for the records and queues the change after the
+  # Rebuild. One audit entry about the target, with how many prebuilds it queued, and none
+  # when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
+  # `{:error, :not_found}` for a target that names no environment in its workspace, or
+  # whose workspace has no node pool.
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Dispatches, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Repo}
+  alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.Target
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
   @doc false
@@ -290,6 +312,95 @@ defmodule Apiary.Environments do
     :ok
   end
 
+  ## A member's Rebuild
+
+  # rebuild/2 queues a prebuild of `target`'s environment for each node pool of its
+  # workspace whose prebuild of it does not wait unclaimed, changed or not (the moduledoc).
+  @doc false
+  @spec rebuild(Scope.t(), Target.t()) :: {:ok, non_neg_integer} | {:error, Access.reason()}
+  def rebuild(%Scope{} = scope, %Target{} = target) do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"target.rebuild_environment", target),
+           [_ | _] = seen <- Repo.all(named_collections(target)),
+           :ok <- lock_records(seen),
+           [_ | _] = collections <- Repo.all(named_collections(target)),
+           [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
+        now = DateTime.utc_now()
+        queued = for collection <- collections, run <- requeue(collection, pools, now), do: run
+        :ok = audit_rebuild(scope, target, length(queued))
+        {:ok, length(queued)}
+      else
+        [] -> {:error, :not_found}
+        {:error, _reason} = refused -> refused
+      end
+    end)
+  end
+
+  # The live collections assigned to the workspace of `target` with its system and path,
+  # by id.
+  defp target_collections(%Target{} = target) do
+    from c in Collection,
+      where: c.organisation_id == ^target.organisation_id,
+      where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at),
+      where: c.target_system == ^target.system and c.target_path == ^target.path,
+      order_by: c.id
+  end
+
+  # Those of them that name an `environment_ref`.
+  defp named_collections(%Target{} = target),
+    do: from(c in target_collections(target), where: not is_nil(c.environment_ref))
+
+  # Writes the record of `collection`, held, for each of `pools` whose prebuild of it does
+  # not wait, whatever it was queued for, and queues a prebuild held for each of them.
+  defp requeue(%Collection{environment_ref: ref} = collection, pools, now) do
+    waiting =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.source_collection_id == ^collection.id and r.step == ^DispatchRun.prebuild(),
+          where: fragment("? = 'waiting'", r.state),
+          select: r.pool_id
+      )
+      |> MapSet.new()
+
+    case Enum.reject(pools, &MapSet.member?(waiting, &1.id)) do
+      [] ->
+        []
+
+      due ->
+        {_count, _rows} =
+          Repo.insert_all(Record, Enum.map(due, &queued_row(collection, &1, now)),
+            on_conflict:
+              {:replace,
+               [
+                 :queued_ref,
+                 :queued_at,
+                 :queued_target_system,
+                 :queued_target_path,
+                 :updated_at
+               ]},
+            conflict_target: [:pool_id, :source_collection_id]
+          )
+
+        for pool <- due do
+          {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+          run
+        end
+    end
+  end
+
+  # The one entry of a Rebuild that queued `count` prebuilds, about the target; none when
+  # it queued none.
+  defp audit_rebuild(_scope, _target, 0), do: :ok
+
+  defp audit_rebuild(scope, target, count) do
+    {:ok, _entry} =
+      Audit.record(Repo, scope, :"target.rebuild_environment", target, %{
+        details: %{count: count}
+      })
+
+    :ok
+  end
+
   ## The trigger
 
   # trigger/2 applies the trigger to `collections` as they now stand, at `now`, inside
@@ -396,22 +507,7 @@ defmodule Apiary.Environments do
   defp queue(_collection, [], _now), do: []
 
   defp queue(%Collection{environment_ref: ref} = collection, pools, now) do
-    rows =
-      for pool <- pools do
-        %{
-          id: Ecto.UUID.generate(),
-          organisation_id: collection.organisation_id,
-          workspace_id: pool.workspace_id,
-          pool_id: pool.id,
-          source_collection_id: collection.id,
-          queued_ref: ref,
-          queued_at: now,
-          queued_target_system: collection.target_system,
-          queued_target_path: collection.target_path,
-          inserted_at: now,
-          updated_at: now
-        }
-      end
+    rows = Enum.map(pools, &queued_row(collection, &1, now))
 
     due =
       from r in Record,
@@ -443,6 +539,24 @@ defmodule Apiary.Environments do
       {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
       run
     end
+  end
+
+  # The record of `collection` for `pool`, queued at `now` for the collection's
+  # `environment_ref` and target.
+  defp queued_row(%Collection{environment_ref: ref} = collection, %Node{} = pool, now) do
+    %{
+      id: Ecto.UUID.generate(),
+      organisation_id: collection.organisation_id,
+      workspace_id: pool.workspace_id,
+      pool_id: pool.id,
+      source_collection_id: collection.id,
+      queued_ref: ref,
+      queued_at: now,
+      queued_target_system: collection.target_system,
+      queued_target_path: collection.target_path,
+      inserted_at: now,
+      updated_at: now
+    }
   end
 
   defp in_transaction!(what) do
