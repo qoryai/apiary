@@ -1857,15 +1857,28 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       end
     end
 
-    test "a lost run's title is isolated, so a bidi override flips nothing",
+    test "a lost run whose title has nothing left to show is called as a run with no title is",
          %{conn: conn, scope: scope} do
-      title = "nightly\u202Erorrim"
-      lost = lost_run(scope, %{about_title: title})
+      lost = lost_run(scope, %{about_title: "\u202E\u200B"})
+      shown = ApiaryWeb.OverviewComponents.row_title(%{lost | about_title: nil})
       view = open(conn, scope)
 
-      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", title)
+      refute has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi")
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t", shown)
+      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{shown}"]))
+    end
+
+    test "a lost run's title is isolated, its bidi override dropped",
+         %{conn: conn, scope: scope} do
+      lost = lost_run(scope, %{about_title: "nightly\u202Erorrim"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", "nightlyrorrim")
       # The label for a screen reader stays plain text.
-      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{title}"]))
+      assert has_element?(
+               view,
+               ~s(#att-run-#{lost.public_id}-act[aria-label="Open nightlyrorrim"])
+             )
     end
 
     test "a lost run whose heartbeats are sent late keeps its row until its exit arrives",
