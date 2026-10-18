@@ -25,7 +25,8 @@ defmodule Apiary.Dispatches do
   # the take in has not ended, waiting, claimed or handed over, it is `{:error, :running}`;
   # once the highest attempt is its `of`, `{:error, :used_up}`; a take in with no run is
   # `{:error, :no_run}`, as its first run is `queue/2`'s to write. Two at once for one take
-  # in take turns on the work item, and the second finds the first's run waiting.
+  # in take turns on the work item: the second reads the runs once the first committed,
+  # and answers `{:error, :running}` unless a claim ended the first's run in between.
   #
   # `queue_prebuild(collection, pool, environment_ref)` writes, inside the caller's
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is

@@ -1,10 +1,10 @@
 defmodule Apiary.DispatchesTest do
   # The queue of a workspace and its claims (`Apiary.Dispatches`): a run queued in its
-  # work item's workspace, the next runs of a take in up to its `of`, a prebuild held for one pool and the claims that take it or
-  # never see it, an undo before, during and after a claim, one try at a claim
-  # against the pool's limit, the slots freed once, the sweep of lapsed leases on one clock, and
-  # the instance limit of a pool that counts both its dispatched and its other runs. A
-  # claim asks `dispatch.claim`, of the `factory` feature.
+  # work item's workspace, the next runs of a take in up to its `of`, a prebuild held for
+  # one pool and the claims that take it or never see it, an undo before, during and after
+  # a claim, one try at a claim against the pool's limit, the slots freed once, the sweep
+  # of lapsed leases on one clock, and the instance limit of a pool that counts both its
+  # dispatched and its other runs. A claim asks `dispatch.claim`, of the `factory` feature.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
