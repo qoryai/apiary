@@ -757,6 +757,37 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-access")
   end
 
+  test "a start with a new access line changes the open page's note, with no reload",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api"], 1, true)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    start = fn line ->
+      description =
+        Apiary.DescriptionFixtures.contract_description()
+        |> put_in(["roles", "source", "access"], line)
+        |> Apiary.DescriptionFixtures.read_description()
+
+      {:ok, _adapter} =
+        Apiary.Adapters.declare(Scope.for_access_key(key), %{
+          time: DateTime.utc_now(:second),
+          connect_url: "https://tracker.example.com/connect",
+          default_interval: 3600,
+          minimum_interval: 900,
+          sends_changes: true,
+          description: description
+        })
+    end
+
+    start.("Ask an owner to change the projects.")
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert access_text(lv) == "Ask an owner to change the projects."
+
+    start.("Open Settings, then Adapters, to change the projects.")
+    assert access_text(lv) == "Open Settings, then Adapters, to change the projects."
+  end
+
   test "the access line shows in a bdi, its invisible and control characters cleaned",
        %{conn: conn, scope: scope, adapter: adapter, key: key} do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
@@ -779,7 +810,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Change which repositories it reaches\uFFFD in its settings."
   end
 
-  test "an access line with nothing left once cleaned shows no note", %{
+  test "an access line with nothing left once cleaned, or only whitespace, shows no note", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
@@ -788,7 +819,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     post(key, connection, ["acme/api"], 1, true)
 
-    for text <- ["\u200B", "\u2066\u202E\u200B\u2069", ""] do
+    for text <- ["\u200B", "\u2066\u202E\u200B\u2069", "", " ", "\u00A0", "\u2002\u200B\u3000"] do
       :ok = set_access(adapter, text)
       {:ok, lv, _html} = live(conn, page(scope, adapter))
       assert has_element?(lv, "#collections-table")

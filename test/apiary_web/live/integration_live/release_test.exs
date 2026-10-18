@@ -207,6 +207,32 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     refute has_element?(lv, "#release-setting-region[aria-describedby]")
   end
 
+  test "a setting whose description is only whitespace has no hint",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => " "
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "\u00A0\u200B\u3000"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose")
+    assert has_element?(lv, "#release-setting-region")
+    refute has_element?(lv, "#release-setting-verbose-hint")
+    refute has_element?(lv, "#release-setting-region-hint")
+    refute has_element?(lv, "#release-setting-verbose[aria-describedby]")
+    refute has_element?(lv, "#release-setting-region[aria-describedby]")
+  end
+
   test "a setting's hint and the program's version are shown as an integration's text is",
        %{conn: conn, scope: scope} do
     description =

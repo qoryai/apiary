@@ -255,10 +255,11 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  # Where a run ran, else its state's word: a path with nothing left to show is no path.
+  # Where a run ran, else its state's word: a path with nothing left to show, or only
+  # whitespace, is no path (`Apiary.ExternalText.present/1`).
   defp run_detail(run) do
-    case Apiary.ExternalText.line(run.target_path) do
-      path when path in [nil, ""] -> ApiaryWeb.RunComponents.state_label(run.state)
+    case Apiary.ExternalText.present(run.target_path) do
+      nil -> ApiaryWeb.RunComponents.state_label(run.state)
       path -> path
     end
   end

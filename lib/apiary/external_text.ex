@@ -20,6 +20,11 @@ defmodule Apiary.ExternalText do
   characters there. `lines/1` is a text of several lines, a body: they stay. A page shows a
   line inside `<bdi>` (`ApiaryWeb.ExternalText.external_text/1`), so its direction does
   not run into the text around it.
+
+  `present/1` is a line a page shows only when there is something to see: nil where the
+  line, once shown, is empty or only whitespace (every Unicode space separator, such as
+  the no-break space and the spaces from U+2000 to U+200A, as `String.trim/1` trims
+  them), so a page treats it as no text at all.
   """
 
   # Wider than the set an explore result's text refuses (Apiary.WorkItems.WorkItem,
@@ -33,6 +38,19 @@ defmodule Apiary.ExternalText do
   @spec line(String.t() | nil) :: String.t() | nil
   def line(nil), do: nil
   def line(text) when is_binary(text), do: shown(text, @control)
+
+  @doc """
+  `text`, a text of one line an external system sent, as a page shows it (`line/1`), or
+  nil where that is empty or only whitespace once trimmed; nil stays nil. What it returns
+  is the line as `line/1` shows it, not trimmed.
+  """
+  @spec present(String.t() | nil) :: String.t() | nil
+  def present(text) do
+    case line(text) do
+      nil -> nil
+      line -> if String.trim(line) == "", do: nil, else: line
+    end
+  end
 
   @doc "`text`, a text of several lines an external system sent, as a page shows it; nil stays nil."
   @spec lines(String.t() | nil) :: String.t() | nil

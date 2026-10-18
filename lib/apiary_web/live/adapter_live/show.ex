@@ -44,14 +44,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # the integration reaches (`Apiary.Integrations.Description.access/1`, as the adapter's
   # latest start stored it), shown as sent and isolated (`ApiaryWeb.ExternalText`), while
   # the collections show; there is none without a line, or for one with nothing left to
-  # show. Past a page, the pager walks the pages, from the first, as the list pages by the
-  # row before (`?page=`). Ended collections are not shown: the counts leave them out too,
-  # and a line under the table says how many there are. A run of them that fills a page of
-  # the list goes into the page after it, so no page is empty while collections are left
-  # after it. A page past the last one with collections shows that one, and the address
-  # then names it. A search finds collections by their names (`?q=`), and one that finds
-  # none says so, on any page. The foot notes' block shows only while one of its notes
-  # does.
+  # show, or only whitespace. Past a page, the pager walks the pages, from the first, as
+  # the list pages by the row before (`?page=`). Ended collections are not shown: the
+  # counts leave them out too, and a line under the table says how many there are. A run
+  # of them that fills a page of the list goes into the page after it, so no page is empty
+  # while collections are left after it. A page past the last one with collections shows
+  # that one, and the address then names it. A search finds collections by their names
+  # (`?q=`), and one that finds none says so, on any page. The foot notes' block shows
+  # only while one of its notes does.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -885,11 +885,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
     do: access_line(assigns) != nil or ended_line?(assigns) or assigns.targets
 
   # The source's line on how to change which collections the adapter reaches, as stored,
-  # while the collections show; nil without one, or for one with nothing left once shown
-  # (`Apiary.ExternalText.line/1`).
+  # while the collections show; nil without one, or for one with nothing left once shown,
+  # or only whitespace (`Apiary.ExternalText.present/1`).
   defp access_line(%{state: state, connection: %Connection{adapter: %{source_access: text}}})
        when state in [:waiting, :listed] do
-    if Apiary.ExternalText.line(text) in [nil, ""], do: nil, else: text
+    if Apiary.ExternalText.present(text), do: text
   end
 
   defp access_line(_assigns), do: nil
