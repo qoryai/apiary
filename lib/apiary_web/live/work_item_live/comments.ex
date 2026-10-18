@@ -8,7 +8,7 @@ defmodule ApiaryWeb.WorkItemLive.Comments do
   # (`Apiary.WorkItems.thread/3`) and the count beside its tab
   # (`Apiary.WorkItems.count_comments/2`) whenever it hears that its work item changed
   # (`{:work_items_changed, ids}`): a comment and its deletion tell it so once they commit,
-  # this page's own among them. What this module keeps:
+  # including those written on this page. What this module keeps:
   #
   #   * `:deleting_comment` - the public id (`cm_…`) of the comment whose delete question
   #     shows, or nil;
@@ -19,7 +19,9 @@ defmodule ApiaryWeb.WorkItemLive.Comments do
   #
   # The events it handles (`events/0`): `"comment"`, `"ask_delete_comment"`,
   # `"delete_comment"`; and `"cancel_question"`, which Show shares, closes the delete
-  # question. A refused action has no words: the page draws again as things stand.
+  # question. A refused action has no words; the scope is read again
+  # (`ApiaryWeb.UserAuth.reload_scope/1`), which sends away a reader who may no longer be
+  # here.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -29,6 +31,7 @@ defmodule ApiaryWeb.WorkItemLive.Comments do
   alias Apiary.Access
   alias Apiary.WorkItems
   alias Apiary.WorkItems.Comment
+  alias ApiaryWeb.UserAuth
   alias ApiaryWeb.WorkItemComponents
 
   @events ["comment", "ask_delete_comment", "delete_comment", "cancel_question"]
@@ -70,19 +73,35 @@ defmodule ApiaryWeb.WorkItemLive.Comments do
         {:noreply, refused_draft(socket, body, Comment.error(changeset))}
 
       {:error, _refusal} ->
-        {:noreply, socket}
+        {:noreply, UserAuth.reload_scope(socket)}
     end
   end
 
+  # The question opens only on a comment of this work item, not deleted, that the reader
+  # may delete; on any other, nothing happens.
   def handle_event("ask_delete_comment", %{"comment" => id}, socket) when is_binary(id) do
-    if Apiary.PublicId.valid?(Comment.prefix(), id),
+    %{current_scope: scope, work_item: work_item} = socket.assigns
+
+    deletable? =
+      Apiary.PublicId.valid?(Comment.prefix(), id) and
+        Enum.any?(
+          WorkItems.list_comments(scope, work_item),
+          &(&1.public_id == id and is_nil(&1.deleted_at) and
+              Access.can?(scope, :"work_item.comment_delete", &1))
+        )
+
+    if deletable?,
       do: {:noreply, Phoenix.Component.assign(socket, :deleting_comment, id)},
       else: {:noreply, socket}
   end
 
   def handle_event("delete_comment", %{"comment" => id}, socket) when is_binary(id) do
-    _answer = WorkItems.delete_comment(socket.assigns.current_scope, id)
-    {:noreply, Phoenix.Component.assign(socket, :deleting_comment, nil)}
+    socket = Phoenix.Component.assign(socket, :deleting_comment, nil)
+
+    case WorkItems.delete_comment(socket.assigns.current_scope, id) do
+      {:error, _refusal} -> {:noreply, UserAuth.reload_scope(socket)}
+      _deleted -> {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_question", _params, socket),

@@ -3,9 +3,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   # found for a number no work item of the workspace has; what a reader does there (the
   # answers, Confirm as it stands and with changes, Decline, Close, Run Explore again),
   # each refused without words where the page read an earlier state, and the form's
-  # errors under its fields; the page read again on a message of its work item; a run's
-  # link only where the reader may read the runs of the workspace it ran in, after the
-  # work item moved; and a close by the instance.
+  # errors under its fields; the page read again on a message of its work item, with the
+  # scope first, as after a refused action; a run's link only where the reader may read
+  # the runs of the workspace it ran in, after the work item moved; and a close by the
+  # instance.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -352,6 +353,36 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       send(view.pid, {:work_items_changed, [work_item.public_id]})
 
       assert_redirect(view, page(scope, work_item.number))
+    end
+
+    test "a member removed behind the page's back is sent away on a message of the work item",
+         %{scope: scope} do
+      work_item = queued(scope)
+      member = member_fixture(scope, :member)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), member.user), page(scope, work_item.number))
+
+      # Removed without a word to the page: the scope is read again before the work item.
+      Repo.delete!(member.membership)
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+      assert_redirect(view, ~p"/")
+    end
+
+    test "a member removed behind the page's back is sent away after a refused action",
+         %{scope: scope} do
+      work_item = queued(scope)
+      member = member_fixture(scope, :member)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), member.user), page(scope, work_item.number))
+
+      Repo.delete!(member.membership)
+
+      render_hook(view, "close", %{"number" => "#{work_item.number}"})
+      assert_redirect(view, ~p"/")
+      assert state(work_item) == :exploring
     end
   end
 

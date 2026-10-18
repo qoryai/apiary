@@ -47,6 +47,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, WorkItems}
+  alias ApiaryWeb.UserAuth
   alias ApiaryWeb.WorkItemLive.{Comments, View}
 
   @answer_keys for position <- 1..20, do: Integer.to_string(position)
@@ -340,7 +341,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            |> update(:submits, &(&1 + 1))}
 
         {:error, _refused} ->
-          {:noreply, socket |> assign(answers: answers, errors: %{}) |> load()}
+          {:noreply, socket |> assign(answers: answers, errors: %{}) |> refresh()}
       end
     end)
   end
@@ -368,7 +369,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            |> update(:edit_submits, &(&1 + 1))}
 
         {:error, _refused} ->
-          {:noreply, socket |> assign(:edit_errors, %{}) |> load() |> editable()}
+          {:noreply, socket |> assign(:edit_errors, %{}) |> refresh(&editable/1)}
       end
     end)
   end
@@ -381,7 +382,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # After an action, done or refused: no question showing, and the work item read again.
+  # After an action: no question showing, and the work item read again; after a refusal,
+  # with the scope read again first.
+  defp done(socket, {:error, _refused}),
+    do: {:noreply, socket |> assign(:asking, nil) |> refresh()}
+
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
   # A form that names another question or gives no text: each question of the latest run
@@ -427,7 +432,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @impl true
   def handle_info({:work_items_changed, ids}, %{assigns: %{row: %{public_id: id}}} = socket) do
     if is_list(ids) and id in ids,
-      do: {:noreply, socket |> load() |> editable()},
+      do: {:noreply, refresh(socket, &editable/1)},
       else: {:noreply, socket}
   end
 
@@ -435,8 +440,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   ## Reads
 
+  # The scope read again before the work item, as the node pages do once a membership may
+  # have changed elsewhere or an action was refused (`ApiaryWeb.UserAuth.reload_scope/1`):
+  # a reader who may no longer be here is sent away; any other reads the page again, then
+  # `next`.
+  defp refresh(socket, next \\ & &1) do
+    socket = UserAuth.reload_scope(socket)
+    if socket.redirected, do: socket, else: socket |> load() |> next.()
+  end
+
   # Everything the page draws, read again with its scope. A work item no longer readable
-  # here sends the page to its own address, which is then not found.
+  # here loads the same address again, which is then not found.
   defp load(socket) do
     scope = scope(socket)
     now = DateTime.utc_now()

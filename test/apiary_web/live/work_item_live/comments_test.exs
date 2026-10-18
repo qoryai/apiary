@@ -2,9 +2,9 @@ defmodule ApiaryWeb.WorkItemLive.CommentsTest do
   # People's comments on the work item page's Thread (`ApiaryWeb.WorkItemLive.Comments`,
   # drawn by `ApiaryWeb.WorkItemLive.Show`): the composer, a comment written and the
   # composer drawn again empty, a draft the server refuses kept with its words, a blank
-  # text with none, More where the reader may delete, the delete question and Cancel, the
-  # deleted line, the count beside the Thread's tab, and another reader's page drawn
-  # again live.
+  # text with none, More where the reader may delete, the delete question only there and
+  # Cancel, the deleted line, the count beside the Thread's tab, and another reader's page
+  # drawn again live.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -140,6 +140,22 @@ defmodule ApiaryWeb.WorkItemLive.CommentsTest do
     assert render(other) =~ "Comment deleted by"
     refute render(other) =~ "Wrong work item, sorry"
     assert %Comment{body: nil} = Repo.reload!(comment)
+  end
+
+  test "the delete question opens only on a comment the reader may delete",
+       %{scope: scope, work_item: work_item} do
+    member = member_fixture(scope)
+    {:ok, owners} = WorkItems.comment(scope, work_item, "The owner's note")
+    {:ok, gone} = WorkItems.comment(member.scope, work_item, "Sam's old note")
+    {:ok, _deleted} = WorkItems.delete_comment(member.scope, gone.public_id)
+
+    {:ok, view, _html} = live(log_in_user(build_conn(), member.user), thread(scope, work_item))
+
+    for comment <- [owners, gone] do
+      html = render_click(view, "ask_delete_comment", %{"comment" => comment.public_id})
+      refute has_element?(view, comment_id(comment.public_id) <> "-confirm")
+      refute html =~ "comment?"
+    end
   end
 
   test "an event naming a comment of another workspace changes nothing",
