@@ -442,6 +442,11 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Repository"
       assert words(view, "#backlog-token-repository") == "Repository acme/api"
 
+      assert has_element?(
+               view,
+               ~s(#backlog-token-repository a[aria-label="Remove the repository filter"])
+             )
+
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^ctx.connection.adapter_id),
           set: [collection_noun_one: "project", collection_noun_other: "projects"]
@@ -451,6 +456,13 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Project"
       assert words(view, "#backlog-token-repository") == "Project acme/api"
       assert words(view, "#backlog-filter-open-repository") == "Project acme/api"
+
+      assert has_element?(
+               view,
+               ~s(#backlog-token-repository a[aria-label="Remove the project filter"])
+             )
+
+      refute has_element?(view, ~s(a[aria-label="Remove the repository filter"]))
     end
 
     test "Filed by keeps a filer's tickets, its token says so and takes it away", ctx do

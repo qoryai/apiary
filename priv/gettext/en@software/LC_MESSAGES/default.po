@@ -11758,15 +11758,15 @@ msgstr ""
 msgid "Remove runtime…"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the %{collection} filter"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the allow rule %{host}?"
 msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the collection filter"
-msgstr "Remove the repository filter"
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format

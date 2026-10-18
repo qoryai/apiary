@@ -554,15 +554,21 @@ defmodule ApiaryWeb.BacklogLive.Index do
         key: key,
         label: filter_label(key, collection_noun),
         value: value_words(params, key, options),
-        remove: remove_words(key)
+        remove: remove_words(key, collection_noun)
       }
     end
   end
 
-  defp remove_words(:repository), do: gettext("Remove the collection filter")
-  defp remove_words(:filed_by), do: gettext("Remove the filed-by filter")
-  defp remove_words(:label), do: gettext("Remove the label filter")
-  defp remove_words(:updated), do: gettext("Remove the updated filter")
+  # The collections' in their source's word for one of them, as their token names them.
+  defp remove_words(:repository, collection_noun),
+    do:
+      gettext("Remove the %{collection} filter",
+        collection: SourceComponents.collection(collection_noun)
+      )
+
+  defp remove_words(:filed_by, _collection_noun), do: gettext("Remove the filed-by filter")
+  defp remove_words(:label, _collection_noun), do: gettext("Remove the label filter")
+  defp remove_words(:updated, _collection_noun), do: gettext("Remove the updated filter")
 
   # Whether a value of Filed by is a bot's: one no person filed a ticket under, as the
   # values offered or narrowed say.
