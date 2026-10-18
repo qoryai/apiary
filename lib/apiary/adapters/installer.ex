@@ -11,20 +11,25 @@ defmodule Apiary.Adapters.Installer do
   #   the log once.
   # - For each name listed, in the setting's order: the adapter installed as it, found or
   #   made (`Apiary.Adapters.install/2`), then a code while it needs one
-  #   (`Apiary.AccessKeys.issue_installed_code/2`): a code written to its file while it has
-  #   no key, the file deleted once it has one.
+  #   (`Apiary.AccessKeys.issue_installed_code/2`): a code written to its file, in the
+  #   folder of that adapter, which only that adapter mounts
+  #   (`Apiary.Adapters.Installed.CodeFile`), while it has no key, the file deleted once it
+  #   has one.
   # - For each adapter in use installed as a name no longer listed: its outstanding codes
   #   cancelled and its file deleted (`Apiary.AccessKeys.cancel_installed_codes/2`); the
   #   adapter, its keys and its connections stay.
   #
   # All as the instance, by itself, in the instance's organisation
   # (`Apiary.Accounts.Scope.for_instance/2`). A name whose pass fails is said in the log
-  # once until it passes again, and the others go on; the next pass tries again.
+  # once until it passes again, and the others go on; the next pass tries again. A failure
+  # is caught of every kind, a raise, an exit or a throw, around each name's pass and
+  # around the whole pass, so that the process stays up and does not take the
+  # application's supervisor past its limit of restarts.
   #
   # **Nothing secret in it.** The process keeps no code: a code is written to its file
   # inside the transaction that makes it, and its state holds whether it said it waits and
-  # the names it said failed. No line it logs carries a code, nor the message of a failure,
-  # only its reason or its kind.
+  # the names it said failed. No line it logs carries a code, nor the message or the reason
+  # of a failure caught, only its kind: the exception's module, or `:exit` or `:throw`.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -38,6 +43,7 @@ defmodule Apiary.Adapters.Installer do
   alias Apiary.{AccessKeys, Adapters, Features, Repo, Setup}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Installed
+  alias Apiary.Adapters.Installed.CodeFile
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
 
@@ -68,12 +74,12 @@ defmodule Apiary.Adapters.Installer do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  # A pass that raises, the database out of reach among the causes, is said and tried again
-  # at the next: the process stays up.
+  # A pass that fails, of any kind, the database out of reach among the causes, is said and
+  # tried again at the next: the process stays up.
   defp safe_pass do
     pass()
-  rescue
-    exception -> {:failed, exception.__struct__}
+  catch
+    kind, reason -> {:failed, kind(kind, reason, __STACKTRACE__)}
   end
 
   @doc false
@@ -132,13 +138,20 @@ defmodule Apiary.Adapters.Installer do
     )
   end
 
-  # A failure, raised or returned, is the name's alone: the pass goes on with the next. Of
-  # a raise, only the kind of exception is kept, never its message.
+  # A failure, caught of any kind or returned, is the name's alone: the pass goes on with
+  # the next. Of a failure caught, only its kind is kept, never its message or its reason.
   defp guarded(fun) do
     fun.()
-  rescue
-    exception -> {:error, {:raised, exception.__struct__}}
+  catch
+    kind, reason -> {:error, {:caught, kind(kind, reason, __STACKTRACE__)}}
   end
+
+  # The kind of a failure caught: the module of the exception an error is, else `:exit` or
+  # `:throw`.
+  defp kind(:error, reason, stacktrace),
+    do: Exception.normalize(:error, reason, stacktrace).__struct__
+
+  defp kind(kind, _reason, _stacktrace), do: kind
 
   defp failed(_name, :ok), do: []
   defp failed(name, {:error, reason}), do: [{name, reason}]
@@ -182,9 +195,9 @@ defmodule Apiary.Adapters.Installer do
   def failure_line(name, {:code_file, reason}),
     do:
       "could not write the one-time code of the installed adapter #{name} to " <>
-        "#{Installed.dir()}: #{:file.format_error(reason)}; trying again"
+        "#{CodeFile.folder(name)}: #{:file.format_error(reason)}; trying again"
 
-  def failure_line(name, {:raised, kind}),
+  def failure_line(name, {:caught, kind}),
     do: "could not install the adapter #{name}: #{inspect(kind)}; trying again"
 
   def failure_line(name, %Ecto.Changeset{}),

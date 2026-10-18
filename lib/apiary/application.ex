@@ -39,9 +39,12 @@ defmodule Apiary.Application do
     # the boot before anything is started.
     Apiary.Features.boot!()
     # Then the adapters installed with Qory Apiary, which need the features: a malformed
-    # QORY_INSTALLED_ADAPTERS, or one that names adapters without their feature, stops the
-    # boot too.
+    # QORY_INSTALLED_ADAPTERS, one that names adapters without their feature, or a
+    # QORY_ENROLMENT_DIR that is not an absolute path, stops the boot too. The folder of
+    # each adapter listed is made now, so that the adapter that mounts it finds it before
+    # the instance is set up; a folder that cannot be made is said and stops nothing.
     Apiary.Adapters.Installed.boot!()
+    :ok = Apiary.Adapters.Installed.make_folders()
     # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
     # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
     # so does an edition's table or subject the core has already, or a page whose feature
