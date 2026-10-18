@@ -305,6 +305,7 @@ defmodule Apiary.WorkItemsTest do
       assert seen.integration == adapter.name
       assert seen.adapter_removed == false
       assert seen.uninstalled == false
+      assert seen.uninstalled_at == nil
       assert seen.item_noun == nil
 
       assert seen.ticket == %{
@@ -335,7 +336,8 @@ defmodule Apiary.WorkItemsTest do
       |> Ecto.Changeset.change(state: :ended, ended_at: now, ended_reason: :adapter_reported)
       |> Repo.update!()
 
-      assert %{uninstalled: true, ticket: %{}} = WorkItems.ticket(ctx.scope, w)
+      assert %{uninstalled: true, uninstalled_at: ^now, ticket: %{}} =
+               WorkItems.ticket(ctx.scope, w)
 
       Apiary.Nodes.Node
       |> Repo.get!(w.adapter_id)

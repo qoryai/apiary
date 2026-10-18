@@ -489,8 +489,8 @@ defmodule Apiary.WorkItems do
   # ticket_query/0 is the ticket of the work item named `:work_item` in the query around
   # it, for a lateral join: the key, the collection's title and the public id of its live
   # record, else of the one that ended last, and whether it is live, as `ticket_names/2`
-  # and the Work items list read it; with the record's id and whether its connection ended
-  # at the integration's uninstall, as `ticket/3` reads it.
+  # and the Work items list read it; with the record's id, whether its connection ended at
+  # the integration's uninstall, and when it ended, as `ticket/3` reads them.
   @spec ticket_query() :: Ecto.Query.t()
   def ticket_query do
     from i in Item,
@@ -520,7 +520,8 @@ defmodule Apiary.WorkItems do
         live:
           is_nil(i.disconnected_at) and is_nil(c.ended_at) and k.state == :connected and
             is_nil(k.ended_at),
-        uninstalled: k.state == :ended and k.ended_reason == :adapter_reported
+        uninstalled: k.state == :ended and k.ended_reason == :adapter_reported,
+        connection_ended_at: k.ended_at
       }
   end
 
@@ -534,7 +535,8 @@ defmodule Apiary.WorkItems do
   #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
   #     `collection_noun/1`), and `adapter_removed`, whether the adapter was removed;
   #   * `uninstalled` - whether the record's connection ended because the integration was
-  #     uninstalled at the source, so the record is no longer kept current;
+  #     uninstalled at the source, so the record is no longer kept current, and
+  #     `uninstalled_at`, when it ended, nil otherwise;
   #   * `ticket` - the record: `filer` (`%{name:}`), `filed_at`, `updated_at`, `labels`,
   #     `body`, `format`, `comment_count`, the comments it holds, not deleted at the
   #     source, and `received_at`, when an adapter last changed it; nil for a work item
@@ -563,10 +565,10 @@ defmodule Apiary.WorkItems do
           left_join: i in Item,
           on: i.id == t.item_id and i.organisation_id == w.organisation_id,
           where: w.id == ^row.id,
-          select: {i, t.uninstalled}
+          select: {i, t.uninstalled, t.connection_ended_at}
       )
 
-    {item, uninstalled} = record || {nil, nil}
+    {item, uninstalled, ended_at} = record || {nil, nil, nil}
 
     %{
       integration: adapter.name,
@@ -574,6 +576,7 @@ defmodule Apiary.WorkItems do
       collection_noun: Apiary.Adapters.collection_noun(adapter),
       adapter_removed: not is_nil(adapter.deleted_at),
       uninstalled: uninstalled == true,
+      uninstalled_at: if(uninstalled == true, do: ended_at),
       ticket: item && ticket_record(item),
       comments: if(item, do: ticket_comments(item, comments), else: [])
     }
