@@ -8,7 +8,7 @@ defmodule ApiaryWeb.ExternalTextTest do
   defp html(text) do
     assigns = %{text: text}
     # Without LiveView's marker of a rendered root, which says nothing of the text.
-    ~H"<.external_text text={@text} class=\"q-mono\" />"
+    ~H(<.external_text text={@text} class="q-mono" />)
     |> rendered_to_string()
     |> String.replace(" phx-r", "")
   end

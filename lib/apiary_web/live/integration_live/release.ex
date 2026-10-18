@@ -145,7 +145,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   defp found(assigns) do
     ~H"""
     <p :if={@description.about} id="release-about" class="max-w-[72ch] text-[13.5px]/5">
-      <.external_text text={@description.about} />
+      {Apiary.ExternalText.lines(@description.about)}
     </p>
 
     <SettingsComponents.part id="release-found" title={gettext("Found in its description.json")}>

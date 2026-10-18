@@ -4,17 +4,17 @@ defmodule Apiary.ExternalTextTest do
   alias Apiary.ExternalText
 
   @fffd "\u{FFFD}"
-  # The invisible format characters a page drops: the bidirectional controls, the
-  # zero-width space, the soft hyphen, the word joiner and the invisible operators, the
-  # byte order mark, the interlinear annotation characters, the line and paragraph
-  # separators.
+  # The invisible characters a page drops: the bidirectional controls and marks, the
+  # Mongolian vowel separator, the zero-width space, the soft hyphen, the word joiner and
+  # the invisible operators, the byte order mark, the interlinear annotation characters,
+  # the line and paragraph separators.
   @invisible [0xAD, 0x61C, 0x180E, 0x200B, 0x200E, 0x200F, 0x2028, 0x2029] ++
                Enum.to_list(0x202A..0x202E) ++
                Enum.to_list(0x2060..0x2064) ++
                Enum.to_list(0x2066..0x2069) ++ [0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB]
 
   describe "line/1" do
-    test "drops an invisible format character" do
+    test "drops an invisible character" do
       for cp <- @invisible do
         assert ExternalText.line("Fix#{<<cp::utf8>>} login") == "Fix login",
                Integer.to_string(cp, 16)

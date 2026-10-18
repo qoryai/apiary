@@ -4,10 +4,10 @@ defmodule Apiary.ExternalText do
   a collection's or an item's title, a name, an author, a release's name, a ticket's or a
   comment's body. What is stored, and what a run is given, stays as it was sent.
 
-    * The invisible format characters are dropped: the bidirectional embeddings, overrides
-      and isolates, the marks LRM, RLM and ALM, the zero-width space, the soft hyphen, the
-      word joiner and the invisible operators, the byte order mark, the interlinear
-      annotation characters, and the line and paragraph separators. The set is the one an
+    * The invisible characters are dropped: the bidirectional embeddings, overrides and
+      isolates, the marks LRM, RLM and ALM, the Mongolian vowel separator, the zero-width
+      space, the soft hyphen, the word joiner and the invisible operators, the byte order
+      mark, the interlinear annotation characters, and the line and paragraph separators. The set is the one an
       explore result's text refuses (`Apiary.WorkItems.WorkItem`, `Apiary.Dispatches.Inputs`).
       The join controls ZWNJ and ZWJ stay: a name in some scripts, and an emoji sequence,
       needs them.
