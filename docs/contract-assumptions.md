@@ -494,9 +494,12 @@ is answered as before. The prebuild's environment record
 then keeps the build: the image, its size, its commit, when it was recorded, the
 `environment_ref` reported, as it is even where it differs from the record's `queued_ref`,
 and the target it was built for, the registered run's target, which its handover named
-from the collection's target as it was then. The last failure is cleared, `retired_at` is
-left as it is, and nothing is queued, so a reported ref that differs never queues a
-prebuild again. The record also keeps when the prebuild that made the image took the
+from the collection's target as it was then. The last failure is cleared and nothing is
+queued, so a reported ref that differs never queues a prebuild again. `retired_at` is
+cleared only when the prebuild took its `environment_ref` after the record was retired: the
+ref came back and this build is of it, so the record is served again. A prebuild that took
+its ref before the retirement, claimed before the ref went absent and landing late, is
+stored and the record stays retired, even when a new ref has come since. The record also keeps when the prebuild that made the image took the
 `environment_ref` it built: when it was queued, or later, when the ref changed while it
 waited or it waited again with the record's `queued_ref` (`dispatch_runs.environment_ref_at`;
 its `queued_at`, which orders the queue, stays). A `prebuilt`, or a release's failure, of a

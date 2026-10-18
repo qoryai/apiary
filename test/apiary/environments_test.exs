@@ -779,7 +779,8 @@ defmodule Apiary.EnvironmentsTest do
       assert recorded.built_queued_at == ~U[2026-10-15 11:00:00.000000Z]
     end
 
-    test "keeps a record retired, and queues nothing", ctx do
+    test "keeps a record retired by a build whose run took its ref before, and queues nothing",
+         ctx do
       retired_at = DateTime.add(DateTime.utc_now(), -30, :second)
       Repo.insert!(record(ctx, %{retired_at: retired_at}))
 

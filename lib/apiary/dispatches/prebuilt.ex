@@ -54,8 +54,10 @@ defmodule Apiary.Dispatches.Prebuilt do
   # collection's target as it was then (`Apiary.Lingo.Domain.target/2` of its registration
   # labels), and when the prebuild took the `environment_ref` it built (`built_queued_at`,
   # from its `environment_ref_at`). The last failure is
-  # cleared, `retired_at` is left as it is, and nothing is queued, so a reported ref that
-  # differs never loops.
+  # cleared and nothing is queued, so a reported ref that differs never loops.
+  # `retired_at` is cleared only when the prebuild took its ref after the record was
+  # retired, and the record is served again; a prebuild that took its ref before the
+  # retirement leaves the record retired.
   #
   # A prebuild whose ref is older than the record's image's, taken before the prebuild
   # that made the image took its (`Apiary.Environments.newer_build?/2`, asked under the
