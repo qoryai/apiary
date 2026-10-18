@@ -335,6 +335,61 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       assert LazyHTML.text(query(html, ".q-s")) =~ clean("t.example")
       refute_dirty(html)
     end
+
+    test "a tool's output: cleaned, its line breaks kept; one sent blank is marked" do
+      html = tool_html(%{"response" => "ok\n\t" <> dirty("done")})
+
+      assert texts(html, ".q-well pre") == ["ok\n\t" <> clean("done")]
+      refute_dirty(html)
+
+      for blank <- [" ", "  \n", @zwsp, @rlo <> @zwsp] do
+        for response <- [blank, %{"stdout" => blank}] do
+          html = tool_html(%{"response" => response})
+
+          assert [shown] = texts(html, ".q-well pre")
+          assert shown =~ @shown_control
+          refute String.trim(shown) == ""
+        end
+      end
+    end
+  end
+
+  # A tool call and its end, as the timeline folds them into one item.
+  defp tool_html(finished) do
+    events = [
+      %{
+        sequence: 1,
+        type: "dev.qory.session.tool_started",
+        time: @t0,
+        data: %{"tool" => "Bash", "tool_use_id" => "a"}
+      },
+      %{
+        sequence: 2,
+        type: "dev.qory.session.tool_finished",
+        time: @t0,
+        data: Map.merge(%{"tool" => "Bash", "tool_use_id" => "a"}, finished)
+      }
+    ]
+
+    light =
+      for event <- events,
+          do: %{
+            sequence: event.sequence,
+            type: event.type,
+            time: event.time,
+            tool_use_id: "a",
+            tool: "Bash"
+          }
+
+    index = Timeline.index(light)
+    [item] = Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1)}))
+
+    render_component(&RunPageComponents.timeline_item/1,
+      id: "e-1",
+      item: item,
+      started_at: @t0,
+      seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+    )
   end
 
   describe "the timeline's group of connections" do

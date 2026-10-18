@@ -1269,7 +1269,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <span>{well_size(@well)}</span>
       </div>
       <pre :if={@well.format == :json} tabindex="0" phx-no-format><%= for {indent, key, rest} <- json_lines(ExternalText.lines(@well.text)) do %>{indent}<span :if={key} class="q-key">{key}</span>{rest}{"\n"}<% end %><.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
-      <pre :if={@well.format == :text} tabindex="0" phx-no-format>{ExternalText.lines(@well.text)}<.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
+      <pre :if={@well.format == :text} tabindex="0" phx-no-format>{sent_lines(@well.text)}<.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
     </div>
     """
   end
