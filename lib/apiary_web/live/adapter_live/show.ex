@@ -41,10 +41,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
   # no workspace's targets; a source without code has none. Past a page, the pager walks
   # the pages, from the first, as the list pages by the row before (`?page=`); a page past
-  # the last one with rows shows that one, and the address then names it. Ended
-  # collections are not shown: the counts leave them out too, and a line under the table
-  # says how many there are. A search finds collections by their names (`?q=`), and says
-  # so on any of its pages that finds none.
+  # the last one shows the last one, and the address then names it. Ended collections are
+  # not shown: the counts leave them out too, and a line under the table says how many
+  # there are, so a page whose collections all ended shows no rows. A search finds
+  # collections by their names (`?q=`), and one that finds none says so, on any page.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -799,7 +799,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
               gettext("Select every %{collection} shown", collection: collection_word(@adapter, 1))
             }
             none={
-              @query.q &&
+              @query.q && @pager.total == 0 &&
                 gettext("No %{collections} match “%{search}”.",
                   collections: collection_word(@adapter, :other),
                   search: @query.q

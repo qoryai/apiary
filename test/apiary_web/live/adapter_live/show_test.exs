@@ -1226,6 +1226,23 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert shown == for(title <- titles(1..100), do: "#{title} Unassigned — Today")
   end
 
+  test "a refused assign from a page past the first stays on that page", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    several(scope, adapter, key, titles(1..60))
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?page=2")
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+
+    pick(lv, "acme/repo-055")
+    render_click(lv, "assign", %{"workspace" => Ecto.UUID.generate()})
+    assert words(lv, "#flash-error") =~ "Nothing was assigned: the page was out of date."
+    refute_patched(lv)
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+  end
+
   test "after an assign, the first page of the same view, search and workspace", %{
     conn: conn,
     scope: scope,
@@ -1292,7 +1309,26 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert length(rows(lv)) == 6
   end
 
-  test "a page of a search past the first that shows no rows says the search finds none", %{
+  test "a search that finds only ended collections says it finds none, on any page", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..100), 1, true)
+    relist(key, connection, titles(1..50), "second", ~U[2026-10-02 09:00:00Z])
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-07")
+    assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
+    assert length(rows(lv)) == 2
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-07&page=2")
+    assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
+    assert length(rows(lv)) == 2
+  end
+
+  test "a page of a search that shows no rows, where the search finds some, says nothing", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
@@ -1304,8 +1340,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     # Its second page holds only ended rows, which are not shown.
     {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo&page=2")
-    assert words(lv, "#collections-table-none") == "No repositories match “repo”."
-    assert length(rows(lv)) == 2
+    refute has_element?(lv, "#collections-table-none")
+    assert length(rows(lv)) == 1
   end
 
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{
