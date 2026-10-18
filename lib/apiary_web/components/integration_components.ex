@@ -196,6 +196,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :picks, :boolean, default: false, doc: "whether the rows may be selected"
   attr :selected, :map, default: %{}, doc: "the selected rows' names, by their ids"
   attr :every, :string, default: nil, doc: "the name of the checkbox over every row shown"
+  attr :none, :string, default: nil, doc: "the line in place of the rows when there are none"
 
   @doc false
   # The collections of a page, a row each: the name, the workspace it is assigned to or
@@ -203,7 +204,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   # none), and the day it was added. The open items and the day show from 600 px of the
   # table's width. With `picks`, a checkbox first on each row (`"select"`, the row's
   # public id as `collection`), and one in the head over every row shown
-  # (`"select_all"`), checked while all of them are.
+  # (`"select_all"`), checked while all of them are. With no rows, `none` in their place.
   def collections_table(assigns) do
     ~H"""
     <div
@@ -222,6 +223,7 @@ defmodule ApiaryWeb.IntegrationComponents do
                 type="checkbox"
                 class="checkbox checkbox-xs"
                 checked={@rows != [] && Enum.all?(@rows, &Map.has_key?(@selected, &1.id))}
+                disabled={@rows == []}
                 aria-label={@every}
                 phx-click="select_all"
               />
@@ -265,6 +267,9 @@ defmodule ApiaryWeb.IntegrationComponents do
               <span :if={row.open_tickets > 0}>{Format.number(row.open_tickets)}</span>
             </td>
             <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
+          </tr>
+          <tr :if={@rows == [] && @none} id={"#{@id}-none"}>
+            <td colspan="5" class="text-muted">{@none}</td>
           </tr>
         </tbody>
       </table>

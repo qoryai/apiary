@@ -657,6 +657,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
             every={
               gettext("Select every %{collection} shown", collection: collection_word(@adapter, 1))
             }
+            none={
+              @query.q && @query.page == 1 &&
+                gettext("No %{collections} match “%{search}”.",
+                  collections: collection_word(@adapter, :other),
+                  search: @query.q
+                )
+            }
           />
 
           <RunComponents.pager

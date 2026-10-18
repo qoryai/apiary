@@ -9043,6 +9043,11 @@ msgstr ""
 msgid "No"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No %{collections} match “%{search}”."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"

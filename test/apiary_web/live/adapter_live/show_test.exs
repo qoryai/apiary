@@ -894,6 +894,26 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert_patch(lv, page(scope, adapter))
   end
 
+  test "a search that finds nothing says so in place of the rows", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    several(scope, adapter, key, ["acme/api", "acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    refute has_element?(lv, "#collections-table-none")
+
+    lv |> form("#collections-search", %{q: " billing "}) |> render_change()
+    assert words(lv, "#collections-table-none") == "No repositories match “billing”."
+    assert length(rows(lv)) == 2
+    assert has_element?(lv, "#collections-table-every[disabled]")
+    refute has_element?(lv, "#collections-pager")
+
+    lv |> form("#collections-search", %{q: "shop"}) |> render_change()
+    refute has_element?(lv, "#collections-table-none")
+  end
+
   test "a member reads the warning in its words, with no checkboxes and nothing to assign", %{
     scope: scope,
     adapter: adapter,
