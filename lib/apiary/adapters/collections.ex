@@ -19,7 +19,8 @@ defmodule Apiary.Adapters.Collections do
   # its record and its `environment_ref` as they are, and only a complete listing ends it
   # (below). A ref live under another connection of the adapter, which no listing newer
   # than the part named there, moves to the part's connection once the part commits
-  # (`move_here/5`): that connection's collection ends as a disconnect ends it, its
+  # (`move_here/5`, three rounds at most, should another connection make it live again
+  # in between): that connection's collection ends as a disconnect ends it, its
   # organisation's trail gets the entry `collection.move`, and a new collection is made
   # under the part's connection, as any collection a part makes, with nothing of the
   # ended one. The end and the new collection are separate transactions: between them the
@@ -291,10 +292,12 @@ defmodule Apiary.Adapters.Collections do
   # out of use (`Apiary.Adapters.Connections.connection_for_key/3`); `{:error, :invalid}`
   # for a part that disagrees with the listing's parts before it. Each refusal changes
   # nothing. Once an accepted part commits, each ref it named that was live under another
-  # connection of the adapter moves to the part's connection (`move_here/5`): that
-  # collection ends as a disconnect ends it, with the entry `collection.move` in its
-  # organisation's trail, and a new collection is made under the part's connection; the
-  # answer is `{:ok, :accepted}` whether or not the move's second step is refused.
+  # connection of the adapter, which no listing newer than the part named there, moves to
+  # the part's connection (`move_here/5`, three rounds at most; a ref that another
+  # connection makes live again each time stays there): that collection ends as a
+  # disconnect ends it, with the entry `collection.move` in its organisation's trail, and
+  # a new collection is made under the part's connection; the answer is
+  # `{:ok, :accepted}` whether or not the move's second step is refused.
   @spec post_listing(Scope.t() | nil, Wire.listing()) ::
           {:ok, :accepted} | {:error, :forbidden | :unknown | :ended | :suspended | :invalid}
   def post_listing(key_scope, %{
@@ -552,7 +555,8 @@ defmodule Apiary.Adapters.Collections do
   # are made with an insert that does nothing where a ref is live (`ON CONFLICT DO
   # NOTHING`): a ref live under another connection, however recently it became live,
   # while it is live at the insert, is left with that connection in this transaction
-  # (`elsewhere`, which `move_here/5` moves once the part commits), and its row is never
+  # (`elsewhere`, which `move_here/5` moves once the part commits, unless a listing newer
+  # than the part named it there, three rounds at most), and its row is never
   # locked; the insert only waits for a change that is writing that row to end. The
   # collections held are updated after the insert, so while it runs they are held but not
   # yet written, and the insert of a part of another connection that meets one of them
