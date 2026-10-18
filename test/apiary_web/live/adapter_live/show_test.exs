@@ -1113,6 +1113,22 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-view-unassigned") == "Unassigned 0"
   end
 
+  test "the names the toast says it assigned: as a page shows a text the integration sent", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    # A bidirectional override and a zero-width space in a name the integration sent.
+    {_connection, platform} = several(scope, adapter, key, ["acme/\u202Eapi\u200B"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    pick(lv, "acme/api")
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+
+    assert words(lv, "#flash-info") =~ "Assigned acme/api to Platform."
+    refute lv |> element("#flash-info") |> render() =~ "\u202E"
+  end
+
   test "with more than eight workspaces, a field in the assign menu finds one", %{
     conn: conn,
     scope: scope,

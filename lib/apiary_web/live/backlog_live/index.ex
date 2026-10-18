@@ -176,9 +176,12 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 patch={token.remove && list_path(@current_scope, @params, [{token.key, nil}])}
                 label={token.remove}
               >
-                <span class="q-tok-k">{token.label}</span>
+                <%!-- The space after the key is in its text: a token is a flex row, which
+                drops the white space between its elements. --%>
+                <span class="q-tok-k">{token.label}{" "}</span>
                 <b class={["q-tok-v", token.key == :repository && "q-mono"]} title={token.value}>
-                  {token.value}
+                  <span :for={{value, i} <- Enum.with_index(token.values)}>{if i > 0,
+                    do: ", "}<bdi>{value}</bdi></span>
                 </b>
               </:token>
               <span id="backlog-match" class="ml-auto text-[0.8125rem] text-muted tabular-nums">
@@ -546,10 +549,15 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   # What a filter is set to, in the Filter menu and on its token: nil where it is off.
   defp value_words(params, key, options) do
+    if values = values_words(params, key, options), do: Enum.join(values, ", ")
+  end
+
+  # The same, one by one, as a token isolates each in `<bdi>`.
+  defp values_words(params, key, options) do
     cond do
       not on?(params, key) -> nil
-      key == :updated -> words(options, :updated, params.updated)
-      true -> params |> Map.fetch!(key) |> Enum.map_join(", ", &words(options, key, &1))
+      key == :updated -> [words(options, :updated, params.updated)]
+      true -> params |> Map.fetch!(key) |> Enum.map(&words(options, key, &1))
     end
   end
 
@@ -562,6 +570,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
         key: key,
         label: filter_label(key, collection_noun),
         value: value_words(params, key, options),
+        values: values_words(params, key, options),
         remove: remove_words(key, collection_noun)
       }
     end

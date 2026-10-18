@@ -39,7 +39,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
-  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 2]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
@@ -519,7 +519,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.limits
         :if={@limit}
         reason={@limit}
-        runtime={@run.runtime}
+        runtime={shown_sent(@run.runtime)}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
         terminal={Access.can?(@current_scope, :"run.read_log", @run)}
@@ -693,14 +693,14 @@ defmodule ApiaryWeb.RunLive.Show do
             } />
           </span>
           <span :if={@security && @policy}>
-            {gettext("policy")} <b>{@policy.mode}</b>
+            {gettext("policy")} <b>{shown_sent(@policy.mode)}</b>
             <.scoped_version :if={@version} version={@version} />
             <span
               :if={!@version && @run.policy_digest}
               class="font-mono text-[12.5px]"
-              title={@run.policy_digest}
+              title={shown_sent(@run.policy_digest)}
             >
-              {String.slice(@run.policy_digest, 0, 12)}
+              {String.slice(shown_sent(@run.policy_digest), 0, 12)}
             </span>
             <.drift
               :if={@in_force}
@@ -882,7 +882,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.node_instance_id} id="run-instance">
             <span :if={@instance && @instance.name}>{@instance.name}</span>
             <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
-              {@run.node_instance_id}
+              <.external_text text={@run.node_instance_id} />
             </span>
           </dd>
           <dt :if={@security}>{gettext("Policy")}</dt>
@@ -994,7 +994,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
           <dt>{gettext("Session")}</dt>
           <dd class="font-mono">
-            {@session_id || gettext("n/a")}
+            {shown_sent(@session_id) || gettext("n/a")}
           </dd>
         </dl>
       </section>
@@ -1007,7 +1007,9 @@ defmodule ApiaryWeb.RunLive.Show do
             <.term word={gettext("Digest")} standard={@tips.digest} class="q-tip-wide tooltip-right" />
           </dt>
           <dd class="font-mono">
-            {if @run.policy_digest, do: short_digest(@run.policy_digest), else: gettext("n/a")}
+            {if @run.policy_digest,
+              do: short_digest(shown_sent(@run.policy_digest)),
+              else: gettext("n/a")}
             <.copy_button
               :if={@run.policy_digest}
               id="copy-digest"
@@ -1019,10 +1021,9 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>{gettext("Run configuration")}</dt>
           <dd
             class="font-mono"
-            title={@run.run_configuration_digest || @run.reported_run_configuration_digest}
+            title={configuration_digest(@run)}
           >
-            {short_digest(@run.run_configuration_digest || @run.reported_run_configuration_digest) ||
-              gettext("n/a")}
+            {short_digest(configuration_digest(@run)) || gettext("n/a")}
           </dd>
           <dt :if={@version}>{gettext("Version")}</dt>
           <dd :if={@version} id="policy-version">
@@ -1147,7 +1148,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp policy_value(assigns) do
     ~H"""
     <.term
-      word={@policy.mode || gettext("n/a")}
+      word={shown_sent(@policy.mode) || gettext("n/a")}
       standard={@tips.mode}
       class="q-tip-wide tooltip-left"
     />
@@ -1170,12 +1171,15 @@ defmodule ApiaryWeb.RunLive.Show do
         </small>
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
-          <small class="ml-1 font-mono">{short_digest(@reported)}</small>
+          <small class="ml-1 font-mono">{short_digest(shown_sent(@reported))}</small>
           <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
       <% @digest -> %>
-        <small class="ml-1 font-mono" title={gettext("sha256 %{digest}", digest: @digest)}>
-          {String.slice(@digest, 0, 12)}
+        <small
+          class="ml-1 font-mono"
+          title={gettext("sha256 %{digest}", digest: shown_sent(@digest))}
+        >
+          {String.slice(shown_sent(@digest), 0, 12)}
         </small>
       <% true -> %>
     <% end %>
@@ -1571,6 +1575,19 @@ defmodule ApiaryWeb.RunLive.Show do
   # target.
   defp shown_target_path(run), do: Apiary.ExternalText.present(run.target_path)
 
+  # A text Forager sent, as the page shows it (`Apiary.ExternalText.present/1`), or marked
+  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since it was sent; nil
+  # where it sent none. A value that is no text is shown as it is.
+  defp shown_sent(text) when is_binary(text) and text != "",
+    do: Apiary.ExternalText.present(text) || Apiary.ExternalText.marked(text)
+
+  defp shown_sent(""), do: nil
+  defp shown_sent(text), do: text
+
+  # The digest of the run configuration in force, else of the one the run reported.
+  defp configuration_digest(run),
+    do: shown_sent(run.run_configuration_digest || run.reported_run_configuration_digest)
+
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
     if is_nil(isolated) or Enum.any?(index.lanes, &(&1.id == isolated)),
@@ -1726,11 +1743,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)
        when outcome != "success" and is_binary(text) and text != "",
-       do: %{seq: item.seq, text: one_line(text)}
+       do: ending(item, text)
 
   defp ending_of(%{kind: :turn_failed} = item) do
     case item[:error] || item[:message] do
-      text when is_binary(text) and text != "" -> %{seq: item.seq, text: one_line(text)}
+      text when is_binary(text) and text != "" -> ending(item, text)
       _ -> nil
     end
   end
@@ -1741,13 +1758,28 @@ defmodule ApiaryWeb.RunLive.Show do
         do: gettext("%{tool} failed: %{summary}", tool: item.tool, summary: item.summary),
         else: gettext("%{tool} failed", tool: item.tool)
 
-    %{seq: item.seq, text: one_line(text)}
+    ending(item, text)
   end
 
   defp ending_of(_item), do: nil
 
-  defp one_line(text),
-    do: text |> String.replace(~r/\s+/u, " ") |> String.trim() |> String.slice(0, 400)
+  # The item's words are texts the runtime sent, shown as one is
+  # (`Apiary.ExternalText.lines/1`), on one line: an item with nothing left to show says
+  # nothing, and the item before it is read.
+  defp ending(item, text) do
+    case one_line(text) do
+      "" -> nil
+      line -> %{seq: item.seq, text: line}
+    end
+  end
+
+  defp one_line(text) do
+    text
+    |> Apiary.ExternalText.lines()
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+    |> String.slice(0, 400)
+  end
 
   defp assign_window_counts(socket) do
     %{index: index, win_first: first, win_last: last, run: run} = socket.assigns
@@ -2008,6 +2040,7 @@ defmodule ApiaryWeb.RunLive.Show do
     %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
+    shared = socket.assigns.target_shared
     path = row.path || ""
     # The page holds the target's policy; the workspace's is read when a panel opens,
     # since what a rule for the workspace would be is decided by the workspace's own
@@ -2026,7 +2059,7 @@ defmodule ApiaryWeb.RunLive.Show do
         level: if(target, do: :target, else: :workspace),
         target:
           target &&
-            %{label: target_label(target.system, target.path, socket.assigns.target_shared)},
+            %{label: shown_target_label(target.system, target.path, shared)},
         targets: [],
         choice: nil,
         what: %{
@@ -2140,7 +2173,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp recheck_panel(socket), do: socket
 
   defp rule_toast(socket, panel, rule, level) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, target: target, target_shared: shared} = socket.assigns
     holder = if level == :target, do: target, else: nil
 
     where =
@@ -2149,7 +2182,7 @@ defmodule ApiaryWeb.RunLive.Show do
           :workspace
 
         target ->
-          {:target, target_label(target.system, target.path, socket.assigns.target_shared)}
+          {:target, shown_target_label(target.system, target.path, shared)}
 
         true ->
           :this_target
@@ -2801,7 +2834,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp strings(shown, count) when is_list(shown) do
     more = (count || 0) - length(shown)
-    list = Enum.join(shown, ", ")
+    list = Enum.map_join(shown, ", ", &shown_sent/1)
 
     if more > 0,
       do: gettext("%{list} and %{number} more", list: list, number: Format.number(more)),
@@ -2844,7 +2877,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
     for {name, argument} = key <- named |> Enum.map(by) |> Enum.uniq() do
       hosts = grouped[key] |> Enum.concat() |> Enum.uniq()
-      %{name: name, argument: argument, hosts: if(hosts != [], do: Enum.join(hosts, ", "))}
+
+      %{
+        name: shown_sent(name),
+        argument: shown_sent(argument),
+        hosts: if(hosts != [], do: Enum.map_join(hosts, ", ", &shown_sent/1))
+      }
     end
   end
 

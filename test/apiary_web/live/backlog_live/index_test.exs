@@ -955,5 +955,19 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       assert words(view, "#backlog-token-repository") == "Repository " <> shown("acme/web")
     end
+
+    test "a token's values: each isolated in its own <bdi>, all of them in its title", ctx do
+      web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      ticket(web, title: "Fix the login", labels: ["\u05D1\u05D0\u05D2", "checkout"])
+      query = "?" <> Plug.Conn.Query.encode(label: ["\u05D1\u05D0\u05D2", "checkout"])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      token = view |> element("#backlog-token-label") |> render() |> LazyHTML.from_fragment()
+      values = token |> LazyHTML.query(".q-tok-v bdi") |> Enum.map(&LazyHTML.text/1)
+      assert Enum.sort(values) == Enum.sort(["\u05D1\u05D0\u05D2", "checkout"])
+      [title] = token |> LazyHTML.query(".q-tok-v") |> LazyHTML.attribute("title")
+      assert title == Enum.join(values, ", ")
+      assert words(view, "#backlog-token-label") == "Label " <> Enum.join(values, ", ")
+    end
   end
 end

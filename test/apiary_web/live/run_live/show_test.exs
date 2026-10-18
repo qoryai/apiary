@@ -3289,6 +3289,102 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute render(element(lv, "#run-meta")) =~ "\u202E"
     end
 
+    test "how it ended, the session, the node's instance, the policy and the record: cleaned",
+         %{conn: conn, scope: scope} do
+      policy = %{
+        "mode" => sent("enforce"),
+        "allow" => [sent("api.example")],
+        "deny" => [sent("ads.example")],
+        "terminated" => [sent("files.tools.internal")],
+        "digest" => sent("4f4f"),
+        "run_configuration" => sent("abab"),
+        "credentials" => [
+          %{
+            "name" => sent("forge-token"),
+            "argument" => sent("acme"),
+            "hosts" => [sent("git.example")]
+          }
+        ],
+        "tools" => [%{"name" => sent("files"), "hosts" => [sent("files.tools.internal")]}]
+      }
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", %{"session_id" => sent("session-0001")}},
+          {3, "run.policy_applied", tool_policy_data(policy)},
+          {4, "run.egress", egress_data(%{})},
+          {5, "session.result", %{"outcome" => "error", "result" => sent("I could not finish")}},
+          {6, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      run = Apiary.Repo.update!(Ecto.Changeset.change(run, node_instance_id: sent("i-42")))
+      lv = open(conn, scope, run)
+
+      assert has_element?(lv, ~s(#run-why .q-run-why-t[title="#{shown("I could not finish")}"]))
+      assert has_element?(lv, "#run-instance bdi", shown("i-42"))
+
+      record = "#run-details section[aria-labelledby=rail-record] dd.font-mono"
+      assert has_element?(lv, record, shown("session-0001"))
+
+      if security?() do
+        assert has_element?(lv, ".q-kv-policy", shown("enforce"))
+
+        {:ok, network, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
+
+        assert has_element?(network, ".q-summary b", shown("enforce"))
+        rail = lv |> element("#run-details") |> render() |> LazyHTML.from_fragment()
+        shown = LazyHTML.text(rail)
+
+        for value <- ["api.example", "ads.example", "files.tools.internal", "forge-token"],
+            do: assert(shown =~ shown(value), value)
+
+        assert shown =~ "#{shown("acme")} (#{shown("git.example")})"
+        assert shown =~ shown("files")
+        assert shown =~ shown("4f4f")
+        assert shown =~ shown("abab")
+      end
+
+      # The rail and the header; the timeline's items say what the session said.
+      for part <- ["#run-details", "#run-why"] do
+        refute lv
+               |> element(part)
+               |> render()
+               |> String.replace(~r/ (data-copy|text)="[^"]*"/, "") =~ "\u202E",
+               part
+      end
+    end
+
+    test "a result with nothing left to show says nothing of how the run ended", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.result", %{"outcome" => "error", "result" => "\u202E\u200B"}},
+          {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      refute has_element?(open(conn, scope, run), "#run-why")
+    end
+
+    test "a runtime other than Claude Code, in the sentence that says so: cleaned", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(%{"runtime" => sent("make")})},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(conn, scope, run)
+      assert has_element?(lv, "code.q-rule", shown("make"))
+      refute has_element?(lv, "code.q-rule", "\u202E")
+    end
+
     test "the target path: cleaned; one with nothing left to show is no target", %{
       conn: conn,
       scope: scope

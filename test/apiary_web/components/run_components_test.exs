@@ -1436,6 +1436,62 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "a target's name and a filter's options, as a page shows an external system's text" do
+    # A bidirectional override and a zero-width space, which a target's labels may carry.
+    @system "git\u202E.example\u200B"
+    @path "acme/\u202Eshop\u200B"
+
+    defp target_doc(attrs),
+      do: render_component(&RunComponents.target_name/1, attrs) |> LazyHTML.from_fragment()
+
+    test "a target's system and path are cleaned; the path as sent decides the system" do
+      doc = target_doc(system: @system, path: @path, shared: MapSet.new([@path]))
+      assert LazyHTML.text(doc) == "git.example/acme/shop"
+      assert attr_of(doc, ".q-tname", "title") == ["git.example/acme/shop"]
+
+      alone = target_doc(system: @system, path: @path, shared: MapSet.new(["acme/shop"]))
+      assert LazyHTML.text(alone) == "acme/shop"
+
+      blank = target_doc(system: "\u200B", path: "\u202E", shared: true)
+      assert LazyHTML.text(blank) == "\uFFFD/\uFFFD"
+
+      assert RunComponents.shown_target_label(@system, @path, MapSet.new([@path])) ==
+               "git.example/acme/shop"
+
+      assert RunComponents.shown_target_label(@system, @path, MapSet.new(["acme/shop"])) ==
+               "acme/shop"
+
+      assert RunComponents.shown_target_label(nil, "\u200B", true) == "\uFFFD"
+    end
+
+    test "an option's words are cleaned and isolated; what it picks is the value as sent" do
+      doc =
+        render_component(&RunComponents.filter_options/1,
+          id: "f",
+          name: "host",
+          label: "Host",
+          values: [@path],
+          options: [{@path, @path, 2}, {"\u200B", "\u200B", 1}]
+        )
+        |> LazyHTML.from_fragment()
+
+      assert texts(doc, ".q-filter-option > span > bdi") == ["acme/shop", "\uFFFD"]
+      assert attr_of(doc, ".q-filter-option > span[title]", "title") == ["acme/shop", "\uFFFD"]
+      assert attr_of(doc, ".q-filter-option input", "value") == [@path, "\u200B"]
+
+      chip =
+        render_component(&RunComponents.filter/1,
+          name: "host",
+          label: "Host",
+          value: @path,
+          options: [{@path, @path, 2}]
+        )
+        |> LazyHTML.from_fragment()
+
+      assert texts(chip, ".q-chip-main > b") == ["acme/shop"]
+    end
+  end
+
   describe "filter_options/1's narrowing box" do
     defp narrowing(attrs) do
       assigns =
@@ -1574,6 +1630,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.subject_words(subject) == "pull request #418\uFFFD"
       assert RunComponents.subject_tip(subject) == @shown <> " · git.example.com"
       assert RunComponents.subject_tip(%{subject | "title" => "\u200B"}) == "git.example.com"
+      assert RunComponents.subject_tip(%{subject | "title" => " \u200B "}) == "git.example.com"
 
       assert bdis(render_component(&RunComponents.subject_name/1, subject: subject)) ==
                ["pull request", "#418\uFFFD"]
@@ -2100,6 +2157,37 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert attr_of(doc, ".q-cx-t", "title") == ["api.example:443 /v1/\uFFFDitems"]
       assert attr_of(doc, "#cx-1-toggle", "phx-value-path") == [sent]
       assert text(LazyHTML.to_html(doc)) =~ "Host allowed, no path rule matches."
+    end
+
+    test "a method, a secret, a request's id and an outcome: cleaned to read" do
+      sent = &("\u202E" <> &1 <> "\u200B\a")
+
+      connection = %{
+        path: "/v1/items",
+        method: sent.("CONNECT"),
+        request_method: sent.("GET"),
+        last_credential: sent.("model-key"),
+        request_id: sent.("rq-7"),
+        last_outcome: sent.("reset")
+      }
+
+      for variant <- ~w(inline table) do
+        doc = cx(connection, variant)
+        shown = doc |> LazyHTML.to_html() |> text()
+
+        assert shown =~ "GET\uFFFD /v1/items", variant
+        assert shown =~ "secret model-key\uFFFD", variant
+        assert shown =~ "reset\uFFFD", variant
+        refute shown =~ "\u202E", variant
+      end
+
+      doc = cx(connection, "inline")
+
+      assert attr_of(doc, ".q-dest", "title") ==
+               ["api.example:443 GET\uFFFD /v1/items, request rq-7\uFFFD"]
+
+      assert attr_of(doc, ".q-dest", "data-request-id") == [sent.("rq-7")]
+      assert texts(cx(%{connection | path: ""}, "inline"), ".q-rq") == ["CONNECT\uFFFD"]
     end
 
     test "a tool and a rule: cleaned; the case is what was sent, whatever is left" do

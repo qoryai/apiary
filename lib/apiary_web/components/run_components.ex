@@ -377,9 +377,10 @@ defmodule ApiaryWeb.RunComponents do
   defp exit_word(_assigns), do: nil
 
   @doc """
-  The signal that ended a run, shown as a text Forager sent is
-  (`Apiary.ExternalText.present/1`): nil where it sent none, or one with nothing left to
-  show, or only whitespace, which is no signal, so the run's exit code is said instead.
+  The signal that ended a run, shown as a text an external system sent is
+  (`Apiary.ExternalText.present/1`): nil where the run's report gave none, or one with
+  nothing left to show, or only whitespace, which is no signal, so the run's exit code is
+  said instead.
   """
   @spec shown_signal(map) :: String.t() | nil
   def shown_signal(run), do: Apiary.ExternalText.present(Map.get(run, :signal))
@@ -689,7 +690,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   One label of a run: the key on a tinted ground, the value beside it, each shown as a
-  text Forager sent is (`Apiary.ExternalText.line/1`).
+  text an external system sent is (`Apiary.ExternalText.line/1`).
   """
   attr :key, :string, required: true
   attr :value, :string, required: true
@@ -755,7 +756,7 @@ defmodule ApiaryWeb.RunComponents do
   def given_title(_run), do: nil
 
   @doc """
-  The title a run gave (`given_title/1`), shown as a text Forager sent is
+  The title a run gave (`given_title/1`), shown as a text an external system sent is
   (`Apiary.ExternalText.present/1`): plain text, for a tooltip, a label or a page's title.
   Nil where it gave none, or one with nothing left to show, or only whitespace, which is
   no title.
@@ -782,8 +783,9 @@ defmodule ApiaryWeb.RunComponents do
   What a run is about in one line of a list, as text: its kind, then its first two
   subjects, each its type and ref as given ("pull request #412"), then how many more there
   are, joined by " · "; nil when it gave neither a kind nor a subject. The kind and the
-  subjects are shown as a text Forager sent is (`Apiary.ExternalText.line/1`), and a kind
-  with nothing left to show is none. `limit` is how many subjects are named.
+  subjects are shown as a text an external system sent is
+  (`Apiary.ExternalText.line/1`), and a kind with nothing left to show is none. `limit`
+  is how many subjects are named.
   """
   def about_line(run, limit \\ 2) do
     case about_parts(run, limit) do
@@ -810,9 +812,9 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A subject in words, as text: its type and ref as given, "pull request #412", for a
-  tooltip, shown as a text Forager sent is (`Apiary.ExternalText.line/1`). Qory Apiary
-  knows no subject types, so neither is mapped or translated. `subject_name/1` is the
-  same words as markup.
+  tooltip, shown as a text an external system sent is (`Apiary.ExternalText.line/1`).
+  Qory Apiary knows no subject types, so neither is mapped or translated.
+  `subject_name/1` is the same words as markup.
   """
   def subject_words(subject),
     do: Apiary.ExternalText.line("#{subject["type"]} #{subject["ref"]}")
@@ -835,8 +837,8 @@ defmodule ApiaryWeb.RunComponents do
   parses, "Login redirects to a blank page · tracker.example.com", or the host alone. A
   subject whose url may not be a link (`ApiaryWeb.CoreComponents.external_url?/1`) has its
   title alone, or nil. Plain text: a tooltip holds no markup. Both are shown as a text
-  Forager sent is (`Apiary.ExternalText.line/1`), and a title with nothing left to show is
-  none.
+  an external system sent is (`Apiary.ExternalText.present/1`), and one with nothing
+  left to show, or only whitespace, is none.
   """
   def subject_tip(subject) do
     url = subject["url"]
@@ -844,8 +846,8 @@ defmodule ApiaryWeb.RunComponents do
 
     shown =
       [subject["title"], host]
-      |> Enum.map(&Apiary.ExternalText.line/1)
-      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.map(&Apiary.ExternalText.present/1)
+      |> Enum.reject(&is_nil/1)
 
     case shown do
       [] -> nil
@@ -1289,7 +1291,9 @@ defmodule ApiaryWeb.RunComponents do
             <%= if @tile != [] do %>
               {render_slot(@tile, option)}
             <% end %>
-            <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
+            <span class="min-w-0 flex-1 truncate" title={shown_option(label)}>
+              <bdi>{shown_option(label)}</bdi>
+            </span>
             <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
               {count_label(count)}
             </span>
@@ -1401,9 +1405,11 @@ defmodule ApiaryWeb.RunComponents do
       )
 
   defp option_label(value, options) do
-    Enum.find_value(options, value, fn {label, v, _count} ->
+    options
+    |> Enum.find_value(value, fn {label, v, _count} ->
       if to_string(v) == value, do: to_string(label)
     end)
+    |> shown_option()
   end
 
   @doc "A chip that is on or off, such as \"Has denials\"."
@@ -1505,7 +1511,10 @@ defmodule ApiaryWeb.RunComponents do
   where its address carries the system too (`ApiaryWeb.TargetComponents.with_system?/3`).
   Given `shared` (`Apiary.Runs.shared_paths/2`, or the boolean of a target's page) the
   component decides; without it the caller has, and a `system` given is shown. The whole
-  `system/path` is its title.
+  `system/path` is its title. A system and a path may be texts an external system sent:
+  they are shown as a page shows one (`Apiary.ExternalText.present/1`), or marked
+  (`Apiary.ExternalText.marked/1`) where nothing is left of one, while what decides
+  whether the system is shown is the path as sent.
   """
   attr :path, :string, required: true
   attr :system, :string, default: nil
@@ -1527,14 +1536,64 @@ defmodule ApiaryWeb.RunComponents do
 
     assigns =
       assign(assigns,
-        shown: shown? && system,
-        title: if(system, do: "#{system}/#{path}", else: path)
+        shown: shown? && shown_sent(system),
+        path: shown_sent(path),
+        title: target_title(system, path)
       )
 
     ~H"""
     <span class={["q-tname", @class]} title={@title} {@rest}><span :if={@shown} class="q-tname-sys">{@shown}<span class="q-tname-sep">/</span></span>{@path}</span>
     """
   end
+
+  # A target's `system/path` as `target_name/1` writes it in its title.
+  defp target_title(system, path), do: shown_target_label(system, path, true)
+
+  @doc """
+  A target's name in words, as `ApiaryWeb.TargetComponents.target_label/3` writes it,
+  with its system and its path shown as `target_name/1` shows them: what decides whether
+  the system is written is the path as sent.
+  """
+  @spec shown_target_label(String.t() | nil, String.t(), term) :: String.t()
+  def shown_target_label(system, path, shared) do
+    if ApiaryWeb.TargetComponents.with_system?(system, path, shared),
+      do: "#{shown_sent(system)}/#{shown_sent(path)}",
+      else: shown_sent(path)
+  end
+
+  attr :run, :map, required: true
+  attr :shared, :any, default: nil, doc: "as `target_name/1` takes it"
+  attr :class, :any, default: nil
+
+  # A run's target as a row names it (`target_name/1`): nothing for a run with no target,
+  # or one whose path, a text Forager sent, has nothing left to show (`shown_target/1`).
+  defp run_target(assigns) do
+    ~H"""
+    <.target_name
+      :if={shown_target(@run)}
+      class={@class}
+      system={@run.target_system}
+      path={@run.target_path}
+      shared={@shared}
+    />
+    """
+  end
+
+  # A run's target path as a page shows it (`Apiary.ExternalText.present/1`); nil for a
+  # run with no target, or one whose path has nothing left to show, which is no target.
+  defp shown_target(%{target_system: system, target_path: path}) when is_binary(system),
+    do: Apiary.ExternalText.present(path)
+
+  defp shown_target(_run), do: nil
+
+  # An option's words in `filter_options/1` and `filter_menu/1`, which may be a text an
+  # external system sent, a host or a filer's name: as a page shows one
+  # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of one, since what it picks is the value as sent.
+  defp shown_option(label) when is_binary(label) and label != "",
+    do: Apiary.ExternalText.present(label) || Apiary.ExternalText.marked(label)
+
+  defp shown_option(label), do: label
 
   @doc """
   The rail of a list from 1280 px: the targets of what the list holds under every filter
@@ -1723,7 +1782,7 @@ defmodule ApiaryWeb.RunComponents do
       id={"#{@id}-t-#{dom_token(@pair)}"}
       patch={@path.([@target.public_id])}
       aria-current={@current && "true"}
-      title={"#{@target.system}/#{@target.path}"}
+      title={target_title(@target.system, @target.path)}
     >
       <.target_name
         class="q-rail-name"
@@ -2029,24 +2088,13 @@ defmodule ApiaryWeb.RunComponents do
           >
             <.run_name run={@run} />
           </.link>
-          <.target_name
-            :if={@target && @run.target_system && @run.target_path}
-            class="q-rl-inl"
-            system={@run.target_system}
-            path={@run.target_path}
-            shared={@shared}
-          />
+          <.run_target :if={@target} class="q-rl-inl" run={@run} shared={@shared} />
         </span>
         <.row_about run={@run} />
       </td>
       <td :if={@target} class="q-rl-c3" role="cell">
-        <.target_name
-          :if={@run.target_system && @run.target_path}
-          system={@run.target_system}
-          path={@run.target_path}
-          shared={@shared}
-        />
-        <span :if={!(@run.target_system && @run.target_path)} class="q-rl-faint">
+        <.run_target run={@run} shared={@shared} />
+        <span :if={!shown_target(@run)} class="q-rl-faint">
           {gettext("n/a")}
         </span>
       </td>
@@ -2171,12 +2219,7 @@ defmodule ApiaryWeb.RunComponents do
         </div>
         <h2 class="q-pv-t"><.run_name run={@preview.run} /></h2>
         <p class="q-pv-m">
-          <.target_name
-            :if={@preview.run.target_system && @preview.run.target_path}
-            system={@preview.run.target_system}
-            path={@preview.run.target_path}
-            shared={@shared}
-          />
+          <.run_target run={@preview.run} shared={@shared} />
           <span :if={@preview.run.runtime}>
             <.external_text text={@preview.run.runtime} />
             <.external_text text={@preview.run.runtime_version} />
@@ -2229,7 +2272,7 @@ defmodule ApiaryWeb.RunComponents do
           </dd>
           <dt :if={@preview.run.node_instance_id}>{gettext("Node's instance id")}</dt>
           <dd :if={@preview.run.node_instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
-            {@preview.run.node_instance_id}
+            <.external_text text={@preview.run.node_instance_id} />
           </dd>
           <dt :if={@preview.run.cost_usd}>{gettext("Cost")}</dt>
           <dd :if={@preview.run.cost_usd} class="tabular-nums">
@@ -2703,13 +2746,8 @@ defmodule ApiaryWeb.RunComponents do
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
-                <.target_name
-                  :if={hit.run.target_system && hit.run.target_path}
-                  path={hit.run.target_path}
-                  system={hit.run.target_system}
-                  shared={@shared}
-                />
-                {if !(hit.run.target_system && hit.run.target_path), do: gettext("Unassigned")}
+                <.run_target run={hit.run} shared={@shared} />
+                {if !shown_target(hit.run), do: gettext("Unassigned")}
               </span>
               <span class={["tabular-nums", hit.denied > 0 && "q-bad"]}>
                 {if hit.denied > 0,
@@ -2770,7 +2808,8 @@ defmodule ApiaryWeb.RunComponents do
   defp rule_link(_act, _c), do: nil
 
   # Both spellings of a connection, as one map with every key present. Its host, path,
-  # tool and rules are texts Forager sent, shown as an external system's text is
+  # tool, rules, secret and methods are texts Forager sent, shown as an external system's
+  # text is
   # (`shown_sent/1`). A host the wall refused for its form, and a path it refused as one
   # that reads two ways, are marked (`Apiary.ExternalText.marked/1`), since what is wrong
   # with them is the reason the row gives. What a row is found by, acted on and copied as
@@ -2793,14 +2832,14 @@ defmodule ApiaryWeb.RunComponents do
       port: get.([:port]),
       path: shown_path(path, path_rule),
       raw_path: path,
-      method: get.([:method]),
-      request_method: get.([:request_method, :last_request_method]),
+      method: shown_sent(get.([:method])),
+      request_method: shown_sent(get.([:request_method, :last_request_method])),
       decision: decision,
       rule: shown_sent(rule),
       raw_rule: rule,
       path_rule: shown_sent(path_rule),
       raw_path_rule: path_rule,
-      credential: blank(get.([:credential, :last_credential])),
+      credential: shown_sent(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
       tool: shown_sent(tool),
@@ -3078,7 +3117,11 @@ defmodule ApiaryWeb.RunComponents do
       |> Enum.join(" ")
 
     if c.request_id,
-      do: gettext("%{destination}, request %{id}", destination: whole, id: c.request_id),
+      do:
+        gettext("%{destination}, request %{id}",
+          destination: whole,
+          id: shown_sent(c.request_id)
+        ),
       else: whole
   end
 
@@ -3302,7 +3345,7 @@ defmodule ApiaryWeb.RunComponents do
     </span>
     <span :if={@value == "refused"} class="q-outcome q-outcome-refused">{gettext("Refused")}</span>
     <span :if={@value not in ~w(connected dial_failed refused)} class="text-xs text-faint">
-      {@value || gettext("n/a")}
+      {shown_sent(@value) || gettext("n/a")}
     </span>
     """
   end

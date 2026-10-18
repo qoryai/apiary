@@ -1034,9 +1034,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The flash after assigning: the names of what went where, up to three, else how many.
+  # A collection's name is a text the integration sent, shown as one is
+  # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of it.
   defp assigned(_adapter, names, workspace) when length(names) <= 3 do
     gettext("Assigned %{names} to %{workspace}.",
-      names: names |> Enum.sort() |> join_names(),
+      names: names |> Enum.map(&shown_name/1) |> Enum.sort() |> join_names(),
       workspace: workspace.name
     )
   end
@@ -1083,6 +1086,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
       collections: collection_word(adapter, :other)
     )
   end
+
+  defp shown_name(name), do: Apiary.ExternalText.present(name) || Apiary.ExternalText.marked(name)
 
   defp join_names([name]), do: name
 

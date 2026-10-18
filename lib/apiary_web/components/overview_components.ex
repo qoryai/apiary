@@ -43,6 +43,7 @@ defmodule ApiaryWeb.OverviewComponents do
       relative_time: 1,
       rule_panel: 1,
       short_id: 1,
+      shown_target_label: 3,
       state_label: 1,
       target_name: 1,
       tool_mark: 1
@@ -550,7 +551,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <.target_name
       :if={@run.target_system && @path}
       system={@run.target_system}
-      path={@path}
+      path={@run.target_path}
       shared={@shared}
     />
     <span :if={!(@run.target_system && @path)} class="q-faint">
@@ -873,7 +874,7 @@ defmodule ApiaryWeb.OverviewComponents do
       aria-label={
         gettext("Allow %{host} for %{target}",
           host: label_host(@item),
-          target: ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)
+          target: shown_target_label(@target.system, @target.path, @shared)
         )
       }
       aria-expanded={to_string(@item[:expanded] == true)}
@@ -1767,7 +1768,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       navigate={ApiaryWeb.TargetComponents.target_path(@scope, @target, ["policy"])}
       class="q-mono hover:underline"
-    >{ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)}</.link>
+    >{shown_target_label(@target.system, @target.path, @shared)}</.link>
     """
   end
 

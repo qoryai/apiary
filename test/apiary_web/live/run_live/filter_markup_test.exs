@@ -2,8 +2,10 @@ defmodule ApiaryWeb.RunLive.FilterMarkupTest do
   # The Runs page's Filter menu sections, which `ApiaryWeb.RunComponents.filter_options/1`
   # draws, render the markup they rendered before the Backlog gave that component an
   # optional tile: test/fixtures/markup/runs_filter_sections.html holds the sections'
-  # HTML as it was, for a workspace with two runs, a target's id as `tg_ID`. A caller that
-  # passes no tile gets no new element, attribute or text.
+  # HTML as it was, for a workspace with two runs, a target's id as `tg_ID`, and since
+  # then with an option's words in `<bdi>`, as a host or a name may be a text an
+  # external system sent. A caller that passes no tile gets no other new element,
+  # attribute or text.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest

@@ -2385,6 +2385,21 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "no repository"
   end
 
+  test "a lost run's target is named with its system where the path as sent is shared", %{
+    conn: conn,
+    scope: scope
+  } do
+    path = "acme/\u202Eshop"
+
+    for system <- ~w(github.example gitlab.example),
+        do: started_run(scope, %{"forge" => system, "repository" => path})
+
+    run = lost_run(scope, %{target_system: "github.example", target_path: path})
+    view = open(conn, scope)
+
+    assert text(view, "#att-run-#{run.public_id} .q-ar-where") == "github.example / acme/shop"
+  end
+
   # The page's markup with what `<bdi>` isolates taken out, as text: what of a host is
   # left outside an isolate.
   defp outside_bdi(html) do
@@ -2465,5 +2480,32 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "\uFFFD")
     assert has_element?(view, "#{selector} .q-dest-tool .q-path", "\uFFFD")
     refute render(element(view, selector)) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a target's name in an Allow's label and among the targets with a mode: cleaned", %{
+    conn: conn,
+    scope: scope
+  } do
+    # A target's path may carry a bidirectional override and a zero-width space.
+    path = "acme/\u202Eshop\u200B"
+
+    run =
+      started_run(scope, %{"forge" => "github.example", "repository" => path},
+        egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
+      )
+
+    target = Repo.get!(Apiary.Runs.Target, run.target_id)
+    {:ok, _} = Policy.set_mode(scope, target, "observe")
+    view = open(conn, scope)
+    render_async(view, 5_000)
+
+    assert has_element?(
+             view,
+             "#attention-list li[data-kind=denied] button[aria-label='Allow files.cdn.example for acme/shop']"
+           )
+
+    assert text(view, "#overview-own") =~ "acme/shop observes; the rest follow the workspace."
+    refute render(view) =~ "\u202E"
   end
 end

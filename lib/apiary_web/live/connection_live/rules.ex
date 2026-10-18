@@ -144,14 +144,17 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   target in its notation, its path, and its system before it only where `shared` (a
   boolean, or the workspace's shared paths) says its path is shared
   (`ApiaryWeb.TargetComponents.target_label/3`). A caller that does not say names it in
-  full, `system/path`.
+  full, `system/path`. Its system and its path are shown as a page shows a target's
+  (`ApiaryWeb.RunComponents.shown_target_label/3`).
   """
   def version_label(id, target, shared \\ nil)
   def version_label(nil, _target, _shared), do: gettext("the workspace's policy")
-  def version_label(id, %{id: id, system: system, path: path}, nil), do: "#{system}/#{path}"
+
+  def version_label(id, %{id: id, system: system, path: path}, nil),
+    do: ApiaryWeb.RunComponents.shown_target_label(system, path, true)
 
   def version_label(id, %{id: id, system: system, path: path}, shared),
-    do: TargetComponents.target_label(system, path, shared)
+    do: ApiaryWeb.RunComponents.shown_target_label(system, path, shared)
 
   def version_label(_id, _target, _shared), do: gettext("target")
 
@@ -384,6 +387,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   """
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
+    # The path is a text Forager sent, shown as one is.
+    path = if(is_binary(path), do: Apiary.ExternalText.line(path), else: path)
 
     cond do
       pathed? and action == :allow -> path_allowed(where, path, host)

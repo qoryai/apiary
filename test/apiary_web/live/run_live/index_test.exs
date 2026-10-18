@@ -395,6 +395,61 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#filter-host-form") =~ "build-02\uFFFD 1"
     end
 
+    test "a run's target, its node's instance and a filter's value as a page shows them",
+         %{conn: conn, scope: scope} do
+      # A target's labels may carry a bidirectional override and a zero-width space.
+      path = "acme/\u202Eshop\u200B"
+      host = "build\u202E-02"
+      repository = &%{"forge" => "github.example", "repository" => &1}
+      blank = started_run(scope, repository.("\u202E\u200B"), ago: 300)
+      run = started_run(scope, repository.(path), ago: 30, host: host)
+      run = Repo.update!(Ecto.Changeset.change(run, node_instance_id: "i-\u202E42"))
+      view = open(conn, scope)
+
+      assert text(view, "#{row(run)} .q-rl-c3") == "acme/shop"
+
+      assert has_element?(
+               view,
+               ~s(#{row(run)} .q-rl-c3 .q-tname[title="github.example/acme/shop"])
+             )
+
+      # A path with nothing left to show is no target.
+      assert text(view, "#{row(blank)} .q-rl-c3") == "n/a"
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert has_element?(view, "#{row(run)}[aria-current=true]")
+      assert text(view, "#runs-preview .q-pv-m .q-tname") == "acme/shop"
+      assert text(view, "#runs-preview-instance") == "i-42"
+
+      render_hook(view, "select", %{"id" => blank.public_id})
+      render_async(view)
+      assert has_element?(view, "#{row(blank)}[aria-current=true]")
+      refute has_element?(view, "#runs-preview .q-pv-m .q-tname")
+
+      narrowed =
+        open(
+          conn,
+          runs(
+            scope,
+            "?" <>
+              URI.encode_query(%{"target" => tg(scope, "github.example", path), "host" => host})
+          )
+        )
+
+      assert token(narrowed, "host") == "host:build-02"
+      assert has_element?(narrowed, "#runs-token-host .q-tok-v > bdi", "build-02")
+      assert token(narrowed, "target") =~ ~r/^[a-z]+:acme\/shop$/
+
+      assert has_element?(
+               narrowed,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to acme/shop"])
+             )
+
+      # Only what the filter is matched by, an option's value, is as sent.
+      refute narrowed |> render() |> String.replace(~s(value="#{host}"), "") =~ "\u202E"
+    end
+
     test "a title with nothing left to show is no title: the row is its id", %{
       conn: conn,
       scope: scope
