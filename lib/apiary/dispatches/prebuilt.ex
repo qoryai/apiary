@@ -51,20 +51,27 @@ defmodule Apiary.Dispatches.Prebuilt do
   # where it differs from the record's `queued_ref`, when it was recorded, and the target
   # it was built for, the registered run's target, which its handover named from the
   # collection's target as it was then (`Apiary.Lingo.Domain.target/2` of its registration
-  # labels). The last failure is cleared, `retired_at` is left as it is, and nothing is
-  # queued, so a reported ref that differs never loops.
+  # labels), and when the prebuild was queued (`built_queued_at`). The last failure is
+  # cleared, `retired_at` is left as it is, and nothing is queued, so a reported ref that
+  # differs never loops.
+  #
+  # A prebuild queued before the prebuild that made the record's image
+  # (`Apiary.Environments.newer_build?/2`, asked under the record's lock) leaves the record
+  # as it is, its image and its last failure, and writes no audit entry, as nothing was
+  # recorded: its run ends as above, and the answer is the same.
   #
   # ## The answer
   #
-  # `:ok` once the build is written, with one entry in the audit trail, in the
-  # transaction: `dispatch.prebuilt`, by the pool's key, about the registered run, its
-  # `details` the dispatch's public id, the image's size, its commit and the
-  # `environment_ref` reported; the image itself is on the record alone, as the trail keeps
-  # nothing with an `@`. A refusal writes no entry: it commits what the lapse of step 4
-  # wrote, and nothing else. An exception rolls the transaction back, is logged by its
-  # module alone, never the key or the body, and is `{:error, :unavailable}`. Once it
-  # commits, the registered run is broadcast as changed and the workspaces whose queue or
-  # slots changed are told; a failure of either never changes the answer.
+  # `:ok` once the build is written, or the run ended alone as above, with one entry in
+  # the audit trail, in the transaction, where the build was written: `dispatch.prebuilt`,
+  # by the pool's key, about the registered run, its `details` the dispatch's public id,
+  # the image's size, its commit and the `environment_ref` reported; the image itself is on
+  # the record alone, as the trail keeps nothing with an `@`. A refusal writes no entry: it
+  # commits what the lapse of step 4 wrote, and nothing else. An exception rolls the
+  # transaction back, is logged by its module alone, never the key or the body, and is
+  # `{:error, :unavailable}`. Once it commits, the registered run is broadcast as changed
+  # and the workspaces whose queue or slots changed are told; a failure of either never
+  # changes the answer.
   #
   # Locks, in the order a release takes them (`Apiary.Dispatches.Slots`): the record, the
   # records a lapse needs, the run of the queue, the dispatch, then the registered run; the
@@ -150,14 +157,23 @@ defmodule Apiary.Dispatches.Prebuilt do
   defp same_run(_locked, _run_id), do: {:refused, :run_mismatch}
 
   # The run ended as a release after its handover ends it, then the build recorded and
-  # the one audit entry written.
+  # the one audit entry written; for a prebuild queued before the one that made the
+  # record's image, the run ended alone.
   defp record(locked, prebuilt) do
     case RunEnd.released(locked.run.id, locked.now) do
       {:ok, %{run: run, changed: changed}} ->
-        :ok =
-          Environments.record_build(locked.run, prebuilt, built_target(locked, run), locked.now)
+        if not Environments.newer_build?(locked.held, locked.run) do
+          :ok =
+            Environments.record_build(
+              locked.run,
+              prebuilt,
+              built_target(locked, run),
+              locked.now
+            )
 
-        audit(locked, prebuilt, run || locked.key.node)
+          audit(locked, prebuilt, run || locked.key.node)
+        end
+
         {:done, {:ok, %{run: run}}, changed}
 
       {:error, :ended} ->

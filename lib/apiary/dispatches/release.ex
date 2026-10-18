@@ -65,6 +65,10 @@ defmodule Apiary.Dispatches.Release do
   #   - a prebuild, whatever `retry` says, queues nothing: its record keeps the last build
   #     as failed, `released`, with the reason, and its last good build as it was.
   #
+  # A prebuild queued before the prebuild that made the record's image records no failure,
+  # before the handover or after it (`Apiary.Environments.newer_build?/2`, asked under the
+  # record's lock): the record is left as it is, and the run ends as above.
+  #
   # ## The answer
   #
   # `:ok` once the release is written, with one entry in the audit trail, in the
@@ -240,10 +244,15 @@ defmodule Apiary.Dispatches.Release do
   defp after_end(_locked, _release), do: {%{"ended" => true}, []}
 
   # A prebuild's last build failed, `released`, with the reason; the last good build kept.
-  defp build_failed(%{run: %DispatchRun{step: @prebuild}, held: %Record{} = record} = locked, %{
-         reason: reason
-       }),
-       do: Environments.record_release_failure(record, reason, locked.now)
+  # A prebuild queued before the one that made the record's image records nothing.
+  defp build_failed(
+         %{run: %DispatchRun{step: @prebuild} = run, held: %Record{} = record} = locked,
+         %{reason: reason}
+       ) do
+    if Environments.newer_build?(record, run),
+      do: :ok,
+      else: Environments.record_release_failure(record, reason, locked.now)
+  end
 
   defp build_failed(_locked, _release), do: :ok
 

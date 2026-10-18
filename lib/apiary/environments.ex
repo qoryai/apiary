@@ -58,7 +58,8 @@ defmodule Apiary.Environments do
   # `record_release_failure(record, reason, now)` then records the last build as failed,
   # `released`, with the starter's `reason` and `now`: the last good build, `image`,
   # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
-  # queued.
+  # queued. A release of a prebuild queued before the one that made the image records
+  # nothing (`newer_build?/2`).
   #
   # ## A run's image: `image_for/2`
   #
@@ -79,7 +80,17 @@ defmodule Apiary.Environments do
   # they are, so a build that lands after the collection's `environment_ref` went absent is
   # stored and stays retired; nothing is queued. A record that is missing is made with the
   # build, queued for the run's `environment_ref` when the run was queued, and for the
-  # built target.
+  # built target. `built_queued_at` is written with the image: when the run was queued.
+  #
+  # ## A build queued before the recorded one: `newer_build?/2`
+  #
+  # `newer_build?(record, dispatch_run)` is whether the image `record` keeps was made by a
+  # prebuild queued after `dispatch_run` (`built_queued_at` later than the run's
+  # `queued_at`), asked under the record's lock (V-804). Then neither a `prebuilt` nor a
+  # failure of `dispatch_run` is written on the record: the image and the last build's
+  # failure stay as they are, and the run ends as it would otherwise. A record that is
+  # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
+  # every writer writes it as before.
 
   import Ecto.Query, only: [from: 2]
 
@@ -164,6 +175,20 @@ defmodule Apiary.Environments do
     )
   end
 
+  ## A build queued before the recorded one
+
+  # newer_build?/2 is whether the image of `record`, locked by `lock_record/2`, was made by
+  # a prebuild queued after `dispatch_run` (the moduledoc).
+  @doc false
+  @spec newer_build?(Record.t() | nil, Apiary.Dispatches.DispatchRun.t()) :: boolean
+  def newer_build?(
+        %Record{built_queued_at: %DateTime{} = built_queued_at},
+        %Apiary.Dispatches.DispatchRun{queued_at: %DateTime{} = queued_at}
+      ),
+      do: DateTime.compare(queued_at, built_queued_at) == :lt
+
+  def newer_build?(_record, %Apiary.Dispatches.DispatchRun{}), do: false
+
   ## A build recorded
 
   # record_build/4 records the build of the prebuild `dispatch_run` its `prebuilt`
@@ -202,6 +227,7 @@ defmodule Apiary.Environments do
       reported_ref: reported_ref,
       built_target_system: system,
       built_target_path: path,
+      built_queued_at: run.queued_at,
       failure_cause: nil,
       failure_reason: nil,
       failed_at: nil,

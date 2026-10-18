@@ -11,7 +11,10 @@ defmodule Apiary.Environments.Record do
   # image pinned by its digest, its size in bytes, and the commit and the
   # `environment_ref` the job read, which are compared and stored, never read.
   # `built_target_system` and `built_target_path` are the target that build was built
-  # for, the registered run's target when it was recorded, or none. `failure_cause`
+  # for, the registered run's target when it was recorded, or none. `built_queued_at` is
+  # when the prebuild that made the image was queued, its run of the queue's `queued_at`,
+  # written with the image, or none: a `prebuilt` or a failure of a prebuild queued before
+  # it leaves the record as it is (`Apiary.Environments.newer_build?/2`). `failure_cause`
   # (`failure_causes/0`), `failure_reason` (a starter's release alone has one) and
   # `failed_at` are the last build that failed, which leaves the last good build as it
   # was; a build recorded since clears them. `retired_at` is when the collection's
@@ -41,6 +44,7 @@ defmodule Apiary.Environments.Record do
     field :reported_ref, :string
     field :built_target_system, :string
     field :built_target_path, :string
+    field :built_queued_at, :utc_datetime_usec
     field :failure_cause, Ecto.Enum, values: @failure_causes
     field :failure_reason, :string
     field :failed_at, :utc_datetime_usec

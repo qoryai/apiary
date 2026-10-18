@@ -6,7 +6,8 @@ defmodule Apiary.EnvironmentsTest do
   # organisation, the purges of a workspace and of an organisation, the trigger that
   # queues a prebuild per node pool from a listing, an assign and a new pool, keyed on the
   # target and the `environment_ref` (V-714), one waiting per collection and pool, a build
-  # recorded with the target it was built for, and a run's image: which record gives it.
+  # recorded with the target it was built for and when it was queued, whether a prebuild
+  # was queued before the recorded build (V-804), and a run's image: which record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -204,7 +205,8 @@ defmodule Apiary.EnvironmentsTest do
             {%{queued_target_system: "code.example.com"}, "queued_target"},
             {%{queued_target_path: "acme/shop"}, "queued_target"},
             {Map.put(built(), :built_target_system, "code.example.com"), "built_target"},
-            {Map.put(built(), :built_target_path, "acme/shop"), "built_target"}
+            {Map.put(built(), :built_target_path, "acme/shop"), "built_target"},
+            {%{built_queued_at: DateTime.utc_now()}, "built_queued_at"}
           ] do
         assert_raise Ecto.ConstraintError, ~r/environments_#{constraint}_check/, fn ->
           fresh.(attrs)
@@ -223,7 +225,8 @@ defmodule Apiary.EnvironmentsTest do
             Map.merge(built(), %{
               built_target_system: "code.example.com",
               built_target_path: "acme/shop"
-            })
+            }),
+            Map.put(built(), :built_queued_at, DateTime.utc_now())
           ] do
         assert {:ok, _} = fresh.(attrs)
       end
@@ -771,6 +774,7 @@ defmodule Apiary.EnvironmentsTest do
       assert image == @build.image
       assert DateTime.compare(recorded.built_at, now) == :eq
       assert DateTime.compare(recorded.queued_at, queued_at) == :eq
+      assert recorded.built_queued_at == ~U[2026-10-15 11:00:00.000000Z]
     end
 
     test "keeps a record retired, and queues nothing", ctx do
@@ -808,6 +812,28 @@ defmodule Apiary.EnvironmentsTest do
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->
         Environments.record_build(prebuild_run(ctx), @build, @target, DateTime.utc_now())
       end
+    end
+  end
+
+  describe "a build queued before the recorded one (V-804)" do
+    defp run_queued_at(at), do: %DispatchRun{step: DispatchRun.prebuild(), queued_at: at}
+
+    test "is newer where the record's image was made by a prebuild queued after the run",
+         ctx do
+      at = ~U[2026-10-15 11:00:00.000000Z]
+      record = record(ctx, Map.put(built(), :built_queued_at, at))
+
+      assert Environments.newer_build?(record, run_queued_at(DateTime.add(at, -1, :microsecond)))
+      refute Environments.newer_build?(record, run_queued_at(at))
+      refute Environments.newer_build?(record, run_queued_at(DateTime.add(at, 1, :second)))
+    end
+
+    test "is never newer with no image, no built_queued_at or no record", ctx do
+      run = run_queued_at(~U[2026-10-15 11:00:00.000000Z])
+
+      refute Environments.newer_build?(record(ctx), run)
+      refute Environments.newer_build?(record(ctx, built()), run)
+      refute Environments.newer_build?(nil, run)
     end
   end
 

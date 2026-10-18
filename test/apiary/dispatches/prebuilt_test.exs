@@ -6,7 +6,8 @@ defmodule Apiary.Dispatches.PrebuiltTest do
   # reported ref as it is, the last failure cleared and `retired_at` kept, the run ended as
   # a release after its handover with retry false ends it, nothing queued; a second
   # prebuilt and one after the run's outcome or exit, gone; a failure that writes nothing;
-  # and the one audit entry, about the registered run.
+  # the one audit entry, about the registered run; and a prebuild queued before the one
+  # that made the recorded image, whose prebuilt or release leaves the record as it is.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -119,6 +120,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
                dispatch!(dispatch)
 
       assert DateTime.compare(record.built_at, at) == :eq
+      assert DateTime.compare(record.built_queued_at, queued.queued_at) == :eq
       assert Slots.held(ctx.pool.id) == 0
       assert %Run{released_at: %DateTime{}, outcome_state: nil} = Repo.get!(Run, run.id)
 
@@ -236,6 +238,103 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       assert path == collection.target_path
       refute path == "acme/elsewhere"
+    end
+  end
+
+  describe "a prebuild queued before the one that made the recorded image (V-804)" do
+    # The run of `claimed` ended as a release after its handover ends it, its slot freed.
+    defp released!(%{dispatch: dispatch, dispatch_run: queued, run: run}) do
+      assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
+      assert %Dispatch{end_cause: :released, slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+      assert %Run{released_at: %DateTime{}} = Repo.get!(Run, run.id)
+    end
+
+    defp release(key, %{dispatch: dispatch}),
+      do:
+        Dispatches.release(key, id(dispatch), %{
+          revision: 2,
+          reason: "The build failed.",
+          retry: false
+        })
+
+    test "its prebuilt after the newer one's leaves the image and the record as they are, ends its run, and writes no entry",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      assert prebuilt(ctx.key, newer.dispatch, prebuilt_meta(newer.dispatch_run, commit: "b2")) ==
+               :ok
+
+      kept = record!(older.collection, ctx.pool)
+
+      assert prebuilt(
+               ctx.key,
+               older.dispatch,
+               prebuilt_meta(older.dispatch_run, image: @old_image, commit: "a1")
+             ) == :ok
+
+      assert record!(older.collection, ctx.pool) == kept
+      assert %Record{commit: "b2", reported_ref: "env-2", failure_cause: nil} = kept
+      assert DateTime.compare(kept.built_queued_at, newer.dispatch_run.queued_at) == :eq
+      released!(older)
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert [entry] = entries()
+      assert entry.details["dispatch_id"] == newer.dispatch.public_id
+    end
+
+    test "its release after the newer one's prebuilt records no failure, and ends its run",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      assert prebuilt(ctx.key, newer.dispatch, prebuilt_meta(newer.dispatch_run, commit: "b2")) ==
+               :ok
+
+      kept = record!(older.collection, ctx.pool)
+      assert release(ctx.key, older) == :ok
+
+      assert record!(older.collection, ctx.pool) == kept
+      assert %Record{commit: "b2", failure_cause: nil, failure_reason: nil} = kept
+      released!(older)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "with no image yet, its prebuilt and its release write as before, and the newer one's prebuilt after them",
+         ctx do
+      # Its release, with no image yet: the failure is recorded.
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+      assert release(ctx.key, older) == :ok
+
+      assert %Record{image: nil, failure_cause: :released, failure_reason: "The build failed."} =
+               record!(older.collection, ctx.pool)
+
+      # The newer one's prebuilt then records its build, and clears the failure.
+      assert prebuilt(ctx.key, newer.dispatch, prebuilt_meta(newer.dispatch_run, commit: "b2")) ==
+               :ok
+
+      assert %Record{commit: "b2", failure_cause: nil} = record!(older.collection, ctx.pool)
+
+      # Another collection: the older prebuild's prebuilt first records its build.
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      assert prebuilt(ctx.key, older.dispatch, prebuilt_meta(older.dispatch_run, commit: "a1")) ==
+               :ok
+
+      recorded = record!(older.collection, ctx.pool)
+      assert %Record{commit: "a1", reported_ref: "env-1"} = recorded
+      assert DateTime.compare(recorded.built_queued_at, older.dispatch_run.queued_at) == :eq
+
+      # The newer one's prebuilt after it replaces it.
+      assert prebuilt(ctx.key, newer.dispatch, prebuilt_meta(newer.dispatch_run, commit: "b2")) ==
+               :ok
+
+      replaced = record!(older.collection, ctx.pool)
+      assert %Record{commit: "b2", reported_ref: "env-2"} = replaced
+      assert DateTime.compare(replaced.built_queued_at, newer.dispatch_run.queued_at) == :eq
+      assert length(entries()) == 3
     end
   end
 

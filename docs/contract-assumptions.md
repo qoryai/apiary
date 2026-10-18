@@ -475,9 +475,12 @@ then keeps the build: the image, its size, its commit, when it was recorded, the
 and the target it was built for, the registered run's target, which its handover named
 from the collection's target as it was then. The last failure is cleared, `retired_at` is
 left as it is, and nothing is queued, so a reported ref that differs never queues a
-prebuild again. The audit entry, by the pool's key, about the registered run, keeps the
-dispatch's public id, the size, the commit and the `environment_ref` reported; the image is
-on the record alone. A prebuilt holds the prebuild's environment record before anything of
+prebuild again. The record also keeps when the prebuild that made the image was queued: a
+`prebuilt`, or a release's failure, of a prebuild queued before it leaves the record as it
+is, the image and the last failure, and the run ends all the same, answered as above. The
+audit entry, by the pool's key, about the registered run, keeps the dispatch's public id,
+the size, the commit and the `environment_ref` reported, and is written only where the build
+was recorded; the image is on the record alone. A prebuilt holds the prebuild's environment record before anything of
 the queue, then locks as the release does, so a prebuilt, a release, the sweep and the end
 of the collection take turns, and of two prebuilts at once one acts and the other is `410`
 `gone`.

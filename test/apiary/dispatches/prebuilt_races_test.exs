@@ -13,7 +13,8 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   # release, the handover, the sweep and the trigger lock them; so a prebuilt and any of
   # them take turns, whoever comes second finds what the first wrote, one prebuilt or
   # release acts, the build is recorded at most once, the slot is freed once, and none
-  # deadlocks.
+  # deadlocks. A prebuilt or a release of a prebuild queued before the one that made the
+  # recorded image, after that one's prebuilt, leaves the record as it is.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -235,6 +236,94 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert Task.await(second.task) == {:error, :gone}
       ended_once!(ctx, claimed)
       recorded!(ctx, claimed)
+    end
+  end
+
+  describe "a prebuild queued before the one that made the recorded image (V-804)" do
+    defp commit!(ctx, claimed), do: record!(ctx, claimed).commit
+
+    test "the newer prebuilt first: the older one's waits on the record, then ends its run and leaves the image",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      {first, first_pid} = hold(prebuilt(ctx, newer, commit: "b2"))
+      assert first.result == :ok
+
+      second = start(prebuilt(ctx, older, commit: "a1"))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == :ok
+      assert commit!(ctx, older) == "b2"
+
+      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+               :eq
+
+      ended_once!(ctx, older)
+      ended_once!(ctx, newer)
+      assert entries(older, "dispatch.prebuilt") == []
+      assert length(entries(newer, "dispatch.prebuilt")) == 1
+    end
+
+    test "the older prebuilt first: the newer one's waits on the record, then replaces the image",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      {first, first_pid} = hold(prebuilt(ctx, older, commit: "a1"))
+      assert first.result == :ok
+
+      second = start(prebuilt(ctx, newer, commit: "b2"))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == :ok
+      assert commit!(ctx, older) == "b2"
+
+      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+               :eq
+
+      ended_once!(ctx, older)
+      ended_once!(ctx, newer)
+      assert length(entries(older, "dispatch.prebuilt")) == 1
+      assert length(entries(newer, "dispatch.prebuilt")) == 1
+    end
+
+    test "the newer prebuilt first: the older one's release waits on the record, then ends its run and records no failure",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      {first, first_pid} = hold(prebuilt(ctx, newer, commit: "b2"))
+      assert first.result == :ok
+
+      second = start(release(ctx, older))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == :ok
+      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx, older)
+      ended_once!(ctx, older)
+      ended_once!(ctx, newer)
+    end
+
+    test "the older one's release first: the newer prebuilt waits on the record, then records its build and clears the failure",
+         ctx do
+      older = handed_over!(ctx)
+      newer = newer_prebuild_handed_over!(ctx.key, older)
+
+      {first, first_pid} = hold(release(ctx, older))
+      assert first.result == :ok
+
+      second = start(prebuilt(ctx, newer, commit: "b2"))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == :ok
+      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx, older)
+      ended_once!(ctx, older)
+      ended_once!(ctx, newer)
     end
   end
 
