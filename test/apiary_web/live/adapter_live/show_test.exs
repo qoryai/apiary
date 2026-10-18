@@ -780,12 +780,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     relist(key, connection, ["acme/api", "acme/shop"], "second", ~U[2026-10-02 09:00:00Z])
 
     assert words(lv, "#collections-ended") ==
-             "1 repository that Acme tracker no longer reaches isn't shown."
+             "1 repository that #{adapter.name} no longer reaches isn't shown."
 
     relist(key, connection, ["acme/api"], "third", ~U[2026-10-03 09:00:00Z])
 
     assert words(lv, "#collections-ended") ==
-             "2 repositories that Acme tracker no longer reaches aren't shown."
+             "2 repositories that #{adapter.name} no longer reaches aren't shown."
 
     assert Enum.drop(rows(lv), 1) == ["acme/api Backlog #{scope.workspace.name} — Today"]
     assert words(lv, "#collections-count") == "1 repository"
@@ -1325,9 +1325,31 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
     assert length(rows(lv)) == 2
 
-    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-07&page=2")
+    render_patch(lv, page(scope, adapter) <> "?q=repo-07&page=2")
+    assert_patch(lv, page(scope, adapter) <> "?q=repo-07")
     assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
     assert length(rows(lv)) == 2
+  end
+
+  test "the foot notes' block shows only while one of its notes does", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-waiting")
+    refute has_element?(lv, "#collections-foot")
+
+    # Listed, with no target and nothing ended.
+    post(key, connection, ["acme/api", "acme/shop"], 1, true)
+    assert length(rows(lv)) == 3
+    refute has_element?(lv, "#collections-foot")
+
+    relist(key, connection, ["acme/api"], "second", ~U[2026-10-02 09:00:00Z])
+    assert has_element?(lv, "#collections-foot #collections-ended")
+    refute has_element?(lv, "#collections-targets")
   end
 
   test "past the live rows, a page steps back to the last with some, and says no search line",

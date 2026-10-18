@@ -34,18 +34,19 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # open items, for an adapter with items, and when it was added. Until a listing of the
   # connection is complete, a line says the integration is still sending them, with how
   # many so far; then the heading says how many there are.
-  # A lead says what being assigned means, in the adapter's words for its collections
-  # and its items: with one workspace, that every one is assigned to it; for an adapter
-  # with no items, only that each is assigned to one workspace. The lead shows while the
-  # page waits too. Where any live collection has a target
-  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
-  # no workspace's targets; a source without code has none. Past a page, the pager walks
-  # the pages, from the first, as the list pages by the row before (`?page=`). Ended
+  # A lead says what being assigned means, in the adapter's words for its collections and
+  # its items: with one workspace, that every one is assigned to it; for an adapter with
+  # no items, only that each is assigned to one workspace. The lead shows while the page
+  # waits too. Where any live collection has a target
+  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
+  # changes no workspace's targets; a source without code has none. Past a page, the pager
+  # walks the pages, from the first, as the list pages by the row before (`?page=`). Ended
   # collections are not shown: the counts leave them out too, and a line under the table
-  # says how many there are. A run of them that fills a page of the list goes into the page
-  # after it, so no page is empty while collections are left after it. A page past the
-  # last one with collections shows that one, and the address then names it. A search
-  # finds collections by their names (`?q=`), and one that finds none says so, on any page.
+  # says how many there are. A run of them that fills a page of the list goes into the
+  # page after it, so no page is empty while collections are left after it. A page past
+  # the last one with collections shows that one, and the address then names it. A search
+  # finds collections by their names (`?q=`), and one that finds none says so, on any
+  # page. The foot notes' block shows only while one of its notes does.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -831,9 +832,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
             next_label={gettext("Next")}
           />
 
-          <div class="mt-3 grid gap-1.5">
+          <div :if={foot_notes?(assigns)} id="collections-foot" class="mt-3 grid gap-1.5">
             <p
-              :if={@state == :listed && @counts.ended > 0}
+              :if={ended_line?(assigns)}
               id="collections-ended"
               class="q-foot-note"
             >
@@ -859,6 +860,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
     </Layouts.app>
     """
   end
+
+  # Whether the block of foot notes under the table shows: while any of its notes does.
+  defp foot_notes?(assigns), do: ended_line?(assigns) or assigns.targets
+
+  # Whether the line that says how many collections ended shows: once a listing names the
+  # connection, while some have.
+  defp ended_line?(%{state: :listed, counts: %{ended: ended}}), do: ended > 0
+  defp ended_line?(_assigns), do: false
 
   # Whether the page shows the Backlog switches' column, and so the hint over it: once a
   # listing names the connection, for an adapter with items.
