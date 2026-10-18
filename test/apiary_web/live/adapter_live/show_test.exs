@@ -6,9 +6,11 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   # block to an owner or an admin; installed, the wait for the first listing and, a minute
   # on, the line to install again; the return's flash; behind the feature, for members.
   # Once listed, the collections: still arriving, then complete, live, a page at a time,
-  # with the lead for one workspace, or for an adapter with no items; a search. With
-  # several workspaces: the warning, the views, the workspace filter, the selection and
-  # its menu, which assigns them.
+  # with the lead for one workspace, or for an adapter with no items; a search, and how
+  # many it finds; the line for those the integration no longer reaches; a page past the
+  # last, and the address that names the page shown. With several workspaces: the
+  # unassigned ones first, the warning, the views, the workspace filter, the selection and
+  # its menu, which assigns them, then shows the first page.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -74,6 +76,33 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       })
 
     :ok
+  end
+
+  # A later complete listing of `connection`, `id`, that names `titles` only: the
+  # collections it leaves out end.
+  defp relist(key, connection, titles, id, started_at) do
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections:
+          for title <- titles do
+            %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}
+          end,
+        listing: %{id: id, part: 1, started_at: started_at, complete: true}
+      })
+
+    :ok
+  end
+
+  defp collection_ids(connection, titles) do
+    Repo.all(
+      from c in Apiary.Adapters.Collection,
+        where: c.connection_id == ^connection.id and c.title in ^titles,
+        select: c.id
+    )
   end
 
   # The organisation with a second workspace, Platform, and a connection to `adapter`
@@ -643,6 +672,60 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-count") == "1 repository"
   end
 
+  test "collections the integration no longer reaches: a line under the table says how many",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", "acme/shop", "acme/web"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    refute has_element?(lv, "#collections-ended")
+
+    relist(key, connection, ["acme/api", "acme/shop"], "second", ~U[2026-10-02 09:00:00Z])
+
+    assert words(lv, "#collections-ended") ==
+             "1 repository that Acme tracker no longer reaches isn't shown."
+
+    relist(key, connection, ["acme/api"], "third", ~U[2026-10-03 09:00:00Z])
+
+    assert words(lv, "#collections-ended") ==
+             "2 repositories that Acme tracker no longer reaches aren't shown."
+
+    assert Enum.drop(rows(lv), 1) == ["acme/api Backlog #{scope.workspace.name} — Today"]
+    assert words(lv, "#collections-count") == "1 repository"
+
+    # Under the table, over the foot note.
+    html = render(lv)
+    [_before, after_table] = String.split(html, ~s{id="collections-table"}, parts: 2)
+    [between, _after] = String.split(after_table, ~s{id="collections-targets"}, parts: 2)
+    assert between =~ ~s{id="collections-ended"}
+  end
+
+  test "with several workspaces, the unassigned collections come first, on every page", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, titles(1..60))
+
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        collection_ids(connection, titles(1..10)),
+        platform
+      )
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert Enum.at(rows(lv), 1) == "acme/repo-011 Unassigned — Today"
+    assert List.last(rows(lv)) == "acme/repo-060 Unassigned — Today"
+
+    lv |> element("#collections-pager-next") |> render_click()
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+
+    assert Enum.drop(rows(lv), 1) ==
+             for(title <- titles(1..10), do: "#{title} Backlog Platform — Today")
+  end
+
   test "several workspaces: the lead, the warning, the views, the filter and the checkboxes", %{
     conn: conn,
     scope: scope,
@@ -966,6 +1049,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-pager-footer") == "51–60 of 60"
     lv |> element("#collections-table-every") |> render_click()
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?view=unassigned")
     refute has_element?(lv, "#collections-pager")
     assert length(rows(lv)) == 51
     assert Enum.at(rows(lv), 1) == "acme/repo-001 Unassigned — Today"
@@ -994,6 +1078,140 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-pager-footer") == "51–100 of 100"
     assert length(rows(lv)) == 51
     assert has_element?(lv, "#collections-pager-next[disabled]")
+  end
+
+  test "a page past the last one with rows: the address names the page shown", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, titles(1..60))
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    render_patch(lv, page(scope, adapter) <> "?view=unassigned&page=5")
+    assert_patch(lv, page(scope, adapter) <> "?view=unassigned&page=2")
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+
+    # The page's rows are assigned elsewhere while it is open: the page before it, and its
+    # address.
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        collection_ids(connection, titles(51..60)),
+        platform
+      )
+
+    assert_patch(lv, page(scope, adapter) <> "?view=unassigned")
+    assert length(rows(lv)) == 51
+    refute has_element?(lv, "#collections-pager")
+
+    render_patch(lv, page(scope, adapter) <> "?q=billing&page=3")
+    assert_patch(lv, page(scope, adapter) <> "?q=billing")
+    assert words(lv, "#collections-table-none") == "No repositories match “billing”."
+  end
+
+  test "assigning the last row of a page of the unassigned view: page 1, every row reachable",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {_connection, platform} = several(scope, adapter, key, titles(1..101))
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?view=unassigned&page=3")
+    assert words(lv, "#collections-pager-footer") == "101–101 of 101"
+
+    pick(lv, "acme/repo-101")
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?view=unassigned")
+    assert words(lv, "#flash-info") =~ "Assigned acme/repo-101 to Platform."
+    assert words(lv, "#collections-pager-footer") == "1–50 of 100"
+    shown = Enum.drop(rows(lv), 1)
+
+    lv |> element("#collections-pager-next") |> render_click()
+    assert words(lv, "#collections-pager-footer") == "51–100 of 100"
+    assert has_element?(lv, "#collections-pager-next[disabled]")
+    shown = shown ++ Enum.drop(rows(lv), 1)
+
+    assert shown == for(title <- titles(1..100), do: "#{title} Unassigned — Today")
+  end
+
+  test "after an assign, the first page of the same view, search and workspace", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, titles(1..60) ++ ["acme/shop"])
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo&page=2")
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+
+    lv |> element("#collections-table-every") |> render_click()
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?q=repo")
+    assert words(lv, "#flash-info") == "Assigned 10 repositories to Platform."
+    assert words(lv, "#collections-pager-footer") == "1–50 of 60"
+    assert Enum.at(rows(lv), 1) == "acme/repo-001 Unassigned — Today"
+
+    # In one workspace's collections, past its first page.
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        collection_ids(connection, titles(1..50)),
+        platform
+      )
+
+    filter = "?workspace_id=#{platform.id}"
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> filter <> "&page=2")
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+    pick(lv, "acme/repo-051")
+    lv |> element("#collections-assign-#{scope.workspace.id}") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> filter)
+    assert words(lv, "#flash-info") == "Assigned acme/repo-051 to #{scope.workspace.name}."
+    assert words(lv, "#collections-pager-footer") == "1–50 of 59"
+  end
+
+  test "a search counts what it finds, its ended collections left out, in each view", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, titles(1..60) ++ ["acme/shop"])
+    relist(key, connection, titles(1..59) ++ ["acme/shop"], "second", ~U[2026-10-02 09:00:00Z])
+
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        collection_ids(connection, titles(1..5)),
+        platform
+      )
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo")
+    assert words(lv, "#collections-pager-footer") == "1–50 of 59"
+    lv |> element("#collections-pager-next") |> render_click()
+    assert words(lv, "#collections-pager-footer") == "51–59 of 59"
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?view=unassigned&q=repo")
+    assert words(lv, "#collections-pager-footer") == "1–50 of 54"
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo&workspace_id=#{platform.id}")
+    refute has_element?(lv, "#collections-pager")
+    assert length(rows(lv)) == 6
+  end
+
+  test "a page of a search past the first that shows no rows says the search finds none", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..100), 1, true)
+    relist(key, connection, titles(1..50), "second", ~U[2026-10-02 09:00:00Z])
+
+    # Its second page holds only ended rows, which are not shown.
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo&page=2")
+    assert words(lv, "#collections-table-none") == "No repositories match “repo”."
+    assert length(rows(lv)) == 2
   end
 
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{

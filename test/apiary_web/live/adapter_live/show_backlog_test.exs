@@ -147,9 +147,9 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
 
     assert rows(lv) == [
              "Repository Workspace Backlog Open tickets Added",
+             "acme/web Unassigned — Today",
              "acme/api Backlog Platform — Today",
-             "acme/shop Backlog Platform — Today",
-             "acme/web Unassigned — Today"
+             "acme/shop Backlog Platform — Today"
            ]
 
     lv |> element("#collections-view-unassigned") |> render_click()

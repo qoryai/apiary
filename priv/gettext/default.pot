@@ -1181,6 +1181,13 @@ msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no b
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} that %{integration} no longer reaches isn't shown."
+msgid_plural "%{number} %{collections} that %{integration} no longer reaches aren't shown."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} %{item} matches"
