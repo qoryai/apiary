@@ -52,5 +52,5 @@ defmodule ApiaryWeb.People do
   """
   @spec short(String.t() | nil) :: String.t() | nil
   def short(nil), do: nil
-  def short(name), do: name |> String.split("@") |> hd()
+  def short(name), do: User.short_name(name)
 end
