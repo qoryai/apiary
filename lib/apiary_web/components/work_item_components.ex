@@ -3775,13 +3775,17 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The Thread's composer: a comment on the work item, which members of the workspace see
   and which is not posted on the ticket. It sends `"comment"`, its text as `body`; `value`
-  is a draft to keep.
+  is a draft to keep, and `error` what was wrong with it: `{:too_long, limit}` or
+  `:characters` have words under the field; any other error, a blank text among them,
+  has none. The field takes at most as many UTF-16 units as a comment has characters
+  (`Apiary.WorkItems.Comment.max_body/0`), never more characters than a comment holds.
   """
   attr :id, :string, default: "work-item-composer"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :workspace, :string, required: true, doc: "the workspace's name"
   attr :reader, :string, required: true, doc: "the reader's name, for the avatar"
   attr :value, :string, default: nil, doc: "a draft"
+  attr :error, :any, default: nil, doc: "what was wrong with the draft, as above"
 
   attr :item_noun, :map,
     default: nil,
@@ -3790,14 +3794,29 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def composer(assigns) do
     assigns =
-      assign(assigns, :label, gettext("Comment on work item #%{number}", number: assigns.number))
+      assign(assigns,
+        label: gettext("Comment on work item #%{number}", number: assigns.number),
+        message: composer_error(assigns.error),
+        maxlength: Apiary.WorkItems.Comment.max_body()
+      )
 
     ~H"""
     <form id={@id} class="q-wi-composer" phx-submit="comment" novalidate>
       <.avatar name={@reader} kind="self" size="sm" />
       <div class="q-wi-box">
         <label for={"#{@id}-body"} class="sr-only">{@label}</label>
-        <textarea id={"#{@id}-body"} name="body" placeholder={@label} rows="3">{@value}</textarea>
+        <textarea
+          id={"#{@id}-body"}
+          name="body"
+          placeholder={@label}
+          rows="3"
+          maxlength={@maxlength}
+          aria-describedby={@message && "#{@id}-error"}
+          aria-invalid={@message && "true"}
+        >{["\n", @value || ""]}</textarea>
+        <p :if={@message} id={"#{@id}-error"} class="q-xp-err">
+          <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@message}
+        </p>
         <div class="q-wi-composer-foot">
           <span class="q-wi-grow">
             {gettext("Members of %{workspace} see this. Nothing is posted on the %{item}.",
@@ -3813,4 +3832,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     </form>
     """
   end
+
+  defp composer_error({:too_long, limit}),
+    do: gettext("Write at most %{number} characters.", number: Format.number(limit))
+
+  defp composer_error(:characters), do: gettext("Remove the control or invisible characters.")
+
+  # A blank text, or any other error, has no words.
+  defp composer_error(_error), do: nil
 end

@@ -1111,6 +1111,43 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert attr(html, "textarea", "name") == ["body"]
       assert html =~ "Members of Main see this. Nothing is posted on the ticket."
       assert text(html, "button[type=submit]") == "Comment"
+      assert attr(html, "textarea", "maxlength") == ["4000"]
+      assert attr(html, "textarea", "aria-invalid") == []
+      refute html =~ "q-xp-err"
+    end
+
+    test "a draft is kept, with the words of what was wrong with it" do
+      for {error, words} <- [
+            {{:too_long, 4000}, "Write at most 4,000 characters."},
+            {:characters, "Remove the control or invisible characters."}
+          ] do
+        html =
+          render_component(&WorkItemComponents.composer/1,
+            number: 88,
+            workspace: "Main",
+            reader: "Dana",
+            value: "Sam, does the\nmobile app round the same way?",
+            error: error
+          )
+
+        assert text(html, "textarea") == "Sam, does the mobile app round the same way?"
+        assert text(html, "#work-item-composer-error") == words
+        assert attr(html, "textarea", "aria-describedby") == ["work-item-composer-error"]
+        assert attr(html, "textarea", "aria-invalid") == ["true"]
+      end
+    end
+
+    test "a blank text has no words" do
+      html =
+        render_component(&WorkItemComponents.composer/1,
+          number: 88,
+          workspace: "Main",
+          reader: "Dana",
+          error: :blank
+        )
+
+      refute html =~ "work-item-composer-error"
+      assert attr(html, "textarea", "aria-invalid") == []
     end
   end
 

@@ -53,11 +53,9 @@ defmodule Apiary.AuditChanges do
     "mail_from" => ""
   }
 
-  # The audited actions of the work items, whose changes have no context function yet:
-  # each is made here as its function will make it, the same question of
-  # `Apiary.Access` and the one entry in one transaction (`stand_in/3`), until that
-  # function makes it instead.
-  @stand_ins [
+  # People's comments on a work item's Thread, each made by its function of
+  # `Apiary.WorkItems`: about the work item.
+  @work_item_comments [
     :"work_item.comment",
     :"work_item.comment_delete"
   ]
@@ -132,7 +130,7 @@ defmodule Apiary.AuditChanges do
       :"dispatch.release",
       :"target.set_further_repositories",
       :"dispatch.prebuilt"
-    ] ++ @work_item_moves ++ @stand_ins
+    ] ++ @work_item_moves ++ @work_item_comments
   end
 
   @doc """
@@ -621,10 +619,11 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
-  def make(action, %{scope: scope} = ctx) when action in @stand_ins do
+  # A member comments on a work item of the workspace, or deletes a comment there.
+  def make(action, %{scope: scope} = ctx) when action in @work_item_comments do
     subject = prepare(action, ctx)
     before = entries()
-    {:ok, _subject} = stand_in(scope, action, subject)
+    {:ok, _comment} = attempt(action, scope, subject)
     %{scope: scope, subject: subject_of(subject), before: before}
   end
 
@@ -1024,8 +1023,16 @@ defmodule Apiary.AuditChanges do
     work_item
   end
 
-  defp prepare(action, %{scope: scope}) when action in @work_item_moves or action in @stand_ins,
-    do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
+  # A comment by the owner, which a member may not delete.
+  defp prepare(:"work_item.comment_delete", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    {:ok, comment} = Apiary.WorkItems.comment(scope, work_item, "Seen on staging")
+    comment
+  end
+
+  defp prepare(action, %{scope: scope})
+       when action in @work_item_moves or action in @work_item_comments,
+       do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
@@ -1168,8 +1175,11 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"work_item.explore_again", scope, work_item),
     do: Apiary.WorkItems.explore_again(scope, work_item, 1)
 
-  defp attempt(action, scope, subject) when action in @stand_ins,
-    do: stand_in(scope, action, subject)
+  defp attempt(:"work_item.comment", scope, work_item),
+    do: Apiary.WorkItems.comment(scope, work_item, "Seen on staging")
+
+  defp attempt(:"work_item.comment_delete", scope, comment),
+    do: Apiary.WorkItems.delete_comment(scope, comment.public_id)
 
   defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
   defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)
@@ -1277,16 +1287,6 @@ defmodule Apiary.AuditChanges do
     workspace
   end
 
-  # A change of `@stand_ins`, as its context function will make it: asked of
-  # `Apiary.Access`, and its entry, in one transaction.
-  defp stand_in(scope, action, subject) do
-    Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, action, subject),
-           {:ok, _entry} <- Audit.record(Repo, scope, action, subject, %{}) do
-        {:ok, subject}
-      end
-    end)
-  end
-
   defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
+  defp subject_of(%Apiary.WorkItems.Comment{work_item_id: id}), do: {"work_item", id}
 end
