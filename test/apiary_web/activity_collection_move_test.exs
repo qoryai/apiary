@@ -20,7 +20,11 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
 
   @moduletag needs: :factory
 
-  @sentence "Shop board left this organisation's Backlog: Acme tracker now lists it under another connection."
+  # The approved sentence, with the collection's title and the adapter's name filled in.
+  defp sentence(adapter_name),
+    do:
+      "Shop board left this organisation's Backlog: " <>
+        adapter_name <> " now lists it under another connection."
 
   defp listed(connection, id) do
     %{
@@ -33,11 +37,14 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
     }
   end
 
-  # The scope's organisation lists the collection `SHOP` through the adapter "Acme
-  # tracker"; then another organisation's connection lists it: the entry of the move, in
-  # the scope's organisation's trail, and the collection that ended.
+  # The scope's organisation lists the collection `SHOP` through an adapter named "Acme
+  # tracker" and a fresh number; then another organisation's connection lists it: the
+  # entry of the move, in the scope's organisation's trail, the collection that ended,
+  # and the adapter's name.
   defp moved(scope) do
-    %{adapter: adapter, access_key: key} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: adapter, access_key: key} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
     key_scope = Scope.for_access_key(key)
     {mine, _nonce} = connection_fixture(scope, adapter, :connected)
@@ -49,7 +56,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
     {:ok, :accepted} = Collections.post_listing(key_scope, listed(theirs, "second"))
 
     entry = Repo.one!(from e in Entry, where: e.action == "collection.move")
-    {entry, collection}
+    {entry, collection, adapter.name}
   end
 
   test "no label, so the filter does not offer it" do
@@ -61,7 +68,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
 
   test "the sentence, from the entry the move left, and the collection as its subject" do
     %{scope: scope} = sign_up_fixture()
-    {entry, collection} = moved(scope)
+    {entry, collection, adapter_name} = moved(scope)
 
     assert entry.organisation_id == scope.organisation.id
     assert {entry.subject_kind, entry.subject_id} == {"collection", collection.id}
@@ -73,7 +80,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
              Describer.describers(),
              & &1.sentence(:"collection.move", entry, names)
            ) ==
-             @sentence
+             sentence(adapter_name)
 
     assert Core.subject(entry, :"collection.move", names, scope, nil) ==
              %{text: "Shop board", mono: true, href: nil}
@@ -88,7 +95,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
     setup :register_and_log_in_user
 
     test "the entry shows the sentence and the collection", %{conn: conn, scope: scope} do
-      {entry, _collection} = moved(scope)
+      {entry, _collection, adapter_name} = moved(scope)
 
       {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
       render_async(view)
@@ -97,7 +104,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
         view |> element(selector) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
       end
 
-      assert String.trim(text.("#entry-#{entry.id}-action")) == @sentence
+      assert String.trim(text.("#entry-#{entry.id}-action")) == sentence(adapter_name)
       assert text.("#entry-#{entry.id}-subject") =~ "Shop board"
     end
   end
