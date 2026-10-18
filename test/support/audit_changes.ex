@@ -28,6 +28,7 @@ defmodule Apiary.AuditChanges do
     Repo,
     Retention,
     Secrets,
+    Targets,
     Variables
   }
 
@@ -109,7 +110,8 @@ defmodule Apiary.AuditChanges do
       :"collection.assign",
       :"collection.set_backlog",
       :"dispatch.handover",
-      :"dispatch.release"
+      :"dispatch.release",
+      :"target.set_further_repositories"
     ] ++ @stand_ins
   end
 
@@ -460,6 +462,15 @@ defmodule Apiary.AuditChanges do
     target = prepare(:"collection.set_backlog", ctx)
     before = entries()
     {:ok, 1} = Collections.set_backlog(ctx.scope, target, false)
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
+  # An owner chooses what the runs of a target of the workspace also read, in the
+  # workspace's trail, about the target.
+  def make(:"target.set_further_repositories", ctx) do
+    target = prepare(:"target.set_further_repositories", ctx)
+    before = entries()
+    {:ok, _saved} = Targets.set_further_repositories(ctx.scope, target, "acme/docs")
     %{scope: ctx.scope, subject: {"target", target.id}, before: before}
   end
 
@@ -844,6 +855,16 @@ defmodule Apiary.AuditChanges do
     {connection, collection, workspace_fixture(scope.organisation)}
   end
 
+  # A target of the scope's workspace, as a run's labels make it.
+  defp prepare(:"target.set_further_repositories", %{scope: scope}) do
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "code.example.com", path: "acme/shop"}
+      ])
+
+    Targets.get(scope, "code.example.com", "acme/shop")
+  end
+
   # A collection with a target, listed for the organisation's connection and assigned to
   # the scope's workspace, which makes the target there.
   defp prepare(:"collection.set_backlog", %{scope: scope}) do
@@ -997,6 +1018,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"collection.set_backlog", scope, target),
     do: Collections.set_backlog(scope, target, false)
+
+  defp attempt(:"target.set_further_repositories", scope, target),
+    do: Targets.set_further_repositories(scope, target, "acme/docs")
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)

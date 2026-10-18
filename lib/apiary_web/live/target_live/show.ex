@@ -27,7 +27,11 @@ defmodule ApiaryWeb.TargetLive.Show do
     it and its adapter have items, the Backlog card: one switch, whether its tickets come
     into the workspace's Backlog, named with its source's word for them, which owners and
     admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
-    and anyone else reads, disabled, with who may change it.
+    and anyone else reads, disabled, with who may change it. After it, where the reader is
+    shown the work items, what its runs also read (`Apiary.Targets.further_repositories/1`),
+    one path a line, with Change, for those who may change it
+    (`target.set_further_repositories`), which leads to its form page
+    (`ApiaryWeb.TargetLive.FurtherRepositories`).
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
   A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
@@ -77,6 +81,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       new_runs: 0
     )
     |> load_backlog()
+    |> load_further()
     |> load_summary()
     |> mount_tab(tab)
   end
@@ -231,6 +236,20 @@ defmodule ApiaryWeb.TargetLive.Show do
     )
   end
 
+  # What the target's runs also read, where the reader is shown the work items, and whether
+  # the reader may change it.
+  defp load_further(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+
+    assign(socket,
+      further:
+        if(Access.can?(scope, :"work_item.read", scope.workspace),
+          do: Targets.further_repositories(target)
+        ),
+      may_set_further: Access.can?(scope, :"target.set_further_repositories", target)
+    )
+  end
+
   # `backlog` is the card's, with what the target's sources call their items.
   defp backlog_words(true, target, backlog),
     do:
@@ -372,6 +391,8 @@ defmodule ApiaryWeb.TargetLive.Show do
         scope={@current_scope}
         backlog={@backlog}
         may_set_backlog={@may_set_backlog}
+        further={@further}
+        may_set_further={@may_set_further}
       />
 
       <PolicyLive.Target.content :if={@tab == :policy} {assigns} />
@@ -456,6 +477,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   attr :scope, :any, required: true
   attr :backlog, :map, default: nil
   attr :may_set_backlog, :boolean, default: false
+  attr :further, :list, default: nil
+  attr :may_set_further, :boolean, default: false
 
   defp overview(assigns) do
     assigns =
@@ -565,6 +588,41 @@ defmodule ApiaryWeb.TargetLive.Show do
               {only_admins_change(@scope)}
             </p>
           </div>
+        </section>
+
+        <section
+          :if={@further}
+          id="target-further-repositories"
+          class="q-tgt-card"
+          aria-labelledby="target-further-repositories-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-further-repositories-h">{gettext("Targets its runs also read")}</h2>
+            <span :if={@further != []} class="q-tgt-card-n">
+              {Format.number(length(@further))}
+            </span>
+            <span class="grow"></span>
+            <.link
+              :if={@may_set_further}
+              id="target-further-repositories-change"
+              navigate={target_path(@scope, @target, ["also-read"])}
+              class="q-tgt-more"
+            >
+              {gettext("Change")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+            </.link>
+          </div>
+          <p :if={@further == []} id="target-further-repositories-empty" class="q-tgt-card-empty">
+            {gettext("Its runs read no other target.")}
+          </p>
+          <ul :if={@further != []} id="target-further-repositories-rows" class="q-tgt-also">
+            <li
+              :for={{path, n} <- Enum.with_index(@further, 1)}
+              id={"target-further-repositories-row-#{n}"}
+              title={path}
+            >
+              {path}
+            </li>
+          </ul>
         </section>
       </div>
 

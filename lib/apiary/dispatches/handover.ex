@@ -59,7 +59,9 @@ defmodule Apiary.Dispatches.Handover do
   #       collection ended, is assigned to no workspace or another one, or has no target
   #       ends `collection_ended`: its assignment, its workspace, its end and its target are
   #       read, never its Backlog switch or whether it has items. Run variables of the
-  #       target that break their rules (`Apiary.Runs.RunVariables`) end it
+  #       target and the further repositories its runs also read
+  #       (`Apiary.Targets.further_repositories/1`) that break their rules
+  #       (`Apiary.Runs.RunVariables`) end it
   #       `variables_invalid`; an explore run whose work item's ticket is no longer kept,
   #       `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`),
   #       `inputs_invalid`;
@@ -71,7 +73,9 @@ defmodule Apiary.Dispatches.Handover do
   # Else the run is registered, as a registration through the gateway by the pool:
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
   # `run_id` too, under the pool's key, its labels the target's
-  # (`Apiary.Lingo.Domain.target_labels/1`), `about` the step and, for an explore run, its
+  # (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one, the label of its
+  # paths (`Apiary.Lingo.Domain.paths_label/1`) with its QORY_RUN_REPOSITORIES as the value,
+  # `about` the step and, for an explore run, its
   # work item, its run variables (`registration_variables`), its registration digest the
   # SHA-256 of the handover's body, with no heartbeat interval, no answer digest and no
   # contract version until its attach; with the gateway, its run key's payload and
@@ -101,7 +105,7 @@ defmodule Apiary.Dispatches.Handover do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Dispatches, Gateways, Nodes, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Audit, Dispatches, Gateways, Nodes, Repo, Runs, Targets}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
@@ -109,7 +113,7 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, Registration, Run, RunVariables}
+  alias Apiary.Runs.{About, Registration, Run, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
@@ -412,14 +416,16 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp formed(dispatch_run, workspace, target, work_item, inputs) do
-    with {:variables, {:ok, variables}} <- {:variables, RunVariables.for_target(target)},
+    picked = further_repositories(workspace, target)
+
+    with {:variables, {:ok, variables}} <- {:variables, RunVariables.for_target(target, picked)},
          {:inputs, {:ok, inputs}} <- {:inputs, inputs.()} do
       about = about(dispatch_run, work_item)
       :ok = About.validate(about)
 
       {:ok,
        %{
-         labels: Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path])),
+         labels: labels(workspace, target, variables),
          about: about,
          variables: variables,
          workspace: workspace,
@@ -434,6 +440,36 @@ defmodule Apiary.Dispatches.Handover do
       {:variables, {:error, _rule}} -> {:end, :variables_invalid}
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
+  # domain has one, the label of the run's paths (`Apiary.Lingo.Domain.paths_label/1`),
+  # whose value is the run variables' QORY_RUN_REPOSITORIES, the same list in the same
+  # order.
+  defp labels(workspace, target, variables) do
+    labels = Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path]))
+
+    case Domain.paths_label(workspace) do
+      nil -> labels
+      key -> Map.put(labels, key, RunVariables.repositories(variables))
+    end
+  end
+
+  # The further repositories the run's target's runs also read, in order
+  # (`Apiary.Targets.further_repositories/1`), read without a lock: none where the
+  # workspace has no target of that system and path yet.
+  defp further_repositories(%Workspace{id: workspace_id, organisation_id: organisation_id}, %{
+         system: system,
+         path: path
+       }) do
+    found =
+      Repo.one(
+        from t in Target,
+          where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
+          where: t.system == ^system and t.path == ^path
+      )
+
+    if found, do: Targets.further_repositories(found), else: []
   end
 
   # A prebuild's collection's target, while the collection is live, assigned to the run's

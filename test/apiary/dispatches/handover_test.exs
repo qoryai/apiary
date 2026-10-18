@@ -136,7 +136,8 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert run.registration_labels == %{
                "forge" => "forge.example.com",
-               "repository" => "acme/shop"
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop"
              }
 
       assert run.registration_about == %{
@@ -267,7 +268,8 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert run.registration_labels == %{
                "forge" => collection.target_system,
-               "repository" => collection.target_path
+               "repository" => collection.target_path,
+               "repositories" => collection.target_path
              }
 
       assert run.registration_variables == %{
@@ -534,6 +536,74 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       Repo.delete!(in_the_way)
       assert {:ok, _handed} = handover(ctx.key, dispatch)
+    end
+  end
+
+  # The target of the work items queued here, with `paths` its runs also read, saved as an
+  # owner saves them.
+  defp further!(ctx, paths) do
+    :ok =
+      Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
+        %{system: "forge.example.com", path: "acme/shop"}
+      ])
+
+    target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")
+    {:ok, target} = Apiary.Targets.set_further_repositories(ctx.scope, target, paths)
+    target
+  end
+
+  describe "the further repositories of the run's target" do
+    test "follow its repository in QORY_RUN_REPOSITORIES, in the order saved", ctx do
+      further!(ctx, "acme/docs\nacme/tools")
+      {_work_item, _queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch)
+
+      run = Repo.get!(Run, handed.run.id)
+
+      assert run.registration_variables == %{
+               "QORY_RUN_SYSTEM" => "forge.example.com",
+               "QORY_RUN_REPOSITORIES" => "acme/shop,acme/docs,acme/tools"
+             }
+
+      assert run.registration_labels == %{
+               "forge" => "forge.example.com",
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop,acme/docs,acme/tools"
+             }
+    end
+
+    test "an empty saved list gives the repositories label its repository alone", ctx do
+      further!(ctx, "")
+      {_work_item, _queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch)
+
+      assert Repo.get!(Run, handed.run.id).registration_labels == %{
+               "forge" => "forge.example.com",
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop"
+             }
+    end
+
+    test "a saved list that breaks the rules now ends the run variables_invalid, gone", ctx do
+      target = further!(ctx, "acme/docs")
+
+      {1, _rows} =
+        Repo.update_all(from(t in Apiary.Runs.Target, where: t.id == ^target.id),
+          set: [further_repositories: ["other/docs"]]
+        )
+
+      {_work_item, queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert handover(ctx.key, dispatch) == {:error, :gone}
+      ended!(ctx, queued, dispatch, :variables_invalid)
     end
   end
 

@@ -33,6 +33,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
+    ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController
   ]
@@ -176,7 +177,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/settings/remove"}
                ] ++
                  for(
-                   rest <- ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread),
+                   rest <-
+                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread /targets/x1/also-read),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )
@@ -377,6 +379,8 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"dispatch.handover", "Runs handed over"} in options
       assert {"dispatch.release", "Runs given back"} in options
 
+      assert {"target.set_further_repositories", "Also read"} in options
+
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
@@ -387,7 +391,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"collection.assign",
             :"collection.set_backlog",
             :"dispatch.handover",
-            :"dispatch.release"
+            :"dispatch.release",
+            :"target.set_further_repositories"
           ],
           do: refute(action in offered, "#{action}")
     end
