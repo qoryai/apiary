@@ -24,7 +24,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # for its collections, then Install, which posts to the Install path and sends the
   # person on to the integration, and Cancel, back to the list. Once pressed, the block
   # says where the person is taken. One that cannot be installed yet has Install disabled.
-  # With every adapter installed, a line says so.
+  # With every adapter installed, a line says so, in place of the lead.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -101,7 +101,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
       <:crumb>{add_title()}</:crumb>
 
       <.settings_page section={:integrations} title={add_title()}>
-        <:subtitle>
+        <:subtitle :if={!@all_installed}>
           {gettext("Install one of this instance's integrations for %{organisation}.",
             organisation: @current_scope.organisation.name
           )}
