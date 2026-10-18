@@ -5,7 +5,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's words for the work item comments, the handover,
-  # the release, the prebuilt, an adapter installed and a set-up started.
+  # the release, the prebuilt, a build asked for, an adapter installed and a set-up
+  # started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -369,7 +370,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers the actions on work items, the assigning, the Backlog switch, the handover, the release, the prebuilt, also read, an adapter installed and a set-up started by their words, and no other",
+    test "the Activity filter offers each action of the feature that has its words, by them, and no other",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -388,6 +389,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"dispatch.prebuilt", "Images recorded"} in options
 
       assert {"target.set_further_repositories", "Also read"} in options
+      assert {"target.rebuild_environment", "Builds asked for"} in options
 
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
@@ -409,6 +411,7 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"dispatch.release",
             :"dispatch.prebuilt",
             :"target.set_further_repositories",
+            :"target.rebuild_environment",
             :"adapter.install",
             :"adapter.setup"
           ],
@@ -615,6 +618,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute "dispatch.handover" in values
       refute "dispatch.release" in values
       refute "dispatch.prebuilt" in values
+      refute "target.rebuild_environment" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
@@ -708,6 +712,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute "dispatch.handover" in values
       refute "dispatch.release" in values
       refute "dispatch.prebuilt" in values
+      refute "target.rebuild_environment" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",

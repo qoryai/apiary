@@ -4013,6 +4013,11 @@ msgid_plural "Asked %{number} questions"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Asked for a build of its environment"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4162,6 +4167,11 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Brings back work item #%{number}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Builds asked for"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
