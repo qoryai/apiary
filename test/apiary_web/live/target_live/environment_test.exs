@@ -4,9 +4,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   of the workspace's work items: for each node pool, the image a run of the target starts
   in (`Apiary.Environments.image_for/2`), in mono, its digest shortened and the whole
   reference its title, when it was built and its commit, or that runs use the pool's
-  default image and why, or that they use the image the workspace's policy names; whether a
-  build runs or waits; the last build's failure by its cause, never a starter's reason;
-  one line where no pool serves the workspace or the target names no environment.
+  default image and why, or that they use the image set in the workspace's policy;
+  whether a build runs or waits; the last build's failure by its cause, never a starter's
+  reason; one line where no pool serves the workspace or the target names no environment.
   Rebuild, for whoever may ask for a build, where the target names an environment and a
   pool serves the workspace, with its toasts and its Activity line; no card where the
   reader is not shown the feature.
@@ -98,6 +98,21 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       },
       Map.new(attrs)
     )
+  end
+
+  # A version of the workspace's baseline whose policy sets an image, after the newest one.
+  # The workspace must have a baseline already.
+  defp set_policy_image!(scope) do
+    {:ok, baseline} = Policy.current_configuration(scope, nil)
+
+    Repo.insert!(%RunConfiguration{
+      organisation_id: scope.organisation.id,
+      workspace_id: scope.workspace.id,
+      version: baseline.version + 1,
+      document: @naming,
+      digest: Render.digest(@naming),
+      rendered_at: DateTime.utc_now()
+    })
   end
 
   defp pool_id(pool), do: "#target-environment-pool-#{pool.id}"
@@ -425,7 +440,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
     end
 
-    test "the workspace's policy names an image: each pool says runs use it, in place of the prebuilt image",
+    test "the workspace's policy sets an image: each pool says runs use it, in place of the prebuilt image",
          %{conn: conn, scope: scope, shop: shop, path: path} do
       mac = pool_fixture(scope, name: "mac-pool")
       linux = pool_fixture(scope, name: "linux-pool")
@@ -437,24 +452,14 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(view, "#{pool_id(mac)}-image")
       refute has_element?(view, "#{pool_id(mac)}-policy")
 
-      {:ok, baseline} = Policy.current_configuration(scope, nil)
-
-      Repo.insert!(%RunConfiguration{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        version: baseline.version + 1,
-        document: @naming,
-        digest: Render.digest(@naming),
-        rendered_at: DateTime.utc_now()
-      })
-
+      set_policy_image!(scope)
       view = open(conn, path)
 
       for pool <- [mac, linux] do
         assert has_element?(
                  view,
                  "#{pool_id(pool)}-policy",
-                 "Runs use the image this workspace's policy names."
+                 "Runs use the image set in this workspace's policy."
                )
 
         refute has_element?(view, "#{pool_id(pool)}-image")
@@ -467,6 +472,45 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       view = open(conn, path)
       assert has_element?(view, "#{pool_id(mac)}-image")
       refute has_element?(view, "#{pool_id(mac)}-policy")
+    end
+
+    test "the workspace's policy sets an image: a pool's failure, waiting and running lines stay",
+         %{conn: conn, scope: scope, path: path} do
+      mac = pool_fixture(scope, name: "mac-pool")
+      linux = pool_fixture(scope, name: "linux-pool")
+      arm = pool_fixture(scope, name: "arm-pool")
+      shop = collection(scope)
+      record!(scope, mac, shop, %{failure_cause: :timed_out, failed_at: DateTime.utc_now()})
+
+      for pool <- [linux, arm] do
+        {:ok, {:ok, _run}} =
+          Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
+      end
+
+      %{access_key: key} = enrolled_key_fixture(scope, arm)
+      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
+      set_policy_image!(scope)
+      view = open(conn, path)
+
+      for pool <- [mac, linux, arm] do
+        assert has_element?(
+                 view,
+                 "#{pool_id(pool)}-policy",
+                 "Runs use the image set in this workspace's policy."
+               )
+      end
+
+      assert has_element?(
+               view,
+               "#{pool_id(mac)}-failure",
+               "The last build failed: it ran past 35 minutes."
+             )
+
+      assert has_element?(view, "#{pool_id(linux)}-waiting", "A build is waiting.")
+      refute has_element?(view, "#{pool_id(linux)}-running")
+      assert has_element?(view, "#{pool_id(arm)}-running", "A build is running.")
+      refute has_element?(view, "#{pool_id(arm)}-waiting")
     end
 
     test "no card where the reader is not shown the feature", %{

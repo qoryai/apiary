@@ -12597,7 +12597,7 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the image this workspace's policy names."
+msgid "Runs use the image set in this workspace's policy."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex

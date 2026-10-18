@@ -867,7 +867,7 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   defp environment_image(%{pool: %{serves: :policy}} = assigns) do
     ~H"""
-    <span id={"#{@id}-policy"}>{gettext("Runs use the image this workspace's policy names.")}</span>
+    <span id={"#{@id}-policy"}>{gettext("Runs use the image set in this workspace's policy.")}</span>
     """
   end
 
