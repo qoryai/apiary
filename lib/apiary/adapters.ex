@@ -61,6 +61,8 @@ defmodule Apiary.Adapters do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias Apiary.{Access, AccessKeys, Accounts, Audit, Dispatches, Features, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
@@ -947,12 +949,15 @@ defmodule Apiary.Adapters do
   # A start that changes the source's line on access or its words for its items or its
   # collections tells, after the commit, each organisation with a connection to the
   # adapter that its connection changed, once (`connection_changed`), so an open page of
-  # the integration shows them; a start that changes none of them tells none.
+  # the integration shows them; a start that changes none of them tells none. The start is
+  # stored by then: where the database fails to read those connections, the failure is
+  # logged, no organisation is told, and the start answers as stored. `opts[:connections]`
+  # replaces that read, a function of the adapter, for a test that makes it fail.
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
-  @spec declare(Scope.t(), Wire.declaration()) ::
+  @spec declare(Scope.t(), Wire.declaration(), keyword) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
-  def declare(%Scope{} = scope, %{} = declaration) do
+  def declare(%Scope{} = scope, %{} = declaration, opts \\ []) do
     Repo.transact(fn ->
       with {:ok, %Node{id: id}} <- for_key(scope, :"adapter.declare"),
            %Node{} = current <-
@@ -980,7 +985,8 @@ defmodule Apiary.Adapters do
     |> case do
       {:ok, {declared, relinked, shown_changed?}} ->
         :ok = Collections.broadcast_relinked(relinked)
-        if shown_changed?, do: :ok = broadcast_shown(declared)
+        connections = Keyword.get(opts, :connections, &connections_told/1)
+        if shown_changed?, do: :ok = broadcast_shown(declared, connections)
         {:ok, declared}
 
       {:error, _reason} = refused ->
@@ -1002,9 +1008,27 @@ defmodule Apiary.Adapters do
     do: Map.take(current, @shown) != Map.take(declared, @shown)
 
   # After the start commits: tells each organisation with a connection to the adapter that
-  # it changed (`Apiary.Adapters.Collections.broadcast_connection/1`), once, naming its
-  # connection that has not ended, else the one that ended last.
-  defp broadcast_shown(%Node{id: adapter_id}) do
+  # it changed (`Apiary.Adapters.Collections.broadcast_connection/1`), once, naming the
+  # connection `connections` reads for it. The start is stored already, so a read the
+  # database fails is logged, by the error's kind alone, and tells none.
+  defp broadcast_shown(%Node{} = adapter, connections) do
+    adapter |> connections.() |> Enum.each(&(:ok = Collections.broadcast_connection(&1)))
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error] ->
+      Logger.error(
+        "could not tell the organisations connected to adapter #{adapter.public_id} " <>
+          "that its start changed what their pages show: #{failure_kind(error)}"
+      )
+
+      :ok
+  end
+
+  defp failure_kind(%Postgrex.Error{postgres: %{code: code}}), do: inspect(code)
+  defp failure_kind(error), do: inspect(error.__struct__)
+
+  # Each organisation's connection to `adapter` that has not ended, else the one that
+  # ended last.
+  defp connections_told(%Node{id: adapter_id}) do
     from(c in Connection,
       where: c.adapter_id == ^adapter_id,
       distinct: c.organisation_id,
@@ -1012,7 +1036,6 @@ defmodule Apiary.Adapters do
       select: %{id: c.id, organisation_id: c.organisation_id, adapter_id: c.adapter_id}
     )
     |> Repo.all()
-    |> Enum.each(&(:ok = Collections.broadcast_connection(&1)))
   end
 
   defp record_declaration(scope, current, declared) do

@@ -24,7 +24,8 @@ defmodule Apiary.ExternalText do
   `present/1` is a line a page shows only when there is something to see: nil where the
   line, once shown, is empty or only whitespace (every Unicode space separator, such as
   the no-break space and the spaces from U+2000 to U+200A, as `String.trim/1` trims
-  them), so a page treats it as no text at all.
+  them), so a page treats it as no text at all. `present_lines/1` is the same for a text
+  of several lines, whose tabs and line breaks are whitespace too.
   """
 
   # Wider than the set an explore result's text refuses (Apiary.WorkItems.WorkItem,
@@ -45,12 +46,20 @@ defmodule Apiary.ExternalText do
   is the line as `line/1` shows it, not trimmed.
   """
   @spec present(String.t() | nil) :: String.t() | nil
-  def present(text) do
-    case line(text) do
-      nil -> nil
-      line -> if String.trim(line) == "", do: nil, else: line
-    end
-  end
+  def present(text), do: text |> line() |> unless_blank()
+
+  @doc """
+  `text`, a text of several lines an external system sent, as a page shows it
+  (`lines/1`), or nil where that is empty or only whitespace once trimmed, as
+  `present/1` has it for a line; nil stays nil. What it returns is not trimmed.
+  """
+  @spec present_lines(String.t() | nil) :: String.t() | nil
+  def present_lines(text), do: text |> lines() |> unless_blank()
+
+  # nil for a text that is empty or only whitespace once trimmed, the one rule of
+  # `present/1` and `present_lines/1`; any other text as it is.
+  defp unless_blank(nil), do: nil
+  defp unless_blank(text), do: if(String.trim(text) == "", do: nil, else: text)
 
   @doc "`text`, a text of several lines an external system sent, as a page shows it; nil stays nil."
   @spec lines(String.t() | nil) :: String.t() | nil

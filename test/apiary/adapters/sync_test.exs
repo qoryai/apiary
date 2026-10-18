@@ -7,6 +7,7 @@ defmodule Apiary.Adapters.SyncTest do
   use Apiary.DataCase, async: true
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
 
   import Apiary.DescriptionFixtures,
@@ -357,6 +358,53 @@ defmodule Apiary.Adapters.SyncTest do
                })
 
       refute_received {:connection_changed, _payload}
+    end
+
+    test "a start whose connections the database fails to read answers as stored, and logs it",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      {_connection, _nonce} = connection_fixture(scope, adapter, :listed)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert Collections.subscribe(scope) == :ok
+
+      line = "Ask an owner to change the boards."
+
+      description =
+        contract_description()
+        |> put_in(["roles", "source", "access"], line)
+        |> read_description()
+
+      for failure <- [
+            %DBConnection.ConnectionError{message: "connection closed"},
+            %Postgrex.Error{postgres: %{code: :query_canceled, message: "a detail of the row"}}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+        log =
+          capture_log(fn ->
+            assert {:ok, %Node{source_access: ^line}} =
+                     Adapters.declare(key_scope, %{declaration() | description: description},
+                       connections: fn _adapter -> raise failure end
+                     )
+          end)
+
+        assert reload(adapter).source_access == line
+        assert log =~ "could not tell the organisations connected to adapter #{adapter.public_id}"
+        # The error's kind alone: never its message.
+        refute log =~ "connection closed"
+        refute log =~ "a detail of the row"
+        refute_received {:connection_changed, _payload}
+      end
+
+      # Anything else is no failure of the database, and is not caught.
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+      assert_raise RuntimeError, fn ->
+        Adapters.declare(key_scope, %{declaration() | description: description},
+          connections: fn _adapter -> raise "not a database failure" end
+        )
+      end
     end
 
     test "keeps the interval an instance admin chose, even below a later minimum",

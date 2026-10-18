@@ -85,6 +85,17 @@ defmodule Apiary.ExternalTextTest do
     end
   end
 
+  describe "present_lines/1" do
+    test "is nil for nil, an empty text, and one of whitespace alone, line breaks among it" do
+      for text <- [nil, "", " ", "\u00A0\n\t\u3000", "\r\n\u200B\u2028"],
+          do: assert(ExternalText.present_lines(text) == nil, inspect(text))
+    end
+
+    test "is the text as lines/1 shows it, untrimmed, while anything else is left" do
+      assert ExternalText.present_lines(" a\u200B\n b ") == " a\n b "
+    end
+  end
+
   describe "lines/1" do
     test "keeps the tab and the line breaks, and treats the rest as line/1 does" do
       text = "Steps:\r\n\t1. Log in#{<<0x202E::utf8>>}\n2. Esc\e[2J\u0085done"
