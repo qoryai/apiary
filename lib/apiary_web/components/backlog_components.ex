@@ -23,9 +23,9 @@ defmodule ApiaryWeb.BacklogComponents do
   ## A row
 
   @doc """
-  A ticket's row in the Backlog's list: the integration's tile, the ticket's key, its
-  title (a patch to the ticket, `patch`), its repository, who filed it, its comment count,
-  when it last changed, and its action.
+  A ticket's row in the Backlog's list: the integration's tile, where the row is given the
+  integration's name, the ticket's key, its title (a patch to the ticket, `patch`), its
+  repository, who filed it, its comment count, when it last changed, and its action.
 
   `ticket` is a map with these keys:
 
@@ -60,7 +60,11 @@ defmodule ApiaryWeb.BacklogComponents do
   """
   attr :id, :string, required: true, doc: "the row's DOM id"
   attr :ticket, :map, required: true, doc: "the ticket, as above"
-  attr :integration, :string, required: true, doc: "the integration's name, `\"GitHub\"`"
+
+  attr :integration, :string,
+    default: nil,
+    doc: "the integration's name, `\"GitHub\"`; nil draws no tile"
+
   attr :patch, :string, required: true, doc: "the list with this ticket open"
   attr :now, :any, default: nil, doc: "the time the row is drawn at; now by default"
   attr :selected, :boolean, default: false, doc: "whether the ticket is the one open"
@@ -87,7 +91,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
     ~H"""
     <li id={@id} class="q-bl-row">
-      <.integration_tile name={@integration} class="q-bl-mk" />
+      <.integration_tile :if={@integration} name={@integration} class="q-bl-mk" />
       <span class="q-bl-no" title={@ticket.key}>{@ticket.key}</span>
       <span class="q-bl-ttl">
         <.link patch={@patch} class="q-bl-t" aria-current={@selected && "true"}>{@ticket.title}</.link>

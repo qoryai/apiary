@@ -45,7 +45,6 @@ defmodule ApiaryWeb.FactoryShellTest do
   # The modules of the feature's pages of an organisation or a workspace not built yet,
   # which answer anyone as a path that does not exist.
   @unbuilt_pages [
-    ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show

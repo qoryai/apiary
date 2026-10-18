@@ -238,6 +238,14 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       refute words =~ ~r/automation|person|\bbot\b/i
     end
 
+    test "without the integration's name: no tile, and the key first" do
+      html = row(ticket(), integration: nil)
+
+      assert count(html, ".q-bl-tile") == 0
+      assert [key | _] = html |> query("li > span") |> Enum.to_list()
+      assert LazyHTML.attribute(key, "class") == ["q-bl-no"]
+    end
+
     test "no comments: the column is empty" do
       html = row(ticket(%{comment_count: 0}))
       assert text(html, ".q-bl-cm") == ""
