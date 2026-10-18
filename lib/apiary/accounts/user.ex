@@ -27,6 +27,13 @@ defmodule Apiary.Accounts.User do
   end
 
   @doc """
+  The short form of a name a page gives a person by: the local part of an email address,
+  dana of dana@example.com; a name with no `@` as it is.
+  """
+  @spec short_name(String.t()) :: String.t()
+  def short_name(name) when is_binary(name), do: name |> String.split("@") |> hd()
+
+  @doc """
   A user changeset for registering or changing the email.
 
   It requires the email to change otherwise an error is added.

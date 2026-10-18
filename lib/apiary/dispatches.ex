@@ -6,7 +6,7 @@ defmodule Apiary.Dispatches do
   # any node pool of the workspace claims from with its pool's access key
   # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`).
   #
-  # ## Queueing: `queue/2`, `cancel_for_undo/1` and `cancel_for_close/2`
+  # ## Queueing: `queue/2`, `queue_next/2`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
@@ -15,6 +15,18 @@ defmodule Apiary.Dispatches do
   # the run, or the run for the move. The database names a run's work item by the
   # organisation alone; this is what holds a queued run to its work item's workspace. The
   # run waits for no pool in particular: any pool of that workspace may claim it.
+  #
+  # `queue_next(work_item, take_in)` writes, inside the caller's transaction, the next run
+  # of a take in that has one: waiting, `attempt` one past the highest of the take in's
+  # runs, of the same `of`, for the step `step/0`, in the work item's workspace, its row
+  # locked `FOR UPDATE` first as `queue/2` locks it, and only then the take in's runs read.
+  # Every new run counts toward `of`; a run back in the queue after a lapsed lease or a
+  # release with retry before its handover is the same run, not a new one. While a run of
+  # the take in has not ended, waiting, claimed or handed over, it is `{:error, :running}`;
+  # once the highest attempt is its `of`, `{:error, :used_up}`; a take in with no run is
+  # `{:error, :no_run}`, as its first run is `queue/2`'s to write. Two at once for one take
+  # in take turns on the work item: the second reads the runs only once the first
+  # committed, so the two never write the same attempt.
   #
   # `queue_prebuild(collection, pool, environment_ref)` writes, inside the caller's
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
@@ -34,13 +46,14 @@ defmodule Apiary.Dispatches do
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
   # current take in: `{:error, :claimed}` while a dispatch holds one, neither stale nor
-  # ended before its handover, and once one was handed over. Else it ends the take in's
-  # waiting runs, end cause `undone`, a run back in the queue after a lapsed lease or a
-  # release with retry among them, and answers `:ok`; a stale dispatch of a run it ends
-  # ends with it, end cause `run_ended`. A lease that lapsed and was not yet swept is
-  # lapsed first (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The
-  # runs of the take in are locked `FOR UPDATE` before their dispatches are looked at, so
-  # a claim of one either commits before and is seen, or finds the run ended.
+  # ended before its handover, and once one was handed over, after its run ended too (a
+  # dispatch keeps `handed_over_at`). Else it ends the take in's waiting runs, end cause
+  # `undone`, a run back in the queue after a lapsed lease or a release with retry among
+  # them, and answers `:ok`; a stale dispatch of a run it ends ends with it, end cause
+  # `run_ended`. A lease that lapsed and was not yet swept is lapsed first
+  # (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The runs of the
+  # take in are locked `FOR UPDATE` before their dispatches are looked at, so a claim of
+  # one either commits before and is seen, or finds the run ended.
   #
   # `cancel_for_close(work_item_ids, now)`, inside the caller's transaction, which holds
   # the work items `FOR UPDATE`, is what a close of the work items asks
@@ -95,6 +108,18 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
+  # ## The starter on a dispatch: `dispatched/3` and `handover/3`
+  #
+  # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
+  # `access_key` started the job for a dispatch its pool claimed, and
+  # `handover(access_key, dispatch_id, meta)` hands the dispatch's run over to that job:
+  # the run registered through the gateway the pool's choice resolves to, its run key made
+  # and the dispatch handed over in one transaction, or the refusal the provisioner
+  # contract gives, in its order (`Apiary.Dispatches.Handover`). A handover that cannot form
+  # what the run is made from ends the run and its dispatch, `collection_ended`,
+  # `variables_invalid`, `ticket_gone` or `inputs_invalid`, answered as a dispatch that
+  # ended.
+  #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
   # A claim held while its pool can claim nothing listens on its workspace's topic: a run
@@ -131,7 +156,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -201,14 +226,57 @@ defmodule Apiary.Dispatches do
   @spec queue(WorkItem.t(), pos_integer) :: {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
   def queue(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!("queue/2")
+    id |> lock_work_item!() |> insert_run(take_in, 1, @of)
+  end
 
-    %{organisation_id: organisation_id, workspace_id: workspace_id} =
-      Repo.one!(
-        from w in WorkItem,
-          where: w.id == ^id,
-          lock: "FOR UPDATE",
-          select: %{organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+  # queue_next/2 writes the next run of take in `take_in` of `work_item`, once every run
+  # of the take in ended and while one is left of its `of`, waiting in the work item's
+  # workspace, inside the caller's transaction (the moduledoc).
+  @doc false
+  @spec queue_next(WorkItem.t(), pos_integer) ::
+          {:ok, DispatchRun.t()}
+          | {:error, :no_run | :running | :used_up | Ecto.Changeset.t()}
+  def queue_next(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
+    in_transaction!("queue_next/2")
+    work_item = lock_work_item!(id)
+
+    runs =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          select: %{state: r.state, attempt: r.attempt, of: r.of}
       )
+
+    case runs do
+      [] ->
+        {:error, :no_run}
+
+      runs ->
+        %{attempt: attempt, of: of} = Enum.max_by(runs, & &1.attempt)
+
+        cond do
+          Enum.any?(runs, &(&1.state != :ended)) -> {:error, :running}
+          attempt >= of -> {:error, :used_up}
+          true -> insert_run(work_item, take_in, attempt + 1, of)
+        end
+    end
+  end
+
+  # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
+  # organisation and the workspace it is in now.
+  defp lock_work_item!(id) do
+    Repo.one!(
+      from w in WorkItem,
+        where: w.id == ^id,
+        lock: "FOR UPDATE",
+        select: %{id: w.id, organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+    )
+  end
+
+  # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
+  # step `step/0`, in the work item's organisation and workspace; the workspace is told.
+  defp insert_run(work_item, take_in, attempt, of) do
+    %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
     result =
       %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
@@ -216,8 +284,8 @@ defmodule Apiary.Dispatches do
         work_item_id: id,
         step: @step,
         take_in: take_in,
-        attempt: 1,
-        of: @of,
+        attempt: attempt,
+        of: of,
         queued_at: now()
       })
       |> Repo.insert()
@@ -319,11 +387,19 @@ defmodule Apiary.Dispatches do
           select: r.id
       )
 
-    # A lease that lapsed unswept frees its run first; then the runs as they stand.
+    # A lease that lapsed unswept frees its run first; then the runs as they stand, and
+    # whether any was ever handed over: a dispatch of it keeps `handed_over_at` after the
+    # run ended, lost, run_ended or released after the handover.
     freed = if run_ids == [], do: [], else: Slots.free({:runs, run_ids}, now)
     runs = Repo.all(from r in DispatchRun, where: r.id in ^run_ids)
 
-    if Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) do
+    handed_over? =
+      Repo.exists?(
+        from d in Dispatch,
+          where: d.dispatch_run_id in ^run_ids and not is_nil(d.handed_over_at)
+      )
+
+    if handed_over? or Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) do
       {:error, :claimed}
     else
       waiting = for %DispatchRun{state: :waiting, id: run_id} <- runs, do: run_id
@@ -439,9 +515,12 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  # The key as a request's verification reads it now: of the same pool, workspace and
-  # organisation as when the request verified, or none.
-  defp current_key(key_id) do
+  # current_key/1 is the key `key_id` as a request's verification reads it now: of the
+  # same pool, workspace and organisation as when the request verified, or
+  # `{:error, :unauthorized}`.
+  @doc false
+  @spec current_key(String.t()) :: {:ok, AccessKey.t()} | {:error, :unauthorized}
+  def current_key(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok,
        %AccessKey{
@@ -666,6 +745,24 @@ defmodule Apiary.Dispatches do
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
       where: fragment("? = 'waiting'", r.state)
   end
+
+  ## The starter on a dispatch
+
+  # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
+  # (`Apiary.Dispatches.Handover.dispatched/3`).
+  @doc false
+  @spec dispatched(AccessKey.t(), term, %{revision: pos_integer, external: map | nil}) ::
+          :ok | {:error, Handover.refusal()}
+  def dispatched(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Handover.dispatched(access_key, dispatch_id, meta)
+
+  # handover/3 hands the run of the dispatch `dispatch_id` over to the job its starter
+  # started, registering it (`Apiary.Dispatches.Handover.handover/3`).
+  @doc false
+  @spec handover(AccessKey.t(), term, %{revision: pos_integer, body: binary}) ::
+          {:ok, Handover.handed_over()} | {:error, Handover.refusal()}
+  def handover(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Handover.handover(access_key, dispatch_id, meta)
 
   ## The end of a run handed over
 

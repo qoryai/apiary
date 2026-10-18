@@ -69,6 +69,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.close"), do: gettext("Work item closed")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
+  def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -91,9 +92,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
   # work items (a take in, its undo, a decline, a close and the comments), the assigning
-  # of collections and the turning of a target's Backlog on or off have labels yet, so the
-  # filter offers those alone, where the reader is shown the feature (the page asks it);
-  # the others' entries show as any change.
+  # of collections, the turning of a target's Backlog on or off and the handover of a
+  # claimed run have labels yet, so the filter offers those alone, where the reader is
+  # shown the feature (the page asks it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -106,7 +107,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment",
           :"work_item.comment_delete",
           :"collection.assign",
-          :"collection.set_backlog"
+          :"collection.set_backlog",
+          :"dispatch.handover"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -290,6 +292,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
+  defp said(:"dispatch.handover", _details, _actor),
+    do: gettext("Handed a claimed run over to the machine that runs it")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 

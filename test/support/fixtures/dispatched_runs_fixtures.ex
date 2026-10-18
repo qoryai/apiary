@@ -74,6 +74,47 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
+  What a handover needs of the scope's workspace: a gateway of the workspace, at
+  `https://gateway.example`, its default, with an active key, and a node pool made after
+  it, whose choice is the default and so leads to it, with a key enrolled on it. Returns
+  `%{gateway: gateway, gateway_key: {key, seed}, pool: pool, key: key, seed: seed}`, each
+  seed the raw secret that signs as its key.
+  """
+  def handover_place_fixture(%Scope{} = scope) do
+    gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+
+    %{access_key: gateway_key, secret: gateway_seed} =
+      Apiary.ContractFixtures.contract_key_fixture(scope, node: gateway)
+
+    pool = Apiary.NodesFixtures.pool_fixture(scope)
+    :default = pool.gateway_choice
+    %{access_key: key, pair: pair} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+    %{
+      gateway: gateway,
+      gateway_key: {gateway_key, gateway_seed},
+      pool: pool,
+      key: key,
+      seed: pair.secret
+    }
+  end
+
+  @doc """
+  Claims the oldest waiting run the pool of `key` may take at `revision`, 1 unless
+  given, and says the starter started its job (`Apiary.Dispatches.dispatched/3`), with
+  no external job: `%{dispatch: dispatch, run: run_of_queue}`, as stored then.
+  """
+  def dispatched!(%AccessKey{} = key, revision \\ 1) do
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now(), revision)
+
+    :ok =
+      Dispatches.dispatched(key, dispatch.public_id, %{revision: revision, external: nil})
+
+    dispatch = Repo.get!(Dispatch, dispatch.id)
+    %{dispatch: dispatch, run: Repo.get!(DispatchRun, dispatch.dispatch_run_id)}
+  end
+
+  @doc """
   The attributes of a run registered through a gateway as of `now`, running: registered
   and its run key issued a minute before, attached 30 seconds before, last heard 5 seconds
   before.

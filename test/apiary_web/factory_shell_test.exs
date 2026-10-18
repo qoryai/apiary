@@ -5,7 +5,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's
-  # words for the work item comments.
+  # words for the work item comments and the handover.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -364,7 +364,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers a person's actions on the work items, the assigning of repositories and the Backlog switch by their words, and no other action of the feature",
+    test "the Activity filter offers a person's actions on the work items, the assigning of repositories, the Backlog switch and the handover by their words, and no other action of the feature",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -378,6 +378,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
+      assert {"dispatch.handover", "Runs handed over"} in options
+
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
@@ -390,7 +392,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment",
             :"work_item.comment_delete",
             :"collection.assign",
-            :"collection.set_backlog"
+            :"collection.set_backlog",
+            :"dispatch.handover"
           ],
           do: refute(action in offered, "#{action}")
     end
@@ -592,6 +595,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert "workspace.rename" in values
       refute "work_item.comment" in values
       refute "work_item.comment_delete" in values
+      refute "dispatch.handover" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
@@ -682,6 +686,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       values = for {value, _words} <- action_options(conn, scope), do: value
       refute "work_item.comment" in values
+      refute "dispatch.handover" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",

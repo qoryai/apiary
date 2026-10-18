@@ -6,6 +6,10 @@ defmodule Apiary.Contract.RecordedRunTest do
   first, its record's sequence 1, which is never posted; then, whatever the order, the
   batching and the repetition of the deliveries, the same events are stored and the
   same run is projected from them.
+
+  A record without `dev.qory.run.registered` is of a run that had no server
+  (`Apiary.ContractFixtures.served_record?/1`): it is not replayed, and each of its
+  events is held to `event.schema.json` instead.
   """
   use ApiaryWeb.ConnCase, async: true
   use ExUnitProperties
@@ -14,7 +18,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   import Apiary.OrganisationsFixtures
   import Ecto.Query
 
-  alias Apiary.Repo
+  alias Apiary.{ContractSchema, Repo}
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
   # What the gateway's request says beside its body: the revision of the contract.
@@ -22,13 +26,56 @@ defmodule Apiary.Contract.RecordedRunTest do
 
   @moduletag :contract
 
-  @runs (case Apiary.ContractFixtures.contract_dir() do
-           nil ->
-             []
+  @records Apiary.ContractFixtures.recorded_runs()
+  @runs Enum.filter(@records, &Apiary.ContractFixtures.served_record?/1)
+  @serverless @records -- @runs
 
-           dir ->
-             dir |> Path.join("fixtures/run/*/events.jsonl") |> Path.wildcard() |> Enum.sort()
-         end)
+  test "every record of a run a server accepted is replayed, and no fewer than two" do
+    # Counted from each record's sequence 1, not by the filter that chose @runs.
+    accepted =
+      Enum.count(@records, fn file ->
+        file
+        |> lines()
+        |> Enum.map(&Jason.decode!/1)
+        |> Enum.find(&(&1["sequence"] == "0000000001"))
+        |> Map.fetch!("type")
+        |> Kernel.==("dev.qory.run.registered")
+      end)
+
+    assert length(@runs) == accepted
+    assert length(@runs) >= 2
+  end
+
+  for file <- @serverless do
+    @file_path file
+
+    # Serverless: no line of it is dev.qory.run.registered, its sequence 1 is the run's
+    # start, and its policy is the one the command passed (source config), with no
+    # server's run endpoint or digest beside it.
+    test "the record of #{file |> Path.dirname() |> Path.basename()}, of a run with no server, holds to event.schema.json" do
+      schema = ContractSchema.event!(contract_dir())
+      events = @file_path |> lines() |> Enum.map(&Jason.decode!/1)
+
+      assert Enum.map(events, & &1["sequence"]) ==
+               Enum.map(1..length(events), &String.pad_leading("#{&1}", 10, "0"))
+
+      assert hd(events)["type"] in ["dev.qory.run.started", "dev.qory.run.refused"]
+      refute Enum.any?(events, &(&1["type"] == "dev.qory.run.registered"))
+
+      for event <- events, do: assert(:ok = ContractSchema.validate(schema, event))
+
+      # The policy names the image by a reference pinned by digest, which the schema
+      # holds to its rule: the same reference with a tag in place of the digest fails.
+      applied = Enum.find(events, &(&1["type"] == "dev.qory.run.policy_applied"))
+      assert applied["data"]["source"] == "config"
+      refute Map.has_key?(applied["data"], "url")
+      refute Map.has_key?(applied["data"], "run_configuration")
+      assert applied["data"]["image"] =~ ~r/@sha256:[0-9a-f]{64}\z/
+
+      tagged = update_in(applied, ["data", "image"], &String.replace(&1, ~r/@.*\z/, ":latest"))
+      assert {:error, _} = ContractSchema.validate(schema, tagged)
+    end
+  end
 
   setup do
     %{scope: scope} = sign_up_fixture()
