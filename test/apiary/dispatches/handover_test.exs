@@ -253,7 +253,8 @@ defmodule Apiary.Dispatches.HandoverTest do
   end
 
   describe "a prebuild's handover" do
-    test "is served at revision 2: its collection's target, its input exactly version 1", ctx do
+    test "is served at revision 2: its collection's target, its input exactly the ref it was queued for",
+         ctx do
       {collection, queued} = prebuild!(ctx)
       dispatch = claimed!(ctx, 2)
       :ok = dispatched(ctx.key, dispatch, 2)
@@ -261,7 +262,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert {:ok, handed} = handover(ctx.key, dispatch, 2)
       assert handed.work_item == nil
       assert handed.target == %{system: collection.target_system, path: collection.target_path}
-      assert Jason.encode!(handed.inputs) == ~s({"version":1})
+      assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
 
       run = Repo.get!(Run, handed.run.id)
       assert run.registration_about == %{"kind" => "prebuild"}
@@ -334,6 +335,20 @@ defmodule Apiary.Dispatches.HandoverTest do
         )
 
       assert {:ok, _handed} = handover(ctx.key, dispatch, 2)
+    end
+
+    test "gives the ref it was claimed for, while a newer one waits", ctx do
+      {collection, _queued} = prebuild!(ctx)
+      dispatch = claimed!(ctx, 2)
+      :ok = dispatched(ctx.key, dispatch, 2)
+
+      # The collection's ref changes after the claim: another prebuild waits for the new
+      # one, and the claimed run keeps the ref it was queued for.
+      {:ok, _waiting} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch, 2)
+      assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
     end
 
     test "superseded while its lease lapsed is gone", ctx do

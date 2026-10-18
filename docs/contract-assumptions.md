@@ -384,6 +384,8 @@ through the gateway the pool's choice resolves to: the run's `run_id` is the one
 the queue was given, and so is its instance id; its labels and its run variables come from
 the target, the work item's or the prebuild's collection's, and what it is about from the
 step and the work item, never from the request, whose body is `version` and `time` alone;
+a prebuild's input is the `environment_ref` its run of the queue was queued for, which the
+starter reports back, unchanged, in its `prebuilt`;
 its run key names the gateway and the pool, with an attach window of 600 seconds, and is
 given once, in the signed `200`, with `Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
 an unknown dispatch, another pool's, or a key the action is refused to, one answer; `404`

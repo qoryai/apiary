@@ -399,7 +399,9 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, fn -> {:ok, Inputs.prebuild()} end)
+        formed(dispatch_run, workspace, target, nil, fn ->
+          {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
+        end)
 
       :ended ->
         {:end, :collection_ended}
