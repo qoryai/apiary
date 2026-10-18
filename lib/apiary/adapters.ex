@@ -632,12 +632,16 @@ defmodule Apiary.Adapters do
   # of the instance's organisation (`instance_scope/1`), about the adapter, naming it,
   # never the pass or its nonce.
   #
-  # `{:error, :no_setup_url}` while the adapter declares no `setup_url`, which it does only
-  # while it is not set up; `{:error, :no_key}` while it holds no access key in use;
+  # `{:error, :unlisted}` for an adapter installed with Qory Apiary whose name
+  # `QORY_INSTALLED_ADAPTERS` no longer lists (`listed?/1`): it is turned off there, and
+  # there is nothing to set up; `{:error, :no_setup_url}` while the adapter declares no
+  # `setup_url`, which it does only while it is not set up; `{:error, :no_key}` while it
+  # holds no access key in use;
   # `{:error, :forbidden}`; `{:error, :not_found}`, for an adapter deleted, or where the
   # feature is off; none of them changes anything or leaves an entry.
   @spec setup(Scope.t(), Node.t()) ::
-          {:ok, String.t()} | {:error, :no_setup_url | :no_key | :invalid | Access.reason()}
+          {:ok, String.t()}
+          | {:error, :unlisted | :no_setup_url | :no_key | :invalid | Access.reason()}
   def setup(%Scope{} = scope, %Node{id: id}) do
     Repo.transact(fn ->
       with :ok <- authorize_instance(scope),
@@ -656,10 +660,14 @@ defmodule Apiary.Adapters do
     end)
   end
 
-  defp settable(%Node{setup_url: nil}), do: {:error, :no_setup_url}
-
-  defp settable(%Node{} = adapter),
-    do: if(AccessKeys.active_key?(adapter), do: :ok, else: {:error, :no_key})
+  defp settable(%Node{} = adapter) do
+    cond do
+      installed?(adapter) and not listed?(adapter) -> {:error, :unlisted}
+      is_nil(adapter.setup_url) -> {:error, :no_setup_url}
+      not AccessKeys.active_key?(adapter) -> {:error, :no_key}
+      true -> :ok
+    end
+  end
 
   @doc false
   # Deletes `adapter` (`adapter.delete`, an instance admin): it leaves every page, its name

@@ -5,8 +5,9 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
   # the command asked anyway, the revocation of its only key, its key card, and its danger
   # zone and Remove page, while it is listed and once it is not; with its name off the
   # list, its Overview and its Access key tab say it is turned off there, and promise no
-  # code, and neither page offers Set up. Not async: the names listed are the whole
-  # node's.
+  # code, a Get the command asked anyway is refused with that, neither page offers Set up,
+  # and a Set up posted anyway is refused, with no pass and no entry. Not async: the names
+  # listed are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query
@@ -94,6 +95,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       render_click(lv, "create_code", %{})
 
       assert render(lv) =~ "Qory Apiary gives this adapter its codes itself."
+      refute render(lv) =~ "it gets no new code until it is turned on again"
 
       assert Apiary.Repo.all(Apiary.AccessKeys.EnrolmentCode)
              |> Enum.all?(&(&1.node_id != adapter.id))
@@ -172,6 +174,58 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
                "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
 
       refute html =~ "gives the adapter a new code at once"
+    end
+
+    test "a Get the command asked anyway is refused, saying it gets no new code until it is turned on again",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/keys"))
+      render_click(lv, "create_code", %{})
+      html = render(lv)
+
+      assert html =~
+               "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+
+      refute html =~ "Qory Apiary gives this adapter its codes itself."
+
+      assert Apiary.Repo.all(Apiary.AccessKeys.EnrolmentCode)
+             |> Enum.all?(&(&1.node_id != adapter.id))
+    end
+
+    test "a Set up posted anyway is refused: nothing to set up, no pass, no entry",
+         %{conn: conn, adapter: adapter, admin: admin} do
+      installed_key_fixture(adapter)
+
+      {1, _} =
+        Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+          set: [setup_url: "https://tracker.example.com/setup"]
+        )
+
+      adapter = Apiary.Repo.reload!(adapter)
+      assert Apiary.Adapters.setup(admin, adapter) == {:error, :unlisted}
+
+      for {params, back} <- [
+            {%{}, page_path(adapter)},
+            {%{"back" => "list"}, "/instance/adapters"}
+          ] do
+        sent = post(conn, page_path(adapter, "/setup"), params)
+        assert redirected_to(sent) == back
+        refute sent.resp_body =~ "state="
+        refute sent.resp_body =~ "http-equiv"
+
+        assert Phoenix.Flash.get(sent.assigns.flash, :error) ==
+                 "This adapter has nothing to set up now."
+      end
+
+      assert Apiary.Repo.aggregate(
+               from(e in Apiary.Audit.Entry, where: e.action == "adapter.setup"),
+               :count
+             ) == 0
+
+      # Listed again, it is set up as any adapter is.
+      list([adapter.installed_as])
+      sent = post(conn, page_path(adapter, "/setup"))
+      assert sent.status == 200
+      assert sent.resp_body =~ "https://tracker.example.com/setup?state="
     end
 
     test "with a setup_url and its key, neither the Overview nor the list offers Set up",

@@ -14651,6 +14651,11 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "This adapter was installed with Qory Apiary and is turned off there. Qory Apiary gives it no new code until it is turned on again."
 msgstr ""
 

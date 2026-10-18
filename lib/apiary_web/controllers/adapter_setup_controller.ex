@@ -14,9 +14,11 @@ defmodule ApiaryWeb.AdapterSetupController do
   #   2. `Apiary.Adapters.setup/2` makes a new setup pass, and the instance admin is sent
   #      to the address it answers, the adapter's `setup_url` with the pass, by a page
   #      that refreshes to it (`ApiaryWeb.SendOn`), told no referrer and kept by no cache;
-  #   3. while the adapter declares no `setup_url`, or holds no key in use, nothing
-  #      changes, and the instance admin is sent back, to the Overview, or to the list
-  #      when the form says it was there (`back`, `list`), with why.
+  #   3. while the adapter declares no `setup_url`, holds no key in use, or is installed
+  #      with Qory Apiary and no longer listed (turned off there), nothing changes, and
+  #      the instance admin is sent back, to the Overview, or to the list when the form
+  #      says it was there (`back`, `list`), with why: nothing to set up, the last case
+  #      too.
   #
   # The pass is in the answer's body alone: never in a path, a parameter, a header or a
   # log line.
@@ -42,7 +44,7 @@ defmodule ApiaryWeb.AdapterSetupController do
       {:error, reason} when reason in [:forbidden, :not_found] ->
         raise ApiaryWeb.NotFound
 
-      {:error, :no_setup_url} ->
+      {:error, reason} when reason in [:no_setup_url, :unlisted] ->
         back(conn, params, gettext("This adapter has nothing to set up now."))
 
       {:error, :no_key} ->

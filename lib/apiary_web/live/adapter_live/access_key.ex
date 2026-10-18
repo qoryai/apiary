@@ -37,10 +37,12 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # the instance and makes its key by itself: the tab says so in place of the way to
   # connect it, offers neither Get the command nor Add a key, and leaves out the codes the
   # instance made, which name no maker. Its one key is replaced by revoking it, which
-  # brings a new code at once. A Get the command asked anyway is refused, and said so.
-  # Once its name is off the list (`Apiary.Adapters.listed?/1`), the instance gives it no
-  # new code: the tab says it is turned off there, and that turning it on again gives it
-  # a new key, in place of what a code would bring.
+  # brings a new code at once. A Get the command asked anyway is refused, and said so:
+  # while it is listed, that Qory Apiary gives it its codes; once it is not, that it gets
+  # no new code until it is turned on again. Once its name is off the list
+  # (`Apiary.Adapters.listed?/1`), the instance gives it no new code: the tab says it is
+  # turned off there, and that turning it on again gives it a new key, in place of what a
+  # code would bring.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -237,7 +239,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
         {:error, :installed} ->
           {:noreply,
-           to_tab(socket, :error, gettext("Qory Apiary gives this adapter its codes itself."))}
+           to_tab(socket, :error, installed_refusal(Adapters.listed?(socket.assigns.adapter)))}
 
         {:error, :forbidden} ->
           {:noreply, not_theirs(socket)}
@@ -335,6 +337,17 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   end
 
   # The tab, read again, with what was done or why nothing was.
+  # Why a Get the command for an adapter installed with Qory Apiary is refused: while it
+  # is listed, the instance gives it its codes; once it is not, it gets none until it is
+  # turned on again.
+  defp installed_refusal(true), do: gettext("Qory Apiary gives this adapter its codes itself.")
+
+  defp installed_refusal(false),
+    do:
+      gettext(
+        "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+      )
+
   defp to_tab(socket, kind, words) do
     socket
     |> put_flash(kind, words)
