@@ -330,6 +330,10 @@ defmodule ApiaryWeb.BacklogComponents do
       and the comments, and beside them the facts, Filed by among them, the link out and
       the Take in block.
 
+  The first fact is the collection the ticket is listed from, labelled with its source's
+  word for one of its collections (`collection_noun`, `SourceComponents.collection/1`),
+  its first letter in upper case: "Project", or the domain's word where it names none.
+
   `ticket` is a map with these keys:
 
     * `:key` - the ticket's key at the source, such as `"#1231"`, or `nil`; display text
@@ -373,6 +377,11 @@ defmodule ApiaryWeb.BacklogComponents do
     default: nil,
     doc:
       "what its source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
+  attr :collection_noun, :map,
+    default: nil,
+    doc:
+      "what its source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for the domain's word"
 
   slot :take_in, doc: "the Take in or Take in again block"
   slot :rendered_body, doc: "the ticket's text, through `SourceComponents.body/1`"
@@ -452,7 +461,12 @@ defmodule ApiaryWeb.BacklogComponents do
       </div>
       <h2 id={"#{@id}-title"} class="q-bl-h">{@ticket.title}</h2>
       <p class="q-bl-meta">{@meta}</p>
-      <.facts id={@id} ticket={@ticket} filed_by={false} />
+      <.facts
+        id={@id}
+        ticket={@ticket}
+        collection_noun={@collection_noun}
+        filed_by={false}
+      />
       {render_slot(@take_in)}
       <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
       <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
@@ -486,7 +500,12 @@ defmodule ApiaryWeb.BacklogComponents do
           <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
         </div>
         <div class="q-bl-tk-side">
-          <.facts id={@id} ticket={@ticket} filed_by={true} />
+          <.facts
+            id={@id}
+            ticket={@ticket}
+            collection_noun={@collection_noun}
+            filed_by={true}
+          />
           <.external_link :if={@out} id={"#{@id}-out"} href={@ticket.url} class="q-bl-out">
             {@open_on}
           </.external_link>
@@ -499,12 +518,13 @@ defmodule ApiaryWeb.BacklogComponents do
 
   attr :id, :string, required: true
   attr :ticket, :map, required: true
+  attr :collection_noun, :map, required: true
   attr :filed_by, :boolean, required: true
 
   defp facts(assigns) do
     ~H"""
     <dl id={"#{@id}-facts"} class="q-bl-facts">
-      <dt>{pgettext("ticket", "Collection")}</dt>
+      <dt>{SourceComponents.collection_label(@collection_noun)}</dt>
       <dd class="q-bl-repo q-mono">{@ticket.repository}</dd>
       <%= if @ticket.labels != [] do %>
         <dt>{pgettext("ticket", "Labels")}</dt>

@@ -103,6 +103,7 @@ defmodule Apiary.Audit do
   alias Apiary.{Access, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Adapters.Collection
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
@@ -129,7 +130,8 @@ defmodule Apiary.Audit do
     Connection => "connection",
     ServiceDefinition => "service_definition",
     Release => "integration_release",
-    WorkItem => "work_item"
+    WorkItem => "work_item",
+    Collection => "collection"
   }
 
   @default_retention_days 90
@@ -529,7 +531,10 @@ defmodule Apiary.Audit do
           targets: %{Ecto.UUID.t() => String.t()},
           runs: %{Ecto.UUID.t() => String.t()},
           organisations: %{Ecto.UUID.t() => String.t()},
-          item_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}}
+          collections: %{Ecto.UUID.t() => String.t()},
+          item_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
+          collection_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
+          connection_collection_nouns: %{String.t() => %{one: String.t(), other: String.t()}}
         }
 
   @doc """
@@ -537,13 +542,20 @@ defmodule Apiary.Audit do
   in one query per kind: the email address of each person (the person named as actor, or
   in `details` as `user_id`), the label and key id of each access key, the name of each
   node, a deleted one's too, the name of each workspace (an entry's, or its subject),
-  `system/path` of each target, and the run id of each run, and the name of each other organisation an entry names by id, under a key
+  `system/path` of each target, the run id of each run, the title of each source's
+  collection, and the name of each other organisation an entry names by id, under a key
   that ends in `_id` in its `details`, `before` or `after`: the other side of a change
   that concerns two organisations, which an edition records. For the target of each
   entry that turned a Backlog on or off (`collection.set_backlog`), what its sources call
-  its items, where they name it (Apiary.Adapters.target_item_nouns/2), and for the work
+  its items, where they name it (Apiary.Adapters.target_item_nouns/2); for the work
   item of each take in (`work_item.take_in`), what its source calls its items, where it
-  names them (Apiary.WorkItems.item_nouns/2). Only what the scope's
+  names them (Apiary.WorkItems.item_nouns/2); and for the collection of each entry about
+  a collection, what the source behind the connection its `details` name by public id
+  (`connection_id`) calls its items and its collections, where it names them
+  (`collection_nouns`), even once the collection is gone; and for each entry that assigns
+  collections to a workspace or unassigns them (`collection.assign`), what the source
+  behind the connection its `details` name calls its collections, by that public id
+  (`connection_collection_nouns`), where it names them. Only what the scope's
   organisation holds is looked up, people and those organisations aside; in the instance's
   organisation, the nodes and access keys of the instance, which no organisation holds,
   too. A person whose account is deleted, a key or a row
@@ -592,6 +604,29 @@ defmodule Apiary.Audit do
           )
         ]
       )
+
+    collections = ids.(&[if(&1.subject_kind == "collection", do: &1.subject_id)])
+
+    # Each entry about a collection, by its collection, with the connection its details
+    # name; an entry that names none, or a public id of no connection, has no nouns.
+    sources =
+      for %Entry{subject_kind: "collection", subject_id: id} = entry <- entries,
+          uuid?(id),
+          connection_id = details(entry, "connection_id"),
+          is_binary(connection_id),
+          into: %{},
+          do: {id, connection_id}
+
+    # The connection each entry that assigns or unassigns collections names.
+    assigning =
+      for %Entry{action: "collection.assign"} = entry <- entries,
+          connection_id = details(entry, "connection_id"),
+          is_binary(connection_id),
+          uniq: true,
+          do: connection_id
+
+    nouns =
+      Apiary.Adapters.connection_nouns(organisation_id, Map.values(sources) ++ assigning)
 
     # The instance's nodes and keys, which have no organisation, have their entries in the
     # trail of the instance's organisation, and are named there alone.
@@ -652,12 +687,30 @@ defmodule Apiary.Audit do
           )
         ),
       organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name})),
+      collections:
+        lookup(
+          collections,
+          from(c in Collection,
+            where: c.organisation_id == ^organisation_id,
+            select: {c.id, c.title}
+          )
+        ),
       item_nouns:
-        Map.merge(
-          Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets),
-          Apiary.WorkItems.item_nouns(organisation_id, taken_in)
-        )
+        Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets)
+        |> Map.merge(Apiary.WorkItems.item_nouns(organisation_id, taken_in))
+        |> Map.merge(source_nouns(sources, nouns, :item)),
+      collection_nouns: source_nouns(sources, nouns, :collection),
+      connection_collection_nouns: source_nouns(Map.new(assigning, &{&1, &1}), nouns, :collection)
     }
+  end
+
+  # The nouns `which`, `:item` or `:collection`, of the connections `sources` names, by
+  # the id each is named under; one whose source names none has no key.
+  defp source_nouns(sources, nouns, which) do
+    for {id, connection_id} <- sources,
+        %{^which => %{} = noun} <- [nouns[connection_id]],
+        into: %{},
+        do: {id, noun}
   end
 
   defp lookup([], _query), do: %{}

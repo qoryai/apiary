@@ -59,7 +59,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
-  def label(:"collection.assign"), do: gettext("Collections assigned")
+  def label(:"collection.assign"), do: assign_label(nil)
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
 
@@ -85,7 +85,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"collection.set_backlog", scope),
     do: backlog_label(Adapters.organisation_item_noun(scope))
 
+  # Assigning collections names the collections of the organisation's sources: the words
+  # they share (`Apiary.Adapters.organisation_collection_noun/1`), else the domain's.
+  def label(:"collection.assign", scope),
+    do: assign_label(Adapters.organisation_collection_noun(scope))
+
   def label(action, _scope), do: label(action)
+
+  defp assign_label(collection_noun),
+    do:
+      gettext("Assigned %{collections}",
+        collections: SourceComponents.collections(collection_noun)
+      )
 
   defp backlog_label(item_noun),
     do:
@@ -136,9 +147,37 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  # A collection's Backlog turned on or off: the entry is the collection's, and names it
+  # by the title it had then (`name`), in the words of the source behind its connection
+  # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and the
+  # domain's word.
+  @impl true
+  def sentence(
+        :"collection.set_backlog",
+        %{subject_kind: "collection", details: %{"backlog" => on, "name" => name}} = entry,
+        names
+      )
+      when is_boolean(on) and is_binary(name) do
+    items = SourceComponents.items(names[:item_nouns][entry.subject_id])
+    collection = SourceComponents.collection(names[:collection_nouns][entry.subject_id])
+
+    if on,
+      do:
+        gettext("Turned on taking %{items} into the Backlog from %{collection} %{name}",
+          items: items,
+          collection: collection,
+          name: name
+        ),
+      else:
+        gettext("Turned off taking %{items} into the Backlog from %{collection} %{name}",
+          items: items,
+          collection: collection,
+          name: name
+        )
+  end
+
   # A target's Backlog turned on or off, for its collections: the entry is the target's,
   # and names its sources' items (`Apiary.Audit.names/2`'s `item_nouns`), else tickets.
-  @impl true
   def sentence(:"collection.set_backlog", %{details: %{"backlog" => on}} = entry, names)
       when is_boolean(on) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
@@ -146,6 +185,42 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     if on,
       do: gettext("Turned on taking a collection's %{items} into the Backlog", items: items),
       else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
+  end
+
+  # Collections assigned to a workspace, or unassigned from theirs (the entry of an
+  # unassign names no workspace, `"workspace_id"` nil), in the words of the source behind
+  # the connection the entry names (`Apiary.Audit.names/2`'s
+  # `connection_collection_nouns`), else the domain's.
+  def sentence(
+        :"collection.assign",
+        %{details: %{"count" => count, "workspace_id" => workspace_id} = details},
+        names
+      )
+      when is_integer(count) and (is_binary(workspace_id) or is_nil(workspace_id)) do
+    noun = names[:connection_collection_nouns][details["connection_id"]]
+
+    words = [
+      collection: SourceComponents.collection(noun),
+      collections: SourceComponents.collections(noun)
+    ]
+
+    case workspace_id do
+      id when is_binary(id) ->
+        ngettext(
+          "Assigned %{count} %{collection} to a workspace",
+          "Assigned %{count} %{collections} to a workspace",
+          count,
+          words
+        )
+
+      nil ->
+        ngettext(
+          "Unassigned %{count} %{collection} from its workspace",
+          "Unassigned %{count} %{collections} from their workspaces",
+          count,
+          words
+        )
+    end
   end
 
   # What a target's runs also read, the list as it is after the change, joined as a list
@@ -314,26 +389,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
   defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
 
-  # Collections linked to a workspace, or unlinked from theirs: the entry of an unassign
-  # names no workspace (`"workspace_id"` nil).
-  defp said(:"collection.assign", %{"count" => count, "workspace_id" => id}, _actor)
-       when is_integer(count) and is_binary(id),
-       do:
-         ngettext(
-           "Assigned %{count} collection to a workspace",
-           "Assigned %{count} collections to a workspace",
-           count
-         )
-
-  defp said(:"collection.assign", %{"count" => count, "workspace_id" => nil}, _actor)
-       when is_integer(count),
-       do:
-         ngettext(
-           "Unassigned %{count} collection from its workspace",
-           "Unassigned %{count} collections from their workspaces",
-           count
-         )
-
   defp said(:"work_item.undo", _details, _actor),
     do: gettext("Undid a take in, before a run started")
 
@@ -486,6 +541,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         case names.targets[id] do
           nil -> text(gettext("A target"))
           target -> %{text: target, mono: true, href: nil}
+        end
+
+      # A source's collection, by its title as it is now, as a target's name is shown; the
+      # source's word for it once its row is gone.
+      "collection" ->
+        case names[:collections][id] do
+          title when is_binary(title) ->
+            %{text: title, mono: true, href: nil}
+
+          nil ->
+            collection = SourceComponents.collection(names[:collection_nouns][id])
+            text(gettext("Deleted %{collection}", collection: collection))
         end
 
       "rule" ->

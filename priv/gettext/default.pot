@@ -4075,8 +4075,13 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Assigned %{count} collection to a workspace"
-msgid_plural "Assigned %{count} collections to a workspace"
+msgid "Assigned %{collections}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned %{count} %{collection} to a workspace"
+msgid_plural "Assigned %{count} %{collections} to a workspace"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4830,16 +4835,10 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "ticket"
 msgid "Collection"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Collections assigned"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -5541,6 +5540,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete your comment?"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted %{collection}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -9425,6 +9429,11 @@ msgstr ""
 msgid "No longer denied: %{host}"
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "No longer taking %{items} into the Backlog from %{collection} %{name}."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No machine has posted a run to this workspace yet."
@@ -10249,6 +10258,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Notification"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Now taking %{items} into the Backlog from %{collection} %{name}."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -11972,7 +11986,6 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
@@ -15371,7 +15384,17 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Turned off taking %{items} into the Backlog from %{collection} %{name}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Turned off taking a collection's %{items} into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned on taking %{items} into the Backlog from %{collection} %{name}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15428,8 +15451,8 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Unassigned %{count} collection from its workspace"
-msgid_plural "Unassigned %{count} collections from their workspaces"
+msgid "Unassigned %{count} %{collection} from its workspace"
+msgid_plural "Unassigned %{count} %{collections} from their workspaces"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -16989,6 +17012,7 @@ msgstr ""
 msgid "cancelled %{when}"
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -16997,6 +17021,7 @@ msgctxt "source collection, when its adapter names none"
 msgid "collection"
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/backlog_live/index.ex
