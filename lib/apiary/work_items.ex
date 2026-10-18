@@ -44,8 +44,9 @@ defmodule Apiary.WorkItems do
   #
   # `list_work_items(scope, params)` is a page of the Work items list
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
-  # `get_for_ticket/2` find one work item for a page. Each answers nothing to a person who
-  # may not read the workspace's work items (`work_item.read`).
+  # `get_for_ticket/2` find one work item for a page, and `ticket/3` is its ticket for the
+  # work item page's Ticket tab. Each answers nothing to a person who may not read the
+  # workspace's work items (`work_item.read`).
   #
   # ## Closing: `close_locked/3` and `close_for_adapter/2`
   #
@@ -96,12 +97,16 @@ defmodule Apiary.WorkItems do
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Sources.Item
+  alias Apiary.Sources.{Comment, Item}
   alias Apiary.WorkItems.{Answer, Explore, ExploreView, Moves, State, WorkItem}
   alias Apiary.WorkItems.{WorkItemEvent, WorkList}
 
   # The largest number a work item has, the column's: a bigint.
   @max_number 9_223_372_036_854_775_807
+
+  # How many of a ticket's latest comments the Ticket tab draws before Show earlier
+  # comments.
+  @latest_comments 3
 
   @typedoc """
   Who closes a work item: a person, by the id of their account, or the instance, with the
@@ -484,7 +489,8 @@ defmodule Apiary.WorkItems do
   # ticket_query/0 is the ticket of the work item named `:work_item` in the query around
   # it, for a lateral join: the key, the collection's title and the public id of its live
   # record, else of the one that ended last, and whether it is live, as `ticket_names/2`
-  # and the Work items list read it.
+  # and the Work items list read it; with the record's id and whether its connection ended
+  # at the integration's uninstall, as `ticket/3` reads it.
   @spec ticket_query() :: Ecto.Query.t()
   def ticket_query do
     from i in Item,
@@ -510,10 +516,110 @@ defmodule Apiary.WorkItems do
         key: i.key,
         title: c.title,
         public_id: i.public_id,
+        item_id: i.id,
         live:
           is_nil(i.disconnected_at) and is_nil(c.ended_at) and k.state == :connected and
-            is_nil(k.ended_at)
+            is_nil(k.ended_at),
+        uninstalled: k.state == :ended and k.ended_reason == :adapter_reported
       }
+  end
+
+  @doc false
+  # ticket/3 is the ticket of `work_item`, as the work item page's Ticket tab draws it,
+  # to a person who may read the work item in the scope's workspace; nil otherwise. The
+  # row is read again by its id, as for `explore/3`, and its ticket is the record
+  # `ticket_query/0` names. It is a map of:
+  #
+  #   * `integration` - the name of the adapter the ticket came through, with
+  #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
+  #     `collection_noun/1`), and `adapter_removed`, whether the adapter was removed;
+  #   * `uninstalled` - whether the record's connection ended because the integration was
+  #     uninstalled at the source, so the record is no longer kept current;
+  #   * `ticket` - the record: `filer` (`%{name:}`), `filed_at`, `updated_at`, `labels`,
+  #     `body`, `format`, `comment_count`, the comments it holds, not deleted at the
+  #     source, and `received_at`, when an adapter last changed it; nil for a work item
+  #     with no record;
+  #   * `comments` - its comments, oldest first, by their time at the source, each with
+  #     `public_id` (the comment's id in Qory Apiary), `author` (a name), `at`, `body` and
+  #     `format`: the latest 3 for `:latest`, every one for `:all`.
+  @spec ticket(Scope.t(), WorkItem.t(), :latest | :all) :: map | nil
+  def ticket(%Scope{} = scope, %WorkItem{} = work_item, comments \\ :latest)
+      when comments in [:latest, :all] do
+    case readable(scope, work_item) do
+      {:ok, row} -> ticket_of(row, comments)
+      :error -> nil
+    end
+  end
+
+  defp ticket_of(%WorkItem{} = row, comments) do
+    adapter = Repo.get!(Node, row.adapter_id)
+
+    record =
+      Repo.one(
+        from w in WorkItem,
+          as: :work_item,
+          left_lateral_join: t in subquery(ticket_query()),
+          on: true,
+          left_join: i in Item,
+          on: i.id == t.item_id and i.organisation_id == w.organisation_id,
+          where: w.id == ^row.id,
+          select: {i, t.uninstalled}
+      )
+
+    {item, uninstalled} = record || {nil, nil}
+
+    %{
+      integration: adapter.name,
+      item_noun: Apiary.Adapters.item_noun(adapter),
+      collection_noun: Apiary.Adapters.collection_noun(adapter),
+      adapter_removed: not is_nil(adapter.deleted_at),
+      uninstalled: uninstalled == true,
+      ticket: item && ticket_record(item),
+      comments: if(item, do: ticket_comments(item, comments), else: [])
+    }
+  end
+
+  defp ticket_record(%Item{} = item) do
+    count =
+      Repo.one(
+        from c in Comment,
+          where:
+            c.item_id == ^item.id and c.organisation_id == ^item.organisation_id and
+              is_nil(c.deleted_at),
+          select: count(c.id)
+      )
+
+    %{
+      filer: %{name: item.filed_by_name},
+      filed_at: item.source_created_at,
+      updated_at: item.source_updated_at,
+      labels: item.labels,
+      body: item.body,
+      format: item.body_format,
+      comment_count: count,
+      received_at: item.updated_at
+    }
+  end
+
+  defp ticket_comments(%Item{} = item, comments) do
+    from(c in Comment,
+      where:
+        c.item_id == ^item.id and c.organisation_id == ^item.organisation_id and
+          is_nil(c.deleted_at),
+      order_by: [desc: c.source_created_at, desc: c.inserted_at, desc: c.id],
+      select: %{
+        public_id: c.id,
+        author: c.author_name,
+        at: c.source_created_at,
+        body: c.body,
+        format: c.body_format
+      }
+    )
+    |> then(fn query ->
+      if comments == :latest, do: limit(query, @latest_comments), else: query
+    end)
+    |> Repo.all()
+    |> Enum.reverse()
   end
 
   @doc false

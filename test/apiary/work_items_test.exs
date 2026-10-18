@@ -271,4 +271,105 @@ defmodule Apiary.WorkItemsTest do
       assert WorkItems.backlog_off(ctx.scope, []) == MapSet.new()
     end
   end
+
+  describe "ticket/3" do
+    defp comment!(item, n, at, deleted_at \\ nil) do
+      Repo.insert!(%Apiary.Sources.Comment{
+        organisation_id: item.organisation_id,
+        item_id: item.id,
+        external_ref: "c#{n}",
+        url: "https://forge.example.com/acme/shop/issues/12#c#{n}",
+        author_name: "Author #{n}",
+        author_kind: :person,
+        body: "Comment #{n}",
+        body_format: "markdown",
+        source_created_at: at,
+        source_updated_at: at,
+        deleted_at: deleted_at
+      })
+    end
+
+    test "the record, its latest comments, and the integration's name", ctx do
+      item = ticket(ctx, ctx.collection, %{key: "#1204", labels: ["bug", "checkout"]})
+      w = work_item(ctx, item)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      comments =
+        for n <- 1..5, do: comment!(item, n, DateTime.add(now, n - 10, :minute))
+
+      comment!(item, 6, now, DateTime.utc_now())
+
+      seen = WorkItems.ticket(ctx.scope, w)
+      adapter = Repo.get!(Apiary.Nodes.Node, w.adapter_id)
+
+      assert seen.integration == adapter.name
+      assert seen.adapter_removed == false
+      assert seen.uninstalled == false
+      assert seen.item_noun == nil
+
+      assert seen.ticket == %{
+               filer: %{name: "Avery Example"},
+               filed_at: item.source_created_at,
+               updated_at: item.source_updated_at,
+               labels: ["bug", "checkout"],
+               body: item.body,
+               format: "markdown",
+               comment_count: 5,
+               received_at: item.updated_at
+             }
+
+      assert Enum.map(seen.comments, & &1.body) == ["Comment 3", "Comment 4", "Comment 5"]
+      assert hd(seen.comments).public_id == Enum.at(comments, 2).id
+
+      all = WorkItems.ticket(ctx.scope, w, :all)
+      assert Enum.map(all.comments, & &1.author) == Enum.map(1..5, &"Author #{&1}")
+      refute inspect(all) =~ "123456"
+    end
+
+    test "after the integration's uninstall, and once the adapter is removed", ctx do
+      item = ticket(ctx, ctx.collection, %{key: "#1204"})
+      w = work_item(ctx, item)
+      now = DateTime.utc_now()
+
+      ctx.connection
+      |> Ecto.Changeset.change(state: :ended, ended_at: now, ended_reason: :adapter_reported)
+      |> Repo.update!()
+
+      assert %{uninstalled: true, ticket: %{}} = WorkItems.ticket(ctx.scope, w)
+
+      Apiary.Nodes.Node
+      |> Repo.get!(w.adapter_id)
+      |> Ecto.Changeset.change(deleted_at: now)
+      |> Repo.update!()
+
+      assert %{adapter_removed: true} = WorkItems.ticket(ctx.scope, w)
+    end
+
+    test "no record: no ticket and no comments", ctx do
+      item = ticket(ctx, ctx.collection, %{key: "#1204"})
+      w = work_item(ctx, item)
+
+      Repo.update_all(Ecto.Query.from(w in Apiary.WorkItems.WorkItem, where: w.id == ^w.id),
+        set: [external_ref: "other"]
+      )
+
+      assert %{ticket: nil, comments: [], uninstalled: false} = WorkItems.ticket(ctx.scope, w)
+    end
+
+    test "nothing for another workspace, or for a person who may not read its work items",
+         ctx do
+      item = ticket(ctx, ctx.collection, %{key: "#1204"})
+      w = work_item(ctx, item)
+
+      second = workspace_fixture(ctx.scope.organisation, "Second")
+      assert WorkItems.ticket(workspace_scope(ctx.scope.user, second), w) == nil
+
+      %{scope: other} = sign_up_fixture()
+      foreign = %{other | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
+
+      for scope <- [foreign, other, %{ctx.scope | workspace: nil}] do
+        assert WorkItems.ticket(scope, w) == nil
+      end
+    end
+  end
 end
