@@ -171,6 +171,28 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
              "An integration installed here serves each workspace through the repositories assigned to it."
   end
 
+  test "a source that names no word for its collections: the domain's, for one and many", %{
+    conn: conn,
+    scope: scope
+  } do
+    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: shop} = connectable_adapter_fixture(%{name: "Shop tracker"})
+    assert Apiary.Adapters.collection_noun(acme) == nil
+    {connection, _nonce} = connection_fixture(scope, acme, :listed)
+    source_collection_fixture(scope, connection)
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 repository"
+
+    assert words(lv, "#integrations-serve") ==
+             "An integration installed here serves each workspace through the repositories assigned to it."
+
+    {:ok, lv, _html} = live(conn, list_path(scope) <> "/new")
+
+    assert words(lv, "#add-#{shop.public_id}") =~
+             "The repositories it reaches are listed on this page."
+  end
+
   test "an admin has Add too", %{scope: scope} do
     adapter = adapter_fixture()
     {:ok, lv, _html} = live(member_conn(scope, :admin), list_path(scope))

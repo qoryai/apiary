@@ -1046,19 +1046,19 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # The word for many of the adapter's collections (`:other`), or for one (1), its first
   # letter in upper case: the section's heading and the table's, and the column's.
-  defp collection_label(adapter, n \\ :other) do
-    {first, rest} = adapter |> collection_word(n) |> String.split_at(1)
+  defp collection_label(adapter, n \\ :other)
+  defp collection_label(adapter, 1), do: SourceComponents.collection_label(noun(adapter))
+
+  defp collection_label(adapter, :other) do
+    {first, rest} = adapter |> collection_word(:other) |> String.split_at(1)
     String.upcase(first) <> rest
   end
 
   # The word for many of the adapter's collections (`:other`), or for one (1): what it
-  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word.
-  defp collection_word(adapter, n) do
-    case {Adapters.collection_noun(adapter), n} do
-      {%{one: one}, 1} -> one
-      {%{other: other}, _n} -> other
-      {nil, 1} -> pgettext("source collection, when its adapter names none", "collection")
-      {nil, _n} -> pgettext("source collection, when its adapter names none", "collections")
-    end
-  end
+  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word
+  # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
+  defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
+  defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
+
+  defp noun(adapter), do: Adapters.collection_noun(adapter)
 end

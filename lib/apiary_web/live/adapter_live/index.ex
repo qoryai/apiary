@@ -36,7 +36,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
 
   alias Apiary.{Access, Adapters, Organisations}
   alias Apiary.Adapters.{Collections, Connections}
-  alias ApiaryWeb.{IntegrationComponents, SettingsComponents}
+  alias ApiaryWeb.{IntegrationComponents, SettingsComponents, SourceComponents}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -122,7 +122,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
             id={"add-#{row.adapter.public_id}"}
             adapter={row.adapter}
             organisation={@current_scope.organisation}
-            collections={collection_word(Adapters.collection_noun(row.adapter), :other)}
+            collections={SourceComponents.collections(Adapters.collection_noun(row.adapter))}
             action={IntegrationComponents.paths(@current_scope, row.adapter).install}
             ready={row.ready}
             sending={@sending == row.adapter.public_id}
@@ -222,7 +222,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
           <p id="integrations-serve" class="q-foot-note">
             {gettext(
               "An integration installed here serves each workspace through the %{collections} assigned to it.",
-              collections: collection_word(@noun, :other)
+              collections: SourceComponents.collections(@noun)
             )}
           </p>
           <p :if={!@connects && !@several} id="integrations-who" class="q-foot-note">
@@ -234,7 +234,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
             {gettext(
               "Owners and admins of %{organisation} install integrations and assign their %{collections} to workspaces.",
               organisation: @current_scope.organisation.name,
-              collections: collection_word(@noun, :other)
+              collections: SourceComponents.collections(@noun)
             )}
           </p>
         </div>
@@ -250,7 +250,11 @@ defmodule ApiaryWeb.AdapterLive.Index do
          several
        ) do
     noun = Adapters.collection_noun(adapter)
-    words = [collection: collection_word(noun, 1), collections: collection_word(noun, :other)]
+
+    words = [
+      collection: SourceComponents.collection(noun),
+      collections: SourceComponents.collections(noun)
+    ]
 
     if several and unassigned > 0 do
       rich_ngettext(
@@ -273,16 +277,4 @@ defmodule ApiaryWeb.AdapterLive.Index do
       )
     end
   end
-
-  # The word for one of the integrations' collections (a count of 1) or for many
-  # (`:other`, or any other count): what `noun` says (`Apiary.Adapters`'s
-  # `%{one:, other:}`), else the domain's word.
-  defp collection_word(%{one: one}, 1), do: one
-  defp collection_word(%{other: other}, _n), do: other
-
-  defp collection_word(nil, 1),
-    do: pgettext("source collection, when its adapter names none", "collection")
-
-  defp collection_word(nil, _n),
-    do: pgettext("source collection, when its adapter names none", "collections")
 end

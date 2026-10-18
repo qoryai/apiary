@@ -352,6 +352,25 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert :sys.get_state(lv.pid).socket.assigns.timer == timer
   end
 
+  test "a source that names no word for its collections: the domain's, for one and many", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    assert Apiary.Adapters.collection_noun(adapter) == nil
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/shop"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-heading") == "Repositories 1"
+    assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
+    assert hd(rows(lv)) =~ "Repository Workspace"
+    assert words(lv, "#collections-count") == "1 repository"
+    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
+    assert words(lv, "#collections-targets") =~ "Assigning a repository here"
+  end
+
   test "the collections are named in the adapter's words", %{
     conn: conn,
     scope: scope,
