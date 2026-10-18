@@ -1,7 +1,7 @@
 defmodule Apiary.Sources.Item do
   # An item an adapter sends of a collection (`Apiary.Adapters.Collection`): a ticket at
   # its source. The contract calls it an item; the pages call it a ticket. The table and
-  # its rules are `20261017190000_keep_source_items`'s.
+  # its rules are `20261017143000_keep_source_items`'s.
   #
   # `external_ref` is the adapter's ref for it, 1 to 200 characters, unique in its
   # collection, which the core compares and stores and never reads meaning into. `key` is
@@ -19,7 +19,7 @@ defmodule Apiary.Sources.Item do
   # a later one.
   #
   # `last_listed_at` is the `started_at` of the newest listing of its collection that named
-  # it, from `20261017191000_keep_when_an_item_was_last_listed`, or nil while none has.
+  # it, from `20261017150000_keep_when_an_item_was_last_listed`, or nil while none has.
   # `closed_by_listing_at` is for an item a complete listing left out and closed: that
   # listing's `started_at`; only a closed item has it. `disconnected_at` is for an item
   # that left every Backlog where it is, as an item of another live collection of the

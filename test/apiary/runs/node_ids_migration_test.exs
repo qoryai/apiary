@@ -24,7 +24,7 @@ defmodule Apiary.Runs.NodeIdsMigrationTest do
 
   @tables ~w(runs events deliveries node_instances)
 
-  # `runs.dispatch_run_id`, a later migration's (20261017180000), is Qory's id of the run
+  # `runs.dispatch_run_id`, a later migration's (20261017142000), is Qory's id of the run
   # of the queue, and stays as it is either way.
   @columns_before %{
     "runs" => ~w(attach_instance_id dispatch_run_id instance_id run_id),

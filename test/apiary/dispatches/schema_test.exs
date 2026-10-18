@@ -23,14 +23,14 @@ defmodule Apiary.Dispatches.SchemaTest do
 
   @format ~r/\Adp_[0-9a-hjkmnp-tv-z]{16}\z/
 
-  @version 20_261_017_180_000
+  @version 20_261_017_142_000
   @migration Apiary.Repo.Migrations.KeepDispatches
   # The later migration that names a run's work item by the organisation: down first, up
   # last.
-  @again_version 20_261_017_190_100
+  @again_version 20_261_017_144_000
   @again Apiary.Repo.Migrations.TakeWorkItemsInAgain
   # The later migration that queues prebuilds: down first, up last.
-  @prebuilds_version 20_261_017_200_200
+  @prebuilds_version 20_261_017_160_000
   @prebuilds Apiary.Repo.Migrations.QueuePrebuilds
 
   setup_all do
