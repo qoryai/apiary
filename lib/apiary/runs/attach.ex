@@ -78,8 +78,8 @@ defmodule Apiary.Runs.Attach do
 
   A run a workspace's queue handed over that is not a prebuild is given the image the node
   pool that claimed it recorded for the run's target, the one its registration's labels
-  name (`Apiary.Environments.image_for/2`), fixed at the attach (`runs.configured_image`):
-  its configuration is composed with that image at the top level, beside the
+  name, on its environment record, fixed at the attach (`runs.configured_image`): its
+  configuration is composed with that image at the top level, beside the
   `security_policy` (`Apiary.Policy.ComposedConfiguration`), and the digest is the
   composed document's. A prebuild whose workspace's policy names an image is given the
   policy without it. A workspace's policy that names an image gives no run an image. Any

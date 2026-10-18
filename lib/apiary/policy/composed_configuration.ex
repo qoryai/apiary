@@ -201,8 +201,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   end
 
   @doc """
-  Whether `run` is a run of a workspace's queue for the step `prebuild`
-  (`Apiary.Dispatches.DispatchRun.prebuild/0`): one read, and none for a run of no queue.
+  Whether `run` is a run of a workspace's queue for the step `prebuild`: one read, and none
+  for a run of no queue.
   """
   @spec prebuild?(Run.t()) :: boolean
   def prebuild?(%Run{dispatch_run_id: nil}), do: false
