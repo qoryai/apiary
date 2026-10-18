@@ -95,6 +95,18 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
+  # ## The starter on a dispatch: `dispatched/3` and `handover/3`
+  #
+  # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
+  # `access_key` started the job for a dispatch its pool claimed, and
+  # `handover(access_key, dispatch_id, meta)` hands the dispatch's run over to that job:
+  # the run registered through the gateway the pool's choice resolves to, its run key made
+  # and the dispatch handed over in one transaction, or the refusal the provisioner
+  # contract gives, in its order (`Apiary.Dispatches.Handover`). A handover that cannot form
+  # what the run is made from ends the run and its dispatch, `collection_ended`,
+  # `variables_invalid`, `ticket_gone` or `inputs_invalid`, answered as a dispatch that
+  # ended.
+  #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
   # A claim held while its pool can claim nothing listens on its workspace's topic: a run
@@ -131,7 +143,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -439,9 +451,12 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  # The key as a request's verification reads it now: of the same pool, workspace and
-  # organisation as when the request verified, or none.
-  defp current_key(key_id) do
+  # current_key/1 is the key `key_id` as a request's verification reads it now: of the
+  # same pool, workspace and organisation as when the request verified, or
+  # `{:error, :unauthorized}`.
+  @doc false
+  @spec current_key(String.t()) :: {:ok, AccessKey.t()} | {:error, :unauthorized}
+  def current_key(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok,
        %AccessKey{
@@ -666,6 +681,24 @@ defmodule Apiary.Dispatches do
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
       where: fragment("? = 'waiting'", r.state)
   end
+
+  ## The starter on a dispatch
+
+  # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
+  # (`Apiary.Dispatches.Handover.dispatched/3`).
+  @doc false
+  @spec dispatched(AccessKey.t(), term, %{revision: pos_integer, external: map | nil}) ::
+          :ok | {:error, Handover.refusal()}
+  def dispatched(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Handover.dispatched(access_key, dispatch_id, meta)
+
+  # handover/3 hands the run of the dispatch `dispatch_id` over to the job its starter
+  # started, registering it (`Apiary.Dispatches.Handover.handover/3`).
+  @doc false
+  @spec handover(AccessKey.t(), term, %{revision: pos_integer, body: binary}) ::
+          {:ok, Handover.handed_over()} | {:error, Handover.refusal()}
+  def handover(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Handover.handover(access_key, dispatch_id, meta)
 
   ## The end of a run handed over
 
