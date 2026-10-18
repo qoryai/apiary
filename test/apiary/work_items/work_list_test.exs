@@ -338,9 +338,10 @@ defmodule Apiary.WorkItems.WorkListTest do
 
   describe "the status" do
     test "each row says where Explore stands, with its latest run", %{scope: scope} do
-      items = for status <- [:queued, :running, :confirm, :questions, :used_up, :shape],
-                  into: %{},
-                  do: {status, at!(scope, status)}
+      items =
+        for status <- [:queued, :running, :confirm, :questions, :used_up, :shape],
+            into: %{},
+            do: {status, at!(scope, status)}
 
       page = list(scope)
       expected = Map.new(items, fn {status, item} -> {item.public_id, status} end)
@@ -381,6 +382,7 @@ defmodule Apiary.WorkItems.WorkListTest do
       base = DateTime.utc_now()
 
       older = at!(scope, :confirm) |> set!(updated_at: DateTime.add(base, -60, :second))
+
       newer =
         at!(scope, :confirm, title: "The basket loses an item")
         |> set!(updated_at: DateTime.add(base, -30, :second))

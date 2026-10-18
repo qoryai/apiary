@@ -379,8 +379,7 @@ defmodule Apiary.WorkItems.WorkList do
       left_lateral_join:
         e in subquery(
           from e in WorkItemEvent,
-            where:
-              e.work_item_id == parent_as(:work_item).id and e.kind in [:undone, :closed],
+            where: e.work_item_id == parent_as(:work_item).id and e.kind in [:undone, :closed],
             order_by: [desc: e.at, desc: e.id],
             limit: 1,
             select: %{
@@ -765,8 +764,7 @@ defmodule Apiary.WorkItems.WorkList do
       filter(count(w.id), w.owner_id == ^reader)
     })
     |> Repo.all()
-    |> Enum.reduce(%{counts: @no_counts, stages: @no_stages}, fn {state, status, n, mine},
-                                                                 acc ->
+    |> Enum.reduce(%{counts: @no_counts, stages: @no_stages}, fn {state, status, n, mine}, acc ->
       add(acc, state, Explore.status_of(status), n, mine)
     end)
   end
