@@ -104,6 +104,11 @@ defmodule Apiary.Nodes.Node do
     # domain's word), beside `items` false too.
     field :collection_noun_one, :string
     field :collection_noun_other, :string
+    # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
+    # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
+    # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
+    # by `Apiary.Adapters.install/2`, and never cast from what a person or an adapter sends.
+    field :installed_as, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -199,7 +204,7 @@ defmodule Apiary.Nodes.Node do
   # without control characters, unique among the instance's adapters in use. A new one
   # (no public id yet) is given its kind's public id, `na_`; its place, no organisation and
   # no workspace, is the caller's to set, and nothing here casts it, its kind, its limit,
-  # its choice of gateway or its address.
+  # its choice of gateway, its address or the name it is installed as (`installed_as`).
   @spec adapter_changeset(t, map) :: Ecto.Changeset.t()
   def adapter_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
@@ -216,6 +221,7 @@ defmodule Apiary.Nodes.Node do
     )
     |> check_constraint(:name, name: :nodes_adapter_name_check)
     |> check_constraint(:workspace_id, name: :nodes_place_check)
+    |> check_constraint(:installed_as, name: :nodes_installed_as_check)
     |> then(&if(is_nil(adapter.public_id), do: put_public_id(&1), else: &1))
   end
 
