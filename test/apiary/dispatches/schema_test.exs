@@ -7,6 +7,11 @@ defmodule Apiary.Dispatches.SchemaTest do
   # async: the migration test changes the tables under every other test.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures

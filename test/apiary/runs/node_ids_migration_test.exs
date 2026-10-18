@@ -4,6 +4,11 @@ defmodule Apiary.Runs.NodeIdsMigrationTest do
   # `deliveries` and `node_instances` under every other test, so it is not async.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   @version 20_261_017_140_000
   @migration Apiary.Repo.Migrations.NameANodeSIdsAsTheNodeS
 
