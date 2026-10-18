@@ -268,8 +268,8 @@ defmodule Apiary.Sources.Body do
       else: text
   end
 
-  # A code block holds its text, as text and code do, their character references already
-  # their characters.
+  # A code block's text is its literal, as code's is. It has nodes too, so it is matched
+  # before the clause for nodes, which would leave its literal as written.
   defp shown(%MDEx.CodeBlock{literal: literal} = block, _in_link, _depth),
     do: [%{block | literal: Apiary.ExternalText.lines(literal)}]
 

@@ -144,7 +144,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   defp found(assigns) do
     ~H"""
-    <p :if={@description.about} id="release-about" class="max-w-[72ch] text-[13.5px]/5">
+    <p :if={@description.about} id="release-about" dir="auto" class="max-w-[72ch] text-[13.5px]/5">
       {Apiary.ExternalText.lines(@description.about)}
     </p>
 
