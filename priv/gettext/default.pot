@@ -4787,12 +4787,6 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "ticket"
-msgid "Collection"
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -11872,7 +11866,6 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
