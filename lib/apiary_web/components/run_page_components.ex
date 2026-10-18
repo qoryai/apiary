@@ -1718,7 +1718,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <%= for {key, value, form} <- @details do %>
           <%!-- A dotted key may break before each of its dots. A value wraps, never cut:
                text at its spaces, compact JSON anywhere. --%>
-          <dt phx-no-format><bdi><%= for {part, index} <- Enum.with_index(String.split(key, ".")) do %><wbr :if={index > 0} />{if index > 0, do: "."}{part}<% end %></bdi></dt>
+          <dt phx-no-format><%= for {part, index} <- Enum.with_index(String.split(key, ".")) do %><wbr :if={index > 0} />{if index > 0, do: "."}{part}<% end %></dt>
           <dd class={form == :json && "q-rail-json"}><.external_text text={value} /></dd>
         <% end %>
       </dl>

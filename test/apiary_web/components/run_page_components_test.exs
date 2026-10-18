@@ -141,7 +141,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       end
     end
 
-    test "shows the details' keys and values cleaned, isolated in <bdi>" do
+    test "shows the details' keys and values cleaned, a value isolated in <bdi>" do
       html =
         section(%{
           about_details: %{
@@ -150,7 +150,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
           }
         })
 
-      assert texts(html, "#run-about-details dt > bdi") == [
+      assert texts(html, "#run-about-details dt") == [
                clean("key"),
                "outer." <> clean("inner")
              ]
