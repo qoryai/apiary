@@ -150,7 +150,8 @@ defmodule Apiary.Adapters.Collections do
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
-  #      a work item;
+  #      a work item; a work item's comment is held `FOR UPDATE` only right after its
+  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
   #   7. the environment records of the collections an assign assigns or moves to a

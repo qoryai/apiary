@@ -4851,6 +4851,11 @@ msgstr ""
 msgid "Comment on work item #%{number}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Commented on a work item"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Compare with"
@@ -5519,6 +5524,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted %{collection}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a comment on a work item"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

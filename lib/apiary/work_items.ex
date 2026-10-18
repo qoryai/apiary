@@ -29,6 +29,17 @@ defmodule Apiary.WorkItems do
   # that gave no result, was lost or was cancelled. `attempt` is the latest run's, as the
   # page read it. `Apiary.WorkItems.Moves` says how and what each refuses.
   #
+  # ## People's comments on the Thread
+  #
+  # `comment(scope, work_item, body)` writes a comment of the scope's person on the work
+  # item, in any state, and `delete_comment(scope, comment_id)` deletes the comment
+  # `comment_id` (`cm_…`) of the scope's workspace, leaving a line in its place
+  # (`Apiary.WorkItems.Comment`, `Apiary.WorkItems.Moves`). `list_comments/2` is the work
+  # item's comments, deleted ones too, oldest first; `count_comments/2` how many are not
+  # deleted, the count beside the Thread's tab; and `thread/3` the Thread itself: what
+  # happened at Explore (`explore_thread/3`) and the comments, oldest first. Each read
+  # answers nothing to a person who may not read the work item.
+  #
   # ## Reading Explore: `explore/2` and `explore_thread/2`
   #
   # `explore(scope, work_item)` is where Explore stands for the work item, and
@@ -76,7 +87,9 @@ defmodule Apiary.WorkItems do
   # `FOR UPDATE`, by id when there are several, then a workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), taken only right after its work item, then the
   # environment records, the runs of the queue and their dispatches
-  # (`Apiary.Dispatches.Slots`), and the adapter's feed counter, last. No collection or
+  # (`Apiary.Dispatches.Slots`), and the adapter's feed counter, last. A comment of a work
+  # item (`Apiary.WorkItems.Comment`) is held `FOR UPDATE` only right after its work item,
+  # as a comment's deletion holds it. No collection or
   # target is locked after a work item. A close takes the connections first (the removal
   # ends them before it closes), then the work items `FOR UPDATE` in the order of their
   # ids, then their runs of the queue `FOR UPDATE` in the order of their ids, then the
@@ -97,7 +110,7 @@ defmodule Apiary.WorkItems do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.Item
-  alias Apiary.WorkItems.{Answer, Explore, ExploreView, Moves, State, WorkItem}
+  alias Apiary.WorkItems.{Answer, Comment, Explore, ExploreView, Moves, State, WorkItem}
   alias Apiary.WorkItems.{WorkItemEvent, WorkList}
 
   # The largest number a work item has, the column's: a bigint.
@@ -178,6 +191,20 @@ defmodule Apiary.WorkItems do
   defdelegate explore_again(scope, work_item, attempt), to: Moves
 
   @doc false
+  # comment/3 writes a comment of the scope's person on `work_item`
+  # (`Apiary.WorkItems.Moves`): `{:ok, comment}`, or a refusal.
+  @spec comment(Scope.t(), WorkItem.t(), term) ::
+          {:ok, Comment.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
+  defdelegate comment(scope, work_item, body), to: Moves
+
+  @doc false
+  # delete_comment/2 deletes the comment `comment_id` (`cm_…`) of the scope's workspace,
+  # leaving a line in its place (`Apiary.WorkItems.Moves`): `{:ok, comment}`, or a refusal.
+  @spec delete_comment(Scope.t(), term) ::
+          {:ok, Comment.t()} | {:error, :not_found | :forbidden | :deleted}
+  defdelegate delete_comment(scope, comment_id), to: Moves
+
+  @doc false
   # take_in_answers/2 is the answers given to the questions of the runs of take in
   # `take_in` of `work_item`, oldest first, by the run they answered, then the question's
   # place, for the input of the take in's next run: each `question`, as the run asked it,
@@ -242,6 +269,74 @@ defmodule Apiary.WorkItems do
       {:ok, row} -> ExploreView.thread(row, now)
       :error -> []
     end
+  end
+
+  ## Reading people's comments
+
+  @doc false
+  # list_comments/2 is every comment of `work_item`, deleted ones too (no body), oldest
+  # first, to a person who may read it in the scope's workspace; none otherwise.
+  @spec list_comments(Scope.t(), WorkItem.t()) :: [Comment.t()]
+  def list_comments(%Scope{} = scope, %WorkItem{} = work_item) do
+    case readable(scope, work_item) do
+      {:ok, row} -> comments(row)
+      :error -> []
+    end
+  end
+
+  @doc false
+  # count_comments/2 is how many comments of `work_item` are not deleted, to a person who
+  # may read it in the scope's workspace; 0 otherwise.
+  @spec count_comments(Scope.t(), WorkItem.t()) :: non_neg_integer
+  def count_comments(%Scope{} = scope, %WorkItem{} = work_item) do
+    case readable(scope, work_item) do
+      {:ok, row} ->
+        Repo.one(
+          from c in Comment,
+            where:
+              c.work_item_id == ^row.id and c.workspace_id == ^row.workspace_id and
+                is_nil(c.deleted_at),
+            select: count()
+        )
+
+      :error ->
+        0
+    end
+  end
+
+  @doc false
+  # thread/3 is the Thread of `work_item` at `now`, oldest first, to a person who may read
+  # it in the scope's workspace; none otherwise: what happened at Explore, as
+  # `explore_thread/3` gives it, and each comment, deleted ones too, as
+  # `%{kind: :comment, at: inserted_at, comment: comment}`. An entry of Explore and a
+  # comment at the same moment keep Explore's first; each kind keeps its order.
+  @spec thread(Scope.t(), WorkItem.t(), DateTime.t()) :: [map]
+  def thread(%Scope{} = scope, %WorkItem{} = work_item, now \\ DateTime.utc_now()) do
+    case readable(scope, work_item) do
+      {:ok, row} ->
+        events = Enum.map(ExploreView.thread(row, now), &{&1, 0})
+
+        comments =
+          Enum.map(comments(row), &{%{kind: :comment, at: &1.inserted_at, comment: &1}, 1})
+
+        (events ++ comments)
+        |> Enum.with_index()
+        |> Enum.sort_by(fn {{entry, kind}, index} ->
+          {DateTime.to_unix(entry.at, :microsecond), kind, index}
+        end)
+        |> Enum.map(fn {{entry, _kind}, _index} -> entry end)
+
+      :error ->
+        []
+    end
+  end
+
+  defp comments(%WorkItem{id: id, workspace_id: workspace_id}) do
+    Repo.all(
+      from c in Comment,
+        where: c.work_item_id == ^id and c.workspace_id == ^workspace_id,
+        order_by: [asc: c.inserted_at, asc: c.id]
+    )
   end
 
   # The row of the work item `id` names, of the scope's organisation and workspace, which
