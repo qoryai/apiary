@@ -191,6 +191,12 @@ defmodule ApiaryWeb.JumpControllerTest do
     # A title with nothing left to show is no title: the run is its short id.
     answer = jump(conn, workspace_path(scope, "/jump"), short)
     assert [%{"label" => ^short, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
+
+    # A path with nothing left to show is no path: the run is said by its state's word.
+    run |> Ecto.Changeset.change(target_path: "\u202E\u200B") |> Apiary.Repo.update!()
+    state = ApiaryWeb.RunComponents.state_label(run.state)
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"detail" => ^state}] = group(answer, "Runs")["items"]
   end
 
   test "a run with no target is said by its state's word, an old name by its new state's",

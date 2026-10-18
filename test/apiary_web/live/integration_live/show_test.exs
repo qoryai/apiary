@@ -431,6 +431,17 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-setting-verbose-hint", "Logs every request\u{FFFD}")
     end
 
+    test "a setting whose description has nothing left to show has no hint",
+         %{conn: conn, scope: scope} do
+      release = ready_release!(scope, flag_description("\u202E\u200B"))
+      {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
+
+      assert has_element?(lv, "#connection-setting-verbose")
+      refute has_element?(lv, "#connection-setting-verbose-hint")
+      refute has_element?(lv, "#connection-setting-verbose[aria-describedby]")
+    end
+
     test "a yes/no setting says what it is, and is saved as no", %{conn: conn, scope: scope} do
       release = ready_release!(scope, flag_description())
 
