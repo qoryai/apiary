@@ -62,7 +62,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
        adapter: adapter,
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        late: false,
-       timer: false,
+       timer: nil,
        sending: false
      )
      |> load()}
@@ -86,11 +86,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # Starts the minute the page waits for the first listing, once, as the page opens in
-  # that state or comes to it.
-  defp wait(%{assigns: %{state: :waiting, timer: false}} = socket) do
+  # that state or comes to it; `timer` keeps the minute's timer.
+  defp wait(%{assigns: %{state: :waiting, timer: nil}} = socket) do
     if connected?(socket) do
-      Process.send_after(self(), :late, @late_after)
-      assign(socket, :timer, true)
+      assign(socket, :timer, Process.send_after(self(), :late, @late_after))
     else
       socket
     end

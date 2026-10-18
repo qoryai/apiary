@@ -250,6 +250,24 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert conn.resp_body =~ "https://tracker.example.com/connect?state="
   end
 
+  test "waiting, the page starts the minute to the line to install again once, as it opens",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    timer = :sys.get_state(lv.pid).socket.assigns.timer
+    assert is_reference(timer)
+    assert Process.read_timer(timer) in 55_000..60_000
+
+    send(
+      lv.pid,
+      {:connection_changed, %{connection_id: connection.id, adapter_id: adapter.id}}
+    )
+
+    assert has_element?(lv, "#collections-waiting")
+    assert :sys.get_state(lv.pid).socket.assigns.timer == timer
+  end
+
   test "the collections are named in the adapter's words", %{
     conn: conn,
     scope: scope,
