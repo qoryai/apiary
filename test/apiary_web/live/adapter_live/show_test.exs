@@ -869,6 +869,49 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert Collections.counts(scope, connection).unassigned == 1
   end
 
+  test "a page past the last one with rows shows the last that has some, or none", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, platform} = several(scope, adapter, key, titles(1..60))
+
+    # The rows before the page asked for fill whole pages, and it holds none.
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?view=unassigned&page=2")
+    assert words(lv, "#collections-pager-footer") == "51–60 of 60"
+    lv |> element("#collections-table-every") |> render_click()
+    lv |> element("#collections-assign-#{platform.id}") |> render_click()
+    refute has_element?(lv, "#collections-pager")
+    assert length(rows(lv)) == 51
+    assert Enum.at(rows(lv), 1) == "acme/repo-001 Unassigned — Today"
+
+    # No rows at all: no pager.
+    ids =
+      for title <- titles(1..60),
+          do:
+            Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id, title: title).id
+
+    {:ok, _changed} = Collections.assign_collections(scope, connection, ids, platform)
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?view=unassigned&page=2")
+    refute has_element?(lv, "#collections-pager")
+    assert length(rows(lv)) == 1
+  end
+
+  test "a page past the last one, every row on the pages before it, shows the last", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..100), 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?page=3")
+    assert words(lv, "#collections-pager-footer") == "51–100 of 100"
+    assert length(rows(lv)) == 51
+    assert has_element?(lv, "#collections-pager-next[disabled]")
+  end
+
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{
     conn: conn,
     scope: scope,

@@ -371,18 +371,25 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # The page `page` of the connection's live collections `opts` asks for, walked to a page
   # at a time from the first, as the list pages by the row before; the last page there is,
-  # if `page` is past it. `{page, its live rows, how many live rows the pages before it
-  # hold, whether it is the last}`.
+  # if `page` is past it: a full page followed by none is the last one. `{page, its live
+  # rows, how many live rows the pages before it hold, whether it is the last}`.
   defp walk(scope, connection, opts, page) do
     size = Collections.page_size()
 
-    Enum.reduce_while(1..page//1, {nil, 0}, fn n, {after_id, before} ->
+    Enum.reduce_while(1..page//1, {nil, 0, nil}, fn n, {after_id, before, previous} ->
       raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
       rows = Enum.filter(raw, &is_nil(&1.ended_at))
 
-      if n == page or length(raw) < size,
-        do: {:halt, {n, rows, before, length(raw) < size}},
-        else: {:cont, {List.last(raw).public_id, before + length(rows)}}
+      cond do
+        raw == [] and previous != nil ->
+          {:halt, put_elem(previous, 3, true)}
+
+        n == page or length(raw) < size ->
+          {:halt, {n, rows, before, length(raw) < size}}
+
+        true ->
+          {:cont, {List.last(raw).public_id, before + length(rows), {n, rows, before, false}}}
+      end
     end)
   end
 
