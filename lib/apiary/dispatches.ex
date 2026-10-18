@@ -34,13 +34,14 @@ defmodule Apiary.Dispatches do
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
   # current take in: `{:error, :claimed}` while a dispatch holds one, neither stale nor
-  # ended before its handover, and once one was handed over. Else it ends the take in's
-  # waiting runs, end cause `undone`, a run back in the queue after a lapsed lease or a
-  # release with retry among them, and answers `:ok`; a stale dispatch of a run it ends
-  # ends with it, end cause `run_ended`. A lease that lapsed and was not yet swept is
-  # lapsed first (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The
-  # runs of the take in are locked `FOR UPDATE` before their dispatches are looked at, so
-  # a claim of one either commits before and is seen, or finds the run ended.
+  # ended before its handover, and once one was handed over, after its run ended too (a
+  # dispatch keeps `handed_over_at`). Else it ends the take in's waiting runs, end cause
+  # `undone`, a run back in the queue after a lapsed lease or a release with retry among
+  # them, and answers `:ok`; a stale dispatch of a run it ends ends with it, end cause
+  # `run_ended`. A lease that lapsed and was not yet swept is lapsed first
+  # (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The runs of the
+  # take in are locked `FOR UPDATE` before their dispatches are looked at, so a claim of
+  # one either commits before and is seen, or finds the run ended.
   #
   # `cancel_for_close(work_item_ids, now)`, inside the caller's transaction, which holds
   # the work items `FOR UPDATE`, is what a close of the work items asks
@@ -331,11 +332,19 @@ defmodule Apiary.Dispatches do
           select: r.id
       )
 
-    # A lease that lapsed unswept frees its run first; then the runs as they stand.
+    # A lease that lapsed unswept frees its run first; then the runs as they stand, and
+    # whether any was ever handed over: a dispatch of it keeps `handed_over_at` after the
+    # run ended, lost, run_ended or released after the handover.
     freed = if run_ids == [], do: [], else: Slots.free({:runs, run_ids}, now)
     runs = Repo.all(from r in DispatchRun, where: r.id in ^run_ids)
 
-    if Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) do
+    handed_over? =
+      Repo.exists?(
+        from d in Dispatch,
+          where: d.dispatch_run_id in ^run_ids and not is_nil(d.handed_over_at)
+      )
+
+    if handed_over? or Enum.any?(runs, &(&1.state in [:claimed, :handed_over])) do
       {:error, :claimed}
     else
       waiting = for %DispatchRun{state: :waiting, id: run_id} <- runs, do: run_id

@@ -437,6 +437,74 @@ defmodule Apiary.DispatchesTest do
       assert run!(run).state == :handed_over
     end
 
+    test "after a handed-over run ended, lost, run_ended or released, is still refused", ctx do
+      for cause <- [:lost, :run_ended, :released] do
+        work_item = work_item_fixture(ctx.scope)
+        run = queue!(work_item)
+        dispatch = claimed!(ctx.key)
+        at = DateTime.add(dispatch.claimed_at, 1, :second)
+        ended_at = DateTime.add(at, 1, :second)
+
+        # As the run's end after its handover leaves them.
+        Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+          set: [
+            dispatched_at: at,
+            handed_over_at: at,
+            ended_at: ended_at,
+            end_cause: cause,
+            slot_freed_at: ended_at
+          ]
+        )
+
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [state: :ended, end_cause: cause]
+        )
+
+        assert {:ok, {:error, :claimed}} = undo(work_item)
+        assert %DispatchRun{state: :ended, end_cause: ^cause} = run!(run)
+        assert %Dispatch{end_cause: ^cause} = dispatch!(dispatch)
+      end
+    end
+
+    test "after a handed-over run ended, with a later run of the take in waiting, is refused",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      first = queue!(work_item)
+      dispatch = claimed!(ctx.key)
+      at = DateTime.add(dispatch.claimed_at, 1, :second)
+      ended_at = DateTime.add(at, 1, :second)
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [
+          dispatched_at: at,
+          handed_over_at: at,
+          ended_at: ended_at,
+          end_cause: :lost,
+          slot_freed_at: ended_at
+        ]
+      )
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^first.id),
+        set: [state: :ended, end_cause: :lost]
+      )
+
+      second =
+        Repo.insert!(%DispatchRun{
+          organisation_id: first.organisation_id,
+          workspace_id: first.workspace_id,
+          work_item_id: work_item.id,
+          run_id: Ecto.UUID.generate(),
+          step: first.step,
+          take_in: first.take_in,
+          attempt: 2,
+          of: first.of,
+          queued_at: Dispatches.now()
+        })
+
+      assert {:ok, {:error, :claimed}} = undo(work_item)
+      assert run!(second).state == :waiting
+    end
+
     test "with no run queued is :ok", ctx do
       work_item = work_item_fixture(ctx.scope)
       assert {:ok, :ok} = undo(work_item)
