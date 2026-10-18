@@ -213,11 +213,12 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
     test "an answer by a member whose name the contract refuses: the next run has no input",
          ctx do
-      # The account's email rules take a bidirectional control in the local part; the
-      # explore input's name refuses it.
+      # The account's email rules now refuse a bidirectional control in the local part,
+      # but an account whose address took one before still holds it; the explore input's
+      # name refuses it.
       email = "ann\u202Ex@example.com"
 
-      assert Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{email: email},
+      refute Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{email: email},
                validate_unique: false
              ).valid?
 
