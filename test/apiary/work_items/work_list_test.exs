@@ -378,7 +378,7 @@ defmodule Apiary.WorkItems.WorkListTest do
 
   describe "Waiting on you" do
     setup %{scope: scope} do
-      %{user: member} = member_fixture(scope)
+      %{user: member, membership: membership} = member_fixture(scope)
       base = DateTime.utc_now()
 
       older = at!(scope, :confirm) |> set!(updated_at: DateTime.add(base, -60, :second))
@@ -396,7 +396,7 @@ defmodule Apiary.WorkItems.WorkListTest do
         at!(scope, :confirm)
         |> set!(state: :declined, declined_at: base, declined_by_id: scope.user.id)
 
-      %{member: member, older: older, newer: newer, theirs: theirs}
+      %{member: member, membership: membership, older: older, newer: newer, theirs: theirs}
     end
 
     test "holds the reader's live work items whose proposal waits at Confirm, oldest first",
@@ -420,11 +420,16 @@ defmodule Apiary.WorkItems.WorkListTest do
 
     test "counts under the search and the filters, and nothing to anyone else", ctx do
       assert list(ctx.scope, view: :you, owner: ctx.member.id).counts.you == 0
-      assert ids(list(ctx.scope, view: :you, search: "basket")) == [ctx.newer.public_id]
+      searched = list(ctx.scope, view: :you, search: "basket")
+      assert ids(searched) == [ctx.newer.public_id]
+      assert searched.counts.you == 1
 
-      %{scope: stranger} = sign_up_fixture()
-      foreign = %{stranger | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
-      assert WorkItems.count_waiting_on(foreign) == 0
+      # The member whose count is 1 above, once no longer a member, is counted nothing,
+      # with the scope read again.
+      member_scope = workspace_scope(ctx.member, ctx.scope.workspace)
+      assert WorkItems.count_waiting_on(member_scope) == 1
+      Repo.delete!(ctx.membership)
+      assert WorkItems.count_waiting_on(Apiary.Access.reload(member_scope)) == 0
     end
   end
 
@@ -477,6 +482,12 @@ defmodule Apiary.WorkItems.WorkListTest do
                Enum.sort(of.([:queued, :running, :questions, :no_result, :lost, :used_up]))
 
       assert list(scope, stage: "nonsense").rows == []
+
+      closed =
+        at!(scope, :confirm)
+        |> set!(state: :closed, closed_at: DateTime.utc_now(), closed_by_id: scope.user.id)
+
+      assert ids(list(scope, view: :closed)) == [closed.public_id]
       assert list(scope, view: :closed, stage: :confirm).rows == []
       assert length(list(scope, stage: "").rows) == 10
     end

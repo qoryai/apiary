@@ -15,6 +15,11 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
     %{scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
 
+    # One waits at Confirm for its owner, the reader.
+    confirm = work_item_fixture(scope)
+    %{dispatch_run: dispatch_run} = explore_run_fixture(confirm, result: understood_result())
+    Apiary.Dispatches.Settle.settle(dispatch_run.id)
+
     assert WorkItems.get_by_number(scope, work_item.number) == nil
     assert WorkItems.get_by_public_id(scope, work_item.public_id) == nil
 
