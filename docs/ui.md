@@ -998,7 +998,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   button becomes Get a new command. There is no list of codes. With keys, the tab lists
   them under Keys, with a count, one card each, headed by its label and Active or Revoked:
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
-  a command by dana@example.com, …" or "Generated in a browser by …"), Secret (where the
+  a command by dana, …" or "Generated in a browser by …"), Secret (where the
   key's secret is), Last used ("Not yet" while unused) and Fingerprint,
   and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its

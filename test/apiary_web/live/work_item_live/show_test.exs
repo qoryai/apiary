@@ -4,9 +4,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   # answers, Confirm as it stands and with changes, Decline, Close, Run Explore again),
   # each refused without words where the page read an earlier state, and the form's
   # errors under its fields; the page read again on a message of its work item, with the
-  # scope first, as after a refused action; people by their short name, and a former
-  # member as one; a run's link only where the reader may read the runs of the workspace
-  # it ran in, after the work item moved; and a close by the instance.
+  # scope first, as after a refused action; people by the short name of their account,
+  # and a deleted account as a former member; a run's link only where the reader may read
+  # the runs of the workspace it ran in, after the work item moved; and a close by the
+  # instance.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -421,31 +422,54 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute render(view) =~ member.user.email
     end
 
-    test "a member removed while their account is in use is a former member", %{
+    defp owner(view), do: view |> element("#work-item-details-owner") |> render()
+
+    test "a person removed from the organisation is named by their account", %{
       conn: conn,
       scope: scope
     } do
-      work_item = queued(scope)
       member = member_fixture(scope, :member)
+      work_item = work_item_fixture(scope, owner_id: member.user.id)
+      explore_run_fixture(work_item, state: :waiting)
       {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
       Repo.delete!(member.membership)
 
       {:ok, view, _html} = live(conn, thread_path(scope, work_item))
+      short = Apiary.Accounts.User.short_name(member.user.email)
       line = author(view, comment)
-      assert line =~ "Former member"
-      refute line =~ Apiary.Accounts.User.short_name(member.user.email)
+      assert line =~ short
+      refute line =~ "Former member"
+      assert owner(view) =~ short
+      refute owner(view) =~ "Former member"
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope} do
-      work_item = queued(scope)
       member = member_fixture(scope, :member)
+      work_item = work_item_fixture(scope, owner_id: member.user.id)
+      explore_run_fixture(work_item, state: :waiting)
       {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
       {:ok, _deleted} = Apiary.Accounts.delete_user(member.user)
 
       {:ok, view, _html} = live(conn, thread_path(scope, work_item))
+      short = Apiary.Accounts.User.short_name(member.user.email)
       line = author(view, comment)
       assert line =~ "Former member"
-      refute line =~ Apiary.Accounts.User.short_name(member.user.email)
+      refute line =~ short
+      assert owner(view) =~ "Former member"
+      refute owner(view) =~ short
+    end
+
+    test "a person who is not a member of the organisation is named by their account", %{
+      conn: conn,
+      scope: scope
+    } do
+      user = Apiary.AccountsFixtures.user_fixture()
+      work_item = work_item_fixture(scope, owner_id: user.id)
+      explore_run_fixture(work_item, state: :waiting)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert owner(view) =~ Apiary.Accounts.User.short_name(user.email)
+      refute owner(view) =~ "Former member"
     end
   end
 

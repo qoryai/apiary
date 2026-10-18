@@ -35,7 +35,18 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-public-id", node.public_id)
       assert has_element?(lv, "#node-kind", "Node")
       assert has_element?(lv, "#node-state", "Never seen")
-      assert has_element?(lv, "#node-made", scope.user.email)
+
+      assert has_element?(
+               lv,
+               "#node-made",
+               "made by #{Apiary.Accounts.User.short_name(scope.user.email)}, "
+             )
+
+      refute has_element?(lv, "#node-made", scope.user.email)
+      # About says who made it the same way.
+      about = lv |> element("#node-about") |> render()
+      assert about =~ "by #{Apiary.Accounts.User.short_name(scope.user.email)}, "
+      refute about =~ scope.user.email
       assert has_element?(lv, "#breadcrumb", "Nodes")
 
       # The node's name, cut where the segment is short, is whole in its title; the fixed

@@ -179,7 +179,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     person =
       connection &&
-        People.member(People.accounts([connection.created_by_id]), connection.created_by_id)
+        People.short(
+          People.account(People.accounts([connection.created_by_id]), connection.created_by_id)
+        )
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)

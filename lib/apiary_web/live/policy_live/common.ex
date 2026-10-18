@@ -34,7 +34,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   # Phoenix.LiveView, its async work run under the page's organisation and workspace ids.
   use ApiaryWeb.Async
 
-  alias Apiary.{Access, Organisations}
+  alias Apiary.Access
   alias Apiary.Accounts.Scope
   alias Apiary.Policy
   alias Apiary.Policy.{Above, Grammar, Rule}
@@ -77,7 +77,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
       scope_kind: Keyword.get(opts, :scope) || if(holder, do: :target, else: :workspace),
       may_change: Keyword.get(opts, :may_change, &may_edit?/1),
       base: Keyword.get(opts, :base) || base(scope, holder),
-      people: people(scope),
       authors: %{},
       fresh: %{},
       announce: nil,
@@ -172,23 +171,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The start of the window a list of rules counts their use in: the last 14 days."
   def use_since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
 
-  # user id => email, of the people of the workspace: who added a rule.
-  defp people(scope) do
-    for %{user: %{id: id, email: email}} <- Organisations.list_members(scope),
-        into: %{},
-        do: {id, email}
-  end
-
   @doc "The local part of an email: dana of dana@example.com."
   def local(nil), do: nil
   def local(email), do: People.short(email)
-
-  @doc """
-  Who made a rule or a change, by user id, among the page's `people`: the local part of a
-  member's address, "Former member" for a person who is not one any more, their account
-  deleted or their membership ended (`ApiaryWeb.People`), nil for nobody.
-  """
-  def person(people, id), do: people |> People.member(id) |> People.short()
 
   @doc """
   Reads who made each rule the page lists, in one read, into its `authors`: the authors
@@ -215,17 +200,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Who made a rule, by user id, as the history names them: the local part of the address
   of their account, whether or not they are a member of the organisation, "Former member"
-  for a deleted account, nil for nobody. Read by `assign_authors/1`; a person it has not
-  read is named among the page's `people` (`person/2`).
+  for a deleted account or an id no account has, nil for nobody. Read by
+  `assign_authors/1`.
   """
   def author(_socket, nil), do: nil
 
-  def author(%{assigns: assigns}, id) do
-    case assigns do
-      %{authors: %{^id => name}} -> People.short(name)
-      _ -> person(assigns.people, id)
-    end
-  end
+  def author(%{assigns: assigns}, id),
+    do: assigns.authors |> People.account(id) |> People.short()
 
   ## Coalesced reloads: one read per 250 ms however many changes land
 
@@ -567,7 +548,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> Map.new(fn change ->
       {change.subject,
        %{
-         by: People.email(change.changed_by),
+         by: People.short(People.email(change.changed_by)),
          at: Format.date(change.inserted_at)
        }}
     end)
@@ -1691,11 +1672,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
         made = made_version(versions, holder, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
+        who = People.short(People.email(change.changed_by))
+
         %{
           id: change.id,
-          sentence: change_sentence(change, People.email(change.changed_by), above),
+          sentence: change_sentence(change, who, above),
           origin: origin(change, made),
-          who: People.email(change.changed_by),
+          who: who,
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,
@@ -1866,13 +1849,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
         |> Enum.take(5)
         |> then(&if(&1 == [], do: [configuration], else: &1))
 
+      # Who made this version and each version around it, read in one query.
+      accounts =
+        People.accounts([configuration.changed_by_id | Enum.map(around, & &1.changed_by_id)])
+
       {:ok,
        %{
          configuration: configuration,
          current?: latest.version == configuration.version,
          latest: latest.version,
          superseded_by: superseded_by,
-         changed_by: People.member(socket.assigns.people, configuration.changed_by_id),
+         changed_by: People.short(People.account(accounts, configuration.changed_by_id)),
          mode: document_mode(configuration.document),
          mode_source:
            if(latest.version == configuration.version,
@@ -1902,7 +1889,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
                version: item.version,
                digest: item.digest,
                words: (change && change_words(change)) || gettext("First render"),
-               who: People.member(socket.assigns.people, item.changed_by_id),
+               who: People.account(accounts, item.changed_by_id),
                at: item.rendered_at,
                workspace: holder != nil and change != nil and is_nil(change.target_id)
              }

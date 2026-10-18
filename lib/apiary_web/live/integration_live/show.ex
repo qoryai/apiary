@@ -36,7 +36,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations.Workspace
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.SettingsComponents
+  alias ApiaryWeb.{People, SettingsComponents}
 
   @tabs [:overview, :targets, :settings]
   @writes [:add_target, :remove_target, :version, :delete]
@@ -356,12 +356,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
         <dd>
-          {Common.who(@people, @connection.created_by_id)}
+          {People.short(Common.who(@people, @connection.created_by_id))}
           <span class="text-muted">· <.time_ago at={@connection.inserted_at} /></span>
         </dd>
         <dt class="text-faint">{gettext("Last changed")}</dt>
         <dd>
-          {Common.who(@people, @connection.updated_by_id)}
+          {People.short(Common.who(@people, @connection.updated_by_id))}
           <span class="text-muted">· <.time_ago at={@connection.updated_at} /></span>
         </dd>
       </dl>
@@ -724,7 +724,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
        may_write: Common.may_write?(scope),
-       people: Common.people(scope),
        confirming: nil,
        find: to_form(%{"text" => ""}, as: :find),
        candidates: [],
@@ -793,7 +792,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       plain: if(description, do: Common.plain_settings(description), else: []),
       patterns: if(description, do: Common.argument_patterns(description), else: []),
       settings: Connection.settings_map(connection),
-      target_rows: target_rows
+      target_rows: target_rows,
+      people: Common.people([connection.created_by_id, connection.updated_by_id])
     )
   end
 

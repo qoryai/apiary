@@ -2132,7 +2132,7 @@ defmodule ApiaryWeb.RunLive.Show do
         refusal: %{
           rule_option: act.rule_option,
           rule: act.entry.host,
-          locked_by: locked && ApiaryWeb.People.email(locked.changed_by),
+          locked_by: locked && ApiaryWeb.People.short(ApiaryWeb.People.email(locked.changed_by)),
           locked_at: locked && locked.inserted_at,
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           who: ApiaryWeb.Edition.who_may_sentence(:"security_policy.lock", scope),

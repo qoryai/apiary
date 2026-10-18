@@ -958,7 +958,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       conn = as_member(context)
       unknown = "#rule-#{rule(scope, "*.paste.example").id}-lock"
       known = "#rule-#{rule(scope, "github.example").id}-lock"
-      by = Regex.escape("Locked by #{scope.user.email} on ")
+      by = Regex.escape("Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on ")
 
       view = open(conn, scope)
 
@@ -1632,7 +1632,83 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "registry.example is already allowed for the workspace, by #{local} on"
 
       view = open(conn, scope, "/policy/history")
-      assert text(view, "#history-list") =~ "#{user.email} allowed registry.example"
+      assert text(view, "#history-list") =~ "#{local} allowed registry.example"
+      refute text(view, "#history-list") =~ user.email
+    end
+  end
+
+  describe "who made a rule, not a member of the organisation at all" do
+    test "is named beside the rule by their account", %{conn: conn, scope: scope} do
+      user = Apiary.AccountsFixtures.user_fixture()
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      rule |> Ecto.Changeset.change(created_by_id: user.id) |> Apiary.Repo.update!()
+
+      view = open(conn, scope)
+
+      assert text(view, "#rule-#{rule.id} .q-pr-by") =~
+               Apiary.Accounts.User.short_name(user.email)
+
+      refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+    end
+  end
+
+  describe "who made a version" do
+    # The version page of the workspace's version that `member` made by allowing a host,
+    # once `change` ran on that version: its strip's text and its line in Versions.
+    defp version_of(conn, scope, member, change) do
+      {:ok, _rule} = Policy.allow(member, nil, %{host: "registry.example"})
+      %{items: [latest | _]} = Policy.list_configurations(scope, nil, 1)
+      assert latest.changed_by_id == member.user.id
+      change.(latest)
+
+      view = open(conn, scope, "/policy/versions/#{latest.version}")
+      {text(view, "#version-strip"), text(view, "#ver-#{latest.version}")}
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn _version ->
+          {:ok, _} = Apiary.Organisations.remove_member(scope, member.membership.id)
+        end)
+
+      short = Apiary.Accounts.User.short_name(member.user.email)
+      assert strip =~ "Changed by #{short} "
+      assert line =~ short
+      refute strip <> line =~ member.user.email
+      refute strip <> line =~ "Former member"
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn _version ->
+          {:ok, _} = Apiary.Accounts.delete_user(member.scope)
+        end)
+
+      assert strip =~ "Changed by Former member "
+      assert line =~ "Former member"
+      refute strip <> line =~ Apiary.Accounts.User.short_name(member.user.email)
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+      user = Apiary.AccountsFixtures.user_fixture()
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn version ->
+          version |> Ecto.Changeset.change(changed_by_id: user.id) |> Apiary.Repo.update!()
+        end)
+
+      short = Apiary.Accounts.User.short_name(user.email)
+      assert strip =~ "Changed by #{short} "
+      assert line =~ short
+      refute strip <> line =~ user.email
+      refute strip <> line =~ "Former member"
     end
   end
 
@@ -1657,7 +1733,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
-               "#{user.email} switched the workspace's default mode from observe to enforce"
+               "#{Apiary.Accounts.User.short_name(user.email)} switched the workspace's default mode from observe to enforce"
+
+      refute text(view, "#history-list") =~ user.email
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"

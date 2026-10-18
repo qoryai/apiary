@@ -117,8 +117,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       assert words(lv, "#code-#{row.id} > p:first-child") == "A command is waiting to be run."
 
       assert words(lv, "#code-#{row.id}") =~
-               "#{admin.user.email} got it at #{Format.time(row.inserted_at)}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+               "#{Apiary.Accounts.User.short_name(admin.user.email)} got it at #{Format.time(row.inserted_at)}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
 
+      refute words(lv, "#code-#{row.id}") =~ admin.user.email
       refute words(lv, "#code-#{row.id}") =~ adapter.name
       refute html =~ code
 
@@ -319,7 +320,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
              )
 
       assert words(lv, "#key-#{key.key_id}-added") ==
-               "Connected with a command by #{admin.user.email}, #{Format.datetime(key.received_at)}"
+               "Connected with a command by #{Apiary.Accounts.User.short_name(admin.user.email)}, #{Format.datetime(key.received_at)}"
 
       assert words(lv, "#key-#{key.key_id}-secret") ==
                "On the machine that ran the command; never shown"
@@ -363,7 +364,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
       assert words(lv, "#key-#{key.key_id}-state") == "Revoked"
 
       assert words(lv, "#key-#{key.key_id}") =~
-               "Revoked by #{admin.user.email}, #{Format.datetime(revoked.revoked_at)}"
+               "Revoked by #{Apiary.Accounts.User.short_name(admin.user.email)}, #{Format.datetime(revoked.revoked_at)}"
+
+      refute words(lv, "#key-#{key.key_id}") =~ admin.user.email
 
       assert has_element?(lv, "#key-#{second.key_id}-revoke")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")

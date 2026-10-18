@@ -60,6 +60,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   defp time(at), do: ApiaryWeb.Format.time(at)
 
+  defp short(user), do: Apiary.Accounts.User.short_name(user.email)
+
   # One part of a listing of `connection`, as the adapter of `key` sends it: a collection
   # per title, with no target; `{title, :target}` for one whose target is on
   # code.example.com at the title's path.
@@ -238,7 +240,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -249,7 +251,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email}'s install, started today at #{time(connection.updated_at)}, expired before it was finished. Press Install to start again."
+             "Not installed. #{short(scope.user)}'s install, started today at #{time(connection.updated_at)}, expired before it was finished. Press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -354,7 +356,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     connection_fixture(scope, adapter, :connected)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
-    assert words(lv, "#integration-status") == "Installed by #{scope.user.email} today."
+    assert words(lv, "#integration-status") == "Installed by #{short(scope.user)} today."
     refute has_element?(lv, "#integration-install")
     assert words(lv, "#collections-heading") == "Repositories"
 
@@ -435,7 +437,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Installed by #{scope.user.email} on #{ApiaryWeb.Format.day(earlier)}."
+             "Installed by #{short(scope.user)} on #{ApiaryWeb.Format.day(earlier)}."
 
     refute has_element?(lv, "#collections-waiting")
   end
@@ -1852,7 +1854,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     set(connection, pass_expires_at: DateTime.add(DateTime.utc_now(:second), -1))
 
@@ -1894,5 +1896,46 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
     :ok = EditionStubs.HidesNamed.put([:factory])
     assert_raise ApiaryWeb.Features.NotFound, fn -> live(conn, page(scope, adapter)) end
+  end
+
+  describe "who installed it" do
+    # The status line of a connection installed today by `user`, once `change` ran.
+    defp installed_by(conn, scope, adapter, user, change) do
+      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+      set(connection, created_by_id: user.id)
+      change.()
+      {:ok, lv, _html} = live(conn, page(scope, adapter))
+      words(lv, "#integration-status")
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      member = member_fixture(scope, :member)
+
+      line =
+        installed_by(conn, scope, adapter, member.user, fn -> Repo.delete!(member.membership) end)
+
+      assert line == "Installed by #{short(member.user)} today."
+      refute line =~ member.user.email
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope, adapter: adapter} do
+      member = member_fixture(scope, :member)
+
+      line =
+        installed_by(conn, scope, adapter, member.user, fn ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(member.user)
+        end)
+
+      assert line == "Installed by Former member today."
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      user = Apiary.AccountsFixtures.user_fixture()
+      line = installed_by(conn, scope, adapter, user, fn -> :ok end)
+      assert line == "Installed by #{short(user)} today."
+      refute line =~ user.email
+    end
   end
 end

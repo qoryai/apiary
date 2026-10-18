@@ -179,6 +179,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       core = refusal.()
       assert String.ends_with?(core, ". Only an owner can change or unlock it.")
+      assert core =~ "Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
+      refute core =~ scope.user.email
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
       sentence = Apiary.EditionStubs.LockWorded.sentence()
@@ -209,7 +211,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
         |> LazyHTML.attribute("data-tip")
 
       assert tip =~
-               "A locked workspace rule denies files.cdn.example. Locked by #{scope.user.email} on "
+               "A locked workspace rule denies files.cdn.example. Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
+
+      refute tip =~ scope.user.email
 
       refute has_element?(view, "##{cdn}-allow")
       refute has_element?(view, "##{cdn}-deny")

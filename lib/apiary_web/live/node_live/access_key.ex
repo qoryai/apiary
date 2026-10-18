@@ -970,11 +970,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp when_words(person, at) do
     if person,
       do:
-        gettext("by %{person}, %{date}", person: People.email(person), date: Format.datetime(at)),
+        gettext("by %{person}, %{date}",
+          person: People.short(People.email(person)),
+          date: Format.datetime(at)
+        ),
       else: Format.datetime(at)
   end
 
-  defp person_words(person), do: People.email(person) || People.former_member()
+  defp person_words(person), do: People.short(People.email(person)) || People.former_member()
 
   # A key an adapter installed with Qory Apiary enrolled with a code of the instance, which
   # names no maker.

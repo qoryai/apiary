@@ -357,7 +357,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
-    people = people(scope, rows, socket.assigns.options.owner)
+    people = people(rows, one_owner(params), socket.assigns.options.owner)
 
     assign(socket,
       list: list,
@@ -373,7 +373,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp load_options(socket) do
     scope = socket.assigns.current_scope
     owners = WorkItems.list_filter_values(scope, :owner)
-    names = names(scope, Enum.map(owners, & &1.key))
+    names = names(Enum.map(owners, & &1.key))
 
     options = %{
       owner: Enum.map(owners, &%{key: &1.key, label: Map.fetch!(names, &1.key), count: &1.count}),
@@ -434,28 +434,30 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   ## People
 
-  # The people the rows name, their owners and who ended them, by account id, with the
+  # The people the rows name, their owners and who ended them, and the one owner the list
+  # is filtered to (`one_owner/1`), whom Confirm's line names, by account id, with the
   # owners the Filter menu offers: `%{id => name}`.
-  defp people(scope, rows, offered) do
+  defp people(rows, owner, offered) do
     known = Map.new(offered, &{&1.key, &1.label})
 
     ids =
       rows
       |> Enum.flat_map(&[&1.owner_id, &1.ended_by_id])
+      |> Enum.concat([owner])
       |> Enum.reject(&(is_nil(&1) or Map.has_key?(known, &1)))
       |> Enum.uniq()
 
-    Map.merge(known, names(scope, ids))
+    Map.merge(known, names(ids))
   end
 
-  # The name of each person of `ids`, as the work item page names one: the local part of
-  # the email address of a member of the organisation, "Former member" for a person who
-  # is no longer one, a deleted account, or none.
-  defp names(_scope, []), do: %{}
+  # The name of each person of `ids`, as the work item page names one, read in one query:
+  # the local part of the email address of their account, whether or not they are a member
+  # of the organisation, "Former member" for a deleted account or an id no account has.
+  defp names([]), do: %{}
 
-  defp names(scope, ids) do
-    members = People.members(scope)
-    Map.new(ids, &{&1, People.short(People.member(members, &1))})
+  defp names(ids) do
+    accounts = People.accounts(ids)
+    Map.new(ids, &{&1, People.short(People.account(accounts, &1))})
   end
 
   defp person(_people, nil, _scope), do: nil
@@ -494,13 +496,24 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp waiting(%{waiting_you: n}, _params, _people) when n > 0, do: %{count: n, for: :you}
 
   defp waiting(%{waiting: n}, params, people) when n > 0 do
-    case params.owner do
-      [id] -> %{count: n, for: Map.get(people, id) || People.former_member()}
-      _many -> %{count: n, for: :member}
+    case one_owner(params) do
+      nil -> %{count: n, for: :member}
+      id -> %{count: n, for: Map.get(people, id) || People.former_member()}
     end
   end
 
   defp waiting(_stages, _params, _people), do: nil
+
+  # The one owner the list is filtered to, as the id `Ecto.UUID.cast/1` gives for the
+  # value: nil for no owner, for several, and for a value that is not an id.
+  defp one_owner(%{owner: [value]}) do
+    case Ecto.UUID.cast(value) do
+      {:ok, id} -> id
+      :error -> nil
+    end
+  end
+
+  defp one_owner(_params), do: nil
 
   # Whether the list is one stage alone, a page of the Open view.
   defp stage_alone?(params), do: params.view == :open and params.stage in @stages

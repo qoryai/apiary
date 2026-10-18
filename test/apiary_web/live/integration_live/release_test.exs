@@ -6,7 +6,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
   import Apiary.ConnectionsFixtures
   import Apiary.DescriptionFixtures
 
-  alias Apiary.{Connections, Integrations}
+  alias Apiary.{Connections, Integrations, Repo}
   alias Apiary.Connections.Connection
 
   @moduletag needs: :secrets
@@ -345,5 +345,64 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
 
     assert html =~ "Only owners and admins"
     assert {:ok, []} = Connections.list_connections(scope)
+  end
+
+  describe "who asked for it" do
+    # What a read release says of who asked for it, `admin`, once `change` ran on it, and
+    # the page's text, its tags left out.
+    defp said_of(conn, scope, admin, change) do
+      {:ok, release} =
+        Integrations.request_release(admin.scope, %{
+          source: "codeberg.org/acme/hooks",
+          version: "0.1.0"
+        })
+
+      serve_codeberg(github_description(), "acme/hooks")
+      {:ok, %{state: "ready"} = release} = Integrations.fetch_release(scope, release.id)
+      change.(release)
+      {:ok, lv, _html} = live(conn, ipath(scope, release))
+      text = lv |> render() |> plain()
+      [_, person] = Regex.run(~r/asked for by (Former member|\S+)/, text)
+      {person, text}
+    end
+
+    defp plain(html),
+      do: html |> String.replace(~r/<[^>]+>/, " ") |> String.split() |> Enum.join(" ")
+
+    defp by_user(release, user),
+      do: release |> Ecto.Changeset.change(requested_by_id: user.id) |> Repo.update!()
+
+    defp short(user), do: Apiary.Accounts.User.short_name(user.email)
+
+    test "a person removed from the organisation is named by the short name of their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      {said, text} =
+        said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
+
+      assert said == short(admin.user)
+      refute text =~ admin.user.email
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      {said, _text} =
+        said_of(conn, scope, admin, fn _record ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
+        end)
+
+      assert said == "Former member"
+    end
+
+    test "a person who is not a member of the organisation is named by the short name of their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      user = Apiary.AccountsFixtures.user_fixture()
+      {said, text} = said_of(conn, scope, admin, &by_user(&1, user))
+      assert said == short(user)
+      refute text =~ user.email
+    end
   end
 end
