@@ -68,6 +68,12 @@ defmodule Apiary.Dispatches.Slots do
   #      lock; a claim takes a waiting run `FOR UPDATE SKIP LOCKED`, which waits on none;
   #   6. the dispatches.
   #
+  # A handover (`Apiary.Dispatches.Handover`) keeps the order: the free of its run
+  # (`{:runs, [id]}`), which locks a lapsed prebuild's environment record before its run,
+  # then its run of the queue `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), then its
+  # dispatch, and only then, beyond these, the gateway's row `FOR SHARE` and the run it
+  # registers, as a run of the queue is locked before the run registered for it.
+  #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first
   # wrote; a claim that takes or ends the one that waits holds its row, and whoever reads

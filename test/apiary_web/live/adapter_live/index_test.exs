@@ -7,7 +7,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # members.
   # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
   # installed, Install, which posts to the Install path, or not ready yet; with every one
-  # installed, a line that says so.
+  # installed, a line that says so, in place of the lead.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -259,9 +259,10 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       refute has_element?(lv, "#add-none")
     end
 
-    test "with every integration installed, says so", %{conn: conn, scope: scope} do
+    test "with every integration installed, says so, with no lead", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, new_path(scope))
       refute has_element?(lv, "#add-none")
+      assert has_element?(lv, ".q-settings-head-sub")
 
       for name <- ["Acme tracker", "Platform tracker"] do
         %{adapter: adapter} = connectable_adapter_fixture(%{name: name})
@@ -270,6 +271,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, new_path(scope))
       assert words(lv, "#add-none") == "All integrations are installed."
+      refute has_element?(lv, ".q-settings-head-sub")
       refute has_element?(lv, "[id^=add-na_]")
     end
 

@@ -377,6 +377,32 @@ its workspace, the pool's included, and another gateway that may serve its works
 workspace, and a gateway that may not serve the run's workspace, are refused
 `run_id_used`, and open no run under that id.
 
+The handover registers the run. The starter first says it started the job for the
+dispatch (`dispatched.schema.json`), then asks for the handover, and Qory Apiary registers
+the run in the handover's transaction, with the run of the queue and its dispatch held,
+through the gateway the pool's choice resolves to: the run's `run_id` is the one the run of
+the queue was given, and so is its instance id; its labels and its run variables come from
+the target, the work item's or the prebuild's collection's, and what it is about from the
+step and the work item, never from the request, whose body is `version` and `time` alone;
+its run key names the gateway and the pool, with an attach window of 600 seconds, and is
+given once, in the signed `200`, with `Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
+an unknown dispatch, another pool's, or a key the action is refused to, one answer; `404`
+`not_found` for a prebuild's dispatch at revision 1; `410` `gone` for a dispatch that ended;
+`409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and `503`
+`unavailable` last, after which nothing was written. A lease that lapsed unswept is freed
+first, and that is committed: the run waits in its queue again, or a prebuild ends
+`superseded` while another prebuild of its collection and pool waits, and is answered `410`
+`gone`. When what the run is made from can no longer be formed, Qory Apiary ends the run of
+the queue and its dispatch in the handover's transaction and answers `410` `gone`, so the
+starter stops the job it started: a
+prebuild's collection ended, moved to another workspace, unassigned or left without a target
+(`collection_ended`), run variables that break their rules for the target
+(`variables_invalid`), a work item whose ticket is no longer kept (`ticket_gone`), or an
+input that breaks the explore contract's rules for it (`inputs_invalid`). The contract names
+`410` for a dispatch that ended and no cause for these; Qory Apiary reads them as ends of the
+dispatch, never as `503`, which would have the starter ask again for a run that can never be
+handed over.
+
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the

@@ -8,6 +8,13 @@ defmodule ApiaryWeb.IntegrationComponents do
   #
   # The mark is a neutral glyph, the same for every integration: never a vendor's logo.
   #
+  # The collections an installed integration reaches are a table
+  # (`collections_table/1`): each one's name, its workspace or Unassigned, its open
+  # items, for an adapter with items, and the day it was added; where they may be
+  # assigned, a checkbox on each row and one over them all. The selection's menu
+  # (`assign_menu/1`) lists the workspaces to assign it to, and a list menu
+  # (`workspace_filter/1`) keeps the table to one workspace.
+  #
   # The install block says that the integration brings the person back to the
   # organisation's page, that the collections it reaches are listed there, and that the
   # organisation has one installation of it, then offers Install (`install_form/1`),
@@ -176,4 +183,239 @@ defmodule ApiaryWeb.IntegrationComponents do
   @spec ready?(Node.t()) :: boolean
   def ready?(%Node{connect_url: url} = adapter),
     do: is_binary(url) and Apiary.AccessKeys.active_key?(adapter)
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true, doc: "the table's accessible name, the heading's words"
+  attr :rows, :list, required: true, doc: "`Apiary.Adapters.Collections.list_collections/3`'s"
+  attr :column, :string, required: true, doc: "the first column's head: the word for one"
+
+  attr :open, :any,
+    default: nil,
+    doc: "the open items column's head; no such column without one"
+
+  attr :picks, :boolean, default: false, doc: "whether the rows may be selected"
+  attr :selected, :map, default: %{}, doc: "the selected rows' names, by their ids"
+  attr :every, :string, default: nil, doc: "the name of the checkbox over every row shown"
+  attr :none, :string, default: nil, doc: "the line in place of the rows when there are none"
+
+  @doc false
+  # The collections of a page, a row each: the name, the workspace it is assigned to or
+  # Unassigned behind a warning mark, how many of its items are open (a faint dash for
+  # none), and the day it was added. The open items and the day show from 600 px of the
+  # table's width. With `picks`, a checkbox first on each row (`"select"`, the row's
+  # public id as `collection`), and one in the head over every row shown
+  # (`"select_all"`), checked while all of them are. With no rows, `none` in their place.
+  def collections_table(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-tbl q-int-pick overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+    >
+      <table class="table">
+        <thead>
+          <tr>
+            <th :if={@picks} scope="col" class="q-int-cb">
+              <input
+                id={"#{@id}-every"}
+                type="checkbox"
+                class="checkbox checkbox-xs"
+                checked={@rows != [] && Enum.all?(@rows, &Map.has_key?(@selected, &1.id))}
+                disabled={@rows == []}
+                aria-label={@every}
+                phx-click="select_all"
+              />
+            </th>
+            <th scope="col">{@column}</th>
+            <th scope="col">{gettext("Workspace")}</th>
+            <th :if={@open} scope="col" class="q-num q-from-sm">{@open}</th>
+            <th scope="col" class="q-from-sm">{gettext("Added")}</th>
+          </tr>
+        </thead>
+        <tbody id={"#{@id}-rows"}>
+          <tr
+            :for={row <- @rows}
+            id={"collection-#{row.public_id}"}
+            aria-selected={@picks && to_string(Map.has_key?(@selected, row.id))}
+          >
+            <td :if={@picks} class="q-int-cb">
+              <input
+                id={"collection-#{row.public_id}-pick"}
+                type="checkbox"
+                class="checkbox checkbox-xs"
+                checked={Map.has_key?(@selected, row.id)}
+                aria-label={gettext("Select %{name}", name: row.name)}
+                phx-click="select"
+                phx-value-collection={row.public_id}
+              />
+            </td>
+            <td class="q-td-title">
+              <span class="q-title-mono block truncate" title={row.name}>{row.name}</span>
+            </td>
+            <td>
+              <span :if={row.workspace}>{row.workspace.name}</span>
+              <span :if={!row.workspace} class="q-int-un">
+                <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
+                  "Unassigned"
+                )}</span>
+              </span>
+            </td>
+            <td :if={@open} class="q-num q-from-sm">
+              <span :if={row.open_tickets == 0} class="q-faint">—</span>
+              <span :if={row.open_tickets > 0}>{Format.number(row.open_tickets)}</span>
+            </td>
+            <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
+          </tr>
+          <tr :if={@rows == [] && @none} id={"#{@id}-none"}>
+            <td colspan="5" class="text-muted">{@none}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :heading, :string, required: true, doc: "what is assigned: the menu's heading and name"
+
+  attr :workspaces, :list,
+    required: true,
+    doc: "`{workspace, how many it holds, in words}` each"
+
+  attr :foot, :any, default: nil, doc: "what moves with them; no line without one"
+  attr :find, :boolean, default: false, doc: "whether a field finds a workspace by name"
+  attr :query, :string, default: nil, doc: "what the field holds"
+
+  @doc false
+  # Assign to workspace, the selection's one action: a menu (the `Menu` hook) under its
+  # heading, a workspace per item with how many it holds on the right (`"assign"`, the
+  # workspace's id as `workspace`), then a rule and a faint line on what moves with them.
+  # With `find`, a field under the heading narrows the workspaces (`"find_workspace"`,
+  # its text as `q`); when none is left, a line says so.
+  def assign_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-primary btn-sm"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        {gettext("Assign to workspace")}<.icon name="hero-chevron-down-micro" class="size-4" />
+      </button>
+      <ul
+        class="q-rowmenu-list q-int-assign menu menu-sm dropdown-content"
+        role="menu"
+        aria-label={@heading}
+        popover="manual"
+        phx-mounted={JS.ignore_attributes(["style"])}
+      >
+        <.menu_heading title={@heading} />
+        <li :if={@find} role="presentation">
+          <form
+            id={"#{@id}-find"}
+            phx-change="find_workspace"
+            phx-submit="find_workspace"
+            novalidate
+          >
+            <input
+              id={"#{@id}-find-input"}
+              type="search"
+              name="q"
+              value={@query}
+              class="input input-sm q-filter-search"
+              placeholder={gettext("Find a workspace")}
+              aria-label={gettext("Find a workspace")}
+              phx-debounce="200"
+              autocomplete="off"
+            />
+          </form>
+        </li>
+        <li
+          :if={@workspaces == []}
+          id={"#{@id}-none"}
+          role="presentation"
+          class="px-2 py-1.5 text-xs text-faint"
+        >
+          {gettext("No workspace matches.")}
+        </li>
+        <.menu_item
+          :for={{workspace, count} <- @workspaces}
+          id={"#{@id}-#{workspace.id}"}
+          phx-click="assign"
+          phx-value-workspace={workspace.id}
+        >
+          {workspace.name} <span>{count}</span>
+        </.menu_item>
+        <.menu_divider :if={@foot} />
+        <li :if={@foot} role="presentation" class="q-int-assign-foot">{@foot}</li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :options, :list, required: true, doc: "`{name, path, chosen}` per workspace"
+
+  @doc false
+  # Workspace, a list's menu (the `Menu` hook) that keeps the table to the collections of
+  # one workspace: each a choice of one, which leads to the list with it, or, chosen
+  # already, without it. The button counts the filter while one is on.
+  def workspace_filter(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Workspace")}
+        <span :if={Enum.any?(@options, &elem(&1, 2))} class="q-listmenu-n">1</span>
+      </button>
+      <ul
+        class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
+        role="menu"
+        aria-label={gettext("Workspace")}
+        popover="manual"
+        phx-mounted={JS.ignore_attributes(["style"])}
+      >
+        <.menu_item
+          :for={{{name, path, chosen}, n} <- Enum.with_index(@options)}
+          id={"#{@id}-#{n}"}
+          patch={path}
+          checked={chosen}
+        >
+          {name}
+        </.menu_item>
+      </ul>
+    </div>
+    """
+  end
+
+  # The day a collection was added: today, or the date, its year left out in the current
+  # one.
+  defp added(at) do
+    if Format.days_back(at, DateTime.utc_now()) == 0,
+      do: gettext("Today"),
+      else: Format.day(at)
+  end
 end
