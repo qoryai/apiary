@@ -177,10 +177,11 @@ defmodule Apiary.Runs.Run do
     # given, which a repeat of the attach is given again, and the instance id of the
     # gateway that attached it, the one instance that may attach it again and send for it
     # (`Apiary.Runs.Sender`), nil until it is known. All nil for a direct run. Not folded: a
-    # rebuild keeps them.
+    # rebuild keeps them. The run key's payload and signature are redacted when a run is
+    # inspected, so a log of a run never holds what its run key is assembled from.
     belongs_to :gateway, Apiary.Nodes.Node
-    field :run_key_payload, :binary
-    field :run_key_signature, :binary
+    field :run_key_payload, :binary, redact: true
+    field :run_key_signature, :binary, redact: true
     field :run_key_issued_at, :utc_datetime_usec
     field :attach_by, :utc_datetime_usec
     field :attached_at, :utc_datetime_usec

@@ -4,8 +4,9 @@ defmodule Apiary.Dispatches.HandoverTest do
   # judged before anything else and committed, the runs the handover cannot form ended
   # in its transaction and answered as a dispatch that ended, a failure that writes
   # nothing, and the run a handover registers: on the pool, its instance the run's id, its
-  # labels, what it is about and its run variables from the target, its run key bound to
-  # the gateway, the slot kept, one audit entry.
+  # labels and its run variables from the target, what it is about from the step and the
+  # work item, its run key bound to the gateway and its parts never inspected, the slot
+  # kept, one audit entry.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -156,6 +157,16 @@ defmodule Apiary.Dispatches.HandoverTest do
       # payload and signature.
       assert {:ok, grant, payload} = RunKey.verify(handed.run_key)
       assert payload == run.run_key_payload
+      assert is_binary(run.run_key_signature)
+
+      # Neither part shows when the run is inspected, as a crash report would show the run
+      # the handover broadcasts.
+      for shown <- [inspect(run, limit: :infinity), inspect(handed.run, limit: :infinity)] do
+        refute shown =~ "run_key_payload"
+        refute shown =~ "run_key_signature"
+        refute shown =~ inspect(run.run_key_payload)
+      end
+
       assert grant.run_id == run_id
       assert grant.instance_id == run_id
       assert grant.node_id == ctx.pool.public_id
