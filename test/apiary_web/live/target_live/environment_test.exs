@@ -245,6 +245,22 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#{pool_id(pool)}-commit i")
     end
 
+    test "the commit a pool reported is cleaned: a bidirectional override dropped, a control character marked, inside <bdi>",
+         %{conn: conn, scope: scope, path: path} do
+      pool = pool_fixture(scope)
+      shop = collection(scope)
+      record!(scope, pool, shop, built(DateTime.utc_now(), commit: "\u202E\a9c1e4a7b2d5f"))
+      view = open(conn, path)
+      html = view |> element("#{pool_id(pool)}-commit") |> render()
+
+      refute html =~ "\u202E"
+      refute html =~ "\a"
+      # The mark is one of the seven characters the line shows.
+      assert has_element?(view, "#{pool_id(pool)}-commit .font-mono > bdi", "\uFFFD9c1e4a")
+      assert text(view, "#{pool_id(pool)}-commit") =~ "from \uFFFD9c1e4a"
+      refute text(view, "#{pool_id(pool)}-commit") =~ "\uFFFD9c1e4a7"
+    end
+
     test "the last build's failure, by its cause, and never the reason a starter gave",
          %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope)

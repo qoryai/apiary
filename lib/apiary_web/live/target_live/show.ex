@@ -710,7 +710,9 @@ defmodule ApiaryWeb.TargetLive.Show do
                 id={"target-environment-pool-#{pool.id}-commit"}
                 class="q-tgt-env-line"
               >
-                <.rich text={rich_gettext("from %{commit}", commit: {:m, short_commit(pool.commit)})} />
+                <.rich text={
+                  rich_gettext("from %{commit}", commit: {:m, {:bdi, short_commit(pool.commit)}})
+                } />
               </p>
               <p
                 :if={pool.failure}
@@ -975,8 +977,11 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
-  # The commit a build was made from, as a pool reported it: its first seven characters.
-  defp short_commit(commit), do: String.slice(commit, 0, 7)
+  # The commit a build was made from, as a pool reported it, cleaned as a page shows a text
+  # a node sent (`Apiary.ExternalText.sent/1`), then cut to its first seven characters.
+  # The cut counts graphemes, so a control character shown as U+FFFD is one of the seven,
+  # and a character is never cut apart from what joins it.
+  defp short_commit(commit), do: commit |> Apiary.ExternalText.sent() |> String.slice(0, 7)
 
   # When a build was made, its year only where it is not the current one.
   defp built_time(at) do
