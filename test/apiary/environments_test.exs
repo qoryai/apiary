@@ -849,7 +849,11 @@ defmodule Apiary.EnvironmentsTest do
         record(
           ctx,
           Map.merge(
-            %{source_collection_id: collection.id},
+            %{
+              source_collection_id: collection.id,
+              built_target_system: collection.target_system,
+              built_target_path: collection.target_path
+            },
             Map.merge(built(at), Map.put(attrs, :image, image(n)))
           )
         )
@@ -904,6 +908,30 @@ defmodule Apiary.EnvironmentsTest do
       # Another pool has no build of the target.
       other = pool_fixture(ctx.scope)
       assert Environments.image_for(other, @shop) == nil
+    end
+
+    test "is only an image built for that target, else none, the pool's default (V-714)",
+         ctx do
+      shop = shop(ctx)
+      built!(ctx, shop, "1", 1)
+      assert Environments.image_for(ctx.pool, @shop) == image("1")
+
+      # The collection's target moved, and no prebuild for the new one has landed: the
+      # image built for the old target is no run's of either.
+      Repo.update_all(from(c in Collection, where: c.id == ^shop.id),
+        set: [target_path: "acme/moved"]
+      )
+
+      assert Environments.image_for(ctx.pool, @shop) == nil
+      assert Environments.image_for(ctx.pool, %{@shop | path: "acme/moved"}) == nil
+
+      # A newer record built for another target than its collection's gives none either,
+      # and an older one built for the target still counts.
+      older = shop(ctx)
+      built!(ctx, older, "2", 2)
+      newer = shop(ctx)
+      built!(ctx, newer, "3", 3, %{built_target_path: "acme/docs"})
+      assert Environments.image_for(ctx.pool, @shop) == image("2")
     end
   end
 end
