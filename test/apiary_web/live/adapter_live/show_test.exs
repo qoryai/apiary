@@ -155,6 +155,26 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert conn.resp_body =~ "https://tracker.example.com/connect?state="
   end
 
+  test "the h1 holds the integration's mark, hidden from screen readers, then its name",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert has_element?(lv, ~s{h1#settings-section-title.q-settings-title[tabindex="-1"]})
+
+    assert has_element?(
+             lv,
+             ~s{#settings-section-title [aria-hidden="true"] > .hero-puzzle-piece-micro}
+           )
+
+    assert words(lv, "#settings-section-title") == "Acme tracker"
+    refute has_element?(lv, ~s{#settings-section-title [aria-hidden="true"]}, "Acme tracker")
+
+    assert page_title(lv) ==
+             "Acme tracker · Integrations · Organisation settings · #{scope.organisation.name} · Qory Apiary"
+
+    assert words(lv, ~s{#breadcrumb [aria-current="page"]}) == "Acme tracker"
+  end
+
   test "an integration not set up yet: Install disabled, and why", %{conn: conn, scope: scope} do
     adapter = adapter_fixture(%{name: "Shop tracker"})
     {:ok, lv, _html} = live(conn, page(scope, adapter))
