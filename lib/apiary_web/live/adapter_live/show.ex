@@ -53,6 +53,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # Before anything is selected, the menu's button shows disabled. While a listing is
   # still arriving, nothing can be selected, and there is no warning, view or filter.
   #
+  # For an adapter with items, each live collection assigned to a workspace has a Backlog
+  # switch on its row, whether its items come into that workspace's Backlog; a hint under
+  # the lead says when to turn one off. Whoever may turn them (`collection.set_backlog`,
+  # owners and admins) presses one
+  # (`Apiary.Adapters.Collections.set_collection_backlog/4`), and a flash says what the
+  # press changed, none when it changed nothing; anyone else sees them disabled, under a
+  # line that says who may. A collection with no items has a dash in their place.
+  #
   # While it is not installed, the install block follows
   # (`ApiaryWeb.IntegrationComponents`), to whoever may connect one (`adapter.connect`,
   # owners and admins), whose Install posts to the Install path, as the line to install
@@ -98,6 +106,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
        adapter: adapter,
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
+       may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation),
        selected: %{},
        menu_q: nil,
        late: false,
@@ -283,7 +292,66 @@ defmodule ApiaryWeb.AdapterLive.Show do
     {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload()}
   end
 
+  # A row's Backlog switch, turned the other way from what the page shows: a flash says
+  # what the press changed, and none when it changed nothing. A refusal for a person who
+  # may no longer turn it says who may, and leaves the switches disabled; a collection or
+  # an installation gone meanwhile shows the page as it now stands. Either way the page
+  # reads the collections again.
+  def handle_event(
+        "set_backlog",
+        %{"collection" => public_id},
+        %{assigns: %{state: :listed, connection: %Connection{} = connection}} = socket
+      ) do
+    %{current_scope: scope, adapter: adapter, rows: rows} = socket.assigns
+
+    case Enum.find(rows, &(&1.public_id == public_id and is_map(&1.backlog))) do
+      nil ->
+        {:noreply, socket}
+
+      row ->
+        on = !row.backlog.on
+
+        socket =
+          case Collections.set_collection_backlog(scope, connection, row.id, on) do
+            {:ok, count} ->
+              turned(socket, count, on, row.name, adapter)
+
+            {:error, :forbidden} ->
+              socket
+              |> assign(:may_set_backlog, false)
+              |> put_flash(:error, only_admins_change(scope))
+
+            {:error, _gone} ->
+              socket
+          end
+
+        {:noreply, reload(socket)}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp turned(socket, count, on, name, adapter) do
+    case SourceComponents.backlog_turned(
+           count,
+           on,
+           name,
+           Adapters.collection_noun(adapter),
+           Adapters.item_noun(adapter)
+         ) do
+      nil -> socket
+      words -> put_flash(socket, :info, words)
+    end
+  end
+
+  # Who may turn the Backlog switches, in the edition's words where it has some.
+  defp only_admins_change(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"collection.set_backlog",
+        gettext("Only owners and admins change the Backlog switches.")
+      )
 
   @impl true
   def handle_info(:late, socket) do
@@ -526,9 +594,24 @@ defmodule ApiaryWeb.AdapterLive.Show do
               )}</span>
             </span>
           </p>
-          <p :if={@lead} id="collections-lead" class="mb-3 max-w-[80ch] text-[13.5px]/5 text-muted">
-            {@lead}
-          </p>
+          <div
+            :if={@lead || switches?(assigns)}
+            class="mb-3 grid max-w-[80ch] gap-1.5 text-[13.5px]/5 text-muted"
+          >
+            <p :if={@lead} id="collections-lead">{@lead}</p>
+            <div :if={switches?(assigns)}>
+              <p id="collections-backlog-hint">
+                {gettext(
+                  "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay.",
+                  items: SourceComponents.items(Adapters.item_noun(@adapter)),
+                  collections: SourceComponents.collections(Adapters.collection_noun(@adapter))
+                )}
+              </p>
+              <p :if={!@may_set_backlog} id="collections-backlog-read-only">
+                {only_admins_change(@current_scope)}
+              </p>
+            </div>
+          </div>
 
           <.notice
             :if={@state == :listed && @several && @counts.unassigned > 0}
@@ -695,6 +778,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
               Adapters.items?(@adapter) &&
                 gettext("Open %{items}", items: SourceComponents.items(Adapters.item_noun(@adapter)))
             }
+            backlog={
+              Adapters.items?(@adapter) && SourceComponents.items(Adapters.item_noun(@adapter))
+            }
+            may_set_backlog={@may_set_backlog}
             picks={@picks}
             selected={@selected}
             every={
@@ -735,6 +822,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
     </Layouts.app>
     """
   end
+
+  # Whether the page shows the Backlog switches' column, and so the hint over it: once a
+  # listing names the connection, for an adapter with items.
+  defp switches?(%{state: state, adapter: adapter}),
+    do: state == :listed and Adapters.items?(adapter)
 
   # The line under the name: where the connection stands.
   defp status(%{state: state} = assigns) when state in [:waiting, :listed] do

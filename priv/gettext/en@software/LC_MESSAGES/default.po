@@ -4167,6 +4167,7 @@ msgid "Background tasks"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
@@ -7329,6 +7330,11 @@ msgstr ""
 msgid "If nothing appears, install again."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -9222,6 +9228,11 @@ msgstr ""
 msgid "No %{collections} match “%{search}”."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{items} to take in"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"
@@ -10522,6 +10533,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change nodes."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins change the Backlog switches."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -13483,6 +13499,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Take its %{items} into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take the %{items} of %{name} into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

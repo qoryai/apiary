@@ -98,9 +98,11 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   defp titles(range), do: for(n <- range, do: "acme/repo-" <> String.pad_leading("#{n}", 3, "0"))
 
+  # Each row's words, a space between the parts of a cell, as the screen shows them apart.
   defp rows(lv) do
     lv
     |> render()
+    |> String.replace("><", "> <")
     |> LazyHTML.from_document()
     |> LazyHTML.query("#collections-table tr")
     |> Enum.map(fn row ->
@@ -438,9 +440,9 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
 
     assert rows(lv) == [
-             "Repository Workspace Open tickets Added",
-             "acme/api #{scope.workspace.name} — Today",
-             "acme/shop #{scope.workspace.name} — Today"
+             "Repository Workspace Backlog Open tickets Added",
+             "acme/api Backlog #{scope.workspace.name} — Today",
+             "acme/shop Backlog #{scope.workspace.name} — Today"
            ]
 
     assert words(lv, "#collections-targets") ==
@@ -476,8 +478,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert rows(lv) == [
-             "Repository Workspace Open tickets Added",
-             "acme/shop #{scope.workspace.name} 3 #{ApiaryWeb.Format.day(earlier)}"
+             "Repository Workspace Backlog Open tickets Added",
+             "acme/shop Backlog #{scope.workspace.name} 3 #{ApiaryWeb.Format.day(earlier)}"
            ]
   end
 
@@ -495,7 +497,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-heading") == "Projects 1"
     assert words(lv, "#collections-lead") =~ "so every project is assigned to it, and its issues"
     assert words(lv, "#collections-count") == "1 project"
-    assert hd(rows(lv)) == "Project Workspace Open issues Added"
+    assert hd(rows(lv)) == "Project Workspace Backlog Open issues Added"
     assert words(lv, "#collections-targets") =~ "Assigning a project here"
   end
 
@@ -615,8 +617,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       })
 
     assert rows(lv) == [
-             "Repository Workspace Open tickets Added",
-             "acme/api #{scope.workspace.name} — Today"
+             "Repository Workspace Backlog Open tickets Added",
+             "acme/api Backlog #{scope.workspace.name} — Today"
            ]
 
     assert words(lv, "#collections-count") == "1 repository"
@@ -659,7 +661,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
            )
 
     assert rows(lv) == [
-             "Repository Workspace Open tickets Added",
+             "Repository Workspace Backlog Open tickets Added",
              "acme/api Unassigned — Today",
              "acme/shop Unassigned — Today",
              "acme/web Unassigned — Today"
@@ -712,10 +714,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "1 repository is unassigned. Its tickets reach no backlog until you assign it to a workspace."
 
     assert rows(lv) == [
-             "Repository Workspace Open tickets Added",
+             "Repository Workspace Backlog Open tickets Added",
              "acme/api Unassigned — Today",
-             "acme/shop Platform — Today",
-             "acme/web Platform — Today"
+             "acme/shop Backlog Platform — Today",
+             "acme/web Backlog Platform — Today"
            ]
 
     pick(lv, "acme/api")
@@ -1001,12 +1003,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     lv |> element("#collections-workspace-1") |> render_click()
     assert_patch(lv, page(scope, adapter) <> "?workspace_id=#{platform.id}")
-    assert Enum.drop(rows(lv), 1) == ["acme/shop Platform — Today"]
+    assert Enum.drop(rows(lv), 1) == ["acme/shop Backlog Platform — Today"]
     assert has_element?(lv, ~s{#collections-workspace-1[aria-checked="true"]})
     assert words(lv, "#collections-workspace-button") == "Workspace 1"
 
     {:ok, visited, _html} = live(conn, page(scope, adapter) <> "?workspace_id=#{platform.id}")
-    assert Enum.drop(rows(visited), 1) == ["acme/shop Platform — Today"]
+    assert Enum.drop(rows(visited), 1) == ["acme/shop Backlog Platform — Today"]
 
     lv |> element("#collections-workspace-1") |> render_click()
     assert_patch(lv, page(scope, adapter))
@@ -1025,7 +1027,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     lv |> form("#collections-search", %{q: "shop"}) |> render_change()
     assert_patch(lv, page(scope, adapter) <> "?q=shop")
-    assert Enum.drop(rows(lv), 1) == ["acme/shop #{scope.workspace.name} — Today"]
+    assert Enum.drop(rows(lv), 1) == ["acme/shop Backlog #{scope.workspace.name} — Today"]
     refute has_element?(lv, "#collections-pager")
 
     lv |> form("#collections-search", %{q: "repo"}) |> render_change()
