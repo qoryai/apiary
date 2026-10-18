@@ -27,6 +27,10 @@ defmodule Apiary.Dispatches.Handover do
   #      `{:error, :not_found}`;
   #   6. a dispatch that ended, or of a run that ended, is `{:error, :gone}`.
   #
+  # The release asks the same, in the same transaction (`transact/5`), and holds one row
+  # between steps 2 and 3: its run's work item or environment record
+  # (`Apiary.Dispatches.Release`).
+  #
   # ## `dispatched/3`
   #
   # Then a dispatch that was not handed over and whose lease lapsed, `stale_at` set or the
@@ -112,7 +116,8 @@ defmodule Apiary.Dispatches.Handover do
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
-    "dispatch.handover": "a handover could not be made"
+    "dispatch.handover": "a handover could not be made",
+    "dispatch.release": "a release could not be made"
   }
   # The attach window of a run registered by its handover, in seconds.
   @attach_seconds 600
@@ -150,7 +155,7 @@ defmodule Apiary.Dispatches.Handover do
   def dispatched(%AccessKey{key_id: key_id}, dispatch_id, %{revision: revision} = meta) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
-      |> transact(dispatch_id, :"dispatch.dispatched", fn locked ->
+      |> transact(dispatch_id, :"dispatch.dispatched", nil, fn locked ->
         with :ok <- step_known(locked, revision),
              :ok <- not_ended(locked) do
           record_dispatched(locked, meta[:external])
@@ -172,7 +177,7 @@ defmodule Apiary.Dispatches.Handover do
       when is_binary(body) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
-      |> transact(dispatch_id, :"dispatch.handover", fn locked ->
+      |> transact(dispatch_id, :"dispatch.handover", nil, fn locked ->
         with :ok <- step_known(locked, revision),
              :ok <- not_ended(locked),
              :ok <- not_handed_over(locked),
@@ -191,22 +196,39 @@ defmodule Apiary.Dispatches.Handover do
 
   ## What both ask first
 
-  # The transaction of the moduledoc's six first steps, then `fun` on what they hold.
-  # `fun` answers `{:done, value, changed}`, committed; `{:refused, reason}` or
-  # `{:ended, changed}`, committed, as a refusal; or `{:error, :unavailable}`, rolled back.
-  # An exception rolls it back and is `{:error, :unavailable}`: only a failure here is
-  # answered so, as what follows the commit never fails the answer.
-  defp transact(key_id, dispatch_id, action, fun) do
+  # transact/5 is the transaction of the moduledoc's six first steps, then `fun` on what
+  # they hold, for the action `action` of the key `key_id` on the dispatch `dispatch_id`;
+  # the release shares it (`Apiary.Dispatches.Release`). `hold`, when given, is called
+  # once the action was asked and before the slots due are freed, on the dispatch's run of
+  # the queue read without a lock, for its columns that never change (its step, its work
+  # item, its take in, its collection and its pool): what it locks comes first, and what
+  # it answers is `held` in what `fun` is given. `fun` answers `{:done, value, changed}`,
+  # committed; `{:refused, reason}` or `{:ended, changed}`, committed, as a refusal; or
+  # `{:error, :unavailable}`, rolled back. An exception rolls it back and is
+  # `{:error, :unavailable}`: only a failure here is answered so, as what follows the
+  # commit never fails the answer.
+  @doc false
+  @spec transact(String.t(), String.t(), atom, (DispatchRun.t() -> term) | nil, (map -> term)) ::
+          {:ok, {:done, term, [Ecto.UUID.t()]} | {:refused, refusal, [Ecto.UUID.t()]}}
+          | {:error, refusal}
+  def transact(key_id, dispatch_id, action, hold, fun) do
     Repo.transact(fn ->
       with {:ok, key} <- Dispatches.current_key(key_id),
            {:ok, dispatch} <- dispatch_of(key, dispatch_id, action) do
+        held = hold(hold, dispatch)
         freed = Slots.free({:runs, [dispatch.dispatch_run_id]}, Dispatches.now())
         dispatch_run = RunEnd.lock(dispatch.dispatch_run_id)
 
         dispatch =
           Repo.one!(from d in Dispatch, where: d.id == ^dispatch.id, lock: "FOR UPDATE")
 
-        locked = %{key: key, dispatch: dispatch, run: dispatch_run, now: Dispatches.now()}
+        locked = %{
+          key: key,
+          dispatch: dispatch,
+          run: dispatch_run,
+          held: held,
+          now: Dispatches.now()
+        }
 
         case fun.(locked) do
           {:done, value, changed} -> {:ok, {:done, value, freed ++ changed}}
@@ -220,17 +242,44 @@ defmodule Apiary.Dispatches.Handover do
     exception -> unavailable(@failed[action], exception)
   end
 
-  defp answered({:ok, {:done, value, changed}}) do
+  # What `hold` locks, on the dispatch's run of the queue read without a lock: only the
+  # columns a run of the queue never changes are read from it.
+  defp hold(nil, _dispatch), do: nil
+
+  defp hold(hold, %Dispatch{dispatch_run_id: id}) do
+    hold.(
+      Repo.one!(
+        from r in DispatchRun,
+          where: r.id == ^id,
+          select:
+            struct(r, [
+              :id,
+              :workspace_id,
+              :step,
+              :work_item_id,
+              :take_in,
+              :source_collection_id,
+              :pool_id
+            ])
+      )
+    )
+  end
+
+  # answered/1 is what a transaction of `transact/5` answers, once committed: the value,
+  # or the refusal; the workspaces whose queue or slots changed are told first.
+  @doc false
+  @spec answered({:ok, tuple} | {:error, refusal}) :: term
+  def answered({:ok, {:done, value, changed}}) do
     broadcast(changed)
     value
   end
 
-  defp answered({:ok, {:refused, reason, changed}}) do
+  def answered({:ok, {:refused, reason, changed}}) do
     broadcast(changed)
     {:error, reason}
   end
 
-  defp answered({:error, _reason} = error), do: error
+  def answered({:error, _reason} = error), do: error
 
   # The dispatch by its public id, unlocked, when the key may take `action` on it: one
   # answer for an unknown one, another pool's and a refusal.
@@ -245,18 +294,25 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # Revision 1 does not know the step prebuild.
-  defp step_known(%{run: %DispatchRun{step: @prebuild}}, 1), do: {:refused, :not_found}
-  defp step_known(_locked, _revision), do: :ok
+  # step_known/2: revision 1 does not know the step prebuild.
+  @doc false
+  @spec step_known(map, pos_integer) :: :ok | {:refused, :not_found}
+  def step_known(%{run: %DispatchRun{step: @prebuild}}, 1), do: {:refused, :not_found}
+  def step_known(_locked, _revision), do: :ok
 
-  defp not_ended(%{dispatch: %Dispatch{ended_at: %DateTime{}}}), do: {:refused, :gone}
-  defp not_ended(%{run: %DispatchRun{state: :ended}}), do: {:refused, :gone}
-  defp not_ended(_locked), do: :ok
+  # not_ended/1: a dispatch that ended, or of a run that ended, is gone.
+  @doc false
+  @spec not_ended(map) :: :ok | {:refused, :gone}
+  def not_ended(%{dispatch: %Dispatch{ended_at: %DateTime{}}}), do: {:refused, :gone}
+  def not_ended(%{run: %DispatchRun{state: :ended}}), do: {:refused, :gone}
+  def not_ended(_locked), do: :ok
 
-  # Stale, or past its lease and not yet swept: lapsed either way.
-  defp lease_held(%{dispatch: %Dispatch{stale_at: %DateTime{}}}), do: {:refused, :lease_expired}
+  # lease_held/1: stale, or past its lease and not yet swept, is lapsed either way.
+  @doc false
+  @spec lease_held(map) :: :ok | {:refused, :lease_expired}
+  def lease_held(%{dispatch: %Dispatch{stale_at: %DateTime{}}}), do: {:refused, :lease_expired}
 
-  defp lease_held(%{dispatch: %Dispatch{lease_until: lease_until}, now: now}) do
+  def lease_held(%{dispatch: %Dispatch{lease_until: lease_until}, now: now}) do
     if DateTime.compare(now, lease_until) == :lt, do: :ok, else: {:refused, :lease_expired}
   end
 
@@ -414,9 +470,12 @@ defmodule Apiary.Dispatches.Handover do
   defp about(%DispatchRun{step: step}, %WorkItem{public_id: public_id}),
     do: %{"kind" => step, "subjects" => [%{"type" => "work_item", "ref" => public_id}]}
 
-  # The run of the queue, claimed, and its dispatch ended with `cause`; a stale dispatch of
-  # it `run_ended`; the slot freed once. The workspaces whose queue or slots changed.
-  defp end_claimed(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now) do
+  # end_claimed/3 ends the run of the queue, claimed, and its dispatch with `cause`; a
+  # stale dispatch of it `run_ended`; the slot freed once. The workspaces whose queue or
+  # slots changed. Inside the transaction that holds the run of the queue.
+  @doc false
+  @spec end_claimed(DispatchRun.t(), atom, DateTime.t()) :: [Ecto.UUID.t()]
+  def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
         set: [state: :ended, end_cause: cause, updated_at: now]
@@ -505,9 +564,12 @@ defmodule Apiary.Dispatches.Handover do
     kind, _reason -> not_told(kind)
   end
 
-  # Bookkeeping after the commit: it never fails the handover. A failure is logged by its
-  # module, or its kind, alone.
-  defp broadcast_run({:ok, %{run: run}} = handed_over) do
+  # broadcast_run/1 broadcasts the run an answer carries as changed: bookkeeping after
+  # the commit, which never fails the answer. A failure is logged by its module, or its
+  # kind, alone. An answer with no run is given back as it is.
+  @doc false
+  @spec broadcast_run(term) :: term
+  def broadcast_run({:ok, %{run: %Run{} = run}} = handed_over) do
     Runs.broadcast_changed(run)
     handed_over
   rescue
@@ -520,7 +582,7 @@ defmodule Apiary.Dispatches.Handover do
       handed_over
   end
 
-  defp broadcast_run(refused), do: refused
+  def broadcast_run(refused), do: refused
 
   defp not_told(%{__struct__: module}), do: not_told(module)
   defp not_told(what), do: Logger.error("a change could not be told: #{inspect(what)}")

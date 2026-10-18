@@ -66,6 +66,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
+  def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -87,10 +88,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only the work item comments',
-  # the assigning of collections, the turning of a target's Backlog on or off and the
-  # handover of a claimed run have labels yet, so the filter offers those alone,
-  # where the reader is shown the feature (the page asks it); the others' entries show as
-  # any change.
+  # the assigning of collections, the turning of a target's Backlog on or off, the
+  # handover of a claimed run and its release have labels yet, so the filter offers those
+  # alone, where the reader is shown the feature (the page asks it); the others' entries
+  # show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -100,7 +101,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment_delete",
           :"collection.assign",
           :"collection.set_backlog",
-          :"dispatch.handover"
+          :"dispatch.handover",
+          :"dispatch.release"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -271,6 +273,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")
+
+  # A run given back before its handover, or after it; the starter's reason is not shown.
+  defp said(:"dispatch.release", %{"handed_over" => false}, _actor),
+    do: gettext("Gave a claimed run back")
+
+  defp said(:"dispatch.release", %{"handed_over" => true}, _actor),
+    do: gettext("Gave back a run handed over to its machine")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 

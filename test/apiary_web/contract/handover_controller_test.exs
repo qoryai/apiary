@@ -486,7 +486,8 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     end
   end
 
-  test "a release accepted is still 404 not_found, signed", ctx do
+  test "a release accepted before the handover is 204, signed, and the handover after it is 410 gone",
+       ctx do
     queued!(ctx)
     dispatch = started!(ctx)
 
@@ -497,6 +498,11 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       "retry" => true
     }
 
-    assert refused?(post(ctx, dispatch, "release", body), 404, "not_found")
+    conn = post(ctx, dispatch, "release", body)
+    assert conn.status == 204
+    assert conn.resp_body == ""
+    assert signed_answer?(conn)
+
+    assert refused?(handover(ctx, dispatch), 410, "gone")
   end
 end
