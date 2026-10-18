@@ -798,8 +798,11 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
-    test "a host the wall refused for its form is shown as sent and escaped as any host" do
+    test "a host the wall refused for its form is shown marked and escaped as any host" do
       host = "<script>alert(1)</script>\u202Eexample.\u202C" <> String.duplicate("A", 300)
+
+      marked =
+        "<script>alert(1)</script>\uFFFDexample.\uFFFD" <> String.duplicate("A", 300)
 
       for html <- [
             wall_inline(host),
@@ -807,9 +810,10 @@ defmodule ApiaryWeb.RunComponentsTest do
           ] do
         refute html =~ "<script>"
         assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
-        # As sent, its bidirectional characters, case and length with it, and as text, as
-        # any host is; the reason's words stay the same.
-        assert text(html) =~ host
+        # Its bidirectional characters marked (`Apiary.ExternalText.marked/1`), its case
+        # and length kept, and as text, as any host is; the reason's words stay the same.
+        assert text(html) =~ marked
+        refute text(html) =~ "\u202E"
         assert text(html) =~ "#{@host_form} in either mode."
       end
     end
@@ -2126,10 +2130,11 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert texts(doc, ".q-tool-name") == ["hook-relay\uFFFD"]
       assert text(html) =~ "Handed to hook-relay\uFFFD by rule localhost\uFFFD"
 
-      # Nothing left to show of the tool or the rule: still a call to a tool, by a rule.
+      # Nothing left to show of the tool or the rule: still a call to a tool, by a rule,
+      # each marked (`Apiary.ExternalText.marked/1`).
       html = inline.(%{event | tool: "\u202E\u200B", rule: "\u200B"})
-      assert html =~ "q-dest-tool"
-      assert text(html) =~ "Handed to"
+      assert texts(LazyHTML.from_fragment(html), ".q-tool-name") == ["\uFFFD\uFFFD"]
+      assert text(html) =~ "Handed to \uFFFD\uFFFD by rule \uFFFD"
       refute text(html) =~ "No rule matches."
       refute html =~ "\u202E"
     end
@@ -2156,8 +2161,8 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
-    test "a host the wall refused for its form: as sent, inside a <bdi> where it shows" do
-      host = "Files\u202E.CDN.example."
+    test "a host the wall refused for its form: marked, inside a <bdi> where it shows" do
+      host = "Files\u202E.CDN\u200B.example."
 
       refused = %{
         last_decision: "denied",
@@ -2169,14 +2174,70 @@ defmodule ApiaryWeb.RunComponentsTest do
       for variant <- ~w(inline table workspace) do
         html = cx(Map.put(refused, :host, host), variant) |> LazyHTML.to_html()
 
-        outside =
-          html
-          |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
-          |> String.replace(~r{<[^>]*>}, " ")
+        # What the row acts on and copies is the host as sent; nothing else of it is.
+        shown = String.replace(html, ~r{ (data-copy|phx-value-host)="[^"]*"}, "")
 
-        assert texts(LazyHTML.from_fragment(html), "bdi") == [host], variant
-        refute outside =~ "\u202E", variant
+        marked = "Files\uFFFD.CDN\uFFFD.example."
+        assert texts(LazyHTML.from_fragment(html), "bdi") == [marked], variant
+
+        refute shown =~ "\u202E", variant
+        refute shown =~ "\u200B", variant
       end
+    end
+
+    test "a host, a path and a path rule with nothing left to show: marked, not none" do
+      sent = %{
+        host: "\u200B",
+        path: "\u202E\u200B",
+        request_method: "GET",
+        last_decision: "allowed",
+        last_rule: "api.example",
+        last_path_rule: "\u2060"
+      }
+
+      doc = cx(sent, "table")
+      assert texts(doc, ".q-cx-h > bdi") == ["\uFFFD"]
+      assert texts(doc, ".q-cx-path") == ["GET \uFFFD\uFFFD"]
+      assert text(LazyHTML.to_html(doc)) =~ "Rule api.example, path \uFFFD"
+      refute LazyHTML.to_html(doc) =~ "\u202E"
+    end
+
+    test "a path the wall refused as one that reads two ways: marked" do
+      refused = %{
+        path: "/a/%2e%2e/b\u202E",
+        request_method: "GET",
+        last_decision: "denied",
+        last_rule: "api.example",
+        last_path_rule: "wall:ambiguous-path",
+        allowed: 0,
+        denied: 1
+      }
+
+      assert texts(cx(refused, "table"), ".q-cx-path") == ["GET /a/%2e%2e/b\uFFFD"]
+    end
+
+    test "a rule panel's host and path sent with nothing left to show: marked" do
+      panel = %{
+        anchor: "a-allow",
+        action: :allow,
+        host: "\u200B",
+        path: "\u202E",
+        page: :workspace,
+        level: :workspace,
+        target: nil,
+        targets: [],
+        choice: nil,
+        what: %{workspace: %{kind: :path, paths: []}},
+        workspace: "Shop",
+        interval: 30,
+        consequence: %{},
+        error: nil
+      }
+
+      html = render_component(&RunComponents.rule_panel/1, panel: panel)
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, "#rule-panel-title .q-rp-host > bdi") == ["\uFFFD"]
+      assert texts(doc, "#rule-panel-what .q-rule") == ["\uFFFD"]
     end
   end
 end

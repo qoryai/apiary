@@ -465,7 +465,7 @@ defmodule ApiaryWeb.OverviewComponents do
       title={destination_title(@d, @item.port)}
     >
       <.tool_mark name={@d.tool} /><span
-        :if={@d.path != ""}
+        :if={@item.path not in [nil, ""]}
         class="q-path"
       >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>:{@item.port}</span>
     </span>
@@ -476,7 +476,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <span class="q-host q-ar-t q-mono" title={destination_title(@d, @item.port)}>
       <bdi>{@d.host}</bdi><span class="q-port">:{@item.port}</span><span
-        :if={@item.held && @d.path != ""}
+        :if={@item.held && @item.path not in [nil, ""]}
         class="q-path"
       >{@d.path}</span>
     </span>
@@ -484,25 +484,36 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   # A denied destination's host, path and tool, texts Forager sent, as an external
-  # system's text is shown (`shown/1`): one with nothing left to show is none. A host the
-  # wall refused for its form (`wall`) is shown as sent, in `<bdi>`, since its form is
-  # the reason.
+  # system's text is shown (`shown/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of one it sent, since the item's case follows what was sent. A host
+  # the wall refused for its form, and a path it refused as one that reads two ways
+  # (`wall`), are marked, since what is wrong with them is the reason.
   defp shown_destination(item) do
     %{
-      host: if(host_form?(item), do: item.host, else: shown(item.host)),
-      path: shown(item.path) || "",
-      tool: shown(item[:tool])
+      host: shown_host(item),
+      path: shown_path(item),
+      tool: shown_sent(item[:tool])
     }
   end
 
-  defp host_form?(%{wall: %{rule: "wall:host-form"}}), do: true
-  defp host_form?(_item), do: false
+  defp shown_host(%{wall: %{rule: "wall:host-form"}, host: host}),
+    do: Apiary.ExternalText.marked(host)
 
-  # A denied destination's host in an act's name, where `<bdi>` cannot go: as an external
-  # system's text is (`Apiary.ExternalText.line/1`), but as sent where the wall refused
-  # it for its form.
-  defp label_host(item),
-    do: if(host_form?(item), do: item.host, else: Apiary.ExternalText.line(item.host))
+  defp shown_host(%{host: host}), do: shown_sent(host)
+
+  defp shown_path(%{path: path}) when path in [nil, ""], do: ""
+
+  defp shown_path(%{wall: %{path_rule: "wall:ambiguous-path"}, path: path}),
+    do: Apiary.ExternalText.marked(path)
+
+  defp shown_path(%{path: path}), do: shown_sent(path)
+
+  defp shown_sent(text) when text in [nil, ""], do: nil
+  defp shown_sent(text), do: shown(text) || Apiary.ExternalText.marked(text)
+
+  # A denied destination's host in an act's name, where `<bdi>` cannot go, as the
+  # subject shows it (`shown_destination/1`).
+  defp label_host(item), do: shown_host(item)
 
   attr :item, :map, required: true
   attr :shared, :any, required: true

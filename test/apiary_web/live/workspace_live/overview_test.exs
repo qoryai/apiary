@@ -2425,11 +2425,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   @tag needs: :security
-  test "a host the wall refused for its form: as sent, inside a <bdi>", %{
+  test "a host the wall refused for its form: marked, inside a <bdi>", %{
     conn: conn,
     scope: scope
   } do
-    host = "Files\u202E.CDN.example."
+    host = "Files\u202E.CDN\u200B.example."
 
     started_run(scope, shop(),
       egress: [%{"host" => host, "decision" => "denied", "rule" => "wall:host-form"}]
@@ -2438,7 +2438,32 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     view = open(conn, scope)
     subject = "#attention-list li[data-kind=denied] .q-ar-subj"
 
-    assert has_element?(view, "#{subject} .q-host > bdi", host)
+    marked = "Files\uFFFD.CDN\uFFFD.example."
+    assert has_element?(view, "#{subject} .q-host > bdi", marked)
     refute view |> element(subject) |> render() |> outside_bdi() =~ "\u202E"
+    refute render(view) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a denied request's tool and path with nothing left to show: marked, not none",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop(),
+      egress: [
+        tool_invocation_data(%{
+          "tool" => "\u200B",
+          "path" => "\u202E",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+      ]
+    )
+
+    view = open(conn, scope)
+    selector = "#attention-list li[data-kind=denied]"
+
+    assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "\uFFFD")
+    assert has_element?(view, "#{selector} .q-dest-tool .q-path", "\uFFFD")
+    refute render(element(view, selector)) =~ "\u202E"
   end
 end

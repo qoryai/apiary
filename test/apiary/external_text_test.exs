@@ -103,4 +103,38 @@ defmodule Apiary.ExternalTextTest do
       assert ExternalText.lines(nil) == nil
     end
   end
+
+  describe "marked/1" do
+    test "shows every invisible character, the join controls too, as U+FFFD" do
+      for code <- @invisible ++ [0x200C, 0x200D] do
+        assert ExternalText.marked("a" <> <<code::utf8>> <> "b") == "a#{@fffd}b",
+               Integer.to_string(code, 16)
+      end
+    end
+
+    test "shows a control character, C0, DEL or C1, the tab and the line breaks too" do
+      for code <- [0x0, 0x9, 0xA, 0xD, 0x1B, 0x1F, 0x7F, 0x80, 0x85, 0x9F] do
+        assert ExternalText.marked("a" <> <<code::utf8>> <> "b") == "a#{@fffd}b",
+               Integer.to_string(code, 16)
+      end
+    end
+
+    test "shows bytes that are not UTF-8 text as U+FFFD, and keeps every other one" do
+      assert ExternalText.marked("Files" <> <<0xFF>> <> ".example") ==
+               "Files#{@fffd}.example"
+
+      other = "Ünïcödé 名前 .example"
+      assert ExternalText.marked(other) == other
+    end
+
+    test "a host with an override and a zero-width space shows two U+FFFD" do
+      assert ExternalText.marked("Files\u202E.CDN\u200B.example.") ==
+               "Files#{@fffd}.CDN#{@fffd}.example."
+    end
+
+    test "is never empty: U+FFFD alone for nil and an empty text" do
+      assert ExternalText.marked(nil) == @fffd
+      assert ExternalText.marked("") == @fffd
+    end
+  end
 end

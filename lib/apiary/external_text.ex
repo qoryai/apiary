@@ -27,6 +27,13 @@ defmodule Apiary.ExternalText do
   the no-break space and the spaces from U+2000 to U+200A, as `String.trim/1` trims
   them), so a page treats it as no text at all. `present_lines/1` is the same for a text
   of several lines, whose tabs and line breaks are whitespace too.
+
+  `marked/1` is only for a text a page shows because it was refused as malformed, such as
+  a host refused for its form: there what is wrong with it is what the reader needs to
+  see, so every character `line/1` drops or replaces, the join controls ZWNJ and ZWJ
+  with them, and every byte that is not UTF-8 text, is shown as U+FFFD instead. It is
+  never empty: an empty text, or none, is U+FFFD alone. Every other text takes `line/1`,
+  `lines/1`, `present/1` or `present_lines/1`.
   """
 
   # With the `factory` feature, which the documentation leaves out, the bodies include a
@@ -38,6 +45,13 @@ defmodule Apiary.ExternalText do
   @invisible ~r/(?![\x{200C}\x{200D}])[\p{Cf}\x{2028}\x{2029}\x{34F}\x{17B4}\x{17B5}\x{180B}-\x{180D}\x{180F}]/u
   @control ~r/[\x{0}-\x{1F}\x{7F}-\x{9F}]/u
   @control_but_lines ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u
+  # What `marked/1` shows as U+FFFD: every invisible character, the join controls too,
+  # and every control character.
+  @marked Regex.compile!(
+            "[\\p{Cf}\\x{2028}\\x{2029}\\x{34F}\\x{17B4}\\x{17B5}\\x{180B}-\\x{180D}" <>
+              "\\x{180F}\\x{0}-\\x{1F}\\x{7F}-\\x{9F}]",
+            "u"
+          )
 
   @doc "`text`, a text of one line an external system sent, as a page shows it; nil stays nil."
   @spec line(String.t() | nil) :: String.t() | nil
@@ -64,6 +78,18 @@ defmodule Apiary.ExternalText do
   # `present/1` and `present_lines/1`; any other text as it is.
   defp unless_blank(nil), do: nil
   defp unless_blank(text), do: if(String.trim(text) == "", do: nil, else: text)
+
+  @doc """
+  `text`, a text of one line a page shows because it was refused as malformed, with every
+  invisible and control character, and every byte that is not UTF-8 text, as U+FFFD;
+  U+FFFD alone for nil or an empty text, so it is never empty.
+  """
+  @spec marked(String.t() | nil) :: String.t()
+  def marked(nil), do: "\u{FFFD}"
+  def marked(""), do: "\u{FFFD}"
+
+  def marked(text) when is_binary(text),
+    do: text |> String.replace_invalid() |> String.replace(@marked, "\u{FFFD}")
 
   @doc "`text`, a text of several lines an external system sent, as a page shows it; nil stays nil."
   @spec lines(String.t() | nil) :: String.t() | nil

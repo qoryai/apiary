@@ -1929,11 +1929,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-preview-log") == "first line second line"
     end
 
-    test "a host the wall refused for its form: in the preview as sent, in a <bdi>", %{
+    test "a host the wall refused for its form: in the preview marked, in a <bdi>", %{
       conn: conn,
       scope: scope
     } do
-      host = "Files\u202E.CDN.example."
+      host = "Files\u202E.CDN\u200B.example."
 
       run =
         started_run(scope, shop(),
@@ -1945,7 +1945,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
-      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
+      marked = "Files\uFFFD.CDN\uFFFD.example."
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", marked)
 
       outside =
         view

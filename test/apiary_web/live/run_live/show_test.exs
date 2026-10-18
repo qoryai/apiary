@@ -2146,6 +2146,33 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "a connection's host" do
+    test "the wall refused for its form: marked in the timeline and the connections tab",
+         %{conn: conn, scope: scope} do
+      host = "Files\u202E.CDN\u200B.example."
+      marked = "Files\uFFFD.CDN\uFFFD.example."
+
+      refused =
+        egress_data(%{
+          "host" => host,
+          "decision" => "denied",
+          "outcome" => "refused",
+          "rule" => "wall:host-form"
+        })
+
+      events = [{1, "run.started", started_data()}, {2, "run.egress", refused}]
+      run = projected(scope, events)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+      pages = [{path, "#e-2 .q-dest > bdi"}, {path <> "/network", ".q-cx-h > bdi"}]
+
+      for {page, row} <- pages do
+        {:ok, lv, _html} = live(conn, page)
+        assert has_element?(lv, row, marked), page
+        # Only what the row acts on and copies is the host as sent.
+        shown = String.replace(render(lv), ~r{ (data-copy|phx-value-host)="[^"]*"}, "")
+        refute shown =~ "\u202E", page
+      end
+    end
+
     test "is isolated in the timeline, its groups and the connections tab, so a bidi override reorders nothing",
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"

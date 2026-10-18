@@ -732,9 +732,8 @@ defmodule ApiaryWeb.RunComponents do
 
   def middle(value, _max), do: value
 
-  # `middle/2` of a text Forager sent, as an external system's text is shown
-  # (`Apiary.ExternalText.line/1`).
-  defp shown_middle(value, max), do: value |> Apiary.ExternalText.line() |> middle(max)
+  # `middle/2` of a text Forager sent, as a row shows it (`shown_sent/1`).
+  defp shown_middle(value, max), do: value |> shown_sent() |> middle(max)
 
   @doc "A run's `public_id` short: `rn_` and its first eight characters."
   def short_id(public_id) when is_binary(public_id), do: String.slice(public_id, 0, 11)
@@ -2772,12 +2771,13 @@ defmodule ApiaryWeb.RunComponents do
 
   # Both spellings of a connection, as one map with every key present. Its host, path,
   # tool and rules are texts Forager sent, shown as an external system's text is
-  # (`Apiary.ExternalText.present/1`): one with nothing left to show is none. A host the
-  # wall refused for its form is shown as sent, since its form is the reason the row
-  # gives. What a row is found by, acted on and copied as is its host, path and rule as
-  # sent (`raw_host`, `raw_path`, `raw_rule`), and so is which case a row is and which
-  # words it says: its reason, its tool and whether it is a tool invocation are decided
-  # by what was sent (`raw_path_rule`, `raw_tool`), never by what is left to show.
+  # (`shown_sent/1`). A host the wall refused for its form, and a path it refused as one
+  # that reads two ways, are marked (`Apiary.ExternalText.marked/1`), since what is wrong
+  # with them is the reason the row gives. What a row is found by, acted on and copied as
+  # is its host, path and rule as sent (`raw_host`, `raw_path`, `raw_rule`), and so is
+  # which case a row is and which words it says: its reason, its tool and whether it is a
+  # tool invocation are decided by what was sent (`raw_path_rule`, `raw_tool`), never by
+  # what is left to show.
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
     tool = blank(get.([:tool, :last_tool]))
@@ -2791,19 +2791,19 @@ defmodule ApiaryWeb.RunComponents do
       host: shown_host(host, rule),
       raw_host: host,
       port: get.([:port]),
-      path: Apiary.ExternalText.present(path) || "",
+      path: shown_path(path, path_rule),
       raw_path: path,
       method: get.([:method]),
       request_method: get.([:request_method, :last_request_method]),
       decision: decision,
-      rule: Apiary.ExternalText.present(rule),
+      rule: shown_sent(rule),
       raw_rule: rule,
-      path_rule: Apiary.ExternalText.present(path_rule),
+      path_rule: shown_sent(path_rule),
       raw_path_rule: path_rule,
       credential: blank(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
-      tool: Apiary.ExternalText.present(tool),
+      tool: shown_sent(tool),
       raw_tool: tool,
       invocation: Runs.tool_invocation?(tool, decision),
       status: get.([:status, :last_status]),
@@ -2820,10 +2820,26 @@ defmodule ApiaryWeb.RunComponents do
   defp blank(""), do: nil
   defp blank(value), do: value
 
-  # A connection's host as a row shows it, in `<bdi>`: as an external system's text is
-  # (`Apiary.ExternalText.present/1`), but as sent where the wall refused it for its form.
-  defp shown_host(host, "wall:host-form"), do: host
-  defp shown_host(host, _rule), do: Apiary.ExternalText.present(host)
+  # A text Forager sent, as a row shows it: as an external system's text is
+  # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of it to show, since the row's case follows what was sent; nil where
+  # it sent none.
+  defp shown_sent(nil), do: nil
+  defp shown_sent(""), do: nil
+
+  defp shown_sent(text),
+    do: Apiary.ExternalText.present(text) || Apiary.ExternalText.marked(text)
+
+  # A connection's host as a row shows it, in `<bdi>` (`shown_sent/1`), marked where the
+  # wall refused it for its form.
+  defp shown_host(host, "wall:host-form"), do: Apiary.ExternalText.marked(host)
+  defp shown_host(host, _rule), do: shown_sent(host)
+
+  # Its path the same, marked where the wall refused it as one that reads two ways; ""
+  # for none.
+  defp shown_path("", _path_rule), do: ""
+  defp shown_path(path, "wall:ambiguous-path"), do: Apiary.ExternalText.marked(path)
+  defp shown_path(path, _path_rule), do: shown_sent(path)
 
   defp share(allowed, denied) when allowed + denied > 0,
     do: round(allowed * 100 / (allowed + denied))
