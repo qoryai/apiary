@@ -35,10 +35,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # still sending them, with how many so far; then the heading says how many there are.
   # A lead says what being assigned means, in the adapter's words for its collections
   # and its items: with one workspace, that every one is assigned to it; for an adapter
-  # with no items, only that each is assigned to one workspace. The lead and the foot note
-  # show while the page waits too. Past a page, the pager walks the pages, from the first,
-  # as the list pages by the row before (`?page=`). Ended collections are not shown: the
-  # counts leave them out too. A search finds collections by their names (`?q=`).
+  # with no items, only that each is assigned to one workspace. The lead shows while the
+  # page waits too. Where any live collection has a target
+  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
+  # no workspace's targets; a source without code has none. Past a page, the pager walks
+  # the pages, from the first, as the list pages by the row before (`?page=`). Ended
+  # collections are not shown: the counts leave them out too. A search finds collections
+  # by their names (`?q=`).
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -150,7 +153,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp page_param(_value), do: 1
 
-  # The connection as it stands, the state it puts the page in, and who started it.
+  # The connection as it stands, the state it puts the page in, who started it, and whether
+  # any of its live collections has a target, for the foot note.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
@@ -163,6 +167,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)
+    |> assign(:targets, connection != nil and Collections.targets?(connection))
     |> assign(:ready, IntegrationComponents.ready?(adapter))
     |> wait()
   end
@@ -809,7 +814,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             next_label={gettext("Next")}
           />
 
-          <div class="mt-3 grid gap-1.5">
+          <div :if={@targets} class="mt-3 grid gap-1.5">
             <p id="collections-targets" class="q-foot-note">
               {gettext(
                 "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
