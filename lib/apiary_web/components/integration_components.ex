@@ -131,6 +131,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :ready, :boolean, required: true
   attr :sending, :boolean, default: false
   attr :variant, :string, default: "primary", values: ~w(primary default)
+  attr :size, :string, default: "sm", values: ~w(xs sm)
 
   @doc false
   # Install for `adapter`: a form that the page submits to `action` once pressed, with
@@ -154,6 +155,7 @@ defmodule ApiaryWeb.IntegrationComponents do
         id={"#{@id}-install"}
         type="submit"
         variant={@variant}
+        size={@size}
         disabled={!@ready}
         aria-disabled={@sending && "true"}
         class={@sending && "pointer-events-none"}

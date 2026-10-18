@@ -181,7 +181,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
               id={"integration-#{row.adapter.public_id}-state"}
               class="q-sdot q-sdot-completed"
             >
-              <i aria-hidden="true"></i><.rich text={installed_words(row, @several)} />
+              <i aria-hidden="true"></i><span><.rich text={installed_words(row, @several)} /></span>
             </span>
           </:col>
           <:action :let={row}>
@@ -207,7 +207,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
           </:action>
         </.table>
 
-        <div class="mt-3 grid gap-1.5">
+        <div class="grid gap-1.5">
           <p id="integrations-serve" class="q-foot-note">
             {gettext(
               "An integration installed here serves each workspace through the %{collections} assigned to it.",

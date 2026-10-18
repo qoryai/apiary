@@ -222,6 +222,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
               ready={@ready}
               sending={@sending}
               variant="default"
+              size="xs"
             />
           </div>
         </section>
