@@ -8,9 +8,9 @@ defmodule Apiary.Runs.RunVariables do
   # fetches, comma-separated with no space, the run's target first.
   #
   # The rules, on every system alike: the system a host name, 1 to 253 of a-z, 0-9, dot
-  # and dash, not ending in a dot; the list at most 256 bytes; every entry a path of two
-  # or more segments joined by slashes, each of A-Z, a-z, 0-9, dot, underscore and dash and
-  # none `.`, `..` or `.git` in any case, at most 200 characters; every entry of the first
+  # and dash, not ending in a dot; the list at most 256 bytes; every entry exactly
+  # owner/name, two segments, each of A-Z, a-z, 0-9, dot, underscore and dash and neither
+  # being `.`, `..` or `.git` in any case, at most 200 characters; every entry of the first
   # entry's owner, its first segment, compared without case; and no entry twice, compared
   # without case. Both are also held to the contract's rules for any variable. A pair that
   # breaks a rule is an error, never a smaller map: a run without its repositories would
@@ -85,8 +85,9 @@ defmodule Apiary.Runs.RunVariables do
   end
 
   defp entry?(entry) when is_binary(entry) and byte_size(entry) <= @max_entry do
+    # Exactly two segments, so no entry can be nested inside another.
     case String.split(entry, "/") do
-      [_owner, _name | _rest] = segments -> Enum.all?(segments, &segment?/1)
+      [owner, name] -> segment?(owner) and segment?(name)
       _other -> false
     end
   end

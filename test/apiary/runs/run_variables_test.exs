@@ -17,11 +17,11 @@ defmodule Apiary.Runs.RunVariablesTest do
       assert RunVariables.for_target(target()) ==
                {:ok, %{@system => "git.example.com", @repositories => "acme/shop"}}
 
-      assert RunVariables.for_target(target(), ["acme/docs", "acme/tools/cli"]) ==
+      assert RunVariables.for_target(target(), ["acme/docs", "acme/tools"]) ==
                {:ok,
                 %{
                   @system => "git.example.com",
-                  @repositories => "acme/shop,acme/docs,acme/tools/cli"
+                  @repositories => "acme/shop,acme/docs,acme/tools"
                 }}
     end
 
@@ -43,15 +43,13 @@ defmodule Apiary.Runs.RunVariablesTest do
           do: assert(RunVariables.for_target(target(system)) == {:error, :system_invalid})
     end
 
-    test "every entry is a path of two or more segments of A-Z, a-z, 0-9, dot, underscore and dash" do
+    test "every entry is exactly owner/name, two segments of A-Z, a-z, 0-9, dot, underscore and dash" do
       for path <- [
             "acme/shop",
             "Acme-1/shop.web_2",
             "a/b",
             "acme/.config",
-            "acme/..x",
-            "acme/shop/web",
-            "group/sub/team/project"
+            "acme/..x"
           ] do
         assert {:ok, %{@repositories => ^path}} =
                  RunVariables.for_target(target("git.example.com", path))
@@ -82,6 +80,8 @@ defmodule Apiary.Runs.RunVariablesTest do
             "acme/.git",
             "acme/.GIT",
             "acme/shop/.git",
+            "acme/shop/web",
+            "group/sub/team/project",
             nil
           ] do
         assert RunVariables.for_target(target("git.example.com", path)) ==
@@ -94,18 +94,11 @@ defmodule Apiary.Runs.RunVariablesTest do
     test "an entry is at most 200 characters" do
       at = segment(100) <> "/" <> segment(99)
       past = segment(100) <> "/" <> segment(100)
-      nested_at = segment(50) <> "/" <> segment(50) <> "/" <> segment(98)
-      nested_past = segment(50) <> "/" <> segment(50) <> "/" <> segment(99)
 
       assert {:ok, _} = RunVariables.for_target(target("git.example.com", at))
-      assert {:ok, _} = RunVariables.for_target(target("git.example.com", nested_at))
 
-      for path <- [past, nested_past],
-          do:
-            assert(
-              RunVariables.for_target(target("git.example.com", path)) ==
-                {:error, :repositories_invalid}
-            )
+      assert RunVariables.for_target(target("git.example.com", past)) ==
+               {:error, :repositories_invalid}
     end
 
     test "the list is at most 256 bytes" do
@@ -124,18 +117,27 @@ defmodule Apiary.Runs.RunVariablesTest do
     test "no entry twice, compared without case" do
       for picked <- [["acme/shop"], ["acme/Shop"], ["ACME/SHOP"], ["acme/docs", "Acme/Docs"]],
           do: assert(RunVariables.for_target(target(), picked) == {:error, :repositories_invalid})
+    end
 
-      # A path below another is another entry.
-      assert {:ok, %{@repositories => "acme/shop,acme/shop/web"}} =
-               RunVariables.for_target(target(), ["acme/shop/web"])
+    test "no entry is nested inside another: an entry of more than two segments is refused" do
+      assert RunVariables.for_target(target("git.example.com", "acme/shop/web")) ==
+               {:error, :repositories_invalid}
+
+      for picked <- [["acme/shop/web"], ["acme/docs", "acme/docs/web"]],
+          do: assert(RunVariables.for_target(target(), picked) == {:error, :repositories_invalid})
     end
 
     test "every entry is of the first entry's owner, compared without case, on every system" do
       for system <- ["git.example.com", "code.example.org"] do
-        assert {:ok, %{@repositories => "acme/shop,acme/docs,ACME/tools,Acme/a/b"}} =
-                 RunVariables.for_target(target(system), ["acme/docs", "ACME/tools", "Acme/a/b"])
+        assert {:ok, %{@repositories => "acme/shop,acme/docs,ACME/tools,Acme/a"}} =
+                 RunVariables.for_target(target(system), ["acme/docs", "ACME/tools", "Acme/a"])
 
-        for picked <- [["other/docs"], ["acme/docs", "other/docs"], ["other/acme/docs"]],
+        for picked <- [
+              ["other/docs"],
+              ["acme/docs", "other/docs"],
+              ["other/acme/docs"],
+              ["Acme/a/b"]
+            ],
             do:
               assert(
                 RunVariables.for_target(target(system), picked) ==
