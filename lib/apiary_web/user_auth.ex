@@ -569,11 +569,16 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # An open page follows a change of the user's own membership and of the workspaces they
+  # An open page follows a change of the user's membership and of the workspaces they
   # reach: a new level is loaded into the scope, a membership that is gone, or a workspace
   # they no longer reach, sends the page to `/` (and from there to wherever the user
-  # still belongs). The contexts authorize on the
-  # database whatever the page holds; this keeps what the page shows honest.
+  # still belongs). An action a context takes is authorized on the database
+  # (`Apiary.Access.authorize/3`), whatever the page holds. A read of what a page shows,
+  # such as the sidebar's counts (`Apiary.WorkItems.count_waiting_on/1`) and the Work items
+  # list (`Apiary.WorkItems.WorkList`), asks `Apiary.Access.can?/3` of the scope the page
+  # holds, so that scope must stay current: this loads it again on a change of membership,
+  # and the Work items pages load it again on a message that work items changed
+  # (`reload_scope/1`).
   defp follow_membership_changes(socket) do
     if Phoenix.LiveView.connected?(socket) do
       Phoenix.PubSub.subscribe(

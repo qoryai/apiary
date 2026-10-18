@@ -19,9 +19,9 @@ defmodule Apiary.Targets do
   owner/name each, no segment starting with a dash, of the target's owner, each once, the
   target's path and the list, joined with commas, at most 256 bytes.
   `set_further_repositories/3` writes the whole list at once
-  (`target.set_further_repositories`, owners and admins, asked of the target's workspace,
-  with the `factory` feature), and refuses a list that breaks a rule, so a saved list
-  never does; nothing else writes it.
+  (`target.set_further_repositories`, owners and admins, asked of the target's workspace),
+  and refuses a list that breaks a rule, so a saved list never does; nothing else writes
+  it.
 
   **The notation.** A target is written as its path, with its system before it only where
   the same path is in more than one system of the workspace
@@ -34,6 +34,9 @@ defmodule Apiary.Targets do
   in the scope's time zone, as every count per day is (`docs/lingo.md`). The views' counts (`view_counts/2`) are the
   workspace's, whatever the query.
   """
+
+  # `target.set_further_repositories` belongs to the `factory` feature (`Apiary.Access`),
+  # which the documentation leaves out.
 
   use Gettext, backend: ApiaryWeb.Gettext
 

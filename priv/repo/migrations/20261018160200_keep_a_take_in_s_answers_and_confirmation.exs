@@ -129,7 +129,7 @@ defmodule Apiary.Repo.Migrations.KeepATakeInSAnswersAndConfirmation do
   # Rolled back, the two tables go, and an event may no longer be `answered`, `confirmed`
   # or `explore_again`, so the roll back refuses while an event of those kinds is kept: it
   # deletes no event, and none of the records the tables hold.
-  @refusal "Qory keeps what members gave Explore, and an event of a work item may be " <>
+  @refusal "Qory Apiary keeps what members gave Explore, and an event of a work item may be " <>
              "answered, confirmed or explore_again, so this migration rolls back only " <>
              "while no event is of those kinds. Some are."
 

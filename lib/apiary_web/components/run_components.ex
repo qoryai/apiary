@@ -743,11 +743,13 @@ defmodule ApiaryWeb.RunComponents do
   ## A run's title
 
   @doc """
-  A run's title: the one it gave in its `about` as a page shows it (`shown_title/1`), else
-  "Run" and its short id. Every page that names a run calls it this; a row that shows the
-  short id alone when there is no title asks `shown_title/1`.
+  A run's title: the one it gave in its `about` as a page shows it
+  (`shown_run_title/1`), else "Run" and its short id. Every page that names a run calls it
+  this; a row that shows the short id alone when there is no title asks
+  `shown_run_title/1`.
   """
-  def run_title(run), do: shown_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
+  def run_title(run),
+    do: shown_run_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
 
   @doc "The title a run gave in its `about`, as sent, or nil when it gave none."
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
@@ -759,18 +761,18 @@ defmodule ApiaryWeb.RunComponents do
   Nil where it gave none, or one with nothing left to show, or only whitespace, which is
   no title.
   """
-  @spec shown_title(map) :: String.t() | nil
-  def shown_title(run), do: Apiary.ExternalText.present(given_title(run))
+  @spec shown_run_title(map) :: String.t() | nil
+  def shown_run_title(run), do: Apiary.ExternalText.present(given_title(run))
 
   @doc """
-  A run's name in a row, as markup: the title it gave (`shown_title/1`), isolated in a
+  A run's name in a row, as markup: the title it gave (`shown_run_title/1`), isolated in a
   `<bdi>` so a bidirectional character in it reorders nothing around it, else its short
-  id. A tooltip or a label takes `shown_title/1` as plain text.
+  id. A tooltip or a label takes `shown_run_title/1` as plain text.
   """
   attr :run, :map, required: true
 
   def run_name(assigns) do
-    assigns = assign(assigns, :title, shown_title(assigns.run))
+    assigns = assign(assigns, :title, shown_run_title(assigns.run))
 
     ~H"""
     <.external_text text={@title} />{if !@title, do: short_id(@run.public_id)}
@@ -1191,10 +1193,12 @@ defmodule ApiaryWeb.RunComponents do
   `<id>-more`.
 
   `tile` is an optional mark before each option's words where the options have no
-  `groups`, such as a filer's tile on the Backlog: it is given the option, `{label, value,
+  `groups`, such as a mark beside a name: it is given the option, `{label, value,
   count}`, and may draw nothing for it. Without it, an option is its box, its words and
   its count alone.
   """
+  # The Backlog's Filed by filter marks a bot's name with its tile
+  # (`ApiaryWeb.BacklogLive.Index`), a page the documentation leaves out.
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :label, :string, required: true
@@ -2021,8 +2025,8 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !shown_title(@run) && "q-rl-id"]}
-            title={shown_title(@run)}
+            class={["q-rowlink q-rl-title", !shown_run_title(@run) && "q-rl-id"]}
+            title={shown_run_title(@run)}
           >
             <.run_name run={@run} />
           </.link>
@@ -2687,12 +2691,15 @@ defmodule ApiaryWeb.RunComponents do
               class="q-hit"
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
-              <span class="truncate" title={shown_title(hit.run)}>
+              <span class="truncate" title={shown_run_title(hit.run)}>
                 <b
-                  :if={shown_title(hit.run)}
+                  :if={shown_run_title(hit.run)}
                   class="font-medium"
-                ><.external_text text={shown_title(hit.run)} /></b>
-                <span class={["font-mono text-xs text-faint", shown_title(hit.run) && "ml-1"]}>
+                ><.external_text text={shown_run_title(hit.run)} /></b>
+                <span class={[
+                  "font-mono text-xs text-faint",
+                  shown_run_title(hit.run) && "ml-1"
+                ]}>
                   {short_id(hit.run.public_id)}
                 </span>
               </span>

@@ -1846,4 +1846,123 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Qory is exploring. It reads the bug and the code, and proposes how to build it."
     end
   end
+
+  describe "a run that ended before its handover, with no id" do
+    defp unhanded(overrides),
+      do: run(Map.merge(%{id: nil, path: nil, proposal: nil, ended_at: ago(3600)}, overrides))
+
+    test "the step card and the tab name no run, and keep what to do" do
+      for {status, overrides} <- [
+            {:no_result, %{state: :failed, outcome: :error}},
+            {:lost, %{state: :lost, outcome: nil}},
+            {:cancelled, %{state: :cancelled, outcome: nil}}
+          ] do
+        w = work_item(%{number: 97, status: status, run: unhanded(overrides)})
+
+        html = card(w)
+        assert count(html, "#work-item-step-line") == 0
+        assert text(html, "#work-item-step-again") == "Run Explore again"
+        refute html =~ "n/a"
+
+        tab = tab(w)
+        assert count(tab, "#work-item-explore-none a") == 0
+        refute tab =~ "The run's page"
+        refute tab =~ "n/a"
+      end
+
+      used =
+        card(
+          work_item(%{
+            number: 94,
+            status: :used_up,
+            run: unhanded(%{attempt: 3, state: :failed, outcome: :error})
+          }),
+          can_close: true
+        )
+
+      assert count(used, "#work-item-step-line") == 0
+      assert count(used, "#work-item-step-close") == 1
+    end
+
+    test "an earlier run without an id is named by its place, with no id" do
+      lost = unhanded(%{attempt: 1, state: :lost, outcome: nil})
+      w = work_item(%{number: 94, status: :queued, run: %{attempt: 2, of: 3}})
+      html = tab(w, earlier_runs: [lost])
+
+      assert count(html, "#work-item-explore-earlier-run-1") == 1
+      assert count(html, "#work-item-explore-earlier-run-1 summary .q-mono") == 0
+      refute html =~ "n/a"
+    end
+
+    test "the Thread draws no line for it" do
+      for kind <- [:started, :no_result, :lost, :cancelled] do
+        assert event(kind: kind, run: unhanded(%{})) == ""
+      end
+    end
+  end
+
+  describe "an earlier take in closed by the instance" do
+    defp closed_take_in(reason) do
+      %{
+        taken_in_by: @lea,
+        taken_in_at: ~U[2026-10-13 10:11:00Z],
+        ended: :closed,
+        ended_by: nil,
+        ended_reason: reason,
+        ended_at: ago(4 * 60),
+        runs: [run(%{})]
+      }
+    end
+
+    test "says its integration was removed, or nothing for a reason without words" do
+      w = work_item(%{status: :queued, run: %{attempt: 1, of: 3}})
+
+      html = tab(w, earlier_take_ins: [closed_take_in(:adapter_removed)])
+
+      assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
+               [
+                 "Taken in 13 Oct by Lea",
+                 "Closed 4 minutes ago, when its integration was removed",
+                 "1 run"
+               ]
+
+      for reason <- [nil, :unknown] do
+        html = tab(w, earlier_take_ins: [closed_take_in(reason)])
+
+        assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
+                 ["Taken in 13 Oct by Lea", "1 run"]
+      end
+    end
+  end
+
+  describe "the fields' length in the browser" do
+    test "each takes twice what the server takes" do
+      asked =
+        work_item(%{
+          number: 94,
+          status: :questions,
+          run: run(%{outcome: :questions, proposal: nil, questions: questions()})
+        })
+
+      html = tab(asked, can_act: true)
+      assert attr(html, "textarea", "maxlength") == ["4000", "4000", "4000"]
+
+      edited = edit()
+
+      lengths =
+        edited
+        |> query("textarea")
+        |> Enum.map(
+          &{hd(LazyHTML.attribute(&1, "name")), hd(LazyHTML.attribute(&1, "maxlength"))}
+        )
+
+      assert lengths == [
+               {"complexity[reason]", "4000"},
+               {"understanding", "40000"},
+               {"scope_in", "200100"},
+               {"scope_out", "200100"},
+               {"approach", "4000"}
+             ]
+    end
+  end
 end

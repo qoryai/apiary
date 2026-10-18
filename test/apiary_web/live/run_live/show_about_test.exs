@@ -94,8 +94,9 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       scope: scope
     } do
       # A right-to-left override in the ref and a host-like title: neither may pass for
-      # where the link leads.
+      # where the link leads. The override is dropped (`Apiary.ExternalText.line/1`).
       ref = "ENG-17\u202Emoc.elpmaxe.live"
+      shown_ref = "ENG-17moc.elpmaxe.live"
 
       subject = %{
         "type" => "ticket",
@@ -134,10 +135,10 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       {lv, _html} =
         page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/terminal")
 
-      # The title without the override (`Apiary.ExternalText.line/1`).
+      # The title and the kind without the override (`Apiary.ExternalText.line/1`).
       assert has_element?(lv, "h1#run-title > bdi", "Fix the loginredirect")
-      assert has_element?(lv, "#run-about-kind > bdi", kind)
-      assert has_element?(lv, "#run-about-facts > dd > bdi", kind)
+      assert has_element?(lv, "#run-about-kind > bdi", "Implementation")
+      assert has_element?(lv, "#run-about-facts > dd > bdi", "Implementation")
       # The tab's title is plain text.
       assert page_title(lv) =~ "Fix the loginredirect"
     end

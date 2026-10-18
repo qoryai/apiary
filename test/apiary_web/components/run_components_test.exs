@@ -1540,15 +1540,15 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "the title as a page shows it, isolated in a row; one with nothing left is none" do
       run = %{public_id: @public_id, about_title: @sent}
       assert RunComponents.given_title(run) == @sent
-      assert RunComponents.shown_title(run) == @shown
+      assert RunComponents.shown_run_title(run) == @shown
       assert RunComponents.run_title(run) == @shown
       assert bdis(render_component(&RunComponents.run_name/1, run: run)) == [@shown]
 
       blank = %{run | about_title: "\u202E\u200B"}
       assert RunComponents.given_title(blank) == "\u202E\u200B"
-      assert RunComponents.shown_title(blank) == nil
+      assert RunComponents.shown_run_title(blank) == nil
       assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
-      assert RunComponents.shown_title(%{run | about_title: " \u200B "}) == nil
+      assert RunComponents.shown_run_title(%{run | about_title: " \u200B "}) == nil
 
       html = render_component(&RunComponents.run_name/1, run: blank)
       assert bdis(html) == []

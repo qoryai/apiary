@@ -119,10 +119,10 @@ defmodule ApiaryWeb.RunLive.Show do
            Details in place, above the tabs. --%>
       <div id="run-page" class="q-run">
         <header class="q-run-head">
-          <h1 :if={shown_title(@run)} id="run-title" tabindex="-1">
-            <.external_text text={shown_title(@run)} />
+          <h1 :if={shown_run_title(@run)} id="run-title" tabindex="-1">
+            <.external_text text={shown_run_title(@run)} />
           </h1>
-          <h1 :if={!shown_title(@run)} id="run-title" tabindex="-1">
+          <h1 :if={!shown_run_title(@run)} id="run-title" tabindex="-1">
             <.rich text={rich_gettext("Run %{id}", id: {:m, @run.public_id, "font-mono text-[18px]"})} />
           </h1>
           <.about_header run={@run} />

@@ -2149,8 +2149,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     test "is isolated in the timeline, its groups and the connections tab, so a bidi override reorders nothing",
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
-      escaped = "evil\u202Elpmaxe.&lt;script&gt;"
-      # A connection's row drops the override (`Apiary.ExternalText.line/1`).
+      # A group's summary and the rows drop the override (`Apiary.ExternalText`).
       shown = "evillpmaxe.<script>"
       shown_escaped = "evillpmaxe.&lt;script&gt;"
 
@@ -2173,10 +2172,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       # Two allowed connections to the host read as one group, the denied one as a row.
-      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", host)
+      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", shown)
       assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", shown)
       assert has_element?(lv, "#e-4 .q-dest > bdi", shown)
-      assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-port\">:443</span>"
+      assert html =~ "<bdi>#{shown_escaped}</bdi><span class=\"q-port\">:443</span>"
       refute html =~ "elpmaxe.<script>"
 
       {:ok, lv, html} =

@@ -274,6 +274,7 @@ defmodule Apiary.DeletionTest do
 
       held = counts(workspace_id: workspace.id)
       assert Enum.count(held, fn {_table, n} -> n > 0 end) >= 10, inspect(held)
+      assert held["work_item_comments"] == 2
       kept_here = counts(workspace_id: scope.workspace.id)
       kept_there = counts(organisation_id: other.organisation.id)
 
@@ -650,7 +651,8 @@ defmodule Apiary.DeletionTest do
   # invitation, a policy rule with its run configuration, a run delivered through the
   # receiver with its events, log and connections, a retention run, a work item with its
   # event and the workspace's counter, a work item whose questions a member answered and
-  # one whose proposal a member confirmed, and a runtime of the organisation that lists it.
+  # one whose proposal a member confirmed, with a comment and a deleted one, and a runtime
+  # of the organisation that lists it.
   defp fill!(%Scope{} = scope) do
     {:ok, _} =
       Apiary.Connections.create_runtime(scope, %{
@@ -687,6 +689,10 @@ defmodule Apiary.DeletionTest do
     proposed = work_item_fixture(scope)
     explore_run_fixture(proposed, result: understood_result())
     {:ok, _} = Apiary.WorkItems.confirm(scope, proposed, 1)
+
+    {:ok, _} = Apiary.WorkItems.comment(scope, proposed, "Seen on staging")
+    {:ok, gone} = Apiary.WorkItems.comment(scope, proposed, "Wrong work item, sorry")
+    {:ok, _} = Apiary.WorkItems.delete_comment(scope, gone.public_id)
 
     :ok = Apiary.Organisations.remember_workspace(scope)
   end

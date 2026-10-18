@@ -23,15 +23,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
     plain text, what it is, the same path in other systems, its runs a day, its machines
-    and runtimes. Last, where the target's collection is assigned to the workspace, and
-    it and its adapter have items, the Backlog card: one switch, whether its tickets come
-    into the workspace's Backlog, named with its source's word for them, which owners and
-    admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
-    and anyone else reads, disabled, with who may change it. After it, where the reader is
-    shown the work items, what its runs also read (`Apiary.Targets.further_repositories/1`),
-    one path a line, with Change, for those who may change it
-    (`target.set_further_repositories`), which leads to its form page
-    (`ApiaryWeb.TargetLive.FurtherRepositories`).
+    and runtimes.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
   A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
@@ -39,6 +31,17 @@ defmodule ApiaryWeb.TargetLive.Show do
   topic: a run of the target on the page changes in place; a new one is counted, never
   inserted under the reader, and comes in when asked.
   """
+
+  # With the `factory` feature, which the documentation leaves out, Overview ends with two
+  # more parts. Where the target's collection is assigned to the workspace, and it and its
+  # adapter have items, the Backlog card: one switch, whether its tickets come into the
+  # workspace's Backlog, named with its source's word for them, which owners and admins
+  # turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
+  # disabled, with who may change it. After it, where the reader may read the workspace's
+  # work items, what its runs also read (`Apiary.Targets.further_repositories/1`), one path
+  # a line, with Change, for those who may change it (`target.set_further_repositories`),
+  # which leads to its form page (`ApiaryWeb.TargetLive.FurtherRepositories`).
+
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
   on_mount {ApiaryWeb.Access, :"run.read"}

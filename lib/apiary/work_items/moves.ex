@@ -1,9 +1,10 @@
 defmodule Apiary.WorkItems.Moves do
   # Moves holds what a person does to a workspace's work items, each in one transaction
   # with its event, its run of the queue, its feed entry and its entry in the audit trail:
-  # taking a ticket in, taking it in again, undoing a take in, declining and closing; and
-  # what a member gives Explore: answering a run's questions, confirming a run's proposal,
-  # changed or not, and running Explore again.
+  # taking a ticket in, taking it in again, undoing a take in, declining and closing; what
+  # a member gives Explore: answering a run's questions, confirming a run's proposal,
+  # changed or not, and running Explore again; and people's comments on the Thread,
+  # writing one and deleting one.
   # `Apiary.WorkItems` names each function and what it answers; this module says how.
   #
   # ## Who may
@@ -13,7 +14,9 @@ defmodule Apiary.WorkItems.Moves do
   # be; an undo, a decline and a close `work_item.undo`, `work_item.decline` and
   # `work_item.close` of the work item, which must be in the scope's workspace; an answer,
   # a confirmation and a run of Explore again `work_item.answer`, `work_item.confirm` and
-  # `work_item.explore_again` of the work item, likewise. Each
+  # `work_item.explore_again` of the work item, likewise; a comment `work_item.comment` of
+  # the work item, and a comment's deletion `work_item.comment_delete` of the comment, which
+  # its author may take too while they may still comment (`Apiary.Access`). Each
   # writes its entry in the trail with the change (`Apiary.Audit.record/6`), about the work
   # item: a take in again with `details` `again: true`.
   #
@@ -48,7 +51,9 @@ defmodule Apiary.WorkItems.Moves do
   # Explore again take the work item alone, then queue through
   # `Apiary.Dispatches.queue_next/2`, which takes the work item again, in the same
   # transaction, before it reads the runs; they lock no run, as a run that ended stays
-  # ended and a new run is only written under the work item's lock. No workspace row is locked: an assign holds
+  # ended and a new run is only written under the work item's lock. A comment takes the
+  # work item alone; a comment's deletion the work item, then the comment, `FOR UPDATE`,
+  # right after it. No workspace row is locked: an assign holds
   # its workspace `FOR SHARE` before the collections, and a move must never wait on it
   # holding a collection. No collection or target is locked after a work item.
   #
@@ -133,13 +138,30 @@ defmodule Apiary.WorkItems.Moves do
   #     was lost or was cancelled, while a run is left: it queues the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
   #
+  # ## People's comments
+  #
+  # A comment (`comment/3`) is written on a work item in any state, live or ended, by the
+  # scope's person, now, with its body as `Apiary.WorkItems.Comment.changeset/2` holds it,
+  # else the changeset. It marks the work item changed (`updated_at`). Its entry in the
+  # trail names the comment by its public id (`details` `comment_id`), never its text.
+  #
+  # A comment's deletion (`delete_comment/2`) names the comment by its public id (`cm_…`),
+  # of the scope's workspace, whatever the state of its work item; else `:not_found`. One
+  # already deleted is `:deleted`. Its body goes, and it keeps who deleted it and when, so
+  # the Thread keeps a line in its place. The work item is not marked changed. Its entry
+  # names the comment and its author (`details` `comment_id`, `author_id`).
+  #
+  # Neither writes an event of the work item or a feed entry: the comment is a line of the
+  # Thread by itself.
+  #
   # ## What is told
   #
   # Once the transaction commits, each workspace whose Backlog shows the ticket is sent
   # `{:tickets_changed, ids}` on the Backlog's topic (`Apiary.Sources.Topic`), and the
   # workspace the work item is in, and the one it moved from, `{:work_items_changed, ids}`
   # on its work items' topic (`Apiary.WorkItems.topic/1`): public ids only. A close also
-  # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`).
+  # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`). A comment
+  # and its deletion tell the work items' topic alone: the Backlog shows no comment.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -154,7 +176,8 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.RunVariables
   alias Apiary.Sources.{Item, Topic}
-  alias Apiary.WorkItems.{Answer, Confirmation, Explore, Number, Proposal, State, WorkItem}
+  alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Number, Proposal, State}
+  alias Apiary.WorkItems.WorkItem
   alias Apiary.WorkItems.WorkItemEvent
 
   @typedoc "Why a take in, or a take in again, is refused."
@@ -686,6 +709,107 @@ defmodule Apiary.WorkItems.Moves do
 
     finish(result)
   end
+
+  ## People's comments
+
+  @doc false
+  @spec comment(Scope.t(), WorkItem.t(), term) ::
+          {:ok, Comment.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
+  def comment(%Scope{} = scope, %WorkItem{} = work_item, body) do
+    result =
+      Repo.transact(fn ->
+        now = DateTime.utc_now()
+
+        with {:ok, held} <- hold(scope, :"work_item.comment", work_item),
+             {:ok, comment} <- insert_comment(held, scope, body, now),
+             {:ok, work_item} <- touch(held, now),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.comment", work_item, %{
+                 details: %{"comment_id" => comment.public_id}
+               }) do
+          {:ok, {comment, comment_told(work_item)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  defp insert_comment(held, scope, body, now) do
+    %Comment{
+      organisation_id: held.organisation_id,
+      workspace_id: held.workspace_id,
+      work_item_id: held.id,
+      author_id: scope.user.id,
+      inserted_at: now
+    }
+    |> Comment.changeset(%{body: body})
+    |> Repo.insert()
+  end
+
+  @doc false
+  @spec delete_comment(Scope.t(), term) ::
+          {:ok, Comment.t()} | {:error, :not_found | :forbidden | :deleted}
+  def delete_comment(%Scope{} = scope, comment_id) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             %Comment{} = found <- comment_in(workspace, comment_id),
+             :ok <- Access.authorize(scope, :"work_item.comment_delete", found),
+             %WorkItem{} = held <- in_workspace(workspace, found.work_item_id, true),
+             %Comment{} = comment <- held_comment(held, found.id),
+             :ok <- not_deleted(comment),
+             {:ok, deleted} <-
+               comment
+               |> Ecto.Changeset.change(
+                 body: nil,
+                 deleted_at: DateTime.utc_now(),
+                 deleted_by_id: scope.user.id
+               )
+               |> Repo.update(),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.comment_delete", held, %{
+                 details: %{"comment_id" => comment.public_id, "author_id" => comment.author_id}
+               }) do
+          {:ok, {deleted, comment_told(held)}}
+        else
+          nil -> {:error, :not_found}
+          {:error, _refusal} = refused -> refused
+        end
+      end)
+
+    finish(result)
+  end
+
+  # The comment `id` names, of `workspace`, read with no lock; nil for an id that is not a
+  # comment's public id, and for a comment of another workspace.
+  defp comment_in(%Workspace{id: workspace_id, organisation_id: organisation_id}, id) do
+    if Apiary.PublicId.valid?(Comment.prefix(), id) do
+      Repo.one(
+        from c in Comment,
+          where:
+            c.public_id == ^id and c.organisation_id == ^organisation_id and
+              c.workspace_id == ^workspace_id
+      )
+    end
+  end
+
+  # The comment `id` of the work item `held`, held `FOR UPDATE` right after it: nil once
+  # it moved with its work item to another workspace, or went.
+  defp held_comment(%WorkItem{id: work_item_id, workspace_id: workspace_id}, id) do
+    Repo.one(
+      from c in Comment,
+        where:
+          c.id == ^id and c.work_item_id == ^work_item_id and c.workspace_id == ^workspace_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp not_deleted(%Comment{deleted_at: nil}), do: :ok
+  defp not_deleted(%Comment{}), do: {:error, :deleted}
+
+  # The one workspace to tell of a comment: the one its work item is in.
+  defp comment_told(%WorkItem{} = work_item),
+    do: %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}
 
   # `work_item` held as `hold/3` holds it, live, of the take in the page read, with where
   # Explore stands for it at `now`, read under its lock.
