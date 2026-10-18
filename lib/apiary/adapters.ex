@@ -363,6 +363,34 @@ defmodule Apiary.Adapters do
     if adapters = organisation_sources(scope), do: shared_collection_noun(adapters)
   end
 
+  @doc false
+  # connection_nouns/2 is, for each of `public_ids`, the public ids of connections of the
+  # organisation `organisation_id`, ended ones too, what the source behind it calls its
+  # items and its collections: `%{item: item_noun(adapter), collection:
+  # collection_noun(adapter)}`, by public id. A public id of no such connection has no
+  # key. For the names a page reads with the entries of an audit trail it may read
+  # already (`Apiary.Audit.names/2`), so it asks no access.
+  @spec connection_nouns(Ecto.UUID.t(), [String.t()]) :: %{
+          String.t() => %{
+            item: %{one: String.t(), other: String.t()} | nil,
+            collection: %{one: String.t(), other: String.t()} | nil
+          }
+        }
+  def connection_nouns(_organisation_id, []), do: %{}
+
+  def connection_nouns(organisation_id, public_ids) when is_list(public_ids) do
+    from(k in Connection,
+      join: n in Node,
+      on: n.id == k.adapter_id,
+      where: k.organisation_id == ^organisation_id and k.public_id in ^Enum.uniq(public_ids),
+      select: {k.public_id, n}
+    )
+    |> Repo.all()
+    |> Map.new(fn {public_id, adapter} ->
+      {public_id, %{item: item_noun(adapter), collection: collection_noun(adapter)}}
+    end)
+  end
+
   ## Changes
 
   @doc false
