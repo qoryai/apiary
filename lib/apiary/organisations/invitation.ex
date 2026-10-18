@@ -44,7 +44,8 @@ defmodule Apiary.Organisations.Invitation do
     |> update_change(:email, &String.downcase(String.trim(&1)))
     |> validate_required([:email])
     |> Apiary.Accounts.User.validate_address()
-    |> validate_length(:email, max: 160)
+    # Code points, as an account's address (`Apiary.Accounts.User`), for the unique index.
+    |> validate_length(:email, max: 160, count: :codepoints)
     |> unique_constraint([:organisation_id, :email],
       name: :invitations_pending_email_index,
       error_key: :email,

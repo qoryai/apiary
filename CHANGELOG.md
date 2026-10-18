@@ -48,6 +48,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The organisation slug `integrations` is reserved as well: a slug made from a name skips
   it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
   the slug `integrations-2`.
+- An account's email address, at sign-up and when it is changed, and an invitation's
+  address refuse a control or format character (a right-to-left override, a zero-width
+  space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
+  characters are counted in code points, so a letter's accent marks count too. An account
+  whose address already holds such a character still logs in with it. An invitation to an
+  address with a NUL in it is refused with the address's error, not a server error.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of

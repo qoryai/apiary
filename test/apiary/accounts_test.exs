@@ -101,6 +101,15 @@ defmodule Apiary.AccountsTest do
       assert "should be at most 160 character(s)" in errors_on(changeset).email
     end
 
+    test "counts an address's length in code points, a letter's marks among them" do
+      marks = for cp <- 0x300..0x36F, into: "", do: <<cp::utf8>>
+      email = "d#{String.duplicate(marks, 20)}na@example.com"
+      assert String.length(email) < 160
+
+      {:error, changeset} = Accounts.register_user(%{email: email})
+      assert errors_on(changeset).email == ["should be at most 160 character(s)"]
+    end
+
     test "validates email uniqueness" do
       %{email: email} = user_fixture()
       {:error, changeset} = Accounts.register_user(%{email: email})

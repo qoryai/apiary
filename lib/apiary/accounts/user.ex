@@ -88,7 +88,9 @@ defmodule Apiary.Accounts.User do
       changeset
       |> validate_required([:email])
       |> validate_address()
-      |> validate_length(:email, max: 160)
+      # Code points, not graphemes: a letter with marks on it is one grapheme however long,
+      # which can be longer than the unique index takes.
+      |> validate_length(:email, max: 160, count: :codepoints)
 
     if Keyword.get(opts, :validate_unique, true) do
       changeset
