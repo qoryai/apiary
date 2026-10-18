@@ -27,6 +27,15 @@ defmodule Apiary.NamesTest do
     end
   end
 
+  test "refuses another format character, and the line and paragraph separators" do
+    # The zero-width space, word joiner, soft hyphen, Mongolian vowel separator, byte order
+    # mark, an interlinear annotation, a language tag; U+2028 and U+2029.
+    for cp <- [0x200B, 0x2060, 0xAD, 0x180E, 0xFEFF, 0xFFF9, 0xE0001, 0x2028, 0x2029] do
+      assert errors("Build#{<<cp::utf8>>}01") == ["must not contain control characters"],
+             Integer.to_string(cp, 16)
+    end
+  end
+
   test "keeps the join controls, letters beyond ASCII and an emoji sequence" do
     for name <- [
           "می#{<<0x200C::utf8>>}خواهم",

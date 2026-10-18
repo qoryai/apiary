@@ -4,22 +4,23 @@ defmodule Apiary.Names do
   a workspace's name, a node's, a pool's, a gateway's and an adapter's, an access key's
   label, a service connection's name and a secret's note.
 
-  None may be a control character (C0, DEL, C1) or a bidirectional control (the
-  embeddings, overrides and isolates, U+202A to U+202E and U+2066 to U+2069, and the
-  marks LRM, RLM and ALM), which would make the name, or the text around it, read
-  otherwise than it is. The join controls ZWNJ and ZWJ stay allowed: a name in some
-  scripts, and an emoji sequence, needs them. An organisation's name keeps stricter rules
-  (`Apiary.Organisations.Organisation.validate_name/2`).
+  None may be a control character (C0, DEL, C1), a format character (category Cf: the
+  bidirectional controls, the zero-width space, the byte order mark, the soft hyphen, tag
+  characters and the like) or the line or paragraph separator (U+2028, U+2029), which
+  would hide part of the name, or make it, or the text around it, read otherwise than it
+  is. The join controls ZWNJ and ZWJ stay allowed: a name in some scripts, and an emoji
+  sequence, needs them. An organisation's name refuses the same control and format
+  characters, and keeps more rules (`Apiary.Organisations.Organisation.validate_name/2`).
   """
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
-  @refused ~r/[\p{Cc}\x{061C}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u
+  @refused ~r/(?![\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
 
   @doc """
   validate_characters/2 refuses a `field` of `changeset` that is not UTF-8 text (`must be
-  UTF-8 text`) or that holds a control character or a bidirectional control (`must not
-  contain control characters`).
+  UTF-8 text`) or that holds a control character, a format character but ZWNJ and ZWJ, or
+  a line or paragraph separator (`must not contain control characters`).
   """
   @spec validate_characters(Ecto.Changeset.t(), atom) :: Ecto.Changeset.t()
   def validate_characters(changeset, field) do

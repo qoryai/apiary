@@ -65,8 +65,8 @@ defmodule Apiary.Kinds.ServicesTest do
       end
     end
 
-    test "refuses a title or a declaration's title with a control or a bidirectional control" do
-      for cp <- [0x0, 0x7, 0x85, 0x202E, 0x2066, 0x200F, 0x061C] do
+    test "refuses a title or a declaration's title with a control, a format character or a separator" do
+      for cp <- [0x0, 0x7, 0x85, 0x202E, 0x2066, 0x200F, 0x061C, 0x200B, 0xFEFF, 0x2028] do
         title = "Status#{<<cp::utf8>>} API"
 
         assert {:error, [{:definition_invalid, _}]} =
