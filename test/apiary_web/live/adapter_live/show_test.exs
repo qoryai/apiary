@@ -7,7 +7,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   # on, the line to install again; the return's flash; behind the feature, for members.
   # Once listed, the collections: still arriving, then complete, live, a page at a time,
   # with the lead for one workspace, or for an adapter with no items; a search, and how
-  # many it finds; the line for those the integration no longer reaches; a page past the
+  # many it finds; the source's line on its access, the first foot note, isolated and
+  # cleaned; the line for those the integration no longer reaches; a page past the
   # last, and the address that names the page shown. With several workspaces: the
   # unassigned ones first, the warning, the views, the workspace filter, the selection and
   # its menu, which assigns them, then shows the first page.
@@ -673,6 +674,153 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Assigning a project here doesn't change a workspace's Repositories, which list what its runs change."
   end
 
+  # The text of the access foot note's `<bdi>`, as the page shows it, nothing trimmed.
+  defp access_text(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#collections-access > bdi")
+    |> LazyHTML.text()
+  end
+
+  # The ids of the foot notes under the collections, in the page's order.
+  defp foot_notes(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#collections .q-foot-note")
+    |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> List.first()))
+  end
+
+  defp set_access(adapter, text) do
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [source_access: text]
+      )
+
+    :ok
+  end
+
+  test "the source's access line is the first foot note, as the contract's example says",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    adapter = describe_source(adapter, "example-tracker.json")
+
+    line =
+      get_in(Apiary.DescriptionFixtures.contract_description("example-tracker.json"), [
+        "roles",
+        "source",
+        "access"
+      ])
+
+    assert is_binary(line)
+
+    # Not installed: no collections, and no note.
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    refute has_element?(lv, "#collections-access")
+
+    # While the page waits for the first listing, and once listed.
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-waiting")
+    assert access_text(lv) == line
+    assert has_element?(lv, "#collections-foot > #collections-access")
+    assert foot_notes(lv) == ["collections-access"]
+
+    post(key, connection, ["acme/api", {"acme/shop", :target}], 1, true)
+    assert access_text(lv) == line
+    assert foot_notes(lv) == ["collections-access", "collections-targets"]
+  end
+
+  test "no source role, or no access line: no note", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", {"acme/shop", :target}], 1, true)
+
+    # An adapter with no line kept: none.
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-table")
+    refute has_element?(lv, "#collections-access")
+    assert foot_notes(lv) == ["collections-targets"]
+
+    # A line, then a start whose description has no source role: none again.
+    adapter = describe_source(adapter, "example-tracker.json")
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-access")
+
+    describe_source(adapter, "acme-tracker.json")
+    send(lv.pid, {:connection_changed, %{adapter_id: adapter.id}})
+    assert has_element?(lv, "#collections-table")
+    refute has_element?(lv, "#collections-access")
+  end
+
+  test "the access line shows in a bdi, its invisible and control characters cleaned",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api"], 1, true)
+
+    :ok =
+      set_access(
+        adapter,
+        "\u202EChange\u200B which repositories it reaches\u0007 in its settings.\u202C"
+      )
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-access > bdi")
+
+    # Listed, with no target and nothing ended: the block shows for the access note alone.
+    assert has_element?(lv, "#collections-foot > #collections-access")
+    assert foot_notes(lv) == ["collections-access"]
+
+    assert access_text(lv) ==
+             "Change which repositories it reaches\uFFFD in its settings."
+  end
+
+  test "an access line with nothing left once cleaned shows no note", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api"], 1, true)
+
+    for text <- ["\u200B", "\u2066\u202E\u200B\u2069", ""] do
+      :ok = set_access(adapter, text)
+      {:ok, lv, _html} = live(conn, page(scope, adapter))
+      assert has_element?(lv, "#collections-table")
+      refute has_element?(lv, "#collections-access"), inspect(text)
+    end
+  end
+
+  test "the access note, the ended line, then the targets note, when all three show", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    describe_source(adapter, "example-tracker.json")
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", {"acme/shop", :target}, "acme/web"], 1, true)
+
+    post(
+      key,
+      connection,
+      ["acme/api", {"acme/shop", :target}],
+      1,
+      true,
+      ~U[2026-10-02 09:00:00Z],
+      "second"
+    )
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert foot_notes(lv) == ["collections-access", "collections-ended", "collections-targets"]
+  end
+
   test "the page fills in live: waiting, still sending with how many so far, then complete", %{
     conn: conn,
     scope: scope,
@@ -841,7 +989,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-view-unassigned") == "Unassigned 3"
     assert has_element?(lv, ~s{#collections-view-all[aria-current="page"]})
     assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
+    assert has_element?(lv, "#collections-bar.q-int-assignbar > #collections-search.q-find")
+    refute has_element?(lv, "#collections-search.q-find-query")
     assert words(lv, "#collections-workspace-button") == "Workspace"
+    assert has_element?(lv, ~s{#collections-workspace ul[role="menu"][aria-label="Workspace"]})
 
     assert has_element?(
              lv,
@@ -983,8 +1134,14 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-selected") == "5 selected"
     assert has_element?(lv, "#collections-table-every[checked]")
 
+    for title <- titles(1..5) do
+      checked = ~s{#collections-table input[aria-label="Select #{title}"][checked]}
+      assert has_element?(lv, checked)
+    end
+
     lv |> element("#collections-table-every") |> render_click()
     refute has_element?(lv, "#collections-selection")
+    refute has_element?(lv, "#collections-table tbody input[checked]")
 
     lv |> element("#collections-table-every") |> render_click()
     lv |> element("#collections-clear") |> render_click()
@@ -1496,6 +1653,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "1 repository is unassigned. Its tickets reach no backlog until an owner or an admin assigns it to a workspace."
 
     assert has_element?(lv, "#collections-views")
+    assert has_element?(lv, "#collections-bar")
+    refute has_element?(lv, "#collections-bar.q-int-assignbar")
     refute has_element?(lv, "#collections-table-every")
     refute has_element?(lv, "#collections-table input")
     refute has_element?(lv, "#collections-assign-button")

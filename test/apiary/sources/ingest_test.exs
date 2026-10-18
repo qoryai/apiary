@@ -56,6 +56,14 @@ defmodule Apiary.Sources.IngestTest do
     }
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   defp post(ctx, collection_ref, items, opts \\ []),
     do: Sources.post_items(ctx.key_scope, items_body(collection_ref, items, opts))
 
@@ -147,7 +155,7 @@ defmodule Apiary.Sources.IngestTest do
       gone = source_collection_fixture(ctx.scope, ctx.connection)
 
       {:ok, :disconnected} =
-        Collections.disconnect(ctx.key_scope, %{collection_ref: gone.external_ref})
+        disconnect(ctx, gone.external_ref)
 
       for ref <- [open.external_ref, off.external_ref, gone.external_ref, "NEVER"] do
         assert post(ctx, ref, [item("A")]) == {:error, :not_linked}, ref
@@ -619,7 +627,7 @@ defmodule Apiary.Sources.IngestTest do
       # collection's write, updated before started_at, holds the ref, as none does.
       {:ok, :accepted} = post(ctx, "OPS", [item("R", updated_at: later(700))])
       assert %DateTime{} = Repo.get!(Item, closed.id).disconnected_at
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "OPS"})
+      {:ok, :disconnected} = disconnect(ctx, "OPS")
       {:ok, :accepted} = post(ctx, "DEV", [item("R", updated_at: later(100))])
       holder = ticket(dev, "R")
       assert holder.disconnected_at == nil
@@ -656,7 +664,7 @@ defmodule Apiary.Sources.IngestTest do
 
     test "a ref in an ended collection is held by none", ctx do
       {:ok, :accepted} = post(ctx, "OPS", [item("R")])
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "OPS"})
+      {:ok, :disconnected} = disconnect(ctx, "OPS")
 
       {:ok, :accepted} = post(ctx, "TRK", [item("R", updated_at: later(-60))])
       assert ticket(ctx.trk, "R").disconnected_at == nil
@@ -671,7 +679,7 @@ defmodule Apiary.Sources.IngestTest do
 
       # The collection of the item that holds it is disconnected: the old one, ended in a
       # live collection, answers for nothing, and the one that ended last is not linked.
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "OPS"})
+      {:ok, :disconnected} = disconnect(ctx, "OPS")
       assert post_comments(ctx, "R", [comment("C")]) == {:error, :not_linked}
 
       # The connection's end ends the old one's collection after it: connection ended.
@@ -696,7 +704,7 @@ defmodule Apiary.Sources.IngestTest do
 
     test "comments, the only item with the ref ended: not linked, and nothing is written", ctx do
       {:ok, :accepted} = post(ctx, "TRK", [item("R")])
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"})
+      {:ok, :disconnected} = disconnect(ctx, "TRK")
       assert post_comments(ctx, "R", [comment("C")]) == {:error, :not_linked}
 
       # An item ended in a live collection answers for nothing, even with no other item

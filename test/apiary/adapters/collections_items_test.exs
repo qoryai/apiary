@@ -53,6 +53,14 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
     Scope.for_access_key(verified)
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   # One part of a listing naming `collections`, `{ref, target, items}` each, where
   # `items` is false, or nil for a collection the part says nothing of. Each listing has
   # a new id and a later `started_at` than the one before, so it updates what it names.
@@ -127,7 +135,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
       {:ok, 2} = assign(ctx, ["SHOP", "API"], ctx.workspace)
       {:ok, 1} = assign(ctx, ["SHOP"], ctx.other_workspace)
       {:ok, 1} = assign(ctx, ["SHOP"], nil)
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "API"})
+      {:ok, :disconnected} = disconnect(ctx, "API")
       {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
       {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
 
@@ -408,7 +416,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
     test "an ended collection, or one of an ended connection, gets no entry", ctx do
       {:ok, :accepted} = post(ctx, [{"SHOP", @shop, nil}, {"API", @api, nil}])
       {:ok, 2} = assign(ctx, ["SHOP", "API"], ctx.workspace)
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "API"})
+      {:ok, :disconnected} = disconnect(ctx, "API")
       told = feed(ctx)
       assert told == [{"API", "linked"}, {"SHOP", "linked"}, {"API", "unlinked"}]
 
