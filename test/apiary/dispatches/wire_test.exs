@@ -1,10 +1,9 @@
 defmodule Apiary.Dispatches.WireTest do
   # The bodies a node pool's starter posts, read as the provisioner contract has them:
   # every request fixture vendored from the commit in
-  # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, but the
-  # prebuilt's, which is not served yet, and each field refused in turn, with members
-  # twice, integers written with a fraction, members the schema does not define, and
-  # labels on a handover.
+  # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, and each
+  # field refused in turn, with members twice, integers written with a fraction, members
+  # the schema does not define, and labels on a handover.
   use ExUnit.Case, async: true
 
   alias Apiary.Dispatches.Wire
@@ -63,21 +62,9 @@ defmodule Apiary.Dispatches.WireTest do
     "claim" => &Wire.claim/1,
     "dispatched" => &Wire.dispatched/1,
     "handover" => &Wire.handover/1,
-    "release" => &Wire.release/1
+    "release" => &Wire.release/1,
+    "prebuilt" => &Wire.prebuilt/1
   }
-
-  # The prebuilt request, its refused bodies and the three refusals only a prebuilt
-  # meets. The control plane does not serve prebuilt yet, so the tests of what it reads
-  # and refuses leave them out; they are still held to their schema above.
-  @not_yet_served ~w(
-    prebuilt/
-    invalid/prebuilt-
-    refusal/not-handed-over.json
-    refusal/not-prebuild.json
-    refusal/run-mismatch.json
-  )
-
-  defp not_yet_served?(relative), do: String.starts_with?(relative, @not_yet_served)
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
 
@@ -91,6 +78,7 @@ defmodule Apiary.Dispatches.WireTest do
   defp dispatched(body), do: read(&Wire.dispatched/1, body)
   defp handover(body), do: read(&Wire.handover/1, body)
   defp release(body), do: read(&Wire.release/1, body)
+  defp prebuilt(body), do: read(&Wire.prebuilt/1, body)
 
   @claim %{"version" => 1, "time" => "2026-10-15T12:00:00Z", "wait_seconds" => 10}
   @external %{
@@ -105,6 +93,16 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start.",
     "retry" => false
+  }
+  @digest "@sha256:" <> String.duplicate("3b9d", 16)
+  @prebuilt %{
+    "version" => 1,
+    "time" => "2026-10-15T12:20:00Z",
+    "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+    "image" => "registry.example.com:5000/acme/shop-env" <> @digest,
+    "size" => 734_003_200,
+    "environment_ref" => "env-3f2a91c4",
+    "commit" => "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
   }
 
   test "the vendored contract is the commit its ref names" do
@@ -160,7 +158,6 @@ defmodule Apiary.Dispatches.WireTest do
       |> Path.join("**/*.json")
       |> Path.wildcard()
       |> Enum.map(&Path.relative_to(&1, @fixtures))
-      |> Enum.reject(&not_yet_served?/1)
 
     requests =
       for path <- all,
@@ -180,16 +177,15 @@ defmodule Apiary.Dispatches.WireTest do
     refusals = for "refusal/" <> _ = path <- all, do: path
 
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
-    assert length(requests) == 6
-    assert length(invalid_requests) == 6
+    assert length(requests) == 7
+    assert length(invalid_requests) == 15
     assert length(answers) == 23
-    assert length(refusals) == 3
+    assert length(refusals) == 6
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
     codes =
-      for path <- Path.wildcard(Path.join([@fixtures, "refusal", "*.json"])),
-          not not_yet_served?(Path.relative_to(path, @fixtures)) do
+      for path <- Path.wildcard(Path.join([@fixtures, "refusal", "*.json"])) do
         assert {:ok, %{"error" => code} = refusal} = Wire.decode(File.read!(path)), path
         assert map_size(refusal) == 1
         assert Regex.match?(~r/\A[a-z_]{1,64}\z/, code)
@@ -197,7 +193,14 @@ defmodule Apiary.Dispatches.WireTest do
         code
       end
 
-    assert Enum.sort(codes) == ["handed_over", "no_gateway", "unavailable"]
+    assert Enum.sort(codes) == [
+             "handed_over",
+             "no_gateway",
+             "not_handed_over",
+             "not_prebuild",
+             "run_mismatch",
+             "unavailable"
+           ]
   end
 
   describe "the contract's fixtures" do
@@ -215,6 +218,7 @@ defmodule Apiary.Dispatches.WireTest do
                "dispatched/with-external.json",
                "dispatched/without-external.json",
                "handover/handover.json",
+               "prebuilt/prebuilt.json",
                "release/retry.json"
              ]
     end
@@ -253,6 +257,18 @@ defmodule Apiary.Dispatches.WireTest do
                   reason: "The job could not start: no runner was free.",
                   retry: true
                 }}
+
+      assert prebuilt(fixture("prebuilt/prebuilt.json")) ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:20:00Z],
+                  run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+                  image:
+                    "registry.example.com:5000/acme/shop-env@sha256:3b9d0a5f7c1e2d4b6a8f0c2e4d6b8a0f1c3e5d7b9a1f3c5e7d9b1a3f5c7e9d1b",
+                  size: 734_003_200,
+                  environment_ref: "env-3f2a91c4",
+                  commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
+                }}
     end
 
     test "every invalid request fixture is refused" do
@@ -260,8 +276,7 @@ defmodule Apiary.Dispatches.WireTest do
         for path <- Path.wildcard(Path.join([@fixtures, "invalid", "*.json"])),
             name = Path.basename(path),
             # An answer's fixture is the starter's to refuse.
-            not String.contains?(name, "-answer-"),
-            not not_yet_served?("invalid/" <> name) do
+            not String.contains?(name, "-answer-") do
           [kind | _] = String.split(name, "-", parts: 2)
           assert read(Map.fetch!(@readers, kind), File.read!(path)) == :error, name
           name
@@ -273,6 +288,15 @@ defmodule Apiary.Dispatches.WireTest do
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
+               "prebuilt-image-digest-63.json",
+               "prebuilt-image-tag.json",
+               "prebuilt-image-upper-case.json",
+               "prebuilt-image-without-name.json",
+               "prebuilt-size-0.json",
+               "prebuilt-size-above-maximum.json",
+               "prebuilt-size-fraction.json",
+               "prebuilt-undefined-member.json",
+               "prebuilt-without-commit.json",
                "release-reason-nul.json"
              ]
     end
@@ -314,7 +338,8 @@ defmodule Apiary.Dispatches.WireTest do
       for {body, reader} <- [
             {@dispatched, &Wire.dispatched/1},
             {@handover, &Wire.handover/1},
-            {@release, &Wire.release/1}
+            {@release, &Wire.release/1},
+            {@prebuilt, &Wire.prebuilt/1}
           ] do
         raw = String.replace(Jason.encode!(body), ~s("version":1), ~s("version":1.0))
         assert read(reader, raw) == :error, raw
@@ -327,6 +352,8 @@ defmodule Apiary.Dispatches.WireTest do
       assert dispatched(put_in(@dispatched, ["external", "name"], "CI")) == :error
       assert handover(Map.put(@handover, "run_id", "x")) == :error
       assert release(Map.put(@release, "run_id", "x")) == :error
+      assert prebuilt(Map.put(@prebuilt, "tag", "latest")) == :error
+      assert prebuilt(Map.put(@prebuilt, "target", "acme/shop")) == :error
     end
 
     test "a version other than 1, or a time not in whole seconds of UTC" do
@@ -334,7 +361,8 @@ defmodule Apiary.Dispatches.WireTest do
             {@claim, &Wire.claim/1},
             {@dispatched, &Wire.dispatched/1},
             {@handover, &Wire.handover/1},
-            {@release, &Wire.release/1}
+            {@release, &Wire.release/1},
+            {@prebuilt, &Wire.prebuilt/1}
           ],
           change <- [
             &Map.put(&1, "version", 2),
@@ -408,6 +436,7 @@ defmodule Apiary.Dispatches.WireTest do
       assert quick(fn -> dispatched(put_in(@dispatched, ["external"], many)) end) == :error
       assert quick(fn -> handover(Map.merge(@handover, many)) end) == :error
       assert quick(fn -> release(Map.merge(@release, many)) end) == :error
+      assert quick(fn -> prebuilt(Map.merge(@prebuilt, many)) end) == :error
     end
 
     test "a string just over its bound in bytes is refused, and one at it is read" do
@@ -568,6 +597,107 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert {:ok, %{reason: ^reason, retry: false}} =
                release(Map.put(@release, "reason", reason))
+    end
+  end
+
+  describe "a prebuilt" do
+    test "is read to its values, an image without a registry host among them" do
+      assert {:ok, read} = prebuilt(@prebuilt)
+      assert read.size == 734_003_200
+
+      for image <- [
+            "acme/shop-env" <> @digest,
+            "shop" <> @digest,
+            "localhost:5000/a__b/c---d/e.f_g" <> @digest,
+            "registry.example.com/acme/shop-env" <> @digest
+          ] do
+        assert {:ok, %{image: ^image}} = prebuilt(Map.put(@prebuilt, "image", image)), image
+      end
+    end
+
+    test "takes a size from 1 to 2^53 - 1, and refuses one outside it or not an integer" do
+      for size <- [1, 9_007_199_254_740_991] do
+        assert {:ok, %{size: ^size}} = prebuilt(Map.put(@prebuilt, "size", size))
+      end
+
+      for size <- [0, -1, 9_007_199_254_740_992, "1", nil, true, 1.0] do
+        assert prebuilt(Map.put(@prebuilt, "size", size)) == :error, inspect(size)
+      end
+    end
+
+    test "refuses a run_id that is not a UUID in the canonical lower-case form" do
+      for run_id <- [
+            nil,
+            "",
+            "0192F0C1-7D4E-7A2B-8C3D-4E5F6A7B8C9D",
+            "0192f0c17d4e7a2b8c3d4e5f6a7b8c9d",
+            "{0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d}",
+            "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9g",
+            "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d\n",
+            1
+          ] do
+        assert prebuilt(Map.put(@prebuilt, "run_id", run_id)) == :error, inspect(run_id)
+      end
+    end
+
+    test "refuses an image not pinned by its digest, as the contract has it" do
+      for image <- [
+            nil,
+            "",
+            @digest,
+            "acme/shop-env:latest",
+            "acme/shop-env:latest" <> @digest,
+            "Acme/shop-env" <> @digest,
+            "acme/shop-env@sha256:" <> String.duplicate("3B9D", 16),
+            "acme/shop-env@sha256:" <> String.duplicate("3b9d", 15) <> "3b9",
+            "acme/shop-env@sha256:" <> String.duplicate("3b9d", 16) <> "0",
+            "acme/shop-env@sha512:" <> String.duplicate("3b9d", 16),
+            "-acme/shop" <> @digest,
+            "acme/shop-" <> @digest,
+            "acme//shop" <> @digest,
+            "registry.example.com:123456/acme" <> @digest,
+            "acme/shop env" <> @digest,
+            "acme/shop\u0000" <> @digest,
+            1
+          ] do
+        assert prebuilt(Map.put(@prebuilt, "image", image)) == :error, inspect(image)
+      end
+    end
+
+    test "takes a name of 255 characters, and refuses one of 256, before the pattern" do
+      name = fn n -> "a/" <> String.duplicate("b", n - 2) end
+      at_bound = name.(255) <> @digest
+      assert String.length(at_bound) == 327
+      assert {:ok, %{image: ^at_bound}} = prebuilt(Map.put(@prebuilt, "image", at_bound))
+      assert prebuilt(Map.put(@prebuilt, "image", name.(256) <> @digest)) == :error
+    end
+
+    test "refuses quickly an image crafted to make its pattern backtrack" do
+      for image <- [
+            String.duplicate("a-", 160) <> "@",
+            String.duplicate("a.", 120) <> "a" <> String.duplicate("-", 80),
+            String.duplicate("a_", 160),
+            String.duplicate("a/", 163) <> "@",
+            String.duplicate("a", 327)
+          ] do
+        assert byte_size(image) <= 327
+        assert quick(fn -> prebuilt(Map.put(@prebuilt, "image", image)) end) == :error
+      end
+    end
+
+    test "refuses an environment_ref or a commit that is not 1 to 200 characters, or holds U+0000" do
+      for field <- ["environment_ref", "commit"],
+          value <- ["", String.duplicate("r", 201), "env\u00001", nil, 1, "run-" <> <<0xFF>>] do
+        assert Wire.prebuilt(Map.put(@prebuilt, field, value)) == :error,
+               "#{field} #{inspect(value)}"
+      end
+
+      at_bound = String.duplicate("\u{1F600}", 200)
+
+      for field <- ["environment_ref", "commit"] do
+        assert {:ok, _} = prebuilt(Map.put(@prebuilt, field, at_bound))
+        assert prebuilt(Map.delete(@prebuilt, field)) == :error
+      end
     end
   end
 end
