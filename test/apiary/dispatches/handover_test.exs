@@ -88,8 +88,15 @@ defmodule Apiary.Dispatches.HandoverTest do
     do: {1, _rows} = Repo.update_all(from(n in Node, where: n.id == ^id), set: fields)
 
   # The run of the queue and its dispatch ended with `cause`, the slot freed once.
+  # An explore run its handover could not form gave an error, stored with its end; a
+  # prebuild gave nothing.
   defp ended!(ctx, %DispatchRun{} = run, %Dispatch{} = dispatch, cause) do
-    assert %DispatchRun{state: :ended, end_cause: ^cause} = queue_run!(run)
+    outcome =
+      if run.step != "prebuild" and cause in [:variables_invalid, :ticket_gone, :inputs_invalid],
+        do: :error
+
+    assert %DispatchRun{state: :ended, end_cause: ^cause, result_outcome: ^outcome, result: nil} =
+             queue_run!(run)
 
     assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{} = at, slot_freed_at: at} =
              dispatch!(dispatch)

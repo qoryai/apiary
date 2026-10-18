@@ -28,6 +28,14 @@ defmodule Apiary.Dispatches.DispatchRun do
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`
   # orders the queue, oldest first.
   #
+  # `result_outcome` is what the run gave once Qory reads it as decided
+  # (`Apiary.Dispatches.Settle`, `result_outcomes/0`), and `result` the run's result, a
+  # JSON object, for a `:proposal` or `:questions` only, until retention clears it
+  # (`Apiary.Retention`). Only a run that is not a prebuild has an outcome: one ended
+  # `run_ended`, once decided, and `:error` for one whose handover could not form it
+  # (`Apiary.Dispatches.Handover`). Qory writes both; no changeset casts them
+  # (`20261019001000_keep_what_a_run_of_the_queue_gave`).
+  #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
   use Ecto.Schema
@@ -65,6 +73,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     :prebuilt
   ]
 
+  # What a run gave (`Apiary.Explore.Result.outcome/1`).
+  @result_outcomes [:proposal, :questions, :error, :none, :refused]
+
   # The step that builds a collection's environment for a node pool.
   @prebuild "prebuild"
 
@@ -84,6 +95,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :queued_at, :utc_datetime_usec
     field :environment_ref, :string
     field :environment_ref_at, :utc_datetime_usec
+    field :result_outcome, Ecto.Enum, values: @result_outcomes
+    field :result, :map
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -106,6 +119,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   @doc false
   @spec end_causes() :: [atom]
   def end_causes, do: @end_causes
+
+  # result_outcomes/0 is every outcome a run of the queue can have given.
+  @doc false
+  @spec result_outcomes() :: [atom]
+  def result_outcomes, do: @result_outcomes
 
   # queue_changeset/2 is the changeset of a new run of the queue: its work item, its step,
   # its take in, its attempt and the attempts it is of, and when it was queued, each

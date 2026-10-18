@@ -233,7 +233,9 @@ defmodule Apiary.WorkItemsFixtures do
   folded and its outcome a minute old unless `run:` changes it. `result:` gives it a
   `dev.qory.session.result` event: a map is the result document, given as its JSON with
   `is_error` false; `{:data, data}` is the event's data as given; nil, the default, is no
-  event. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  event. A run ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
+  `inputs_invalid`) has the outcome `:error`, as the handover writes it; any other has none
+  stored. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
     take_in = Keyword.get(opts, :take_in, work_item.take_in)
@@ -268,6 +270,7 @@ defmodule Apiary.WorkItemsFixtures do
         queued_at: DateTime.add(now, -120, :second)
       })
       |> Ecto.Changeset.change(state: state, end_cause: end_cause)
+      |> Ecto.Changeset.change(result_outcome: unformed_outcome(end_cause))
       |> Repo.insert!()
 
     registered? =
@@ -316,6 +319,12 @@ defmodule Apiary.WorkItemsFixtures do
 
     %{dispatch_run: dispatch_run, run: run}
   end
+
+  # A run its handover could not form ended with an error, as the handover writes it.
+  defp unformed_outcome(cause) when cause in [:variables_invalid, :ticket_gone, :inputs_invalid],
+    do: :error
+
+  defp unformed_outcome(_cause), do: nil
 
   @doc "Stores a `dev.qory.session.result` event of `run` at `sequence`, with `data`."
   def result_event!(%Run{} = run, sequence, data) do
