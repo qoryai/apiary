@@ -12,12 +12,20 @@ defmodule Apiary.Kinds.RegexFormat do
   distinct value is compiled once in the process. The verdict is the one JSV's default
   gives: a value is valid exactly when `Regex.compile/1` takes it.
 
+  A compiled value is memory outside the heap, which neither the reductions nor a
+  `max_heap_size` count. After `pattern_bytes/2`, each value, the first time it is
+  checked, is estimated before it is compiled (`Apiary.Kinds.PatternMemory.estimate/2`),
+  and a value that would take the estimates past the most allowed is not compiled: the
+  check throws `{Apiary.Kinds.RegexFormat, :pattern_bytes}`.
+
   The process dictionary is not cleared: use it in a process that ends after the check,
   such as the one `Apiary.Kinds.Budget.run/2` starts. Every other format goes to JSV's
   default modules (`formats/0`).
   """
 
   @behaviour JSV.FormatValidator
+
+  alias Apiary.Kinds.PatternMemory
 
   # The reductions charged for a compile, for each byte of the value, counting
   # @fixed_bytes more for any compile: 10 * (bytes + 8), so that a compile, work the
@@ -27,6 +35,7 @@ defmodule Apiary.Kinds.RegexFormat do
   @charge_part 1000
 
   @key {__MODULE__, :compiled}
+  @bytes {__MODULE__, :pattern_bytes}
 
   @doc """
   formats/0 is the list for JSV's `formats:` build option: this module, then JSV's
@@ -34,6 +43,17 @@ defmodule Apiary.Kinds.RegexFormat do
   """
   @spec formats() :: [module]
   def formats, do: [__MODULE__ | JSV.default_format_validator_modules()]
+
+  @doc """
+  pattern_bytes/2 bounds the values this process compiles from now on: `used` bytes are
+  counted already, and a value whose estimate would take the count past `most` throws
+  `{Apiary.Kinds.RegexFormat, :pattern_bytes}` instead of being compiled. `:ok`.
+  """
+  @spec pattern_bytes(non_neg_integer, non_neg_integer) :: :ok
+  def pattern_bytes(used, most) when is_integer(used) and is_integer(most) do
+    Process.put(@bytes, {used, most})
+    :ok
+  end
 
   @impl true
   def supported_formats, do: ["regex"]
@@ -50,10 +70,26 @@ defmodule Apiary.Kinds.RegexFormat do
         result
 
       _ ->
+        count(data)
         charge(@reductions_per_byte * (byte_size(data) + @fixed_bytes))
         result = Regex.compile(data)
         Process.put(@key, Map.put(compiled, data, result))
         result
+    end
+  end
+
+  # Adds the value's estimate, compiled with no options as Regex.compile/1 compiles it, to
+  # the bytes counted, or throws when that passes the most allowed.
+  defp count(data) do
+    case Process.get(@bytes) do
+      nil ->
+        :ok
+
+      {used, most} ->
+        used = used + PatternMemory.estimate(data, [])
+        if used > most, do: throw({__MODULE__, :pattern_bytes})
+        Process.put(@bytes, {used, most})
+        :ok
     end
   end
 
