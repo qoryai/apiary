@@ -10,12 +10,12 @@ defmodule Apiary.DispatchesRacesTest do
   # the first; and it takes the oldest waiting run `FOR UPDATE SKIP LOCKED`, so two
   # claims, of one pool or of two, never take one run. Two next runs of one take in
   # (`Apiary.Dispatches.queue_next/2`) take turns on the work item's row, so one is
-  # written and the other finds it waiting. One prebuild waits per collection and node
-  # pool: two triggers at once take turns on the environment record, two queues
-  # at once on the index of the waiting ones, and a lapse that would make a claimed
-  # prebuild wait again waits for a trigger that holds the record. Every path takes its
-  # locks in the one order `Apiary.Dispatches.Slots` names, so none of them, let go
-  # together, waits on another for good.
+  # written and the other finds it waiting, as nothing here claims, undoes or closes it.
+  # One prebuild waits per collection and node pool: two triggers at once take turns on
+  # the environment record, two queues at once on the index of the waiting ones, and a
+  # lapse that would make a claimed prebuild wait again waits for a trigger that holds
+  # the record. Every path takes its locks in the one order `Apiary.Dispatches.Slots`
+  # names, so none of them, let go together, waits on another for good.
   use ExUnit.Case, async: false
 
   import Ecto.Query
