@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.TargetLive.Show do
   @moduledoc """
-  One target's page, GitHub's repository page in the target's words.
+  One target's page, in the target's words.
 
   **Its address** is the target's public id, `/:org/:workspace/targets/tg_…`
   (`ApiaryWeb.TargetComponents.target_path/3`), never its system or its path, which are
@@ -13,7 +13,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   the target, by its id (`?target=tg_…`, `Apiary.Runs.Filters.target_params/1`).
 
   The header names the target in its notation, its path, `acme/shop`, and its system
-  before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
+  before it only where the path is shared, `git.example/acme/shop` (the title and the
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
   policy mode only where it overrides the workspace's) and a link to it in its system when the system

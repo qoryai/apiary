@@ -1087,7 +1087,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The target holder's name in words, in its notation: its path, `acme/shop`, and its
-  system before it only where the path is shared, `gitlab.com/acme/shop`
+  system before it only where the path is shared, `git.example/acme/shop`
   (`ApiaryWeb.TargetComponents.target_label/3`, the page's `holder_shared`).
   """
   def holder_name(%{assigns: %{holder: %{system: system, path: path}} = assigns}),

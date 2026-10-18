@@ -139,7 +139,7 @@ defmodule ApiaryWeb.TargetLive.Query do
     end
   end
 
-  @doc "A qualifier as the search writes it: `forge:github.example`, `is:pinned`."
+  @doc "A qualifier as the search writes it: `forge:git.example`, `is:pinned`."
   @spec token_text(token) :: String.t()
   def token_text({:system, system}), do: "#{system_key()}:#{system}"
   def token_text({:mode, mode}), do: "mode:#{key_of(@modes, mode)}"

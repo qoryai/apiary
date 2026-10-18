@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ExternalText do
   @moduledoc """
-  A text of one line an external system sent, as a page shows it: a collection's or an
-  item's title, a name, an author, a release's name. It is isolated in `<bdi>`, so its
+  A text of one line an external system sent, as a page shows it: an item's title, a name,
+  an author, a release's name. It is isolated in `<bdi>`, so its
   direction runs into nothing around it, with its invisible characters dropped and its
   control characters shown as U+FFFD (`Apiary.ExternalText.line/1`).
 

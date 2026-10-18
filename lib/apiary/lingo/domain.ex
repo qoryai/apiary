@@ -49,11 +49,14 @@ defmodule Apiary.Lingo.Domain do
   @callback target_labels() :: [String.t()]
 
   @doc """
-  The label, the plural of the path's, that Qory adds beside `target_labels/0` to a run
-  it hands over: its value is the run's path first, then the paths of the other targets
-  its target's runs also read (`Apiary.Targets.further_repositories/1`), joined with
-  commas. It names no target. A domain without it gives a run no such label.
+  The label, the plural of the path's, that Qory may add beside `target_labels/0` to a
+  run: its value is the run's path first, then the other paths in its system that the run
+  also reads, joined with commas. It names no target. A domain without it gives a run no
+  such label.
   """
+  # Qory adds it to a run it hands over, with the `factory` feature, which the
+  # documentation leaves out: the other paths are those its target's runs also read
+  # (`Apiary.Targets.further_repositories/1`).
   @callback paths_label() :: String.t()
 
   @optional_callbacks paths_label: 0

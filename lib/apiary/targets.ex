@@ -14,15 +14,6 @@ defmodule Apiary.Targets do
   pin is the person's reading preference, not a change to what the organisation
   holds, so it leaves no audit entry; it goes with its target and with its workspace.
 
-  **What its runs also read.** A target's further repositories (`further_repositories/1`)
-  are the paths in its system its runs read after it, in the order a person put them:
-  owner/name each, no segment starting with a dash, of the target's owner, each once, the
-  target's path and the list, joined with commas, at most 256 bytes.
-  `set_further_repositories/3` writes the whole list at once
-  (`target.set_further_repositories`, owners and admins, asked of the target's workspace),
-  and refuses a list that breaks a rule, so a saved list never does; nothing else writes
-  it.
-
   **The notation.** A target is written as its path, with its system before it only where
   the same path is in more than one system of the workspace
   (`Apiary.Runs.shared_paths/2`), and on the target's page.
@@ -35,8 +26,16 @@ defmodule Apiary.Targets do
   workspace's, whatever the query.
   """
 
-  # `target.set_further_repositories` belongs to the `factory` feature (`Apiary.Access`),
-  # which the documentation leaves out.
+  # With the `factory` feature, which the documentation leaves out:
+  #
+  # **What its runs also read.** A target's further repositories (`further_repositories/1`)
+  # are the paths in its system its runs read after it, in the order a person put them:
+  # owner/name each, no segment starting with a dash, of the target's owner, each once, the
+  # target's path and the list, joined with commas, at most 256 bytes.
+  # `set_further_repositories/3` writes the whole list at once
+  # (`target.set_further_repositories`, owners and admins, asked of the target's
+  # workspace, an action of the feature), and refuses a list that breaks a rule, so a
+  # saved list never does; nothing else writes it.
 
   use Gettext, backend: ApiaryWeb.Gettext
 
@@ -683,36 +682,37 @@ defmodule Apiary.Targets do
 
   ## What its runs also read
 
-  @doc """
-  further_repositories/1 is the further repositories of `target`: the paths in its system
-  that its runs also read after it, in the order they were saved, `[]` for none. It reads
-  the target as it was loaded; `set_further_repositories/3` checked every one of them.
-  """
+  # further_repositories/1 is the further repositories of `target`: the paths in its system
+  # that its runs also read after it, in the order they were saved, `[]` for none. It reads
+  # the target as it was loaded; `set_further_repositories/3` checked every one of them.
+  # Of the `factory` feature, which the documentation leaves out.
+  @doc false
   @spec further_repositories(Target.t()) :: [String.t()]
   def further_repositories(%Target{further_repositories: paths}) when is_list(paths), do: paths
   def further_repositories(%Target{}), do: []
 
-  @doc """
-  set_further_repositories/3 replaces the further repositories of `target`, a target of
-  the scope's workspace, with `paths`: a text of one path a line, or a list, in order,
-  each trimmed, blank ones left out. It asks `Apiary.Access`
-  (`target.set_further_repositories`, of the target's workspace) before anything is read,
-  holds the target's row, and writes the whole list in one update, with its entry in the
-  audit trail, the list before and after, both in one transaction; a list the same as the
-  saved one writes nothing. The answers:
-
-    * `{:ok, target}`, the target as saved;
-    * `{:error, changeset}` for a list that breaks a rule, the rules a run's
-      QORY_RUN_REPOSITORIES keeps, the first of them on
-      `further_repositories`, naming its line, and nothing written: owner/name, two
-      segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
-      `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
-      target's owner, and neither the target's path nor a line before it, all compared
-      without case; and the target's path and the list, joined with commas, at most 256
-      bytes;
-    * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
-      `{:error, :not_found}` for a target that is gone.
-  """
+  # set_further_repositories/3 replaces the further repositories of `target`, a target of
+  # the scope's workspace, with `paths`: a text of one path a line, or a list, in order,
+  # each trimmed, blank ones left out. It asks `Apiary.Access`
+  # (`target.set_further_repositories`, of the target's workspace) before anything is read,
+  # holds the target's row, and writes the whole list in one update, with its entry in the
+  # audit trail, the list before and after, both in one transaction; a list the same as the
+  # saved one writes nothing. The answers:
+  #
+  #   * `{:ok, target}`, the target as saved;
+  #   * `{:error, changeset}` for a list that breaks a rule, the rules a run's
+  #     QORY_RUN_REPOSITORIES keeps, the first of them on
+  #     `further_repositories`, naming its line, and nothing written: owner/name, two
+  #     segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
+  #     `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
+  #     target's owner, and neither the target's path nor a line before it, all compared
+  #     without case; and the target's path and the list, joined with commas, at most 256
+  #     bytes;
+  #   * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
+  #     `{:error, :not_found}` for a target that is gone.
+  #
+  # Of the `factory` feature, which the documentation leaves out.
+  @doc false
   @spec set_further_repositories(Scope.t(), Target.t(), String.t() | [String.t()] | nil) ::
           {:ok, Target.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
   def set_further_repositories(%Scope{} = scope, %Target{} = target, paths) do
