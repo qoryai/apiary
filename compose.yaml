@@ -59,7 +59,11 @@ services:
       - keys:/var/lib/apiary/keys:ro
       # The one-time code Qory Apiary writes for the GitHub adapter, in memory. Besides
       # Qory Apiary, only that adapter mounts this folder, read-only.
-      - github-enrolment:/run/qory/enrolment/github
+      - type: volume
+        source: github-enrolment
+        target: /run/qory/enrolment/github
+        volume:
+          nocopy: true
     ports:
       # To the reverse proxy on this machine only. compose.override.yaml changes it.
       - "127.0.0.1:4100:4100"
@@ -93,7 +97,12 @@ services:
       QORY_GITHUB_APIARY_PUBLIC_URL: ${PUBLIC_URL:-}
       QORY_GITHUB_ENROLMENT_CODE_FILE: /run/qory/enrolment/code
     volumes:
-      - github-enrolment:/run/qory/enrolment:ro
+      - type: volume
+        source: github-enrolment
+        target: /run/qory/enrolment
+        read_only: true
+        volume:
+          nocopy: true
       # A directory on the host in place of the volume `github-state` must belong to the
       # adapter's user: chown 65532:65532 DIR && chmod 0700 DIR.
       - github-state:/var/lib/qory-github

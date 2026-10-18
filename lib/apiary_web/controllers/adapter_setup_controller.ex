@@ -44,7 +44,12 @@ defmodule ApiaryWeb.AdapterSetupController do
       {:error, reason} when reason in [:forbidden, :not_found] ->
         raise ApiaryWeb.NotFound
 
-      {:error, reason} when reason in [:no_setup_url, :unlisted] ->
+      # No pass could be made (`:invalid`), or its entry was not recorded (a changeset):
+      # nothing changed, and nothing is set up now.
+      {:error, reason} when reason in [:no_setup_url, :unlisted, :invalid] ->
+        back(conn, params, gettext("This adapter has nothing to set up now."))
+
+      {:error, %Ecto.Changeset{}} ->
         back(conn, params, gettext("This adapter has nothing to set up now."))
 
       {:error, :no_key} ->

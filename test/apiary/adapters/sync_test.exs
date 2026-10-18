@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.SyncTest do
   # What an adapter declares as it starts, and how often it pulls: `declare/2` under the
-  # adapter's key, its setup_url among what it stores, `sync_settings/2` and `update_sync_interval/3` for an instance admin,
-  # each change in the instance's trail and, for the interval, in the adapter's change
-  # feed; and when the adapter was last seen (`last_seen/2`).
+  # adapter's key, its setup_url among what it stores, `sync_settings/2` and
+  # `update_sync_interval/3` for an instance admin, each change in the instance's trail
+  # and, for the interval, in the adapter's change feed; and when the adapter was last
+  # seen (`last_seen/2`).
   use Apiary.DataCase, async: true
 
   import Ecto.Query
