@@ -432,7 +432,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-filling")
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s backlog."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog."
 
     assert words(lv, "#collections-count") == "2 repositories"
     assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
@@ -632,7 +632,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "These repositories are each assigned to one workspace, and their tickets come into that workspace's backlog while their Backlog switches are on."
+             "These repositories are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
 
     assert words(lv, "#collections-unassigned") ==
              "3 repositories are unassigned. Their tickets reach no backlog until you assign each to a workspace. Show them"
