@@ -178,6 +178,21 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
+  test "a run's title and target path are shown as a text Forager sent is",
+       %{conn: conn, scope: scope} do
+    run =
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"},
+        about: %{"title" => "\u202E\u200B"}
+      )
+
+    run |> Ecto.Changeset.change(target_path: "acme/\u202Eshop") |> Apiary.Repo.update!()
+    short = String.slice(run.public_id, 0, 11)
+
+    # A title with nothing left to show is no title: the run is its short id.
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
+  end
+
   test "a run with no target is said by its state's word, an old name by its new state's",
        %{conn: conn, scope: scope} do
     completed =

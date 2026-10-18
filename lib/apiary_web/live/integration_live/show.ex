@@ -566,7 +566,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
               id={"connection-setting-#{setting.name}-hint"}
               class="text-[12.5px]/[18px] text-muted"
             >
-              {setting.description}
+              <.external_text text={setting.description} />
             </p>
           </div>
           <.input
@@ -574,7 +574,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             id={"connection-setting-#{setting.name}"}
             name={"connection[settings][#{setting.name}]"}
             label={Apiary.ExternalText.line(setting.title)}
-            hint={setting.description}
+            hint={Apiary.ExternalText.line(setting.description)}
             value={@form.params["settings"][setting.name]}
             optional
             autocomplete="off"

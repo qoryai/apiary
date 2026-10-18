@@ -439,8 +439,8 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-ar-t"
       title={row_title(@item.run)}
     >
-      <.external_text text={given_title(@item.run)} />
-      {if !given_title(@item.run), do: row_title(@item.run)}
+      <.external_text text={shown_title(@item.run)} />
+      {if !shown_title(@item.run), do: row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
     """
@@ -1083,9 +1083,19 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
   else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
-  a text Forager sent is (`Apiary.ExternalText.line/1`).
+  a text Forager sent is (`Apiary.ExternalText.line/1`). A title with nothing left to show
+  is no title.
   """
-  def row_title(run), do: Apiary.ExternalText.line(given_title(run) || command_title(run))
+  def row_title(run), do: shown_title(run) || Apiary.ExternalText.line(command_title(run))
+
+  # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
+  # left to show.
+  defp shown_title(run) do
+    case Apiary.ExternalText.line(given_title(run)) do
+      "" -> nil
+      title -> title
+    end
+  end
 
   defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")

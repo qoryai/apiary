@@ -30,12 +30,12 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   end
 
   # github_description/0 with a yes/no setting its credential role lists, described.
-  defp flag_description do
+  defp flag_description(hint \\ "Logs every request it makes.") do
     github_description()
     |> put_in(["settings", "properties", "verbose"], %{
       "title" => "Verbose",
       "type" => "boolean",
-      "description" => "Logs every request it makes."
+      "description" => hint
     })
   end
 
@@ -421,6 +421,14 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
       {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
       assert has_element?(lv, "#delete-connection-button", "Remove API…")
+    end
+
+    test "a setting's hint is shown as an integration's text is", %{conn: conn, scope: scope} do
+      release = ready_release!(scope, flag_description("Logs every\u202E request\u0085"))
+      {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
+
+      assert has_element?(lv, "#connection-setting-verbose-hint", "Logs every request\u{FFFD}")
     end
 
     test "a yes/no setting says what it is, and is saved as no", %{conn: conn, scope: scope} do

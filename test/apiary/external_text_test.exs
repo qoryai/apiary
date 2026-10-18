@@ -4,14 +4,19 @@ defmodule Apiary.ExternalTextTest do
   alias Apiary.ExternalText
 
   @fffd "\u{FFFD}"
-  # The invisible characters a page drops: the bidirectional controls and marks, the
-  # Mongolian vowel separator, the zero-width space, the soft hyphen, the word joiner and
-  # the invisible operators, the byte order mark, the interlinear annotation characters,
-  # the line and paragraph separators.
+  # Some of the invisible characters a page drops: format characters (the bidirectional
+  # controls and marks, the Mongolian vowel separator, the zero-width space, the soft
+  # hyphen, the word joiner and the invisible operators, the deprecated format characters,
+  # the byte order mark, the interlinear annotation characters, the tag characters, a
+  # musical formatting character), the line and paragraph separators, the combining
+  # grapheme joiner, the Khmer inherent vowels and the Mongolian free variation selectors.
   @invisible [0xAD, 0x61C, 0x180E, 0x200B, 0x200E, 0x200F, 0x2028, 0x2029] ++
                Enum.to_list(0x202A..0x202E) ++
                Enum.to_list(0x2060..0x2064) ++
-               Enum.to_list(0x2066..0x2069) ++ [0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB]
+               Enum.to_list(0x2066..0x2069) ++
+               Enum.to_list(0x206A..0x206F) ++
+               [0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB, 0xE0001, 0xE0067, 0xE007F, 0x1D173] ++
+               [0x34F, 0x17B4, 0x17B5, 0x180B, 0x180C, 0x180D, 0x180F]
 
   describe "line/1" do
     test "drops an invisible character" do
@@ -32,6 +37,18 @@ defmodule Apiary.ExternalTextTest do
       for text <- ["می#{<<0x200C::utf8>>}خواهم", "👩#{<<0x200D::utf8>>}💻 builds", "Größe é ü"] do
         assert ExternalText.line(text) == text
       end
+    end
+
+    test "shows an emoji flag of a subdivision as a plain black flag" do
+      england =
+        "🏴" <>
+          for(
+            cp <- [0xE0067, 0xE0062, 0xE0065, 0xE006E, 0xE0067, 0xE007F],
+            into: "",
+            do: <<cp::utf8>>
+          )
+
+      assert ExternalText.line(england) == "🏴"
     end
 
     test "shows bytes that are not UTF-8 text as U+FFFD, and nil as nil" do

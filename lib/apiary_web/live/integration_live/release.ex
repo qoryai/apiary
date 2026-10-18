@@ -156,7 +156,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           <span class="q-mono text-muted">(<.external_text text={@description.name} />)</span>
         </dd>
         <dt class="text-faint">{gettext("Version")}</dt>
-        <dd class="q-mono">{@description.program_version}</dd>
+        <dd><.external_text text={@description.program_version} class="q-mono" /></dd>
         <dt :if={@description.domains} class="text-faint">{gettext("Domains")}</dt>
         <dd :if={@description.domains} class="q-mono">{Enum.join(@description.domains, ", ")}</dd>
         <dt class="text-faint">{gettext("Released on")}</dt>
@@ -260,7 +260,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
                 id={"release-setting-#{setting.name}-hint"}
                 class="text-[12.5px]/[18px] text-muted"
               >
-                {setting.description}
+                <.external_text text={setting.description} />
               </p>
             </div>
             <.input
@@ -268,7 +268,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               id={"release-setting-#{setting.name}"}
               name={"integration[settings][#{setting.name}]"}
               label={Apiary.ExternalText.line(setting.title)}
-              hint={setting.description}
+              hint={Apiary.ExternalText.line(setting.description)}
               value={@form.params["settings"][setting.name]}
               optional
               autocomplete="off"
