@@ -44,10 +44,10 @@ defmodule Apiary.Dispatches.Prebuilt do
   # The run of the queue ends, `prebuilt` (`Apiary.Dispatches.RunEnd.prebuilt/2`): the
   # dispatch ends with it, `prebuilt`, and its slot is freed once. The registered run is
   # left as it is, to its starter's outcome, which decides its state as any outcome does;
-  # nothing reads it as cancelled. A registered run whose
-  # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
-  # written. Then the build is recorded on the
-  # record of the prebuild's pool and collection (`Apiary.Environments.record_build/4`):
+  # nothing reads it as cancelled. Its exit, folded or not, ends nothing of the queue, so
+  # a prebuilt after it acts as before it; a registered run whose outcome came first is
+  # too late for it, `{:error, :gone}`, and nothing is written. Then the build is recorded
+  # on the record of the prebuild's pool and collection (`Apiary.Environments.record_build/4`):
   # the image, its size, its commit, the `environment_ref` the job reported, as it is even
   # where it differs from the record's `queued_ref`, when it was recorded, and the target
   # it was built for, the registered run's target, which its handover named from the

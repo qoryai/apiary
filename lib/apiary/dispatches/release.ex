@@ -55,7 +55,8 @@ defmodule Apiary.Dispatches.Release do
   # the registered run reads as cancelled with the reason `released`, no outcome is
   # recorded, the dispatch ends with it and its slot is freed once. A registered run whose
   # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
-  # written. Then:
+  # written; for a prebuild, whose exit ends nothing of the queue, its outcome alone is.
+  # Then:
   #
   #   - an explore run with `retry` queues the next run of its take in
   #     (`Apiary.Dispatches.queue_next/2`), a new run with a new `run_id`, only while its

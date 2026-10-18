@@ -21,6 +21,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.Races
+  import Apiary.RunEventsFixtures
 
   alias Apiary.{Dispatches, Edition, Environments, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
@@ -30,7 +31,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Projector, Run}
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag needs: :factory
@@ -340,6 +341,56 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert %Record{commit: "b2", failure_cause: nil} = record!(ctx, older)
       ended_once!(ctx, older)
       ended_once!(ctx, newer)
+    end
+  end
+
+  describe "a prebuilt and the run's end (V-839)" do
+    test "the projection of its exit at once: the prebuilt records the build, and the run of the queue ends prebuilt",
+         ctx do
+      for _round <- 1..3 do
+        claimed = handed_over!(ctx)
+
+        event_fixture(claimed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+
+        [recorded, projected] =
+          together([prebuilt(ctx, claimed), fn -> Projector.project(claimed.run) end])
+
+        assert recorded == :ok
+        assert {:ok, %Run{exited_at: %DateTime{}}} = projected
+        ended_once!(ctx, claimed)
+        recorded!(ctx, claimed)
+      end
+    end
+
+    test "its starter's outcome at once: one ends the run of the queue, and the build is recorded or failed lost, never both",
+         ctx do
+      for _round <- 1..3 do
+        claimed = handed_over!(ctx)
+
+        [recorded, given] =
+          together([
+            prebuilt(ctx, claimed),
+            fn -> give_outcome(ctx.key, claimed.run, "failed") end
+          ])
+
+        assert {:ok, %{repeated: false}} = given
+        assert Slots.held(ctx.pool.id) == 0
+        record = record!(ctx, claimed)
+
+        case recorded do
+          :ok ->
+            assert %DispatchRun{end_cause: :prebuilt} = queue_run!(claimed)
+            assert is_binary(record.image) and is_nil(record.failure_cause)
+            assert length(entries(claimed, "dispatch.prebuilt")) == 1
+
+          {:error, :gone} ->
+            assert %DispatchRun{end_cause: :run_ended} = queue_run!(claimed)
+            assert is_nil(record.image) and record.failure_cause == :lost
+            assert entries(claimed, "dispatch.prebuilt") == []
+        end
+
+        assert %Run{outcome_state: "failed", released_at: nil} = Repo.get!(Run, claimed.run.id)
+      end
     end
   end
 

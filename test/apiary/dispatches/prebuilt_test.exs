@@ -612,7 +612,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert entries() == []
     end
 
-    test "after the run's exit folded, its end not yet written, is gone, and nothing is recorded",
+    test "after the run's exit folded, which ends nothing of a prebuild's queue, records the build and ends the run prebuilt (V-839)",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued, run: run} =
         handed_over!(ctx)
@@ -623,13 +623,14 @@ defmodule Apiary.Dispatches.PrebuiltTest do
         )
 
       folded = Repo.get!(Run, run.id)
+      meta = prebuilt_meta(queued)
 
-      assert prebuilt(ctx.key, dispatch, prebuilt_meta(queued)) == {:error, :gone}
+      assert prebuilt(ctx.key, dispatch, meta) == :ok
       assert Repo.get!(Run, run.id) == folded
-      assert %DispatchRun{state: :handed_over} = queue_run!(queued)
-      assert %Dispatch{ended_at: nil, slot_freed_at: nil} = dispatch!(dispatch)
-      assert %Record{image: nil} = record!(collection, ctx.pool)
-      assert entries() == []
+      assert %DispatchRun{state: :ended, end_cause: :prebuilt} = queue_run!(queued)
+      assert %Dispatch{end_cause: :prebuilt, slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+      assert record!(collection, ctx.pool).image == meta.image
+      assert length(entries()) == 1
     end
   end
 

@@ -187,11 +187,14 @@ defmodule Apiary.Runs.Outcome do
   # Under the run's projection lock and its row's, as a projection writes it, so a pass
   # and the outcome never write over each other: whichever comes second reads the other's.
   # A run a workspace's queue handed over has the queue's run locked before them, as every
-  # path that locks the two does, and ends it with the outcome (`run_ended`) unless it
-  # ended before, lost or released (`Apiary.Dispatches.RunEnd`): the workspaces whose slots
-  # that changed are told once the transaction commits.
+  # path that locks the two does, a prebuild's environment record before that, and ends it
+  # with the outcome (`run_ended`) unless it ended before, lost, released or, for a
+  # prebuild, by its prebuilt, a prebuild so ended recording its last build as failed
+  # (`Apiary.Dispatches.RunEnd`): the workspaces whose slots that changed are told once the
+  # transaction commits.
   defp store(%Run{id: id, dispatch_run_id: dispatch_run_id}, access_key, outcome, digest, now) do
     Repo.transact(fn ->
+      held = RunEnd.hold(dispatch_run_id)
       dispatch_run = RunEnd.lock(dispatch_run_id)
       Projector.lock(id)
       run = Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
@@ -214,7 +217,7 @@ defmodule Apiary.Runs.Outcome do
 
         true ->
           run = put(run, outcome, digest, now)
-          changed = RunEnd.finish(dispatch_run, run, :run_ended, now)
+          changed = RunEnd.finish(dispatch_run, run, :run_ended, now, held)
           {:ok, %{run: run, repeated: false, changed: changed}}
       end
     end)
