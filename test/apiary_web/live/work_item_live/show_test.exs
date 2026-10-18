@@ -171,6 +171,32 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
     end
 
+    test "an answer that is not text is refused with the form's errors, and nothing is written",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = asked(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      for forged <- [%{"a" => "b"}, ["x"], 1.5, true, 7, nil] do
+        html =
+          render_hook(view, "answer", %{
+            "number" => Integer.to_string(work_item.number),
+            "answers" => %{"1" => forged, "2" => "The spring sale."}
+          })
+
+        assert html =~ "Answer this question. If nobody knows, say so: Qory reads that too."
+        assert has_element?(view, "#work-item-explore-questions-answer-1[aria-invalid]")
+        assert has_element?(view, "#work-item-explore-questions-answer-2", "The spring sale.")
+      end
+
+      render_hook(view, "answer", %{
+        "number" => Integer.to_string(work_item.number),
+        "answers" => "x"
+      })
+
+      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert state(work_item) == :exploring
+    end
+
     test "answers sent after another member answered are refused without words", %{
       conn: conn,
       scope: scope

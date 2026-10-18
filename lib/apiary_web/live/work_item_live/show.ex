@@ -313,10 +313,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp act("answer", params, socket) do
+    # Only the questions' answers, and only text: anything else is no answer.
     answers =
       case params["answers"] do
-        %{} = given -> Map.take(given, @answer_keys)
-        _none -> %{}
+        %{} = given ->
+          for {key, value} <- Map.take(given, @answer_keys),
+              is_binary(value),
+              into: %{},
+              do: {key, value}
+
+        _none ->
+          %{}
       end
 
     with_attempt(socket, fn attempt ->
