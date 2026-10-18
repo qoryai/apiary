@@ -1181,6 +1181,13 @@ msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no b
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{item} matches"
+msgid_plural "%{number} %{items} match"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} B"
@@ -2058,7 +2065,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog."
+msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -3808,11 +3815,6 @@ msgstr ""
 msgid "An access key"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "An adapter installed with Qory Apiary holds one key. To replace it, revoke it: the adapter gets a new code at once and makes a new key by itself."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as %{address}."
@@ -3937,6 +3939,13 @@ msgstr ""
 msgid "Answered %{status}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Answered Qory's question on a work item"
+msgid_plural "Answered Qory's %{count} questions on a work item"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
@@ -4035,6 +4044,11 @@ msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Asked Qory to explore a work item again"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Asked for a build of its environment"
 msgstr ""
 
@@ -4060,8 +4074,13 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Assigned %{count} collection to a workspace"
-msgid_plural "Assigned %{count} collections to a workspace"
+msgid "Assigned %{collections}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned %{count} %{collection} to a workspace"
+msgid_plural "Assigned %{count} %{collections} to a workspace"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4169,7 +4188,9 @@ msgid "Background tasks"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
@@ -4445,6 +4466,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "field edited"
 msgid "Changed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed Qory's proposal for a work item and confirmed it"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4759,6 +4785,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Closed"
 msgstr ""
@@ -4813,15 +4840,10 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "ticket"
 msgid "Collection"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Collections assigned"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -4965,6 +4987,11 @@ msgstr ""
 msgid "Confirmed"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Confirmed Qory's proposal for a work item"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Confirming"
@@ -5011,6 +5038,7 @@ msgstr ""
 msgid "Connected"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connected by itself, with a code from Qory Apiary, %{date}"
@@ -5307,6 +5335,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Declined"
 msgstr ""
@@ -5517,6 +5546,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete your comment?"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted %{collection}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6126,6 +6160,12 @@ msgstr ""
 msgid "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Enrolled at its first start, %{time}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Enter"
@@ -6496,6 +6536,7 @@ msgid "Fetching the release's description.json and checksums.txt…"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Filed by"
 msgstr ""
@@ -6564,6 +6605,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Find a host, e.g. *.github.example seen:no"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a name"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -7322,6 +7368,11 @@ msgstr ""
 msgid "If nothing appears, install again."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -7467,6 +7518,11 @@ msgstr ""
 msgid "Install one of this instance's integrations for %{organisation}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Installed"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Installed by %{person} on %{date}."
@@ -7479,12 +7535,7 @@ msgstr ""
 
 #: lib/apiary_web/components/adapter_components.ex
 #, elixir-autogen, elixir-format
-msgid "Installed with Qory Apiary, %{date}"
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/adapter.ex
-#, elixir-autogen, elixir-format
-msgid "Installed with Qory Apiary. To remove it, first turn it off where Qory Apiary is installed; then it can be removed here."
+msgid "Installed with Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
@@ -7782,7 +7833,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+msgid "It is the adapter's only key. The adapter is turned off in the AWS stack or the Compose file, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -8163,6 +8214,11 @@ msgstr ""
 msgid "Keep the secret in a secret store."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Kept by the adapter; never shown"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8216,6 +8272,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Kind"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Label"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -8943,6 +9004,11 @@ msgstr ""
 msgid "Most attempts"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most comments"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Most denials"
@@ -9176,12 +9242,14 @@ msgid "New variable"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newer"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newest"
@@ -9206,6 +9274,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No %{collections} match “%{search}”."
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{items} to take in"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapters.ex
@@ -9391,6 +9464,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No longer denied: %{host}"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "No longer taking %{items} into the Backlog from %{collection} %{name}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -10224,6 +10302,11 @@ msgstr ""
 msgid "Notification"
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "Now taking %{items} into the Backlog from %{collection} %{name}."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Now v%{version}"
@@ -10271,6 +10354,7 @@ msgid "Off: the saved password cannot be read. Enter it again and save."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10305,11 +10389,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "On %{name}, run:"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "On %{name}, saved there by the adapter"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10504,6 +10583,11 @@ msgstr ""
 msgid "Only owners and admins change nodes."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins change the Backlog switches."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change the integrations of the organisation."
@@ -10591,6 +10675,12 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item view"
+msgid "Open"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "backlog view"
 msgid "Open"
 msgstr ""
 
@@ -10694,6 +10784,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Open version %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Opens %{address}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -11580,6 +11675,11 @@ msgstr ""
 msgid "Recently changed"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Recently updated"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reconnecting"
@@ -11721,9 +11821,24 @@ msgstr ""
 msgid "Remove the allow rule %{host}?"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the collection filter"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the control or invisible characters."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}?"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the filed-by filter"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -11913,7 +12028,6 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
@@ -12028,6 +12142,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoking"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Revoking it makes the adapter enrol again with a new key."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -12541,6 +12660,11 @@ msgstr ""
 msgid "Saving sends a test link to %{email}. Mail is off until you follow it."
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Search %{items}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Search by title, number or %{item}"
@@ -12554,6 +12678,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Search or jump to…"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Search the backlog"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -12802,6 +12931,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Set in the application's configuration"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Set it up"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13170,8 +13304,14 @@ msgid "Something went wrong on our side."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sort"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sort by"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -13444,7 +13584,13 @@ msgstr ""
 msgid "Take its %{items} into the Backlog"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take the %{items} of %{name} into the Backlog"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Taken in"
 msgstr ""
@@ -13792,6 +13938,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "The adapter declares its default, and the most often it may pull, once it is connected and running. Until then this can't be set."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter made this key at its first start, and enrolled with a code that Qory Apiary handed it. No command was run."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -14774,7 +14925,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on."
+msgid "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -14822,14 +14973,19 @@ msgstr ""
 msgid "This adapter has nothing to set up now."
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+msgid "This adapter is installed with Qory Apiary. To remove it, turn it off in the AWS stack or the Compose file that installs Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+msgid "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. No command is run."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "This adapter is turned off in the AWS stack or the Compose file; it gets no new code until it is turned on again."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -15310,12 +15466,12 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Turn it off where Qory Apiary is installed before you remove it."
+msgid "Turn it off in the AWS stack or the Compose file before you remove it."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Turn it on again where Qory Apiary is installed to give it a new key."
+msgid "Turn it on again in the AWS stack or the Compose file to give it a new key."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -15328,9 +15484,24 @@ msgstr ""
 msgid "Turned mail on, by the test link"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Turned off in the AWS stack or the Compose file"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned off taking %{items} into the Backlog from %{collection} %{name}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Turned off taking a collection's %{items} into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned on taking %{items} into the Backlog from %{collection} %{name}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15387,8 +15558,8 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Unassigned %{count} collection from its workspace"
-msgid_plural "Unassigned %{count} collections from their workspaces"
+msgid "Unassigned %{count} %{collection} from its workspace"
+msgid_plural "Unassigned %{count} %{collections} from their workspaces"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -15483,6 +15654,11 @@ msgstr ""
 msgid "Unpin %{target}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Until it is set up, organisations can't install it."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -15490,6 +15666,7 @@ msgid "Until the first change here, every machine of this workspace runs under i
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Updated"
 msgstr ""
@@ -15686,6 +15863,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -15993,6 +16171,11 @@ msgstr ""
 msgid "Widen the range, or wait for a run to reach out. Only programs that honour the proxy variables are seen."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "With Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "With a generated key, set these where the machine runs qory."
@@ -16056,6 +16239,21 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item declined"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item explored again"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item proposal confirmed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item questions answered"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -16936,15 +17134,13 @@ msgstr ""
 msgid "cancelled %{when}"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/index.ex
-#: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/components/source_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collection"
 msgstr ""
 
-#: lib/apiary_web/live/adapter_live/index.ex
-#: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/components/source_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collections"
@@ -17250,6 +17446,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "it connects by itself once it is running"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "it enrols at its first start"
 msgstr ""
 
 #: lib/apiary_web/format.ex
@@ -17900,11 +18101,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "tools %{tools}"
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/adapter.ex
-#, elixir-autogen, elixir-format
-msgid "turned off where Qory Apiary is installed; it can be removed"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

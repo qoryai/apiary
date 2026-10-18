@@ -47,9 +47,9 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
 
   test "lists the adapters by name, each with its public id and its state",
        %{conn: conn, admin: admin} do
-    shop = adapter_fixture(%{name: "Shop tracker"})
-    platform = adapter_fixture(%{name: "Platform tracker"})
-    acme = adapter_fixture(%{name: "Acme tracker"})
+    shop = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    platform = adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
+    acme = adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     %{access_key: key} = enrolled_key_fixture(admin, shop)
     enrolled_key_fixture(admin, acme)
 
@@ -80,7 +80,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
     assert has_element?(
              lv,
              ~s{#adapter-#{shop.public_id}-name[href="/instance/adapters/#{shop.public_id}"]},
-             "Shop tracker"
+             shop.name
            )
 
     assert words(lv, "#adapter-#{shop.public_id}") =~ shop.public_id
@@ -95,9 +95,9 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
 
   test "each row says how often the adapter pulls, or that it has not declared it yet",
        %{conn: conn} do
-    shop = adapter_fixture(%{name: "Shop tracker"})
-    platform = adapter_fixture(%{name: "Platform tracker"})
-    acme = adapter_fixture(%{name: "Acme tracker"})
+    shop = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    platform = adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
+    acme = adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
 
     Repo.update_all(from(n in Node, where: n.id in ^[shop.id, platform.id]),
       set: [sync_default_interval: 3600, sync_minimum_interval: 900, sync_sends_changes: true]
@@ -115,10 +115,10 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
 
   test "where the table is narrow, one line under the name holds the Pulls and State columns",
        %{conn: conn, admin: admin} do
-    shop = adapter_fixture(%{name: "Shop tracker"})
-    platform = adapter_fixture(%{name: "Platform tracker"})
-    acme = adapter_fixture(%{name: "Acme tracker"})
-    later = adapter_fixture(%{name: "Acme tracker 2"})
+    shop = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    platform = adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
+    acme = adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+    later = adapter_fixture(%{name: unique_adapter_name("Acme tracker 2")})
     %{access_key: key} = enrolled_key_fixture(admin, shop)
     enrolled_key_fixture(admin, platform)
     enrolled_key_fixture(admin, later)
@@ -168,7 +168,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
   end
 
   test "a removed adapter is not listed", %{conn: conn, admin: admin} do
-    adapter = adapter_fixture(%{name: "Shop tracker"})
+    adapter = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
     {:ok, _adapter} = Adapters.delete_adapter(admin, adapter)
 
     {:ok, lv, _html} = live(conn, ~p"/instance/adapters")
@@ -177,7 +177,7 @@ defmodule ApiaryWeb.InstanceLive.AdaptersTest do
   end
 
   test "anyone but an instance admin, an organisation's owner included, meets Not Found" do
-    adapter_fixture(%{name: "Shop tracker"})
+    adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
     %{user: owner} = sign_up_fixture()
 
     assert_raise ApiaryWeb.NotFound, fn ->

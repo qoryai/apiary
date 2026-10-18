@@ -1447,7 +1447,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc """
   A work item's facts: who owns it, its ticket (a link out, where the integration sent it
-  from, who filed it and when), its repository, when and by whom it was taken in, its
+  from, who filed it and when), its collection, labelled with its source's word for one
+  (`collection_noun`, `SourceComponents.collection/1`), its first letter in upper case,
+  when and by whom it was taken in, its
   first instruction, its runs, and how it ended. From 1440 px a quiet list beside the page
   under its heading; below it, folded behind a button that says who owns it and the
   ticket's key, which opens it in place.
@@ -1468,6 +1470,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc:
       "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
+
+  attr :collection_noun, :map,
+    default: nil,
+    doc:
+      "what its ticket's source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for the domain's word"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -1533,7 +1540,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </span>
           <span class="q-wi-sub"><.rich text={@ticket_line} /></span>
         </dd>
-        <dt>{pgettext("work item", "Repository")}</dt>
+        <dt>{SourceComponents.collection_label(@collection_noun)}</dt>
         <dd id={"#{@id}-repository"} class="q-mono">{@work_item.repository}</dd>
         <dt>{gettext("Taken in")}</dt>
         <dd id={"#{@id}-taken-in"}><span><.rich text={@taken_in} /></span></dd>
@@ -1689,8 +1696,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   printable ASCII percent-encoded.
 
   The form's draft is `answers` (by question `public_id`), and `errors` its errors, by
-  question `public_id`: `:blank` or `{:too_long, limit}`. The focus goes to the first
-  question at fault, again after each send (`submits`, counted by the page).
+  question `public_id`: `:blank`, `{:too_long, limit}` or `:characters`, for a control
+  or invisible character a run's input refuses. The focus goes to the first question at
+  fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-explore"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
@@ -2220,6 +2228,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp answer_error({:too_long, limit}),
     do: gettext("Write at most %{number} characters.", number: Format.number(limit))
 
+  defp answer_error(:characters), do: gettext("Remove the control or invisible characters.")
+
   # An error without words marks nothing.
   defp answer_error(_error), do: nil
 
@@ -2724,8 +2734,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   `approach`. `values` is what the fields hold, by those names (`:level`, `:reason`,
   `:understanding`, `:scope_in`, `:scope_out`, `:approach`), each a string; the run's
   words where it is not given. `errors`, by the same names, says what is wrong with a
-  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}` or
-  `{:too_many_lines, limit}`; an error a field has no words for marks nothing. The focus
+  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}`,
+  `{:too_many_lines, limit}` or `:characters`, for a control or invisible character a
+  run's input refuses; an error a field has no words for marks nothing. The focus
   goes to the first field at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-edit"
@@ -3016,6 +3027,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp edit_error(_field, {:too_many_lines, limit}),
     do: ngettext("Write at most %{count} line.", "Write at most %{count} lines.", limit)
+
+  defp edit_error(_field, :characters), do: gettext("Remove the control or invisible characters.")
 
   # An error without words for its field (Out of scope may be empty) marks nothing.
   defp edit_error(_field, _error), do: nil

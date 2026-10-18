@@ -1502,6 +1502,118 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a run given an image compares by the policy it was composed from", %{
+      conn: conn,
+      scope: scope
+    } do
+      image = "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
+      current = started_run(scope, shop(), ago: 0)
+      behind = started_run(scope, shop(), ago: 0)
+      {:ok, target} = Policy.get_target(scope, Repo.get!(Run, current.id).target_id)
+      {:ok, _} = Policy.allow(scope, target, %{host: "one.example"})
+      {:ok, old} = Policy.current_configuration(scope, target)
+      {:ok, _} = Policy.allow(scope, target, %{host: "two.example"})
+      {:ok, new} = Policy.current_configuration(scope, target)
+
+      Repo.update_all(
+        from(c in Apiary.Policy.RunConfiguration, where: c.id == ^new.id),
+        set: [rendered_at: DateTime.add(DateTime.utc_now(), -600, :second)]
+      )
+
+      composed = fn configuration ->
+        {:ok, row} =
+          Apiary.Policy.ComposedConfiguration.serve(
+            scope.organisation.id,
+            scope.workspace.id,
+            configuration,
+            image,
+            false
+          )
+
+        row.digest
+      end
+
+      for {run, configuration} <- [{current, new}, {behind, old}] do
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [
+            configured_image: image,
+            reported_run_configuration_digest: composed.(configuration)
+          ]
+        )
+      end
+
+      view = open(conn, scope)
+
+      # The run on the policy in force, with its image, is behind nothing.
+      refute has_element?(view, "#att-run-#{current.public_id}-act")
+
+      compare =
+        target_page_path(
+          scope,
+          "github.example",
+          "acme/shop",
+          "/policy/versions/#{new.version}?compare=#{old.version}"
+        )
+
+      assert has_element?(
+               view,
+               ~s(#att-run-#{behind.public_id}-act[href="#{compare}"]),
+               "What changed"
+             )
+    end
+
+    @tag needs: :security
+    test "a run whose start was kept compares by the policy its reload was composed from", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), ago: 0)
+      {:ok, target} = Policy.get_target(scope, Repo.get!(Run, run.id).target_id)
+      {:ok, _} = Policy.allow(scope, target, %{host: "one.example"})
+      {:ok, current} = Policy.current_configuration(scope, target)
+
+      # A version whose policy names an image, written as it is: the run, which started in
+      # no image, is given it without the image.
+      naming =
+        String.replace(
+          current.document,
+          ~s(]}}),
+          ~s(]},"image":"with-docker"}),
+          global: false
+        )
+
+      assert Apiary.Policy.ComposedConfiguration.policy_image(naming) == "with-docker"
+
+      newer =
+        Repo.insert!(%Apiary.Policy.RunConfiguration{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          target_id: target.id,
+          version: current.version + 1,
+          document: naming,
+          digest: Apiary.Policy.Render.digest(naming),
+          rendered_at: DateTime.add(DateTime.utc_now(), -600, :second)
+        })
+
+      {:ok, row} =
+        Apiary.Policy.ComposedConfiguration.serve(
+          scope.organisation.id,
+          scope.workspace.id,
+          newer,
+          :none,
+          false,
+          true
+        )
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [started_image_from: "none", reported_run_configuration_digest: row.digest]
+      )
+
+      view = open(conn, scope)
+      refute has_element?(view, "#att-run-#{run.public_id}-act")
+    end
+
+    @tag needs: :security
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())

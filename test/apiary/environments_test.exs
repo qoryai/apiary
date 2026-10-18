@@ -5,9 +5,10 @@ defmodule Apiary.EnvironmentsTest do
   # composite keys that hold a record to its pool's workspace and its collection's
   # organisation, the purges of a workspace and of an organisation, the trigger that
   # queues a prebuild per node pool from a listing, an assign and a new pool, keyed on the
-  # target and the `environment_ref` (V-714), one waiting per collection and pool, a build
-  # recorded with the target it was built for and when it was queued, whether a prebuild
-  # was queued before the recorded build (V-804), and a run's image: which record gives it.
+  # target and the `environment_ref`, one waiting per collection and pool, a build
+  # recorded with the target it was built for and when its run took its ref, whether a
+  # prebuild took its ref before the recorded build took its, and a run's image: which
+  # record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -631,7 +632,7 @@ defmodule Apiary.EnvironmentsTest do
              } = Environments.fetch(ctx.pool.id, shop.id)
     end
 
-    test "a target that changes with the same environment_ref queues a prebuild, as a changed environment_ref does (V-714)",
+    test "a target that changes with the same environment_ref queues a prebuild, as a changed environment_ref does",
          ctx do
       moved = %{system: "code.example.com", path: "acme/shop-next"}
       shop = list(ctx, 1, %{environment_ref: "env-1"})
@@ -778,7 +779,8 @@ defmodule Apiary.EnvironmentsTest do
       assert recorded.built_queued_at == ~U[2026-10-15 11:00:00.000000Z]
     end
 
-    test "keeps a record retired, and queues nothing", ctx do
+    test "keeps a record retired by a build whose run took its ref before, and queues nothing",
+         ctx do
       retired_at = DateTime.add(DateTime.utc_now(), -30, :second)
       Repo.insert!(record(ctx, %{retired_at: retired_at}))
 
@@ -816,7 +818,67 @@ defmodule Apiary.EnvironmentsTest do
     end
   end
 
-  describe "a build whose ref is older than the image's (V-804)" do
+  describe "a retired record" do
+    @shop_target %{system: "code.example.com", path: "acme/shop"}
+
+    defp shop_image(n),
+      do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
+
+    # Records the build of `run` (as stored now), which reported `ref`, with the image `n`.
+    defp land!(run, n, ref) do
+      run = Repo.get!(DispatchRun, run.id)
+
+      {:ok, :ok} =
+        Repo.transact(fn ->
+          {:ok,
+           Environments.record_build(
+             run,
+             %{image: shop_image(n), size: 1_048_576, commit: "4b7d0a3f", environment_ref: ref},
+             @shop_target,
+             DateTime.utc_now()
+           )}
+        end)
+    end
+
+    test "is served again by a build of a ref that came back, never by one claimed before it was retired",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      %{run: old} = claim!(ctx, ctx.pool)
+
+      # Absent: retired. Present again, a new ref, its prebuild claimed.
+      list(ctx, 2, %{})
+      assert %Record{retired_at: %DateTime{}} = Environments.fetch(ctx.pool.id, shop.id)
+      list(ctx, 3, %{environment_ref: "env-2"})
+      %{run: new} = claim!(ctx, ctx.pool)
+      assert new.environment_ref == "env-2"
+
+      # The old build lands late: stored, the record still retired, the pool's default.
+      land!(old, "1", "env-1")
+      assert %Record{retired_at: %DateTime{}} = record = Environments.fetch(ctx.pool.id, shop.id)
+      assert record.image == shop_image("1")
+      assert Environments.image_for(ctx.pool, @shop_target) == nil
+
+      # The new ref's build lands: served.
+      land!(new, "2", "env-2")
+      assert %Record{retired_at: nil} = Environments.fetch(ctx.pool.id, shop.id)
+      assert Environments.image_for(ctx.pool, @shop_target) == shop_image("2")
+    end
+
+    test "stays retired when a build claimed before it was retired lands", ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      %{run: old} = claim!(ctx, ctx.pool)
+      list(ctx, 2, %{})
+      %Record{retired_at: retired_at} = Environments.fetch(ctx.pool.id, shop.id)
+
+      land!(old, "1", "env-1")
+      record = Environments.fetch(ctx.pool.id, shop.id)
+      assert record.image == shop_image("1")
+      assert DateTime.compare(record.retired_at, retired_at) == :eq
+      assert Environments.image_for(ctx.pool, @shop_target) == nil
+    end
+  end
+
+  describe "a build whose ref is older than the image's" do
     # A prebuild queued an hour before it took its ref at `at`, as one that waited again.
     defp run_queued_at(at),
       do: %DispatchRun{
@@ -856,7 +918,11 @@ defmodule Apiary.EnvironmentsTest do
         record(
           ctx,
           Map.merge(
-            %{source_collection_id: collection.id},
+            %{
+              source_collection_id: collection.id,
+              built_target_system: collection.target_system,
+              built_target_path: collection.target_path
+            },
             Map.merge(built(at), Map.put(attrs, :image, image(n)))
           )
         )
@@ -911,6 +977,30 @@ defmodule Apiary.EnvironmentsTest do
       # Another pool has no build of the target.
       other = pool_fixture(ctx.scope)
       assert Environments.image_for(other, @shop) == nil
+    end
+
+    test "is only an image built for that target, else none, the pool's default",
+         ctx do
+      shop = shop(ctx)
+      built!(ctx, shop, "1", 1)
+      assert Environments.image_for(ctx.pool, @shop) == image("1")
+
+      # The collection's target moved, and no prebuild for the new one has landed: the
+      # image built for the old target is no run's of either.
+      Repo.update_all(from(c in Collection, where: c.id == ^shop.id),
+        set: [target_path: "acme/moved"]
+      )
+
+      assert Environments.image_for(ctx.pool, @shop) == nil
+      assert Environments.image_for(ctx.pool, %{@shop | path: "acme/moved"}) == nil
+
+      # A newer record built for another target than its collection's gives none either,
+      # and an older one built for the target still counts.
+      older = shop(ctx)
+      built!(ctx, older, "2", 2)
+      newer = shop(ctx)
+      built!(ctx, newer, "3", 3, %{built_target_path: "acme/docs"})
+      assert Environments.image_for(ctx.pool, @shop) == image("2")
     end
   end
 end

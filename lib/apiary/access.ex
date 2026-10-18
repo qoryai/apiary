@@ -397,6 +397,18 @@ defmodule Apiary.Access do
       roles: @members
     ),
     Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
+    Action.new(:"work_item.answer", "answer Qory's questions on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.explore_again", "run Explore again on a work item",
+      feature: :factory,
+      roles: @members
+    ),
     Action.new(:"work_item.comment", "comment on a work item",
       feature: :factory,
       roles: @members

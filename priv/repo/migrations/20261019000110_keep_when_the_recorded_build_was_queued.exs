@@ -6,7 +6,7 @@ defmodule Apiary.Repo.Migrations.KeepWhenTheRecordedBuildWasQueued do
   # with the image when its `prebuilt` is recorded (its run of the queue's
   # `environment_ref_at`, which `20261019000120_keep_when_a_prebuild_took_its_ref` keeps). A
   # `prebuilt`, or a failure, of a prebuild that took its ref before it then leaves the
-  # record as it is (V-804). It is set only
+  # record as it is, so an older build never replaces a newer one. It is set only
   # where an image is; a record with an image and none, of which nothing wrote one before,
   # is written as a record with no image is. Down drops the column.
 

@@ -245,6 +245,32 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
     end
 
+    test "a target's system has no empty label, and no segment of its path starts with a dash",
+         ctx do
+      %{work_item: item} = ctx
+
+      for {column, value} <- [
+            {"target_system", "forge..example.com"},
+            {"target_system", ".example.com"},
+            {"target_system", "forge.example.com."},
+            {"target_path", "-acme/shop"},
+            {"target_path", "acme/-rf"}
+          ] do
+        refused("work_items_target_shape_check", fn ->
+          update!("work_items", item.id, "#{column} = $2", [value])
+        end)
+      end
+
+      for {column, value} <- [
+            {"target_system", "git.forge-1.example"},
+            {"target_path", "acme/a-b"},
+            {"target_path", "a-cme/shop"},
+            {"target_path", "p"}
+          ] do
+        assert %{num_rows: 1} = update!("work_items", item.id, "#{column} = $2", [value])
+      end
+    end
+
     test "a take in is counted from 1", %{work_item: item} do
       assert item.take_in == 1
 
@@ -521,14 +547,15 @@ defmodule Apiary.WorkItems.WorkItemTest do
   end
 
   describe "work_item_events" do
-    test "the kind is taken_in, declined, closed or undone", %{work_item: item} do
+    test "the kind is taken_in, declined, closed, undone, answered, confirmed or explore_again",
+         %{work_item: item} do
       event = event_of(item)
 
       refused("work_item_events_kind_check", fn ->
-        update!("work_item_events", event.id, "kind = 'answered'")
+        update!("work_item_events", event.id, "kind = 'shaped'")
       end)
 
-      for kind <- ~w(declined closed undone) do
+      for kind <- ~w(declined closed undone answered confirmed explore_again) do
         assert %{num_rows: 1} = update!("work_item_events", event.id, "kind = $2", [kind])
       end
     end

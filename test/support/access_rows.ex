@@ -134,6 +134,9 @@ defmodule Apiary.AccessRows do
       {:"work_item.undo", yes: @owners ++ [:member, :admin]},
       {:"work_item.decline", yes: @owners ++ [:member, :admin]},
       {:"work_item.close", yes: @owners ++ [:member, :admin]},
+      {:"work_item.answer", yes: @owners ++ [:member, :admin]},
+      {:"work_item.confirm", yes: @owners ++ [:member, :admin]},
+      {:"work_item.explore_again", yes: @owners ++ [:member, :admin]},
       {:"work_item.comment", yes: @owners ++ [:member, :admin]},
       # Asked of the workspace, as a page asks whether to show the button at all: the role
       # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).

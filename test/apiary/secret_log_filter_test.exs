@@ -887,6 +887,78 @@ defmodule Apiary.SecretLogFilterTest do
                  meta: %{pid: self()}
              }
     end
+
+    test "keeps the fragment out of Bandit's report of an oversized fragmented message" do
+      # The process of the "/live" socket's connection stops on a fragmented message past
+      # its bound, and OTP reports it as `:gen_server` logs a stop: in the state, Bandit's
+      # connection holds the fragment received so far, whose first 12 bytes the report
+      # prints at the least. The last message is the frame's masked bytes.
+      fragment = @marker <> String.duplicate("x", 64)
+      pid = :c.pid(0, 860, 0)
+      port = :erlang.list_to_port(~c"#Port<0.56>")
+
+      connection = %Bandit.WebSocket.Connection{
+        websock: Phoenix.LiveView.Socket,
+        state: :closed,
+        opts: [max_fragmented_message_size: 4_194_304, compress: nil],
+        fragment_frame: %Bandit.WebSocket.Frame.Text{fin: false, data: fragment},
+        fragment_size: byte_size(fragment)
+      }
+
+      socket = %ThousandIsland.Socket{
+        socket: port,
+        transport_module: ThousandIsland.Transports.TCP,
+        read_timeout: 60_000,
+        handshake_timeout: 5_000,
+        silent_terminate_on_error: false,
+        span: nil,
+        peername: {{127, 0, 0, 1}, 59_626}
+      }
+
+      event = %{
+        level: :error,
+        msg:
+          {:report,
+           %{
+             label: {:gen_server, :terminate},
+             name: pid,
+             last_message: {:tcp, port, :crypto.strong_rand_bytes(72)},
+             state: {socket, %{connection: connection, handler_module: Bandit.WebSocket.Handler}},
+             log: [],
+             reason: "Received oversize fragmented message",
+             client_info: :undefined,
+             process_label: {Phoenix.Socket, Phoenix.LiveView.Socket, nil}
+           }},
+        meta: %{
+          pid: pid,
+          mfa: {:gen_server, :error_info, 7},
+          domain: [:otp],
+          report_cb: &:gen_server.format_log/2,
+          error_logger: %{tag: :error, report_cb: &:gen_server.format_log/1}
+        }
+      }
+
+      text = fn event ->
+        event
+        |> :logger_formatter.format(%{template: [:msg], single_line: false, depth: 30})
+        |> IO.chardata_to_string()
+      end
+
+      first_bytes = binary_part(fragment, 0, 12)
+      assert text.(event) =~ first_bytes
+
+      # Through the filter as it is installed at boot, which `:logger` runs before Elixir's
+      # translator, so it is given the report as OTP makes it.
+      %{filters: filters} = :logger.get_primary_config()
+      {filter, extra} = Keyword.fetch!(filters, :apiary_access_key_secrets)
+      filtered = filter.(event, extra)
+
+      assert {:report, %{state: "[FILTERED]", last_message: {:tcp, ^port, "[FILTERED]"}}} =
+               filtered.msg
+
+      refute text.(filtered) =~ first_bytes
+      refute inspect(filtered, limit: :infinity, printable_limit: :infinity) =~ first_bytes
+    end
   end
 
   defmodule Crashing do

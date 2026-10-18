@@ -43,7 +43,7 @@ defmodule Apiary.Sources.IngestTest do
   setup do
     %{scope: scope} = sign_up_fixture()
     other_workspace = workspace_fixture(scope.organisation)
-    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
 
     %{
@@ -195,7 +195,7 @@ defmodule Apiary.Sources.IngestTest do
       {:ok, :accepted} = post(ctx, "TRK", [item("R")])
       kept = ticket(ctx.trk, "R")
 
-      other = connectable_adapter_fixture(%{name: "Other tracker"})
+      other = connectable_adapter_fixture(%{name: unique_adapter_name("Other tracker")})
       {theirs, _nonce} = connection_fixture(ctx.scope, other.adapter, :connected)
       other_key = key_scope(other.access_key)
 

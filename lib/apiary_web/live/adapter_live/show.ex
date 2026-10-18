@@ -35,13 +35,16 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # still sending them, with how many so far; then the heading says how many there are.
   # A lead says what being assigned means, in the adapter's words for its collections
   # and its items: with one workspace, that every one is assigned to it; for an adapter
-  # with no items, only that each is assigned to one workspace. The lead and the foot note
-  # show while the page waits too. Past a page, the pager walks the pages, from the first,
-  # as the list pages by the row before (`?page=`). Ended collections are not shown: the
-  # counts leave them out too. A search finds collections by their names (`?q=`).
+  # with no items, only that each is assigned to one workspace. The lead shows while the
+  # page waits too. Where any live collection has a target
+  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
+  # no workspace's targets; a source without code has none. Past a page, the pager walks
+  # the pages, from the first, as the list pages by the row before (`?page=`). Ended
+  # collections are not shown: the counts leave them out too. A search finds collections
+  # by their names (`?q=`).
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
-  # an adapter with items, that their items come into that workspace's backlog while their
+  # an adapter with items, that their items come into that workspace's Backlog while their
   # Backlog switches are on. Once a listing is complete, a warning says how many are
   # unassigned, and, for an adapter with items, that their items reach no backlog until
   # they are assigned, by the person or by an owner or an admin. Views over the table
@@ -52,6 +55,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where.
   # Before anything is selected, the menu's button shows disabled. While a listing is
   # still arriving, nothing can be selected, and there is no warning, view or filter.
+  #
+  # For an adapter with items, each live collection assigned to a workspace has a Backlog
+  # switch on its row, whether its items come into that workspace's Backlog; a hint under
+  # the lead says when to turn one off. Whoever may turn them (`collection.set_backlog`,
+  # owners and admins) presses one
+  # (`Apiary.Adapters.Collections.set_collection_backlog/4`), and a flash says what the
+  # press changed, none when it changed nothing; anyone else sees them disabled, under a
+  # line that says who may. A collection with no items has a dash in their place.
   #
   # While it is not installed, the install block follows
   # (`ApiaryWeb.IntegrationComponents`), to whoever may connect one (`adapter.connect`,
@@ -98,6 +109,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
        adapter: adapter,
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
+       may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation),
        selected: %{},
        menu_q: nil,
        late: false,
@@ -141,7 +153,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp page_param(_value), do: 1
 
-  # The connection as it stands, the state it puts the page in, and who started it.
+  # The connection as it stands, the state it puts the page in, who started it, and whether
+  # any of its live collections has a target, for the foot note.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
@@ -154,6 +167,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)
+    |> assign(:targets, connection != nil and Collections.targets?(connection))
     |> assign(:ready, IntegrationComponents.ready?(adapter))
     |> wait()
   end
@@ -283,7 +297,66 @@ defmodule ApiaryWeb.AdapterLive.Show do
     {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload()}
   end
 
+  # A row's Backlog switch, turned the other way from what the page shows: a flash says
+  # what the press changed, and none when it changed nothing. A refusal for a person who
+  # may no longer turn it says who may, and leaves the switches disabled; a collection or
+  # an installation gone meanwhile shows the page as it now stands. Either way the page
+  # reads the collections again.
+  def handle_event(
+        "set_backlog",
+        %{"collection" => public_id},
+        %{assigns: %{state: :listed, connection: %Connection{} = connection}} = socket
+      ) do
+    %{current_scope: scope, adapter: adapter, rows: rows} = socket.assigns
+
+    case Enum.find(rows, &(&1.public_id == public_id and is_map(&1.backlog))) do
+      nil ->
+        {:noreply, socket}
+
+      row ->
+        on = !row.backlog.on
+
+        socket =
+          case Collections.set_collection_backlog(scope, connection, row.id, on) do
+            {:ok, count} ->
+              turned(socket, count, on, row.name, adapter)
+
+            {:error, :forbidden} ->
+              socket
+              |> assign(:may_set_backlog, false)
+              |> put_flash(:error, only_admins_change(scope))
+
+            {:error, _gone} ->
+              socket
+          end
+
+        {:noreply, reload(socket)}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp turned(socket, count, on, name, adapter) do
+    case SourceComponents.backlog_turned(
+           count,
+           on,
+           name,
+           Adapters.collection_noun(adapter),
+           Adapters.item_noun(adapter)
+         ) do
+      nil -> socket
+      words -> put_flash(socket, :info, words)
+    end
+  end
+
+  # Who may turn the Backlog switches, in the edition's words where it has some.
+  defp only_admins_change(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"collection.set_backlog",
+        gettext("Only owners and admins change the Backlog switches.")
+      )
 
   @impl true
   def handle_info(:late, socket) do
@@ -526,9 +599,24 @@ defmodule ApiaryWeb.AdapterLive.Show do
               )}</span>
             </span>
           </p>
-          <p :if={@lead} id="collections-lead" class="mb-3 max-w-[80ch] text-[13.5px]/5 text-muted">
-            {@lead}
-          </p>
+          <div
+            :if={@lead || switches?(assigns)}
+            class="mb-3 grid max-w-[80ch] gap-1.5 text-[13.5px]/5 text-muted"
+          >
+            <p :if={@lead} id="collections-lead">{@lead}</p>
+            <div :if={switches?(assigns)}>
+              <p id="collections-backlog-hint">
+                {gettext(
+                  "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay.",
+                  items: SourceComponents.items(Adapters.item_noun(@adapter)),
+                  collections: SourceComponents.collections(Adapters.collection_noun(@adapter))
+                )}
+              </p>
+              <p :if={!@may_set_backlog} id="collections-backlog-read-only">
+                {only_admins_change(@current_scope)}
+              </p>
+            </div>
+          </div>
 
           <.notice
             :if={@state == :listed && @several && @counts.unassigned > 0}
@@ -695,6 +783,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
               Adapters.items?(@adapter) &&
                 gettext("Open %{items}", items: SourceComponents.items(Adapters.item_noun(@adapter)))
             }
+            backlog={
+              Adapters.items?(@adapter) && SourceComponents.items(Adapters.item_noun(@adapter))
+            }
+            may_set_backlog={@may_set_backlog}
             picks={@picks}
             selected={@selected}
             every={
@@ -722,7 +814,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             next_label={gettext("Next")}
           />
 
-          <div class="mt-3 grid gap-1.5">
+          <div :if={@targets} class="mt-3 grid gap-1.5">
             <p id="collections-targets" class="q-foot-note">
               {gettext(
                 "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
@@ -735,6 +827,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
     </Layouts.app>
     """
   end
+
+  # Whether the page shows the Backlog switches' column, and so the hint over it: once a
+  # listing names the connection, for an adapter with items.
+  defp switches?(%{state: state, adapter: adapter}),
+    do: state == :listed and Adapters.items?(adapter)
 
   # The line under the name: where the connection stands.
   defp status(%{state: state} = assigns) when state in [:waiting, :listed] do
@@ -794,9 +891,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # What being assigned means, above the table: for an adapter with no items, that each
   # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's backlog; with several, that
-  # each is assigned to one, and their items come into its backlog while their Backlog
-  # switches are on.
+  # assigned to it, and its items come into that workspace's Backlog while its Backlog
+  # switch is on; with several, that each is assigned to one, and their items come into
+  # its Backlog while their Backlog switches are on.
   defp lead(scope, adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
@@ -808,7 +905,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         [workspace] = workspaces
 
         gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog.",
+          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on.",
           organisation: scope.organisation.name,
           workspace: workspace.name,
           collection: collection_word(adapter, 1),
@@ -817,7 +914,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
       length(workspaces) > 1 ->
         gettext(
-          "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on.",
+          "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on.",
           collections: collection_word(adapter, :other),
           items: SourceComponents.items(Adapters.item_noun(adapter))
         )
@@ -954,19 +1051,19 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # The word for many of the adapter's collections (`:other`), or for one (1), its first
   # letter in upper case: the section's heading and the table's, and the column's.
-  defp collection_label(adapter, n \\ :other) do
-    {first, rest} = adapter |> collection_word(n) |> String.split_at(1)
+  defp collection_label(adapter, n \\ :other)
+  defp collection_label(adapter, 1), do: SourceComponents.collection_label(noun(adapter))
+
+  defp collection_label(adapter, :other) do
+    {first, rest} = adapter |> collection_word(:other) |> String.split_at(1)
     String.upcase(first) <> rest
   end
 
   # The word for many of the adapter's collections (`:other`), or for one (1): what it
-  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word.
-  defp collection_word(adapter, n) do
-    case {Adapters.collection_noun(adapter), n} do
-      {%{one: one}, 1} -> one
-      {%{other: other}, _n} -> other
-      {nil, 1} -> pgettext("source collection, when its adapter names none", "collection")
-      {nil, _n} -> pgettext("source collection, when its adapter names none", "collections")
-    end
-  end
+  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word
+  # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
+  defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
+  defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
+
+  defp noun(adapter), do: Adapters.collection_noun(adapter)
 end

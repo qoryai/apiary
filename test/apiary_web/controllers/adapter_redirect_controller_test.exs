@@ -18,7 +18,9 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
   setup :register_and_log_in_user
 
   setup %{scope: scope} do
-    %{adapter: adapter, pair: pair} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: adapter, pair: pair} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     {:ok, _url, {public_id, nonce} = session} = Adapters.connect(scope, adapter)
 
     %{
@@ -80,7 +82,7 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
 
       assert redirected_to(conn) == page(scope, adapter)
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Acme tracker is connected."
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "#{adapter.name} is connected."
 
       assert get_session(conn, "connect_passes") == nil
 
@@ -106,17 +108,17 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
          } do
       told = [
         {[outcome: :cancelled], :info,
-         "You cancelled the install on Acme tracker. Nothing has changed."},
+         "You cancelled the install on #{adapter.name}. Nothing has changed."},
         {[outcome: :refused, reason: :person_not_permitted], :error,
-         "Acme tracker doesn't confirm that you administer that account. Ask an admin of the account to install it."},
+         "#{adapter.name} doesn't confirm that you administer that account. Ask an admin of the account to install it."},
         {[outcome: :refused, reason: :grant_taken], :error,
          "That account is already connected to another organisation."},
         {[outcome: :refused, reason: :grant_not_confirmed], :error,
-         "Acme tracker couldn't confirm that installation for you. Install it again from Integrations."},
+         "#{adapter.name} couldn't confirm that installation for you. Install it again from Integrations."},
         {[outcome: :refused, reason: :grant_suspended], :error,
-         "That installation is suspended on Acme tracker. Lift the suspension there, then install it again."},
+         "That installation is suspended on #{adapter.name}. Lift the suspension there, then install it again."},
         {[outcome: :refused, reason: :permission_missing], :error,
-         "An owner of the account must approve the updated permissions on Acme tracker, then install it again."},
+         "An owner of the account must approve the updated permissions on #{adapter.name}, then install it again."},
         {[outcome: :refused, reason: :pass_expired], :error,
          "The install took too long and expired. Install it again from Integrations."},
         {[outcome: :refused, reason: :source_unavailable], :error,

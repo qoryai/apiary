@@ -53,14 +53,21 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
   end
 
   setup do
+    # The clock's time as the test begins, which `now_time/0` counts down from.
+    Process.put(:now_time, {SignedRequest.now(), 0})
     %{scope: scope} = sign_up_fixture()
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 
-  # The clock's time, a second earlier for each request a test sends, so no two of its
-  # requests are one signature: the same one again is a replay.
+  # A request's time: one second earlier for each request the test sends, counted down from
+  # the clock's time as the test began. Two requests to one target with one time are one
+  # signed body, which the replay guard refuses with a 401; a time read from the clock
+  # again for each request could repeat one, as the clock moves on a second between them.
   defp now_time do
-    (SignedRequest.now() - rem(System.unique_integer([:positive, :monotonic]), 250))
+    {base, sent} = Process.get(:now_time)
+    Process.put(:now_time, {base, sent + 1})
+
+    (base - sent - 1)
     |> DateTime.from_unix!()
     |> DateTime.to_iso8601()
   end

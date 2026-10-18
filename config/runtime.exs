@@ -450,5 +450,10 @@ if config_env() == :prod do
           :initial_call,
           :registered_name
         ]
-      )
+      ),
+    # No burst limit: past 500 events a second the handler would drop the rest unseen, and a
+    # first boot's migrations log more than that just before the set-up link. A burst makes
+    # the code logging it wait instead; the queue limits stay, and say when they drop
+    # events.
+    config: [burst_limit_enable: false]
 end

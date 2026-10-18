@@ -441,6 +441,18 @@ defmodule Apiary.OrganisationsTest do
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
       end
 
+      # A workspace's name refuses a bidirectional control and a C1 control as well, and
+      # keeps a join control (`Apiary.Names`).
+      for cp <- [0x202E, 0x2067, 0x200F, 0x85] do
+        name = "Build#{<<cp::utf8>>}ing"
+        assert {:error, changeset} = Organisations.update_workspace(owner_scope, %{name: name})
+        assert %{name: ["must not contain control characters"]} = errors_on(changeset)
+      end
+
+      for name <- ["می#{<<0x200C::utf8>>}خواهم", "👩#{<<0x200D::utf8>>}💻 builds"] do
+        assert {:ok, _} = Organisations.update_workspace(owner_scope, %{name: name})
+      end
+
       assert {:ok, %Organisation{name: "Übergrößen & Söhne"}} =
                Organisations.update_organisation(owner_scope, %{name: "Übergrößen & Söhne"})
 
@@ -934,6 +946,30 @@ defmodule Apiary.OrganisationsTest do
                Organisations.invite_member(scope, %{"email" => "bad"}, & &1)
 
       assert %{email: [_]} = errors_on(changeset)
+    end
+
+    test "invite_member/3 refuses an address an account could not have" do
+      %{scope: scope} = sign_up_fixture()
+      # 112 combining marks: a letter with them, twenty times over, is one grapheme.
+      marks = for cp <- 0x300..0x36F, into: "", do: <<cp::utf8>>
+
+      for {email, message} <- [
+            {"da#{<<0x202E::utf8>>}na@example.com", "must not contain control characters"},
+            {"da#{<<0x200B::utf8>>}na@example.com", "must not contain control characters"},
+            {"da\u0007na@example.com", "must not contain control characters"},
+            {"da\0na@example.com", "must not contain control characters"},
+            {"da#{<<0xA0::utf8>>}na@example.com", "must have the @ sign and no spaces"},
+            {<<0xFF>> <> "dana@example.com", "must be UTF-8 text"},
+            {"d#{String.duplicate(marks, 20)}na@example.com",
+             "should be at most 160 character(s)"}
+          ] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Organisations.invite_member(scope, %{"email" => email}, & &1)
+
+        assert errors_on(changeset) == %{email: [message]}, inspect(email)
+      end
+
+      assert Organisations.list_invitations(scope) == []
     end
 
     test "get_invitation_by_token/1 returns only pending invitations" do

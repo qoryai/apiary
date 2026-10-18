@@ -3,7 +3,8 @@ defmodule Apiary.Dispatches.PrebuiltTest do
   # (`Apiary.Dispatches.Prebuilt`): each refusal in the contract's order, the lapse judged
   # and committed, nothing written on any refusal; on success the build recorded on the
   # claiming pool's record with the target the registered run was handed over for, the
-  # reported ref as it is, the last failure cleared and `retired_at` kept, the run ended as
+  # reported ref as it is, the last failure cleared and the record kept retired by a
+  # prebuild that took its ref before the retirement, the run ended as
   # a release after its handover with retry false ends it, nothing queued; a second
   # prebuilt and one after the run's outcome or exit, gone; a failure that writes nothing;
   # the one audit entry, about the registered run; and a prebuild queued before the one
@@ -202,7 +203,8 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert prebuilds(collection) == [queued.id]
     end
 
-    test "after the ref went absent, stores the build and keeps it retired", ctx do
+    test "after the ref went absent, stores the build of a prebuild that took its ref before and keeps it retired",
+         ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
 
       {1, _rows} =
@@ -227,7 +229,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
              }) == nil
     end
 
-    test "records the target the run was handed over for, not the collection's target now (V-714)",
+    test "records the target the run was handed over for, not the collection's target now",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
 
@@ -246,7 +248,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     end
   end
 
-  describe "a prebuild whose ref is older than the recorded image's (V-804)" do
+  describe "a prebuild whose ref is older than the recorded image's" do
     # The run of `claimed` ended as a release after its handover ends it, its slot freed.
     defp released!(claimed, cause \\ :prebuilt)
 
@@ -353,7 +355,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     end
   end
 
-  describe "a prebuild that waits again, and takes a newer ref (V-804)" do
+  describe "a prebuild that waits again, and takes a newer ref" do
     @image_b "registry.example.com/acme/env@sha256:" <> String.duplicate("bb", 32)
     @image_c "registry.example.com/acme/env@sha256:" <> String.duplicate("cc", 32)
 
@@ -612,7 +614,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert entries() == []
     end
 
-    test "after the run's exit folded, which ends nothing of a prebuild's queue, records the build and ends the run prebuilt (V-839)",
+    test "after the run's exit folded, which ends nothing of a prebuild's queue, records the build and ends the run prebuilt",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued, run: run} =
         handed_over!(ctx)

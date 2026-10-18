@@ -1,10 +1,14 @@
 defmodule Apiary.WorkItemsFixtures do
   @moduledoc "Test helpers for the work items of a workspace and their events."
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Repo
+  alias Apiary.Runs.{Event, Run}
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.{Number, WorkItem, WorkItemEvent}
 
@@ -218,4 +222,146 @@ defmodule Apiary.WorkItemsFixtures do
       connected_at: now
     })
   end
+
+  @doc """
+  A run of the queue of `work_item`, of its current take in unless `take_in:` says,
+  `attempt:` one past the highest of that take in unless given, of 3, written straight to
+  the database, with the run registered for it where it has one. `state:` is `:ended`
+  unless given (`:waiting`, `:claimed`, `:handed_over`); an ended run has `end_cause:`,
+  `:run_ended` unless given. A run handed over, and one ended `run_ended`, `lost` or
+  `released`, has a registered run (`registered: false` leaves it out): completed, its exit
+  folded and its outcome a minute old unless `run:` changes it. `result:` gives it a
+  `dev.qory.session.result` event: a map is the result document, given as its JSON with
+  `is_error` false; `{:data, data}` is the event's data as given; nil, the default, is no
+  event. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  """
+  def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
+    take_in = Keyword.get(opts, :take_in, work_item.take_in)
+    state = Keyword.get(opts, :state, :ended)
+    end_cause = if state == :ended, do: Keyword.get(opts, :end_cause, :run_ended)
+
+    attempt =
+      Keyword.get_lazy(opts, :attempt, fn ->
+        highest =
+          Repo.one(
+            from d in DispatchRun,
+              where: d.work_item_id == ^work_item.id and d.take_in == ^take_in,
+              select: max(d.attempt)
+          )
+
+        (highest || 0) + 1
+      end)
+
+    now = DateTime.utc_now()
+
+    dispatch_run =
+      %DispatchRun{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id
+      }
+      |> DispatchRun.queue_changeset(%{
+        work_item_id: work_item.id,
+        step: "explore",
+        take_in: take_in,
+        attempt: attempt,
+        of: 3,
+        queued_at: DateTime.add(now, -120, :second)
+      })
+      |> Ecto.Changeset.change(state: state, end_cause: end_cause)
+      |> Repo.insert!()
+
+    registered? =
+      Keyword.get(
+        opts,
+        :registered,
+        state == :handed_over or end_cause in [:run_ended, :lost, :released]
+      )
+
+    run =
+      if registered? do
+        defaults =
+          if state == :ended,
+            do: %{
+              state: "completed",
+              exit_state: "completed",
+              started_at: DateTime.add(now, -90, :second),
+              exited_at: DateTime.add(now, -60, :second),
+              outcome_state: "succeeded",
+              outcome_time: DateTime.add(now, -60, :second),
+              outcome_received_at: DateTime.add(now, -60, :second),
+              outcome_digest: :crypto.strong_rand_bytes(32)
+            },
+            else: %{state: "running", started_at: DateTime.add(now, -30, :second)}
+
+        %Run{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          node_run_id: dispatch_run.run_id,
+          dispatch_run_id: dispatch_run.id
+        }
+        |> Ecto.Changeset.change(Map.merge(defaults, Map.new(Keyword.get(opts, :run, %{}))))
+        |> Repo.insert!()
+      end
+
+    case {run, Keyword.get(opts, :result)} do
+      {%Run{} = run, %{} = document} ->
+        result_event!(run, 7, %{"is_error" => false, "result" => Jason.encode!(document)})
+
+      {%Run{} = run, {:data, data}} ->
+        result_event!(run, 7, data)
+
+      _none ->
+        nil
+    end
+
+    %{dispatch_run: dispatch_run, run: run}
+  end
+
+  @doc "Stores a `dev.qory.session.result` event of `run` at `sequence`, with `data`."
+  def result_event!(%Run{} = run, sequence, data) do
+    Repo.insert!(%Event{
+      organisation_id: run.organisation_id,
+      workspace_id: run.workspace_id,
+      run_id: run.id,
+      sequence: sequence,
+      node_event_id: Ecto.UUID.generate(),
+      type: "dev.qory.session.result",
+      time: DateTime.utc_now(),
+      data: data,
+      received_at: DateTime.utc_now()
+    })
+  end
+
+  @doc "An explore result whose verdict is `understood`; `attrs` overrides its members."
+  def understood_result(attrs \\ %{}) do
+    Map.merge(
+      %{
+        "version" => 1,
+        "verdict" => "understood",
+        "complexity" => %{"level" => "standard", "reason" => "Two screens read the price."},
+        "understanding" => "The basket keeps the price from before the sale.",
+        "scope" => %{"in" => ["Read the sale price in the basket"], "out" => ["The invoice"]},
+        "approach" => %{
+          "summary" => "Read the price from the catalogue each time.",
+          "alternatives" => [
+            %{
+              "summary" => "Clear the basket at a sale.",
+              "reason" => "It loses what people chose."
+            }
+          ]
+        },
+        "knowledge" => [
+          %{
+            "text" => "The catalogue holds the sale price.",
+            "sources" => ["https://docs.example.com/catalogue"]
+          }
+        ]
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc "An explore result whose verdict is `not_understood`, asking `questions`."
+  def questions_result(questions \\ ["Which basket?", "Which sale?"]),
+    do: %{"version" => 1, "verdict" => "not_understood", "questions" => questions}
 end

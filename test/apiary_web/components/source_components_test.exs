@@ -173,6 +173,46 @@ defmodule ApiaryWeb.SourceComponentsTest do
     end
   end
 
+  describe "the words for a source's collections" do
+    test "its adapter's, or the domain's word where it names none" do
+      project = %{one: "project", other: "projects"}
+      assert SourceComponents.collection(project) == "project"
+      assert SourceComponents.collections(project) == "projects"
+      assert SourceComponents.collection_label(project) == "Project"
+
+      assert SourceComponents.collection(nil) == "repository"
+      assert SourceComponents.collections(nil) == "repositories"
+      assert SourceComponents.collection_label(nil) == "Repository"
+
+      assert SourceComponents.collection_label(%{one: "work board", other: "work boards"}) ==
+               "Work board"
+    end
+  end
+
+  describe "the line after a collection's Backlog switch is pressed" do
+    @project %{one: "project", other: "projects"}
+    @story %{one: "story", other: "stories"}
+
+    test "on or off, in the source's words, else the domain's and tickets" do
+      assert SourceComponents.backlog_turned(1, true, "Shop board", @project, @story) ==
+               "Now taking stories into the Backlog from project Shop board."
+
+      assert SourceComponents.backlog_turned(1, false, "Shop board", @project, @story) ==
+               "No longer taking stories into the Backlog from project Shop board."
+
+      assert SourceComponents.backlog_turned(1, true, "acme/shop", nil, nil) ==
+               "Now taking tickets into the Backlog from repository acme/shop."
+
+      assert SourceComponents.backlog_turned(1, false, "acme/shop", nil, nil) ==
+               "No longer taking tickets into the Backlog from repository acme/shop."
+    end
+
+    test "nil for a press that changed nothing, so the page claims no change" do
+      assert SourceComponents.backlog_turned(0, true, "Shop board", @project, @story) == nil
+      assert SourceComponents.backlog_turned(0, false, "acme/shop", nil, nil) == nil
+    end
+  end
+
   describe "the generated documentation" do
     # Every instance serves the module reference at /docs, which leaves this module out.
     test "leaves ApiaryWeb.SourceComponents out" do

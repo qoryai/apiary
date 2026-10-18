@@ -40,7 +40,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
 
     %{
       scope: scope,

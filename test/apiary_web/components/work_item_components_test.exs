@@ -1338,6 +1338,16 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "The bug is still open on GitHub and keeps Qory's label. In the Backlog, Take in again brings this work item back."
     end
 
+    test "Details names its collection by its source's word, its first letter in upper case" do
+      w = Map.put(work_item(), :repository, "Shop board")
+      html = details(w, collection_noun: %{one: "project", other: "projects"})
+
+      assert texts(html, "dt") ==
+               ["Owner", "Ticket", "Project", "Taken in", "First instruction", "Runs"]
+
+      assert text(html, "#work-item-details-repository") == "Shop board"
+    end
+
     test "Details and the first tab name it by the word, its first letter in upper case" do
       assert texts(details(work_item(), item_noun: @bug), "dt") ==
                ["Owner", "Bug", "Repository", "Taken in", "First instruction", "Runs"]

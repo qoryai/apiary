@@ -35,7 +35,10 @@ defmodule Apiary.Adapters.SyncTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{adapter: adapter, access_key: key} = connectable_adapter_fixture(%{name: "Acme tracker"})
+
+    %{adapter: adapter, access_key: key} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     %{
@@ -463,7 +466,7 @@ defmodule Apiary.Adapters.SyncTest do
   describe "last_seen/2" do
     test "the latest use of the adapter's keys, revoked ones included, or nil",
          %{scope: scope, admin: admin, adapter: adapter, key: key} do
-      other = adapter_fixture(name: "Acme chat")
+      other = adapter_fixture(name: unique_adapter_name("Acme chat"))
 
       assert Adapters.last_seen(admin, adapter) == {:ok, nil}
       assert Adapters.last_seen(admin, [adapter, other]) == {:ok, %{}}

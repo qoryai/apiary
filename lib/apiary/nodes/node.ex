@@ -176,9 +176,7 @@ defmodule Apiary.Nodes.Node do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 80)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:name)
     |> unique_constraint([:organisation_id, :workspace_id, :name],
       name: :nodes_live_name_index,
       error_key: :name,
@@ -215,9 +213,7 @@ defmodule Apiary.Nodes.Node do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: @max_adapter_name)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:name)
     |> unique_constraint(:name,
       name: :nodes_adapter_name_index,
       error_key: :name,
