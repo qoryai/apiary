@@ -33,16 +33,19 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # Revoking the adapter's last active key says that no tickets arrive for any
   # organisation until it has a new one. Every act is asked again by the context function.
   #
-  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) gets its codes from
-  # the instance and makes its key by itself: the tab says so in place of the way to
-  # connect it, offers neither Get the command nor Add a key, and leaves out the codes the
-  # instance made, which name no maker. Its one key is replaced by revoking it, which
-  # brings a new code at once. A Get the command asked anyway is refused, and said so:
-  # while it is listed, that Qory Apiary gives it its codes; once it is not, that it gets
-  # no new code until it is turned on again. Once its name is off the list
+  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) gets its codes
+  # from the instance and makes its key by itself: the tab says so in place of the way to
+  # connect it, offers no Get the command, and leaves out the codes the instance made,
+  # which name no maker. Under the keys' lead, for its first key (`first_key?/2`), it says
+  # the adapter made the key at its first start with a code of the instance, and no
+  # command was run, and the key's card says it was enrolled then; a key after a revoked
+  # one says neither, its card saying it connected by itself. While it is listed, the tab
+  # says that revoking the key makes the adapter enrol again with a new one, and there is
+  # no Add a key. A Get the command asked anyway is refused, and said so: while it is
+  # listed, that Qory Apiary gives it its codes; once it is not, that it gets no new code
+  # until it is turned on again. Once its name is off the list
   # (`Apiary.Adapters.listed?/1`), the instance gives it no new code: the tab says it is
-  # turned off there, and that turning it on again gives it a new key, in place of what a
-  # code would bring.
+  # turned off there, and, under Add a key, that turning it on again gives it a new key.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -345,7 +348,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   defp installed_refusal(false),
     do:
       gettext(
-        "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+        "This adapter is turned off in the AWS stack or the Compose file; it gets no new code until it is turned on again."
       )
 
   defp to_tab(socket, kind, words) do
@@ -378,6 +381,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     do: gettext("That command no longer works: it was run, cancelled or expired.")
 
   defp active(keys), do: Enum.filter(keys, &is_nil(&1.revoked_at))
+
+  @doc false
+  # Whether `key` is its adapter's first key: no revoked key of the adapter, among `keys`
+  # (`Apiary.Adapters.list_keys/2`, revoked ones too), was received before it. A key that
+  # came after a revoked one is not.
+  @spec first_key?(AccessKey.t(), [AccessKey.t()]) :: boolean
+  def first_key?(%AccessKey{id: id, received_at: at}, keys) do
+    not Enum.any?(keys, fn other ->
+      other.id != id and not is_nil(other.revoked_at) and
+        DateTime.before?(other.received_at, at)
+    end)
+  end
 
   defp full?(keys), do: length(active(keys)) >= AccessKeys.key_limit()
 
@@ -490,7 +505,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       assign(assigns,
         active: length(active),
         full: length(active) >= AccessKeys.key_limit(),
-        last: match?([_one], active)
+        last: match?([_one], active),
+        first: active != [] and first_key?(hd(active), assigns.keys)
       )
 
     ~H"""
@@ -518,7 +534,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
           >
             <p :if={@listed} id="adapter-connect-intro" class="text-[13px]/5 text-muted">
               {gettext(
-                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. No command is run."
               )}
             </p>
             <p
@@ -566,6 +582,22 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                 "The adapter signs every request with its key. Qory Apiary keeps only the public half."
               )}
             </p>
+            <p
+              :if={@adapter.installed_as && @first}
+              id="adapter-keys-installed"
+              class="max-w-[80ch] text-[13px]/5 text-muted"
+            >
+              {gettext(
+                "The adapter made this key at its first start, and enrolled with a code that Qory Apiary handed it. No command was run."
+              )}
+            </p>
+            <p
+              :if={@listed && @active > 0}
+              id="adapter-keys-revoking"
+              class="text-[13px]/5 text-muted"
+            >
+              {gettext("Revoking it makes the adapter enrol again with a new key.")}
+            </p>
             <%!-- Each key as a node's card, in its adapter mode. Its Revoke… leads to
                  `…/keys/:key_id/revoke` (`AdapterComponents.act_path/2`), which the card
                  writes as `access_key/keys/:key_id/revoke`, so it is given the adapter's
@@ -584,6 +616,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                   last_run={nil}
                   hosts={nil}
                   confirming={false}
+                  first={first_key?(key, @keys)}
                   adapter
                 />
                 <li :if={asked?(@key, key)} id={"key-#{key.key_id}-asked"}>
@@ -611,7 +644,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                       </span>
                       <span :if={Adapters.installed?(@adapter) and !@listed}>
                         {gettext(
-                          "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+                          "It is the adapter's only key. The adapter is turned off in the AWS stack or the Compose file, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
                         )}
                       </span>
                       <span :if={!@adapter.installed_as}>
@@ -638,19 +671,15 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
           </SettingsComponents.part>
 
           <%!-- A key in use: the same way, for moving to a new key, but at the
-               limit. --%>
+               limit. An adapter installed with Qory Apiary has none while it is listed:
+               revoking its key brings a new one. --%>
           <SettingsComponents.part
-            :if={@active > 0 and @adapter.installed_as}
+            :if={@active > 0 and Adapters.installed?(@adapter) and !@listed}
             id="adapter-add"
             title={gettext("Add a key")}
           >
-            <p :if={@listed} id="adapter-add-intro" class="text-[13px]/5 text-muted">
-              {gettext(
-                "An adapter installed with Qory Apiary holds one key. To replace it, revoke it: the adapter gets a new code at once and makes a new key by itself."
-              )}
-            </p>
-            <p :if={!@listed} id="adapter-add-intro" class="text-[13px]/5 text-muted">
-              {gettext("Turn it on again where Qory Apiary is installed to give it a new key.")}
+            <p id="adapter-add-intro" class="text-[13px]/5 text-muted">
+              {gettext("Turn it on again in the AWS stack or the Compose file to give it a new key.")}
             </p>
           </SettingsComponents.part>
           <SettingsComponents.part

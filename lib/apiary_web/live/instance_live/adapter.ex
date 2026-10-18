@@ -21,14 +21,24 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # declaration allows, its default marked, and saved with
   # `Apiary.Adapters.update_sync_interval/3`; before it declares, the choice is shown
   # disabled, with why. Then its name, with Rename…, and the danger zone, whose Remove
-  # adapter… opens the Remove page. An adapter installed with Qory Apiary whose name the
-  # setting still lists (`Apiary.Adapters.listed?/1`) is not removed: the danger zone says
-  # to turn it off first, in place of Remove adapter…, and a removal asked anyway is
-  # refused with the same advice. Its Overview says it connects by itself, in place of
-  # Connect it; once its name is off the list, that it is turned off there and can be
-  # removed, and it offers no Set up. Rename and Remove are pages; each act is asked again
+  # adapter… opens the Remove page. Rename and Remove are pages; each act is asked again
   # by the context function, and a removed adapter's pages leave for the list. A saved
   # interval and a rename are said on the Settings tab, a removal on the list.
+  #
+  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) enrols by itself
+  # at its first start. Its Overview offers no Connect it: before its first start, its
+  # state says it enrols then, and, once its keys were revoked, that it connects by itself
+  # once it is running; an Installed row says it was installed with Qory Apiary and, once
+  # it holds a key, when that key was enrolled: at its first start, for its first key,
+  # else by itself, with a code from Qory Apiary. While it can be set up
+  # (`ApiaryWeb.AdapterComponents.settable?/3`), a Set it up box above the rows says that
+  # until then organisations can't install it, with Set up and the address it opens, in
+  # place of the Set-up row. While the setting lists its name
+  # (`Apiary.Adapters.listed?/1`), it is not removed: Settings says, under Remove, to turn
+  # it off in the AWS stack or the Compose file, in place of the danger zone, and a
+  # removal asked anyway is refused. Once its name is off the list, its state is that it
+  # is turned off there, with a grey dot and when it was last seen, it offers no Set up,
+  # and the danger zone is back.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -59,7 +69,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     end
   end
 
-  # Whether the adapter holds an active key, and when one of its keys was last used.
+  # Whether the adapter holds an active key, when one of its keys was last used, whether
+  # it ever held a key, revoked ones too, and, for an adapter installed with Qory Apiary,
+  # its newest active key: when it was enrolled, and whether it is the adapter's first
+  # (`ApiaryWeb.AdapterLive.AccessKey.first_key?/2`).
   defp assign_connected(%{assigns: %{current_scope: scope, adapter: adapter}} = socket) do
     seen =
       case Adapters.last_seen(scope, adapter) do
@@ -67,7 +80,20 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         {:error, _reason} -> nil
       end
 
-    assign(socket, connected: AccessKeys.active_key?(adapter), seen: seen)
+    active = AccessKeys.active_keys(adapter)
+    keys = Adapters.list_keys(scope, adapter)
+
+    enrolled =
+      case active do
+        [_one | _more] when is_binary(adapter.installed_as) ->
+          key = List.last(active)
+          %{at: key.received_at, first: ApiaryWeb.AdapterLive.AccessKey.first_key?(key, keys)}
+
+        _none ->
+          nil
+      end
+
+    assign(socket, connected: active != [], seen: seen, keyed: keys != [], enrolled: enrolled)
   end
 
   @impl true
@@ -183,7 +209,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
          socket
          |> put_flash(
            :error,
-           gettext("Turn it off where Qory Apiary is installed before you remove it.")
+           gettext("Turn it off in the AWS stack or the Compose file before you remove it.")
          )
          |> push_patch(to: paths.settings)}
 
@@ -367,6 +393,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           paths={@paths}
           connected={@connected}
           seen={@seen}
+          keyed={@keyed}
+          enrolled={@enrolled}
           sync={@sync}
           listed={Adapters.listed?(@adapter)}
         />
@@ -417,64 +445,135 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :paths, :map, required: true
   attr :connected, :boolean, required: true
   attr :seen, DateTime, default: nil
+
+  attr :keyed, :boolean, required: true, doc: "whether it ever held a key, revoked ones too"
+
+  attr :enrolled, :map,
+    default: nil,
+    doc:
+      "for an adapter installed with Qory Apiary, its newest active key: when it was enrolled (`at`), and whether it is the adapter's first (`first`)"
+
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
   attr :listed, :boolean,
     required: true,
     doc: "whether it is installed with Qory Apiary and still listed (`Apiary.Adapters.listed?/1`)"
 
-  # The Overview: the adapter's state; while it declares where to be set up (`setup_url`,
-  # which it declares only while it is not set up), its Set-up, Not set up yet, with Set
-  # up and what it does while it holds a key in use and, installed with Qory Apiary, is
-  # still listed (`ApiaryWeb.AdapterComponents.settable?/3`); the install address it
-  # declared, and how often it pulls.
+  # The Overview: for an adapter installed with Qory Apiary that can be set up
+  # (`ApiaryWeb.AdapterComponents.settable?/3`), the Set it up box; then the adapter's
+  # state, turned off once it is installed with Qory Apiary and no longer listed; for one
+  # installed with Qory Apiary, how it was installed and when its key was enrolled; while
+  # it declares where to be set up (`setup_url`, which it declares only while it is not
+  # set up) and no box says so, its Set-up, Not set up yet, with Set up and what it does
+  # while it can be set up; the install address it declared, and how often it pulls.
   defp overview(assigns) do
+    assigns =
+      assign(assigns,
+        settable: AdapterComponents.settable?(assigns.adapter, assigns.connected, assigns.listed),
+        off: Adapters.installed?(assigns.adapter) and !assigns.listed
+      )
+
+    assigns = assign(assigns, :box, assigns.settable and is_binary(assigns.adapter.installed_as))
+
     ~H"""
+    <section
+      :if={@box}
+      id="adapter-setup-box"
+      aria-labelledby="adapter-setup-box-title"
+      class="grid max-w-[45rem] gap-2 rounded-box border border-line bg-base-100 p-4 text-[13.5px]/5 shadow-xs"
+    >
+      <h2 id="adapter-setup-box-title" class="text-[14px]/5 font-semibold">
+        {gettext("Set it up")}
+      </h2>
+      <p id="adapter-setup-box-line">
+        {gettext("Until it is set up, organisations can't install it.")}
+      </p>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} variant="primary" />
+        <span id="adapter-setup-opens" class="text-[12.5px]/[18px] text-muted">
+          <.rich text={
+            rich_gettext("Opens %{address}",
+              address: {:m, @adapter.setup_url, "q-mono break-all"}
+            )
+          } />
+        </span>
+      </div>
+    </section>
     <dl
       id="adapter-overview"
       class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-8 gap-y-3 text-[13.5px]/5"
     >
       <dt class="text-faint">{gettext("State")}</dt>
       <dd id="adapter-overview-state" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <AdapterComponents.adapter_seen
-          id="adapter-state"
-          adapter={@adapter}
-          connected={@connected}
-          seen={@seen}
-        />
-        <span :if={!@connected and @listed} class="text-faint">
-          <span aria-hidden="true">·</span>
-          {gettext("it connects by itself once it is running")}
-        </span>
-        <span
-          :if={!@connected and Adapters.installed?(@adapter) and !@listed}
-          id="adapter-overview-unlisted"
-          class="text-faint"
-        >
-          <span aria-hidden="true">·</span>
-          {gettext("turned off where Qory Apiary is installed; it can be removed")}
-        </span>
-        <span :if={!@connected and !@adapter.installed_as} class="text-faint">
-          <span aria-hidden="true">·</span>
-          {gettext("organisations can install it once it is connected and running")}
-        </span>
-        <span :if={!@connected and !@adapter.installed_as} class="text-faint" aria-hidden="true">
-          ·
-        </span>
-        <.link
-          :if={!@connected and !@adapter.installed_as}
-          id="adapter-connect-it"
-          navigate={@paths.keys}
-          class="text-accent hover:underline"
-        >
-          {gettext("Connect it")}
-        </.link>
+        <%= if @off do %>
+          <span
+            id="adapter-state"
+            class="q-sdot !items-start !whitespace-normal !text-[13.5px]/5 !text-base-content"
+          >
+            <i aria-hidden="true" class="mt-[6px]"></i><span>{gettext(
+              "Turned off in the AWS stack or the Compose file"
+            )}</span>
+          </span>
+          <span :if={@seen} class="text-muted">
+            <span aria-hidden="true">·</span>
+            <AdapterComponents.adapter_seen
+              id="adapter-state-seen"
+              adapter={@adapter}
+              connected
+              seen={@seen}
+            />
+          </span>
+        <% else %>
+          <AdapterComponents.adapter_seen
+            id="adapter-state"
+            adapter={@adapter}
+            connected={@connected}
+            seen={@seen}
+          />
+          <span :if={!@connected and @listed and !@keyed} class="text-faint">
+            <span aria-hidden="true">·</span>
+            {gettext("it enrols at its first start")}
+          </span>
+          <span :if={!@connected and @listed and @keyed} class="text-faint">
+            <span aria-hidden="true">·</span>
+            {gettext("it connects by itself once it is running")}
+          </span>
+          <span :if={!@connected and !@adapter.installed_as} class="text-faint">
+            <span aria-hidden="true">·</span>
+            {gettext("organisations can install it once it is connected and running")}
+          </span>
+          <span
+            :if={!@connected and !@adapter.installed_as}
+            class="text-faint"
+            aria-hidden="true"
+          >
+            ·
+          </span>
+          <.link
+            :if={!@connected and !@adapter.installed_as}
+            id="adapter-connect-it"
+            navigate={@paths.keys}
+            class="text-accent hover:underline"
+          >
+            {gettext("Connect it")}
+          </.link>
+        <% end %>
       </dd>
-      <%= if @adapter.setup_url do %>
+      <%= if @adapter.installed_as do %>
+        <dt class="text-faint">{gettext("Installed")}</dt>
+        <dd id="adapter-overview-installed" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span>{gettext("With Qory Apiary")}</span>
+          <span :if={@enrolled} id="adapter-enrolled" class="text-faint">
+            <span aria-hidden="true">·</span>
+            {enrolled_words(@enrolled)}
+          </span>
+        </dd>
+      <% end %>
+      <%= if @adapter.setup_url && !@box do %>
         <dt class="text-faint">{gettext("Set-up")}</dt>
         <dd id="adapter-overview-setup" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span id="adapter-setup-state">{gettext("Not set up yet")}</span>
-          <%= if AdapterComponents.settable?(@adapter, @connected, @listed) do %>
+          <%= if @settable do %>
             <span aria-hidden="true" class="text-faint">·</span>
             <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} />
             <p id="adapter-setup-hint" class="basis-full text-[12.5px]/[18px] text-muted">
@@ -532,7 +631,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     doc: "whether it is installed with Qory Apiary and still listed (`Apiary.Adapters.listed?/1`)"
 
   # The Settings tab: how often the adapter pulls, its name, with Rename…, and the danger
-  # zone.
+  # zone; for an adapter installed with Qory Apiary and still listed, Remove says to turn
+  # it off in the AWS stack or the Compose file, in place of the danger zone.
   defp settings(assigns) do
     ~H"""
     <div id="adapter-settings" class="grid gap-8">
@@ -593,20 +693,20 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         </p>
       </SettingsComponents.part>
 
-      <SettingsComponents.danger_zone id="adapter-danger">
+      <SettingsComponents.part :if={@listed} id="adapter-remove-part" title={gettext("Remove")}>
+        <p id="adapter-remove-listed" class="max-w-[80ch] text-[13.5px]/5 text-muted">
+          {gettext(
+            "This adapter is installed with Qory Apiary. To remove it, turn it off in the AWS stack or the Compose file that installs Qory Apiary."
+          )}
+        </p>
+      </SettingsComponents.part>
+
+      <SettingsComponents.danger_zone :if={!@listed} id="adapter-danger">
         <SettingsComponents.danger_action id="adapter-remove" title={gettext("Remove this adapter")}>
-          <%= if @listed do %>
-            <span id="adapter-remove-listed">
-              {gettext(
-                "Installed with Qory Apiary. To remove it, first turn it off where Qory Apiary is installed; then it can be removed here."
-              )}
-            </span>
-          <% else %>
-            {gettext(
-              "Its keys are revoked, and every organisation's installation of it ends. This cannot be undone."
-            )}
-          <% end %>
-          <:action :if={!@listed}>
+          {gettext(
+            "Its keys are revoked, and every organisation's installation of it ends. This cannot be undone."
+          )}
+          <:action>
             <.button id="adapter-remove-link" patch={@paths.remove}>
               {gettext("Remove adapter…")}
             </.button>
@@ -616,6 +716,18 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     </div>
     """
   end
+
+  # When the newest active key of an adapter installed with Qory Apiary was enrolled: at
+  # its first start, for its first key; by itself, with a code from Qory Apiary, for a key
+  # that came after a revoked one.
+  defp enrolled_words(%{at: at, first: true}),
+    do: gettext("Enrolled at its first start, %{time}", time: Format.datetime(at))
+
+  defp enrolled_words(%{at: at}),
+    do:
+      gettext("Connected by itself, with a code from Qory Apiary, %{date}",
+        date: Format.datetime(at)
+      )
 
   # The intervals an instance admin may choose, each in words, in order: the adapter's
   # default marked, as no setting (""); and an interval set that is no longer among them,
