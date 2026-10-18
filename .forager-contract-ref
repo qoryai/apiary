@@ -8,5 +8,8 @@
 # through a gateway: the run key, the registration's gateway shape, the attach, the
 # outcome and the end member, a gateway's key in discovery and enrolment, a gateway's
 # enrolment request and its signed answer, a gateway's discovery document without
-# workspaces, and the refusals of a gateway that may no longer serve a run's workspace.
-ef5d0a5fde795dc3bc6a879b1fe5828aa2707d1a
+# workspaces, and the refusals of a gateway that may no longer serve a run's workspace;
+# a run configuration and a policy may name the image by a reference pinned by digest,
+# and Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
+# QORY_RUN_REPOSITORIES.
+049d4771c5d3c68e667d0834c52451223c70e682
