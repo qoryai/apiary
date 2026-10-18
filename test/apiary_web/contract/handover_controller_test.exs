@@ -22,7 +22,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Run, RunKey}
-  alias Apiary.Sources.Comment
+  alias Apiary.Sources.{Comment, Item}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -125,6 +125,23 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
 
   defp keys(values), do: Enum.map(values, &elem(&1, 0))
 
+  defp comment!(work_item, ref, name) do
+    at = DateTime.utc_now(:second)
+
+    Repo.insert!(%Comment{
+      organisation_id: work_item.organisation_id,
+      item_id: work_item.item_id,
+      external_ref: ref,
+      url: "https://forge.example.com/acme/shop/issues/12#" <> ref,
+      author_name: name,
+      author_kind: :person,
+      body: "The cart empties itself.",
+      body_format: "markdown",
+      source_created_at: at,
+      source_updated_at: at
+    })
+  end
+
   defp refused?(conn, status, code),
     do: json_response(conn, status) == %{"error" => code} and signed_answer?(conn)
 
@@ -197,6 +214,59 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert grant.run_id == queued.run_id
       assert grant.instance_id == queued.run_id
       assert payload == run.run_key_payload
+    end
+
+    test "of an explore run gives the source's names as the source sent them, held to the contract",
+         ctx do
+      {work_item, _queued} = queued!(ctx)
+      # 100 code points, the most the contract and the columns allow, in 50 graphemes.
+      longest = String.duplicate("e\u0301", 50)
+
+      {1, _rows} =
+        Repo.update_all(from(i in Item, where: i.id == ^work_item.item_id),
+          set: [filed_by_name: "Avery\tExample\nof the shop"]
+        )
+
+      for {ref, name} <- [{"c1", "Blake\tExample\r\nof the shop"}, {"c2", longest}] do
+        comment!(work_item, ref, name)
+      end
+
+      dispatch = started!(ctx)
+      conn = handover(ctx, dispatch)
+
+      assert conn.status == 200
+      inputs = Jason.decode!(conn.resp_body)["inputs"]
+      assert {:ok, _} = JSV.validate(inputs, validator("explore/v1/inputs.schema.json"))
+      assert inputs["ticket"]["filed_by"]["name"] == "Avery\tExample\nof the shop"
+
+      assert Enum.map(inputs["comments"], & &1["by"]["name"]) ==
+               ["Blake\tExample\r\nof the shop", longest]
+    end
+
+    test "of an explore run never meets a source's name longer than the contract allows: none is kept",
+         ctx do
+      {work_item, _queued} = queued!(ctx)
+      too_long = String.duplicate("a", 300)
+
+      assert_raise Postgrex.Error, ~r/source_items_filed_by_check/, fn ->
+        Repo.transact(fn ->
+          Repo.update_all(from(i in Item, where: i.id == ^work_item.item_id),
+            set: [filed_by_name: too_long]
+          )
+        end)
+      end
+
+      assert_raise Ecto.ConstraintError, ~r/source_item_comments_author_check/, fn ->
+        Repo.transact(fn -> {:ok, comment!(work_item, "c1", too_long)} end)
+      end
+
+      # The input formed from what is kept holds to the contract.
+      dispatch = started!(ctx)
+      conn = handover(ctx, dispatch)
+      assert conn.status == 200
+      inputs = Jason.decode!(conn.resp_body)["inputs"]
+      assert {:ok, _} = JSV.validate(inputs, validator("explore/v1/inputs.schema.json"))
+      assert inputs["comments"] == []
     end
 
     test "of a prebuild at revision 2 is 200, signed, with no work item and its input version 1",

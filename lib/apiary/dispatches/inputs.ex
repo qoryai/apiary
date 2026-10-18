@@ -17,13 +17,18 @@ defmodule Apiary.Dispatches.Inputs do
   #     address (`Apiary.Accounts.User.short_name/1`), or the fixed words `former member`
   #     for an account deleted. The words are data on the wire, never translated;
   #   - `comments`: the ticket's comments not deleted at their source, oldest first, each
-  #     with its author as the source named them, when it was written there and its text;
+  #     with its author as the source named them, when it was written there and its text.
+  #     The names the source gave, who filed the ticket and who wrote each comment, are the
+  #     integration contract's `person` names: 1 to 100 characters, which may hold a tab
+  #     or a line break but never U+0000. Their columns already hold them to that
+  #     (`Apiary.Sources.Item`, `Apiary.Sources.Comment`);
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
   #   - `answers`: none;
   #   - `target`: the work item's target, the handover answer's `target`.
   #
-  #   Every time is in UTC to the whole second. The answer is `{:ok, inputs}`, a
+  #   Every time is in UTC to the whole second, and every length is counted in code
+  #   points, as the contract counts it. The answer is `{:ok, inputs}`, a
   #   `Jason.OrderedObject`, or `{:error, :ticket_gone}` when the work item's ticket is no
   #   longer kept, or `{:error, :inputs_invalid}` when a value breaks the contract's rule for
   #   it and no input can be formed: an address that is not the contract's URL, a first
@@ -109,18 +114,21 @@ defmodule Apiary.Dispatches.Inputs do
 
   defp name?(name),
     do:
-      String.length(name) in 1..@max_name and not Regex.match?(@refused_in_text, name) and
+      code_points(name) in 1..@max_name and not Regex.match?(@refused_in_text, name) and
         not Regex.match?(@refused_in_name, name)
 
   # What the database does not hold to the contract's rules already.
   defp valid(%WorkItem{url: url, first_instruction: instruction}) do
     instruction = instruction || ""
 
-    if AdapterWire.url?(url) and String.length(instruction) <= @max_instruction and
+    if AdapterWire.url?(url) and code_points(instruction) <= @max_instruction and
          not Regex.match?(@refused_in_text, instruction),
        do: :ok,
        else: {:error, :inputs_invalid}
   end
+
+  # The length the contract counts: code points, never graphemes.
+  defp code_points(text), do: text |> String.codepoints() |> length()
 
   defp comments(%Item{id: item_id}) do
     Repo.all(
