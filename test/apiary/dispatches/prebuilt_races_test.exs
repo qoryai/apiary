@@ -257,7 +257,10 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert Task.await(second.task) == :ok
       assert commit!(ctx, older) == "b2"
 
-      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+      assert DateTime.compare(
+               record!(ctx, older).built_queued_at,
+               newer.dispatch_run.environment_ref_at
+             ) ==
                :eq
 
       ended_once!(ctx, older)
@@ -281,7 +284,10 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert Task.await(second.task) == :ok
       assert commit!(ctx, older) == "b2"
 
-      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+      assert DateTime.compare(
+               record!(ctx, older).built_queued_at,
+               newer.dispatch_run.environment_ref_at
+             ) ==
                :eq
 
       ended_once!(ctx, older)

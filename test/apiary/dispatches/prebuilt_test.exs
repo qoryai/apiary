@@ -120,7 +120,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
                dispatch!(dispatch)
 
       assert DateTime.compare(record.built_at, at) == :eq
-      assert DateTime.compare(record.built_queued_at, queued.queued_at) == :eq
+      assert DateTime.compare(record.built_queued_at, queued.environment_ref_at) == :eq
       assert Slots.held(ctx.pool.id) == 0
       assert %Run{released_at: %DateTime{}, outcome_state: nil} = Repo.get!(Run, run.id)
 
@@ -241,7 +241,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     end
   end
 
-  describe "a prebuild queued before the one that made the recorded image (V-804)" do
+  describe "a prebuild whose ref is older than the recorded image's (V-804)" do
     # The run of `claimed` ended as a release after its handover ends it, its slot freed.
     defp released!(%{dispatch: dispatch, dispatch_run: queued, run: run}) do
       assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
@@ -275,7 +275,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       assert record!(older.collection, ctx.pool) == kept
       assert %Record{commit: "b2", reported_ref: "env-2", failure_cause: nil} = kept
-      assert DateTime.compare(kept.built_queued_at, newer.dispatch_run.queued_at) == :eq
+      assert DateTime.compare(kept.built_queued_at, newer.dispatch_run.environment_ref_at) == :eq
       released!(older)
       assert Slots.held(ctx.pool.id) == 0
 
@@ -325,7 +325,9 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       recorded = record!(older.collection, ctx.pool)
       assert %Record{commit: "a1", reported_ref: "env-1"} = recorded
-      assert DateTime.compare(recorded.built_queued_at, older.dispatch_run.queued_at) == :eq
+
+      assert DateTime.compare(recorded.built_queued_at, older.dispatch_run.environment_ref_at) ==
+               :eq
 
       # The newer one's prebuilt after it replaces it.
       assert prebuilt(ctx.key, newer.dispatch, prebuilt_meta(newer.dispatch_run, commit: "b2")) ==
@@ -333,8 +335,113 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       replaced = record!(older.collection, ctx.pool)
       assert %Record{commit: "b2", reported_ref: "env-2"} = replaced
-      assert DateTime.compare(replaced.built_queued_at, newer.dispatch_run.queued_at) == :eq
+
+      assert DateTime.compare(replaced.built_queued_at, newer.dispatch_run.environment_ref_at) ==
+               :eq
+
       assert length(entries()) == 3
+    end
+  end
+
+  describe "a prebuild that waits again, and takes a newer ref (V-804)" do
+    @image_b "registry.example.com/acme/env@sha256:" <> String.duplicate("bb", 32)
+    @image_c "registry.example.com/acme/env@sha256:" <> String.duplicate("cc", 32)
+
+    # The collection's environment_ref set to `ref`, triggered as a listing does.
+    defp set_ref!(%Collection{id: id}, ref) do
+      {:ok, _queued} =
+        Repo.transact(fn ->
+          {1, _rows} =
+            Repo.update_all(from(c in Collection, where: c.id == ^id),
+              set: [environment_ref: ref]
+            )
+
+          {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
+        end)
+    end
+
+    defp hand_over!(key, %Dispatch{} = dispatch) do
+      {:ok, %{run: _run}} =
+        Dispatches.handover(key, dispatch.public_id, %{
+          revision: 2,
+          body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+        })
+
+      queue_run!(%DispatchRun{id: dispatch.dispatch_run_id})
+    end
+
+    # P1 claimed for env-1; env-2 queues P2, claimed and handed over; P1's lease lapses
+    # and, with none waiting, P1 waits again with the record's queued_ref, env-2, taking
+    # it after P2 took it, its queued_at kept.
+    defp waits_again!(ctx) do
+      {collection, d1, p1} = started!(ctx)
+      set_ref!(collection, "env-2")
+      %{dispatch: d2} = dispatched!(ctx.key, 2)
+      p2 = hand_over!(ctx.key, d2)
+
+      Dispatches.sweep(DateTime.add(d1.lease_until, 1, :second))
+      again = queue_run!(p1)
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = again
+      assert DateTime.compare(again.queued_at, p1.queued_at) == :eq
+      assert DateTime.compare(again.environment_ref_at, p2.environment_ref_at) == :gt
+
+      %{collection: collection, p1: again, d2: d2, p2: p2}
+    end
+
+    # P1 claimed again and handed over.
+    defp claimed_again!(ctx, p1) do
+      %{dispatch: dispatch, run: run} = dispatched!(ctx.key, 2)
+      assert run.id == p1.id
+      {dispatch, hand_over!(ctx.key, dispatch)}
+    end
+
+    test "its build after the one of a prebuild that took the ref before it counts", ctx do
+      %{collection: collection, p1: p1, d2: d2, p2: p2} = waits_again!(ctx)
+
+      :ok = prebuilt(ctx.key, d2, prebuilt_meta(p2, image: @image_b))
+      {d1, p1} = claimed_again!(ctx, p1)
+      :ok = prebuilt(ctx.key, d1, prebuilt_meta(p1, image: @image_c))
+
+      recorded = record!(collection, ctx.pool)
+      assert %Record{image: @image_c, reported_ref: "env-2"} = recorded
+      assert DateTime.compare(recorded.built_queued_at, p1.environment_ref_at) == :eq
+    end
+
+    test "a newer ref taken while it waits counts too, after a build of the ref before", ctx do
+      %{collection: collection, p1: p1, d2: d2, p2: p2} = waits_again!(ctx)
+      :ok = prebuilt(ctx.key, d2, prebuilt_meta(p2, image: @image_b))
+
+      # env-3 while P1 waits: P1 takes it, and when it took it.
+      set_ref!(collection, "env-3")
+      taken = queue_run!(p1)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-3"} = taken
+      assert DateTime.compare(taken.queued_at, p1.queued_at) == :eq
+      refute DateTime.compare(taken.environment_ref_at, p1.environment_ref_at) == :eq
+
+      {d1, p1} = claimed_again!(ctx, taken)
+      :ok = prebuilt(ctx.key, d1, prebuilt_meta(p1, image: @image_c))
+
+      assert %Record{image: @image_c, reported_ref: "env-3", failure_cause: nil} =
+               record!(collection, ctx.pool)
+
+      assert Repo.all(
+               from r in DispatchRun,
+                 where: r.source_collection_id == ^collection.id and r.state == :waiting
+             ) == []
+    end
+
+    test "the build of a prebuild that took the ref before it, coming after, changes nothing",
+         ctx do
+      %{collection: collection, p1: p1, d2: d2, p2: p2} = waits_again!(ctx)
+
+      {d1, p1} = claimed_again!(ctx, p1)
+      :ok = prebuilt(ctx.key, d1, prebuilt_meta(p1, image: @image_c))
+      kept = record!(collection, ctx.pool)
+
+      :ok = prebuilt(ctx.key, d2, prebuilt_meta(p2, image: @image_b))
+      assert record!(collection, ctx.pool) == kept
+      assert %Record{image: @image_c} = kept
     end
   end
 

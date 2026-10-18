@@ -51,12 +51,14 @@ defmodule Apiary.Dispatches.Prebuilt do
   # where it differs from the record's `queued_ref`, when it was recorded, and the target
   # it was built for, the registered run's target, which its handover named from the
   # collection's target as it was then (`Apiary.Lingo.Domain.target/2` of its registration
-  # labels), and when the prebuild was queued (`built_queued_at`). The last failure is
+  # labels), and when the prebuild took the `environment_ref` it built (`built_queued_at`,
+  # from its `environment_ref_at`). The last failure is
   # cleared, `retired_at` is left as it is, and nothing is queued, so a reported ref that
   # differs never loops.
   #
-  # A prebuild queued before the prebuild that made the record's image
-  # (`Apiary.Environments.newer_build?/2`, asked under the record's lock) leaves the record
+  # A prebuild whose ref is older than the record's image's, taken before the prebuild
+  # that made the image took its (`Apiary.Environments.newer_build?/2`, asked under the
+  # record's lock), leaves the record
   # as it is, its image and its last failure, and writes no audit entry, as nothing was
   # recorded: its run ends as above, and the answer is the same.
   #
@@ -157,8 +159,8 @@ defmodule Apiary.Dispatches.Prebuilt do
   defp same_run(_locked, _run_id), do: {:refused, :run_mismatch}
 
   # The run ended as a release after its handover ends it, then the build recorded and
-  # the one audit entry written; for a prebuild queued before the one that made the
-  # record's image, the run ended alone.
+  # the one audit entry written; for a prebuild whose ref is older than the record's
+  # image's, the run ended alone.
   defp record(locked, prebuilt) do
     case RunEnd.released(locked.run.id, locked.now) do
       {:ok, %{run: run, changed: changed}} ->

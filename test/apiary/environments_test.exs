@@ -720,7 +720,8 @@ defmodule Apiary.EnvironmentsTest do
         source_collection_id: ctx.app.id,
         step: DispatchRun.prebuild(),
         environment_ref: "env-1",
-        queued_at: ~U[2026-10-15 11:00:00.000000Z]
+        queued_at: ~U[2026-10-15 10:00:00.000000Z],
+        environment_ref_at: ~U[2026-10-15 11:00:00.000000Z]
       }
     end
 
@@ -793,7 +794,7 @@ defmodule Apiary.EnvironmentsTest do
 
       assert %Record{
                queued_ref: "env-1",
-               queued_at: ~U[2026-10-15 11:00:00.000000Z],
+               queued_at: ~U[2026-10-15 10:00:00.000000Z],
                queued_target_system: "code.example.com",
                queued_target_path: "acme/app",
                built_target_path: "acme/app",
@@ -815,10 +816,16 @@ defmodule Apiary.EnvironmentsTest do
     end
   end
 
-  describe "a build queued before the recorded one (V-804)" do
-    defp run_queued_at(at), do: %DispatchRun{step: DispatchRun.prebuild(), queued_at: at}
+  describe "a build whose ref is older than the image's (V-804)" do
+    # A prebuild queued an hour before it took its ref at `at`, as one that waited again.
+    defp run_queued_at(at),
+      do: %DispatchRun{
+        step: DispatchRun.prebuild(),
+        queued_at: DateTime.add(at, -3600, :second),
+        environment_ref_at: at
+      }
 
-    test "is newer where the record's image was made by a prebuild queued after the run",
+    test "is newer where the record's image was made by a prebuild that took its ref after the run took its, whatever the run's queued_at",
          ctx do
       at = ~U[2026-10-15 11:00:00.000000Z]
       record = record(ctx, Map.put(built(), :built_queued_at, at))

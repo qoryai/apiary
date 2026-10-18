@@ -32,8 +32,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
   # it by its run key's `attach_by`, `timed_out` when it had neither an outcome nor an
   # exit by its backstop. Its run of the queue and its dispatch end `lost` either way. The
-  # record keeps its last good build, and nothing is queued. A prebuild queued before the
-  # one that made the record's image records no failure (`Apiary.Environments.newer_build?/2`,
+  # record keeps its last good build, and nothing is queued. A prebuild whose ref is older
+  # than the record's image's records no failure (`Apiary.Environments.newer_build?/2`,
   # asked under the record's lock), and ends `lost` all the same. A prebuild that ends any
   # other way writes nothing here: its starter's release records its failure itself
   # (`Apiary.Dispatches.Release`).
@@ -294,8 +294,8 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
-  # attached, else `timed_out` at its backstop; the last good build kept. A prebuild
-  # queued before the one that made the record's image records nothing.
+  # attached, else `timed_out` at its backstop; the last good build kept. A prebuild whose
+  # ref is older than the record's image's records nothing.
   defp build_ended(%Record{} = record, %DispatchRun{} = dispatch_run, :lost, %Run{} = run, now) do
     if Environments.newer_build?(record, dispatch_run) do
       :ok

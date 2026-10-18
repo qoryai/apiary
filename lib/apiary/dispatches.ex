@@ -32,7 +32,8 @@ defmodule Apiary.Dispatches do
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
   # the collection's, held for that pool, for the collection's `environment_ref`. At most
   # one waits per collection and pool: while one waits, it is that run, its
-  # `environment_ref` set to the newer one and its place in the queue kept; a claimed or
+  # `environment_ref` set to the newer one, with when it took it (`environment_ref_at`),
+  # and its place in the queue kept; a claimed or
   # handed-over one is left as it is. It has no work item and counts toward no take in;
   # like any run, it takes a slot of the pool when it is claimed. `Apiary.Environments`
   # decides when one is due, and writes it under the lock of the pool's environment record
@@ -307,8 +308,9 @@ defmodule Apiary.Dispatches do
   end
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
-  # node pool `pool` of the collection's workspace, for `environment_ref`, or sets it on
-  # the one that waits, inside the caller's transaction (the moduledoc).
+  # node pool `pool` of the collection's workspace, for `environment_ref`, or sets it, and
+  # when it was taken, on the one that waits, inside the caller's transaction (the
+  # moduledoc).
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -338,7 +340,7 @@ defmodule Apiary.Dispatches do
         queued_at: now()
       })
       |> Repo.insert(
-        on_conflict: {:replace, [:environment_ref, :updated_at]},
+        on_conflict: {:replace, [:environment_ref, :environment_ref_at, :updated_at]},
         conflict_target: {:unsafe_fragment, @waiting_prebuild},
         returning: true
       )

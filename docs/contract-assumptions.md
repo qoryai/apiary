@@ -415,9 +415,9 @@ exit by its backstop, 1200 seconds after its attach for the step `explore` and 2
 failure on the environment record of its collection and of the pool that claimed it, `lost`
 at its `attach_by` and `timed_out` at its backstop, with no reason; the record keeps its last
 good build, nothing is queued, and the check holds that record before the run of the queue,
-as a release does; a prebuild queued before the one that made the record's image records no
-failure, and ends all the same. Its dispatch ends with it, with the same end cause, a stale dispatch of
-it with `run_ended`, and the slot the dispatch took at its claim is freed once
+as a release does; a prebuild whose `environment_ref` is older than the record's image's
+records no failure, and ends all the same. Its dispatch ends with it, with the same end
+cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim is freed once
 (`dispatches.slot_freed_at`, set only where it is empty). An end after the first changes
 none of them. A release after the handover records
 the registered run cancelled with the reason `released` (`runs.released_at`), which the fold
@@ -481,9 +481,12 @@ then keeps the build: the image, its size, its commit, when it was recorded, the
 and the target it was built for, the registered run's target, which its handover named
 from the collection's target as it was then. The last failure is cleared, `retired_at` is
 left as it is, and nothing is queued, so a reported ref that differs never queues a
-prebuild again. The record also keeps when the prebuild that made the image was queued: a
-`prebuilt`, or a release's failure, of a prebuild queued before it leaves the record as it
-is, the image and the last failure, and the run ends all the same, answered as above. The
+prebuild again. The record also keeps when the prebuild that made the image took the
+`environment_ref` it built: when it was queued, or later, when the ref changed while it
+waited or it waited again with the record's `queued_ref` (`dispatch_runs.environment_ref_at`;
+its `queued_at`, which orders the queue, stays). A `prebuilt`, or a release's failure, of a
+prebuild that took its ref before that leaves the record as it is, the image and the last
+failure, and the run ends all the same, answered as above. The
 audit entry, by the pool's key, about the registered run, keeps the dispatch's public id,
 the size, the commit and the `environment_ref` reported, and is written only where the build
 was recorded; the image is on the record alone. A prebuilt holds the prebuild's environment record before anything of
