@@ -154,6 +154,18 @@ defmodule ApiaryWeb.SourceComponentsTest do
                "User story"
     end
 
+    test "many of them as a label: the adapter's, or Tickets where it names none" do
+      assert SourceComponents.items_label(@bug) == "Bugs"
+      assert SourceComponents.items_label(nil) == "Tickets"
+
+      assert SourceComponents.items_label(%{one: "user story", other: "user stories"}) ==
+               "User stories"
+
+      # The first letter alone, whatever it is; the rest as the adapter wrote it.
+      assert SourceComponents.items_label(%{one: "élément", other: "éléments ToDo"}) ==
+               "Éléments ToDo"
+    end
+
     test "a text says them: the empty one, and a table's name" do
       empty =
         render_component(&SourceComponents.body/1, id: "ticket", body: "", item_noun: @bug)

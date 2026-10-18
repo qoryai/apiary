@@ -687,6 +687,16 @@ msgstr ""
 msgid "%{interval}, and changes are sent as they happen"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} from the %{assigned}. Take one in to make it a work item."
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} that closed after they reached the backlog."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -1157,6 +1167,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection}"
 msgid_plural "%{number} %{collections}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} assigned to %{workspace}"
+msgid_plural "%{number} %{collections} assigned to %{workspace}"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -10680,6 +10697,11 @@ msgstr ""
 msgid "Organisation settings › %{page}"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation settings › Integrations › %{integration}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation's deletion cancelled"
@@ -11654,6 +11676,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the filter %{filter}"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the label filter"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the updated filter"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -16786,6 +16818,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collection"
@@ -16793,6 +16826,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collections"

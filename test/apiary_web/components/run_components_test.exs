@@ -1378,6 +1378,60 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "filter_options/1's tile" do
+    @options [{"Lea", "Lea", 2}, {"deps-bot", "deps-bot", 1}]
+
+    defp options_html(assigns) do
+      rendered_to_string(~H"""
+      <RunComponents.filter_options
+        id="f"
+        name="filed_by"
+        label="Filed by"
+        values={[]}
+        options={@options}
+        multiple
+      >
+        <:tile :let={{_label, value, _count}}>
+          <span :if={value == "deps-bot"} class="tile">{String.first(value)}</span>
+        </:tile>
+      </RunComponents.filter_options>
+      """)
+    end
+
+    test "draws the slot before each option's words, given the option" do
+      html = options_html(%{options: @options})
+      doc = LazyHTML.from_fragment(html)
+      [lea, bot] = doc |> LazyHTML.query(".q-filter-option") |> Enum.to_list()
+
+      assert lea |> LazyHTML.query(".tile") |> Enum.count() == 0
+      assert bot |> LazyHTML.query(".tile") |> LazyHTML.text() == "d"
+      assert text(LazyHTML.to_html(bot)) == "d deps-bot 1"
+      # The tile comes after the box and before the words.
+      assert LazyHTML.to_html(bot) =~
+               ~r/<input[^>]*value="deps-bot"[^>]*\/?>\s*<span[^>]*class="tile">d<\/span>\s*<span[^>]*title="deps-bot"/
+    end
+
+    test "without the slot, an option is its box, its words and its count alone" do
+      html =
+        render_component(&RunComponents.filter_options/1,
+          id: "f",
+          name: "filed_by",
+          label: "Filed by",
+          values: [],
+          options: @options,
+          multiple: true
+        )
+
+      [_lea, bot] =
+        html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-filter-option") |> Enum.to_list()
+
+      assert bot |> LazyHTML.query("label > *") |> Enum.map(&LazyHTML.tag/1) ==
+               [["input"], ["span"], ["span"]]
+
+      refute html =~ "tile"
+    end
+  end
+
   describe "chips" do
     test "a long label value is cut in the middle, the whole value in the title" do
       value = String.duplicate("a", 20) <> String.duplicate("z", 20)

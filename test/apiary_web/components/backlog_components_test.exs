@@ -352,6 +352,19 @@ defmodule ApiaryWeb.BacklogComponentsTest do
     end
   end
 
+  test "bot_tile/1: a neutral tile with the first letter, which a screen reader skips" do
+    html = render_component(&BacklogComponents.bot_tile/1, name: "deps-bot")
+
+    assert attr(html, ".q-bl-bot-av", "aria-hidden") == ["true"]
+    assert text(html, ".q-bl-bot-av") == "d"
+    assert text(html, "*") == "d"
+
+    # Markup in the name prints as text.
+    html = render_component(&BacklogComponents.bot_tile/1, name: "<b>bot</b>")
+    assert text(html, ".q-bl-bot-av") == "<"
+    assert count(html, "b") == 0
+  end
+
   test "integration_tile/1: the first letter, and the name for a screen reader" do
     html = render_component(&BacklogComponents.integration_tile/1, name: "GitHub")
 

@@ -146,6 +146,83 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(conn, page(scope))
       assert has_element?(view, "h1", "Backlog")
       refute has_element?(view, "#backlog")
+      # Its line under the title is a later step's, with the empty states.
+      refute has_element?(view, "#page-header-description")
+    end
+  end
+
+  describe "the line under the title" do
+    setup %{connection: connection} do
+      %{adapter: Repo.get!(Node, connection.adapter_id)}
+    end
+
+    test "says where the tickets come from; the count links to the integration's page", ctx do
+      ticket(ctx.shop)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      workspace = ctx.scope.workspace.name
+
+      assert words(view, "#page-header-description") ==
+               "Tickets from the 2 repositories assigned to #{workspace}. " <>
+                 "Take one in to make it a work item."
+
+      link = "#page-header-description a#backlog-integration"
+      assert words(view, link) == "2 repositories assigned to #{workspace}"
+
+      assert has_element?(
+               view,
+               ~s(#{link}[href="/#{ctx.scope.organisation.slug}/settings/integrations/#{ctx.adapter.public_id}"])
+             )
+
+      assert view
+             |> element(link)
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.attribute("title") ==
+               ["Organisation settings › Integrations › #{ctx.adapter.name}"]
+    end
+
+    test "one repository in the singular", ctx do
+      ticket(ctx.shop)
+
+      ctx.api
+      |> Ecto.Changeset.change(ended_at: DateTime.utc_now(), ended_reason: :disconnected)
+      |> Repo.update!()
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      assert words(view, "#backlog-integration") ==
+               "1 repository assigned to #{ctx.scope.workspace.name}"
+    end
+
+    test "in the source's words for its items and its collections", ctx do
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^ctx.adapter.id),
+          set: [
+            item_noun_one: "bug",
+            item_noun_other: "bugs",
+            collection_noun_one: "project",
+            collection_noun_other: "projects"
+          ]
+        )
+
+      ticket(ctx.shop)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      assert words(view, "#page-header-description") ==
+               "Bugs from the 2 projects assigned to #{ctx.scope.workspace.name}. " <>
+                 "Take one in to make it a work item."
+    end
+
+    test "with two integrations, the words link to neither", ctx do
+      other = ticket_connection_fixture(ctx.scope)
+      ticket(source_collection_fixture(ctx.scope, other, %{title: "acme/web"}))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      assert words(view, "#page-header-description") ==
+               "Tickets from the 3 repositories assigned to #{ctx.scope.workspace.name}. " <>
+                 "Take one in to make it a work item."
+
+      refute has_element?(view, "#page-header-description a")
     end
   end
 
@@ -193,6 +270,25 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       # The title opens the ticket by its record's id, never by the source's.
       assert view |> element("#{row(ctx.open)} a.q-bl-t") |> render() =~
                "ticket=#{ctx.open.public_id}"
+    end
+
+    test "a row has the tile of the integration its ticket came through", ctx do
+      adapter = Repo.get!(Node, ctx.connection.adapter_id)
+      other = ticket_connection_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^other.adapter_id),
+          set: [name: "Tracker"]
+        )
+
+      elsewhere = ticket(source_collection_fixture(ctx.scope, other), minutes: 0)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      tile = ~s(#{row(ctx.open)} .q-bl-tile[role="img"][aria-label="#{adapter.name}"])
+      assert has_element?(view, tile)
+      assert words(view, tile) == String.first(adapter.name)
+
+      assert has_element?(view, ~s(#{row(elsewhere)} .q-bl-tile[aria-label="Tracker"]), "T")
     end
   end
 
@@ -262,12 +358,30 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert texts(view, "#backlog-filter-sections .q-fm-label") ==
                ["Repository", "Filed by", "Label", "Updated"]
 
-      assert words(view, "#backlog-filter-filed_by-form") == "Lea 2 deps-bot 1"
+      # The bot's tile, a letter a screen reader skips, stands right before its name.
+      assert words(view, "#backlog-filter-filed_by-form") == "Lea 2 ddeps-bot 1"
       assert words(view, "#backlog-filter-repository-form") == "acme/api 2 acme/shop 1"
       assert words(view, "#backlog-filter-label-form") == "bug 2 checkout 1 dependencies 1"
 
       assert texts(view, "#backlog-filter-updated-form .q-filter-option") ==
                ["Last hour", "Last 24 hours", "Last 7 days", "Last 14 days", "Last 30 days"]
+
+      # A bot has a neutral tile with its first letter before its name; a person none.
+      assert texts(view, "#backlog-filter-filed_by-form .q-bl-bot-av") == ["d"]
+
+      assert has_element?(
+               view,
+               ~s|#backlog-filter-filed_by-form label:has(input[value="deps-bot"]) .q-bl-bot-av[aria-hidden="true"]|
+             )
+
+      refute has_element?(
+               view,
+               ~s|#backlog-filter-filed_by-form label:has(input[value="Lea"]) .q-bl-bot-av|
+             )
+
+      # The other sections have no tile.
+      refute has_element?(view, "#backlog-filter-repository-form .q-bl-bot-av")
+      refute has_element?(view, "#backlog-filter-label-form .q-bl-bot-av")
     end
 
     test "Filed by keeps a filer's tickets, its token says so and takes it away", ctx do
@@ -318,8 +432,6 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       assert rows(view) == ids([ctx.lea_shop])
       assert words(view, "#backlog-token-label") == "Label checkout"
-      # The page has no words yet for taking this token away: Clear does.
-      refute has_element?(view, "#backlog-token-label a")
 
       view
       |> form("#backlog-filter-updated-form", %{"_filter" => "updated", "updated" => "24h"})
@@ -331,6 +443,28 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert rows(view) == ids([ctx.lea_shop, ctx.lea_api])
       assert words(view, "#backlog-token-updated") == "Updated Last 24 hours"
       assert words(view, "#backlog-filter-open-updated") == "Updated Last 24 hours"
+    end
+
+    test "the Label and Updated tokens each have a × that takes that filter away", ctx do
+      query = "?" <> Plug.Conn.Query.encode(label: ["checkout"], updated: "24h", q: "Ticket")
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+      assert rows(view) == ids([ctx.lea_shop])
+
+      view
+      |> element(~s(#backlog-token-label a[aria-label="Remove the label filter"]))
+      |> render_click()
+
+      assert patched(view) == %{"q" => "Ticket", "updated" => "24h"}
+      assert rows(view) == ids([ctx.lea_shop, ctx.lea_api])
+      refute has_element?(view, "#backlog-token-label")
+
+      view
+      |> element(~s(#backlog-token-updated a[aria-label="Remove the updated filter"]))
+      |> render_click()
+
+      assert patched(view) == %{"q" => "Ticket"}
+      assert rows(view) == ids([ctx.lea_shop, ctx.lea_api, ctx.bot_api])
+      refute has_element?(view, "#backlog-tokens")
     end
 
     test "Clear takes every filter away and keeps the view and the search", ctx do
@@ -370,7 +504,8 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       |> form("#backlog-filter-filed_by-narrow", %{"_filter" => "filed_by", "q" => "bot"})
       |> render_change()
 
-      assert words(view, "#backlog-filter-filed_by-form") == "deps-bot 1"
+      assert words(view, "#backlog-filter-filed_by-form") == "ddeps-bot 1"
+      assert texts(view, "#backlog-filter-filed_by-form .q-bl-bot-av") == ["d"]
     end
   end
 
@@ -485,6 +620,48 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       assert words(view, "#backlog-token-label") == "Label <b>x</b>"
       refute has_element?(view, "#backlog-token-label b b")
+    end
+  end
+
+  describe "the Closed view's line" do
+    test "says which tickets Closed holds, on Closed alone", %{
+      conn: conn,
+      scope: scope,
+      shop: shop
+    } do
+      ticket(shop, state: :closed)
+      ticket(shop)
+
+      {:ok, view, _html} = live(conn, page(scope))
+      refute has_element?(view, "#backlog-view-line")
+
+      view |> element("#backlog-view-closed") |> render_click()
+
+      assert words(view, "#backlog-view-line") ==
+               "Tickets that closed after they reached the backlog."
+
+      for other <- ~w(taken declined) do
+        {:ok, view, _html} = live(conn, page(scope, "?view=#{other}"))
+        refute has_element?(view, "#backlog-view-line"), other
+      end
+    end
+
+    test "in the source's words for its items", %{
+      conn: conn,
+      scope: scope,
+      connection: connection,
+      shop: shop
+    } do
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
+          set: [item_noun_one: "bug", item_noun_other: "bugs"]
+        )
+
+      ticket(shop, state: :closed)
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+
+      assert words(view, "#backlog-view-line") ==
+               "Bugs that closed after they reached the backlog."
     end
   end
 

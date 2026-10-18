@@ -1,12 +1,21 @@
 defmodule ApiaryWeb.BacklogLive.Index do
   # A workspace's Backlog: the tickets of the repositories assigned to it (`:index`).
   #
+  # **The head.** Under the title, while the page lists tickets, a line says where they
+  # come from: "Tickets from the 41 repositories assigned to Main. Take one in to make it
+  # a work item." The count and what follows it link to the integration's page in
+  # Organisation settings › Integrations, by its adapter's public id, when one
+  # integration connects the organisation (`Apiary.Sources.Backlog.backlog_facts/1`);
+  # with several, the words are not a link.
+  #
   # **The list.** The views as tabs, each with its count (Open, Taken in, Declined,
-  # Closed), Search, one Filter menu (Repository, Filed by, Label, Updated), Sort
-  # (Recently updated, Newest, Most comments), the filters in force as tokens under the
-  # bar with Clear and how many tickets match, a page of rows
-  # (`BacklogComponents.ticket_row/1`), and the pager, Newer and Older. Everything the
-  # list shows is in the address, so a narrowed list can be linked and Back works:
+  # Closed), with a line under them on Closed that says which tickets it holds, Search,
+  # one Filter menu (Repository, Filed by, its bots each with a neutral tile, Label,
+  # Updated), Sort (Recently updated, Newest, Most comments), the filters in force as
+  # tokens under the bar, each with its ×, then Clear and how many tickets match, a page
+  # of rows (`BacklogComponents.ticket_row/1`, each with its integration's tile), and the
+  # pager, Newer and Older. Everything the list shows is in the address, so a narrowed
+  # list can be linked and Back works:
   # `view`, `q`, `repository`, `filed_by`, `label`, `updated`, `sort`, and a page's
   # cursor, `after` or `before`. The page hands each to
   # `Apiary.Sources.Backlog.list_tickets/3`, which checks it: a value it does not know
@@ -16,12 +25,13 @@ defmodule ApiaryWeb.BacklogLive.Index do
   #
   # **The words for the items** are their source's
   # (`Apiary.Adapters.workspace_item_noun/1`, `ApiaryWeb.SourceComponents.items/1`),
-  # "tickets" where it names none.
+  # "tickets" where it names none, and so are the words for its collections
+  # (`Apiary.Adapters.workspace_collection_noun/1`), "repositories" where it names none.
   #
   # **Live.** The page listens on the topic of its workspace's Backlog
   # (`Apiary.Sources.Backlog.subscribe/1`). A message carries ids only: the page reads its
-  # page, its counts and the filters' values again with its scope, and never shows what a
-  # message says.
+  # page, its counts, the filters' values and the facts of its head again with its scope,
+  # and never shows what a message says.
   #
   # The ticket over the list (`?ticket=`), Take in and the empty states are later steps of
   # this page: a row's link puts the ticket's id in the address, and the page draws
@@ -56,7 +66,11 @@ defmodule ApiaryWeb.BacklogLive.Index do
     >
       <:crumb>{gettext("Backlog")}</:crumb>
 
-      <.page_header title={gettext("Backlog")} />
+      <.page_header title={gettext("Backlog")}>
+        <:description :if={@page && !empty_backlog?(@page, @params)}>
+          <.rich text={sub_line(@item_noun, assigned(assigns))} />
+        </:description>
+      </.page_header>
 
       <div :if={@page && !empty_backlog?(@page, @params)} id="backlog" class="q-bl">
         <div class="q-bl-main flex flex-col gap-3">
@@ -96,7 +110,14 @@ defmodule ApiaryWeb.BacklogLive.Index do
                   options={options(@options, @narrowed, @params, key)}
                   query={@narrow[Atom.to_string(key)]}
                   search_label={key == :filed_by && gettext("Find a name")}
-                />
+                >
+                  <:tile :let={{_label, value, _count}} :if={key == :filed_by}>
+                    <BacklogComponents.bot_tile
+                      :if={bot?(@options, @narrowed, value)}
+                      name={value}
+                    />
+                  </:tile>
+                </.filter_options>
               </:section>
               <:section
                 key="updated"
@@ -167,12 +188,23 @@ defmodule ApiaryWeb.BacklogLive.Index do
             </p>
           </div>
 
+          <p
+            :if={@params.view == :closed}
+            id="backlog-view-line"
+            class="text-[0.8125rem] text-muted"
+          >
+            {gettext("%{items} that closed after they reached the backlog.",
+              items: SourceComponents.items_label(@item_noun)
+            )}
+          </p>
+
           <section :if={@row_count > 0} id="backlog-list" class="q-blk">
             <ul id="backlog-rows" class="q-rows" phx-update="stream">
               <BacklogComponents.ticket_row
                 :for={{dom_id, ticket} <- @streams.tickets}
                 id={dom_id}
                 ticket={ticket}
+                integration={ticket.integration.name}
                 patch={list_path(@current_scope, @params, ticket: ticket.id)}
                 now={@now}
               />
@@ -209,6 +241,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
      |> assign(
        page_title: gettext("Backlog"),
        item_noun: Adapters.workspace_item_noun(scope),
+       collection_noun: Adapters.workspace_collection_noun(scope),
        params: nil,
        page: nil,
        row_count: 0,
@@ -217,6 +250,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
        narrowed: %{}
      )
      |> load_options()
+     |> load_facts()
      |> stream_configure(:tickets, dom_id: &"ticket-#{&1.id}")
      |> stream(:tickets, [])}
   end
@@ -271,7 +305,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # reads what it shows again, with its scope, whatever the message names.
   @impl true
   def handle_info({:tickets_changed, _ids}, socket),
-    do: {:noreply, socket |> load_options() |> load()}
+    do: {:noreply, socket |> load_options() |> load_facts() |> load()}
 
   ## Reads
 
@@ -298,6 +332,20 @@ defmodule ApiaryWeb.BacklogLive.Index do
       end)
 
     assign(socket, options: options, narrowed: narrowed)
+  end
+
+  # The facts the head speaks from, and the integration its line links: the one that
+  # connects the organisation, or nil where none or several do.
+  defp load_facts(socket) do
+    facts = Backlog.backlog_facts(socket.assigns.current_scope)
+
+    integration =
+      case facts.integrations do
+        [integration] -> integration
+        _none_or_several -> nil
+      end
+
+    assign(socket, facts: facts, integration: integration)
   end
 
   # What `Apiary.Sources.Backlog.list_tickets/3` is asked: the params as the address has
@@ -486,7 +534,73 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   defp remove_words(:repository), do: gettext("Remove the collection filter")
   defp remove_words(:filed_by), do: gettext("Remove the filed-by filter")
-  defp remove_words(_key), do: nil
+  defp remove_words(:label), do: gettext("Remove the label filter")
+  defp remove_words(:updated), do: gettext("Remove the updated filter")
+
+  # Whether a value of Filed by is a bot's: one no person filed a ticket under, as the
+  # values offered or narrowed say.
+  defp bot?(options, narrowed, name) do
+    [Map.fetch!(options, :filed_by), Map.get(narrowed, :filed_by, [])]
+    |> Enum.concat()
+    |> Enum.any?(&(&1.key == name and &1.avatar == :bot))
+  end
+
+  # The line under the title: where the tickets come from, with the count and what follows
+  # it (`assigned/1`) a link to the integration.
+  defp sub_line(item_noun, assigned),
+    do:
+      rich_gettext("%{items} from the %{assigned}. Take one in to make it a work item.",
+        items: SourceComponents.items_label(item_noun),
+        assigned: assigned
+      )
+
+  # "41 repositories assigned to Main": a link to the integration's page in Organisation
+  # settings › Integrations where one integration connects the organisation, else words.
+  defp assigned(%{integration: nil} = assigns),
+    do: assigned_words(assigns.current_scope, assigns.facts, assigns.collection_noun)
+
+  defp assigned(assigns) do
+    assigns =
+      assign(assigns,
+        words: assigned_words(assigns.current_scope, assigns.facts, assigns.collection_noun),
+        title:
+          gettext("Organisation settings › Integrations › %{integration}",
+            integration: assigns.integration.name
+          )
+      )
+
+    ~H"""
+    <.link
+      id="backlog-integration"
+      navigate={~p"/#{@current_scope.organisation}/settings/integrations/#{@integration.id}"}
+      title={@title}
+    >{@words}</.link>
+    """
+  end
+
+  # "41 repositories assigned to Main", in the source's words for its collections.
+  defp assigned_words(scope, facts, collection_noun) do
+    n = facts.linked_collections
+
+    ngettext(
+      "%{number} %{collection} assigned to %{workspace}",
+      "%{number} %{collections} assigned to %{workspace}",
+      n,
+      number: Format.number(n),
+      collection: collection_word(collection_noun, 1),
+      collections: collection_word(collection_noun, :other),
+      workspace: scope.workspace.name
+    )
+  end
+
+  defp collection_word(%{one: one}, 1), do: one
+  defp collection_word(%{other: other}, _n), do: other
+
+  defp collection_word(nil, 1),
+    do: pgettext("source collection, when its adapter names none", "collection")
+
+  defp collection_word(nil, _n),
+    do: pgettext("source collection, when its adapter names none", "collections")
 
   defp match_words(page, params, item_noun) do
     n = Map.fetch!(page.counts, params.view)

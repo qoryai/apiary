@@ -19,7 +19,9 @@ defmodule Apiary.Sources.Backlog do
   # **A row** is a plain map, the shape `ApiaryWeb.BacklogComponents` draws (`row/0`).
   # Its `id` is the ticket's public id (`tk_…`), the one id the pages address a ticket
   # by; its `key` is the ticket's short name at its source, such as `#1231`, or nil,
-  # shown as text and never parsed. The source's ref is never in a row. A row's work item
+  # shown as text and never parsed. The source's ref is never in a row. Its
+  # `integration` is the adapter the ticket came through, by the adapter's name and its
+  # public id (`na_…`), read in the same query as the row. A row's work item
   # is the one of the ticket's organisation, adapter and ref, the key that makes it one
   # per ticket (`work_items` (`organisation_id`, `adapter_id`, `external_ref`)), never
   # the ticket's id: a work item taken in from an earlier record of the same ticket is
@@ -31,6 +33,9 @@ defmodule Apiary.Sources.Backlog do
   # declined; `:closed`, every ticket closed at its source; `:all`, every one. The counts
   # of each view, and the total, come from one grouped query, under the same search and
   # filters as the page, without its view.
+  #
+  # **The facts** (`backlog_facts/1`) name the integrations the organisation is connected
+  # through, each by its adapter's name and public id, read with the connections.
   #
   # Every text a ticket holds came from an adapter and is untrusted: these reads return it
   # as data. Every input a person gives (a search, a filter value, a cursor, a public id)
@@ -89,6 +94,13 @@ defmodule Apiary.Sources.Backlog do
   @type filer :: %{name: String.t(), kind: :person | :bot}
 
   @typedoc """
+  The integration a ticket came through, or one the organisation is connected through: its
+  adapter's name and its public id (`na_…`), the id its page in Organisation settings ›
+  Integrations is addressed by.
+  """
+  @type integration :: %{name: String.t(), id: String.t()}
+
+  @typedoc """
   A ticket's work item, as a row shows it: its number in the workspace, its state, its
   page in the workspace, and, when declined, who declined it, as `ApiaryWeb.People.email/1`
   names an account: the email address of an account in use, "Former member" for a deleted
@@ -110,6 +122,7 @@ defmodule Apiary.Sources.Backlog do
           url: String.t(),
           repository: String.t(),
           repository_id: Ecto.UUID.t(),
+          integration: integration,
           filer: filer,
           labels: [String.t()],
           comment_count: non_neg_integer,
@@ -128,6 +141,7 @@ defmodule Apiary.Sources.Backlog do
           url: String.t(),
           repository: String.t(),
           repository_id: Ecto.UUID.t(),
+          integration: integration,
           filer: filer,
           labels: [String.t()],
           comment_count: non_neg_integer,
@@ -184,9 +198,10 @@ defmodule Apiary.Sources.Backlog do
           avatar: :person | :bot | nil
         }
 
-  @typedoc "The facts an empty Backlog speaks from."
+  @typedoc "The facts an empty Backlog, and the page's line under its title, speak from."
   @type facts :: %{
           connected?: boolean,
+          integrations: [integration],
           linked_collections: non_neg_integer,
           listed?: boolean,
           open_tickets: non_neg_integer
@@ -204,9 +219,10 @@ defmodule Apiary.Sources.Backlog do
   # `params`, a map or a keyword list, with atom keys or their strings:
   #
   #   * `view:` one of `t:view/0` (`:open` by default), or its string;
-  #   * `search:` text the title, the key or the filer's name holds, any case, its `%`,
-  #     `_` and `\` as they are, the spaces around it left out; at most 1,024 characters
-  #     of valid UTF-8 with no NUL, else nothing matches;
+  #   * `search:` text the title, the key, the full form (the repository's title followed
+  #     by the key, `acme/shop#1231`, or the title alone without a key) or the filer's
+  #     name holds, any case, its `%`, `_` and `\` as they are, the spaces around it left
+  #     out; at most 1,024 characters of valid UTF-8 with no NUL, else nothing matches;
   #   * `repository:` a collection's id, the one Qory Apiary gives it, or a list of them:
   #     the tickets of those collections;
   #   * `filed_by:` a filer's name, as stored, or a list of them;
@@ -396,8 +412,8 @@ defmodule Apiary.Sources.Backlog do
   defp last_cursor(rows, sort), do: rows |> List.last() |> position(sort) |> cursor(sort)
 
   # Every ticket of the Backlog of the workspace `workspace_id` of the organisation
-  # `organisation_id`, with its collection, its connection and its work item, if any,
-  # named `:item`, `:collection`, `:connection` and `:work_item`.
+  # `organisation_id`, with its collection, its connection, its adapter and its work item,
+  # if any, named `:item`, `:collection`, `:connection`, `:adapter` and `:work_item`.
   defp backlog(organisation_id, workspace_id) do
     from i in Item,
       as: :item,
@@ -408,6 +424,7 @@ defmodule Apiary.Sources.Backlog do
       as: :connection,
       on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
       join: n in Node,
+      as: :adapter,
       on: n.id == c.adapter_id,
       left_join: w in WorkItem,
       as: :work_item,
@@ -444,8 +461,9 @@ defmodule Apiary.Sources.Backlog do
       pattern ->
         where(
           query,
-          [item: i],
+          [item: i, collection: c],
           ilike(i.title, ^pattern) or ilike(i.key, ^pattern) or
+            ilike(fragment("? || coalesce(?, '')", c.title, i.key), ^pattern) or
             ilike(i.filed_by_name, ^pattern)
         )
     end
@@ -697,13 +715,15 @@ defmodule Apiary.Sources.Backlog do
 
     query
     |> join(:left, [work_item: w], u in User, as: :declined_by, on: u.id == w.declined_by_id)
-    |> select([item: i, collection: c, work_item: w, declined_by: u], %{
+    |> select([item: i, collection: c, adapter: n, work_item: w, declined_by: u], %{
       id: i.public_id,
       key: i.key,
       title: i.title,
       url: i.url,
       repository: c.title,
       repository_id: c.id,
+      integration_name: n.name,
+      integration_id: n.public_id,
       filed_by_name: i.filed_by_name,
       filed_by_kind: i.filed_by_kind,
       labels: i.labels,
@@ -729,6 +749,7 @@ defmodule Apiary.Sources.Backlog do
       url: selected.url,
       repository: selected.repository,
       repository_id: selected.repository_id,
+      integration: %{name: selected.integration_name, id: selected.integration_id},
       filer: %{name: selected.filed_by_name, kind: kind(selected.filed_by_kind)},
       labels: selected.labels,
       comment_count: selected.comment_count,
@@ -978,25 +999,32 @@ defmodule Apiary.Sources.Backlog do
   ## The facts of an empty Backlog
 
   @doc false
-  # backlog_facts/1 is what an empty Backlog of the scope's workspace speaks from, to a
-  # person who may read its work items: whether the organisation has a connection that is
-  # connected (`connected?`); how many live collections of such a connection are linked to
-  # the workspace, with their Backlog on and with items (`linked_collections`); whether an
-  # adapter's listing has named such a
-  # connection (`listed?`, its `listed_at`); and how many open tickets the Backlog holds
-  # (`open_tickets`). Nothing connected, nothing linked, nothing listed and none open to
-  # anyone else.
+  # backlog_facts/1 is what an empty Backlog of the scope's workspace, and the line under
+  # the page's title, speak from, to a person who may read its work items: whether the
+  # organisation has a connection that is connected (`connected?`); the integrations of
+  # those connections, each by its adapter's name and public id, by name
+  # (`integrations`, `t:integration/0`); how many live collections of such a connection
+  # are linked to the workspace, with their Backlog on and with items
+  # (`linked_collections`); whether an adapter's listing has named such a connection
+  # (`listed?`, its `listed_at`); and how many open tickets the Backlog holds
+  # (`open_tickets`). Nothing connected, no integration, nothing linked, nothing listed
+  # and none open to anyone else.
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
       {:ok, organisation_id, %Workspace{id: workspace_id}} ->
-        {connected, listed} =
-          Repo.one(
+        # One row per adapter: its connected connections, and those a listing named.
+        connections =
+          Repo.all(
             from k in Connection,
+              join: n in Node,
+              on: n.id == k.adapter_id,
               where:
                 k.organisation_id == ^organisation_id and k.state == :connected and
                   is_nil(k.ended_at),
-              select: {count(k.id), count(k.listed_at)}
+              group_by: [n.id, n.name, n.public_id],
+              order_by: [asc: n.name, asc: n.public_id],
+              select: {%{name: n.name, id: n.public_id}, count(k.listed_at)}
           )
 
         linked =
@@ -1021,14 +1049,21 @@ defmodule Apiary.Sources.Backlog do
           |> Repo.one()
 
         %{
-          connected?: connected > 0,
+          connected?: connections != [],
+          integrations: Enum.map(connections, &elem(&1, 0)),
           linked_collections: linked,
-          listed?: listed > 0,
+          listed?: Enum.any?(connections, fn {_integration, listed} -> listed > 0 end),
           open_tickets: open
         }
 
       :error ->
-        %{connected?: false, linked_collections: 0, listed?: false, open_tickets: 0}
+        %{
+          connected?: false,
+          integrations: [],
+          linked_collections: 0,
+          listed?: false,
+          open_tickets: 0
+        }
     end
   end
 

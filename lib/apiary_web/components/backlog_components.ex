@@ -237,11 +237,21 @@ defmodule ApiaryWeb.BacklogComponents do
     ~H"""
     <span class={["q-bl-filer", @class]}>
       <.icon :if={@kind == :person} name="hero-user-circle-micro" class="q-bl-by-i size-3" />
-      <span :if={@kind == :bot} class="q-bl-bot-av" aria-hidden="true">
-        {String.first(@name)}
-      </span>
+      <.bot_tile :if={@kind == :bot} name={@name} />
       <span>{@name}</span>
     </span>
+    """
+  end
+
+  @doc """
+  A bot's neutral tile: its name's first letter, which a screen reader skips, since the
+  name follows it. A row's filer and Filed by's values in the Filter menu draw it.
+  """
+  attr :name, :string, required: true, doc: "the bot's name at the source"
+
+  def bot_tile(assigns) do
+    ~H"""
+    <span class="q-bl-bot-av" aria-hidden="true">{String.first(@name)}</span>
     """
   end
 

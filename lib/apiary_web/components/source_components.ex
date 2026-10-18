@@ -11,12 +11,14 @@ defmodule ApiaryWeb.SourceComponents do
   # no description. As written is the exact characters, interpolated, so HEEx escapes
   # them, with their spaces and line breaks kept and long lines wrapped.
   #
-  # **The words for a source's items** (`item/1`, `items/1`, `item_label/1`) are what its
-  # adapter calls one of them and many (`Apiary.Adapters.item_noun/1`, `%{one:, other:}`),
-  # or ticket and tickets where it names none (nil). They are lower case, and a sentence
-  # binds them as data, `%{item}` or `%{items}`, with no "a" or "an" before them. A page
-  # or a sentence about one item passes its source's; one about many, the words their
-  # sources share (`Apiary.Adapters.shared_item_noun/1`), nil where they differ.
+  # **The words for a source's items** (`item/1`, `items/1`, `item_label/1`,
+  # `items_label/1`) are what its adapter calls one of them and many
+  # (`Apiary.Adapters.item_noun/1`, `%{one:, other:}`), or ticket and tickets where it
+  # names none (nil). They are lower case, but for the labels, whose first letter is in
+  # upper case, and a sentence binds them as data, `%{item}` or `%{items}`, with no "a"
+  # or "an" before them. A page or a sentence about one item passes its source's; one
+  # about many, the words their sources share (`Apiary.Adapters.shared_item_noun/1`), nil
+  # where they differ.
   #
   # The formatted HTML is the one exception to the rule that a component never passes
   # text it did not write to `raw/1` (docs/ui.md): it is sanitised on the server, by an
@@ -42,8 +44,17 @@ defmodule ApiaryWeb.SourceComponents do
   # item_label/1 is `item/1` with its first letter in upper case: a label that is the
   # noun alone, such as a tab's.
   @spec item_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
-  def item_label(noun) do
-    {first, rest} = noun |> item() |> String.split_at(1)
+  def item_label(noun), do: noun |> item() |> capitalise()
+
+  @doc false
+  # items_label/1 is `items/1` with its first letter in upper case: the words for many of
+  # a source's items at the start of a sentence or as a label, "Tickets" where it names
+  # none.
+  @spec items_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
+  def items_label(noun), do: noun |> items() |> capitalise()
+
+  defp capitalise(words) do
+    {first, rest} = String.split_at(words, 1)
     String.upcase(first) <> rest
   end
 
