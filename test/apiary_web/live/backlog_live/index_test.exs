@@ -755,42 +755,47 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
   end
 
   describe "the Closed view's line" do
-    test "says which tickets Closed holds, on Closed alone", %{
-      conn: conn,
-      scope: scope,
-      shop: shop
-    } do
-      ticket(shop, state: :closed)
-      ticket(shop)
+    setup %{connection: connection} do
+      %{adapter: Repo.get!(Node, connection.adapter_id)}
+    end
 
-      {:ok, view, _html} = live(conn, page(scope))
+    test "says which tickets Closed holds and where they are closed, on Closed alone", ctx do
+      ticket(ctx.shop, state: :closed)
+      ticket(ctx.shop)
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
       refute has_element?(view, "#backlog-view-line")
 
       view |> element("#backlog-view-closed") |> render_click()
 
       assert words(view, "#backlog-view-line") ==
-               "Tickets that closed after they reached the backlog."
+               "Tickets that are closed on #{ctx.adapter.name}."
 
-      {:ok, view, _html} = live(conn, page(scope, "?view=taken"))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=taken"))
       refute has_element?(view, "#backlog-view-line")
     end
 
-    test "in the source's words for its items", %{
-      conn: conn,
-      scope: scope,
-      connection: connection,
-      shop: shop
-    } do
+    test "in the source's words for its items", %{connection: connection} = ctx do
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
           set: [item_noun_one: "bug", item_noun_other: "bugs"]
         )
 
-      ticket(shop, state: :closed)
-      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+      ticket(ctx.shop, state: :closed)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=closed"))
 
       assert words(view, "#backlog-view-line") ==
-               "Bugs that closed after they reached the backlog."
+               "Bugs that are closed on #{ctx.adapter.name}."
+    end
+
+    test "is left out where several integrations connect the organisation, none named", ctx do
+      ticket(ctx.shop, state: :closed)
+      other = ticket_connection_fixture(ctx.scope)
+      ticket(source_collection_fixture(ctx.scope, other, %{title: "acme/web"}))
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=closed"))
+      assert rows(view) |> length() == 1
+      refute has_element?(view, "#backlog-view-line")
     end
   end
 
