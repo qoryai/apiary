@@ -299,6 +299,21 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(html, ".q-wl-upd") == "2 d"
     end
 
+    test "its title and key as a page shows a text from an external system" do
+      html = row(work_item(%{title: "Checkout \u202Etotals", key: "#12\u200B04"}))
+
+      refute html =~ "\u202E"
+      refute html =~ "\u200B"
+      assert text(html, ".q-wl-ttl > b") == "Checkout totals"
+      assert attr(html, ".q-wl-tk span[title]", "title") == ["#1204"]
+    end
+
+    test "a title with nothing left to show is no title: the row says its number" do
+      html = row(work_item(%{title: "\u200B\u202E"}))
+
+      assert text(html, ".q-wl-ttl > b") == "#88"
+    end
+
     test "every status, with its you form" do
       for {overrides, words} <- [
             {%{status: :queued}, "Explore is queued"},
