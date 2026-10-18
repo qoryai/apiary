@@ -50,6 +50,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
   @views [:open, :taken, :declined, :closed]
+  @most_values 100
   @sorts [:updated, :created, :comments]
   @lists [:repository, :filed_by, :label]
   @filters @lists ++ [:updated]
@@ -151,7 +152,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
             </.sort_menu>
           </div>
 
-          <%!-- Always there, so a screen reader hears what a search or a filter left. --%>
+          <%!-- Always there, so a screen reader hears what a search or a filter
+               left. --%>
           <div id="backlog-status" role="status" class="q-status">
             <.filter_tokens
               id="backlog-tokens"
@@ -397,8 +399,14 @@ defmodule ApiaryWeb.BacklogLive.Index do
   defp many(""), do: []
   defp many(value) when is_binary(value), do: [value]
 
-  defp many(values) when is_list(values),
-    do: Enum.map(values, fn value -> if is_binary(value), do: value, else: "" end)
+  # A filter's list is read to its first 100 values, as many as the Backlog matches on,
+  # so a longer list in an address is not drawn in full, as checked values and in its
+  # token.
+  defp many(values) when is_list(values) do
+    values
+    |> Enum.take(@most_values)
+    |> Enum.map(fn value -> if is_binary(value), do: value, else: "" end)
+  end
 
   defp many(_value), do: [""]
 

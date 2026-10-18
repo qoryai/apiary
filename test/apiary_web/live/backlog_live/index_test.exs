@@ -142,6 +142,32 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       refute conn.resp_body =~ "Discount codes"
     end
 
+    # In the core's edition every level of member reaches every workspace in use, so the
+    # workspace a member does not reach is one deleted, marked for deletion.
+    test "is not found to a member of the organisation who does not reach the workspace",
+         %{scope: scope, connection: connection} do
+      platform = workspace_fixture(scope.organisation, "Platform")
+
+      collection =
+        source_collection_fixture(scope, connection, %{
+          title: "acme/platform",
+          workspace_id: platform.id
+        })
+
+      ticket(collection, title: "Discount codes are case-sensitive")
+      %{user: member} = member_fixture(scope, :member)
+
+      {:ok, platform} = Apiary.Deletion.delete_workspace(scope, platform.id, platform.slug)
+
+      assert workspace_scope(member, scope.workspace)
+      assert workspace_scope(member, platform) == nil
+
+      conn = build_conn() |> log_in_user(member) |> get(page(%{scope | workspace: platform}))
+
+      assert conn.status == 404
+      refute conn.resp_body =~ "Discount codes"
+    end
+
     test "a Backlog with no ticket draws nothing under its header", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, page(scope))
       assert has_element?(view, "h1", "Backlog")
@@ -437,6 +463,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       |> form("#backlog-filter-updated-form", %{"_filter" => "updated", "updated" => "24h"})
       |> render_change()
 
+      assert patched(view) == %{"label[]" => "checkout", "updated" => "24h"}
       assert rows(view) == ids([ctx.lea_shop])
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?updated=24h"))
@@ -605,6 +632,27 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
         assert rows(view) == [], query
         assert has_element?(view, "#backlog-views"), query
       end
+    end
+
+    test "a filter is read to its first 100 values, so a longer list is not drawn in full",
+         ctx do
+      labels = for n <- 1..150, do: "label-#{String.pad_leading("#{n}", 3, "0")}"
+
+      {:ok, view, _html} =
+        live(ctx.conn, page(ctx.scope, "?" <> Plug.Conn.Query.encode(label: labels)))
+
+      html = view |> render() |> LazyHTML.from_fragment()
+
+      checked = LazyHTML.query(html, "#backlog-filter-label-form input[checked]")
+      assert Enum.count(checked) == 100
+
+      drawn =
+        html
+        |> LazyHTML.query("#backlog-token-label .q-tok-v")
+        |> LazyHTML.text()
+        |> String.trim()
+
+      assert String.split(drawn, ", ") == Enum.take(labels, 100)
     end
 
     test "a view or an order it does not know is the default", ctx do
