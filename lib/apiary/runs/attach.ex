@@ -36,7 +36,7 @@ defmodule Apiary.Runs.Attach do
        attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
        ended it, its starter ended it without one, it was lost after its attach, or its
-       events were pruned. So is a run whose record is gone, to any attach but a repeat;
+       events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -79,8 +79,10 @@ defmodule Apiary.Runs.Attach do
   A run given an image at the attach (`runs.configured_image`) has its configuration
   composed with that image at the top level, beside the `security_policy`
   (`Apiary.Policy.ComposedConfiguration`), and the digest is the composed document's. A
-  workspace's policy that names an image gives no run an image. Any other run is given
-  the configuration as stored. Every run keeps what it started in, which its reloads carry (`runs.started_image_from`,
+  run that must build on its pool's default image, of a workspace whose policy names an
+  image, is given the policy without it. A workspace's policy that names an image gives
+  no run an image. Any other run is given the configuration as stored. Every run keeps
+  what it started in, which its reloads carry (`runs.started_image_from`,
   `runs.started_image`): the image it was given at the top level, the image the policy it
   was given names, or none.
 
