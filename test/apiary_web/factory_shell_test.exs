@@ -5,7 +5,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's words for the work item comments, the handover,
-  # the release, an adapter installed and a set-up started.
+  # the release, the prebuilt, an adapter installed and a set-up started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -368,7 +368,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers the actions on work items, the assigning, the Backlog switch, the handover, the release, also read, an adapter installed and a set-up started by their words, and no other",
+    test "the Activity filter offers the actions on work items, the assigning, the Backlog switch, the handover, the release, the prebuilt, also read, an adapter installed and a set-up started by their words, and no other",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -387,6 +387,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"dispatch.handover", "Runs handed over"} in options
       assert {"dispatch.release", "Runs given back"} in options
+      assert {"dispatch.prebuilt", "Images recorded"} in options
 
       assert {"target.set_further_repositories", "Also read"} in options
 
@@ -411,6 +412,7 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"collection.set_backlog",
             :"dispatch.handover",
             :"dispatch.release",
+            :"dispatch.prebuilt",
             :"target.set_further_repositories",
             :"adapter.install",
             :"adapter.setup"
@@ -617,6 +619,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute "work_item.comment_delete" in values
       refute "dispatch.handover" in values
       refute "dispatch.release" in values
+      refute "dispatch.prebuilt" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
@@ -709,6 +712,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute "work_item.comment" in values
       refute "dispatch.handover" in values
       refute "dispatch.release" in values
+      refute "dispatch.prebuilt" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",

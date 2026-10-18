@@ -308,17 +308,29 @@ defmodule Apiary.Dispatches.SchemaTest do
       for {id, assignments, params} <- [
             {run.id, "work_item_id = $2, take_in = 1, attempt = 1, of = 3", [work_item_id]},
             {run.id, "take_in = 1", []},
-            {run.id, "environment_ref = NULL", []},
+            {run.id, "environment_ref = NULL, environment_ref_at = NULL", []},
             {run.id, "environment_ref = ''", []},
             {run.id, "source_collection_id = NULL", []},
             {run.id, "pool_id = NULL", []},
             {run.id, "step = 'explore'", []},
             {explore.id, "pool_id = $2", [Ecto.UUID.dump!(pool.id)]},
-            {explore.id, "environment_ref = 'env-1'", []},
+            {explore.id, "environment_ref = 'env-1', environment_ref_at = now()", []},
             {explore.id, "step = 'prebuild'", []}
           ] do
         refused("dispatch_runs_step_shape_check", fn ->
           update!("dispatch_runs", id, assignments, params)
+        end)
+      end
+
+      # A prebuild has when it took its environment_ref, and a run without one has none.
+      assert run.environment_ref_at == run.queued_at
+
+      for {id, assignments} <- [
+            {run.id, "environment_ref_at = NULL"},
+            {explore.id, "environment_ref_at = now()"}
+          ] do
+        refused("dispatch_runs_environment_ref_at_check", fn ->
+          update!("dispatch_runs", id, assignments, [])
         end)
       end
     end

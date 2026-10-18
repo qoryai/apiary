@@ -186,6 +186,15 @@ defmodule Apiary.AdaptersTest do
         assert errors_on(changeset)[:name], inspect(name)
       end
 
+      for cp <- [0x202E, 0x2066, 0x85] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Adapters.create_adapter(admin, %{name: "acme#{<<cp::utf8>>}tracker"})
+
+        assert errors_on(changeset) == %{name: ["must not contain control characters"]}
+      end
+
+      assert {:ok, _} = Adapters.create_adapter(admin, %{name: "👩#{<<0x200D::utf8>>}💻 tracker"})
+
       assert {:ok, _} = Adapters.create_adapter(admin, %{name: String.duplicate("a", 64)})
       first = adapter_fixture(name: "Acme tracker")
 

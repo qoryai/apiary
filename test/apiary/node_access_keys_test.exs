@@ -73,6 +73,15 @@ defmodule Apiary.NodeAccessKeysTest do
       refute key.allow_secrets
     end
 
+    test "its label is refused with a control character or a bidirectional control" do
+      for cp <- [0x7, 0x85, 0x202E, 0x2069, 0x200E] do
+        changeset = AccessKey.changeset(%AccessKey{}, %{label: "build#{<<cp::utf8>>}01"})
+        assert errors_on(changeset) == %{label: ["must not contain control characters"]}
+      end
+
+      assert AccessKey.changeset(%AccessKey{}, %{label: "👩#{<<0x200D::utf8>>}💻 laptop"}).valid?
+    end
+
     test "is refused with one message, whatever is wrong with it", ctx do
       %{scope: scope, node: node} = ctx
       pair = ed25519_key_pair()

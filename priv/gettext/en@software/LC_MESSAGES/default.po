@@ -7362,6 +7362,11 @@ msgctxt "ticket image"
 msgid "Image: %{alt}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Images recorded"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "In %{organisation}"
@@ -11642,6 +11647,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Record"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Recorded the image a prebuild built"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

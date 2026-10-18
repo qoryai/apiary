@@ -13,9 +13,16 @@ defmodule ApiaryWeb.Endpoint do
 
   # The peer's address, the user agent and, behind a trusted proxy, `X-Forwarded-For` are
   # where a change came from, for the audit trail (`ApiaryWeb.Origin`).
+  #
+  # A websocket frame is bounded at 4 MiB: the largest legitimate event, a whole proposal
+  # edit at the field caps, is about 2.7 MB form-encoded. A fragmented message has the same
+  # bound, set for all of Bandit in config/config.exs; "/live" is the only socket outside
+  # dev, so it reaches nothing else. Longpoll has no such option and keeps Bandit's fixed
+  # 8 MB request-body read.
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
-      connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]
+      connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options],
+      max_frame_size: 4_194_304
     ],
     longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
 

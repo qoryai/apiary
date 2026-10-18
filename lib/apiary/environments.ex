@@ -13,9 +13,12 @@ defmodule Apiary.Environments do
   # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
   # held for that pool) when the collection is live, assigned to the pool's workspace, has a
   # target and an `environment_ref`, and the pool's record of it is missing, was queued
-  # for another `environment_ref`, or was retired after it was last queued. Queuing sets
-  # the record's `queued_ref` and `queued_at`, making the record when there was none. So
-  # the same `environment_ref` named again queues nothing. A change while a prebuild of
+  # for another `environment_ref` or another target, or was retired after it was last
+  # queued: the trigger is keyed on the target and the `environment_ref`. Queuing
+  # sets the record's `queued_ref`, `queued_at` and queued target (`queued_target_system`,
+  # `queued_target_path`), making the record when there was none. So the same
+  # `environment_ref` named again for the same target queues nothing, and a target that
+  # changes with the same `environment_ref` queues a prebuild. A change while a prebuild of
   # the collection waits for the pool sets the change's `environment_ref` on that waiting
   # one, in the same transaction as the record's `queued_ref`, so at most one waits per
   # collection and pool; a change while one is claimed or runs queues the one that waits
@@ -55,7 +58,19 @@ defmodule Apiary.Environments do
   # `record_release_failure(record, reason, now)` then records the last build as failed,
   # `released`, with the starter's `reason` and `now`: the last good build, `image`,
   # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
-  # queued.
+  # queued. A release of a prebuild whose ref is older than the image's records nothing
+  # (`newer_build?/2`).
+  #
+  # ## A build lost: `record_end_failure/3`
+  #
+  # `record_end_failure(record, cause, now)` records the last build as failed when the
+  # lost-run check ends a prebuild after its handover (`Apiary.Dispatches.RunEnd`), on the
+  # record of its collection and of the pool that claimed it, which the check locks with
+  # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
+  # attached it by its run key's `attach_by`, `timed_out` when it had neither an outcome
+  # nor an exit by its backstop, with `now` and no reason. The last good build is left as
+  # it was, and nothing is queued. A prebuild whose ref is older than the image's records
+  # nothing (`newer_build?/2`).
   #
   # ## A run's image: `image_for/2`
   #
@@ -63,6 +78,34 @@ defmodule Apiary.Environments do
   # live collections assigned to the pool's workspace with that target, only those with an
   # `environment_ref` count, and of their records for the pool, the one built last
   # (`built_at`) that is not retired gives its `image`; nil when there is none.
+  #
+  # ## A build recorded: `record_build/4`
+  #
+  # `record_build(dispatch_run, build, built_target, now)` records the build a prebuild's
+  # `prebuilt` reported (`Apiary.Dispatches.Prebuilt`) on the record of its pool and
+  # collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
+  # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
+  # differs from `queued_ref`, `built_at`, `now`, and the built target
+  # (`built_target_system`, `built_target_path`), the registered run's target. The last
+  # failure is cleared, and `retired_at`, the queued ref and the queued target are left as
+  # they are, so a build that lands after the collection's `environment_ref` went absent is
+  # stored and stays retired; nothing is queued. A record that is missing is made with the
+  # build, queued for the run's `environment_ref` when the run was queued, and for the
+  # built target. `built_queued_at` is written with the image: when the run took the
+  # `environment_ref` it built (`environment_ref_at`), which a wait again or a change while
+  # it waits sets anew, where its `queued_at` stays.
+  #
+  # ## A build whose ref is older than the image's: `newer_build?/2`
+  #
+  # `newer_build?(record, dispatch_run)` is whether the image `record` keeps was made by a
+  # prebuild that took its `environment_ref` after `dispatch_run` took its
+  # (`built_queued_at` later than the run's `environment_ref_at`), asked under the record's
+  # lock: the run's ref is older than the image's, and an older build never replaces a
+  # newer one. Then neither a `prebuilt` nor a
+  # failure of `dispatch_run` is written on the record: the image and the last build's
+  # failure stay as they are, and the run ends as it would otherwise. A record that is
+  # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
+  # every writer writes it as before.
 
   import Ecto.Query, only: [from: 2]
 
@@ -122,6 +165,23 @@ defmodule Apiary.Environments do
     :ok
   end
 
+  # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,
+  # as failed by the end of its prebuild, `cause` (`:lost` or `:timed_out`), at `now`,
+  # inside the caller's transaction (the moduledoc).
+  @doc false
+  @spec record_end_failure(Record.t(), :lost | :timed_out, DateTime.t()) :: :ok
+  def record_end_failure(%Record{id: id}, cause, %DateTime{} = now)
+      when is_binary(id) and cause in [:lost, :timed_out] do
+    in_transaction!("record_end_failure/3")
+
+    {1, _rows} =
+      Repo.update_all(from(r in Record, where: r.id == ^id),
+        set: [failure_cause: cause, failure_reason: nil, failed_at: now, updated_at: now]
+      )
+
+    :ok
+  end
+
   ## A run's image
 
   # image_for/2 is the image a run of `pool` for `target` starts in, or nil (the
@@ -145,6 +205,90 @@ defmodule Apiary.Environments do
         limit: 1,
         select: r.image
     )
+  end
+
+  ## A build whose ref is older than the image's
+
+  # newer_build?/2 is whether the image of `record`, locked by `lock_record/2`, was made by
+  # a prebuild that took its `environment_ref` after `dispatch_run` took its (the
+  # moduledoc).
+  @doc false
+  @spec newer_build?(Record.t() | nil, Apiary.Dispatches.DispatchRun.t()) :: boolean
+  def newer_build?(
+        %Record{built_queued_at: %DateTime{} = built_queued_at},
+        %Apiary.Dispatches.DispatchRun{environment_ref_at: %DateTime{} = ref_at}
+      ),
+      do: DateTime.compare(ref_at, built_queued_at) == :lt
+
+  def newer_build?(_record, %Apiary.Dispatches.DispatchRun{}), do: false
+
+  ## A build recorded
+
+  # record_build/4 records the build of the prebuild `dispatch_run` its `prebuilt`
+  # reported, built for `built_target` (nil for none), at `now`, inside the caller's
+  # transaction, which locked the record first (the moduledoc).
+  @doc false
+  @spec record_build(
+          Apiary.Dispatches.DispatchRun.t(),
+          %{
+            image: String.t(),
+            size: pos_integer,
+            commit: String.t(),
+            environment_ref: String.t()
+          },
+          %{system: String.t(), path: String.t()} | nil,
+          DateTime.t()
+        ) :: :ok
+  def record_build(
+        %Apiary.Dispatches.DispatchRun{pool_id: pool_id, source_collection_id: collection_id} =
+          run,
+        %{image: image, size: size, commit: commit, environment_ref: reported_ref},
+        built_target,
+        %DateTime{} = now
+      )
+      when is_binary(pool_id) and is_binary(collection_id) do
+    in_transaction!("record_build/4")
+
+    {system, path} =
+      if built_target, do: {built_target.system, built_target.path}, else: {nil, nil}
+
+    built = [
+      image: image,
+      size: size,
+      commit: commit,
+      built_at: now,
+      reported_ref: reported_ref,
+      built_target_system: system,
+      built_target_path: path,
+      built_queued_at: run.environment_ref_at,
+      failure_cause: nil,
+      failure_reason: nil,
+      failed_at: nil,
+      updated_at: now
+    ]
+
+    row =
+      Map.new(built)
+      |> Map.merge(%{
+        id: Ecto.UUID.generate(),
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        pool_id: pool_id,
+        source_collection_id: collection_id,
+        queued_ref: run.environment_ref,
+        queued_at: run.queued_at,
+        queued_target_system: system,
+        queued_target_path: path,
+        inserted_at: now
+      })
+
+    {1, _rows} =
+      Repo.insert_all(Record, [row],
+        on_conflict: [set: built],
+        conflict_target: [:pool_id, :source_collection_id]
+      )
+
+    :ok
   end
 
   ## The trigger
@@ -247,7 +391,9 @@ defmodule Apiary.Environments do
   end
 
   # Writes the record of `collection` for each of `pools` that is due, in one statement,
-  # and queues a prebuild held for each of those pools.
+  # and queues a prebuild held for each of those pools: due when the record is new, was
+  # queued for another `environment_ref` or another target, or was retired after it was
+  # last queued.
   defp queue(_collection, [], _now), do: []
 
   defp queue(%Collection{environment_ref: ref} = collection, pools, now) do
@@ -261,6 +407,8 @@ defmodule Apiary.Environments do
           source_collection_id: collection.id,
           queued_ref: ref,
           queued_at: now,
+          queued_target_system: collection.target_system,
+          queued_target_path: collection.target_path,
           inserted_at: now,
           updated_at: now
         }
@@ -270,11 +418,15 @@ defmodule Apiary.Environments do
       from r in Record,
         where:
           r.queued_ref != fragment("EXCLUDED.queued_ref") or
+            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_system", r.queued_target_system) or
+            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_path", r.queued_target_path) or
             (not is_nil(r.retired_at) and r.queued_at < r.retired_at),
         update: [
           set: [
             queued_ref: fragment("EXCLUDED.queued_ref"),
             queued_at: fragment("EXCLUDED.queued_at"),
+            queued_target_system: fragment("EXCLUDED.queued_target_system"),
+            queued_target_path: fragment("EXCLUDED.queued_target_path"),
             updated_at: fragment("EXCLUDED.updated_at")
           ]
         ]

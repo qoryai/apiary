@@ -65,6 +65,28 @@ defmodule Apiary.Kinds.ServicesTest do
       end
     end
 
+    test "refuses a title or a declaration's title with a control or a bidirectional control" do
+      for cp <- [0x0, 0x7, 0x85, 0x202E, 0x2066, 0x200F, 0x061C] do
+        title = "Status#{<<cp::utf8>>} API"
+
+        assert {:error, [{:definition_invalid, _}]} =
+                 ServiceDefinition.validate(definition(%{"title" => title})),
+               Integer.to_string(cp, 16)
+
+        declares = [%{"id" => "key", "title" => title, "name" => "STATUS_API_KEY"}]
+
+        assert {:error, [{:definition_invalid, _}]} =
+                 ServiceDefinition.validate(definition(%{"declares" => declares})),
+               Integer.to_string(cp, 16)
+      end
+
+      # The join controls stay, as in a name a person types (`Apiary.Names`).
+      assert {:ok, _} =
+               ServiceDefinition.validate(
+                 definition(%{"title" => "می#{<<0x200C::utf8>>}خواهم 👩#{<<0x200D::utf8>>}💻"})
+               )
+    end
+
     test "refuses a host name that names no host of the internet" do
       assert {:error, [{:connection_host_invalid, "status.internal"}]} =
                ServiceDefinition.validate(definition(%{"hosts" => ["status.internal"]}))

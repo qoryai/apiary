@@ -17,8 +17,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   # in: it builds the environment of a collection's target (`source_collection_id`) for
   # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
   # collection's `environment_ref` it was queued for. At most one waits per collection and
-  # pool (`Apiary.Dispatches.queue_prebuild/3`). Every other run is held for no pool and
-  # has none of the three (`20261017160000_queue_prebuilds`).
+  # pool (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at` is when it took that
+  # `environment_ref`: when it was queued, and again whenever the ref changes while it
+  # waits, or as it waits again with its environment record's `queued_ref`
+  # (`Apiary.Dispatches.Slots`); `queued_at` stays as it was, so the ref's time is this.
+  # Every other run is held for no pool and has none of the three
+  # (`20261017160000_queue_prebuilds`).
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`
@@ -44,7 +48,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # lapsed while another prebuild of its collection and pool waited or went back to
   # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
   # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
-  # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone.
+  # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
+  # `prebuilt`, a prebuild handed over whose starter reported the image it built
+  # (prebuilt.schema.json), its registered run left to its outcome.
   @end_causes [
     :released,
     :closed,
@@ -55,7 +61,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :superseded,
     :variables_invalid,
     :ticket_gone,
-    :inputs_invalid
+    :inputs_invalid,
+    :prebuilt
   ]
 
   # The step that builds a collection's environment for a node pool.
@@ -76,6 +83,7 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :end_cause, Ecto.Enum, values: @end_causes
     field :queued_at, :utc_datetime_usec
     field :environment_ref, :string
+    field :environment_ref_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -133,7 +141,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   # prebuild_changeset/2 is the changeset of a new run of the queue for the step
   # `prebuild`: the collection whose target it builds, the node pool it is held for, the
   # collection's `environment_ref` it is queued for, 1 to 200 characters, and when it was
-  # queued, waiting, with a fresh `run_id`. The organisation and the workspace are the
+  # queued, which is when it took that ref (`environment_ref_at`), waiting, with a fresh
+  # `run_id`. The organisation and the workspace are the
   # caller's to put.
   @doc false
   @spec prebuild_changeset(t, map) :: Ecto.Changeset.t()
@@ -142,6 +151,7 @@ defmodule Apiary.Dispatches.DispatchRun do
     |> cast(attrs, [:source_collection_id, :pool_id, :environment_ref, :queued_at])
     |> validate_required([:source_collection_id, :pool_id, :environment_ref, :queued_at])
     |> validate_length(:environment_ref, min: 1, max: 200, count: :codepoints)
+    |> then(&put_change(&1, :environment_ref_at, get_field(&1, :queued_at)))
     |> put_change(:step, @prebuild)
     |> put_change(:run_id, Ecto.UUID.generate())
     |> put_change(:state, :waiting)

@@ -16,11 +16,12 @@ defmodule Apiary.Targets do
 
   **What its runs also read.** A target's further repositories (`further_repositories/1`)
   are the paths in its system its runs read after it, in the order a person put them:
-  owner/name each, of the target's owner, each once, the target's path and the list,
-  joined with commas, at most 256 bytes. `set_further_repositories/3` writes the whole
-  list at once (`target.set_further_repositories`, owners and admins, asked of the
-  target's workspace, with the `factory` feature), and refuses a list that breaks a rule,
-  so a saved list never does; nothing else writes it.
+  owner/name each, no segment starting with a dash, of the target's owner, each once, the
+  target's path and the list, joined with commas, at most 256 bytes.
+  `set_further_repositories/3` writes the whole list at once
+  (`target.set_further_repositories`, owners and admins, asked of the target's workspace,
+  with the `factory` feature), and refuses a list that breaks a rule, so a saved list
+  never does; nothing else writes it.
 
   **The notation.** A target is written as its path, with its system before it only where
   the same path is in more than one system of the workspace
@@ -701,10 +702,11 @@ defmodule Apiary.Targets do
     * `{:error, changeset}` for a list that breaks a rule, the rules a run's
       QORY_RUN_REPOSITORIES keeps, the first of them on
       `further_repositories`, naming its line, and nothing written: owner/name, two
-      segments of letters, digits, `.`, `_` and `-`, neither `.` nor `..`, and neither
-      `.git` in any case; at most 200 characters; of the target's owner, and
-      neither the target's path nor a line before it, all compared without case; and the
-      target's path and the list, joined with commas, at most 256 bytes;
+      segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
+      `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
+      target's owner, and neither the target's path nor a line before it, all compared
+      without case; and the target's path and the list, joined with commas, at most 256
+      bytes;
     * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
       `{:error, :not_found}` for a target that is gone.
   """

@@ -8,9 +8,10 @@ defmodule Apiary.Runs.RunVariables do
   # fetches, comma-separated with no space, the run's target first.
   #
   # The rules, on every system alike: the system a host name, 1 to 253 of a-z, 0-9, dot
-  # and dash, not ending in a dot; the list at most 256 bytes; every entry exactly
-  # owner/name, two segments, each of A-Z, a-z, 0-9, dot, underscore and dash and neither
-  # being `.`, `..` or `.git` in any case, at most 200 characters; every entry of the first
+  # and dash, with no empty label: not starting or ending in a dot, no two dots together;
+  # the list at most 256 bytes; every entry exactly owner/name, two segments, each of A-Z,
+  # a-z, 0-9, dot, underscore and dash, not starting with a dash, and neither being `.`,
+  # `..` or `.git` in any case, at most 200 characters; every entry of the first
   # entry's owner, its first segment, compared without case; and no entry twice, compared
   # without case. Both are also held to the contract's rules for any variable. A pair that
   # breaks a rule is an error, never a smaller map: a run without its repositories would
@@ -43,7 +44,8 @@ defmodule Apiary.Runs.RunVariables do
   The run variables of a run whose target is `system` and `path`, with `picked` the
   further repositories, in order, after the target's path. `{:ok, variables}`, the two
   names each with its value, or `{:error, :system_invalid}` or
-  `{:error, :repositories_invalid}` for the first that breaks its rule.
+  `{:error, :repositories_invalid}` for the first that breaks its rule: no segment of a
+  path starts with a dash, and the system has no empty label.
   """
   @spec for_target(%{system: String.t(), path: String.t()}, [String.t()]) ::
           {:ok, variables} | {:error, :system_invalid | :repositories_invalid}
@@ -78,12 +80,12 @@ defmodule Apiary.Runs.RunVariables do
   rules of QORY_RUN_REPOSITORIES: `:ok`, or `{:error, {reason, index}}` for the first they
   break, its index the place in `picked` counted from 1. Each path in turn, in this order:
   `:not_a_path`, not exactly owner/name of two segments of A-Z, a-z, 0-9, dot, underscore
-  and dash, neither `.`, `..` nor `.git` in any case; `:too_long`, more than 200
-  characters; `:other_owner`, its owner not `path`'s first segment; `:itself`, `path`
-  again; `:repeats`, a path before it again; the last three compared without case. Then
-  the list: `:too_long_together`, `path` and `picked` joined with commas over 256 bytes,
-  with the index of the last path. An empty `picked` keeps them. Whether `path` itself
-  is owner/name is not asked here: `for_target/2` asks it.
+  and dash, neither starting with a dash nor being `.`, `..` or `.git` in any case;
+  `:too_long`, more than 200 characters; `:other_owner`, its owner not `path`'s first
+  segment; `:itself`, `path` again; `:repeats`, a path before it again; the last three
+  compared without case. Then the list: `:too_long_together`, `path` and `picked` joined
+  with commas over 256 bytes, with the index of the last path. An empty `picked` keeps
+  them. Whether `path` itself is owner/name is not asked here: `for_target/2` asks it.
   """
   @spec check_repositories(String.t(), [term]) ::
           :ok | {:error, {repositories_reason, pos_integer}}
@@ -132,10 +134,12 @@ defmodule Apiary.Runs.RunVariables do
     |> Jason.OrderedObject.new()
   end
 
+  # No empty label: no dot first or last, and no two together.
   defp system?(system),
     do:
       is_binary(system) and Regex.match?(@host, system) and
-        not String.ends_with?(system, ".")
+        not String.starts_with?(system, ".") and not String.ends_with?(system, ".") and
+        not String.contains?(system, "..")
 
   defp entry?(entry), do: shaped?(entry) and byte_size(entry) <= @max_entry
 
@@ -149,10 +153,11 @@ defmodule Apiary.Runs.RunVariables do
 
   defp shaped?(_entry), do: false
 
+  # Not starting with a dash, so no segment reads as an option.
   defp segment?(segment),
     do:
-      Regex.match?(@segment, segment) and segment not in [".", ".."] and
-        String.downcase(segment) != ".git"
+      Regex.match?(@segment, segment) and not String.starts_with?(segment, "-") and
+        segment not in [".", ".."] and String.downcase(segment) != ".git"
 
   # A path's owner, its first segment, compared without case.
   defp owner(path), do: path |> String.split("/") |> hd() |> String.downcase()
