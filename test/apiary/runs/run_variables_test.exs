@@ -17,11 +17,11 @@ defmodule Apiary.Runs.RunVariablesTest do
       assert RunVariables.for_target(target()) ==
                {:ok, %{@system => "git.example.com", @repositories => "acme/shop"}}
 
-      assert RunVariables.for_target(target(), ["acme/docs", "other/tools"]) ==
+      assert RunVariables.for_target(target(), ["acme/docs", "acme/tools/cli"]) ==
                {:ok,
                 %{
                   @system => "git.example.com",
-                  @repositories => "acme/shop,acme/docs,other/tools"
+                  @repositories => "acme/shop,acme/docs,acme/tools/cli"
                 }}
     end
 
@@ -43,33 +43,45 @@ defmodule Apiary.Runs.RunVariablesTest do
           do: assert(RunVariables.for_target(target(system)) == {:error, :system_invalid})
     end
 
-    test "every entry is owner/name, of A-Z, a-z, 0-9, dot, underscore and dash" do
-      for path <- ["acme/shop", "Acme-1/shop.web_2", "a/b", "acme/.github", "acme/..x"] do
+    test "every entry is a path of two or more segments of A-Z, a-z, 0-9, dot, underscore and dash" do
+      for path <- [
+            "acme/shop",
+            "Acme-1/shop.web_2",
+            "a/b",
+            "acme/.config",
+            "acme/..x",
+            "acme/shop/web",
+            "group/sub/team/project"
+          ] do
         assert {:ok, %{@repositories => ^path}} =
                  RunVariables.for_target(target("git.example.com", path))
 
-        listed = "other/docs," <> path
+        # The same path picked beside a target of its owner.
+        first = (path |> String.split("/") |> hd()) <> "/first"
+        listed = first <> "," <> path
 
         assert {:ok, %{@repositories => ^listed}} =
-                 RunVariables.for_target(target("git.example.com", "other/docs"), [path])
+                 RunVariables.for_target(target("git.example.com", first), [path])
       end
 
       for path <- [
             "",
             "shop",
             "acme/",
+            "acme/shop/",
             "/shop",
             "acme//shop",
-            "acme/shop/web",
             "acme/sh op",
             "acme/shop,acme/docs",
             "acme/shop\n",
-            "acme/shép",
+            "acme/sh\u00e9p",
             "acme/.",
             "acme/..",
+            "acme/./shop",
             "./shop",
             "acme/.git",
             "acme/.GIT",
+            "acme/shop/.git",
             nil
           ] do
         assert RunVariables.for_target(target("git.example.com", path)) ==
@@ -82,11 +94,18 @@ defmodule Apiary.Runs.RunVariablesTest do
     test "an entry is at most 200 characters" do
       at = segment(100) <> "/" <> segment(99)
       past = segment(100) <> "/" <> segment(100)
+      nested_at = segment(50) <> "/" <> segment(50) <> "/" <> segment(98)
+      nested_past = segment(50) <> "/" <> segment(50) <> "/" <> segment(99)
 
       assert {:ok, _} = RunVariables.for_target(target("git.example.com", at))
+      assert {:ok, _} = RunVariables.for_target(target("git.example.com", nested_at))
 
-      assert RunVariables.for_target(target("git.example.com", past)) ==
-               {:error, :repositories_invalid}
+      for path <- [past, nested_past],
+          do:
+            assert(
+              RunVariables.for_target(target("git.example.com", path)) ==
+                {:error, :repositories_invalid}
+            )
     end
 
     test "the list is at most 256 bytes" do
@@ -102,28 +121,27 @@ defmodule Apiary.Runs.RunVariablesTest do
       assert RunVariables.for_target(target(), past) == {:error, :repositories_invalid}
     end
 
-    test "no entry twice: the target's repository among the picked ones is one" do
-      assert RunVariables.for_target(target(), ["acme/shop"]) == {:error, :repositories_invalid}
+    test "no entry twice, compared without case" do
+      for picked <- [["acme/shop"], ["acme/Shop"], ["ACME/SHOP"], ["acme/docs", "Acme/Docs"]],
+          do: assert(RunVariables.for_target(target(), picked) == {:error, :repositories_invalid})
 
-      assert RunVariables.for_target(target(), ["acme/docs", "acme/docs"]) ==
-               {:error, :repositories_invalid}
-
-      # Elsewhere than github.com, names differ by case.
-      assert {:ok, %{@repositories => "acme/shop,acme/Shop"}} =
-               RunVariables.for_target(target(), ["acme/Shop"])
+      # A path below another is another entry.
+      assert {:ok, %{@repositories => "acme/shop,acme/shop/web"}} =
+               RunVariables.for_target(target(), ["acme/shop/web"])
     end
 
-    test "on github.com, every entry is of the first one's owner, and no entry twice, in any case" do
-      github = target("github.com", "acme/shop")
+    test "every entry is of the first entry's owner, compared without case, on every system" do
+      for system <- ["git.example.com", "code.example.org"] do
+        assert {:ok, %{@repositories => "acme/shop,acme/docs,ACME/tools,Acme/a/b"}} =
+                 RunVariables.for_target(target(system), ["acme/docs", "ACME/tools", "Acme/a/b"])
 
-      assert {:ok, %{@system => "github.com", @repositories => "acme/shop,acme/docs,ACME/tools"}} =
-               RunVariables.for_target(github, ["acme/docs", "ACME/tools"])
-
-      assert RunVariables.for_target(github, ["other/docs"]) == {:error, :repositories_invalid}
-      assert RunVariables.for_target(github, ["acme/Shop"]) == {:error, :repositories_invalid}
-
-      # Elsewhere, the owners may differ.
-      assert {:ok, _} = RunVariables.for_target(target(), ["other/docs"])
+        for picked <- [["other/docs"], ["acme/docs", "other/docs"], ["other/acme/docs"]],
+            do:
+              assert(
+                RunVariables.for_target(target(system), picked) ==
+                  {:error, :repositories_invalid}
+              )
+      end
     end
   end
 

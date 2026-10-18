@@ -7,24 +7,19 @@ defmodule Apiary.Runs.RunVariables do
   # repositories are on, and QORY_RUN_REPOSITORIES, the repositories its preparation
   # fetches, comma-separated with no space, the run's target first.
   #
-  # Each is held here to the rule the run's preparation holds it to, so a run is never
-  # handed a value its preparation refuses: the system a host name, 1 to 253 of a-z, 0-9,
-  # dot and dash, not ending in a dot; the list at most 256 bytes, every entry
-  # owner/name, two segments of A-Z, a-z, 0-9, dot, underscore and dash, neither `.`,
-  # `..` nor `.git` in any case, at most 200 characters, and no entry twice; on
-  # github.com, where names are not case-sensitive, no entry twice in any case, and every
-  # entry of the first entry's owner in any case. Both are also held to the contract's
-  # rules for any variable. A pair that breaks a rule is an error, never a smaller map: a
-  # run without its repositories would start in an empty folder.
+  # The rules, on every system alike: the system a host name, 1 to 253 of a-z, 0-9, dot
+  # and dash, not ending in a dot; the list at most 256 bytes; every entry a path of two
+  # or more segments joined by slashes, each of A-Z, a-z, 0-9, dot, underscore and dash and
+  # none `.`, `..` or `.git` in any case, at most 200 characters; every entry of the first
+  # entry's owner, its first segment, compared without case; and no entry twice, compared
+  # without case. Both are also held to the contract's rules for any variable. A pair that
+  # breaks a rule is an error, never a smaller map: a run without its repositories would
+  # start in an empty folder.
   #
   # Pure: it reads no database.
 
   @system "QORY_RUN_SYSTEM"
   @repositories "QORY_RUN_REPOSITORIES"
-
-  # The system on which owners and repository names are not case-sensitive, and every
-  # repository of a run is of one owner.
-  @one_owner_system "github.com"
 
   @host ~r/\A[a-z0-9.-]{1,253}\z/
   @segment ~r/\A[A-Za-z0-9._-]+\z/
@@ -53,7 +48,7 @@ defmodule Apiary.Runs.RunVariables do
       not system?(system) ->
         {:error, :system_invalid}
 
-      not repositories?(system, entries) ->
+      not repositories?(entries) ->
         {:error, :repositories_invalid}
 
       true ->
@@ -82,16 +77,16 @@ defmodule Apiary.Runs.RunVariables do
       is_binary(system) and Regex.match?(@host, system) and
         not String.ends_with?(system, ".")
 
-  defp repositories?(system, entries) do
+  defp repositories?(entries) do
     Enum.all?(entries, &entry?/1) and
       byte_size(Enum.join(entries, ",")) <= @max_list and
-      once_each?(system, entries) and
-      one_owner?(system, entries)
+      once_each?(entries) and
+      one_owner?(entries)
   end
 
   defp entry?(entry) when is_binary(entry) and byte_size(entry) <= @max_entry do
     case String.split(entry, "/") do
-      [owner, name] -> segment?(owner) and segment?(name)
+      [_owner, _name | _rest] = segments -> Enum.all?(segments, &segment?/1)
       _other -> false
     end
   end
@@ -103,19 +98,15 @@ defmodule Apiary.Runs.RunVariables do
       Regex.match?(@segment, segment) and segment not in [".", ".."] and
         String.downcase(segment) != ".git"
 
-  defp once_each?(@one_owner_system, entries),
-    do: entries |> Enum.map(&String.downcase/1) |> unique?()
+  defp once_each?(entries) do
+    lowered = Enum.map(entries, &String.downcase/1)
+    length(Enum.uniq(lowered)) == length(lowered)
+  end
 
-  defp once_each?(_system, entries), do: unique?(entries)
-
-  defp unique?(entries), do: length(Enum.uniq(entries)) == length(entries)
-
-  defp one_owner?(@one_owner_system, [first | _] = entries) do
+  defp one_owner?([first | _] = entries) do
     owner = &(&1 |> String.split("/") |> hd() |> String.downcase())
     Enum.all?(entries, &(owner.(&1) == owner.(first)))
   end
-
-  defp one_owner?(_system, _entries), do: true
 
   defp variable?({name, value}),
     do:
