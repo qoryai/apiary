@@ -43,7 +43,7 @@ defmodule Apiary.Targets do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Run, Target}
+  alias Apiary.Runs.{Connection, Run, RunVariables, Target}
   alias Apiary.Targets.Pin
 
   @page_size 50
@@ -679,10 +679,6 @@ defmodule Apiary.Targets do
 
   ## What its runs also read
 
-  @segment ~r/\A[A-Za-z0-9._-]+\z/
-  @entry_max 200
-  @joined_max 256
-
   @doc """
   further_repositories/1 is the further repositories of `target`: the paths in its system
   that its runs also read after it, in the order they were saved, `[]` for none. It reads
@@ -702,12 +698,13 @@ defmodule Apiary.Targets do
   saved one writes nothing. The answers:
 
     * `{:ok, target}`, the target as saved;
-    * `{:error, changeset}` for a list that breaks a rule, the first of them on
+    * `{:error, changeset}` for a list that breaks a rule, the rules a run's
+      QORY_RUN_REPOSITORIES keeps, the first of them on
       `further_repositories`, naming its line, and nothing written: owner/name, two
       segments of letters, digits, `.`, `_` and `-`, neither `.` nor `..`, and neither
-      `.git` in any case; at most #{@entry_max} characters; of the target's owner, and
+      `.git` in any case; at most 200 characters; of the target's owner, and
       neither the target's path nor a line before it, all compared without case; and the
-      target's path and the list, joined with commas, at most #{@joined_max} bytes;
+      target's path and the list, joined with commas, at most 256 bytes;
     * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
       `{:error, :not_found}` for a target that is gone.
   """
@@ -751,9 +748,9 @@ defmodule Apiary.Targets do
   defp check_further(%Target{} = target, lines) do
     paths = Enum.map(lines, &elem(&1, 0))
 
-    case further_problem(target.path, paths) do
+    case RunVariables.check_repositories(target.path, paths) do
       :ok -> :ok
-      {reason, n} -> {:error, further_error(target, lines, reason, n)}
+      {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
     end
   end
 
@@ -772,60 +769,7 @@ defmodule Apiary.Targets do
     {:ok, saved}
   end
 
-  # The rules a saved list keeps, in one place: the first that `paths`, in order, after
-  # the target's `path`, breaks, `{reason, n}` with n the place of the path in `paths`,
-  # counted from 1, or `:ok`. The reasons are words of no page; `further_error/4` says
-  # them.
-  @spec further_problem(String.t(), [term]) :: :ok | {atom, pos_integer}
-  defp further_problem(path, paths) do
-    owner = String.downcase(owner(path))
-    seen = MapSet.new([String.downcase(path)])
-
-    entry =
-      paths
-      |> Enum.with_index(1)
-      |> Enum.reduce_while(seen, fn {entry, n}, seen ->
-        lowered = if is_binary(entry), do: String.downcase(entry)
-
-        cond do
-          not owner_name?(entry) -> {:halt, {:not_a_path, n}}
-          byte_size(entry) > @entry_max -> {:halt, {:too_long, n}}
-          String.downcase(owner(entry)) != owner -> {:halt, {:other_owner, n}}
-          lowered == String.downcase(path) -> {:halt, {:itself, n}}
-          MapSet.member?(seen, lowered) -> {:halt, {:repeats, n}}
-          true -> {:cont, MapSet.put(seen, lowered)}
-        end
-      end)
-
-    cond do
-      is_tuple(entry) ->
-        entry
-
-      paths == [] ->
-        :ok
-
-      byte_size(Enum.join([path | paths], ",")) > @joined_max ->
-        {:too_long_together, length(paths)}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp owner_name?(entry) when is_binary(entry) do
-    case String.split(entry, "/") do
-      [owner, name] -> segment?(owner) and segment?(name)
-      _other -> false
-    end
-  end
-
-  defp owner_name?(_entry), do: false
-
-  defp segment?(segment),
-    do:
-      Regex.match?(@segment, segment) and segment not in [".", ".."] and
-        String.downcase(segment) != ".git"
-
+  # The target's owner, the first segment of its path, as the refusals name it.
   defp owner(path), do: path |> String.split("/") |> hd()
 
   # The changeset of a refused list: the reason of the path at place `n` of `lines`, in

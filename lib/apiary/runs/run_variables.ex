@@ -14,7 +14,9 @@ defmodule Apiary.Runs.RunVariables do
   # entry's owner, its first segment, compared without case; and no entry twice, compared
   # without case. Both are also held to the contract's rules for any variable. A pair that
   # breaks a rule is an error, never a smaller map: a run without its repositories would
-  # start in an empty folder.
+  # start in an empty folder. `check_repositories/2` says which rule further repositories
+  # break, and where, for the save that refuses them (`Apiary.Targets`), so a saved list
+  # keeps the same rules.
   #
   # Pure: it reads no database.
 
@@ -33,6 +35,10 @@ defmodule Apiary.Runs.RunVariables do
 
   @type variables :: %{required(String.t()) => String.t()}
 
+  @typedoc "Why a list of further repositories breaks the rules (`check_repositories/2`)."
+  @type repositories_reason ::
+          :not_a_path | :too_long | :other_owner | :itself | :repeats | :too_long_together
+
   @doc """
   The run variables of a run whose target is `system` and `path`, with `picked` the
   further repositories, in order, after the target's path. `{:ok, variables}`, the two
@@ -48,7 +54,7 @@ defmodule Apiary.Runs.RunVariables do
       not system?(system) ->
         {:error, :system_invalid}
 
-      not repositories?(entries) ->
+      not (entry?(path) and check_repositories(path, picked) == :ok) ->
         {:error, :repositories_invalid}
 
       true ->
@@ -57,6 +63,53 @@ defmodule Apiary.Runs.RunVariables do
         if Enum.all?(variables, &variable?/1),
           do: {:ok, variables},
           else: {:error, :repositories_invalid}
+    end
+  end
+
+  @doc """
+  Whether `picked`, the further repositories in order after the target's `path`, keep the
+  rules of QORY_RUN_REPOSITORIES: `:ok`, or `{:error, {reason, index}}` for the first they
+  break, its index the place in `picked` counted from 1. Each path in turn, in this order:
+  `:not_a_path`, not exactly owner/name of two segments of A-Z, a-z, 0-9, dot, underscore
+  and dash, neither `.`, `..` nor `.git` in any case; `:too_long`, more than 200
+  characters; `:other_owner`, its owner not `path`'s first segment; `:itself`, `path`
+  again; `:repeats`, a path before it again; the last three compared without case. Then
+  the list: `:too_long_together`, `path` and `picked` joined with commas over 256 bytes,
+  with the index of the last path. An empty `picked` keeps them. Whether `path` itself
+  is owner/name is not asked here: `for_target/2` asks it.
+  """
+  @spec check_repositories(String.t(), [term]) ::
+          :ok | {:error, {repositories_reason, pos_integer}}
+  def check_repositories(path, picked) when is_binary(path) and is_list(picked) do
+    owner = owner(path)
+    seen = MapSet.new([String.downcase(path)])
+
+    found =
+      picked
+      |> Enum.with_index(1)
+      |> Enum.reduce_while(seen, fn {entry, n}, seen ->
+        cond do
+          not shaped?(entry) -> {:halt, {:not_a_path, n}}
+          byte_size(entry) > @max_entry -> {:halt, {:too_long, n}}
+          owner(entry) != owner -> {:halt, {:other_owner, n}}
+          String.downcase(entry) == String.downcase(path) -> {:halt, {:itself, n}}
+          MapSet.member?(seen, String.downcase(entry)) -> {:halt, {:repeats, n}}
+          true -> {:cont, MapSet.put(seen, String.downcase(entry))}
+        end
+      end)
+
+    cond do
+      is_tuple(found) ->
+        {:error, found}
+
+      picked == [] ->
+        :ok
+
+      byte_size(Enum.join([path | picked], ",")) > @max_list ->
+        {:error, {:too_long_together, length(picked)}}
+
+      true ->
+        :ok
     end
   end
 
@@ -77,37 +130,25 @@ defmodule Apiary.Runs.RunVariables do
       is_binary(system) and Regex.match?(@host, system) and
         not String.ends_with?(system, ".")
 
-  defp repositories?(entries) do
-    Enum.all?(entries, &entry?/1) and
-      byte_size(Enum.join(entries, ",")) <= @max_list and
-      once_each?(entries) and
-      one_owner?(entries)
-  end
+  defp entry?(entry), do: shaped?(entry) and byte_size(entry) <= @max_entry
 
-  defp entry?(entry) when is_binary(entry) and byte_size(entry) <= @max_entry do
-    # Exactly two segments, so no entry can be nested inside another.
+  # Exactly two segments, so no entry can be nested inside another.
+  defp shaped?(entry) when is_binary(entry) do
     case String.split(entry, "/") do
       [owner, name] -> segment?(owner) and segment?(name)
       _other -> false
     end
   end
 
-  defp entry?(_entry), do: false
+  defp shaped?(_entry), do: false
 
   defp segment?(segment),
     do:
       Regex.match?(@segment, segment) and segment not in [".", ".."] and
         String.downcase(segment) != ".git"
 
-  defp once_each?(entries) do
-    lowered = Enum.map(entries, &String.downcase/1)
-    length(Enum.uniq(lowered)) == length(lowered)
-  end
-
-  defp one_owner?([first | _] = entries) do
-    owner = &(&1 |> String.split("/") |> hd() |> String.downcase())
-    Enum.all?(entries, &(owner.(&1) == owner.(first)))
-  end
+  # A path's owner, its first segment, compared without case.
+  defp owner(path), do: path |> String.split("/") |> hd() |> String.downcase()
 
   defp variable?({name, value}),
     do:
