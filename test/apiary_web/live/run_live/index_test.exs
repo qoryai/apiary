@@ -450,6 +450,16 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute narrowed |> render() |> String.replace(~s(value="#{host}"), "") =~ "\u202E"
     end
 
+    test "a host with nothing left to show is marked in the Filter menu, picking it as sent",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(), host: "\u200B")
+      view = open(conn, scope)
+
+      assert has_element?(view, "#filter-host-form .q-filter-option > span > bdi", "\uFFFD")
+      assert has_element?(view, ~s(#filter-host-form .q-filter-option > span[title="\uFFFD"]))
+      assert has_element?(view, ~s(#filter-host-form input[value="\u200B"]))
+    end
+
     test "a title with nothing left to show is no title: the row is its id", %{
       conn: conn,
       scope: scope
@@ -1855,6 +1865,20 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           ),
         newer: started_run(scope, shop(), about: %{"title" => "newer"}, ago: 100)
       }
+    end
+
+    test "a log line as a page shows a text a run sent", %{conn: conn, older: older, scope: scope} do
+      # A bidirectional override and a C1 control, which the log's plain lines keep.
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("ok \u202Edone\u0085 here\n")}
+      event_fixture(older, 60, "run.log", log)
+      {:ok, _} = Projector.project(older)
+
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert text(view, "#runs-preview-log") == "ok done\uFFFD here"
+      refute view |> element("#runs-preview-log") |> render() =~ "\u202E"
     end
 
     test "below 1920 px there is none, and a row is its link", %{conn: conn, scope: scope} do

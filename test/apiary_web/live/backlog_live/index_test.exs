@@ -956,6 +956,25 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert words(view, "#backlog-token-repository") == "Repository " <> shown("acme/web")
     end
 
+    test "a value with nothing left to show, offered or only chosen: marked", ctx do
+      web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      ticket(web, title: "Fix the login", labels: ["\u200B"])
+      # The first a ticket carries, so it is offered; the second only chosen.
+      query = "?" <> Plug.Conn.Query.encode(label: ["\u200B", "\u2060"])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      form = view |> element("#backlog-filter-label-form") |> render() |> LazyHTML.from_fragment()
+
+      shown =
+        form |> LazyHTML.query(".q-filter-option > span > bdi") |> Enum.map(&LazyHTML.text/1)
+
+      assert Enum.count(shown, &(&1 == "\uFFFD")) == 2
+
+      token = view |> element("#backlog-token-label") |> render() |> LazyHTML.from_fragment()
+      values = token |> LazyHTML.query(".q-tok-v bdi") |> Enum.map(&LazyHTML.text/1)
+      assert values == ["\uFFFD", "\uFFFD"]
+    end
+
     test "a token's values: each isolated in its own <bdi>, all of them in its title", ctx do
       web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
       ticket(web, title: "Fix the login", labels: ["\u05D1\u05D0\u05D2", "checkout"])

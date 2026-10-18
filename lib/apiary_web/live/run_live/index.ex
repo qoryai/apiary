@@ -1566,12 +1566,10 @@ defmodule ApiaryWeb.RunLive.Index do
       else: [{label, value, 0} | options]
   end
 
-  # A runtime and a host are what the runs reported, shown as a text Forager sent is
-  # (`Apiary.ExternalText.line/1`); an option's value stays as sent, which the filter
-  # matches. A node is named by the organisation.
-  defp shown_options(options, name) when name in ["runtime", "host"],
-    do: for({label, value, count} <- options, do: {Apiary.ExternalText.line(label), value, count})
-
+  # A runtime and a host are what the runs reported: `filter_options/1` shows each label
+  # as a text Forager sent, marked where nothing is left of it, so it is given as sent; an
+  # option's value stays as sent, which the filter matches. A node is named by the
+  # organisation.
   defp shown_options(options, _name), do: options
 
   # A filter's value as a section and a token show it: a host, a runtime or a target may

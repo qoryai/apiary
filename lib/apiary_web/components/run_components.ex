@@ -2294,7 +2294,7 @@ defmodule ApiaryWeb.RunComponents do
             role="log"
             aria-live="off"
             aria-label={gettext("The last lines of the log")}
-          >{Enum.join(@preview.lines, "\n")}</pre>
+          >{Enum.map_join(@preview.lines, "\n", &Apiary.ExternalText.lines/1)}</pre>
           <p :if={@preview.lines == []} id={"#{@id}-log"} class="q-pv-nolog">
             {if @preview.run.log_pruned_at,
               do: gettext("The log was pruned."),
