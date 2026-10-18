@@ -129,6 +129,20 @@ defmodule Apiary.Kinds.PatternMemoryTest do
       assert PatternMemory.estimate("[[:alpha:][](?:a){7000}]") == cap()
       assert PatternMemory.estimate("[\\Q]\\E[](?:a){7000}]") == cap()
       assert PatternMemory.estimate("[]a](?:a){7000}") == cap()
+
+      # Before the class, PCRE skips each \E, each \Q\E and one ^, in any order, so the
+      # "]" after them is a literal and the class ends at the next one: the group is
+      # repeated 1500 times. Measured on OTP 29, with "u" and with no options, each holds
+      # at most 62114 bytes.
+      for opening <- ["[\\E", "[^\\E", "[\\Q\\E", "[\\E^", "[\\E\\E", "[\\Q\\E\\E^"],
+          options <- [[:unicode, :ucp], []] do
+        source = "(?:a" <> opening <> "])]){1500}"
+        assert PatternMemory.estimate(source, options) == cap(), source
+      end
+
+      # A second ^ is a literal, and a \Q with something before its \E ends the skipping.
+      assert PatternMemory.estimate("[^\\E^](?:a){7000}") == cap()
+      assert PatternMemory.estimate("[\\Qa\\E](?:a){7000}]") == cap()
     end
   end
 
@@ -204,13 +218,53 @@ defmodule Apiary.Kinds.PatternMemoryTest do
       end
     end
 
+    # JSV reads "~1", then "~0", then percent-decodes, so "%7E1" is the property "~1",
+    # not "/". Traced: the pattern of "~1" built twice, that of "/" once.
+    test "reads a pointer's segments in JSV's order" do
+      big = "(?:a){7000}"
+      small = "^s$"
+
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "~1" => %{"pattern" => big},
+          "/" => %{"pattern" => small},
+          "r" => %{"$ref" => "#/properties/%7E1"}
+        }
+      }
+
+      assert PatternMemory.schema(schema) == 2 * one(big) + one(small)
+
+      schema = put_in(schema, ["properties", "r", "$ref"], "#/properties/~1")
+      assert PatternMemory.schema(schema) == one(big) + 2 * one(small)
+    end
+
+    # JSV reads "#/" as it reads "#", the root, and builds it once; a reference to the
+    # root counts the root once more.
+    test "counts \"#/\" as the root" do
+      schema = %{"type" => "object", "properties" => %{"a" => %{"pattern" => "^w$"}}}
+
+      for ref <- ["#", "#/"] do
+        assert PatternMemory.schema(put_in(schema, ["properties", "b"], %{"$ref" => ref})) ==
+                 2 * one("^w$"),
+               ref
+      end
+    end
+
     test "counts an unresolved reference as the whole schema and the meta-schemas" do
       whole = %{"type" => "object", "properties" => %{"a" => %{"pattern" => "^w$"}}}
 
       # A build of the draft 2020-12 meta-schema compiles its 2 patterns, traced.
       meta = one("^[A-Za-z_][-A-Za-z0-9._]*$") + one("^[^#]*#?$")
 
-      for ref <- ["https://json-schema.org/draft/2020-12/schema", "other.json#/a", "#/nowhere"] do
+      # A malformed "%" is not decoded, and no place has its name.
+      for ref <- [
+            "https://json-schema.org/draft/2020-12/schema",
+            "other.json#/a",
+            "#/nowhere",
+            "#/properties/%zz",
+            "#/%"
+          ] do
         schema = put_in(whole, ["properties", "b"], %{"$ref" => ref})
         assert PatternMemory.schema(schema) >= 2 * one("^w$") + meta, ref
       end

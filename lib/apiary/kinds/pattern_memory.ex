@@ -38,11 +38,14 @@ defmodule Apiary.Kinds.PatternMemory do
   # refuses a pattern whose code passes 64 KiB ("regular expression is too large"), so a
   # pattern's code is counted at most at the cap. Each named group adds an entry, as long
   # as the longest name and 16 bytes more, to a name table outside that limit.
-  # Measured on OTP 29 (PCRE2 10.47), compiled as JSV compiles a "pattern": the smallest
-  # patterns hold 219 to 432 bytes, the largest code 63630 bytes, and one pattern of
-  # 1501 named groups, the longest name 128 bytes, 209461 bytes. Over 78 families of
-  # patterns, each estimate is at least 1.3 times what the compiled pattern holds; 1.3
-  # is at the cap.
+  # Measured on OTP 29 (PCRE2 10.47), compiled as JSV compiles a "pattern", the sources'
+  # binaries left out: the smallest patterns hold 217 to 423 bytes, the largest code 63626
+  # bytes, and one pattern of 1501 named groups, the longest name 128 bytes, 209461 bytes.
+  # Over 84 families of patterns, each estimate is at least 1.04 times the greater of what
+  # the compiled pattern holds read with the sources' binaries and without: 1.04 for 1000
+  # escapes `\x{10FFFF}`, 1.3 at the cap. Compiled with no options, as
+  # `Apiary.Kinds.RegexFormat` compiles a value, over 61 families, at least 1.19, for 1000
+  # escapes `\x{ff}`.
   @fixed 1024
   @cap 81_920
   @name 16
@@ -56,9 +59,9 @@ defmodule Apiary.Kinds.PatternMemory do
   (see the module's documentation). The weights are measured for the options JSV
   compiles a pattern with, `:unicode` and `:ucp` (Regex's `"u"`), and for none, as
   `Apiary.Kinds.RegexFormat` compiles a value; under any other option the code is
-  counted at the cap. A pattern that may turn on extended mode, `(?x)`, or
-  holds a callout, `(?C`, a verb, `(*`, or a group construct not read here, is counted at
-  the cap as well.
+  counted at the cap. A pattern that may turn on extended mode, `(?x)`, or holds a
+  callout, `(?C`, a verb, `(*`, or a group construct not read here, is counted at the cap
+  as well.
   """
   @spec estimate(String.t(), [atom]) :: pos_integer
   def estimate(source, options \\ [:unicode, :ucp]) when is_binary(source) and is_list(options) do
@@ -213,20 +216,12 @@ defmodule Apiary.Kinds.PatternMemory do
   defp upto(<<_, rest::binary>>, c), do: upto(rest, c)
   defp upto(<<>>, _c), do: <<>>
 
-  # A class after its "[": the bytes up to its "]", and what follows. A "]" first, after
-  # an optional "^", is a literal; [:name:], [.x.] and [=x=] end where PCRE2's
-  # check_posix_syntax ends them; \Q...\E and escapes are taken whole. So the class ends
-  # where PCRE ends it.
+  # A class after its "[": the bytes up to its "]", and what follows. PCRE first skips,
+  # in any order, each "\E", each "\Q\E" and one "^"; a "]" after them is a literal.
+  # [:name:], [.x.] and [=x=] end where PCRE2's check_posix_syntax ends them; \Q...\E and
+  # escapes are taken whole. So the class ends where PCRE ends it.
   defp class(source) do
-    body =
-      case source do
-        <<"^]", rest::binary>> -> rest
-        <<"^", rest::binary>> -> rest
-        <<"]", rest::binary>> -> rest
-        rest -> rest
-      end
-
-    rest = class_body(body)
+    rest = source |> class_start(false) |> class_body()
     bytes = byte_size(source) - byte_size(rest)
 
     case rest do
@@ -234,6 +229,12 @@ defmodule Apiary.Kinds.PatternMemory do
       rest -> {bytes, rest}
     end
   end
+
+  defp class_start(<<"\\E", rest::binary>>, negated?), do: class_start(rest, negated?)
+  defp class_start(<<"\\Q\\E", rest::binary>>, negated?), do: class_start(rest, negated?)
+  defp class_start(<<"^", rest::binary>>, false), do: class_start(rest, true)
+  defp class_start(<<"]", rest::binary>>, _negated?), do: rest
+  defp class_start(rest, _negated?), do: rest
 
   defp class_body(<<"]", _::binary>> = rest), do: rest
   defp class_body(<<>>), do: <<>>
@@ -398,16 +399,21 @@ defmodule Apiary.Kinds.PatternMemory do
     do: whole + Map.get(state.anchors, String.trim_leading(ref, "#"), 0)
 
   defp reference(_ref, %{nested_id: true}, whole), do: whole
-  defp reference("#", state, _whole), do: Map.fetch!(state.costs, [])
+  defp reference(ref, state, _whole) when ref in ["#", "#/"], do: Map.fetch!(state.costs, [])
 
+  # Each segment read as JSV reads it: "~1", then "~0", then percent-decoding. A segment
+  # URI.decode/1 raises on, as an earlier Elixir may on a malformed "%", counts the whole
+  # schema.
   defp reference("#/" <> pointer, state, whole) do
     path =
       pointer
       |> String.split("/")
-      |> Enum.map(&(&1 |> URI.decode() |> String.replace("~1", "/") |> String.replace("~0", "~")))
+      |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~") |> URI.decode()))
       |> Enum.reverse()
 
     Map.get(state.costs, path, whole)
+  rescue
+    ArgumentError -> whole
   end
 
   defp reference("#" <> name, state, whole), do: Map.get(state.anchors, name, whole)
@@ -417,14 +423,14 @@ defmodule Apiary.Kinds.PatternMemory do
   # reversed (so the paths share their tails), each anchor's, the distinct references, and
   # whether an `$id` is below the root. Its work grows with the schema's bytes, and each
   # reference adds a lookup: measured on OTP 29, 4000 patterns of about 55 bytes, 270941
-  # bytes of JSON, take 899182 reductions, and 1000 settings, each against a pattern,
-  # 136704.
+  # bytes of JSON, take 923843 reductions, and 1000 settings, each against a pattern,
+  # 138772.
   defp walk(%{} = map, path, root?, state) do
     {sum, state} =
       Enum.reduce(map, {0, state}, fn {key, value}, {sum, state} ->
         state = noted(key, value, root?, state)
         {below, state} = walk(value, [key | path], false, state)
-        {sum + own(key, value) + below, state}
+        {sum + patterns_at(key, value) + below, state}
       end)
 
     anchors =
@@ -450,12 +456,12 @@ defmodule Apiary.Kinds.PatternMemory do
 
   defp walk(_scalar, _path, _root?, state), do: {0, state}
 
-  defp own("pattern", source) when is_binary(source), do: estimate(source)
+  defp patterns_at("pattern", source) when is_binary(source), do: estimate(source)
 
-  defp own("patternProperties", %{} = properties),
+  defp patterns_at("patternProperties", %{} = properties),
     do: properties |> Map.keys() |> Enum.map(&estimate/1) |> Enum.sum()
 
-  defp own(_key, _value), do: 0
+  defp patterns_at(_key, _value), do: 0
 
   defp noted("$ref", ref, _root?, state) when is_binary(ref),
     do: %{state | refs: MapSet.put(state.refs, ref)}

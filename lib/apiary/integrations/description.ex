@@ -250,10 +250,10 @@ defmodule Apiary.Integrations.Description do
   # and 10 s, a bound only on a check that runs while it counts few reductions.
   # Measured on OTP 29, the estimate of the patterns included: valid settings of 4096
   # values, two lists and an object of 1024 entries each, the entries of one list checked
-  # against 32 patterns, and 64 lists and objects deep, do 1464033 reductions, 3.4 times
-  # fewer than the budget; 1000 settings, each against a pattern, 824296, of which the
-  # estimate is 136704; a setting of 15000 bytes against `"format": "regex"`, its compile
-  # charged in reductions (`Apiary.Kinds.RegexFormat`) and its estimate, 228185. The
+  # against 32 patterns, and 64 lists and objects deep, do 1461001 reductions, 3.4 times
+  # fewer than the budget; 1000 settings, each against a pattern, 829367, of which the
+  # estimate is 138772; a setting of 15000 bytes against `"format": "regex"`, its compile
+  # charged in reductions (`Apiary.Kinds.RegexFormat`) and its estimate, 228189. The
   # valid settings of 4096 values, in a description of 261772 bytes whose definitions
   # hold 1000 strings of 234 bytes, pass within 347969 words of heap, the binaries the
   # process refers to counted, 6.0 times fewer than the budget. Without the budget, a
