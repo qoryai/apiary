@@ -351,6 +351,8 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "what a target's runs also read" do
+    @describetag needs: :factory
+
     setup do
       %{scope: scope} = sign_up_fixture()
 
