@@ -4,23 +4,24 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # **The list.** The page's head; the stages strip, Explore, Confirm and Shape, each with
   # its count and what in it needs a look, and a link to that stage alone; the views as
   # tabs, each with its count (Open, Waiting on you, Declined, Closed); Search; one Filter
-  # menu (Owner, Repository, Updated); the filters in force as tokens under the bar with
-  # Clear and how many work items match; the line of a view that needs one; and the rows
+  # menu (Owner, Repository, Updated); Sort (Recently updated, Newest), on every view but
+  # Waiting on you; the filters in force as tokens under the bar with Clear and how many
+  # work items match; the line of a view that needs one; and the rows
   # (`ApiaryWeb.WorkItemListComponents`). The Open view shows the stages as bands, each
   # with its first rows and Show all, a link to that stage alone; a stage alone, and every
   # other view, is a page of rows with the pager. A workspace with no work item, under no
   # search and no filter, shows why and how a work item starts.
   #
   # Everything the list shows is in the address, so a narrowed list can be linked and
-  # Back works: `view`, `stage`, `q`, `owner`, `repository`, `updated`, and a page's
-  # cursor, `after` or `before`. The page hands each to `Apiary.WorkItems`
+  # Back works: `view`, `stage`, `q`, `owner`, `repository`, `updated`, `sort`, and a
+  # page's cursor, `after` or `before`. The page hands each to `Apiary.WorkItems`
   # (`list_work_items/3`, `list_bands/3`), which checks it: a value it does not know
   # matches nothing, or is its default, and breaks nothing. An owner is named by Qory
   # Apiary's id for the account, a work item's page by its number in the workspace, and a
   # row by Qory Apiary's id for the work item (`wi_…`).
   #
   # **Waiting on you** holds the live work items the reader owns whose proposal waits at
-  # Confirm, oldest first; the sidebar counts the same
+  # Confirm, oldest first whatever the sort, with no Sort; the sidebar counts the same
   # (`Apiary.WorkItems.count_waiting_on/1`).
   #
   # **Texts from an external system** (a ticket's title and key, a collection's title) are
@@ -48,6 +49,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   @views [:open, :you, :declined, :closed]
   @stages [:explore, :confirm, :shape]
   @filters [:owner, :repository, :updated]
+  @sorts [:updated, :created]
   @lists [:owner, :repository]
 
   @impl true
@@ -129,6 +131,22 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                 />
               </:updated>
             </.work_item_filter>
+            <.sort_menu
+              :if={@params.view != :you}
+              id="work-items-sort"
+              current={sort_label(@params.sort)}
+              label={gettext("Sort")}
+            >
+              <.menu_heading title={gettext("Sort by")} />
+              <.menu_item
+                :for={sort <- sorts()}
+                id={"work-items-sort-#{sort}"}
+                patch={list_path(@current_scope, @params, sort: sort)}
+                checked={@params.sort == sort}
+              >
+                {sort_label(sort)}
+              </.menu_item>
+            </.sort_menu>
           </div>
 
           <.work_item_tokens
@@ -405,6 +423,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       owner: none_if_empty(params.owner),
       repository: none_if_empty(params.repository),
       updated: params.updated,
+      sort: params.sort,
       after: params.after,
       before: params.before
     }
@@ -508,7 +527,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # not a string is one that matches nothing (`""` in a list, `:invalid` alone), shown as
   # nothing. `q` is the search as the field shows it, `search` what is searched: a search
   # that is not a string matches nothing (`Apiary.WorkItems.list_work_items/3`). A stage
-  # the page does not know matches nothing.
+  # the page does not know matches nothing; a sort it does not know is Recently updated.
   defp read(params) do
     q = params["q"]
 
@@ -520,6 +539,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       owner: many(params["owner"]),
       repository: many(params["repository"]),
       updated: one(params["updated"]),
+      sort: choice(params["sort"], @sorts, :updated),
       after: one(params["after"]),
       before: one(params["before"])
     }
@@ -547,8 +567,8 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp one(_value), do: :invalid
 
   # The list with `changes` made to the params, of the socket or given: a change of the
-  # view, the stage, the search or a filter shows the first page; `after:` and `before:`
-  # name a page.
+  # view, the stage, the search, a filter or the sort shows the first page; `after:` and
+  # `before:` name a page.
   defp list_path(%Phoenix.LiveView.Socket{} = socket, changes),
     do: list_path(socket.assigns.current_scope, socket.assigns.params, changes)
 
@@ -567,6 +587,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           owner: params.owner,
           repository: params.repository,
           updated: params.updated,
+          sort: params.sort != :updated && params.sort,
           after: params.after,
           before: params.before
         ],
@@ -591,6 +612,10 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   defp stages, do: @stages
   defp filters, do: @filters
+  defp sorts, do: @sorts
+
+  defp sort_label(:updated), do: gettext("Recently updated")
+  defp sort_label(:created), do: gettext("Newest")
 
   defp filter_key("owner"), do: :owner
   defp filter_key("repository"), do: :repository
