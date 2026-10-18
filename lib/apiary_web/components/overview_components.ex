@@ -1083,26 +1083,32 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
   else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
-  a text Forager sent is (`Apiary.ExternalText.line/1`). A title with nothing left to show
-  is no title.
+  a text Forager sent is (`Apiary.ExternalText.line/1`). A title or a command line with
+  nothing left to show is none.
   """
-  def row_title(run), do: shown_title(run) || Apiary.ExternalText.line(command_title(run))
+  def row_title(run), do: shown_title(run) || shown_command(run) || short_id(run.public_id)
 
   # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
   # left to show.
-  defp shown_title(run) do
-    case Apiary.ExternalText.line(given_title(run)) do
-      "" -> nil
-      title -> title
+  defp shown_title(run), do: shown(given_title(run))
+
+  # A run's command line, as a page shows it, cut to 40 characters; nil where it has none,
+  # or one with nothing left to show.
+  defp shown_command(%{command: command, args: args}) when is_binary(command) do
+    case shown(Enum.join([command | args || []], " ")) do
+      nil -> nil
+      line -> if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
     end
   end
 
-  defp command_title(%{command: command, args: args}) when is_binary(command) do
-    line = Enum.join([command | args || []], " ")
-    if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
-  end
+  defp shown_command(_run), do: nil
 
-  defp command_title(%{public_id: public_id}), do: short_id(public_id)
+  defp shown(text) do
+    case Apiary.ExternalText.line(text) do
+      "" -> nil
+      shown -> shown
+    end
+  end
 
   ## Active targets
 

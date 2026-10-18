@@ -205,6 +205,18 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def label({title, name}), do: gettext("%{title} (%{name})", title: title, name: name)
 
   @doc """
+  hint/1 is a setting's description, as a page shows an integration's text
+  (`Apiary.ExternalText.line/1`): nil where it has none, or one with nothing left to show,
+  so the setting has no hint.
+  """
+  def hint(%{description: description}) do
+    case Apiary.ExternalText.line(description) do
+      "" -> nil
+      hint -> hint
+    end
+  end
+
+  @doc """
   name/1 is a connection's title and, in mono beside it, its machine name (`names/1`),
   given the connection or its names.
   """
