@@ -64,6 +64,22 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
     Apiary.Repo.reload!(adapter)
   end
 
+  # The adapter's first key, received an hour ago and revoked, then a key after it.
+  defp replaced(adapter, admin) do
+    %{access_key: old} = installed_key_fixture(adapter)
+
+    {1, _} =
+      Apiary.Repo.update_all(from(k in Apiary.AccessKeys.AccessKey, where: k.id == ^old.id),
+        set: [received_at: DateTime.add(DateTime.utc_now(), -3600)]
+      )
+
+    {:ok, old} =
+      Apiary.AccessKeys.revoke_access_key(admin, Apiary.Repo.reload!(old))
+
+    %{access_key: new} = installed_key_fixture(adapter)
+    {old, new}
+  end
+
   # The key last used `seconds` ago, as an accepted request of the adapter records.
   defp used(key, seconds) do
     at = DateTime.add(DateTime.utc_now(:second), -seconds)
@@ -153,6 +169,31 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       refute html =~ "Replace"
     end
 
+    test "with no key once its key was revoked: it connects by itself once it is running, and no Connect it",
+         %{conn: conn, adapter: adapter, admin: admin} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      {:ok, _} = Apiary.AccessKeys.revoke_access_key(admin, key)
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") ==
+               "No key yet · it connects by itself once it is running"
+
+      refute html =~ "it enrols at its first start"
+      refute has_element?(lv, "#adapter-connect-it")
+      assert words(lv, "#adapter-overview-installed") == "With Qory Apiary"
+    end
+
+    test "with a key after a revoked one: the Installed row says it connected by itself",
+         %{conn: conn, adapter: adapter, admin: admin} do
+      {_old, new} = replaced(adapter, admin)
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-installed") ==
+               "With Qory Apiary · Connected by itself, with a code from Qory Apiary, #{Format.datetime(new.received_at)}"
+
+      refute html =~ "Enrolled at its first start"
+    end
+
     test "set up and not seen lately: its state keeps its words, with when it was last seen",
          %{conn: conn, adapter: adapter} do
       %{access_key: key} = installed_key_fixture(adapter)
@@ -177,6 +218,25 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       refute has_element?(lv, "#code-new-button")
       refute has_element?(lv, ~s{[id^="code-"]})
       refute has_element?(lv, "#adapter-add")
+    end
+
+    test "with a key after a revoked one: no first-start sentence, the cards say how each came",
+         %{conn: conn, adapter: adapter, admin: admin} do
+      {old, new} = replaced(adapter, admin)
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/keys"))
+
+      refute has_element?(lv, "#adapter-keys-installed")
+
+      assert words(lv, "#adapter-keys-revoking") ==
+               "Revoking it makes the adapter enrol again with a new key."
+
+      assert words(lv, "#key-#{new.key_id}-added") ==
+               "Connected by itself, with a code from Qory Apiary, #{Format.datetime(new.received_at)}"
+
+      assert words(lv, "#key-#{old.key_id}-added") ==
+               "Enrolled at its first start, #{Format.datetime(old.received_at)}"
+
+      assert words(lv, "#key-#{new.key_id}-secret") == "Kept by the adapter; never shown"
     end
 
     test "a Get the command asked anyway is refused, and said so", %{conn: conn, adapter: adapter} do
@@ -235,6 +295,8 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
                "Turned off in the AWS stack or the Compose file · Last seen #{Format.relative(at)}"
 
       assert has_element?(lv, ~s{#adapter-state[class~="q-sdot"] > i[aria-hidden="true"]})
+      # Its words wrap where the line is narrow, rather than run past it.
+      assert has_element?(lv, ~s{#adapter-state[class~="!whitespace-normal"]})
       refute has_element?(lv, ~s{#adapter-state[class*="q-sdot-"]})
       refute has_element?(lv, "#adapter-setup-box")
       refute html =~ "it enrols at its first start"

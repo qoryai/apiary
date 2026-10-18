@@ -27,8 +27,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   #
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) enrols by itself
   # at its first start. Its Overview offers no Connect it: before its first start, its
-  # state says it enrols then; an Installed row says it was installed with Qory Apiary
-  # and, once it holds a key, when that key was enrolled. While it can be set up
+  # state says it enrols then, and, once its keys were revoked, that it connects by itself
+  # once it is running; an Installed row says it was installed with Qory Apiary and, once
+  # it holds a key, when that key was enrolled: at its first start, for its first key,
+  # else by itself, with a code from Qory Apiary. While it can be set up
   # (`ApiaryWeb.AdapterComponents.settable?/3`), a Set it up box above the rows says that
   # until then organisations can't install it, with Set up and the address it opens, in
   # place of the Set-up row. While the setting lists its name
@@ -67,8 +69,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     end
   end
 
-  # Whether the adapter holds an active key, when one of its keys was last used, and, for
-  # an adapter installed with Qory Apiary, when its newest active key was enrolled.
+  # Whether the adapter holds an active key, when one of its keys was last used, whether
+  # it ever held a key, revoked ones too, and, for an adapter installed with Qory Apiary,
+  # its newest active key: when it was enrolled, and whether it is the adapter's first
+  # (`ApiaryWeb.AdapterLive.AccessKey.first_key?/2`).
   defp assign_connected(%{assigns: %{current_scope: scope, adapter: adapter}} = socket) do
     seen =
       case Adapters.last_seen(scope, adapter) do
@@ -77,14 +81,19 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       end
 
     active = AccessKeys.active_keys(adapter)
+    keys = Adapters.list_keys(scope, adapter)
 
     enrolled =
       case active do
-        [_one | _more] when is_binary(adapter.installed_as) -> List.last(active).received_at
-        _none -> nil
+        [_one | _more] when is_binary(adapter.installed_as) ->
+          key = List.last(active)
+          %{at: key.received_at, first: ApiaryWeb.AdapterLive.AccessKey.first_key?(key, keys)}
+
+        _none ->
+          nil
       end
 
-    assign(socket, connected: active != [], seen: seen, enrolled: enrolled)
+    assign(socket, connected: active != [], seen: seen, keyed: keys != [], enrolled: enrolled)
   end
 
   @impl true
@@ -384,6 +393,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           paths={@paths}
           connected={@connected}
           seen={@seen}
+          keyed={@keyed}
           enrolled={@enrolled}
           sync={@sync}
           listed={Adapters.listed?(@adapter)}
@@ -436,9 +446,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :connected, :boolean, required: true
   attr :seen, DateTime, default: nil
 
-  attr :enrolled, DateTime,
+  attr :keyed, :boolean, required: true, doc: "whether it ever held a key, revoked ones too"
+
+  attr :enrolled, :map,
     default: nil,
-    doc: "for an adapter installed with Qory Apiary, when its newest active key was enrolled"
+    doc:
+      "for an adapter installed with Qory Apiary, its newest active key: when it was enrolled (`at`), and whether it is the adapter's first (`first`)"
 
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
@@ -493,8 +506,11 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       <dt class="text-faint">{gettext("State")}</dt>
       <dd id="adapter-overview-state" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <%= if @off do %>
-          <span id="adapter-state" class="q-sdot !text-[13.5px]/5 !text-base-content">
-            <i aria-hidden="true"></i><span>{gettext(
+          <span
+            id="adapter-state"
+            class="q-sdot !items-start !whitespace-normal !text-[13.5px]/5 !text-base-content"
+          >
+            <i aria-hidden="true" class="mt-[6px]"></i><span>{gettext(
               "Turned off in the AWS stack or the Compose file"
             )}</span>
           </span>
@@ -514,9 +530,13 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
             connected={@connected}
             seen={@seen}
           />
-          <span :if={!@connected and @listed} class="text-faint">
+          <span :if={!@connected and @listed and !@keyed} class="text-faint">
             <span aria-hidden="true">·</span>
             {gettext("it enrols at its first start")}
+          </span>
+          <span :if={!@connected and @listed and @keyed} class="text-faint">
+            <span aria-hidden="true">·</span>
+            {gettext("it connects by itself once it is running")}
           </span>
           <span :if={!@connected and !@adapter.installed_as} class="text-faint">
             <span aria-hidden="true">·</span>
@@ -545,7 +565,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           <span>{gettext("With Qory Apiary")}</span>
           <span :if={@enrolled} id="adapter-enrolled" class="text-faint">
             <span aria-hidden="true">·</span>
-            {gettext("Enrolled at its first start, %{time}", time: Format.datetime(@enrolled))}
+            {enrolled_words(@enrolled)}
           </span>
         </dd>
       <% end %>
@@ -696,6 +716,18 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
     </div>
     """
   end
+
+  # When the newest active key of an adapter installed with Qory Apiary was enrolled: at
+  # its first start, for its first key; by itself, with a code from Qory Apiary, for a key
+  # that came after a revoked one.
+  defp enrolled_words(%{at: at, first: true}),
+    do: gettext("Enrolled at its first start, %{time}", time: Format.datetime(at))
+
+  defp enrolled_words(%{at: at}),
+    do:
+      gettext("Connected by itself, with a code from Qory Apiary, %{date}",
+        date: Format.datetime(at)
+      )
 
   # The intervals an instance admin may choose, each in words, in order: the adapter's
   # default marked, as no setting (""); and an interval set that is no longer among them,

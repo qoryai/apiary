@@ -983,10 +983,21 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp installed_key?(_key, _node), do: false
 
-  defp added_words(key, node) do
-    if installed_key?(key, node),
-      do: gettext("Enrolled at its first start, %{time}", time: Format.datetime(key.received_at)),
-      else: added_words(key)
+  # An installed adapter's key: enrolled at its first start, for its first key; by
+  # itself, with a code from Qory Apiary, for a key after a revoked one.
+  defp added_words(key, node, first) do
+    cond do
+      not installed_key?(key, node) ->
+        added_words(key)
+
+      first ->
+        gettext("Enrolled at its first start, %{time}", time: Format.datetime(key.received_at))
+
+      true ->
+        gettext("Connected by itself, with a code from Qory Apiary, %{date}",
+          date: Format.datetime(key.received_at)
+        )
+    end
   end
 
   defp added_words(%AccessKey{arrived_by: :code} = key),
@@ -2404,6 +2415,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     default: false,
     doc: "whether the key is an adapter's, which Forager never holds"
 
+  attr :first, :boolean,
+    default: true,
+    doc:
+      "for an adapter installed with Qory Apiary, whether the key is its first, with no revoked key before it"
+
   @doc false
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts. With `adapter`, it is an
@@ -2473,7 +2489,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           />
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
-        <dd id={"#{@dom}-added"}>{added_words(@key, @node)}</dd>
+        <dd id={"#{@dom}-added"}>{added_words(@key, @node, @first)}</dd>
         <dt class="text-faint">{gettext("Secret")}</dt>
         <dd id={"#{@dom}-secret"}>
           {cond do

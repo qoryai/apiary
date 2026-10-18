@@ -36,14 +36,16 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) gets its codes
   # from the instance and makes its key by itself: the tab says so in place of the way to
   # connect it, offers no Get the command, and leaves out the codes the instance made,
-  # which name no maker. Under the keys' lead, it says the adapter made its key at its
-  # first start with a code of the instance, and no command was run; while it is listed,
-  # that revoking the key makes the adapter enrol again with a new one, and there is no
-  # Add a key. A Get the command asked anyway is refused, and said so: while it is listed,
-  # that Qory Apiary gives it its codes; once it is not, that it gets no new code until it
-  # is turned on again. Once its name is off the list (`Apiary.Adapters.listed?/1`), the
-  # instance gives it no new code: the tab says it is turned off there, and, under Add a
-  # key, that turning it on again gives it a new key.
+  # which name no maker. Under the keys' lead, for its first key (`first_key?/2`), it says
+  # the adapter made the key at its first start with a code of the instance, and no
+  # command was run, and the key's card says it was enrolled then; a key after a revoked
+  # one says neither, its card saying it connected by itself. While it is listed, the tab
+  # says that revoking the key makes the adapter enrol again with a new one, and there is
+  # no Add a key. A Get the command asked anyway is refused, and said so: while it is
+  # listed, that Qory Apiary gives it its codes; once it is not, that it gets no new code
+  # until it is turned on again. Once its name is off the list
+  # (`Apiary.Adapters.listed?/1`), the instance gives it no new code: the tab says it is
+  # turned off there, and, under Add a key, that turning it on again gives it a new key.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -380,6 +382,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
   defp active(keys), do: Enum.filter(keys, &is_nil(&1.revoked_at))
 
+  @doc false
+  # Whether `key` is its adapter's first key: no revoked key of the adapter, among `keys`
+  # (`Apiary.Adapters.list_keys/2`, revoked ones too), was received before it. A key that
+  # came after a revoked one is not.
+  @spec first_key?(AccessKey.t(), [AccessKey.t()]) :: boolean
+  def first_key?(%AccessKey{id: id, received_at: at}, keys) do
+    not Enum.any?(keys, fn other ->
+      other.id != id and not is_nil(other.revoked_at) and
+        DateTime.before?(other.received_at, at)
+    end)
+  end
+
   defp full?(keys), do: length(active(keys)) >= AccessKeys.key_limit()
 
   defp command_title(adapter),
@@ -491,7 +505,8 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       assign(assigns,
         active: length(active),
         full: length(active) >= AccessKeys.key_limit(),
-        last: match?([_one], active)
+        last: match?([_one], active),
+        first: active != [] and first_key?(hd(active), assigns.keys)
       )
 
     ~H"""
@@ -568,7 +583,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               )}
             </p>
             <p
-              :if={@adapter.installed_as && @active > 0}
+              :if={@adapter.installed_as && @first}
               id="adapter-keys-installed"
               class="max-w-[80ch] text-[13px]/5 text-muted"
             >
@@ -601,6 +616,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                   last_run={nil}
                   hosts={nil}
                   confirming={false}
+                  first={first_key?(key, @keys)}
                   adapter
                 />
                 <li :if={asked?(@key, key)} id={"key-#{key.key_id}-asked"}>

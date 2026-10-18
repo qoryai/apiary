@@ -4975,6 +4975,12 @@ msgstr ""
 msgid "Connected"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Connected by itself, with a code from Qory Apiary, %{date}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connected with a command by %{person}, %{date}"
@@ -17180,6 +17186,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "is taken out of the paths in force for the host."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "it connects by itself once it is running"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
