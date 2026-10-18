@@ -151,7 +151,8 @@ defmodule Apiary.WorkItems.Moves do
   # the Thread keeps a line in its place. The work item is not marked changed. Its entry
   # names the comment and its author (`details` `comment_id`, `author_id`).
   #
-  # Neither writes an event of the work item or a feed entry: the comment is its own line.
+  # Neither writes an event of the work item or a feed entry: the comment is a line of the
+  # Thread by itself.
   #
   # ## What is told
   #

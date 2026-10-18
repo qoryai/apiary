@@ -14,7 +14,9 @@ defmodule Apiary.WorkItems.Comment do
   # A deleted comment keeps its row, so the Thread keeps a line in its place: `deleted_at`,
   # and `deleted_by_id`, who deleted it, nil once their account's row is gone. Its body is
   # gone. A comment is of its work item's workspace, held to it by the composite key, and
-  # follows it, as its events do. The database holds every bound above but the characters.
+  # follows it, as its events do. The database holds the length, a body exactly while the
+  # comment is not deleted, and who deleted it only once it is; the trimming, the line
+  # feeds and the characters the application checks.
   @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
