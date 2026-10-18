@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   @moduledoc """
   The Environment card of a target's Overview (`ApiaryWeb.TargetLive.Show`), for a reader
-  of the workspace's work items: for each node pool, the image its last build for the
-  target made, in mono, its digest shortened and the whole reference its title, when it
-  was built and its commit, or that runs use the pool's default image and why; whether a
+  of the workspace's work items: for each node pool, the image a run of the target starts
+  in (`Apiary.Environments.image_for/2`), in mono, its digest shortened and the whole
+  reference its title, when it was built and its commit, or that runs use the pool's
+  default image and why, or that they use the image the workspace's policy names; whether a
   build runs or waits; the last build's failure by its cause, never a starter's reason;
   one line where no pool serves the workspace or the target names no environment.
   Rebuild, for whoever may ask for a build, where the target names an environment and a
