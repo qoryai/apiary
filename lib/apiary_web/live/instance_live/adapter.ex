@@ -11,15 +11,22 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # The Overview says the adapter's state, No key yet, with the way to connect it, or,
   # once it holds a key, when it was last seen or Never seen
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
-  # (`Apiary.Adapters.subscribe_keys/2`); the install address the adapter declared, and
-  # how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or that it
-  # declared neither yet.
+  # (`Apiary.Adapters.subscribe_keys/2`); while the adapter declares where to be set up
+  # (`setup_url`), that it is not set up yet, with Set up while it holds a key in use
+  # (`ApiaryWeb.AdapterComponents.setup_form/1`); the install address the adapter
+  # declared, and how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or
+  # that it declared neither yet.
   #
   # The Settings tab holds how often the adapter pulls, chosen among the intervals its
   # declaration allows, its default marked, and saved with
   # `Apiary.Adapters.update_sync_interval/3`; before it declares, the choice is shown
   # disabled, with why. Then its name, with Rename…, and the danger zone, whose Remove
-  # adapter… opens the Remove page. Rename and Remove are pages; each act is asked again
+  # adapter… opens the Remove page. An adapter installed with Qory Apiary whose name the
+  # setting still lists (`Apiary.Adapters.listed?/1`) is not removed: the danger zone says
+  # to turn it off first, in place of Remove adapter…, and a removal asked anyway is
+  # refused with the same advice. Its Overview says it connects by itself, in place of
+  # Connect it; once its name is off the list, that it is turned off there and can be
+  # removed, and it offers no Set up. Rename and Remove are pages; each act is asked again
   # by the context function, and a removed adapter's pages leave for the list. A saved
   # interval and a rename are said on the Settings tab, a removal on the list.
   #
@@ -171,6 +178,15 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
          |> put_flash(:info, gettext("%{name} is removed.", name: removed.name))
          |> push_navigate(to: paths.list)}
 
+      {:error, :installed} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext("Turn it off where Qory Apiary is installed before you remove it.")
+         )
+         |> push_patch(to: paths.settings)}
+
       {:error, reason} ->
         {:noreply, refused(socket, reason)}
     end
@@ -305,6 +321,9 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
             )}
           </li>
           <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>
+          <li :if={@adapter.installed_as} id="adapter-remove-installed">
+            {gettext("Whatever it kept where Qory Apiary is installed is not touched.")}
+          </li>
           <li>{gettext("Its name is free again. This cannot be undone.")}</li>
         </ul>
 
@@ -349,6 +368,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           connected={@connected}
           seen={@seen}
           sync={@sync}
+          listed={Adapters.listed?(@adapter)}
         />
         <.settings
           :if={@live_action == :settings}
@@ -356,6 +376,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           paths={@paths}
           sync={@sync}
           interval_form={@interval_form}
+          listed={Adapters.listed?(@adapter)}
         />
       </.settings_page>
     </.frame>
@@ -398,8 +419,15 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :seen, DateTime, default: nil
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
-  # The Overview: the adapter's state, the install address it declared, and how often it
-  # pulls.
+  attr :listed, :boolean,
+    required: true,
+    doc: "whether it is installed with Qory Apiary and still listed (`Apiary.Adapters.listed?/1`)"
+
+  # The Overview: the adapter's state; while it declares where to be set up (`setup_url`,
+  # which it declares only while it is not set up), its Set-up, Not set up yet, with Set
+  # up and what it does while it holds a key in use and, installed with Qory Apiary, is
+  # still listed (`ApiaryWeb.AdapterComponents.settable?/3`); the install address it
+  # declared, and how often it pulls.
   defp overview(assigns) do
     ~H"""
     <dl
@@ -414,13 +442,27 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           connected={@connected}
           seen={@seen}
         />
-        <span :if={!@connected} class="text-faint">
+        <span :if={!@connected and @listed} class="text-faint">
+          <span aria-hidden="true">·</span>
+          {gettext("it connects by itself once it is running")}
+        </span>
+        <span
+          :if={!@connected and Adapters.installed?(@adapter) and !@listed}
+          id="adapter-overview-unlisted"
+          class="text-faint"
+        >
+          <span aria-hidden="true">·</span>
+          {gettext("turned off where Qory Apiary is installed; it can be removed")}
+        </span>
+        <span :if={!@connected and !@adapter.installed_as} class="text-faint">
           <span aria-hidden="true">·</span>
           {gettext("organisations can install it once it is connected and running")}
         </span>
-        <span :if={!@connected} class="text-faint" aria-hidden="true">·</span>
+        <span :if={!@connected and !@adapter.installed_as} class="text-faint" aria-hidden="true">
+          ·
+        </span>
         <.link
-          :if={!@connected}
+          :if={!@connected and !@adapter.installed_as}
           id="adapter-connect-it"
           navigate={@paths.keys}
           class="text-accent hover:underline"
@@ -428,6 +470,21 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           {gettext("Connect it")}
         </.link>
       </dd>
+      <%= if @adapter.setup_url do %>
+        <dt class="text-faint">{gettext("Set-up")}</dt>
+        <dd id="adapter-overview-setup" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span id="adapter-setup-state">{gettext("Not set up yet")}</span>
+          <%= if AdapterComponents.settable?(@adapter, @connected, @listed) do %>
+            <span aria-hidden="true" class="text-faint">·</span>
+            <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} />
+            <p id="adapter-setup-hint" class="basis-full text-[12.5px]/[18px] text-muted">
+              {gettext(
+                "Takes you to the adapter, to set it up where it reads from. Each use gives it a new one-time pass."
+              )}
+            </p>
+          <% end %>
+        </dd>
+      <% end %>
       <dt class="text-faint">{gettext("Install address")}</dt>
       <dd id="adapter-overview-install">
         <%= if @adapter.connect_url do %>
@@ -469,6 +526,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :paths, :map, required: true
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
   attr :interval_form, Phoenix.HTML.Form, required: true
+
+  attr :listed, :boolean,
+    required: true,
+    doc: "whether it is installed with Qory Apiary and still listed (`Apiary.Adapters.listed?/1`)"
 
   # The Settings tab: how often the adapter pulls, its name, with Rename…, and the danger
   # zone.
@@ -534,10 +595,18 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
 
       <SettingsComponents.danger_zone id="adapter-danger">
         <SettingsComponents.danger_action id="adapter-remove" title={gettext("Remove this adapter")}>
-          {gettext(
-            "Its keys are revoked, and every organisation's installation of it ends. This cannot be undone."
-          )}
-          <:action>
+          <%= if @listed do %>
+            <span id="adapter-remove-listed">
+              {gettext(
+                "Installed with Qory Apiary. To remove it, first turn it off where Qory Apiary is installed; then it can be removed here."
+              )}
+            </span>
+          <% else %>
+            {gettext(
+              "Its keys are revoked, and every organisation's installation of it ends. This cannot be undone."
+            )}
+          <% end %>
+          <:action :if={!@listed}>
             <.button id="adapter-remove-link" patch={@paths.remove}>
               {gettext("Remove adapter…")}
             </.button>

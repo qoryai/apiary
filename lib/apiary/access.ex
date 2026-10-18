@@ -313,7 +313,10 @@ defmodule Apiary.Access do
     ),
     # The instance's adapters: an organisation's people read them and connect them; an
     # instance admin makes, renames and deletes them and sets how often they pull, which no
-    # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`).
+    # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The
+    # instance alone installs the adapters its setting lists, and gives them their codes.
+    # An instance admin starts an adapter's set-up at the system it reads from, which no
+    # role takes either.
     Action.new(:"adapter.read", "read the instance's adapters",
       feature: :factory,
       roles: @members,
@@ -339,6 +342,19 @@ defmodule Apiary.Access do
     Action.new(
       :"adapter.delete",
       "delete an adapter, which revokes its access keys: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.install",
+      "make an adapter installed with Qory Apiary, and give it its one-time codes: the instance, by itself (Apiary.Adapters.install/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.setup",
+      "start setting an adapter up at the system it reads from, with a new setup pass: an instance admin, which no role takes",
       feature: :factory,
       asked_of: :organisation
     ),
@@ -381,6 +397,18 @@ defmodule Apiary.Access do
       roles: @members
     ),
     Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
+    Action.new(:"work_item.answer", "answer Qory's questions on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.explore_again", "run Explore again on a work item",
+      feature: :factory,
+      roles: @members
+    ),
     Action.new(:"work_item.comment", "comment on a work item",
       feature: :factory,
       roles: @members

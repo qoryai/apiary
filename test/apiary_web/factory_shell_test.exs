@@ -4,8 +4,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
-  # Adapters; and the Activity filter's
-  # words for the work item comments, the handover and the release.
+  # Adapters; and the Activity filter's words for the work item comments, the handover,
+  # the release, an adapter installed and a set-up started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -35,7 +35,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.AdapterRedirectController,
-    ApiaryWeb.AdapterInstallController
+    ApiaryWeb.AdapterInstallController,
+    ApiaryWeb.AdapterSetupController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -173,7 +174,9 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/keys/codes/x1/revoke"},
                  {:get, managed <> "/settings"},
                  {:get, managed <> "/settings/rename"},
-                 {:get, managed <> "/settings/remove"}
+                 {:get, managed <> "/settings/remove"},
+                 # Set up, which starts an adapter's set-up at the system it reads from.
+                 {:post, managed <> "/setup"}
                ] ++
                  for(
                    rest <-
@@ -365,7 +368,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers a person's actions on the work items, the assigning of repositories, the Backlog switch, the handover, the release and what runs also read by their words, and no other action of the feature",
+    test "the Activity filter offers the actions on work items, the assigning, the Backlog switch, the handover, the release, also read, an adapter installed and a set-up started by their words, and no other",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -373,6 +376,9 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"work_item.undo", "Take in undone"} in options
       assert {"work_item.decline", "Work item declined"} in options
       assert {"work_item.close", "Work item closed"} in options
+      assert {"work_item.answer", "Work item questions answered"} in options
+      assert {"work_item.confirm", "Work item proposal confirmed"} in options
+      assert {"work_item.explore_again", "Work item explored again"} in options
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
       assert {"collection.assign", "Repositories assigned"} in options
@@ -384,6 +390,9 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"target.set_further_repositories", "Also read"} in options
 
+      assert {"adapter.install", "Adapter installed"} in options
+      assert {"adapter.setup", "Adapter set-up started"} in options
+
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
       for action <- Audit.audited_actions(),
@@ -393,13 +402,18 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.undo",
             :"work_item.decline",
             :"work_item.close",
+            :"work_item.answer",
+            :"work_item.confirm",
+            :"work_item.explore_again",
             :"work_item.comment",
             :"work_item.comment_delete",
             :"collection.assign",
             :"collection.set_backlog",
             :"dispatch.handover",
             :"dispatch.release",
-            :"target.set_further_repositories"
+            :"target.set_further_repositories",
+            :"adapter.install",
+            :"adapter.setup"
           ],
           do: refute(action in offered, "#{action}")
     end

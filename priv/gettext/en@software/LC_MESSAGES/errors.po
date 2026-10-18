@@ -331,6 +331,7 @@ msgstr ""
 msgid "must be Always with a username"
 msgstr ""
 
+#: lib/apiary/accounts/user.ex
 #: lib/apiary/secrets/value.ex
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
@@ -420,7 +421,6 @@ msgstr ""
 
 #: lib/apiary/accounts/user.ex
 #: lib/apiary/mail/settings.ex
-#: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"
 msgstr ""

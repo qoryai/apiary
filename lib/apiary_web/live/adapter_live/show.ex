@@ -41,7 +41,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # counts leave them out too. A search finds collections by their names (`?q=`).
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
-  # an adapter with items, that their items come into that workspace's backlog while their
+  # an adapter with items, that their items come into that workspace's Backlog while their
   # Backlog switches are on. Once a listing is complete, a warning says how many are
   # unassigned, and, for an adapter with items, that their items reach no backlog until
   # they are assigned, by the person or by an owner or an admin. Views over the table
@@ -794,8 +794,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # What being assigned means, above the table: for an adapter with no items, that each
   # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's backlog; with several, that
-  # each is assigned to one, and their items come into its backlog while their Backlog
+  # assigned to it, and its items come into that workspace's Backlog; with several, that
+  # each is assigned to one, and their items come into its Backlog while their Backlog
   # switches are on.
   defp lead(scope, adapter, workspaces) do
     cond do
@@ -808,7 +808,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         [workspace] = workspaces
 
         gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog.",
+          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog.",
           organisation: scope.organisation.name,
           workspace: workspace.name,
           collection: collection_word(adapter, 1),
@@ -817,7 +817,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
       length(workspaces) > 1 ->
         gettext(
-          "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's backlog while their Backlog switches are on.",
+          "These %{collections} are each assigned to one workspace, and their %{items} come into that workspace's Backlog while their Backlog switches are on.",
           collections: collection_word(adapter, :other),
           items: SourceComponents.items(Adapters.item_noun(adapter))
         )

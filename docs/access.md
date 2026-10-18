@@ -201,6 +201,9 @@ the product's name in Instance settings › General (`instance.rename`,
 Changing the instance's settings in Instance settings › Configuration
 (`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
 by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
+Starting an adapter's set-up at the system it reads from (`adapter.setup`,
+`Apiary.Adapters.setup/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
 Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
 new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its
 log shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
@@ -375,9 +378,11 @@ names, the workspace it names and what the edition says of their place there, an
 key at the server contract, or **the instance**, in a job no person enqueued
 (`Apiary.Accounts.Scope.for_instance/2`, which `Apiary.Job` gives such a job). The
 instance has a separate role in the role table, with only what its jobs need: pruning
-the audit trail, deleting the invitations expired for 30 days, and purging a workspace or
-an organisation whose deletion's grace period is over. Any other scope without a person
-may nothing, whatever it carries.
+the audit trail, deleting the invitations expired for 30 days, purging a workspace or
+an organisation whose deletion's grace period is over, and making the adapters its
+setting lists and giving them their one-time codes (`adapter.install`,
+`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), in the instance's
+organisation. Any other scope without a person may nothing, whatever it carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
 invitation with its token, or a release command run on the release's machine, is in the

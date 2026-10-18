@@ -48,6 +48,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The organisation slug `integrations` is reserved as well: a slug made from a name skips
   it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
   the slug `integrations-2`.
+- An account's email address, at sign-up and when it is changed, and an invitation's
+  address refuse a control or format character (a right-to-left override, a zero-width
+  space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
+  characters are counted in code points, so a letter's accent marks count too. An account
+  whose address already holds such a character still logs in with it. An invitation to an
+  address with a NUL in it is refused with the address's error, not a server error.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
@@ -58,6 +64,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
 <!-- /feature -->
+
+### Security
+
+- By default the release starts no Erlang distribution: before, every instance listened for
+  other nodes with a cookie that every copy of the image holds, so anything that could reach
+  the container's network could connect as a node and run code. With `DNS_CLUSTER_QUERY`,
+  `RELEASE_COOKIE` must be set, the same secret on every node, or Qory Apiary stops at
+  start. Without `RELEASE_COOKIE`, each start makes a new random cookie, so the cookie in
+  the image is never used.
 
 ### Migrations
 

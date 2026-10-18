@@ -976,6 +976,22 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp person_words(person), do: People.email(person) || People.former_member()
 
+  # A key an adapter installed with Qory Apiary enrolled with a code of the instance, which
+  # names no maker.
+  defp installed_key?(%AccessKey{arrived_by: :code}, %Node{kind: :adapter, installed_as: name}),
+    do: is_binary(name)
+
+  defp installed_key?(_key, _node), do: false
+
+  defp added_words(key, node) do
+    if installed_key?(key, node),
+      do:
+        gettext("Connected by itself, with a code from Qory Apiary, %{date}",
+          date: Format.datetime(key.received_at)
+        ),
+      else: added_words(key)
+  end
+
   defp added_words(%AccessKey{arrived_by: :code} = key),
     do:
       gettext("Connected with a command by %{person}, %{date}",
@@ -2397,8 +2413,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # adapter's key, for an adapter's Access key tab, without what only Forager's keys have:
   # the Forager file, the Forager version it was last used with, and stored secrets; and
   # its secret is said to be on the machine that ran the command, since the adapter the
-  # card names is not that machine. Its Last used is the key's `last_used_at`, which every
-  # accepted request of an adapter's key records. An adapter's card is for an instance
+  # card names is not that machine; for an adapter installed with Qory Apiary, the key came
+  # by itself, with the instance's code, and its secret is the adapter's, saved there. Its
+  # Last used is the key's `last_used_at`, which every accepted request of an adapter's key
+  # records. An adapter's card is for an instance
   # admin's page alone (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an
   # adapter's key and when it was used are the instance admins'.
   def key_card(assigns) do
@@ -2458,12 +2476,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           />
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
-        <dd id={"#{@dom}-added"}>{added_words(@key)}</dd>
+        <dd id={"#{@dom}-added"}>{added_words(@key, @node)}</dd>
         <dt class="text-faint">{gettext("Secret")}</dt>
         <dd id={"#{@dom}-secret"}>
-          {if @adapter,
-            do: gettext("On the machine that ran the command; never shown"),
-            else: secret_words(@key, @node)}
+          {cond do
+            installed_key?(@key, @node) ->
+              gettext("On %{name}, saved there by the adapter", name: @node.name)
+
+            @adapter ->
+              gettext("On the machine that ran the command; never shown")
+
+            true ->
+              secret_words(@key, @node)
+          end}
         </dd>
         <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
         <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>

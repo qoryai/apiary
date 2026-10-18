@@ -1689,8 +1689,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   printable ASCII percent-encoded.
 
   The form's draft is `answers` (by question `public_id`), and `errors` its errors, by
-  question `public_id`: `:blank` or `{:too_long, limit}`. The focus goes to the first
-  question at fault, again after each send (`submits`, counted by the page).
+  question `public_id`: `:blank`, `{:too_long, limit}` or `:characters`, for a control
+  or invisible character a run's input refuses. The focus goes to the first question at
+  fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-explore"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
@@ -2220,6 +2221,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp answer_error({:too_long, limit}),
     do: gettext("Write at most %{number} characters.", number: Format.number(limit))
 
+  defp answer_error(:characters), do: gettext("Remove the control or invisible characters.")
+
   # An error without words marks nothing.
   defp answer_error(_error), do: nil
 
@@ -2724,8 +2727,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   `approach`. `values` is what the fields hold, by those names (`:level`, `:reason`,
   `:understanding`, `:scope_in`, `:scope_out`, `:approach`), each a string; the run's
   words where it is not given. `errors`, by the same names, says what is wrong with a
-  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}` or
-  `{:too_many_lines, limit}`; an error a field has no words for marks nothing. The focus
+  field: `:blank`, `{:too_long, limit}`, `{:line_too_long, limit}`,
+  `{:too_many_lines, limit}` or `:characters`, for a control or invisible character a
+  run's input refuses; an error a field has no words for marks nothing. The focus
   goes to the first field at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-edit"
@@ -3016,6 +3020,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp edit_error(_field, {:too_many_lines, limit}),
     do: ngettext("Write at most %{count} line.", "Write at most %{count} lines.", limit)
+
+  defp edit_error(_field, :characters), do: gettext("Remove the control or invisible characters.")
 
   # An error without words for its field (Out of scope may be empty) marks nothing.
   defp edit_error(_field, _error), do: nil

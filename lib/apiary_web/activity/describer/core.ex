@@ -68,10 +68,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.undo"), do: gettext("Take in undone")
   def label(:"work_item.decline"), do: gettext("Work item declined")
   def label(:"work_item.close"), do: gettext("Work item closed")
+  def label(:"work_item.answer"), do: gettext("Work item questions answered")
+  def label(:"work_item.confirm"), do: gettext("Work item proposal confirmed")
+  def label(:"work_item.explore_again"), do: gettext("Work item explored again")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(:"dispatch.release"), do: gettext("Runs given back")
+  def label(:"adapter.install"), do: gettext("Adapter installed")
+  def label(:"adapter.setup"), do: gettext("Adapter set-up started")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -93,11 +98,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
-  # work items (a take in, its undo, a decline, a close and the comments), the assigning
+  # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
+  # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
-  # run, its release and the choosing of what a target's runs also read have labels yet,
-  # so the filter offers those alone, where the reader is shown the feature (the page asks
-  # it); the others' entries show as any change.
+  # run, its release, the choosing of what a target's runs also read, the installing of an
+  # adapter and the start of its set-up have labels yet, so the filter offers those alone,
+  # where the reader is shown the feature (the page asks it); the others' entries show as
+  # any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -107,13 +114,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.undo",
           :"work_item.decline",
           :"work_item.close",
+          :"work_item.answer",
+          :"work_item.confirm",
+          :"work_item.explore_again",
           :"work_item.comment",
           :"work_item.comment_delete",
           :"collection.assign",
           :"collection.set_backlog",
           :"dispatch.handover",
           :"dispatch.release",
-          :"target.set_further_repositories"
+          :"target.set_further_repositories",
+          :"adapter.install",
+          :"adapter.setup"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -263,11 +275,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"workspace.purge", _details, _actor),
     do: gettext("Purged a deleted workspace and everything in it")
 
+  # An adapter installed with Qory Apiary: the instance gives it its first code, and the
+  # first once it has none, and cancels the codes it no longer needs.
+  defp said(:"access_key.create_code", %{"installed" => true}, _actor),
+    do: gettext("Gave an installed adapter a new one-time code")
+
   defp said(:"access_key.create_code", _details, _actor),
     do: gettext("Made a command to connect a node")
 
+  defp said(:"access_key.cancel_code", _details, :instance),
+    do: gettext("Cancelled an adapter's code it no longer needs")
+
   defp said(:"access_key.cancel_code", _details, _actor),
     do: gettext("Cancelled a command to connect a node")
+
+  defp said(:"adapter.install", _details, _actor),
+    do: gettext("Added an adapter installed with Qory Apiary")
+
+  defp said(:"adapter.setup", _details, _actor), do: gettext("Started setting up an adapter")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 
@@ -314,6 +339,30 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
+  # The count of questions answered, one where the entry says none.
+  defp said(:"work_item.answer", details, _actor) do
+    count =
+      case details["count"] do
+        count when is_integer(count) and count >= 1 -> count
+        _none -> 1
+      end
+
+    ngettext(
+      "Answered Qory's question on a work item",
+      "Answered Qory's %{count} questions on a work item",
+      count
+    )
+  end
+
+  defp said(:"work_item.confirm", %{"changed" => [_ | _]}, _actor),
+    do: gettext("Changed Qory's proposal for a work item and confirmed it")
+
+  defp said(:"work_item.confirm", _details, _actor),
+    do: gettext("Confirmed Qory's proposal for a work item")
+
+  defp said(:"work_item.explore_again", _details, _actor),
+    do: gettext("Asked Qory to explore a work item again")
 
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")

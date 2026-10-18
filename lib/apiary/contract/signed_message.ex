@@ -56,6 +56,12 @@ defmodule Apiary.Contract.SignedMessage do
   # from ever verifying as a request's, a connect pass's or a run key's, and the reverse.
   # Left out of the module's documentation too.
   @connect_return_tag "qory-connect-return-ed25519-v1"
+  # The setup pass's message (`setup_pass/1`, `Apiary.Adapters.SetupPass`):
+  # `qory-setup-ed25519-v1`, then the payload's bytes, on the next line and to the end.
+  # Its domain line keeps a setup pass's signature from ever verifying as a connect
+  # pass's, a run key's or an answer's, and the reverse. Left out of the module's
+  # documentation too.
+  @setup_pass_tag "qory-setup-ed25519-v1"
 
   @doc ~S"""
   run_key/1 is the message a run key's signature covers (`Apiary.Runs.RunKey`): its domain
@@ -81,6 +87,13 @@ defmodule Apiary.Contract.SignedMessage do
   @spec connect_return(binary) :: binary
   def connect_return(payload) when is_binary(payload),
     do: @connect_return_tag <> "\n" <> payload
+
+  # setup_pass/1 is the message a setup pass's signature covers
+  # (`Apiary.Adapters.SetupPass`): its domain line, `qory-setup-ed25519-v1`, a line feed,
+  # then the payload's exact bytes.
+  @doc false
+  @spec setup_pass(binary) :: binary
+  def setup_pass(payload) when is_binary(payload), do: @setup_pass_tag <> "\n" <> payload
 
   @doc ~S"""
   request/5 is the request string of a request under `access_key_id` from `instance_id`

@@ -99,4 +99,55 @@ defmodule Apiary.AccessKeysFixtures do
 
     %{access_key: key, pair: pair, code: code_row}
   end
+
+  @doc """
+  A key enrolled on `adapter`, an adapter installed with Qory Apiary, with a code of the
+  instance, which names no maker: the rows `Apiary.AccessKeys.enrol/2` writes, written here
+  without a request or a listing, as `enrolled_key_fixture/3` writes them, and no audit
+  entry. Returns `%{access_key: key, pair: key pair, code: code row}`.
+  """
+  def installed_key_fixture(adapter, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{label: unique_label()})
+    pair = ed25519_key_pair()
+    now = DateTime.utc_now()
+    key_id = AccessKey.generate_key_id()
+    code = EnrolmentCode.generate(:adapter)
+
+    code_row =
+      %EnrolmentCode{
+        id: Ecto.UUID.generate(),
+        node_id: adapter.id,
+        code_sha256: EnrolmentCode.hash(code),
+        expires_at: DateTime.add(now, 15, :minute),
+        used_at: now,
+        used_by_key_id: key_id,
+        public_key: pair.public_key
+      }
+      |> Ecto.Changeset.change()
+      |> EnrolmentCode.put_integrity()
+      |> Repo.insert!()
+
+    key =
+      %AccessKey{
+        id: Ecto.UUID.generate(),
+        node_id: adapter.id,
+        key_id: key_id,
+        public_key: pair.public_key,
+        arrived_by: :code,
+        enrolment_code_id: code_row.id,
+        received_at: now
+      }
+      |> AccessKey.insert_changeset(%{allow_secrets: false, label: attrs.label})
+      |> AccessKey.put_integrity()
+      |> Repo.insert!()
+
+    Repo.insert!(%PublicKey{
+      public_key: pair.public_key,
+      key_id: key_id,
+      state: :current,
+      received_at: now
+    })
+
+    %{access_key: key, pair: pair, code: code_row}
+  end
 end

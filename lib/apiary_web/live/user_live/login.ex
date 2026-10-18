@@ -16,7 +16,6 @@ defmodule ApiaryWeb.UserLive.Login do
   use ApiaryWeb, :live_view
 
   alias Apiary.Accounts
-  alias Apiary.Accounts.User
   alias ApiaryWeb.AttemptLimits
 
   # Shown for an address that cannot be one, before anything is looked up: it says
@@ -291,18 +290,27 @@ defmodule ApiaryWeb.UserLive.Login do
   defp subtitle(_assigns), do: gettext("We will email you a link. No password needed.")
 
   # The form of the email alone, the password never echoed back; checked, it carries the
-  # error of an address that cannot be one: empty, without an @, with a space, too long.
+  # error of an address that cannot be one: empty, without an @, with an ASCII space or
+  # control character, too long. A new address's checks
+  # (`Apiary.Accounts.User.validate_address/1`) are not applied: an account signs in with
+  # the address it holds (`Accounts.get_user_by_email/1`), a Unicode format character in
+  # it included.
   defp email_form(params, checked?) do
     params = %{"email" => Map.get(params, "email", "")}
 
     errors =
-      if checked? and
-           not Accounts.change_user_email(%User{}, params, validate_unique: false).valid?,
-         do: [email: {@email_error, []}],
-         else: []
+      if checked? and not typed_address?(params["email"]),
+        do: [email: {@email_error, []}],
+        else: []
 
     to_form(params, as: "user", errors: errors, action: if(errors != [], do: :validate))
   end
+
+  # Matched byte by byte, without the /u flag: `[:cntrl:]` and `\s` are ASCII's alone.
+  @typed_address ~r/\A[^@,;\s[:cntrl:]]+@[^@,;\s[:cntrl:]]+\z/
+
+  defp typed_address?(email),
+    do: is_binary(email) and Regex.match?(@typed_address, email) and String.length(email) <= 160
 
   defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 end

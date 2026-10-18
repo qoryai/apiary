@@ -42,7 +42,7 @@ defmodule Apiary.Repo.Migrations.KeepDispatches do
   #
   # Every table is held to its workspace's organisation by the composite key, a dispatch's
   # run to its workspace, and a dispatch's node pool to its workspace. A run of the queue
-  # names its work item by its workspace here; 20261017190100 names it by the
+  # names its work item by its workspace here; 20261017144000 names it by the
   # organisation instead, so that the run stays in its workspace when the work item moves
   # to another.
   # The workspace's rows go with it (`ON DELETE CASCADE`). The node pool and the access key

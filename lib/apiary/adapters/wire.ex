@@ -27,7 +27,8 @@ defmodule Apiary.Adapters.Wire do
   # `declaration/1` reads the raw body of `POST /v1/adapter` (`adapter.schema.json`),
   # decoded as `decode/1` decodes it: exactly `version` (1), `time`, `connect_url`, `sync`,
   # which holds exactly `default_interval` and `minimum_interval`, integers from 60 to
-  # 86,400, the minimum at most the default, and `sends_changes`, a boolean, and
+  # 86,400, the minimum at most the default, and `sends_changes`, a boolean, `setup_url`
+  # when given (`setup_url?/1`; nil when absent: the adapter has nothing to set up), and
   # `description`, the description the adapter's program prints, which
   # `Apiary.Integrations.Description.parse/1` reads and checks. It is given the
   # description's value as the body carries it, its bytes from the first of the value to
@@ -35,6 +36,12 @@ defmodule Apiary.Adapters.Wire do
   # limit on its raw bytes, 256 KiB, is measured on what the adapter sent: an encoding of
   # the decoded value would write its numbers and its whitespace otherwise, `1e5` as
   # `1.0e5`.
+  #
+  # `setup_url?/1` holds the address an instance admin is sent to, to set the adapter up,
+  # to what `adapter.schema.json` allows of `setup_url`: a URL as `url?/1` holds one, with
+  # no fragment, and no query parameter named `state`, written plainly or percent-encoded
+  # (`%73tate`), first in the query or after a `&`, with a value or without one. The pass
+  # goes there as `state` (`Apiary.Adapters.SetupPass`). Any other query is allowed.
   #
   # `listing/1` reads the body of `POST /v1/source-collections`
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
@@ -63,6 +70,9 @@ defmodule Apiary.Adapters.Wire do
   # `https://`, an authority with no `@`, then nothing, or a path, a query or a fragment:
   # as `nodes_connect_url_check` holds a stored address.
   @no_user_information ~r{\Ahttps://[^/?#@]+(?:[/?#].*)?\z}s
+  # A query parameter named `state`, each letter written plainly or percent-encoded: the
+  # pattern `adapter.schema.json` refuses in `setup_url`, as written there.
+  @state_parameter ~r/\A[^?#]*\?(?:[^&#]*&)*(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)(?:[=&#]|\z)/
   @max_url 2048
   @min_interval 60
   @max_interval 86_400
@@ -82,6 +92,7 @@ defmodule Apiary.Adapters.Wire do
   @type declaration :: %{
           time: DateTime.t(),
           connect_url: String.t(),
+          setup_url: String.t() | nil,
           default_interval: pos_integer,
           minimum_interval: pos_integer,
           sends_changes: boolean,
@@ -187,6 +198,17 @@ defmodule Apiary.Adapters.Wire do
 
   def url?(_value), do: false
 
+  # Whether `value` is an address an adapter may declare to be set up at: `url?/1`'s, with
+  # no fragment and no query parameter named `state`, as `adapter.schema.json` has it.
+  @doc false
+  @spec setup_url?(term) :: boolean
+  def setup_url?(value) when is_binary(value) do
+    url?(value) and not String.contains?(value, "#") and
+      not Regex.match?(@state_parameter, value)
+  end
+
+  def setup_url?(_value), do: false
+
   # RFC 3986's parser agrees: https, a host, no user information, and a port in range.
   defp parses?(value) do
     case URI.new(value) do
@@ -205,10 +227,11 @@ defmodule Apiary.Adapters.Wire do
   @spec declaration(term) :: {:ok, declaration} | :error
   def declaration(raw) when is_binary(raw) do
     with {:ok, body} <- decode(raw),
-         true <- Enum.sort(Map.keys(body)) == @declaration_keys,
+         true <- Enum.sort(Map.keys(Map.delete(body, "setup_url"))) == @declaration_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          true <- url?(body["connect_url"]),
+         {:ok, setup_url} <- setup_url(body),
          %{} = sync <- body["sync"],
          true <- Enum.sort(Map.keys(sync)) == @sync_keys,
          default when is_integer(default) <- sync["default_interval"],
@@ -223,6 +246,7 @@ defmodule Apiary.Adapters.Wire do
        %{
          time: time,
          connect_url: body["connect_url"],
+         setup_url: setup_url,
          default_interval: default,
          minimum_interval: minimum,
          sends_changes: sends_changes,
@@ -234,6 +258,12 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def declaration(_raw), do: :error
+
+  # `setup_url` when the body gives one, held to `setup_url?/1`; nil when it gives none.
+  defp setup_url(%{"setup_url" => url}),
+    do: if(setup_url?(url), do: {:ok, url}, else: :error)
+
+  defp setup_url(%{}), do: {:ok, nil}
 
   # The bytes of the value of the top-level member `name` of `raw`, as `raw` carries them:
   # from the first byte of the value to its last, without the whitespace around it.

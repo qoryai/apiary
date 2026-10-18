@@ -3,6 +3,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
 
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
+  import Ecto.Query, only: [from: 2]
 
   @remember_me_cookie "_apiary_web_user_remember_me"
 
@@ -57,6 +58,27 @@ defmodule ApiaryWeb.UserLive.LoginTest do
   end
 
   describe "user login - magic link" do
+    test "sends a link to an account whose stored address holds a format character",
+         %{conn: conn} do
+      user = user_fixture()
+      email = "da" <> <<0x202E::utf8>> <> "na@example.com"
+
+      {1, _} =
+        Apiary.Repo.update_all(
+          from(u in Apiary.Accounts.User, where: u.id == ^user.id),
+          set: [email: email]
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      html = lv |> form("#login_form", user: %{email: email}) |> render_submit()
+
+      assert html =~ "Check your email"
+
+      assert Apiary.Repo.get_by!(Apiary.Accounts.UserToken, user_id: user.id, context: "login").sent_to ==
+               email
+    end
+
     test "sends the email and shows the confirmation in place", %{conn: conn} do
       user = user_fixture()
 
@@ -177,6 +199,27 @@ defmodule ApiaryWeb.UserLive.LoginTest do
       assert redirected_to(conn) == ~p"/users/organisations"
       assert get_session(conn, :user_token)
       assert conn.resp_cookies[@remember_me_cookie]
+    end
+
+    test "logs in an account whose stored address holds a format character", %{conn: conn} do
+      user = user_fixture() |> set_password()
+      email = "da" <> <<0x202E::utf8>> <> "na@example.com"
+
+      {1, _} =
+        Apiary.Repo.update_all(
+          from(u in Apiary.Accounts.User, where: u.id == ^user.id),
+          set: [email: email]
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+
+      form = form(lv, "#login_form", user: %{email: email, password: valid_user_password()})
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      assert redirected_to(conn) == ~p"/users/organisations"
+      assert get_session(conn, :user_token)
     end
 
     test "sets no remember-me cookie when the box is unchecked", %{conn: conn} do
