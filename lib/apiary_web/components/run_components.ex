@@ -2206,7 +2206,7 @@ defmodule ApiaryWeb.RunComponents do
             <span
               :for={d <- @preview.denials}
               class="q-pv-dest"
-            ><.external_text text={d.host} />:{d.port}</span>
+            ><bdi>{shown_host(d.host, d[:rule])}</bdi>:{d.port}</span>
             <span :if={@preview.more_denials > 0} class="q-pv-more">
               {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
                 number: Format.number(@preview.more_denials)
@@ -2808,6 +2808,8 @@ defmodule ApiaryWeb.RunComponents do
   defp blank(""), do: nil
   defp blank(value), do: value
 
+  # A connection's host as a row shows it, in `<bdi>`: as an external system's text is
+  # (`Apiary.ExternalText.present/1`), but as sent where the wall refused it for its form.
   defp shown_host(host, "wall:host-form"), do: host
   defp shown_host(host, _rule), do: Apiary.ExternalText.present(host)
 

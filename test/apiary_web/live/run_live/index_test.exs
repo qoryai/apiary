@@ -1929,6 +1929,34 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-preview-log") == "first line second line"
     end
 
+    test "a host the wall refused for its form: in the preview as sent, in a <bdi>", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "Files\u202E.CDN.example."
+
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "refused"},
+          egress: [%{"decision" => "denied", "rule" => "wall:host-form", "host" => host}]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.public_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
+
+      outside =
+        view
+        |> element("#runs-preview-denials")
+        |> render()
+        |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
+        |> String.replace(~r{<[^>]*>}, " ")
+
+      refute outside =~ "\u202E"
+    end
+
     test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{
       conn: conn,
       scope: scope

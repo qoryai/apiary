@@ -2130,5 +2130,28 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "q-dest-tool"
       assert text(html) =~ "No rule matches."
     end
+
+    test "a host the wall refused for its form: as sent, inside a <bdi> where it shows" do
+      host = "Files\u202E.CDN.example."
+
+      refused = %{
+        last_decision: "denied",
+        last_rule: "wall:host-form",
+        allowed: 0,
+        denied: 1
+      }
+
+      for variant <- ~w(inline table workspace) do
+        html = cx(Map.put(refused, :host, host), variant) |> LazyHTML.to_html()
+
+        outside =
+          html
+          |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
+          |> String.replace(~r{<[^>]*>}, " ")
+
+        assert texts(LazyHTML.from_fragment(html), "bdi") == [host], variant
+        refute outside =~ "\u202E", variant
+      end
+    end
   end
 end

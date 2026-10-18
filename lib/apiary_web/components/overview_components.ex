@@ -406,29 +406,13 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :scope, :map, required: true
   attr :item, :map, required: true
 
-  # A denied destination of a tool's host is a denied request to that tool: it leads with
-  # the tool, then the path, then the host, as the list of what enforce would start
-  # denying names it (`Apiary.Policy.denied_destinations/2`).
-  defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
-    ~H"""
-    <span class="q-host q-dest-tool q-ar-t q-mono" title={destination_title(@item)}>
-      <.tool_mark name={@item.tool} /><span
-        :if={@item.path != ""}
-        class="q-path"
-      >{@item.path}</span><span class="q-port"><bdi>{@item.host}</bdi>:{@item.port}</span>
-    </span>
-    """
-  end
-
-  defp attention_subject(%{item: %{kind: :denied}} = assigns) do
-    ~H"""
-    <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
-      <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span><span
-        :if={@item.held && @item.path != ""}
-        class="q-path"
-      >{@item.path}</span>
-    </span>
-    """
+  # A denied destination, its texts as a page shows Forager's (`shown_destination/1`).
+  # One of a tool's host is a denied request to that tool: it leads with the tool, then
+  # the path, then the host, as the list of what enforce would start denying names it
+  # (`Apiary.Policy.denied_destinations/2`).
+  defp attention_subject(%{item: %{kind: :denied} = item} = assigns) do
+    assigns = assign(assigns, :d, shown_destination(item))
+    if assigns.d.tool, do: denied_tool_subject(assigns), else: denied_subject(assigns)
   end
 
   defp attention_subject(%{item: %{kind: kind}} = assigns)
@@ -470,6 +454,46 @@ defmodule ApiaryWeb.OverviewComponents do
     <span class="q-ar-id">{@item.key.key_id}</span>
     """
   end
+
+  defp denied_tool_subject(assigns) do
+    ~H"""
+    <span
+      class="q-host q-dest-tool q-ar-t q-mono"
+      title={destination_title(@d, @item.port)}
+    >
+      <.tool_mark name={@d.tool} /><span
+        :if={@d.path != ""}
+        class="q-path"
+      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>:{@item.port}</span>
+    </span>
+    """
+  end
+
+  defp denied_subject(assigns) do
+    ~H"""
+    <span class="q-host q-ar-t q-mono" title={destination_title(@d, @item.port)}>
+      <bdi>{@d.host}</bdi><span class="q-port">:{@item.port}</span><span
+        :if={@item.held && @d.path != ""}
+        class="q-path"
+      >{@d.path}</span>
+    </span>
+    """
+  end
+
+  # A denied destination's host, path and tool, texts Forager sent, as an external
+  # system's text is shown (`shown/1`): one with nothing left to show is none. A host the
+  # wall refused for its form (`wall`) is shown as sent, in `<bdi>`, since its form is
+  # the reason.
+  defp shown_destination(item) do
+    %{
+      host: if(host_form?(item), do: item.host, else: shown(item.host)),
+      path: shown(item.path) || "",
+      tool: shown(item[:tool])
+    }
+  end
+
+  defp host_form?(%{wall: %{rule: "wall:host-form"}}), do: true
+  defp host_form?(_item), do: false
 
   attr :item, :map, required: true
   attr :shared, :any, required: true
@@ -1003,7 +1027,8 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp destination_title(%{tool: tool, host: host, port: port, path: path})
+  # The destination as shown (`shown_destination/1`), whole, for a cut subject's title.
+  defp destination_title(%{tool: tool, host: host, path: path}, port)
        when is_binary(tool),
        do:
          gettext("%{destination}, a host the tool %{tool} serves",
@@ -1011,7 +1036,7 @@ defmodule ApiaryWeb.OverviewComponents do
            tool: tool
          )
 
-  defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
+  defp destination_title(%{host: host, path: path}, port), do: "#{host}:#{port}#{path}"
 
   # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
   # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the

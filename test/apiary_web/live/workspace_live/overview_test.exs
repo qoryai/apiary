@@ -1941,15 +1941,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
       selector = "#attention-list li[data-kind=denied]"
 
-      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", host)
-      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", host)
+      # The page drops the override (`Apiary.ExternalText.line/1`) and isolates the rest.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", shown)
+      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", shown)
       html = render(view)
 
       assert html =~
-               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
+               "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
 
       assert html =~
-               "<span class=\"q-port\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443</span>"
+               "<span class=\"q-port\"><bdi>evillpmaxe.&lt;script&gt;</bdi>:443</span>"
 
       refute html =~ "elpmaxe.<script>"
     end
@@ -2381,5 +2383,62 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     assert text(view, "#att-run-#{named.public_id} .q-ar-where") == "acme/shop\uFFFD"
     assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "no repository"
+  end
+
+  # The page's markup with what `<bdi>` isolates taken out, as text: what of a host is
+  # left outside an isolate.
+  defp outside_bdi(html) do
+    html
+    |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
+    |> String.replace(~r{<[^>]*>}, " ")
+  end
+
+  @tag needs: :security
+  test "a denied request's tool, path and host as a page shows what Forager sent", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, shop(),
+      egress: [
+        tool_invocation_data(%{
+          "tool" => "fi\u202Eles\a",
+          "host" => "files.tools\u200B.internal",
+          "rule" => "",
+          "path" => "/media/\u202Ea.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+      ]
+    )
+
+    view = open(conn, scope)
+    selector = "#attention-list li[data-kind=denied]"
+
+    assert text(view, "#{selector} .q-dest-tool") ==
+             "Tool files\uFFFD /media/a.png files.tools.internal:443"
+
+    title = "files.tools.internal:443/media/a.png, a host the tool files\uFFFD serves"
+    assert has_element?(view, ~s(#{selector} .q-host[title="#{title}"]))
+    assert has_element?(view, "#{selector} .q-host .q-port > bdi", "files.tools.internal")
+    refute render(element(view, "#{selector} .q-ar-subj")) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a host the wall refused for its form: as sent, inside a <bdi>", %{
+    conn: conn,
+    scope: scope
+  } do
+    host = "Files\u202E.CDN.example."
+
+    started_run(scope, shop(),
+      egress: [%{"host" => host, "decision" => "denied", "rule" => "wall:host-form"}]
+    )
+
+    view = open(conn, scope)
+    subject = "#attention-list li[data-kind=denied] .q-ar-subj"
+
+    assert has_element?(view, "#{subject} .q-host > bdi", host)
+    refute view |> element(subject) |> render() |> outside_bdi() =~ "\u202E"
   end
 end
