@@ -437,6 +437,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"work_item.explore_again", _details, _actor),
     do: gettext("Asked Qory to explore a work item again")
 
+  defp said(:"work_item.comment", _details, _actor), do: gettext("Commented on a work item")
+
+  defp said(:"work_item.comment_delete", _details, _actor),
+    do: gettext("Deleted a comment on a work item")
+
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")
 

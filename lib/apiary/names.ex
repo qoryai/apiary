@@ -16,20 +16,28 @@ defmodule Apiary.Names do
   import Ecto.Changeset
 
   @refused ~r/(?![\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
+  # The same, but for tab and line feed: a text of several lines.
+  @refused_in_lines ~r/(?![\x{9}\x{A}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
 
   @doc """
-  validate_characters/2 refuses a `field` of `changeset` that is not UTF-8 text (`must be
+  validate_characters/3 refuses a `field` of `changeset` that is not UTF-8 text (`must be
   UTF-8 text`) or that holds a control character, a format character but ZWNJ and ZWJ, or
   a line or paragraph separator (`must not contain control characters`).
+
+  With `lines: true`, for a text of several lines a person writes, tab and line feed are
+  allowed too; every other character above stays refused, the carriage return among
+  them, which the caller turns into a line feed first where it takes one.
   """
-  @spec validate_characters(Ecto.Changeset.t(), atom) :: Ecto.Changeset.t()
-  def validate_characters(changeset, field) do
+  @spec validate_characters(Ecto.Changeset.t(), atom, keyword) :: Ecto.Changeset.t()
+  def validate_characters(changeset, field, opts \\ []) do
+    refused = if Keyword.get(opts, :lines, false), do: @refused_in_lines, else: @refused
+
     validate_change(changeset, field, fn ^field, value ->
       cond do
         not String.valid?(value) ->
           [{field, dgettext_noop("errors", "must be UTF-8 text")}]
 
-        Regex.match?(@refused, value) ->
+        Regex.match?(refused, value) ->
           [{field, dgettext_noop("errors", "must not contain control characters")}]
 
         true ->

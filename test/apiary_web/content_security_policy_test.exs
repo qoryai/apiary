@@ -80,10 +80,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
                  "/instance/adapters/:adapter_id/settings/rename",
                  "/instance/adapters/:adapter_id/settings/remove",
                  "/:org/:workspace/backlog",
-                 "/:org/:workspace/backlog/:item_id",
-                 "/:org/:workspace/work",
-                 "/:org/:workspace/work/:number",
-                 "/:org/:workspace/work/:number/thread"
+                 "/:org/:workspace/backlog/:item_id"
                ],
                &{&1, @not_built}
              )
@@ -449,6 +446,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("release_id", _path, p), do: p.release_id
@@ -598,13 +596,24 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     defp stories, do: {[], []}
   end
 
-  # The records of the `factory` feature: an adapter, or a placeholder where the instance
-  # has not got it, whose pages answer as paths that do not exist.
-  defp factory_params(_scope) do
-    if Features.on?(:factory),
-      do: %{adapter_id: adapter_fixture(%{name: "Acme tracker"}).public_id},
-      else: %{adapter_id: "na_x"}
+  # The records of the `factory` feature: an adapter, and a work item whose proposal waits
+  # at Confirm, so its page draws every part and its edit page is there; or placeholders
+  # where the instance has not got it, whose pages answer as paths that do not exist.
+  defp factory_params(scope) do
+    if Features.on?(:factory) do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: understood_result())
+
+      %{
+        adapter_id: adapter_fixture(%{name: "Acme tracker"}).public_id,
+        work_item_number: work_item.number
+      }
+    else
+      %{adapter_id: "na_x", work_item_number: 1}
+    end
   end
+
+  defp understood_result, do: Apiary.WorkItemsFixtures.understood_result()
 
   # The records of the `security` feature; placeholders where the instance has not got
   # it, whose pages answer as paths that do not exist.

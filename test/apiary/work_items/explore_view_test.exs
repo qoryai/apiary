@@ -264,12 +264,19 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       at!(item, :confirmed, ago(now, 4))
 
       user_id = ctx.scope.user.id
-      first_ref = %{id: first.public_id, attempt: 1, of: 3}
-      second_ref = %{id: second.public_id, attempt: 2, of: 3}
+      here = ctx.scope.workspace.id
+      first_ref = %{id: first.public_id, workspace_id: here, attempt: 1, of: 3}
+      second_ref = %{id: second.public_id, workspace_id: here, attempt: 2, of: 3}
       first_instruction = item.first_instruction
 
       assert [
-               %{kind: :taken_in, actor_id: ^user_id, take_in: 1, again: false} = taken_in,
+               %{
+                 kind: :taken_in,
+                 actor_id: ^user_id,
+                 take_in: 1,
+                 again: false,
+                 owner_id: ^user_id
+               } = taken_in,
                %{kind: :started, run: ^first_ref, start: nil},
                %{
                  kind: :asked,
@@ -284,7 +291,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                  questions: [%{public_id: "1", text: "Which basket?", answer: "At checkout."}]
                },
                %{kind: :started, run: ^second_ref, start: :answers},
-               %{kind: :proposed, run: ^second_ref, duration_ms: 60_000},
+               %{kind: :proposed, run: ^second_ref, duration_ms: 60_000, owner_id: ^user_id},
                %{kind: :confirmed, actor_id: ^user_id, changed: false}
              ] = WorkItems.explore_thread(ctx.scope, item, now)
 
@@ -313,7 +320,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         set: [updated_at: ago(now, 2)]
       )
 
-      first_ref = %{id: first.public_id, attempt: 1, of: 3}
+      first_ref = %{id: first.public_id, workspace_id: ctx.scope.workspace.id, attempt: 1, of: 3}
 
       assert [
                %{kind: :taken_in},
@@ -332,5 +339,163 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert [%{kind: :taken_in}, %{kind: :started, start: nil}] =
                WorkItems.explore_thread(ctx.scope, ctx.work_item)
     end
+  end
+
+  describe "what the work item page draws beside where Explore stands" do
+    test "each run names the workspace it was queued in, which stays when its work item moves, and how long it took",
+         ctx do
+      now = DateTime.utc_now()
+      here = ctx.scope.workspace.id
+      explore_run_fixture(ctx.work_item, result: understood_result(), run: timed(now, 9, 8))
+
+      assert %{run: %{workspace_id: ^here, duration_ms: 60_000}} =
+               WorkItems.explore(ctx.scope, ctx.work_item, now)
+
+      there = workspace_fixture(ctx.scope.organisation)
+
+      Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id),
+        set: [workspace_id: there.id]
+      )
+
+      elsewhere = workspace_scope(ctx.scope.user, there)
+
+      assert %{run: %{workspace_id: ^here}} = WorkItems.explore(elsewhere, ctx.work_item, now)
+
+      assert %{run: %{workspace_id: ^here}} =
+               Enum.find(
+                 WorkItems.explore_thread(elsewhere, ctx.work_item, now),
+                 &(&1.kind == :started)
+               )
+    end
+
+    test "a run not ended has no duration yet", ctx do
+      explore_run_fixture(ctx.work_item, state: :handed_over)
+
+      assert %{run: %{duration_ms: nil, ended_at: nil}} =
+               WorkItems.explore(ctx.scope, ctx.work_item)
+    end
+
+    test "a take in again: how the work item had ended, the owner of each take in, and the earlier take in's runs as they were drawn" do
+      %{scope: scope} = sign_up_fixture()
+      %{user: member} = member_fixture(scope)
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+
+      %{run: asked} =
+        explore_run_fixture(work_item, attempt: 1, result: questions_result(["Which basket?"]))
+
+      {:ok, answered} = WorkItems.answer(scope, work_item, 1, %{"1" => "At checkout."})
+
+      Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
+        set: [state: :ended, end_cause: :run_ended]
+      )
+
+      {:ok, declined} = WorkItems.decline(scope, answered)
+      assert %{previous: nil} = WorkItems.explore(scope, declined)
+
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: member.id})
+      user_id = scope.user.id
+      member_id = member.id
+      asked_id = asked.public_id
+
+      assert %{
+               previous: :declined,
+               earlier_take_ins: [
+                 %{
+                   take_in: 1,
+                   ended: :declined,
+                   ended_reason: nil,
+                   runs: [
+                     %{
+                       id: ^asked_id,
+                       outcome: :questions,
+                       questions: [%{public_id: "1", answer: "At checkout."}],
+                       answered_by_id: ^user_id
+                     },
+                     %{attempt: 2, state: :failed}
+                   ]
+                 }
+               ]
+             } = WorkItems.explore(scope, again)
+
+      assert [
+               %{take_in: 1, owner_id: ^user_id},
+               %{take_in: 2, again: true, owner_id: ^member_id}
+             ] =
+               for(
+                 %{kind: :taken_in} = entry <- WorkItems.explore_thread(scope, again),
+                 do: entry
+               )
+    end
+
+    test "a take in again undone gave its owner back, and no record keeps the one it had" do
+      %{scope: scope} = sign_up_fixture()
+      %{user: member} = member_fixture(scope)
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
+        set: [state: :ended, end_cause: :run_ended]
+      )
+
+      {:ok, _declined} = WorkItems.decline(scope, work_item)
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: member.id})
+      {:ok, undone} = WorkItems.undo(scope, again)
+      user_id = scope.user.id
+
+      assert %{status: :declined} = WorkItems.explore(scope, undone)
+
+      assert [%{take_in: 1, owner_id: ^user_id}, %{take_in: 2, owner_id: nil}] =
+               for(
+                 %{kind: :taken_in} = entry <- WorkItems.explore_thread(scope, undone),
+                 do: entry
+               )
+    end
+
+    test "a close by the instance names its reason; a person's close names none", ctx do
+      explore_run_fixture(ctx.work_item, result: understood_result())
+      closed = instance_close!(ctx.work_item, "adapter_removed")
+
+      assert %{
+               status: :closed,
+               stage: :confirm,
+               ended_reason: "adapter_removed",
+               ended_by_id: nil,
+               ended_at: %DateTime{}
+             } = WorkItems.explore(ctx.scope, closed)
+
+      assert %{kind: :closed, actor_id: nil, reason: "adapter_removed"} =
+               List.last(WorkItems.explore_thread(ctx.scope, closed))
+
+      other = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
+      {:ok, by_person} = WorkItems.close(ctx.scope, other)
+      user_id = ctx.scope.user.id
+
+      assert %{ended_reason: nil, ended_by_id: ^user_id, ended_at: %DateTime{}} =
+               WorkItems.explore(ctx.scope, by_person)
+
+      live = work_item_fixture(ctx.scope, external_ref: "acme/shop#15")
+      assert %{ended_by_id: nil, ended_at: nil} = WorkItems.explore(ctx.scope, live)
+
+      assert %{kind: :closed, reason: nil} =
+               List.last(WorkItems.explore_thread(ctx.scope, by_person))
+    end
+  end
+
+  # `work_item` closed by the instance, for `reason`, as the removal of an adapter closes
+  # one (`Apiary.WorkItems.close_locked/3`).
+  defp instance_close!(work_item, reason) do
+    {:ok, _queues} =
+      Repo.transact(fn ->
+        locked =
+          Repo.one!(
+            from w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id, lock: "FOR UPDATE"
+          )
+
+        WorkItems.close_locked([locked], {:instance, reason}, DateTime.utc_now())
+      end)
+
+    Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
   end
 end
