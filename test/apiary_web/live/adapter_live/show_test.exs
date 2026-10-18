@@ -183,6 +183,30 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone."
   end
 
+  test "ended on the integration: before it connected, not installed; before a listing, no backlogs",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    ended_at = ~U[2026-03-14 09:00:00.000000Z]
+    {connection, _nonce} = connection_fixture(scope, adapter, :pending)
+    set(connection, state: :ended, ended_at: ended_at, ended_reason: :adapter_reported)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") == "Not installed."
+    assert has_element?(lv, "#integration-install")
+
+    gone =
+      "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone."
+
+    set(connection, connected_at: ~U[2026-03-13 09:00:00.000000Z])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") == gone
+
+    set(connection, listed_at: ~U[2026-03-13 09:01:00.000000Z])
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") ==
+             gone <>
+               " The tickets Acme tracker brought in left every backlog; work items already taken in stay."
+  end
+
   test "an end for another reason, or a connection after it, says no end", %{
     conn: conn,
     scope: scope,
