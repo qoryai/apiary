@@ -175,8 +175,17 @@ defmodule ApiaryWeb.SourceComponentsTest do
 
   describe "the words for a source's collections" do
     test "its adapter's, or the domain's word where it names none" do
-      assert SourceComponents.collection(%{one: "project", other: "projects"}) == "project"
+      project = %{one: "project", other: "projects"}
+      assert SourceComponents.collection(project) == "project"
+      assert SourceComponents.collections(project) == "projects"
+      assert SourceComponents.collection_label(project) == "Project"
+
       assert SourceComponents.collection(nil) == "repository"
+      assert SourceComponents.collections(nil) == "repositories"
+      assert SourceComponents.collection_label(nil) == "Repository"
+
+      assert SourceComponents.collection_label(%{one: "work board", other: "work boards"}) ==
+               "Work board"
     end
   end
 

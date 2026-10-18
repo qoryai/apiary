@@ -16873,6 +16873,7 @@ msgctxt "source collection, when its adapter names none"
 msgid "collection"
 msgstr "repository"
 
+#: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
