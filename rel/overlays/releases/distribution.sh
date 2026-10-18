@@ -1,7 +1,7 @@
 # How the release runs Erlang distribution. Sourced, never run: by releases/<version>/env.sh
 # (rel/env.sh.eex), which the release script bin/apiary sources before every command, and
-# by bin/server before it starts the release. POSIX sh. It only sets variables, or stops a
-# command that would start distribution.
+# by bin/server before it starts the release, which sets RELEASE_ROOT first. POSIX sh. It
+# sets variables and writes the cookie to a file, or stops the command.
 #
 # Without DNS_CLUSTER_QUERY, distribution is off (RELEASE_DISTRIBUTION=none): no epmd and
 # no distribution port. `eval`, which bin/migrate and every Apiary.Release task use,
@@ -20,6 +20,41 @@
 # that command. A node that an Erlang option starts anyway (-sname or -name in
 # ELIXIR_ERL_OPTIONS, ERL_FLAGS, ERL_AFLAGS, ERL_ZFLAGS or a RELEASE_VM_ARGS file) then has
 # a cookie no one else knows.
+#
+# The cookie never reaches a command line, where anyone on the host who can list processes
+# could read it. The release script passes RELEASE_COOKIE to the elixir script as
+# --cookie, which becomes -setcookie on the command line of the Erlang VM, the beam. So for
+# every command but `version`, the cookie is written to .erlang.cookie, mode 0400, in a new
+# directory that mktemp makes under RELEASE_TMP (by default tmp/ of the release), mode 0700;
+# HOME is set to that directory, and RELEASE_COOKIE to the word -release_cookie_in_home.
+# The beam then gets "-setcookie -release_cookie_in_home": a -setcookie with no value,
+# which the kernel's auth module ignores, and a flag nothing reads. With no -setcookie
+# value, auth reads the cookie from $HOME/.erlang.cookie, which it accepts only when its
+# mode gives no one but its owner any access, and only as printable ASCII, which openssl
+# rand -base64 and -hex give. The value is written with printf, a shell builtin, so it is
+# in no command's arguments, and the beam's environment holds only the word.
+#
+# bin/server sources this file and then starts bin/apiary, whose env.sh sources it again:
+# RELEASE_COOKIE set to the word, with HOME a directory named apiary-cookie.<random> that
+# holds .erlang.cookie, means the cookie was written already. The word set any other way
+# counts as no RELEASE_COOKIE.
+
+distribution_marker=-release_cookie_in_home
+distribution_written=
+
+if [ "${RELEASE_COOKIE:-}" = "$distribution_marker" ]; then
+  case ${HOME:-} in
+  */apiary-cookie.*)
+    if [ -f "$HOME/.erlang.cookie" ]; then
+      distribution_written=yes
+    fi
+    ;;
+  esac
+
+  if [ -z "$distribution_written" ]; then
+    RELEASE_COOKIE=
+  fi
+fi
 
 if [ -z "${DNS_CLUSTER_QUERY:-}" ]; then
   RELEASE_DISTRIBUTION=none
@@ -85,4 +120,21 @@ if [ -z "${RELEASE_COOKIE:-}" ]; then
   fi
 
   export RELEASE_COOKIE
+fi
+
+# The cookie out of every command line, as the head of this file says. A directory or file
+# that cannot be made stops the command, with the reason mkdir, mktemp, the shell or chmod
+# gives.
+if [ -z "$distribution_written" ] && [ "${RELEASE_COMMAND:-}" != version ]; then
+  distribution_tmp=${RELEASE_TMP:-$RELEASE_ROOT/tmp}
+  distribution_home=$(mkdir -p "$distribution_tmp" && mktemp -d "$distribution_tmp/apiary-cookie.XXXXXXXX") || exit 1
+
+  # umask 077 in a subshell: the file is made owner-only, and the umask of the command is
+  # kept.
+  (umask 077 && printf '%s' "$RELEASE_COOKIE" >"$distribution_home/.erlang.cookie") || exit 1
+  chmod 0400 "$distribution_home/.erlang.cookie" || exit 1
+
+  HOME=$distribution_home
+  RELEASE_COOKIE=$distribution_marker
+  export HOME RELEASE_COOKIE
 fi
