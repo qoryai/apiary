@@ -50,18 +50,44 @@ defmodule Apiary.Accounts.User do
     |> validate_email(opts)
   end
 
+  # A control character (C0, DEL, C1) or a format character (the bidirectional controls,
+  # zero-width characters, the soft hyphen and the like), which Postgres may refuse to
+  # store or which make an address read otherwise than it is.
+  @unseen ~r/[\p{Cc}\p{Cf}]/u
+  # One `@` with text on each side, and no comma, semicolon or space, Unicode's included.
+  @shape ~r/^[^@,;\s]+@[^@,;\s]+$/u
+
+  @doc """
+  Refuses an `:email` no person's address can be: bytes that are not UTF-8 text, a
+  control or format character (`must not contain control characters`), or no single `@`
+  with text on each side, or a comma, a semicolon or a space. An account's address is
+  checked so, and an invitation's (`Apiary.Organisations.Invitation`), which becomes
+  the account's.
+  """
+  @spec validate_address(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_address(changeset) do
+    validate_change(changeset, :email, fn :email, email ->
+      cond do
+        not String.valid?(email) ->
+          [email: dgettext_noop("errors", "must be UTF-8 text")]
+
+        Regex.match?(@unseen, email) ->
+          [email: dgettext_noop("errors", "must not contain control characters")]
+
+        not Regex.match?(@shape, email) ->
+          [email: dgettext_noop("errors", "must have the @ sign and no spaces")]
+
+        true ->
+          []
+      end
+    end)
+  end
+
   defp validate_email(changeset, opts) do
     changeset =
       changeset
       |> validate_required([:email])
-      # A NUL or another control character, which Postgres may refuse to store, is no
-      # address's.
-      |> validate_format(:email, ~r/\A[^[:cntrl:]]*\z/,
-        message: dgettext_noop("errors", "must not contain control characters")
-      )
-      |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-        message: dgettext_noop("errors", "must have the @ sign and no spaces")
-      )
+      |> validate_address()
       |> validate_length(:email, max: 160)
 
     if Keyword.get(opts, :validate_unique, true) do

@@ -43,9 +43,7 @@ defmodule Apiary.Organisations.Invitation do
     |> cast(attrs, [:email])
     |> update_change(:email, &String.downcase(String.trim(&1)))
     |> validate_required([:email])
-    |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-      message: dgettext_noop("errors", "must have the @ sign and no spaces")
-    )
+    |> Apiary.Accounts.User.validate_address()
     |> validate_length(:email, max: 160)
     |> unique_constraint([:organisation_id, :email],
       name: :invitations_pending_email_index,

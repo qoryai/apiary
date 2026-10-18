@@ -44,6 +44,19 @@ defmodule Apiary.AccountsTest do
       refute Accounts.get_user_by_email(<<0xFF>> <> user.email)
       refute Accounts.get_user_by_email_and_password(user.email <> <<0>>, valid_user_password())
     end
+
+    test "find an account whose address, stored before the check, holds a format character" do
+      user = user_fixture()
+      email = "da" <> <<0x202E::utf8>> <> "na@example.com"
+      {1, _} = Repo.update_all(from(u in User, where: u.id == ^user.id), set: [email: email])
+      # A change that does not touch the address leaves it as it is.
+      Accounts.get_user_by_email(email) |> set_password()
+
+      assert %User{email: ^email} = Accounts.get_user_by_email(email)
+
+      assert %User{email: ^email} =
+               Accounts.get_user_by_email_and_password(email, valid_user_password())
+    end
   end
 
   describe "get_user_by_email_and_password/2 for an unconfirmed account" do
@@ -105,6 +118,41 @@ defmodule Apiary.AccountsTest do
       end
     end
 
+    test "refuses an address holding a Unicode control or format character, a bidirectional one among them" do
+      # NEL; the right-to-left override, embedding and isolate, LRM and ALM; the zero-width
+      # space and joiner; the soft hyphen; the byte order mark; the Mongolian vowel
+      # separator; a language tag.
+      for cp <-
+            [0x85, 0x202E, 0x202B, 0x2066, 0x200E, 0x061C, 0x200B, 0x200D, 0xAD, 0xFEFF] ++
+              [0x180E, 0xE0001],
+          email <- ["da#{<<cp::utf8>>}na@example.com", "dana@example.com#{<<cp::utf8>>}"] do
+        {:error, changeset} = Accounts.register_user(%{email: email})
+        assert errors_on(changeset).email == ["must not contain control characters"], inspect(cp)
+      end
+    end
+
+    test "refuses an address holding a Unicode space, as an ASCII one" do
+      for cp <- [0xA0, 0x2028, 0x2029, 0x3000, 0x2003] do
+        {:error, changeset} = Accounts.register_user(%{email: "da#{<<cp::utf8>>}na@example.com"})
+        assert errors_on(changeset).email == ["must have the @ sign and no spaces"], inspect(cp)
+      end
+    end
+
+    test "refuses bytes that are not UTF-8 text" do
+      {:error, changeset} = Accounts.register_user(%{email: <<0xFF>> <> "dana@example.com"})
+      assert errors_on(changeset).email == ["must be UTF-8 text"]
+    end
+
+    test "takes an address with letters beyond ASCII and an emoji" do
+      email =
+        "d#{<<0xE4::utf8>>}na-#{System.unique_integer([:positive])}@ex#{<<0xE4::utf8>>}mple.com"
+
+      assert {:ok, %User{email: ^email}} = Accounts.register_user(%{email: email})
+
+      email = "#{<<0x1F600::utf8>>}#{System.unique_integer([:positive])}@example.com"
+      assert {:ok, %User{email: ^email}} = Accounts.register_user(%{email: email})
+    end
+
     test "registers users without password" do
       email = unique_user_email()
       {:ok, user} = Accounts.register_user(valid_user_attributes(email: email))
@@ -144,6 +192,21 @@ defmodule Apiary.AccountsTest do
       changeset = Accounts.change_user_email(%User{email: "dana@example.com"}, %{"email" => ""})
 
       assert errors_on(changeset) == %{email: ["can't be blank"]}
+    end
+
+    test "refuses a new address holding a format character or a Unicode space" do
+      user = %User{email: "dana@example.com"}
+
+      for {cp, message} <- [
+            {0x202E, "must not contain control characters"},
+            {0x200B, "must not contain control characters"},
+            {0xA0, "must have the @ sign and no spaces"}
+          ] do
+        changeset =
+          Accounts.change_user_email(user, %{"email" => "da#{<<cp::utf8>>}na@example.org"})
+
+        assert errors_on(changeset) == %{email: [message]}, inspect(cp)
+      end
     end
   end
 

@@ -936,6 +936,28 @@ defmodule Apiary.OrganisationsTest do
       assert %{email: [_]} = errors_on(changeset)
     end
 
+    test "invite_member/3 refuses an address an account could not have" do
+      %{scope: scope} = sign_up_fixture()
+
+      for {email, message} <- [
+            {"da#{<<0x202E::utf8>>}na@example.com", "must not contain control characters"},
+            {"da#{<<0x200B::utf8>>}na@example.com", "must not contain control characters"},
+            {"da\u0007na@example.com", "must not contain control characters"},
+            {"da#{<<0xA0::utf8>>}na@example.com", "must have the @ sign and no spaces"}
+          ] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Organisations.invite_member(scope, %{"email" => email}, & &1)
+
+        assert errors_on(changeset) == %{email: [message]}, inspect(email)
+      end
+
+      assert Organisations.list_invitations(scope) == []
+
+      # Bytes that are not UTF-8 text, which no form sends, are refused by the changeset.
+      changeset = Invitation.changeset(%Invitation{}, %{email: <<0xFF>> <> "dana@example.com"})
+      assert errors_on(changeset) == %{email: ["must be UTF-8 text"]}
+    end
+
     test "get_invitation_by_token/1 returns only pending invitations" do
       %{scope: scope} = sign_up_fixture()
       %{invitation: invitation, token: token} = invitation_fixture(scope)
