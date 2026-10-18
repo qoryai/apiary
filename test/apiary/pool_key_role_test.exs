@@ -21,7 +21,8 @@ defmodule Apiary.PoolKeyRoleTest do
     :"dispatch.claim",
     :"dispatch.dispatched",
     :"dispatch.handover",
-    :"dispatch.release"
+    :"dispatch.release",
+    :"dispatch.prebuilt"
   ]
 
   # What a node pool's key held before it acted in `pool_key`, as a node's key does.
@@ -241,16 +242,17 @@ defmodule Apiary.PoolKeyRoleTest do
       end
     end
 
-    test "leave an audit entry for a handover and a release, and none for a claim or its start" do
+    test "leave an audit entry for a handover, a release and a prebuilt, and none for a claim or its start" do
       assert Access.action(:"dispatch.handover").audited == true
       assert Access.action(:"dispatch.release").audited == true
+      assert Access.action(:"dispatch.prebuilt").audited == true
       assert {:not, claim} = Access.action(:"dispatch.claim").audited
       assert {:not, dispatched} = Access.action(:"dispatch.dispatched").audited
       assert is_binary(claim) and claim != ""
       assert is_binary(dispatched) and dispatched != ""
 
       assert Enum.filter(@dispatch_actions, &Audit.audited?/1) ==
-               [:"dispatch.handover", :"dispatch.release"]
+               [:"dispatch.handover", :"dispatch.release", :"dispatch.prebuilt"]
     end
   end
 

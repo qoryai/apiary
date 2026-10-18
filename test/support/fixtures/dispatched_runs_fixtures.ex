@@ -115,6 +115,93 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
+  A prebuild of a fresh collection of the scope's workspace, with a target and the
+  `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued by the trigger
+  (`Apiary.Environments.trigger/2`) for every pool of the workspace, with its environment
+  record, then claimed at revision 2 under `key`, its job started and handed over
+  (`Apiary.Dispatches.handover/3`). The workspace has no other waiting run the pool may
+  take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
+  run_of_queue, run: registered_run}`, each as stored then.
+  """
+  def prebuild_handed_over!(%Scope{} = scope, %AccessKey{} = key, collection_attrs \\ %{}) do
+    collection = Apiary.NodesFixtures.collection_fixture(scope, collection_attrs)
+
+    {:ok, _queued} =
+      Repo.transact(fn ->
+        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
+      end)
+
+    %{dispatch: dispatch} = dispatched!(key, 2)
+
+    {:ok, %{run: run}} =
+      Dispatches.handover(key, dispatch.public_id, %{
+        revision: 2,
+        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+      })
+
+    %{
+      collection: collection,
+      dispatch: Repo.get!(Dispatch, dispatch.id),
+      dispatch_run: Repo.get!(DispatchRun, dispatch.dispatch_run_id),
+      run: Repo.get!(Run, run.id)
+    }
+  end
+
+  @doc """
+  A second prebuild of the collection of `older`, a prebuild `prebuild_handed_over!/3`
+  made and that has not ended: the collection's `environment_ref` set to `env-2` and
+  triggered, so it is queued after `older`'s, then claimed at revision 2 under `key`, its
+  job started and handed over. Returns as `prebuild_handed_over!/3` does.
+  """
+  def newer_prebuild_handed_over!(%AccessKey{} = key, %{collection: %{id: id}}) do
+    {:ok, [queued]} =
+      Repo.transact(fn ->
+        {1, _rows} =
+          Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^id),
+            set: [environment_ref: "env-2"]
+          )
+
+        collection = Repo.get!(Apiary.Adapters.Collection, id)
+        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
+      end)
+
+    %{dispatch: dispatch} = dispatched!(key, 2)
+    true = dispatch.dispatch_run_id == queued.id
+
+    {:ok, %{run: run}} =
+      Dispatches.handover(key, dispatch.public_id, %{
+        revision: 2,
+        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+      })
+
+    %{
+      collection: Repo.get!(Apiary.Adapters.Collection, id),
+      dispatch: Repo.get!(Dispatch, dispatch.id),
+      dispatch_run: Repo.get!(DispatchRun, dispatch.dispatch_run_id),
+      run: Repo.get!(Run, run.id)
+    }
+  end
+
+  @doc """
+  What a prebuilt of `dispatch_run` reports, as `Apiary.Dispatches.prebuilt/3` takes it,
+  at revision 2: its `run_id`, the `environment_ref` it was queued for, an image pinned
+  by its digest, its size and a commit; `attrs` change any of them.
+  """
+  def prebuilt_meta(%DispatchRun{} = dispatch_run, attrs \\ %{}) do
+    Map.merge(
+      %{
+        revision: 2,
+        run_id: dispatch_run.run_id,
+        image: "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16),
+        size: 734_003_200,
+        environment_ref: dispatch_run.environment_ref,
+        commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
   The attributes of a run registered through a gateway as of `now`, running: registered
   and its run key issued a minute before, attached 30 seconds before, last heard 5 seconds
   before.

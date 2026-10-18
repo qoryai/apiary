@@ -3,14 +3,17 @@ defmodule ApiaryWeb.Contract.DispatchController do
 
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, with which a node pool's starter says
   # it started the job for a dispatch (the provisioner contract's
-  # `dispatched.schema.json`), and `POST /v1/dispatches/<dispatch_id>/release`, with which
-  # it gives the dispatch's run back (`release.schema.json`). Reached only through
+  # `dispatched.schema.json`), `POST /v1/dispatches/<dispatch_id>/release`, with which
+  # it gives the dispatch's run back (`release.schema.json`), and
+  # `POST /v1/dispatches/<dispatch_id>/prebuilt`, with which it reports the image the job
+  # for a prebuild built (`prebuilt.schema.json`). Reached only through
   # `ApiaryWeb.Contract.AdapterRequest` with `kind: :pool`, which verifies the request
   # under the pool's access key, refuses what comes before the body, and signs the
   # answer. The body is read raw, up to 1 MiB (`ApiaryWeb.Contract.RawBody`).
   #
   # Then, in order: a body the contract refuses is `400` `invalid_request`
-  # (`Apiary.Dispatches.Wire.dispatched/1`, `Apiary.Dispatches.Wire.release/1`); a `time`
+  # (`Apiary.Dispatches.Wire.dispatched/1`, `Apiary.Dispatches.Wire.release/1`,
+  # `Apiary.Dispatches.Wire.prebuilt/1`); a `time`
   # more than 300 seconds from the clock, either way, or a request whose signature was
   # accepted before, is `401`, unsigned (`ApiaryWeb.Contract.AdapterRequest.accept/2`).
   #
@@ -33,6 +36,20 @@ defmodule ApiaryWeb.Contract.DispatchController do
   # `unavailable`, after which nothing was written. Else `204`, signed, with no body:
   # before the handover the run waits again or ends, and after it the run ends, and an
   # explore run with retry queues the next run of its take in.
+  #
+  # A prebuilt accepted records the image (`Apiary.Dispatches.prebuilt/3`), with the
+  # body's `run_id`, `image`, `size`, `environment_ref` and `commit`, for the revision the
+  # request named, with the refusals in the contract's order: at revision 1, which does not
+  # serve its route, `404` `not_found`, before anything that depends on the dispatch; the
+  # key read again and refused, `401`, unsigned; an unknown dispatch, another pool's, or the
+  # action refused, `403` `forbidden`, one answer, after which nothing is written; a
+  # dispatch that ended, a second prebuilt among them, or of a run whose outcome or exit
+  # came after its handover, `410` `gone`; one not handed over whose lease lapsed, `409`
+  # `lease_expired`; a dispatch whose step is not prebuild, `409` `not_prebuild`; one not
+  # handed over yet, `409` `not_handed_over`; a `run_id` that is not the dispatch's run,
+  # `409` `run_mismatch`; anything Qory could not do, `503` `unavailable`, after which
+  # nothing was written. Else `204`, signed, with no body: the image is recorded for the
+  # pool and the run ends.
 
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :factory
@@ -91,13 +108,49 @@ defmodule ApiaryWeb.Contract.DispatchController do
     end
   end
 
-  # The release alone answers `503` for an exception: once it has answered, the run may
-  # be given back, so nothing after it is answered so.
+  @doc false
+  def prebuilt(conn, %{"dispatch_id" => dispatch_id}) do
+    with {:ok, body} <- Wire.decode(conn.assigns.raw_body),
+         {:ok, prebuilt} <- Wire.prebuilt(body),
+         {:ok, conn} <- AdapterRequest.accept(conn, prebuilt.time) do
+      meta =
+        prebuilt
+        |> Map.delete(:time)
+        |> Map.put(:revision, conn.assigns.contract_version)
+
+      case prebuilt(conn.assigns.access_key, dispatch_id, meta) do
+        :ok -> send_resp(conn, 204, "")
+        {:error, :unauthorized} -> refuse(conn, 401, "unauthorized")
+        {:error, :forbidden} -> refuse(conn, 403, "forbidden")
+        {:error, :not_found} -> refuse(conn, 404, "not_found")
+        {:error, :gone} -> refuse(conn, 410, "gone")
+        {:error, :lease_expired} -> refuse(conn, 409, "lease_expired")
+        {:error, :not_prebuild} -> refuse(conn, 409, "not_prebuild")
+        {:error, :not_handed_over} -> refuse(conn, 409, "not_handed_over")
+        {:error, :run_mismatch} -> refuse(conn, 409, "run_mismatch")
+        {:error, :unavailable} -> refuse(conn, 503, "unavailable")
+      end
+    else
+      :error -> refuse(conn, 400, "invalid_request")
+      :unauthorized -> refuse(conn, 401, "unauthorized")
+    end
+  end
+
+  # The release and the prebuilt alone answer `503` for an exception: once it has answered, the run may
+  # be given back, or the image recorded, so nothing after it is answered so.
   defp release(access_key, dispatch_id, meta) do
     Dispatches.release(access_key, dispatch_id, meta)
   rescue
     exception ->
       Logger.error("a release could not be answered: #{inspect(exception.__struct__)}")
+      {:error, :unavailable}
+  end
+
+  defp prebuilt(access_key, dispatch_id, meta) do
+    Dispatches.prebuilt(access_key, dispatch_id, meta)
+  rescue
+    exception ->
+      Logger.error("a prebuilt could not be answered: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
 

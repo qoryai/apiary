@@ -55,7 +55,8 @@ defmodule Apiary.Dispatches.Release do
   # the registered run reads as cancelled with the reason `released`, no outcome is
   # recorded, the dispatch ends with it and its slot is freed once. A registered run whose
   # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
-  # written. Then:
+  # written; for a prebuild, whose exit ends nothing of the queue, its outcome alone is.
+  # Then:
   #
   #   - an explore run with `retry` queues the next run of its take in
   #     (`Apiary.Dispatches.queue_next/2`), a new run with a new `run_id`, only while its
@@ -64,6 +65,10 @@ defmodule Apiary.Dispatches.Release do
   #     answered as a success all the same;
   #   - a prebuild, whatever `retry` says, queues nothing: its record keeps the last build
   #     as failed, `released`, with the reason, and its last good build as it was.
+  #
+  # A prebuild whose ref is older than the record's image's records no failure, before the
+  # handover or after it (`Apiary.Environments.newer_build?/2`, asked under the
+  # record's lock): the record is left as it is, and the run ends as above.
   #
   # ## The answer
   #
@@ -240,10 +245,15 @@ defmodule Apiary.Dispatches.Release do
   defp after_end(_locked, _release), do: {%{"ended" => true}, []}
 
   # A prebuild's last build failed, `released`, with the reason; the last good build kept.
-  defp build_failed(%{run: %DispatchRun{step: @prebuild}, held: %Record{} = record} = locked, %{
-         reason: reason
-       }),
-       do: Environments.record_release_failure(record, reason, locked.now)
+  # A prebuild whose ref is older than the record's image's records nothing.
+  defp build_failed(
+         %{run: %DispatchRun{step: @prebuild} = run, held: %Record{} = record} = locked,
+         %{reason: reason}
+       ) do
+    if Environments.newer_build?(record, run),
+      do: :ok,
+      else: Environments.record_release_failure(record, reason, locked.now)
+  end
 
   defp build_failed(_locked, _release), do: :ok
 

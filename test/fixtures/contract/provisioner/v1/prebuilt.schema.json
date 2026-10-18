@@ -38,7 +38,7 @@
       "maximum": 9007199254740991
     },
     "environment_ref": {
-      "description": "The collection's environment_ref the image was built for, as the job read it at commit, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes it. The control plane records it even when it differs from the collection's current one.",
+      "description": "The environment_ref of the handover answer's inputs, unchanged, handover-answer.schema.json: the environment_ref the prebuild was queued for, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes it. The control plane records it even when it differs from the collection's current one.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/environment_ref"
     },
     "commit": {

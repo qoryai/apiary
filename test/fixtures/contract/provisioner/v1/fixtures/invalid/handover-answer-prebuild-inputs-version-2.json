@@ -10,6 +10,7 @@
     "path": "acme/shop"
   },
   "inputs": {
-    "version": 2
+    "version": 2,
+    "environment_ref": "env-3f2a91c4"
   }
 }

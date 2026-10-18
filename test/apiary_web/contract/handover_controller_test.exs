@@ -276,7 +276,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert inputs["comments"] == []
     end
 
-    test "of a prebuild at revision 2 is 200, signed, with no work item and its input version 1",
+    test "of a prebuild at revision 2 is 200, signed, with no work item and its input the ref it was queued for",
          ctx do
       collection = collection_fixture(ctx.scope)
 
@@ -305,7 +305,9 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
                "path" => collection.target_path
              }
 
-      assert answer["inputs"] == %{"version" => 1}
+      assert answer["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      assert keys(ordered["inputs"].values) == ~w(version environment_ref)
 
       # At revision 1 the same dispatch is a step not served.
       assert refused?(handover(ctx, dispatch), 404, "not_found")

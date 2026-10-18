@@ -26,7 +26,8 @@ defmodule Apiary.Dispatches.Slots do
   #   claimed prebuilds: while another waits, each ends, `superseded`, and the one that
   #   waits takes the record's `queued_ref`; while none waits, one waits again, with the
   #   record's `queued_ref`, the one queued for it or else the one queued last, and each
-  #   other ends `superseded`. A dispatch of a run that ends so ends with it
+  #   other ends `superseded`. A prebuild that takes another `environment_ref` so keeps
+  #   when it took it (`environment_ref_at`), its `queued_at` kept. A dispatch of a run that ends so ends with it
   #   (`run_ended`). A dispatch that ended with its slot still held has it freed.
   #   Whatever the state of the pool or of the key that claimed it: a deleted pool's or a
   #   revoked key's dispatch lapses at its `lease_until` as any other does. Its run then
@@ -86,6 +87,11 @@ defmodule Apiary.Dispatches.Slots do
   # its dispatch (`wait_again/3`): under the record it holds, which every path that locks
   # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
   # none. A path that locks a work item locks it before any run of the queue, never after.
+  #
+  # The lost-run check's end of a prebuild handed over (`Apiary.Dispatches.RunEnd`) keeps
+  # it too: the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run of
+  # the queue, its registered run and its dispatches, then the free of its run, which
+  # finds none lapsed.
   #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first
@@ -342,25 +348,30 @@ defmodule Apiary.Dispatches.Slots do
         {1, _rows} =
           Repo.update_all(
             from(r in DispatchRun, where: r.id == ^again.id),
-            set: [
-              state: :waiting,
-              environment_ref: queued_ref || again.environment_ref,
-              updated_at: now
-            ]
+            set: [state: :waiting, updated_at: now] ++ ref(again, queued_ref, now)
           )
 
         for run <- runs, run.id != again.id, do: run.id
     end
   end
 
-  # The waiting prebuild takes the record's `queued_ref`, when it has another.
+  # A prebuild that waits again takes the record's `queued_ref`, and when it took it,
+  # when it has another; else it keeps its ref and when it took it.
+  defp ref(%DispatchRun{environment_ref: ref}, ref, _now), do: []
+  defp ref(%DispatchRun{}, nil, _now), do: []
+
+  defp ref(%DispatchRun{}, queued_ref, now),
+    do: [environment_ref: queued_ref, environment_ref_at: now]
+
+  # The waiting prebuild takes the record's `queued_ref`, and when it took it, when it has
+  # another.
   defp take_ref(%DispatchRun{environment_ref: ref}, ref, _now), do: :ok
   defp take_ref(%DispatchRun{}, nil, _now), do: :ok
 
   defp take_ref(%DispatchRun{id: id}, queued_ref, now) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
-        set: [environment_ref: queued_ref, updated_at: now]
+        set: [environment_ref: queued_ref, environment_ref_at: now, updated_at: now]
       )
 
     :ok
