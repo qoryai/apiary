@@ -55,6 +55,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   settings are checked within a time and memory limit, and schemas no longer create atoms
   or apply casts.
 - An integration's settings check counts large text toward its memory limit.
+- An integration's settings check refuses a schema, or settings checked as regular
+  expressions, whose patterns would take more than 16 MiB of memory once compiled.
 <!-- /feature -->
 
 ### Migrations
