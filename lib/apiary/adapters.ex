@@ -936,9 +936,10 @@ defmodule Apiary.Adapters do
   #
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
-  # reports items, and its words for its collections, each replacing what the start before
-  # said; a description with no source role stores the defaults, no words and items. They
-  # are no part of the trail's entry. A start that changes `items` writes the feed's
+  # reports items, its words for its collections, and its line on how to change which
+  # collections it reaches, each replacing what the start before said; a description with
+  # no source role stores the defaults, no words, items and no line. They are no part of
+  # the trail's entry. A start that changes `items` writes the feed's
   # `linked` or `unlinked` entry for each live collection whose link that changes, in the
   # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
   # declaration's `sync` entry, so that the feed counter is taken after the collections,

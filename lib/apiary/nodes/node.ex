@@ -108,6 +108,12 @@ defmodule Apiary.Nodes.Node do
     # domain's word), beside `items` false too.
     field :collection_noun_one, :string
     field :collection_noun_other, :string
+    # An adapter's alone (`nodes_source_access_check`): its description's source role's
+    # line on how to change, at the source, which collections it reaches; nil before its
+    # first start and where its description has no source role. Set at each start from
+    # the description, once its schema has checked it (`source_role_changeset/2`), and
+    # never cast.
+    field :source_access, :string
     # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
     # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
     # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
@@ -323,17 +329,18 @@ defmodule Apiary.Nodes.Node do
 
   @doc false
   # The changeset of what the source role of an adapter's description says of its items
-  # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1` and
-  # `collection_noun/1`, which the description's schema has checked): its words for one
-  # item and for many, or none, whether it reports items, and its words for one
-  # collection and for many, or none. A description with no source role gives the
-  # defaults: no words, and items. The database holds them to the same
-  # (`nodes_items_check`, `nodes_collection_noun_check`). `Apiary.Adapters.declare/2`
-  # calls it at each start, on the changeset of the declaration, so the latest start's
-  # description replaces what an earlier one said; given an adapter, it starts from the
-  # adapter's changeset. A change of `items`
-  # changes whether the adapter's collections are linked, and whoever writes it writes the
-  # feed's entries for them in the same transaction
+  # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1`,
+  # `collection_noun/1` and `access/1`, which the description's schema has checked): its
+  # words for one item and for many, or none, whether it reports items, its words for one
+  # collection and for many, or none, and its line on how to change, at the source, which
+  # collections it reaches. A description with no source role gives the defaults: no
+  # words, items, and no line. The database holds the words and items to the same
+  # (`nodes_items_check`, `nodes_collection_noun_check`), and the line to adapters
+  # (`nodes_source_access_check`). `Apiary.Adapters.declare/2` calls it at each start, on
+  # the changeset of the declaration, so the latest start's description replaces what an
+  # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
+  # `items` changes whether the adapter's collections are linked, and whoever writes it
+  # writes the feed's entries for them in the same transaction
   # (`Apiary.Adapters.Collections.relink_adapter/2`).
   @spec source_role_changeset(t | Ecto.Changeset.t(), Description.t()) ::
           Ecto.Changeset.t()
@@ -353,10 +360,12 @@ defmodule Apiary.Nodes.Node do
       item_noun_other: item_noun && item_noun.other,
       items: Description.items?(description),
       collection_noun_one: collection_noun && collection_noun.one,
-      collection_noun_other: collection_noun && collection_noun.other
+      collection_noun_other: collection_noun && collection_noun.other,
+      source_access: Description.access(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
+    |> check_constraint(:source_access, name: :nodes_source_access_check)
   end
 
   @doc false
