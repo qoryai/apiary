@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.WireTest do
   # The body of an adapter's declaration read as the integration contract has it
-  # (`adapter.schema.json`): the contract's fixtures accepted, all but the declaration
-  # with a setup_url, refused until the declaration reads one, and each field refused in
-  # turn, with every value that is not exactly what the contract allows.
+  # (`adapter.schema.json`): the contract's fixtures accepted, the declaration with a
+  # setup_url among them, its invalid ones refused, each setup_url one for its setup_url
+  # alone, and each field refused in turn, with every value that is not exactly what the
+  # contract allows.
   use ExUnit.Case, async: true
 
   import Apiary.DescriptionFixtures, only: [contract_description: 0, contract_description: 1]
@@ -44,7 +45,10 @@ defmodule Apiary.Adapters.WireTest do
              } = declaration
 
       assert Enum.sort(Map.keys(declaration)) ==
-               ~w(connect_url default_interval description minimum_interval sends_changes time)a
+               ~w(connect_url default_interval description minimum_interval sends_changes setup_url time)a
+
+      # Without a setup_url, the adapter has nothing to set up.
+      assert declaration.setup_url == nil
 
       assert Description.item_noun(description) == %{one: "issue", other: "issues"}
       assert Description.collection_noun(description) == %{one: "project", other: "projects"}
@@ -61,8 +65,15 @@ defmodule Apiary.Adapters.WireTest do
                %{"type" => "number", "maximum" => 1.0e3, "multipleOf" => 0.5}
     end
 
-    test "acme-tracker-setup.json, with a setup_url, is refused until the declaration reads one" do
-      assert read(fixture("adapter/acme-tracker-setup.json")) == :error
+    test "acme-tracker-setup.json, with a setup_url and a query, is accepted as written" do
+      assert {:ok, declaration} = read(fixture("adapter/acme-tracker-setup.json"))
+
+      assert %{
+               time: ~U[2026-10-15 12:00:00Z],
+               connect_url: "https://tracker-adapter.acme.example/connect",
+               setup_url: "https://tracker-adapter.acme.example/setup?site=main",
+               description: %Description{}
+             } = declaration
     end
 
     test "the schema's refusals and the control plane's are refused" do
@@ -75,7 +86,7 @@ defmodule Apiary.Adapters.WireTest do
                "invalid/adapter-description-string.json",
                "invalid/adapter-description-version-2.json",
                "invalid/adapter-description-without-roles.json",
-               # Refused for now as any setup_url is; the declaration reads none yet.
+               # Each refused for its setup_url alone: "setup_url" below.
                "invalid/adapter-setup-url-and-state.json",
                "invalid/adapter-setup-url-bare-state.json",
                "invalid/adapter-setup-url-fragment.json",
@@ -442,6 +453,114 @@ defmodule Apiary.Adapters.WireTest do
           ] do
         refute Wire.url?(url), inspect(url)
         assert declaration(Map.put(valid(), "connect_url", url)) == :error, inspect(url)
+      end
+    end
+  end
+
+  describe "setup_url" do
+    # Each of the contract's invalid setup_url fixtures, its setup_url as written, and the
+    # same address with its fault taken out.
+    @setup_url_faults [
+      {"adapter-setup-url-and-state.json",
+       "https://tracker-adapter.acme.example/setup?site=main&state=x",
+       "https://tracker-adapter.acme.example/setup?site=main"},
+      {"adapter-setup-url-bare-state.json", "https://tracker-adapter.acme.example/setup?state",
+       "https://tracker-adapter.acme.example/setup"},
+      {"adapter-setup-url-fragment.json", "https://tracker-adapter.acme.example/setup#start",
+       "https://tracker-adapter.acme.example/setup"},
+      {"adapter-setup-url-http.json", "http://tracker-adapter.acme.example/setup",
+       "https://tracker-adapter.acme.example/setup"},
+      {"adapter-setup-url-state-first.json",
+       "https://tracker-adapter.acme.example/setup?state&x=1",
+       "https://tracker-adapter.acme.example/setup?x=1"},
+      {"adapter-setup-url-state-percent-encoded.json",
+       "https://tracker-adapter.acme.example/setup?%73tate=1",
+       "https://tracker-adapter.acme.example/setup"},
+      {"adapter-setup-url-state.json", "https://tracker-adapter.acme.example/setup?state=x",
+       "https://tracker-adapter.acme.example/setup"}
+    ]
+
+    test "each invalid fixture is refused for its setup_url: with the fault taken out, it is accepted" do
+      assert Enum.map(@setup_url_faults, &elem(&1, 0)) ==
+               @fixtures
+               |> Path.join("invalid/adapter-setup-url-*.json")
+               |> Path.wildcard()
+               |> Enum.map(&Path.basename/1)
+
+      for {name, written, fixed} <- @setup_url_faults do
+        raw = fixture("invalid/" <> name)
+        body = Jason.decode!(raw)
+        assert body["setup_url"] == written, name
+
+        assert read(raw) == :error, name
+        refute Wire.setup_url?(written), name
+
+        # The same body with the address's fault taken out, or with no setup_url, is read.
+        assert {:ok, %{setup_url: ^fixed}} = declaration(Map.put(body, "setup_url", fixed)),
+               name
+
+        assert {:ok, %{setup_url: nil}} = declaration(Map.delete(body, "setup_url")), name
+      end
+    end
+
+    test "is optional, and nil when the body gives none" do
+      assert {:ok, %{setup_url: nil}} = declaration(valid())
+    end
+
+    test "an https URI with no fragment and no state parameter is accepted, any other query too" do
+      for url <- [
+            "https://a.example",
+            "https://a.example/setup",
+            "https://a.example:8443/setup",
+            "https://a.example/setup?site=main",
+            "https://a.example/setup?site=main&x=%41",
+            "https://a.example/setup?",
+            "https://a.example/setup?states=1",
+            "https://a.example/setup?xstate=1",
+            "https://a.example/setup?a=state",
+            "https://a.example/setup?a=1&states",
+            "https://a.example/setup?State=1",
+            "https://a.example/state?site=main",
+            "https://a.example/setup?site=a/state",
+            "https://[2001:db8::1]/setup"
+          ] do
+        assert Wire.setup_url?(url), url
+        assert {:ok, %{setup_url: ^url}} = declaration(Map.put(valid(), "setup_url", url))
+      end
+
+      long = "https://a.example/" <> String.duplicate("a", 2048 - 18)
+      assert byte_size(long) == 2048
+      assert Wire.setup_url?(long)
+    end
+
+    test "a fragment, a state parameter in any form, or what no connect address may be is refused" do
+      for url <- [
+            "https://a.example/setup#",
+            "https://a.example/setup#start",
+            "https://a.example/setup?site=main#start",
+            "https://a.example/setup?state",
+            "https://a.example/setup?state=",
+            "https://a.example/setup?state=x",
+            "https://a.example/setup?state&x=1",
+            "https://a.example/setup?x=1&state",
+            "https://a.example/setup?x=1&state=y",
+            "https://a.example/setup?x=1&&state=y",
+            "https://a.example/setup?%73tate=1",
+            "https://a.example/setup?st%61te=1",
+            "https://a.example/setup?%73%74%61%74%65=1",
+            "https://a.example/setup?x=1&stat%65",
+            "http://a.example/setup",
+            "https://user@a.example/setup",
+            "https://a.example:0/setup",
+            "https://a.example/se tup",
+            "https://a.example/%zz",
+            "https://a.example/" <> String.duplicate("a", 2048 - 17),
+            "",
+            nil,
+            42
+          ] do
+        refute Wire.setup_url?(url), inspect(url)
+        assert declaration(Map.put(valid(), "setup_url", url)) == :error, inspect(url)
       end
     end
   end

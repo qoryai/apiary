@@ -64,6 +64,20 @@ defmodule Apiary.NodesFixtures do
     adapter
   end
 
+  @doc """
+  An adapter installed with Qory Apiary as `name`, else a fresh name, by the instance
+  (`Apiary.Adapters.install/2`): found if one in use is installed as it. Whether the name
+  is listed (`Apiary.Adapters.Installed`) is the test's to set.
+  """
+  def installed_adapter_fixture(name \\ nil) do
+    name = name || "tracker-#{System.unique_integer([:positive])}"
+
+    {:ok, adapter} =
+      Apiary.Adapters.install(Apiary.OrganisationsFixtures.instance_scope(), name)
+
+    adapter
+  end
+
   @descriptions Path.expand("../../fixtures/integration-contract", __DIR__)
 
   @doc """
@@ -106,6 +120,22 @@ defmodule Apiary.NodesFixtures do
       )
 
     %{adapter: Repo.get!(Node, adapter.id), access_key: key, pair: pair}
+  end
+
+  @setup_url "https://tracker.example.com/setup?site=main"
+
+  @doc """
+  An adapter an instance admin may set up (`connectable_adapter_fixture/1`): with its key,
+  and an address to be set up at, #{@setup_url}, as an adapter that is not set up yet
+  declares one. Returns what `connectable_adapter_fixture/1` does.
+  """
+  def settable_adapter_fixture(attrs \\ %{}) do
+    %{adapter: adapter} = made = connectable_adapter_fixture(attrs)
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [setup_url: @setup_url])
+
+    %{made | adapter: Repo.get!(Node, adapter.id)}
   end
 
   @doc """
