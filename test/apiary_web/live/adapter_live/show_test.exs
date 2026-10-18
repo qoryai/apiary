@@ -810,7 +810,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Change which repositories it reaches\uFFFD in its settings."
   end
 
-  test "an access line with nothing left once cleaned shows no note", %{
+  test "an access line with nothing left once cleaned, or only whitespace, shows no note", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
@@ -819,7 +819,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     post(key, connection, ["acme/api"], 1, true)
 
-    for text <- ["\u200B", "\u2066\u202E\u200B\u2069", ""] do
+    for text <- ["\u200B", "\u2066\u202E\u200B\u2069", "", " ", "\u00A0", "\u2002\u200B\u3000"] do
       :ok = set_access(adapter, text)
       {:ok, lv, _html} = live(conn, page(scope, adapter))
       assert has_element?(lv, "#collections-table")

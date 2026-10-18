@@ -57,6 +57,34 @@ defmodule Apiary.ExternalTextTest do
     end
   end
 
+  describe "present/1" do
+    # The Unicode space separators, which `String.trim/1` trims.
+    @spaces [0x20, 0xA0, 0x1680] ++ Enum.to_list(0x2000..0x200A) ++ [0x202F, 0x205F, 0x3000]
+
+    test "is nil for nil, an empty line, and one with nothing left to show" do
+      assert ExternalText.present(nil) == nil
+      assert ExternalText.present("") == nil
+
+      for char <- @invisible,
+          do: assert(ExternalText.present(<<char::utf8>>) == nil, inspect(char))
+    end
+
+    test "is nil for a line of whitespace alone, with or without invisible characters" do
+      for char <- @spaces do
+        assert ExternalText.present(<<char::utf8>>) == nil, inspect(char)
+        assert ExternalText.present(<<char::utf8, 0x200B::utf8, char::utf8>>) == nil
+      end
+
+      assert ExternalText.present(" \u00A0\u2003\u202E\u3000 ") == nil
+    end
+
+    test "is the line as line/1 shows it, untrimmed, while anything else is left" do
+      assert ExternalText.present("  Fix\u200B login\u00A0") == "  Fix login\u00A0"
+      assert ExternalText.present(" \t ") == " #{@fffd} "
+      assert ExternalText.present("\u202E.") == "."
+    end
+  end
+
   describe "lines/1" do
     test "keeps the tab and the line breaks, and treats the rest as line/1 does" do
       text = "Steps:\r\n\t1. Log in#{<<0x202E::utf8>>}\n2. Esc\e[2J\u0085done"
