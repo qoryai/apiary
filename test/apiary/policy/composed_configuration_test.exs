@@ -142,7 +142,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert ComposedConfiguration.digest(@naming, @image, false, true) ==
                Render.digest(ComposedConfiguration.compose(without, @image))
 
-      # A run with no image of its own is given the policy as it is; a prebuild the
+      # A run that was given no image is given the policy as it is; a prebuild the
       # policy without its image, as before.
       assert ComposedConfiguration.shape(@naming, nil, false, true) == :as_is
 
@@ -201,7 +201,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert ComposedConfiguration.fetch(other.workspace.id, mine.digest) == nil
       assert ComposedConfiguration.policy_digests(other.workspace.id, [mine.digest]) == %{}
 
-      # The same bytes in the other workspace are a row of its own.
+      # The same bytes in the other workspace are another row, of that workspace.
       {:ok, theirs} = serve(other, nil, @image)
       assert theirs.digest == mine.digest
       refute theirs.id == mine.id
@@ -214,6 +214,100 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       Repo.delete!(naming)
       assert ComposedConfiguration.fetch(ctx.scope.workspace.id, row.digest) == nil
+    end
+  end
+
+  # P2: `p1` with an image added to its security_policy, nothing else changed: leaving the
+  # image out of P2 gives P1's bytes.
+  defp image_only!(scope, p1) do
+    %Jason.OrderedObject{values: members} =
+      Jason.decode!(p1.document, objects: :ordered_objects)
+
+    members =
+      Enum.map(members, fn
+        {"security_policy", %Jason.OrderedObject{values: values}} ->
+          {"security_policy", Jason.OrderedObject.new(values ++ [{"image", "with-docker"}])}
+
+        member ->
+          member
+      end)
+
+    stored!(scope, Jason.encode!(Jason.OrderedObject.new(members), escape: :json))
+  end
+
+  describe "a policy that comes to name an image and nothing else" do
+    test "reloads a run given an image under a row of the new version, behind nothing", ctx do
+      p1 = ctx.configuration
+      {:ok, attached} = serve(ctx.scope, p1, @image)
+
+      p2 = image_only!(ctx.scope, p1)
+      assert ComposedConfiguration.without_image(p2.document) == p1.document
+
+      {:ok, reloaded} =
+        ComposedConfiguration.serve(
+          ctx.scope.organisation.id,
+          ctx.scope.workspace.id,
+          p2,
+          @image,
+          false,
+          true
+        )
+
+      # The same bytes, kept twice: each row names the version it was composed from.
+      assert reloaded.digest == attached.digest
+      refute reloaded.id == attached.id
+      assert reloaded.run_configuration_id == p2.id
+      assert Repo.reload!(attached).run_configuration_id == p1.id
+
+      run =
+        run_fixture(ctx.scope, %{
+          configured_image: @image,
+          reported_run_configuration_digest: reloaded.digest,
+          run_configuration_digest: reloaded.digest
+        })
+
+      assert Policy.digests(ctx.scope, run) == %{
+               in_force: p2.digest,
+               reported: p2.digest,
+               applied: p2.digest,
+               drift: false
+             }
+
+      assert Policy.answered_digest(ctx.scope, run) == reloaded.digest
+      assert %{n: 2} = Rules.version(ctx.scope, nil, reloaded.digest)
+    end
+
+    test "never takes a stored version's digest for a prebuild's document of the same bytes",
+         ctx do
+      p1 = ctx.configuration
+      p2 = image_only!(ctx.scope, p1)
+
+      # A prebuild under P2 is given P2 without its image: P1's bytes, kept as composed
+      # from P2.
+      {:ok, prebuild} = serve(ctx.scope, p2, nil, true)
+      assert prebuild.digest == p1.digest
+      assert prebuild.run_configuration_id == p2.id
+
+      # A run a node registered itself, still on P1, is behind P2.
+      run =
+        run_fixture(ctx.scope, %{
+          reported_run_configuration_digest: p1.digest,
+          run_configuration_digest: p1.digest
+        })
+
+      assert %{in_force: in_force, reported: reported, applied: applied, drift: true} =
+               Policy.digests(ctx.scope, run)
+
+      assert in_force == p2.digest
+      assert reported == p1.digest
+      assert applied == p1.digest
+      assert Policy.policy_digest(ctx.scope, p1.digest) == p1.digest
+      assert %{n: 1} = Rules.version(ctx.scope, nil, p1.digest)
+
+      # A run the events endpoint does not know, reporting P1, is not told P1 is in force.
+      %{access_key: key} = contract_key_fixture(ctx.scope)
+      batch = %Batch{subject: Ecto.UUID.generate(), events: []}
+      assert Serving.digest_for(key, nil, batch, p1.digest) == p2.digest
     end
   end
 
@@ -241,6 +335,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       run =
         run_fixture(ctx.scope, %{
+          configured_image: @image,
           reported_run_configuration_digest: composed.digest,
           run_configuration_digest: composed.digest
         })
@@ -265,18 +360,25 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert reported == ctx.configuration.digest
     end
 
-    test "is in force for the events endpoint while its policy is", ctx do
+    test "is in force for the events endpoint only for a run it would be answered to", ctx do
       {:ok, composed} = serve(ctx.scope, ctx.configuration, @image)
       %{access_key: key} = contract_key_fixture(ctx.scope)
-
-      # A run the endpoint does not know yet is answered the digest it reported, when that
-      # is in force.
       batch = %Batch{subject: Ecto.UUID.generate(), events: []}
-      assert Serving.digest_for(key, nil, batch, composed.digest) == composed.digest
+
+      # A run given the image whose target is not known yet is answered the digest it
+      # reported, while that is what its reload would give.
+      run = run_fixture(ctx.scope, %{configured_image: @image})
+      assert Serving.digest_for(key, run, batch, composed.digest) == composed.digest
+
+      # A run the endpoint does not know is given no image: the composed digest is no
+      # answer of its, and it is told the baseline's.
+      assert Serving.digest_for(key, nil, batch, composed.digest) == ctx.configuration.digest
 
       {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
       {:ok, newer} = Policy.current_configuration(ctx.scope, nil)
-      assert Serving.digest_for(key, nil, batch, composed.digest) == newer.digest
+
+      assert Serving.digest_for(key, run, batch, composed.digest) ==
+               ComposedConfiguration.digest(newer.document, @image, false)
     end
   end
 end

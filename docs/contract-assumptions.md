@@ -583,9 +583,10 @@ inside it, the workspace's document otherwise unchanged:
 
 and `{"version":1,"image":"…"}` where the workspace serves no run configuration. Its bytes
 are canonical, as a stored document's are, and its digest is theirs. A composed document is
-kept by its digest, one per document of a workspace (`composed_run_configurations`), with
-the configuration it was composed from, and goes with that configuration and with the
-workspace. Where the workspace's policy names an image (`security_policy.image`) at a
+kept by its digest and the configuration it was composed from, one row per document and
+configuration of a workspace (`composed_run_configurations`), since leaving a policy's
+`image` out can make two configurations give the same bytes; a row goes with its
+configuration and with the workspace. Where the workspace's policy names an image (`security_policy.image`) at a
 run's attach, no run is given one beside it: the run starts in the policy's, and the two
 never both name one. Where the policy comes to name one after the run's attach, the run's
 reloads keep its image at the top level and are given the policy in force without its
@@ -594,9 +595,13 @@ and the two still never both name one. A
 prebuild whose workspace's policy names an image is given that policy without its `image`,
 the rest as stored, so a prebuild always builds on the pool's default. Every other run, a
 run a node registered itself, a run with no recorded image and a prebuild under a policy
-that names none among them, is given the stored bytes, under their digest, as above. The
-pages that compare a run's digest with the configuration in force (its drift, its
-versions) read a composed digest as the configuration it was composed from.
+that names none among them, is given the stored bytes, under their digest, as above. A
+run is behind when the digest it reported is not the one it would be answered now, the
+configuration in force composed for it as its reload would be. A page that names the
+version a digest stands for reads a composed digest as the configuration it was composed
+from, the one in force when the same bytes came from several; a digest a configuration was
+stored under always names that configuration. The events endpoint takes a reported digest
+as in force only when it is what the run would be answered now.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
 answered with no run configuration: a signed `200`, `application/json`,
@@ -661,7 +666,7 @@ closing brace, each only when the registration had some, with `X-Qory-Run-Config
 and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
 batches carry the same digest, and `X-Qory-Configuration`. For a run given an image, and a
 prebuild under a policy that names one, the configuration is the composed document and the
-digest its own (The image, above); a repeat is given it by the stored digest. The run keeps
+digest is the composed document's (The image, above); a repeat is given it by the stored digest. The run keeps
 `attached_at`, `attach_interval_seconds`, the digest given (`attach_answer_digest`), the
 instance id the attach was signed with (`gateway_instance_id`), the attach's Forager
 version (the `User-Agent`'s first) and contract version, and the image it was given
@@ -686,8 +691,9 @@ fixes the image when the run starts, so every reload names the same one, and a p
 change is the only reason the digest moves. A policy that names an image since the attach
 is composed without its `image` (The image, above), under a digest that maps back to the
 policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
-policy removed mid-run, answers `404`; a run given an image is answered
-`{"version":1,"image":"…"}` there, never `404`. A policy removed mid-run never loosens a run that's
+policy removed mid-run, answers `404`, a run given an image included; only a run whose
+attach was answered `{"version":1,"image":"…"}`, its image where the workspace served no
+run configuration, is answered that again there. A policy removed mid-run never loosens a run that has
 already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
 any answer but `200` is a reload that failed: the policy in force stays, and it is tried

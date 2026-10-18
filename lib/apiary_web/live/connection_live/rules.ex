@@ -87,7 +87,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   The version a digest names for the target (or the baseline, `nil`): `%{n, digest,
   scope, target_id, label, path, rendered_at}`, or nil when this workspace rendered
   nothing with that digest. A digest of a document composed for a run names the version
-  it was composed from (`Apiary.Policy.policy_digest/2`). Two indexed reads. `shared` as
+  it was composed from, the one in force when the same bytes came from several; a digest
+  a version was stored under always names that version (`Apiary.Policy.policy_digest/2`).
+  Two indexed reads. `shared` as
   `version_of/4` takes it.
   """
   def version(scope, target, digest, shared \\ nil)

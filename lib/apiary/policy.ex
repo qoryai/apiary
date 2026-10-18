@@ -849,10 +849,14 @@ defmodule Apiary.Policy do
   of another workspace is a refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`,
   not a map.
 
-  `reported` and `applied` are the policy part of what the run holds: a digest of a
-  document composed for the run (`Apiary.Policy.ComposedConfiguration`) is given as the
-  digest of the configuration it was composed from, so a run given an image is compared
-  by its policy alone and never shows drift for the image.
+  `drift` compares what the run reported with what it would be answered now, the
+  configuration in force composed for it as its reload would be
+  (`Apiary.Policy.ComposedConfiguration.run_digest/2`), so a run given an image is never
+  shown behind the policy for its image. `reported` and `applied` are the policy part of
+  what the run holds: the digest in force when the run holds what it would be answered
+  now; else a digest of a document composed for a run as the configuration it was
+  composed from, never redirecting a digest a configuration was stored under
+  (`Apiary.Policy.ComposedConfiguration.policy_digests/2`).
   """
   @spec digests(Scope.t(), Run.t()) ::
           %{
@@ -866,10 +870,15 @@ defmodule Apiary.Policy do
         %Scope{workspace: %Workspace{id: workspace_id} = workspace},
         %Run{workspace_id: workspace_id} = run
       ) do
-    in_force =
+    # What the run would be answered now: the configuration in force, composed for it as
+    # its reload would be.
+    {in_force, answered} =
       case in_force(workspace.organisation_id, workspace_id, run.target_id) do
-        {:ok, configuration} -> configuration.digest
-        {:error, _error} -> nil
+        {:ok, configuration} ->
+          {configuration.digest, ComposedConfiguration.run_digest(configuration, run)}
+
+        {:error, _error} ->
+          {nil, nil}
       end
 
     composed =
@@ -878,21 +887,40 @@ defmodule Apiary.Policy do
         run.run_configuration_digest
       ])
 
-    reported = policy_part(composed, run.reported_run_configuration_digest)
+    part = &policy_part(composed, &1, answered, in_force)
+    reported = run.reported_run_configuration_digest
 
     %{
       in_force: in_force,
-      reported: reported,
-      applied: policy_part(composed, run.run_configuration_digest),
-      drift: is_binary(reported) and is_binary(in_force) and reported != in_force
+      reported: part.(reported),
+      applied: part.(run.run_configuration_digest),
+      drift: is_binary(reported) and is_binary(answered) and reported != answered
     }
   end
 
   def digests(%Scope{}, %Run{}),
     do: {:error, not_found(gettext("This workspace has no such run."))}
 
-  # A digest of a document composed for a run, as the configuration it was composed from.
-  defp policy_part(composed, digest), do: Map.get(composed, digest, digest)
+  # A digest the run holds, as the configuration it stands for: the one in force when it
+  # is what the run would be answered now, else the configuration a document composed for
+  # a run was composed from (`policy_digests/2`), else the digest as it is.
+  defp policy_part(_composed, nil, _answered, _in_force), do: nil
+  defp policy_part(_composed, answered, answered, in_force), do: in_force
+  defp policy_part(composed, digest, _answered, _in_force), do: Map.get(composed, digest, digest)
+
+  @doc """
+  The digest a run of the scope's workspace would be answered on a reload now: the run
+  configuration in force for its target, composed for it
+  (`Apiary.Policy.ComposedConfiguration.run_digest/2`); nil for a workspace that serves
+  none. What a run's reported digest is compared with to say it is behind.
+  """
+  @spec answered_digest(Scope.t(), Run.t()) :: String.t() | nil
+  def answered_digest(%Scope{workspace: %Workspace{id: workspace_id} = workspace}, %Run{} = run) do
+    case in_force(workspace.organisation_id, workspace_id, run.target_id) do
+      {:ok, configuration} -> ComposedConfiguration.run_digest(configuration, run)
+      {:error, _error} -> nil
+    end
+  end
 
   @doc """
   `digest`, as a run reported it, as the run configuration it stands for: the digest of

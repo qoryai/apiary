@@ -513,16 +513,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       versions = Policy.newest_versions(scope, [nil | holders])
       targets = Map.new(holders, &{&1, holder_of(scope, &1)})
 
-      # A run given a composed document reports its digest: it is compared by the
-      # configuration it was composed from.
+      # A run given a composed document reports its digest: it is behind when it is not
+      # what the run would be answered now, and its version is the configuration it was
+      # composed from.
       composed =
         Policy.policy_digests(scope, Enum.map(reported, & &1.reported_run_configuration_digest))
 
       for run <- reported,
           in_force = versions[run.target_id] || versions[nil],
+          answered(scope, run, in_force) != run.reported_run_configuration_digest,
           digest = run.reported_run_configuration_digest,
           digest = Map.get(composed, digest, digest),
-          in_force.digest != digest,
           into: %{} do
         holder = run.target_id && targets[run.target_id]
 
@@ -535,6 +536,15 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         {run.id, %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
       end
     end
+  end
+
+  # What the run would be answered now: the version in force, composed for a run that may
+  # be given a composed document (one given an image, or a run of the queue, which may be
+  # a prebuild); the version's digest for any other, read without its document.
+  defp answered(scope, run, in_force) do
+    if run.configured_image || run.dispatch_run_id,
+      do: Policy.answered_digest(scope, run) || in_force.digest,
+      else: in_force.digest
   end
 
   defp holder_of(_scope, nil), do: nil

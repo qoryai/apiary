@@ -27,12 +27,15 @@ defmodule Apiary.Policy.ComposedConfiguration do
   A composed document's bytes are canonical, encoded as `Apiary.Policy.Render` encodes a
   document, and its `digest` is `sha256=` and the hex of them
   (`Apiary.Policy.Render.digest/1`). `serve/6` keeps it, one row per document of a
-  workspace, written once and read after (insert or read), with the run configuration it
-  was composed from (`run_configuration_id`, nil for none) and the image it names. A
-  repeat of an attach reads it by its digest (`fetch/2`), and the badges and lookups that
-  compare a run's digest with the configuration in force read a composed digest as the
-  configuration it was composed from (`policy_digests/2`). A row goes with its run
-  configuration, and with its workspace.
+  workspace and run configuration it was composed from (`run_configuration_id`, nil for
+  none), written once and read after (insert or read), with the image it names: leaving
+  the policy's `image` out can make two run configurations give the same bytes, and each
+  row names the one it was composed from. A repeat of an attach reads it by its digest
+  (`fetch/2`). Whether a run is behind is the digest it reported against the one it would
+  be answered now (`run_digest/2`); the lookups that name a version read a composed
+  digest as the run configuration it was composed from, never redirecting a digest a run
+  configuration was stored under, and prefer the one in force (`policy_digests/2`). A row
+  goes with its run configuration, and with its workspace.
   """
   use Ecto.Schema
 
@@ -44,6 +47,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Runs.Run
 
   @type t :: %__MODULE__{}
+
+  # The unique index: one row per workspace, digest and run configuration, none counted
+  # as one (`20261019000210_key_a_composed_run_configuration_by_its_policy_row`).
+  @policy_index "(organisation_id, workspace_id, digest, COALESCE(run_configuration_id, '00000000-0000-0000-0000-000000000000'::uuid))"
 
   @version 1
   @image "image"
@@ -212,12 +219,45 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
     case Repo.insert_all(__MODULE__, [row],
            on_conflict: :nothing,
-           conflict_target: [:organisation_id, :workspace_id, :digest],
+           conflict_target: {:unsafe_fragment, @policy_index},
            returning: true
          ) do
       {1, [inserted]} -> inserted
-      {0, []} -> fetch(workspace_id, digest)
+      {0, []} -> composed_from(workspace_id, digest, row.run_configuration_id)
     end
+  end
+
+  # The row of the workspace with that digest composed from that run configuration (nil
+  # for none).
+  defp composed_from(workspace_id, digest, nil) do
+    Repo.one!(
+      from c in __MODULE__,
+        where:
+          c.workspace_id == ^workspace_id and c.digest == ^digest and
+            is_nil(c.run_configuration_id)
+    )
+  end
+
+  defp composed_from(workspace_id, digest, run_configuration_id) do
+    Repo.one!(
+      from c in __MODULE__,
+        where:
+          c.workspace_id == ^workspace_id and c.digest == ^digest and
+            c.run_configuration_id == ^run_configuration_id
+    )
+  end
+
+  @doc """
+  The digest a run is answered on a reload under the run configuration `configuration`:
+  the document composed for it as `shape/4` decides, with the image it was given
+  (`configured_image`), as a prebuild or not, its image fixed; the configuration's own
+  digest where nothing is composed. A run that is nil is one the caller does not know: no
+  image, no prebuild. A read, nothing stored.
+  """
+  @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t()
+  def run_digest(%RunConfiguration{document: document, digest: digest}, run) do
+    image = run && run.configured_image
+    digest(document, image, fn -> not is_nil(run) and prebuild?(run) end, true) || digest
   end
 
   @doc """
@@ -233,20 +273,50 @@ defmodule Apiary.Policy.ComposedConfiguration do
         from d in DispatchRun, where: d.id == ^id and d.step == ^DispatchRun.prebuild()
       )
 
-  @doc "The composed document of the workspace with that digest, or nil."
+  @doc """
+  A composed document of the workspace with that digest, or nil: every row with one digest
+  holds the same bytes, and whether they were composed from a run configuration or from
+  none is the same for each, since a document composed from one always holds its
+  `security_policy`.
+  """
   @spec fetch(Ecto.UUID.t(), String.t()) :: t | nil
   def fetch(workspace_id, digest) when is_binary(workspace_id) and is_binary(digest) do
     Repo.one(
       from c in __MODULE__,
-        where: c.workspace_id == ^workspace_id and c.digest == ^digest
+        where: c.workspace_id == ^workspace_id and c.digest == ^digest,
+        order_by: [asc: c.inserted_at, asc: c.id],
+        limit: 1
     )
   end
 
   @doc """
-  Each of `digests` that is a composed document's of the workspace, with the digest of the
-  run configuration it was composed from, or of the document of no policy
-  (`Apiary.Policy.Render.no_policy_document/0`) for one composed from none: one read. A
-  digest that is no composed document's is not in the map.
+  Whether the document with that digest was composed from no run configuration in the
+  workspace: what a run given an image where the workspace served none was answered at
+  its attach.
+  """
+  @spec from_no_policy?(Ecto.UUID.t(), String.t() | nil) :: boolean
+  def from_no_policy?(workspace_id, digest) when is_binary(workspace_id) and is_binary(digest) do
+    Repo.exists?(
+      from c in __MODULE__,
+        where:
+          c.workspace_id == ^workspace_id and c.digest == ^digest and
+            is_nil(c.run_configuration_id)
+    )
+  end
+
+  def from_no_policy?(_workspace_id, nil), do: false
+
+  @doc """
+  Each of `digests` that is a composed document's of the workspace, and never a stored
+  run configuration's, with the digest of the run configuration it was composed from, or
+  of the document of no policy (`Apiary.Policy.Render.no_policy_document/0`) for one
+  composed from none: one read. A digest that a run configuration of the workspace was
+  stored under stays that configuration's, whatever was composed to the same bytes, and
+  is not in the map, nor is a digest that is no composed document's.
+
+  The same bytes can be composed from two run configurations, since leaving the policy's
+  `image` out can make two of them alike. Such a digest names the one that is in force
+  for its holder (the baseline or its target), else the newest rendered.
   """
   @spec policy_digests(Ecto.UUID.t(), [String.t() | nil]) :: %{String.t() => String.t()}
   def policy_digests(workspace_id, digests) when is_binary(workspace_id) and is_list(digests) do
@@ -262,6 +332,24 @@ defmodule Apiary.Policy.ComposedConfiguration do
             left_join: r in RunConfiguration,
             on: r.id == c.run_configuration_id,
             where: c.workspace_id == ^workspace_id and c.digest in ^digests,
+            where:
+              fragment(
+                "NOT EXISTS (SELECT 1 FROM run_configurations s WHERE s.workspace_id = ? AND s.digest = ?)",
+                c.workspace_id,
+                c.digest
+              ),
+            order_by: [
+              asc: c.digest,
+              desc:
+                fragment(
+                  "NOT EXISTS (SELECT 1 FROM run_configurations n WHERE n.workspace_id = ? AND n.version > ? AND n.target_id IS NOT DISTINCT FROM ?)",
+                  r.workspace_id,
+                  r.version,
+                  r.target_id
+                ),
+              desc_nulls_last: r.rendered_at
+            ],
+            distinct: c.digest,
             select: {c.digest, c.run_configuration_id, r.digest}
         )
         |> Map.new(fn

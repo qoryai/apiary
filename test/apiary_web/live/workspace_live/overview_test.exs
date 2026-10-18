@@ -1535,7 +1535,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       for {run, configuration} <- [{current, new}, {behind, old}] do
         Repo.update_all(from(r in Run, where: r.id == ^run.id),
-          set: [reported_run_configuration_digest: composed.(configuration)]
+          set: [
+            configured_image: image,
+            reported_run_configuration_digest: composed.(configuration)
+          ]
         )
       end
 

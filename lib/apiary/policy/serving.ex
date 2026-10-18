@@ -103,7 +103,7 @@ defmodule Apiary.Policy.Serving do
     with nil <- known_target(run),
          nil <- started_target(access_key, batch),
          true <- is_binary(reported) and Regex.match?(@digest, reported),
-         true <- in_force?(workspace_id, reported) do
+         true <- in_force?(workspace_id, reported, run) do
       reported
     else
       target_id when is_binary(target_id) ->
@@ -124,24 +124,13 @@ defmodule Apiary.Policy.Serving do
   # (`Apiary.Policy.ComposedConfiguration`), computed and never stored here.
   defp digest(organisation_id, workspace_id, target_id, run) do
     case Policy.in_force(organisation_id, workspace_id, target_id) do
-      {:ok, %RunConfiguration{document: document, digest: digest}} ->
-        ComposedConfiguration.digest(
-          document,
-          configured_image(run),
-          fn -> prebuild?(run) end,
-          true
-        ) || digest
+      {:ok, %RunConfiguration{} = configuration} ->
+        ComposedConfiguration.run_digest(configuration, run)
 
       {:error, _reason} ->
         nil
     end
   end
-
-  defp configured_image(%Run{configured_image: image}), do: image
-  defp configured_image(nil), do: nil
-
-  defp prebuild?(%Run{} = run), do: ComposedConfiguration.prebuild?(run)
-  defp prebuild?(nil), do: false
 
   # A run the batch names whose row the caller does not hold (a pruned run is looked up
   # by the batch's subject), with what the digest is decided by; nil when there is none.
@@ -167,34 +156,41 @@ defmodule Apiary.Policy.Serving do
     end
   end
 
-  # Whether the digest is the newest version's of the baseline or of any target, or a
-  # document's composed from one that is (`Apiary.Policy.ComposedConfiguration`).
-  defp in_force?(workspace_id, digest) do
-    newest?(workspace_id, digest) or
-      case ComposedConfiguration.policy_digests(workspace_id, [digest]) do
-        %{^digest => policy_digest} -> newest?(workspace_id, policy_digest)
-        _none -> false
-      end
+  # Whether the digest is what the run would be answered under the newest version of the
+  # baseline or of any target: that version's digest where nothing is composed for the
+  # run, else the digest of the document composed for it
+  # (`Apiary.Policy.ComposedConfiguration.run_digest/2`). The versions read are those
+  # stored under the digest and those a document with that digest was composed from.
+  defp in_force?(workspace_id, digest, run) do
+    workspace_id
+    |> newest(digest)
+    |> Repo.all()
+    |> Enum.any?(&(ComposedConfiguration.run_digest(&1, run) == digest))
   end
 
-  defp newest?(workspace_id, digest) do
-    Repo.exists?(
-      from c in RunConfiguration,
-        as: :configuration,
-        where: c.workspace_id == ^workspace_id and c.digest == ^digest,
-        where:
-          not exists(
-            from n in RunConfiguration,
-              where:
-                n.workspace_id == parent_as(:configuration).workspace_id and
-                  n.version > parent_as(:configuration).version and
-                  fragment(
-                    "? IS NOT DISTINCT FROM ?",
-                    n.target_id,
-                    parent_as(:configuration).target_id
-                  )
-          )
-    )
+  defp newest(workspace_id, digest) do
+    composed =
+      from k in ComposedConfiguration,
+        where: k.workspace_id == ^workspace_id and k.digest == ^digest,
+        where: not is_nil(k.run_configuration_id),
+        select: k.run_configuration_id
+
+    from c in RunConfiguration,
+      as: :configuration,
+      where: c.workspace_id == ^workspace_id,
+      where: c.digest == ^digest or c.id in subquery(composed),
+      where:
+        not exists(
+          from n in RunConfiguration,
+            where:
+              n.workspace_id == parent_as(:configuration).workspace_id and
+                n.version > parent_as(:configuration).version and
+                fragment(
+                  "? IS NOT DISTINCT FROM ?",
+                  n.target_id,
+                  parent_as(:configuration).target_id
+                )
+        )
   end
 
   # The labels name a target only by the workspace's domain, the rule the projector
