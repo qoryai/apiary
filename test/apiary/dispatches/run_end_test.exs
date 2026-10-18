@@ -481,10 +481,11 @@ defmodule Apiary.Dispatches.RunEndTest do
       recorded = prebuilt!(ctx, newer)
       assert %Record{commit: "b2", failure_cause: nil} = recorded
 
-      assert [%Run{state: "lost"}] =
-               Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
-
+      # The newer one, never attached, its run of the queue ended by its prebuilt, may be
+      # found lost by the liveness rules at the same second.
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
       assert_ended(ctx.handed, :lost)
+      assert_ended(newer, :prebuilt)
       assert record!(ctx.record) == recorded
     end
 
@@ -529,6 +530,71 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert %Record{failure_cause: :timed_out, failed_at: ^after_it} = record!(ctx.record)
 
       assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
+    end
+
+    test "its prebuilt ends its run of the queue prebuilt and leaves the registered run to its outcome, which a succeeded one decides, completed",
+         ctx do
+      recorded = prebuilt!(ctx, ctx.handed)
+      assert_ended(ctx.handed, :prebuilt)
+      assert Slots.held(ctx.place.pool.id) == 0
+
+      assert %Run{released_at: nil, outcome_state: nil, reason: nil} =
+               left = run!(ctx.handed.run)
+
+      refute left.state == "cancelled"
+
+      assert {:ok, %{repeated: false}} =
+               give_outcome(ctx.place.key, ctx.handed.run, "succeeded")
+
+      assert %Run{state: "completed", released_at: nil} = run!(ctx.handed.run)
+      assert_ended(ctx.handed, :prebuilt)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "after its prebuilt, a failed outcome records no failure, and the image stays", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      recorded = prebuilt!(ctx, ctx.handed)
+
+      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+      assert %Run{state: "failed"} = run!(ctx.handed.run)
+      assert_ended(ctx.handed, :prebuilt)
+      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "after its prebuilt, past its attach_by never attached, the lost-run check records no failure, and the image stays",
+         ctx do
+      recorded = prebuilt!(ctx, ctx.handed)
+
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
+      assert_ended(ctx.handed, :prebuilt)
+      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "after its prebuilt, past its backstop, the lost-run check records no failure, and the image stays",
+         ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      recorded = prebuilt!(ctx, ctx.handed)
+
+      Liveness.check(DateTime.add(run.backstop_at, 1, :microsecond))
+      assert_ended(ctx.handed, :prebuilt)
+      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "after its prebuilt, an attach of a run never attached is refused 410 gone",
+         ctx do
+      # Never attached: refused.
+      prebuilt!(ctx, ctx.handed)
+      assert ctx.attach.() == {:error, :gone}
+      assert %Run{attached_at: nil} = run!(ctx.handed.run)
+    end
+
+    test "after its prebuilt, the gateway that attached it is answered its repeat", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      prebuilt!(ctx, ctx.handed)
+      assert {:ok, %{repeated: true}} = ctx.attach.()
     end
 
     test "a record that is not there is not made", ctx do

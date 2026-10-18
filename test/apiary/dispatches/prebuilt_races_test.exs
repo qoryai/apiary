@@ -181,14 +181,24 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   defp dispatch!(claimed), do: Repo.get!(Dispatch, claimed.dispatch.id)
   defp record!(ctx, claimed), do: Environments.fetch(ctx.pool.id, claimed.collection.id)
 
-  # The run ended once, `released`, its slot freed once.
+  # The run of the queue ended once, its slot freed once: `released` by the release that
+  # acted, the registered run cancelled; else `prebuilt` by the prebuilt that acted, the
+  # registered run not cancelled and with no released_at.
   defp ended_once!(ctx, claimed) do
-    assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(claimed)
+    released? = entries(claimed, "dispatch.release") != []
+    cause = if released?, do: :released, else: :prebuilt
 
-    assert %Dispatch{end_cause: :released, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+    assert %DispatchRun{state: :ended, end_cause: ^cause} = queue_run!(claimed)
+
+    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
              dispatch!(claimed)
 
     assert Slots.held(ctx.pool.id) == 0
+    run = Repo.get!(Run, claimed.run.id)
+
+    if released?,
+      do: assert(%Run{state: "cancelled", released_at: %DateTime{}} = run),
+      else: assert(%Run{released_at: nil, outcome_state: nil} = run)
   end
 
   # The build recorded, once, with no failure.
@@ -257,7 +267,10 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert Task.await(second.task) == :ok
       assert commit!(ctx, older) == "b2"
 
-      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+      assert DateTime.compare(
+               record!(ctx, older).built_queued_at,
+               newer.dispatch_run.environment_ref_at
+             ) ==
                :eq
 
       ended_once!(ctx, older)
@@ -281,7 +294,10 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
       assert Task.await(second.task) == :ok
       assert commit!(ctx, older) == "b2"
 
-      assert DateTime.compare(record!(ctx, older).built_queued_at, newer.dispatch_run.queued_at) ==
+      assert DateTime.compare(
+               record!(ctx, older).built_queued_at,
+               newer.dispatch_run.environment_ref_at
+             ) ==
                :eq
 
       ended_once!(ctx, older)
@@ -480,8 +496,6 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
         [:prebuilt] -> assert is_binary(record.image) and is_nil(record.failure_cause)
         [:release] -> assert is_nil(record.image) and record.failure_cause == :released
       end
-
-      assert %Run{released_at: %DateTime{}} = Repo.get!(Run, claimed.run.id)
     end
   end
 end

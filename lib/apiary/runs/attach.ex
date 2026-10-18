@@ -36,7 +36,8 @@ defmodule Apiary.Runs.Attach do
        attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
        ended it, its starter ended it without one, it was lost after its attach, or its
-       events were pruned. So is a run whose record is gone;
+       events were pruned. So is a run whose record is gone, and a prebuild whose run of
+       the queue its starter's prebuilt ended, to any attach but a repeat;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -343,7 +344,7 @@ defmodule Apiary.Runs.Attach do
         repeat?(run, gateway, meta[:instance_id]) ->
           repeat(access_key, run, meta[:instance_id])
 
-        ended?(run) ->
+        ended?(run) or prebuilt?(run) ->
           {:error, :gone}
 
         expired?(run, now) ->
@@ -386,6 +387,14 @@ defmodule Apiary.Runs.Attach do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
   end
+
+  # A prebuild whose run of the queue its starter's `prebuilt` ended
+  # (`Apiary.Dispatches.RunEnd`): the gateway that attached it keeps it, as a repeat, and
+  # no other attach takes it on.
+  defp prebuilt?(%Run{dispatch_run_id: nil}), do: false
+
+  defp prebuilt?(%Run{dispatch_run_id: id}),
+    do: Repo.exists?(from d in DispatchRun, where: d.id == ^id and d.end_cause == :prebuilt)
 
   # A run attached before its instance was known takes this one's, under the run's row
   # lock: the attach that wrote it first holds the run.

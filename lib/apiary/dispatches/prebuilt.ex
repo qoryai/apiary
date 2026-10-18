@@ -41,22 +41,25 @@ defmodule Apiary.Dispatches.Prebuilt do
   #
   # ## On success
   #
-  # The run ends as a release after its handover with `retry` false ends it
-  # (`Apiary.Dispatches.RunEnd.released/2`): the registered run reads as cancelled with the
-  # reason `released`, no outcome is recorded, the dispatch ends with it, `released`, and
-  # its slot is freed once; a registered run whose outcome or exit came first is too late
-  # for it, `{:error, :gone}`, and nothing is written. Then the build is recorded on the
+  # The run of the queue ends, `prebuilt` (`Apiary.Dispatches.RunEnd.prebuilt/2`): the
+  # dispatch ends with it, `prebuilt`, and its slot is freed once. The registered run is
+  # left as it is, to its starter's outcome, which the contract has follow the prebuilt
+  # and which decides its state; nothing reads it as cancelled. A registered run whose
+  # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
+  # written. Then the build is recorded on the
   # record of the prebuild's pool and collection (`Apiary.Environments.record_build/4`):
   # the image, its size, its commit, the `environment_ref` the job reported, as it is even
   # where it differs from the record's `queued_ref`, when it was recorded, and the target
   # it was built for, the registered run's target, which its handover named from the
   # collection's target as it was then (`Apiary.Lingo.Domain.target/2` of its registration
-  # labels), and when the prebuild was queued (`built_queued_at`). The last failure is
+  # labels), and when the prebuild took the `environment_ref` it built (`built_queued_at`,
+  # from its `environment_ref_at`). The last failure is
   # cleared, `retired_at` is left as it is, and nothing is queued, so a reported ref that
   # differs never loops.
   #
-  # A prebuild queued before the prebuild that made the record's image
-  # (`Apiary.Environments.newer_build?/2`, asked under the record's lock) leaves the record
+  # A prebuild whose ref is older than the record's image's, taken before the prebuild
+  # that made the image took its (`Apiary.Environments.newer_build?/2`, asked under the
+  # record's lock), leaves the record
   # as it is, its image and its last failure, and writes no audit entry, as nothing was
   # recorded: its run ends as above, and the answer is the same.
   #
@@ -156,11 +159,11 @@ defmodule Apiary.Dispatches.Prebuilt do
   defp same_run(%{run: %DispatchRun{run_id: run_id}}, run_id), do: :ok
   defp same_run(_locked, _run_id), do: {:refused, :run_mismatch}
 
-  # The run ended as a release after its handover ends it, then the build recorded and
-  # the one audit entry written; for a prebuild queued before the one that made the
-  # record's image, the run ended alone.
+  # The run of the queue ended, `prebuilt`, then the build recorded and the one audit
+  # entry written; for a prebuild whose ref is older than the record's image's, the run
+  # ended alone.
   defp record(locked, prebuilt) do
-    case RunEnd.released(locked.run.id, locked.now) do
+    case RunEnd.prebuilt(locked.run.id, locked.now) do
       {:ok, %{run: run, changed: changed}} ->
         if not Environments.newer_build?(locked.held, locked.run) do
           :ok =

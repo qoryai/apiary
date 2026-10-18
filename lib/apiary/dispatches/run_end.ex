@@ -4,7 +4,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # The end of a run of the queue once it was handed over (`Apiary.Dispatches.DispatchRun`,
   # `:handed_over`), with its dispatches and the slot its dispatch holds. The run registered
   # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of three ways,
-  # and the first to come decides the end cause:
+  # a prebuild in one of four, and the first to come decides the end cause:
   #
   # - its starter's outcome, or its exit once folded: `run_ended`. The outcome's write ends
   #   it in its transaction (`lock/1`, then `finish/4`, from `Apiary.Runs.Outcome`), and a
@@ -19,6 +19,16 @@ defmodule Apiary.Dispatches.RunEnd do
   #   run that ended (`Apiary.Runs.Attach`). A release that finds the registered run's
   #   outcome or exit folded and its end not yet written, or its exit projected and not
   #   folded, is too late: it changes nothing, and that end is written `run_ended`;
+  # - for a prebuild, its starter's `prebuilt` (`prebuilt/2`, from
+  #   `Apiary.Dispatches.Prebuilt`): `prebuilt`. The run of the queue and its dispatch end
+  #   and the slot is freed, but the registered run is left as it is: nothing is set on it,
+  #   and its starter's outcome, which the contract has follow the prebuilt, decides its
+  #   state as any outcome does, with no end of the queue written again. A gateway that
+  #   never attached it is refused `410` from then on (`Apiary.Runs.Attach`); one that
+  #   attached it keeps it. The lost-run check passes it by, as it ended, so it records no
+  #   failure for it either, and a registered run with neither an outcome nor an exit is
+  #   lost by the liveness rules alone. A prebuilt that finds the outcome or exit folded and its end
+  #   not yet written, or its exit projected and not folded, is too late, as a release is;
   # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with neither an outcome nor an exit by
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
@@ -32,8 +42,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
   # it by its run key's `attach_by`, `timed_out` when it had neither an outcome nor an
   # exit by its backstop. Its run of the queue and its dispatch end `lost` either way. The
-  # record keeps its last good build, and nothing is queued. A prebuild queued before the
-  # one that made the record's image records no failure (`Apiary.Environments.newer_build?/2`,
+  # record keeps its last good build, and nothing is queued. A prebuild whose ref is older
+  # than the record's image's records no failure (`Apiary.Environments.newer_build?/2`,
   # asked under the record's lock), and ends `lost` all the same. A prebuild that ends any
   # other way writes nothing here: its starter's release records its failure itself
   # (`Apiary.Dispatches.Release`).
@@ -117,6 +127,36 @@ defmodule Apiary.Dispatches.RunEnd do
 
   def finish(_dispatch_run, %Run{}, _cause, %DateTime{}), do: []
 
+  # prebuilt/2 ends the run of the queue `dispatch_run_id`, a prebuild whose starter
+  # reported the image it built after its handover, `prebuilt`, at `now`, inside the
+  # caller's transaction (the moduledoc): answered as `released/2` answers, but the
+  # registered run, locked as for a release, is left as it is.
+  @doc false
+  @spec prebuilt(Ecto.UUID.t(), DateTime.t()) ::
+          {:ok, %{run: Run.t() | nil, changed: [Ecto.UUID.t()]}}
+          | {:error, :ended | :not_handed_over | :not_found}
+  def prebuilt(dispatch_run_id, %DateTime{} = now) when is_binary(dispatch_run_id) do
+    in_transaction!()
+
+    case lock(dispatch_run_id) do
+      nil ->
+        {:error, :not_found}
+
+      %DispatchRun{state: :handed_over} = dispatch_run ->
+        run = registered(dispatch_run.id)
+
+        if too_late?(run),
+          do: {:error, :ended},
+          else: {:ok, %{run: run, changed: end_locked(dispatch_run, :prebuilt, now)}}
+
+      %DispatchRun{state: :ended} ->
+        {:error, :ended}
+
+      %DispatchRun{} ->
+        {:error, :not_handed_over}
+    end
+  end
+
   # released/2 ends the run of the queue `dispatch_run_id` released by its starter after
   # its handover, at `now`, inside the caller's transaction (the moduledoc): `{:ok, %{run:
   # run, changed: workspace_ids}}`, the registered run as it is now (nil should there be
@@ -172,7 +212,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # unfolded among them: the release finds it ended, and leaves its end to the one that
   # came, as the lost-run check takes it (the moduledoc, `cause/2`).
   defp release_handed_over(%DispatchRun{} = dispatch_run, run, now) do
-    if run && (outcome_or_exit?(run) or exit_stored(run) == :projected),
+    if too_late?(run),
       do: {:error, :ended},
       else:
         {:ok,
@@ -181,6 +221,9 @@ defmodule Apiary.Dispatches.RunEnd do
            changed: end_locked(dispatch_run, :released, now)
          }}
   end
+
+  defp too_late?(nil), do: false
+  defp too_late?(%Run{} = run), do: outcome_or_exit?(run) or exit_stored(run) == :projected
 
   # Cancelled, with the reason `released`, and no outcome: the fold applies it after every
   # pass until an outcome decides (`Apiary.Runs.Fold.settle/1`).
@@ -294,8 +337,8 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
-  # attached, else `timed_out` at its backstop; the last good build kept. A prebuild
-  # queued before the one that made the record's image records nothing.
+  # attached, else `timed_out` at its backstop; the last good build kept. A prebuild whose
+  # ref is older than the record's image's records nothing.
   defp build_ended(%Record{} = record, %DispatchRun{} = dispatch_run, :lost, %Run{} = run, now) do
     if Environments.newer_build?(record, dispatch_run) do
       :ok
