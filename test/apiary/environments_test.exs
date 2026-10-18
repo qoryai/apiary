@@ -817,6 +817,66 @@ defmodule Apiary.EnvironmentsTest do
     end
   end
 
+  describe "a retired record" do
+    @shop_target %{system: "code.example.com", path: "acme/shop"}
+
+    defp shop_image(n),
+      do: "registry.example.com/acme/shop-env@sha256:" <> String.duplicate(n, 64)
+
+    # Records the build of `run` (as stored now), which reported `ref`, with the image `n`.
+    defp land!(run, n, ref) do
+      run = Repo.get!(DispatchRun, run.id)
+
+      {:ok, :ok} =
+        Repo.transact(fn ->
+          {:ok,
+           Environments.record_build(
+             run,
+             %{image: shop_image(n), size: 1_048_576, commit: "4b7d0a3f", environment_ref: ref},
+             @shop_target,
+             DateTime.utc_now()
+           )}
+        end)
+    end
+
+    test "is served again by a build of a ref that came back, never by one claimed before it was retired",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      %{run: old} = claim!(ctx, ctx.pool)
+
+      # Absent: retired. Present again, a new ref, its prebuild claimed.
+      list(ctx, 2, %{})
+      assert %Record{retired_at: %DateTime{}} = Environments.fetch(ctx.pool.id, shop.id)
+      list(ctx, 3, %{environment_ref: "env-2"})
+      %{run: new} = claim!(ctx, ctx.pool)
+      assert new.environment_ref == "env-2"
+
+      # The old build lands late: stored, the record still retired, the pool's default.
+      land!(old, "1", "env-1")
+      assert %Record{retired_at: %DateTime{}} = record = Environments.fetch(ctx.pool.id, shop.id)
+      assert record.image == shop_image("1")
+      assert Environments.image_for(ctx.pool, @shop_target) == nil
+
+      # The new ref's build lands: served.
+      land!(new, "2", "env-2")
+      assert %Record{retired_at: nil} = Environments.fetch(ctx.pool.id, shop.id)
+      assert Environments.image_for(ctx.pool, @shop_target) == shop_image("2")
+    end
+
+    test "stays retired when a build claimed before it was retired lands", ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      %{run: old} = claim!(ctx, ctx.pool)
+      list(ctx, 2, %{})
+      %Record{retired_at: retired_at} = Environments.fetch(ctx.pool.id, shop.id)
+
+      land!(old, "1", "env-1")
+      record = Environments.fetch(ctx.pool.id, shop.id)
+      assert record.image == shop_image("1")
+      assert DateTime.compare(record.retired_at, retired_at) == :eq
+      assert Environments.image_for(ctx.pool, @shop_target) == nil
+    end
+  end
+
   describe "a build whose ref is older than the image's" do
     # A prebuild queued an hour before it took its ref at `at`, as one that waited again.
     defp run_queued_at(at),
