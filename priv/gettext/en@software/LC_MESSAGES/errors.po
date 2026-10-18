@@ -78,7 +78,7 @@ msgstr ""
 
 #: lib/apiary/targets.ex
 #, elixir-autogen, elixir-format
-msgid "Together with %{target}, these come to %{count} characters; the most is 256."
+msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex

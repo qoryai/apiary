@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   @moduledoc """
   The form page of what a target's runs also read, its further repositories
-  (`/:org/:workspace/targets/tg_…/also-read`): a page of its own, as every form is
+  (`/:org/:workspace/targets/tg_…/also-read`): a separate page, as every form is
   (`ApiaryWeb.PageComponents.page_form/1`), opened from Change on the target's Overview
   (`ApiaryWeb.TargetLive.Show`), with the `factory` feature: without it, or where it is
   hidden from the reader, the page is not found. It mounts on `work_item.read`, as the

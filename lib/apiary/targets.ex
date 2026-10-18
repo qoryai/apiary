@@ -775,7 +775,7 @@ defmodule Apiary.Targets do
   # The rules a saved list keeps, in one place: the first that `paths`, in order, after
   # the target's `path`, breaks, `{reason, n}` with n the place of the path in `paths`,
   # counted from 1, or `:ok`. The reasons are words of no page; `further_error/4` says
-  # them. These rules are checked by `Apiary.Runs.RunVariables` once it is in core.
+  # them.
   @spec further_problem(String.t(), [term]) :: :ok | {atom, pos_integer}
   defp further_problem(path, paths) do
     owner = String.downcase(owner(path))
@@ -859,12 +859,13 @@ defmodule Apiary.Targets do
            line: line, first: first}
 
         :too_long_together ->
-          count = byte_size(Enum.join([path | Enum.map(lines, &elem(&1, 0))], ","))
+          # Not `count:`, which `translate_error/1` takes for a plural.
+          bytes = byte_size(Enum.join([path | Enum.map(lines, &elem(&1, 0))], ","))
 
           {dgettext_noop(
              "errors",
-             "Together with %{target}, these come to %{count} characters; the most is 256."
-           ), target: path, count: count}
+             "Together with %{target}, these come to %{bytes} characters; the most is 256."
+           ), target: path, bytes: bytes}
       end
 
     target
