@@ -131,6 +131,11 @@ msgid_plural "%{attempt} of %{of} runs used"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} chosen workspace"

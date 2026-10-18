@@ -377,6 +377,15 @@ defmodule Apiary.Access do
       roles: @admins,
       asked_of: :organisation
     ),
+    # A collection whose adapter now lists its ref under another connection: ended as a
+    # disconnect ends it, after the listing's part that names it there.
+    Action.new(
+      :"collection.move",
+      "end a collection whose adapter now lists it under another connection: the instance, by itself, after the listing's part (Apiary.Adapters.Collections.post_listing/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
     # A workspace's work items, people's actions. A comment's author may delete it too,
     # while they may still comment (`author?/3`).
     Action.new(:"work_item.read", "read the workspace's work items",
