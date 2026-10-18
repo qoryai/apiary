@@ -220,14 +220,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   def you?(%{you: true}), do: true
   def you?(_person), do: false
 
-  # The ticket's title as a page shows it (`Apiary.ExternalText.line/1`): nil for one
-  # with nothing left to show, as for none.
-  defp shown_title(title) do
-    case ExternalText.line(title) do
-      "" -> nil
-      title -> title
-    end
-  end
+  # The ticket's title as a page shows it (`Apiary.ExternalText.present/1`): nil for one
+  # with nothing left to show, or only whitespace, as for none.
+  defp shown_title(title), do: ExternalText.present(title)
 
   # Whether the instance closed it when its integration was removed: the one close without
   # a person that has words.

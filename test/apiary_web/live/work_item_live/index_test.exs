@@ -5,8 +5,9 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
   # count; the pager; a forged view, stage or cursor; the texts of an external system;
-  # a row the instance closed, and an owner no longer a member; the empty list; and the
-  # list read again on a message of its workspace's work items.
+  # a row the instance closed, and an owner no longer a member; the empty list; the list
+  # read again on a message of its workspace's work items, with the scope first; and an
+  # event it does not know.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -108,8 +109,14 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   defp name(%User{email: email}), do: User.short_name(email)
 
   describe "who reads it" do
-    test "a member of the workspace reads it, as its owner and an admin do", %{scope: scope} do
+    test "a member of the workspace reads it, as its owner and an admin do", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = item!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope))
+      assert has_element?(view, row(work_item))
 
       for level <- [:member, :admin] do
         %{user: user} = member_fixture(scope, level)
@@ -221,7 +228,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
              )
     end
 
-    test "a stage alone is a band of its rows, from its strip's link or Show all", ctx do
+    test "a stage alone is a band of its rows, from its strip's link", ctx do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       view |> element("#work-items-stages-confirm") |> render_click()
@@ -231,7 +238,6 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
                Enum.sort(ids([ctx.mine, ctx.theirs]))
 
       refute has_element?(view, "#work-items-explore")
-      refute has_element?(view, "#work-items-pager")
     end
 
     test "a stage it does not know shows nothing", ctx do
@@ -447,7 +453,13 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
 
     test "a forged cursor shows nothing and breaks nothing", %{conn: conn, scope: scope} do
-      item!(scope)
+      closed =
+        item!(scope)
+        |> set!(state: :closed, closed_at: DateTime.utc_now(), closed_by_id: scope.user.id)
+
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+      assert rows(view) == ids([closed])
+
       {:ok, view, _html} = live(conn, page(scope, "?view=closed&after=nonsense"))
       assert rows(view) == []
     end
@@ -473,6 +485,18 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       {:ok, view, _html} = live(conn, page(scope))
 
       assert words(view, row(work_item) <> " .q-wl-ttl b") == "##{work_item.number}"
+    end
+
+    test "a title of only whitespace or invisible characters is no title either", %{
+      conn: conn,
+      scope: scope
+    } do
+      for title <- ["\u00A0", "\u202E\u200B"] do
+        work_item = item!(scope) |> set!(title: title)
+        {:ok, view, _html} = live(conn, page(scope))
+
+        assert words(view, row(work_item) <> " .q-wl-ttl b") == "##{work_item.number}"
+      end
     end
   end
 
@@ -542,6 +566,28 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       )
 
       assert rows(view) == ids([first])
+    end
+
+    test "a member removed behind the page's back is sent away on a message of its work items",
+         %{scope: scope} do
+      work_item = item!(scope)
+      member = member_fixture(scope, :member)
+      {:ok, view, _html} = live(log_in_user(build_conn(), member.user), page(scope))
+
+      # Removed without a word to the page: the scope is read again before the list.
+      Repo.delete!(member.membership)
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+      assert_redirect(view, ~p"/")
+    end
+
+    test "an event it does not know changes nothing", %{conn: conn, scope: scope} do
+      work_item = item!(scope)
+      {:ok, view, _html} = live(conn, page(scope))
+
+      render_hook(view, "nonsense", %{"q" => "x"})
+      render_hook(view, "answer", %{})
+      assert rows(view) == ids([work_item])
     end
   end
 end

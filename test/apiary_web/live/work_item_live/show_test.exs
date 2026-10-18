@@ -98,6 +98,18 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
              )
     end
 
+    test "a title of only whitespace or invisible characters is no title: the header says its number",
+         %{conn: conn, scope: scope} do
+      for title <- ["\u00A0", "\u202E\u200B"] do
+        work_item = queued(scope)
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [title: title])
+
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+        refute has_element?(view, "#work-item-head-title bdi")
+        assert has_element?(view, "#work-item-head-title", "##{work_item.number}")
+      end
+    end
+
     test "a take in whose first run is not written yet reads as queued, on every tab", %{
       conn: conn,
       scope: scope

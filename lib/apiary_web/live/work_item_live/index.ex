@@ -43,7 +43,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   alias Apiary.{Access, Adapters, ExternalText, WorkItems}
   alias Apiary.Runs.Filters
   alias Apiary.WorkItems.Explore
-  alias ApiaryWeb.People
+  alias ApiaryWeb.{People, UserAuth}
 
   @views [:open, :you, :declined, :closed]
   @stages [:explore, :confirm, :shape]
@@ -296,11 +296,30 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
-  # A work item of the workspace changed: the page reads what it shows again, with its
-  # scope, whatever the message names, and the sidebar's count beside Work items.
+  # Any other event, forged or from a page of before: nothing happens.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # A work item of the workspace changed: the page reads its scope again first, as the
+  # work item page does (`ApiaryWeb.UserAuth.reload_scope/1`), which sends away a reader
+  # who may no longer be here; any other reads what it shows again, whatever the message
+  # names, and the sidebar's count beside Work items.
   @impl true
-  def handle_info({:work_items_changed, _ids}, socket),
-    do: {:noreply, socket |> load_options() |> load() |> count_waiting_on()}
+  def handle_info({:work_items_changed, _ids}, socket) do
+    socket = UserAuth.reload_scope(socket)
+
+    if socket.redirected do
+      {:noreply, socket}
+    else
+      scope = socket.assigns.current_scope
+
+      {:noreply,
+       socket
+       |> assign(:can_act, Access.can?(scope, :"work_item.answer", scope.workspace))
+       |> load_options()
+       |> load()
+       |> count_waiting_on()}
+    end
+  end
 
   ## Reads
 

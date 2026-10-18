@@ -540,13 +540,9 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   # The title a row shows, as a page shows a text from an external system; nil for one
-  # with nothing left to show, which the row names by its number instead.
-  defp shown_title(work_item) do
-    case Apiary.ExternalText.line(work_item.title) do
-      "" -> nil
-      title -> title
-    end
-  end
+  # with nothing left to show, or only whitespace (`Apiary.ExternalText.present/1`), which
+  # the row names by its number instead.
+  defp shown_title(work_item), do: Apiary.ExternalText.present(work_item.title)
 
   @doc """
   The foot of Closed, a paged list: where the page is ("1–50 of 262"), and Previous and
