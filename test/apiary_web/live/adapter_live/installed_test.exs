@@ -464,7 +464,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
 
       assert words(lv, "#adapter-remove-installed") ==
-               "Whatever it kept in the AWS stack or the Compose file that installs Qory Apiary is not touched."
+               "Whatever it kept where Qory Apiary is installed is not touched."
 
       lv |> element("#adapter-remove-button") |> render_click()
       assert_redirect(lv, "/instance/adapters")

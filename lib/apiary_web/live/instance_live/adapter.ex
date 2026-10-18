@@ -348,9 +348,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           </li>
           <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>
           <li :if={@adapter.installed_as} id="adapter-remove-installed">
-            {gettext(
-              "Whatever it kept in the AWS stack or the Compose file that installs Qory Apiary is not touched."
-            )}
+            {gettext("Whatever it kept where Qory Apiary is installed is not touched.")}
           </li>
           <li>{gettext("Its name is free again. This cannot be undone.")}</li>
         </ul>
