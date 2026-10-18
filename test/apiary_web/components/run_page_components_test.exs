@@ -191,6 +191,42 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     )
   end
 
+  describe "the timeline's group of connections" do
+    # Two allowed connections to `host`, which the timeline folds into one group.
+    defp group_html(host) do
+      events =
+        for seq <- [1, 2] do
+          data = %{"host" => host, "port" => 443, "decision" => "allowed", "rule" => ""}
+          %{sequence: seq, type: "dev.qory.run.egress", time: @t0, data: data}
+        end
+
+      slim = Enum.map(events, &Timeline.slim/1)
+      index = Timeline.index(slim)
+      [item] = Timeline.build(index.items, Map.new(slim, &{&1.sequence, &1}))
+      assert item.kind == :connection_group
+
+      render_component(&RunPageComponents.timeline_item/1,
+        id: "e-1",
+        item: item,
+        started_at: @t0,
+        seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+      )
+    end
+
+    test "names the host in its summary cleaned, isolated in <bdi>" do
+      html = group_html(dirty("api.example.com"))
+
+      assert texts(html, ".q-cx-sum .q-dest > bdi") == [clean("api.example.com")]
+      refute_dirty(html |> query(".q-cx-sum") |> LazyHTML.to_html())
+    end
+
+    test "says n/a in its summary for a blank host, as for none" do
+      for blank <- @blanks do
+        assert texts(group_html(blank), ".q-cx-sum .q-dest > bdi") == ["n/a"]
+      end
+    end
+  end
+
   describe "the timeline's Session ended" do
     defp session_ended(data), do: item_html("dev.qory.session.ended", data)
 

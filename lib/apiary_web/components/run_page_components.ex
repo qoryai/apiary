@@ -969,7 +969,14 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # A run of allowed connections to one destination, folded: the summary names the host,
+  # a text Forager sent, shown as one (`Apiary.ExternalText.present/1`), as a connection's
+  # row shows it (`ApiaryWeb.RunComponents.connection_row/1`); one with nothing left to show, or
+  # only whitespace, is none, and the summary says n/a, as for a connection that sent none
+  # (`Apiary.Runs.Record.Timeline`).
   defp item_body(%{item: %{kind: :connection_group}} = assigns) do
+    assigns = assign(assigns, :host, ExternalText.present(assigns.item.host) || gettext("n/a"))
+
     ~H"""
     <details
       id={"#{@id}-group"}
@@ -980,10 +987,10 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@item.tool} class="q-dest q-dest-tool">
           <.tool_mark name={@item.tool} />
-          <span class="q-on"><bdi>{@item.host}</bdi>:{@item.port}</span>
+          <span class="q-on"><bdi>{@host}</bdi>:{@item.port}</span>
         </span>
         <span :if={!@item.tool} class="q-dest">
-          <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span>
+          <bdi>{@host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
           · {if @item.tool,
