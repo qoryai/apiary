@@ -366,7 +366,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers a person's actions on the work items, the assigning of repositories, the Backlog switch, the handover, the release, the prebuilt and what runs also read by their words, and no other action of the feature",
+    test "the Activity filter offers by their words a person's work item actions, the assigning of repositories, the Backlog switch, the handover, the release, the prebuilt and what runs also read, and no other",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
