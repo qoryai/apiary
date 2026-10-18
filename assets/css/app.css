@@ -11345,6 +11345,14 @@
   .q-int-selbar .btn {
     --size: 28px;
   }
+  /* A bar that also holds the Assign to workspace button (`q-int-assignbar` on the
+     `.q-bar`): its search is 260px wide, so the button keeps a place on the line beside
+     it. Below 768px the search keeps the full width the `.q-find` rule gives it there. */
+  @media (min-width: 768px) {
+    .q-bar.q-int-assignbar > .q-find {
+      width: min(260px, 100%);
+    }
+  }
   .q-int-clear {
     font-weight: 400;
   }
@@ -11411,6 +11419,17 @@
      and a faint line on what moves with them ---- */
   .q-int-assign {
     width: 18.75rem;
+  }
+  /* Its search (more than eight workspaces): the item's width, at most 260px, which fits
+     inside an item of the 300px menu; a scrollbar that takes room leaves it narrower. An
+     item's form is a daisyUI grid sized to its content: one column that takes the item's
+     width lets the field's 100% reach it. */
+  .q-int-assign li > form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .q-int-assign .q-filter-search {
+    width: 100%;
+    max-width: 260px;
   }
   .q-int-assign .q-mi-t {
     display: flex;
