@@ -323,6 +323,14 @@ defmodule Apiary.Sources.BodyTest do
       refute words(doc) =~ "d.png"
     end
 
+    test "an image whose alt text is whitespace alone is drawn as one with no alt text" do
+      empty = html("![](https://example.com/d.png)")
+
+      for alt <- [" ", "\u00A0", "\u2003\u200B\u00A0"] do
+        assert html("![#{alt}](https://example.com/d.png)") == empty, inspect(alt)
+      end
+    end
+
     test "an image whose URL is not https is the same words, unlinked" do
       for url <- [
             "http://example.com/d.png",

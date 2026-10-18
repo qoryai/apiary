@@ -178,6 +178,21 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
+  test "a run whose title is whitespace alone is said as a run with no title",
+       %{conn: conn, scope: scope} do
+    run = started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"})
+    short = String.slice(run.public_id, 0, 11)
+
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short}] = group(answer, "Runs")["items"]
+
+    for title <- [" ", "\u00A0", "\u200B\u00A0\u3000"] do
+      run |> Ecto.Changeset.change(about_title: title) |> Apiary.Repo.update!()
+      answer = jump(conn, workspace_path(scope, "/jump"), short)
+      assert [%{"label" => ^short}] = group(answer, "Runs")["items"], inspect(title)
+    end
+  end
+
   test "a run's title and target path are shown as a text Forager sent is",
        %{conn: conn, scope: scope} do
     run =
