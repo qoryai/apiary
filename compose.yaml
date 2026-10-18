@@ -65,13 +65,14 @@ services:
       # The GitHub adapter's port: the adapter shares the network of the service `apiary`,
       # so its port is published here. Nothing answers on it while the profile `github`
       # is off.
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${QORY_GITHUB_HOST_PORT:-8080}:8080"
 
   # The GitHub adapter, installed with Qory Apiary, in the profile `github`. To turn it
   # on, add github to COMPOSE_PROFILES in .env, and set there
   # QORY_INSTALLED_ADAPTERS=github, factory in QORY_FEATURES, and QORY_GITHUB_PUBLIC_URL.
   # The adapter needs a separate public name, which the reverse proxy routes by host name
-  # to 127.0.0.1:8080. Keep the query strings of /setup out of the proxy's access logs.
+  # to 127.0.0.1 on QORY_GITHUB_HOST_PORT (8080 unless set). Keep the query strings of
+  # /setup out of the proxy's access logs.
   # Turning the profile off removes nothing from Qory Apiary. To remove the adapter, take
   # github off QORY_INSTALLED_ADAPTERS, then remove it under Instance settings › Adapters.
   github:
