@@ -4034,8 +4034,13 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Assigned %{count} collection to a workspace"
-msgid_plural "Assigned %{count} collections to a workspace"
+msgid "Assigned %{collections}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned %{count} %{collection} to a workspace"
+msgid_plural "Assigned %{count} %{collections} to a workspace"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4786,11 +4791,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "ticket"
 msgid "Collection"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Collections assigned"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -15321,8 +15321,8 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Unassigned %{count} collection from its workspace"
-msgid_plural "Unassigned %{count} collections from their workspaces"
+msgid "Unassigned %{count} %{collection} from its workspace"
+msgid_plural "Unassigned %{count} %{collections} from their workspaces"
 msgstr[0] ""
 msgstr[1] ""
 

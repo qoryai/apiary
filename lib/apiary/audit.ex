@@ -533,7 +533,8 @@ defmodule Apiary.Audit do
           organisations: %{Ecto.UUID.t() => String.t()},
           collections: %{Ecto.UUID.t() => String.t()},
           item_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
-          collection_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}}
+          collection_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
+          connection_collection_nouns: %{String.t() => %{one: String.t(), other: String.t()}}
         }
 
   @doc """
@@ -551,7 +552,10 @@ defmodule Apiary.Audit do
   names them (Apiary.WorkItems.item_nouns/2); and for the collection of each entry about
   a collection, what the source behind the connection its `details` name by public id
   (`connection_id`) calls its items and its collections, where it names them
-  (`collection_nouns`), even once the collection is gone. Only what the scope's
+  (`collection_nouns`), even once the collection is gone; and for each entry that assigns
+  collections to a workspace or unassigns them (`collection.assign`), what the source
+  behind the connection its `details` name calls its collections, by that public id
+  (`connection_collection_nouns`), where it names them. Only what the scope's
   organisation holds is looked up, people and those organisations aside; in the instance's
   organisation, the nodes and access keys of the instance, which no organisation holds,
   too. A person whose account is deleted, a key or a row
@@ -613,7 +617,16 @@ defmodule Apiary.Audit do
           into: %{},
           do: {id, connection_id}
 
-    nouns = Apiary.Adapters.connection_nouns(organisation_id, Map.values(sources))
+    # The connection each entry that assigns or unassigns collections names.
+    assigning =
+      for %Entry{action: "collection.assign"} = entry <- entries,
+          connection_id = details(entry, "connection_id"),
+          is_binary(connection_id),
+          uniq: true,
+          do: connection_id
+
+    nouns =
+      Apiary.Adapters.connection_nouns(organisation_id, Map.values(sources) ++ assigning)
 
     # The instance's nodes and keys, which have no organisation, have their entries in the
     # trail of the instance's organisation, and are named there alone.
@@ -686,7 +699,8 @@ defmodule Apiary.Audit do
         Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets)
         |> Map.merge(Apiary.WorkItems.item_nouns(organisation_id, taken_in))
         |> Map.merge(source_nouns(sources, nouns, :item)),
-      collection_nouns: source_nouns(sources, nouns, :collection)
+      collection_nouns: source_nouns(sources, nouns, :collection),
+      connection_collection_nouns: source_nouns(Map.new(assigning, &{&1, &1}), nouns, :collection)
     }
   end
 
