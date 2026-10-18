@@ -5,7 +5,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
   # count; the pager; a forged view, stage or cursor; the texts of an external system;
-  # the empty list; and the list read again on a message of its workspace's work items.
+  # a row the instance closed; the empty list; and the list read again on a message of its
+  # workspace's work items.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -319,6 +320,23 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert words(view, row(closed) <> " .q-wl-nx") == "Closed by #{name(member)}"
       assert words(view, row(undone) <> " .q-wl-nx") == "Undone by you"
       refute has_element?(view, "#work-items-note")
+    end
+
+    test "a row the instance closed when its integration was removed says so",
+         %{conn: conn, scope: scope} do
+      work_item = item!(scope)
+
+      {:ok, _queues} =
+        Repo.transact(fn ->
+          locked = Repo.one!(from w in WorkItem, where: w.id == ^work_item.id, lock: "FOR UPDATE")
+          WorkItems.close_locked([locked], {:instance, "adapter_removed"}, DateTime.utc_now())
+        end)
+
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+      assert rows(view) == ids([work_item])
+
+      assert words(view, row(work_item) <> " .q-wl-nx") ==
+               "Closed when its integration was removed"
     end
 
     test "a forged view is Open", %{conn: conn, scope: scope} do
