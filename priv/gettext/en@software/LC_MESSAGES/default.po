@@ -1181,6 +1181,13 @@ msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no b
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{item} matches"
+msgid_plural "%{number} %{items} match"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} B"
@@ -4156,6 +4163,7 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
@@ -4745,6 +4753,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Closed"
 msgstr ""
@@ -4800,6 +4809,7 @@ msgid "Collapse sidebar"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "ticket"
 msgid "Collection"
@@ -5298,6 +5308,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Declined"
 msgstr ""
@@ -6482,6 +6493,7 @@ msgid "Fetching the release's description.json and checksums.txt…"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Filed by"
 msgstr ""
@@ -6550,6 +6562,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Find a host, e.g. *.github.example seen:no"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a name"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -8199,6 +8216,11 @@ msgstr ""
 msgid "Kind"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Label"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Labels"
@@ -8924,6 +8946,11 @@ msgstr ""
 msgid "Most attempts"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most comments"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Most denials"
@@ -9157,12 +9184,14 @@ msgid "New variable"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newer"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newest"
@@ -10247,6 +10276,7 @@ msgid "Off: the saved password cannot be read. Enter it again and save."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10567,6 +10597,12 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item view"
+msgid "Open"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "backlog view"
 msgid "Open"
 msgstr ""
 
@@ -11551,6 +11587,11 @@ msgstr ""
 msgid "Recently changed"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Recently updated"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reconnecting"
@@ -11687,6 +11728,11 @@ msgstr ""
 msgid "Remove the allow rule %{host}?"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the collection filter"
+msgstr "Remove the repository filter"
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the control or invisible characters."
@@ -11695,6 +11741,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}?"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the filed-by filter"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -12502,6 +12553,11 @@ msgstr ""
 msgid "Saving sends a test link to %{email}. Mail is off until you follow it."
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Search %{items}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Search by title, number or %{item}"
@@ -12515,6 +12571,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Search or jump to…"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Search the backlog"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13131,8 +13192,14 @@ msgid "Something went wrong on our side."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sort"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sort by"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -13406,6 +13473,7 @@ msgid "Take its %{items} into the Backlog"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Taken in"
 msgstr ""
@@ -15426,6 +15494,7 @@ msgid "Until the first change here, every machine of this workspace runs under i
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Updated"
 msgstr ""
@@ -15622,6 +15691,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
