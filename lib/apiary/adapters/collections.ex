@@ -1293,6 +1293,19 @@ defmodule Apiary.Adapters.Collections do
     do: counts(scope, connection).unassigned
 
   @doc false
+  # targets?/1 says whether any live collection of `connection` has a target
+  # (`target_system`); the target of an ended collection counts not. It asks no scope: its
+  # caller loads `connection` under the reader's scope first.
+  @spec targets?(Connection.t()) :: boolean
+  def targets?(%Connection{id: connection_id}) do
+    Repo.exists?(
+      from c in Collection,
+        where: c.connection_id == ^connection_id and is_nil(c.ended_at),
+        where: not is_nil(c.target_system)
+    )
+  end
+
+  @doc false
   # listing_complete?/1 says whether a listing of `connection` has been complete
   # (`listing_completed_at`): until then, its collections may be named by parts still to
   # come.

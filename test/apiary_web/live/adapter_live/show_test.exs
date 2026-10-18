@@ -60,19 +60,25 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   defp time(at), do: ApiaryWeb.Format.time(at)
 
   # One part of a listing of `connection`, as the adapter of `key` sends it: a collection
-  # per title, with no target.
-  defp post(key, connection, titles, part, complete, started_at \\ ~U[2026-10-01 09:00:00Z]) do
+  # per title, with no target; `{title, :target}` for one whose target is on
+  # code.example.com at the title's path.
+  defp post(
+         key,
+         connection,
+         titles,
+         part,
+         complete,
+         started_at \\ ~U[2026-10-01 09:00:00Z],
+         id \\ "first"
+       ) do
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     {:ok, :accepted} =
       Collections.post_listing(Scope.for_access_key(key), %{
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
-        collections:
-          for title <- titles do
-            %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}
-          end,
-        listing: %{id: "first", part: part, started_at: started_at, complete: complete}
+        collections: Enum.map(titles, &listed/1),
+        listing: %{id: id, part: part, started_at: started_at, complete: complete}
       })
 
     :ok
@@ -104,6 +110,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
         select: c.id
     )
   end
+
+  defp listed({title, :target}),
+    do: %{listed(title) | target: %{system: "code.example.com", path: title}}
+
+  defp listed(title),
+    do: %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}
 
   # The organisation with a second workspace, Platform, and a connection to `adapter`
   # whose complete listing names `names`, each unassigned.
@@ -389,7 +401,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   } do
     assert Apiary.Adapters.collection_noun(adapter) == nil
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
-    post(key, connection, ["acme/shop"], 1, true)
+    post(key, connection, [{"acme/shop", :target}], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-heading") == "Repositories 1"
@@ -474,7 +486,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
-    post(key, connection, ["acme/shop", "acme/api"], 1, true)
+    post(key, connection, [{"acme/shop", :target}, {"acme/api", :target}], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-heading") == "Repositories 2"
@@ -482,7 +494,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-filling")
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
 
     assert words(lv, "#collections-count") == "2 repositories"
     assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
@@ -546,7 +558,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-lead") =~ "so every project is assigned to it, and its issues"
     assert words(lv, "#collections-count") == "1 project"
     assert hd(rows(lv)) == "Project Workspace Backlog Open issues Added"
-    assert words(lv, "#collections-targets") =~ "Assigning a project here"
+    refute has_element?(lv, "#collections-targets")
   end
 
   test "an adapter with no items: the lead says only that each is assigned, and no open column",
@@ -560,7 +572,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert rows(lv) == ["Project Workspace Added", "Support #{scope.workspace.name} Today"]
   end
 
-  test "the lead and the foot note show while the page waits for the first listing", %{
+  test "the lead shows while the page waits for the first listing; the foot note does not", %{
     conn: conn,
     scope: scope,
     adapter: adapter
@@ -570,9 +582,93 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     assert has_element?(lv, "#collections-waiting")
     assert words(lv, "#collections-lead") =~ "has one workspace, #{scope.workspace.name}"
-    assert has_element?(lv, "#collections-targets")
+    refute has_element?(lv, "#collections-targets")
     refute has_element?(lv, "#collections-table")
     refute has_element?(lv, "#collections-count")
+  end
+
+  test "the foot note shows where a live collection has a target, and goes where none has", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/docs", {"acme/shop", :target}], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-targets") ==
+             "Assigning a repository here doesn't change a workspace's Repositories, which list what its runs change."
+
+    # The collection with a target ends: the page follows, and the foot note goes.
+    shop =
+      Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id, title: "acme/shop")
+
+    {1, _} =
+      Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^shop.id),
+        set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+      )
+
+    send(
+      lv.pid,
+      {:collections_changed, %{connection_id: connection.id, collection_ids: [shop.id]}}
+    )
+
+    refute has_element?(lv, "#collections-targets")
+    assert has_element?(lv, "#collections-table")
+  end
+
+  test "a source whose collections carry no target has no foot note; with one, it comes", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/docs", "acme/notes"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert has_element?(lv, "#collections-table")
+    refute has_element?(lv, "#collections-targets")
+
+    # A later listing names one with a target: the page follows it.
+    post(
+      key,
+      connection,
+      ["acme/docs", "acme/notes", {"acme/shop", :target}],
+      1,
+      true,
+      ~U[2026-10-02 09:00:00Z],
+      "second"
+    )
+
+    assert words(lv, "#collections-targets") =~ "Assigning a repository here"
+  end
+
+  test "an adapter with no items follows the same rule for the foot note", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    adapter = describe_source(adapter, "example-projects.json")
+    %{adapter: other, access_key: other_key} = connectable_adapter_fixture(%{name: "Shop host"})
+    other = describe_source(other, "example-projects.json")
+
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["Support"], 1, true)
+    {other_connection, _nonce} = connection_fixture(scope, other, :connected)
+    post(other_key, other_connection, [{"acme/shop", :target}], 1, true)
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#collections-lead") == "These projects are each assigned to one workspace."
+    refute has_element?(lv, "#collections-targets")
+
+    {:ok, lv, _html} = live(conn, page(scope, other))
+    assert words(lv, "#collections-lead") == "These projects are each assigned to one workspace."
+
+    assert words(lv, "#collections-targets") ==
+             "Assigning a project here doesn't change a workspace's Repositories, which list what its runs change."
   end
 
   test "the page fills in live: waiting, still sending with how many so far, then complete", %{
@@ -692,11 +788,9 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert Enum.drop(rows(lv), 1) == ["acme/api Backlog #{scope.workspace.name} — Today"]
     assert words(lv, "#collections-count") == "1 repository"
 
-    # Under the table, over the foot note.
-    html = render(lv)
-    [_before, after_table] = String.split(html, ~s{id="collections-table"}, parts: 2)
-    [between, _after] = String.split(after_table, ~s{id="collections-targets"}, parts: 2)
-    assert between =~ ~s{id="collections-ended"}
+    # Under the table.
+    [_before, after_table] = String.split(render(lv), ~s{id="collections-table"}, parts: 2)
+    assert after_table =~ ~s{id="collections-ended"}
   end
 
   test "with several workspaces, the unassigned collections come first, on every page", %{

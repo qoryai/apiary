@@ -36,13 +36,15 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # many so far; then the heading says how many there are.
   # A lead says what being assigned means, in the adapter's words for its collections
   # and its items: with one workspace, that every one is assigned to it; for an adapter
-  # with no items, only that each is assigned to one workspace. The lead and the foot note
-  # show while the page waits too. Past a page, the pager walks the pages, from the first,
-  # as the list pages by the row before (`?page=`); a page past the last one with rows
-  # shows that one, and the address then names it. Ended collections are not shown: the
-  # counts leave them out too, and a line under the table says how many there are. A
-  # search finds collections by their names (`?q=`), and says so on any of its pages that
-  # finds none.
+  # with no items, only that each is assigned to one workspace. The lead shows while the
+  # page waits too. Where any live collection has a target
+  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
+  # no workspace's targets; a source without code has none. Past a page, the pager walks
+  # the pages, from the first, as the list pages by the row before (`?page=`); a page past
+  # the last one with rows shows that one, and the address then names it. Ended
+  # collections are not shown: the counts leave them out too, and a line under the table
+  # says how many there are. A search finds collections by their names (`?q=`), and says
+  # so on any of its pages that finds none.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -155,7 +157,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp page_param(_value), do: 1
 
-  # The connection as it stands, the state it puts the page in, and who started it.
+  # The connection as it stands, the state it puts the page in, who started it, and whether
+  # any of its live collections has a target, for the foot note.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
@@ -168,6 +171,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)
+    |> assign(:targets, connection != nil and Collections.targets?(connection))
     |> assign(:ready, IntegrationComponents.ready?(adapter))
     |> wait()
   end
@@ -832,7 +836,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
                 integration: @adapter.name
               )}
             </p>
-            <p id="collections-targets" class="q-foot-note">
+            <p :if={@targets} id="collections-targets" class="q-foot-note">
               {gettext(
                 "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
                 collection: collection_word(@adapter, 1)
@@ -908,9 +912,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # What being assigned means, above the table: for an adapter with no items, that each
   # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's Backlog; with several, that
-  # each is assigned to one, and their items come into its Backlog while their Backlog
-  # switches are on.
+  # assigned to it, and its items come into that workspace's Backlog while its Backlog
+  # switch is on; with several, that each is assigned to one, and their items come into
+  # its Backlog while their Backlog switches are on.
   defp lead(scope, adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
@@ -922,7 +926,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         [workspace] = workspaces
 
         gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog.",
+          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on.",
           organisation: scope.organisation.name,
           workspace: workspace.name,
           collection: collection_word(adapter, 1),

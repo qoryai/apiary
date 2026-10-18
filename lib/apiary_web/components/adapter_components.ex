@@ -10,7 +10,7 @@ defmodule ApiaryWeb.AdapterComponents do
   # from here.
   #
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) says so in place of
-  # who added it.
+  # who added it and when.
   #
   # Set up (`setup_form/1`) starts an adapter's set-up at the system it reads from, a POST
   # to `ApiaryWeb.AdapterSetupController`; a page shows it only while the adapter
@@ -71,11 +71,13 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :id, :string, required: true
   attr :adapter, Node, required: true
   attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
+  attr :variant, :string, default: "default", values: ~w(default primary)
 
   @doc false
   # Set up for `adapter`: a form that posts to its set-up's path, `paths/1`'s `setup`,
   # with the session's CSRF token, and the instance admin is sent on to the adapter
-  # (`ApiaryWeb.AdapterSetupController`).
+  # (`ApiaryWeb.AdapterSetupController`). Its button is core's default one, or, with
+  # `variant` "primary", core's primary one.
   def setup_form(assigns) do
     ~H"""
     <.form
@@ -87,7 +89,7 @@ defmodule ApiaryWeb.AdapterComponents do
       class="contents"
     >
       <input :if={@back} type="hidden" name="back" value={@back} />
-      <.button id={"#{@id}-button"} type="submit" size="xs">
+      <.button id={"#{@id}-button"} type="submit" variant={@variant} size="xs">
         <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Set up")}
       </.button>
     </.form>
@@ -113,12 +115,12 @@ defmodule ApiaryWeb.AdapterComponents do
 
   @doc false
   # The line under an adapter's name: who added it and when, or, for an adapter installed
-  # with Qory Apiary, that it was and when; then its public id.
+  # with Qory Apiary, that it was; then its public id.
   def adapter_meta(assigns) do
     ~H"""
     <span id="adapter-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
       <span :if={@adapter.installed_as} id="adapter-added">
-        {gettext("Installed with Qory Apiary, %{date}", date: Format.date(@adapter.inserted_at))}
+        {gettext("Installed with Qory Apiary")}
       </span>
       <span :if={!@adapter.installed_as} id="adapter-added">
         {gettext("Added by %{person}, %{date}",

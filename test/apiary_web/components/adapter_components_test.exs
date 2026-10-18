@@ -190,4 +190,48 @@ defmodule ApiaryWeb.AdapterComponentsTest do
 
     assert adapter |> AdapterComponents.sync_of() |> AdapterComponents.pulls_every() == 7200
   end
+
+  # The form's markup with its CSRF token's value set aside, LiveView's root markers left
+  # out, and its spacing collapsed.
+  defp markup(html) do
+    html
+    |> String.replace(~r/(name="_csrf_token"[^>]* value=")[^"]*"/, "\\1TOKEN\"")
+    |> String.replace(" phx-r", "")
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
+  defp setup_form(variant) do
+    assigns = %{adapter: @adapter, variant: variant}
+
+    if variant do
+      rendered_to_string(~H"""
+      <AdapterComponents.setup_form id="s" adapter={@adapter} variant={@variant} />
+      """)
+    else
+      rendered_to_string(~H"""
+      <AdapterComponents.setup_form id="s" adapter={@adapter} />
+      """)
+    end
+  end
+
+  test "setup_form/1 by default renders as it did before it took a variant" do
+    assert markup(setup_form(nil)) ==
+             ~s(<form action="/instance/adapters/na_8f3k2m9q4x7v1t6r/setup" method="post" novalidate class="contents" id="s"> <input name="_csrf_token" type="hidden" hidden value="TOKEN"> <button class="btn btn-xs" id="s-button" type="submit"> <span class="hero-arrow-top-right-on-square-micro size-4"></span>Set up </button> </form>)
+  end
+
+  test "setup_form/1 with variant primary draws core's primary button, the form unchanged" do
+    default = setup_form(nil)
+    primary = setup_form("primary")
+
+    assert primary =~ ~s(class="btn btn-xs btn-primary")
+    refute default =~ "btn-primary"
+
+    assert markup(primary) ==
+             String.replace(
+               markup(default),
+               ~s(class="btn btn-xs"),
+               ~s(class="btn btn-xs btn-primary")
+             )
+  end
 end
