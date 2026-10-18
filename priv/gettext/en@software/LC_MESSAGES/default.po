@@ -7688,6 +7688,11 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "It is the adapter's only key: until it gets a new one, nothing it sends reaches any organisation."
 msgstr ""
 
@@ -14644,6 +14649,11 @@ msgstr ""
 msgid "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "This adapter was installed with Qory Apiary and is turned off there. Qory Apiary gives it no new code until it is turned on again."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine with a command."
@@ -15098,6 +15108,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Turn it off where Qory Apiary is installed before you remove it."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Turn it on again where Qory Apiary is installed to give it a new key."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -17652,6 +17667,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "tools %{tools}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "turned off where Qory Apiary is installed; it can be removed"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

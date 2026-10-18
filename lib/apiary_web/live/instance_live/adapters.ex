@@ -10,11 +10,12 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   # how often it pulls, or that it has not declared it yet, and its state
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`): No key yet, or when it was last seen,
   # or Never seen, all the rows' times read at once; and Set up, while the adapter declares
-  # where to be set up and holds a key in use (`ApiaryWeb.AdapterComponents.settable?/2`).
-  # Where the table is narrow, the Pulls and State columns give way to one line under the
-  # name: how often it pulls, then its state; or, before it declares, its state, then "not
-  # declared yet". With none, the page says there is no adapter yet. The instance has no
-  # catalogue of adapters to add yet, so the page lists none.
+  # where to be set up, holds a key in use and, installed with Qory Apiary, is still listed
+  # (`ApiaryWeb.AdapterComponents.settable?/3`). Where the table is narrow, the Pulls and
+  # State columns give way to one line under the name: how often it pulls, then its state;
+  # or, before it declares, its state, then "not declared yet". With none, the page says
+  # there is no adapter yet. The instance has no catalogue of adapters to add yet, so the
+  # page lists none.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -40,7 +41,7 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
         %{
           adapter: adapter,
           connected: connected,
-          settable: AdapterComponents.settable?(adapter, connected),
+          settable: AdapterComponents.settable?(adapter, connected, Adapters.listed?(adapter)),
           seen: Map.get(seen, adapter.id),
           every: AdapterComponents.pulls_every(AdapterComponents.sync_of(adapter))
         }

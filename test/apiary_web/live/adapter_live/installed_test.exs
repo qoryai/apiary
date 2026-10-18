@@ -3,10 +3,13 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
   # under its name, its Overview with no key yet, its Access key tab without a key and with
   # one, which offers no command and shows no code of the instance, the refusal of a Get
   # the command asked anyway, the revocation of its only key, its key card, and its danger
-  # zone and Remove page, while it is listed and once it is not. Not async: the names
-  # listed are the whole node's.
+  # zone and Remove page, while it is listed and once it is not; with its name off the
+  # list, its Overview and its Access key tab say it is turned off there, and promise no
+  # code, and neither page offers Set up. Not async: the names listed are the whole
+  # node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
@@ -116,6 +119,85 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
 
       assert words(lv, "#key-#{key.key_id}-last") ==
                "It is the adapter's only key. Qory Apiary gives the adapter a new code at once; until it has made a new key, nothing it sends reaches any organisation."
+    end
+  end
+
+  describe "with its name off the list" do
+    setup %{adapter: adapter} do
+      list([])
+      refute Apiary.Adapters.listed?(adapter)
+      :ok
+    end
+
+    test "the Overview says it is turned off there and can be removed",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") ==
+               "No key yet · turned off where Qory Apiary is installed; it can be removed"
+
+      refute html =~ "it connects by itself once it is running"
+      refute has_element?(lv, "#adapter-connect-it")
+    end
+
+    test "the Access key tab, with no key, says it gets no new code until it is turned on again",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, html} = live(conn, page_path(adapter, "/keys"))
+
+      assert words(lv, "#adapter-connect-intro") ==
+               "This adapter was installed with Qory Apiary and is turned off there. Qory Apiary gives it no new code until it is turned on again."
+
+      refute html =~ "gives it a one-time code by itself"
+      refute has_element?(lv, "#adapter-way")
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#adapter-add")
+    end
+
+    test "the Access key tab, with its key, offers no way to add one, and its only key's revocation promises no code",
+         %{conn: conn, adapter: adapter} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      {:ok, lv, html} = live(conn, page_path(adapter, "/keys"))
+
+      assert words(lv, "#adapter-add") ==
+               "Add a key Turn it on again where Qory Apiary is installed to give it a new key."
+
+      refute html =~ "the adapter gets a new code at once"
+      refute has_element?(lv, "#adapter-way")
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#adapter-add button")
+
+      {:ok, lv, html} = live(conn, page_path(adapter, "/keys/#{key.key_id}/revoke"))
+
+      assert words(lv, "#key-#{key.key_id}-last") ==
+               "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+
+      refute html =~ "gives the adapter a new code at once"
+    end
+
+    test "with a setup_url and its key, neither the Overview nor the list offers Set up",
+         %{conn: conn, adapter: adapter} do
+      installed_key_fixture(adapter)
+
+      {1, _} =
+        Apiary.Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+          set: [setup_url: "https://tracker.example.com/setup"]
+        )
+
+      {:ok, lv, html} = live(conn, page_path(adapter))
+      assert words(lv, "#adapter-overview-setup") == "Not set up yet"
+      refute has_element?(lv, "#adapter-setup")
+      refute html =~ "Takes you to the adapter"
+
+      {:ok, lv, _html} = live(conn, "/instance/adapters")
+      refute has_element?(lv, "#adapter-#{adapter.public_id}-setup")
+
+      # Listed again, both offer it.
+      list([adapter.installed_as])
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+      assert has_element?(lv, "#adapter-setup")
+      {:ok, lv, _html} = live(conn, "/instance/adapters")
+      assert has_element?(lv, "#adapter-#{adapter.public_id}-setup")
     end
   end
 

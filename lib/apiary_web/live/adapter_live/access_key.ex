@@ -38,6 +38,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # connect it, offers neither Get the command nor Add a key, and leaves out the codes the
   # instance made, which name no maker. Its one key is replaced by revoking it, which
   # brings a new code at once. A Get the command asked anyway is refused, and said so.
+  # Once its name is off the list (`Apiary.Adapters.listed?/1`), the instance gives it no
+  # new code: the tab says it is turned off there, and that turning it on again gives it
+  # a new key, in place of what a code would bring.
   #
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
@@ -72,6 +75,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       {:ok,
        socket
        |> assign(adapter: adapter, paths: AdapterComponents.paths(adapter))
+       |> assign(listed: Adapters.listed?(adapter))
        |> assign(issued: nil, carry: false, key: nil, code: nil, expiry_timer: nil)
        |> load()}
     else
@@ -499,13 +503,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             id="adapter-connect"
             title={gettext("Connect %{name}", name: @adapter.name)}
           >
+            <p :if={@listed} id="adapter-connect-intro" class="text-[13px]/5 text-muted">
+              {gettext(
+                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+              )}
+            </p>
             <p
-              :if={@adapter.installed_as}
+              :if={Adapters.installed?(@adapter) and !@listed}
               id="adapter-connect-intro"
               class="text-[13px]/5 text-muted"
             >
               {gettext(
-                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+                "This adapter was installed with Qory Apiary and is turned off there. Qory Apiary gives it no new code until it is turned on again."
               )}
             </p>
             <p
@@ -582,9 +591,14 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                         name="hero-exclamation-triangle-micro"
                         class="mt-0.5 size-4 flex-none"
                       />
-                      <span :if={@adapter.installed_as}>
+                      <span :if={@listed}>
                         {gettext(
                           "It is the adapter's only key. Qory Apiary gives the adapter a new code at once; until it has made a new key, nothing it sends reaches any organisation."
+                        )}
+                      </span>
+                      <span :if={Adapters.installed?(@adapter) and !@listed}>
+                        {gettext(
+                          "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
                         )}
                       </span>
                       <span :if={!@adapter.installed_as}>
@@ -617,10 +631,13 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             id="adapter-add"
             title={gettext("Add a key")}
           >
-            <p id="adapter-add-intro" class="text-[13px]/5 text-muted">
+            <p :if={@listed} id="adapter-add-intro" class="text-[13px]/5 text-muted">
               {gettext(
                 "An adapter installed with Qory Apiary holds one key. To replace it, revoke it: the adapter gets a new code at once and makes a new key by itself."
               )}
+            </p>
+            <p :if={!@listed} id="adapter-add-intro" class="text-[13px]/5 text-muted">
+              {gettext("Turn it on again where Qory Apiary is installed to give it a new key.")}
             </p>
           </SettingsComponents.part>
           <SettingsComponents.part

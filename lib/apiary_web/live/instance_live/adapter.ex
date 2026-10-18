@@ -25,7 +25,8 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # setting still lists (`Apiary.Adapters.listed?/1`) is not removed: the danger zone says
   # to turn it off first, in place of Remove adapter…, and a removal asked anyway is
   # refused with the same advice. Its Overview says it connects by itself, in place of
-  # Connect it. Rename and Remove are pages; each act is asked again
+  # Connect it; once its name is off the list, that it is turned off there and can be
+  # removed, and it offers no Set up. Rename and Remove are pages; each act is asked again
   # by the context function, and a removed adapter's pages leave for the list. A saved
   # interval and a rename are said on the Settings tab, a removal on the list.
   #
@@ -367,6 +368,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           connected={@connected}
           seen={@seen}
           sync={@sync}
+          listed={Adapters.listed?(@adapter)}
         />
         <.settings
           :if={@live_action == :settings}
@@ -417,10 +419,15 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :seen, DateTime, default: nil
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
+  attr :listed, :boolean,
+    required: true,
+    doc: "whether it is installed with Qory Apiary and still listed (`Apiary.Adapters.listed?/1`)"
+
   # The Overview: the adapter's state; while it declares where to be set up (`setup_url`,
   # which it declares only while it is not set up), its Set-up, Not set up yet, with Set
-  # up and what it does while it holds a key in use; the install address it declared, and
-  # how often it pulls.
+  # up and what it does while it holds a key in use and, installed with Qory Apiary, is
+  # still listed (`ApiaryWeb.AdapterComponents.settable?/3`); the install address it
+  # declared, and how often it pulls.
   defp overview(assigns) do
     ~H"""
     <dl
@@ -435,9 +442,17 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           connected={@connected}
           seen={@seen}
         />
-        <span :if={!@connected and @adapter.installed_as} class="text-faint">
+        <span :if={!@connected and @listed} class="text-faint">
           <span aria-hidden="true">·</span>
           {gettext("it connects by itself once it is running")}
+        </span>
+        <span
+          :if={!@connected and Adapters.installed?(@adapter) and !@listed}
+          id="adapter-overview-unlisted"
+          class="text-faint"
+        >
+          <span aria-hidden="true">·</span>
+          {gettext("turned off where Qory Apiary is installed; it can be removed")}
         </span>
         <span :if={!@connected and !@adapter.installed_as} class="text-faint">
           <span aria-hidden="true">·</span>
@@ -459,7 +474,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         <dt class="text-faint">{gettext("Set-up")}</dt>
         <dd id="adapter-overview-setup" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span id="adapter-setup-state">{gettext("Not set up yet")}</span>
-          <%= if AdapterComponents.settable?(@adapter, @connected) do %>
+          <%= if AdapterComponents.settable?(@adapter, @connected, @listed) do %>
             <span aria-hidden="true" class="text-faint">·</span>
             <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} />
             <p id="adapter-setup-hint" class="basis-full text-[12.5px]/[18px] text-muted">

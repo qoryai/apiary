@@ -14,7 +14,8 @@ defmodule ApiaryWeb.AdapterComponents do
   #
   # Set up (`setup_form/1`) starts an adapter's set-up at the system it reads from, a POST
   # to `ApiaryWeb.AdapterSetupController`; a page shows it only while the adapter
-  # declares where to be set up (`setup_url`) and holds a key in use (`settable?/2`).
+  # declares where to be set up (`setup_url`), holds a key in use, and, when it is
+  # installed with Qory Apiary, is still listed (`settable?/3`).
   #
   # An adapter's state is "No key yet" while it holds no active key, with the dot of a
   # state that needs someone. Once it holds one, it is a node's: when it was last seen,
@@ -59,9 +60,13 @@ defmodule ApiaryWeb.AdapterComponents do
   @doc false
   # Whether Set up shows for `adapter`: while it declares where to be set up
   # (`setup_url`, which it declares only while it is not set up) and holds a key in use
-  # (`connected`, `Apiary.AccessKeys.active_key?/1`), as `Apiary.Adapters.setup/2` asks.
-  @spec settable?(Node.t(), boolean) :: boolean
-  def settable?(%Node{setup_url: url}, connected), do: is_binary(url) and connected == true
+  # (`connected`, `Apiary.AccessKeys.active_key?/1`), as `Apiary.Adapters.setup/2` asks;
+  # and, for an adapter installed with Qory Apiary, while its name is still listed
+  # (`listed`, `Apiary.Adapters.listed?/1`): once it is off the list, the adapter is
+  # turned off there, and Set up would take the instance admin to no adapter.
+  @spec settable?(Node.t(), boolean, boolean) :: boolean
+  def settable?(%Node{setup_url: url, installed_as: installed_as}, connected, listed),
+    do: is_binary(url) and connected == true and (is_nil(installed_as) or listed == true)
 
   attr :id, :string, required: true
   attr :adapter, Node, required: true
