@@ -28,6 +28,9 @@ config :apiary,
 config :apiary, ApiaryWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  # The "/live" socket's bound on a fragmented message (`ApiaryWeb.Endpoint`), merged
+  # with each environment's `http:`.
+  http: [websocket_options: [max_fragmented_message_size: 4_194_304]],
   render_errors: [
     formats: [html: ApiaryWeb.ErrorHTML, json: ApiaryWeb.ErrorJSON],
     layout: false

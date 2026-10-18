@@ -240,7 +240,12 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
 
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) == {:error, :no_target}
 
-      for {system, path} <- [{"forge.example.com.", "acme/shop"}, {"forge.example.com", "acme"}] do
+      for {system, path} <- [
+            {"forge.example.com.", "acme/shop"},
+            {"forge.example.com", "acme"},
+            {"forge..example.com", "acme/shop"},
+            {"forge.example.com", "acme/-rf"}
+          ] do
         Repo.get!(Collection, ctx.ticket.collection_id)
         |> Ecto.Changeset.change(target_system: system, target_path: path)
         |> Repo.update!()

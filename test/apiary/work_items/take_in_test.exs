@@ -251,7 +251,11 @@ defmodule Apiary.WorkItems.TakeInTest do
             {"forge.example.com", "acme"},
             {"forge.example.com", "acme/shop/basket"},
             {"forge.example.com", "acme/.git"},
-            {"forge.example.com", "acme/shop basket"}
+            {"forge.example.com", "acme/shop basket"},
+            {"forge..example.com", "acme/shop"},
+            {".example.com", "acme/shop"},
+            {"forge.example.com", "acme/-rf"},
+            {"forge.example.com", "-acme/shop"}
           ] do
         ticket =
           backlog_ticket_fixture(ctx.scope,

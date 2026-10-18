@@ -25,7 +25,7 @@ defmodule Apiary.Runs.RunVariablesTest do
                 }}
     end
 
-    test "the system is a host name of 1 to 253 of a-z, 0-9, dot and dash, not ending in a dot" do
+    test "the system is a host name of 1 to 253 of a-z, 0-9, dot and dash, no label empty" do
       for system <- ["a", "git.example.com", "git-1.example.com", String.duplicate("a", 253)],
           do: assert({:ok, %{@system => ^system}} = RunVariables.for_target(target(system)))
 
@@ -33,6 +33,9 @@ defmodule Apiary.Runs.RunVariablesTest do
             "",
             String.duplicate("a", 254),
             "git.example.com.",
+            "forge.example.com..",
+            "forge..example.com",
+            ".example.com",
             "Git.example.com",
             "git.example.com:8443",
             "git_example.com",
@@ -49,7 +52,9 @@ defmodule Apiary.Runs.RunVariablesTest do
             "Acme-1/shop.web_2",
             "a/b",
             "acme/.config",
-            "acme/..x"
+            "acme/..x",
+            "acme/a-b",
+            "a-cme/shop"
           ] do
         assert {:ok, %{@repositories => ^path}} =
                  RunVariables.for_target(target("git.example.com", path))
@@ -82,6 +87,8 @@ defmodule Apiary.Runs.RunVariablesTest do
             "acme/shop/.git",
             "acme/shop/web",
             "group/sub/team/project",
+            "-acme/shop",
+            "acme/-rf",
             nil
           ] do
         assert RunVariables.for_target(target("git.example.com", path)) ==
@@ -208,7 +215,17 @@ defmodule Apiary.Runs.RunVariablesTest do
     test "names the first rule broken and the place of its path in the list, counted from 1" do
       check = &RunVariables.check_repositories("acme/shop", &1)
 
-      for path <- ["acme", "acme/docs/x", "acme/", "acme/.", "acme/..", "acme/.Git", "a b/c", 7],
+      for path <- [
+            "acme",
+            "acme/docs/x",
+            "acme/",
+            "acme/.",
+            "acme/..",
+            "acme/.Git",
+            "acme/-rf",
+            "a b/c",
+            7
+          ],
           do: assert(check.(["acme/docs", path]) == {:error, {:not_a_path, 2}}, inspect(path))
 
       assert check.(["acme/" <> segment(196)]) == {:error, {:too_long, 1}}
@@ -234,6 +251,7 @@ defmodule Apiary.Runs.RunVariablesTest do
       for picked <- [
             ["acme/docs"],
             ["acme"],
+            ["acme/-rf"],
             ["other/docs"],
             ["acme/shop"],
             ["acme/docs", "acme/docs"],
