@@ -44,14 +44,25 @@ defmodule Apiary.Explore.Result do
   # such as `%{"version" => 1, "verdict" => "not_understood", "questions" => [...]}`;
   # `version` is the integer 1 however the text wrote it.
   #
+  # `outcome/1` says what one result event gave, and `given/3` what a run ended by its
+  # outcome or its exit gave once it is settled (`settled?/2`): the reading Explore shows
+  # (`Apiary.WorkItems.Explore`) and the one Qory keeps on the run of the queue
+  # (`Apiary.Dispatches.Settle`).
+  #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
   alias Apiary.Kinds.{Bounds, Schema}
+  alias Apiary.Runs.Run
 
   @type result :: %{optional(String.t()) => term}
 
+  @typedoc "What a run gave: its result's verdict, or why it has none."
+  @type outcome :: :proposal | :questions | :error | :none | :refused
+
   @event "dev.qory.session.result"
+  # How long after its outcome arrived a run with no result yet is not settled.
+  @settle_seconds 600
   @schema ["contract", "explore", "v1", "result.schema.json"]
   @max_bytes 128 * 1024
 
@@ -78,6 +89,69 @@ defmodule Apiary.Explore.Result do
     do: parse(text)
 
   defp from_event(_event), do: :none
+
+  # event_type/0 is the type of a run's result event.
+  @doc false
+  @spec event_type() :: String.t()
+  def event_type, do: @event
+
+  # settle_seconds/0 is how long after its outcome arrived a run with no result yet is
+  # not settled.
+  @doc false
+  @spec settle_seconds() :: pos_integer
+  def settle_seconds, do: @settle_seconds
+
+  # outcome/1 is what the result event `event` gave, nil for none: `{:proposal, result}`
+  # for a result whose verdict is `understood`, `{:questions, result}` for one whose
+  # verdict is `not_understood`, `{:none, nil}` for no event, or one whose `is_error` is
+  # `false` and that carries no result, `{:refused, nil}` for a result that fails the
+  # check, and `{:error, nil}` for an event whose `is_error` is anything else.
+  @doc false
+  @spec outcome(map | nil) :: {outcome, result | nil}
+  def outcome(nil), do: {:none, nil}
+
+  def outcome(%{data: %{"is_error" => false, "result" => text}} = event) when is_binary(text) do
+    case from_events([event]) do
+      {:ok, %{"verdict" => "understood"} = result} -> {:proposal, result}
+      {:ok, %{"verdict" => "not_understood"} = result} -> {:questions, result}
+      _refused -> {:refused, nil}
+    end
+  end
+
+  def outcome(%{data: %{"is_error" => false}}), do: {:none, nil}
+  def outcome(_event), do: {:error, nil}
+
+  # given/3 is what a run ended by its outcome or its exit gave, from `run`, the run
+  # registered for it or nil, and `event`, its result event with the highest sequence or
+  # nil, at `now`: a proposal or questions as soon as its result says so, `:unsettled`
+  # while it has none and is not settled, and otherwise `:none`, `:error` or `:refused`.
+  @doc false
+  @spec given(Run.t() | nil, map | nil, DateTime.t()) ::
+          {:proposal | :questions, result} | :error | :none | :refused | :unsettled
+  def given(run, event, %DateTime{} = now) do
+    case outcome(event) do
+      {verdict, result} when verdict in [:proposal, :questions] -> {verdict, result}
+      {outcome, nil} -> if settled?(run, now), do: outcome, else: :unsettled
+    end
+  end
+
+  # settled?/2 says whether a run ended by its outcome or its exit, registered as `run`
+  # (nil for none), has at `now` every event that will count: its exit is folded (the
+  # projector folds the events before it first), it is lost, its events are pruned, it
+  # has no outcome, or its outcome arrived `settle_seconds/0` ago or more.
+  @doc false
+  @spec settled?(Run.t() | nil, DateTime.t()) :: boolean
+  def settled?(nil, _now), do: true
+
+  def settled?(%Run{} = run, %DateTime{} = now) do
+    cond do
+      is_binary(run.exit_state) -> true
+      not is_nil(run.lost_at) or Run.current_state(run.state) == "lost" -> true
+      not is_nil(run.events_pruned_at) -> true
+      is_nil(run.outcome_received_at) -> true
+      true -> DateTime.diff(now, run.outcome_received_at, :second) >= @settle_seconds
+    end
+  end
 
   # parse/1 checks `text`, the `result` string of a result event: `{:ok, result}`, or
   # `:none` for anything that is not a binary, is larger than 128 KiB, is not UTF-8, is

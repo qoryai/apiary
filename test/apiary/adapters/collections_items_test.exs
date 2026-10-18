@@ -34,7 +34,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
   setup do
     %{scope: scope, user: user} = sign_up_fixture()
     other_workspace = workspace_fixture(scope.organisation, "Second")
-    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
 
     %{

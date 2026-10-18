@@ -983,13 +983,21 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp installed_key?(_key, _node), do: false
 
-  defp added_words(key, node) do
-    if installed_key?(key, node),
-      do:
+  # An installed adapter's key: enrolled at its first start, for its first key; by
+  # itself, with a code from Qory Apiary, for a key after a revoked one.
+  defp added_words(key, node, first) do
+    cond do
+      not installed_key?(key, node) ->
+        added_words(key)
+
+      first ->
+        gettext("Enrolled at its first start, %{time}", time: Format.datetime(key.received_at))
+
+      true ->
         gettext("Connected by itself, with a code from Qory Apiary, %{date}",
           date: Format.datetime(key.received_at)
-        ),
-      else: added_words(key)
+        )
+    end
   end
 
   defp added_words(%AccessKey{arrived_by: :code} = key),
@@ -2407,18 +2415,23 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     default: false,
     doc: "whether the key is an adapter's, which Forager never holds"
 
+  attr :first, :boolean,
+    default: true,
+    doc:
+      "for an adapter installed with Qory Apiary, whether the key is its first, with no revoked key before it"
+
   @doc false
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts. With `adapter`, it is an
   # adapter's key, for an adapter's Access key tab, without what only Forager's keys have:
   # the Forager file, the Forager version it was last used with, and stored secrets; and
   # its secret is said to be on the machine that ran the command, since the adapter the
-  # card names is not that machine; for an adapter installed with Qory Apiary, the key came
-  # by itself, with the instance's code, and its secret is the adapter's, saved there. Its
-  # Last used is the key's `last_used_at`, which every accepted request of an adapter's key
-  # records. An adapter's card is for an instance
-  # admin's page alone (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an
-  # adapter's key and when it was used are the instance admins'.
+  # card names is not that machine; for an adapter installed with Qory Apiary, the key was
+  # enrolled at the adapter's first start, with the instance's code, and the adapter keeps
+  # its secret. Its Last used is the key's `last_used_at`, which every accepted request of
+  # an adapter's key records. An adapter's card is for an instance admin's page alone
+  # (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an adapter's key and
+  # when it was used are the instance admins'.
   def key_card(assigns) do
     %{key: key, may: may} = assigns
 
@@ -2476,12 +2489,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           />
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
-        <dd id={"#{@dom}-added"}>{added_words(@key, @node)}</dd>
+        <dd id={"#{@dom}-added"}>{added_words(@key, @node, @first)}</dd>
         <dt class="text-faint">{gettext("Secret")}</dt>
         <dd id={"#{@dom}-secret"}>
           {cond do
             installed_key?(@key, @node) ->
-              gettext("On %{name}, saved there by the adapter", name: @node.name)
+              gettext("Kept by the adapter; never shown")
 
             @adapter ->
               gettext("On the machine that ran the command; never shown")

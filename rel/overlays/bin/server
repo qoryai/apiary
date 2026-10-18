@@ -4,8 +4,10 @@ set -eu
 cd -P -- "$(dirname -- "$0")"
 
 # Erlang distribution as releases/distribution.sh sets it, also for a release whose env.sh
-# does not source that file.
+# does not source that file. RELEASE_ROOT, which the release script sets for env.sh, says
+# where the file goes that holds the cookie.
 RELEASE_COMMAND=start
+RELEASE_ROOT=$(cd .. && pwd -P)
 . ../releases/distribution.sh
 
 PHX_SERVER=true exec ./apiary start

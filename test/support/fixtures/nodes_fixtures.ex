@@ -11,6 +11,12 @@ defmodule Apiary.NodesFixtures do
   def unique_node_name, do: "build-#{System.unique_integer([:positive])}"
 
   @doc """
+  `base` with a fresh number after it: a name for an adapter, unique among the instance's
+  adapters, so that async tests do not make two of one name at once.
+  """
+  def unique_adapter_name(base), do: "#{base} #{System.unique_integer([:positive])}"
+
+  @doc """
   A node of the scope's workspace, made by the scope's person, who must be an owner or
   an admin: kind `node` unless `attrs` says `pool`.
   """

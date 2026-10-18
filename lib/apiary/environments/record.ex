@@ -20,7 +20,9 @@ defmodule Apiary.Environments.Record do
   # `failed_at` are the last build that failed, which leaves the last good build as it
   # was; a build recorded since clears them. `retired_at` is when the collection's
   # `environment_ref` went from a value to none: the image is retired for new runs, and
-  # the record keeps the rest.
+  # the record keeps the rest. It is cleared, and the record served again, by a build
+  # whose run took its ref after the retirement; a build whose run took its ref before
+  # leaves it retired (`Apiary.Environments.record_build/4`).
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false

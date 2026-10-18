@@ -35,8 +35,9 @@ defmodule Apiary.Deletion.Tables do
   @type mark :: :organisation | :workspace
 
   # Children first: a run's events, log and connections before the run; the deliveries
-  # before the access keys they name; the run configurations and the policy's rules before
-  # the targets, and so are the pins; the runs before the runs of the queue they name, the
+  # before the access keys they name; the composed run configurations before the run
+  # configurations they were composed from; the run configurations and the policy's rules
+  # before the targets, and so are the pins; the runs before the runs of the queue they name, the
   # dispatches before the runs of the queue, the node pools and the access keys they name,
   # and the runs of the queue before their work items; the environment records before the
   # node pools and the collections they name; a node's instances before the access keys
@@ -61,6 +62,7 @@ defmodule Apiary.Deletion.Tables do
     {"events", :workspace},
     {"connections", :workspace},
     {"deliveries", :workspace},
+    {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},
     {"runs", :workspace},
     {"dispatches", :workspace},

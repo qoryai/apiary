@@ -171,15 +171,16 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
   title in the catalogue or an integration's in its description, with the name it has
   there beside it (`claude`, `github`); a service's name alone, `{name, nil}`. The
-  machine name is nil where it is the title.
+  machine name is nil where it is the title. Both are shown as an external system's text
+  is (`Apiary.ExternalText.line/1`): an integration's description gives them.
   """
   def names(%Connection{kind: kind, name: name} = connection)
       when kind in ["runtime", "integration"] do
     title = title(connection)
-    {title, if(title != name, do: name)}
+    {Apiary.ExternalText.line(title), if(title != name, do: Apiary.ExternalText.line(name))}
   end
 
-  def names(%Connection{name: name}), do: {name, nil}
+  def names(%Connection{name: name}), do: {Apiary.ExternalText.line(name), nil}
 
   defp title(%Connection{kind: "runtime", name: name}) do
     case Runtimes.fetch(name) do
@@ -215,10 +216,10 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   def name(assigns) do
     ~H"""
-    <span class={@class}>{elem(@names, 0)}</span><span
+    <span class={@class}><.external_text text={elem(@names, 0)} /></span><span
       :if={elem(@names, 1)}
       class="q-mono text-[12.5px] font-normal text-muted"
-    > ({elem(@names, 1)})</span>
+    > (<.external_text text={elem(@names, 1)} />)</span>
     """
   end
 

@@ -149,7 +149,8 @@ defmodule Apiary.AdaptersTest do
   describe "making one" do
     test "is the instance's, kind adapter with an na_ id, audited in the instance's organisation",
          %{scope: scope, admin: admin} do
-      assert {:ok, adapter} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
+      assert {:ok, adapter} =
+               Adapters.create_adapter(admin, %{name: unique_adapter_name("Acme tracker")})
 
       assert %Node{
                kind: :adapter,
@@ -193,20 +194,28 @@ defmodule Apiary.AdaptersTest do
         assert errors_on(changeset) == %{name: ["must not contain control characters"]}
       end
 
-      assert {:ok, _} = Adapters.create_adapter(admin, %{name: "👩#{<<0x200D::utf8>>}💻 tracker"})
+      assert {:ok, _} =
+               Adapters.create_adapter(admin, %{
+                 name: unique_adapter_name("👩#{<<0x200D::utf8>>}💻 tracker")
+               })
 
-      assert {:ok, _} = Adapters.create_adapter(admin, %{name: String.duplicate("a", 64)})
-      first = adapter_fixture(name: "Acme tracker")
+      assert {:ok, _} =
+               Adapters.create_adapter(admin, %{
+                 name: String.pad_leading(unique_adapter_name("a"), 64, "a")
+               })
 
-      assert {:error, changeset} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
+      name = unique_adapter_name("Acme tracker")
+      first = adapter_fixture(name: name)
+
+      assert {:error, changeset} = Adapters.create_adapter(admin, %{name: name})
       assert "has already been taken" in errors_on(changeset).name
 
       # A gateway of an organisation may have the name.
-      organisation_gateway_fixture(scope, name: "Acme tracker")
+      organisation_gateway_fixture(scope, name: name)
 
       # Deleted, its name is free again.
       {:ok, _} = Adapters.delete_adapter(admin, first)
-      assert {:ok, _} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
+      assert {:ok, _} = Adapters.create_adapter(admin, %{name: name})
     end
 
     test "only an instance admin makes one, after a recent sign-in", %{scope: scope, admin: admin} do
@@ -280,21 +289,23 @@ defmodule Apiary.AdaptersTest do
   describe "renaming and connecting one" do
     test "an instance admin renames one, audited with its before and after; the same name leaves nothing",
          %{scope: scope, admin: admin} do
-      adapter = adapter_fixture(name: "Acme tracker")
+      name = unique_adapter_name("Acme tracker")
+      renamed = unique_adapter_name("Acme issues")
+      adapter = adapter_fixture(name: name)
 
-      assert Adapters.rename_adapter(scope, adapter, %{name: "Acme issues"}) ==
+      assert Adapters.rename_adapter(scope, adapter, %{name: renamed}) ==
                {:error, :forbidden}
 
-      assert {:ok, %Node{name: "Acme issues"}} =
-               Adapters.rename_adapter(admin, adapter, %{name: "Acme issues"})
+      assert {:ok, %Node{name: ^renamed}} =
+               Adapters.rename_adapter(admin, adapter, %{name: renamed})
 
-      assert {:ok, _} = Adapters.rename_adapter(admin, adapter, %{name: "Acme issues"})
+      assert {:ok, _} = Adapters.rename_adapter(admin, adapter, %{name: renamed})
 
       assert [
                %Entry{
                  organisation_id: trail,
-                 before: %{"name" => "Acme tracker"},
-                 after: %{"name" => "Acme issues"}
+                 before: %{"name" => ^name},
+                 after: %{"name" => ^renamed}
                }
              ] = Repo.all(from e in Entry, where: e.action == "adapter.edit")
 
@@ -534,8 +545,10 @@ defmodule Apiary.AdaptersTest do
   describe "what its pages call" do
     test "an instance admin makes one with its first code, in one transaction, after a recent sign-in",
          %{scope: scope, admin: admin} do
+      name = unique_adapter_name("Acme tracker")
+
       assert {:ok, %Node{kind: :adapter} = adapter, %EnrolmentCode{} = row, code} =
-               Adapters.create_adapter_with_code(admin, %{name: "Acme tracker"})
+               Adapters.create_adapter_with_code(admin, %{name: name})
 
       assert row.node_id == adapter.id
       assert row.allow_secrets == false
@@ -550,7 +563,7 @@ defmodule Apiary.AdaptersTest do
                {:error, :sudo}
 
       assert {:error, %Ecto.Changeset{}} =
-               Adapters.create_adapter_with_code(admin, %{name: "Acme tracker"})
+               Adapters.create_adapter_with_code(admin, %{name: name})
 
       assert Repo.aggregate(from(n in Node, where: n.kind == :adapter), :count) == 1
       assert Repo.aggregate(EnrolmentCode, :count) == 1
@@ -784,7 +797,10 @@ defmodule Apiary.AdaptersTest do
       name = adapter.installed_as
 
       assert {:ok, renamed} =
-               Adapters.rename_adapter(admin, adapter, %{name: "Renamed", installed_as: "other"})
+               Adapters.rename_adapter(admin, adapter, %{
+                 name: unique_adapter_name("Renamed"),
+                 installed_as: "other"
+               })
 
       assert renamed.installed_as == name
       refute Adapters.installed?(adapter_fixture())
@@ -912,16 +928,17 @@ defmodule Apiary.AdaptersTest do
     end
 
     test "its name is unique among the instance's adapters in use", %{admin: admin} do
-      adapter = adapter_fixture(name: "Acme tracker")
+      name = unique_adapter_name("Acme tracker")
+      adapter = adapter_fixture(name: name)
 
       assert refused(fn ->
-               Repo.insert_all(Node, [row(adapter, %{public_id: na_id(), name: "Acme tracker"})])
+               Repo.insert_all(Node, [row(adapter, %{public_id: na_id(), name: name})])
              end) == "nodes_adapter_name_index"
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
 
       assert {1, _} =
-               Repo.insert_all(Node, [row(adapter, %{public_id: na_id(), name: "Acme tracker"})])
+               Repo.insert_all(Node, [row(adapter, %{public_id: na_id(), name: name})])
     end
 
     test "its kind and its na_ id go together, and its kind is fixed", %{scope: scope} do
@@ -1185,10 +1202,14 @@ defmodule Apiary.AdaptersTest do
       assert {:ok, %EnrolmentCode{}, _code} =
                AccessKeys.create_enrolment_code(admin, adapter, %{})
 
-      assert {:ok, %Node{name: "Acme renamed"}} =
-               Adapters.rename_adapter(admin, adapter, %{name: "Acme renamed"})
+      renamed = unique_adapter_name("Acme renamed")
 
-      assert {:ok, %Node{kind: :adapter}} = Adapters.create_adapter(admin, %{name: "Acme hidden"})
+      assert {:ok, %Node{name: ^renamed}} =
+               Adapters.rename_adapter(admin, adapter, %{name: renamed})
+
+      assert {:ok, %Node{kind: :adapter}} =
+               Adapters.create_adapter(admin, %{name: unique_adapter_name("Acme hidden")})
+
       assert {:ok, %Node{}} = Adapters.delete_adapter(admin, adapter)
       assert %Node{deleted_at: %DateTime{}} = reload(adapter)
     end

@@ -21,14 +21,16 @@ defmodule Apiary.Integrations.Description do
   matches the schema's pattern and its value is within the bounds. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
-  Of the `source` role, three members are read out (`item_noun/1`, `items?/1`,
-  `collection_noun/1`): its words for one item and for many, `item_noun`, `one` and
-  `other`, each 1 to 32 characters: lower-case letters in words joined by single spaces
-  or hyphens, never work item or work items, with a space or a hyphen; `items`, which,
-  when there, is `false`: the source reports collections and no items, and names no words
-  for them; and its words for one collection and for many, `collection_noun`, `one` and
+  Of the `source` role, four members are read out (`item_noun/1`, `items?/1`,
+  `collection_noun/1`, `access/1`): its words for one item and for many, `item_noun`, `one`
+  and `other`, each 1 to 32 characters: lower-case letters in words joined by single
+  spaces or hyphens, never work item or work items, with a space or a hyphen; `items`,
+  which, when there, is `false`: the source reports collections and no items, and names no
+  words for them; its words for one collection and for many, `collection_noun`, `one` and
   `other`, the same shape as `item_noun`'s, never work item or work items either, beside
-  `items: false` too. The schema holds all three to that.
+  `items: false` too; and `access`, a prose line of 1 to 300 characters with no control
+  characters, on how to change, at the source, which collections the adapter reaches.
+  The schema holds all four to that.
 
   A description of more than 262144 bytes (256 KiB), as `parse/1` is given it, is refused
   before it is decoded, `{:error, {:description_invalid, [:too_large]}}`: the schema's
@@ -75,6 +77,7 @@ defmodule Apiary.Integrations.Description do
             item_noun: nil,
             items: true,
             collection_noun: nil,
+            access: nil,
             document: nil
 
   @typedoc """
@@ -83,7 +86,9 @@ defmodule Apiary.Integrations.Description do
   the secret's title or else its name), the names of its plain settings, its source
   role's words for its items (`item_noun`, nil where it names none), whether that source
   reports items (`items`, true without a source role), its words for its collections
-  (`collection_noun`, nil where it names none), and the decoded document.
+  (`collection_noun`, nil where it names none), its line on how to change which
+  collections the adapter reaches (`access`, nil without a source role), and the decoded
+  document.
   """
   @type t :: %__MODULE__{
           name: String.t(),
@@ -97,6 +102,7 @@ defmodule Apiary.Integrations.Description do
           item_noun: item_noun | nil,
           items: boolean,
           collection_noun: collection_noun | nil,
+          access: String.t() | nil,
           document: map
         }
 
@@ -286,6 +292,7 @@ defmodule Apiary.Integrations.Description do
       item_noun: read_noun(get_in(document, ["roles", "source", "item_noun"])),
       items: get_in(document, ["roles", "source", "items"]) != false,
       collection_noun: read_noun(get_in(document, ["roles", "source", "collection_noun"])),
+      access: get_in(document, ["roles", "source", "access"]),
       document: document
     }
   end
@@ -316,6 +323,14 @@ defmodule Apiary.Integrations.Description do
   """
   @spec collection_noun(t) :: collection_noun | nil
   def collection_noun(%__MODULE__{collection_noun: collection_noun}), do: collection_noun
+
+  @doc """
+  access/1 is the source role's `access` line, how to change, at the source, which
+  collections the adapter reaches, as the integration's words, or nil for a description
+  with no source role.
+  """
+  @spec access(t) :: String.t() | nil
+  def access(%__MODULE__{access: access}), do: access
 
   defp title(%{"title" => title}, name) when is_binary(title),
     do: if(String.trim(title) == "", do: name, else: title)

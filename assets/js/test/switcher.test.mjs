@@ -1,6 +1,6 @@
 // The breadcrumb's menus (assets/js/hooks/switcher.js): what the keys do, what a search
 // leaves and how the status line says it, and the page a link carries.
-// `node --test assets/js/test/` (no npm).
+// `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"

@@ -76,8 +76,11 @@ defmodule Apiary.Environments do
   #
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
   # live collections assigned to the pool's workspace with that target, only those with an
-  # `environment_ref` count, and of their records for the pool, the one built last
-  # (`built_at`) that is not retired gives its `image`; nil when there is none.
+  # `environment_ref` count, and of their records for the pool built for that target
+  # (`built_target_system`, `built_target_path`), the one built last (`built_at`)
+  # that is not retired gives its `image`; nil when there is none, and the run starts in
+  # the pool's default. A record whose image was built for another target gives none,
+  # until a prebuild for its target lands.
   #
   # ## A build recorded: `record_build/4`
   #
@@ -87,9 +90,13 @@ defmodule Apiary.Environments do
   # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
   # differs from `queued_ref`, `built_at`, `now`, and the built target
   # (`built_target_system`, `built_target_path`), the registered run's target. The last
-  # failure is cleared, and `retired_at`, the queued ref and the queued target are left as
-  # they are, so a build that lands after the collection's `environment_ref` went absent is
-  # stored and stays retired; nothing is queued. A record that is missing is made with the
+  # failure is cleared, and the queued ref and the queued target are left as they are;
+  # nothing is queued. `retired_at` is cleared only when the build's run took its ref
+  # (`environment_ref_at`) after the record was retired: the ref came back and this build
+  # is of it, so the record is served again. A build whose run took its ref before the
+  # retirement, one claimed before the collection's `environment_ref` went absent and
+  # landing late, is stored and the record stays retired, even when a new ref has come
+  # since. A record that is missing is made with the
   # build, queued for the run's `environment_ref` when the run was queued, and for the
   # built target. `built_queued_at` is written with the image: when the run took the
   # `environment_ref` it built (`environment_ref_at`), which a wait again or a change while
@@ -198,6 +205,7 @@ defmodule Apiary.Environments do
         join: c in Collection,
         on: c.id == r.source_collection_id,
         where: r.pool_id == ^pool_id and not is_nil(r.image) and is_nil(r.retired_at),
+        where: r.built_target_system == ^system and r.built_target_path == ^path,
         where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
         where: not is_nil(c.environment_ref),
         where: c.target_system == ^system and c.target_path == ^path,
@@ -282,9 +290,28 @@ defmodule Apiary.Environments do
         inserted_at: now
       })
 
+    # A retired record is served again only by a build whose run took its ref after the
+    # retirement: an older build, claimed before the ref went absent, leaves it retired.
+    ref_at = run.environment_ref_at
+
+    on_conflict =
+      from r in Record,
+        update: [
+          set: ^built,
+          set: [
+            retired_at:
+              fragment(
+                "CASE WHEN ? < ? THEN NULL ELSE ? END",
+                r.retired_at,
+                type(^ref_at, :utc_datetime_usec),
+                r.retired_at
+              )
+          ]
+        ]
+
     {1, _rows} =
       Repo.insert_all(Record, [row],
-        on_conflict: [set: built],
+        on_conflict: on_conflict,
         conflict_target: [:pool_id, :source_collection_id]
       )
 
