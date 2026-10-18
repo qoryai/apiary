@@ -57,6 +57,7 @@ defmodule Apiary.Integrations.Description do
     Budget,
     CanonicalJSON,
     Pattern,
+    PatternMemory,
     RegexFormat,
     Schema,
     SettingsResolver
@@ -134,8 +135,20 @@ defmodule Apiary.Integrations.Description do
   # by the cap, the same way on every run: a list of 1000 strings, each checked against
   # 200 alternative patterns, does 7857408 reductions. A compile for `"format": "regex"`
   # is charged in reductions (`Apiary.Kinds.RegexFormat`): the check of one such setting
-  # of 15000 bytes does about 152000.
+  # of 15000 bytes does about 152000. These figures were measured before the patterns were
+  # estimated (`@pattern_bytes`), which adds reductions: measured on OTP 29, the estimate
+  # for 1000 settings, each against a pattern, did 138772, and the check of a setting of
+  # 15000 bytes against `"format": "regex"`, with its estimate, 228189.
   @settings_budget [reductions: 5_000_000, heap_words: 2_097_152, ms: 10_000]
+
+  # The most bytes the patterns of a settings check may hold once compiled, those of the
+  # schema and the settings checked against `"format": "regex"`, by the estimates of
+  # `Apiary.Kinds.PatternMemory`: 16 MiB, as much as the heap of the budget. Measured on
+  # OTP 29: 1000 settings, each against `^[a-z0-9]{1,40}$`, are estimated at 1128000
+  # bytes, 14.9 times fewer, and their compiled patterns hold about 219 bytes each; a
+  # schema of 1950 patterns such as `(?:a){7900}b1` is estimated at 161740800 bytes, and
+  # built, it took the node 126 MiB more memory.
+  @pattern_bytes 16_777_216
 
   @doc """
   parse/1 reads and checks the bytes of a `description.json`: `{:ok, description}`, or
@@ -332,7 +345,12 @@ defmodule Apiary.Integrations.Description do
       grow exponentially with their nesting. Settings whose check goes over that budget
       are refused as `integration_settings_invalid` with
       `%{valid: false, budget: :exceeded}`, and settings whose check fails with
-      `%{valid: false, crashed: true}`.
+      `%{valid: false, crashed: true}`. A compiled pattern is memory outside the heap,
+      which that budget does not count, so before the schema is built the patterns it
+      would compile are estimated (`Apiary.Kinds.PatternMemory.schema/1`), and so is each
+      setting checked against `"format": "regex"` before it is compiled
+      (`Apiary.Kinds.RegexFormat`): a check whose patterns would hold more than 16 MiB in
+      all is refused the same way, as `%{valid: false, budget: :exceeded}`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -388,46 +406,66 @@ defmodule Apiary.Integrations.Description do
   defp copy(binary) when is_binary(binary), do: :binary.copy(binary)
   defp copy(other), do: other
 
-  # The settings check, in the budget's process. The answer leaves that process, so a
-  # refusal by the schema, or of a schema JSV cannot build, is `%{valid: false}` alone:
-  # JSV's errors stay in the process and end with it. They refer to the settings and the
-  # schema, and the message of an error about a pattern, which `Schema.valid?/2` does
-  # not make, would copy that pattern. Settings over the limits are never given to JSV.
+  # The settings check, in the budget's process. The patterns the build would compile are
+  # estimated first, and a schema whose patterns would hold more than @pattern_bytes stops
+  # the check before anything is compiled: `{:stopped, :patterns}`. What is left of
+  # @pattern_bytes bounds the settings RegexFormat compiles, which stop the check the same
+  # way. The answer leaves that process, so a refusal by the schema, or of a schema JSV
+  # cannot build, is `%{valid: false}` alone: JSV's errors stay in the process and end
+  # with it. They refer to the settings and the schema, and the message of an error about
+  # a pattern, which `Schema.valid?/2` does not make, would copy that pattern. Settings
+  # over the limits are never given to JSV.
   defp check(schema, settings) do
-    case schema
-         |> without_casts()
-         |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()) do
-      {:ok, root} ->
-        cond do
-          not Bounds.within?(settings, @settings_limits) ->
-            {:error,
-             {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
+    schema = without_casts(schema)
 
-          Schema.valid?(settings, root) ->
-            :ok
+    with :ok <- within_pattern_bytes(schema),
+         {:ok, root} <-
+           Schema.build(schema, resolver: SettingsResolver, formats: RegexFormat.formats()),
+         {:limits, true} <- {:limits, Bounds.within?(settings, @settings_limits)},
+         true <- valid?(settings, root) do
+      :ok
+    else
+      {:stopped, reason} ->
+        {:stopped, reason}
 
-          true ->
-            {:error, {:integration_settings_invalid, %{valid: false}}}
-        end
+      {:limits, false} ->
+        {:error,
+         {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
 
-      {:error, _reason} ->
+      _refused ->
         {:error, {:integration_settings_invalid, %{valid: false}}}
     end
   end
 
   defp within_budget(description, check) do
     case Budget.run(check, @settings_budget) do
-      {:ok, result} ->
-        result
-
-      {:error, reason} ->
-        Logger.warning(
-          "an integration's settings check was stopped name=#{description.name} " <>
-            "program_version=#{description.program_version} reason=#{reason}"
-        )
-
-        {:error, {:integration_settings_invalid, budget_refusal(reason)}}
+      {:ok, {:stopped, reason}} -> stopped(description, reason)
+      {:ok, result} -> result
+      {:error, reason} -> stopped(description, reason)
     end
+  end
+
+  defp stopped(description, reason) do
+    Logger.warning(
+      "an integration's settings check was stopped name=#{description.name} " <>
+        "program_version=#{description.program_version} reason=#{reason}"
+    )
+
+    {:error, {:integration_settings_invalid, budget_refusal(reason)}}
+  end
+
+  defp within_pattern_bytes(schema) do
+    used = PatternMemory.schema(schema)
+
+    if used <= @pattern_bytes,
+      do: RegexFormat.pattern_bytes(used, @pattern_bytes),
+      else: {:stopped, :patterns}
+  end
+
+  defp valid?(settings, root) do
+    Schema.valid?(settings, root)
+  catch
+    :throw, {RegexFormat, :pattern_bytes} -> {:stopped, :patterns}
   end
 
   # JSV builds a `jsv-cast` or `x-jsv-cast` keyword by loading the module it names, which
@@ -445,7 +483,7 @@ defmodule Apiary.Integrations.Description do
 
   defp budget_refusal(:crashed), do: %{valid: false, crashed: true}
 
-  defp budget_refusal(over) when over in [:reductions, :heap, :time],
+  defp budget_refusal(over) when over in [:reductions, :heap, :time, :patterns],
     do: %{valid: false, budget: :exceeded}
 
   @doc """
