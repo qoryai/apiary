@@ -336,7 +336,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         socket =
           case Collections.set_collection_backlog(scope, connection, row.id, on) do
             {:ok, count} ->
-              turned(socket, count, on, row.name, adapter)
+              turned(socket, count, on, Apiary.ExternalText.line(row.name), adapter)
 
             {:error, :forbidden} ->
               socket
@@ -691,8 +691,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
                       "Assign %{number} %{collections} to",
                       map_size(@selected),
                       number: Format.number(map_size(@selected)),
-                      collection: collection_word(@adapter, 1),
-                      collections: collection_word(@adapter, :other)
+                      collection: sent_word(@adapter, 1),
+                      collections: sent_word(@adapter, :other)
                     )
                   }
                   find={length(@workspaces) > 8}
@@ -1034,9 +1034,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The flash after assigning: the names of what went where, up to three, else how many.
+  # A collection's name is a text the integration sent, shown as one is
+  # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of it.
   defp assigned(_adapter, names, workspace) when length(names) <= 3 do
     gettext("Assigned %{names} to %{workspace}.",
-      names: names |> Enum.sort() |> join_names(),
+      names: names |> Enum.map(&shown_name/1) |> Enum.sort() |> join_names(),
       workspace: workspace.name
     )
   end
@@ -1083,6 +1086,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
       collections: collection_word(adapter, :other)
     )
   end
+
+  defp shown_name(name), do: Apiary.ExternalText.present(name) || Apiary.ExternalText.marked(name)
 
   defp join_names([name]), do: name
 
@@ -1135,6 +1140,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
   defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
   defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
+
+  # `collection_word/2` as a text the source sent is shown (`Apiary.ExternalText.line/1`).
+  defp sent_word(adapter, n),
+    do: adapter |> collection_word(n) |> Apiary.ExternalText.line()
 
   defp noun(adapter), do: Adapters.collection_noun(adapter)
 end

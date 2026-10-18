@@ -578,10 +578,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
 
       view = open(conn, scope)
-      assert has_element?(view, ".q-cx-h > bdi", host)
+      # The row drops the override (`Apiary.ExternalText.line/1`) and isolates the rest.
+      assert has_element?(view, ".q-cx-h > bdi", "evillpmaxe.<script>")
 
       assert render(view) =~
-               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
+               "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
 
       view |> form("#connections-query", %{"q" => "evil"}) |> render_change()
       render_async(view, 2_000)
@@ -592,6 +593,52 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                "<span class=\"q-suggest-v\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi></span>"
 
       refute render(view) =~ "elpmaxe.<script>"
+    end
+
+    test "a host's option, a token, a run's target and the narrowed names as a page shows them",
+         %{conn: conn, scope: scope} do
+      # A host and a target's path may carry a bidirectional override and a zero-width
+      # space.
+      host = "files\u202E.cdn\u200B.example"
+      path = "acme/\u202Eshop\u200B"
+      repository = &%{"forge" => "github.example", "repository" => &1}
+      run = started_run(scope, repository.(path), egress: [%{"host" => host, "rule" => ""}])
+
+      blank =
+        started_run(scope, repository.("\u202E\u200B"), egress: [%{"host" => host, "rule" => ""}])
+
+      view = open(conn, scope)
+
+      # The option reads cleaned, isolated; it picks the host as sent.
+      assert has_element?(view, "#filter-host-form .q-filter-option bdi", "files.cdn.example")
+      assert has_element?(view, ~s(#filter-host-form input[value="#{host}"]))
+
+      id = dst(host)
+      view |> element("##{id}-toggle") |> render_click()
+      assert text(view, "##{id}-run-#{run.public_id}") =~ "acme/shop"
+      # A path with nothing left to show is no target.
+      assert text(view, "##{id}-run-#{blank.public_id}") =~ "Unassigned"
+
+      narrowed =
+        open(
+          conn,
+          workspace_path(scope, "/network") <>
+            "?" <>
+            URI.encode_query(%{"target" => tg(scope, "github.example", path), "host" => host})
+        )
+
+      assert has_element?(narrowed, "#connections-token-host .q-tok-v > bdi", "files.cdn.example")
+
+      assert has_element?(
+               narrowed,
+               ~s([aria-label="Runs, narrowed to acme/shop"])
+             )
+
+      # Only what the filter is matched by, an option's value, is as sent.
+      refute narrowed
+             |> render()
+             |> String.replace(~s(value="#{host}"), "")
+             |> String.replace(~r/ (data-copy|phx-value-host)="[^"]*"/, "") =~ "\u202E"
     end
 
     test "the query field suggests the hosts in range as one types; a choice is the host: filter",

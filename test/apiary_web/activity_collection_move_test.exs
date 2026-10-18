@@ -86,6 +86,17 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
              %{text: "Shop board", mono: true, href: nil}
   end
 
+  test "the sentence names the title as a page shows an external system's text" do
+    %{scope: scope} = sign_up_fixture()
+    {entry, _collection, adapter_name} = moved(scope)
+    # A bidirectional override, a zero-width space and a control character.
+    sent = %{entry | details: %{entry.details | "name" => "\u202EShop board\u200B\a"}}
+
+    assert Core.sentence(:"collection.move", sent, Audit.names(scope, [sent])) ==
+             "Shop board\uFFFD left this organisation's Backlog: " <>
+               adapter_name <> " now lists it under another connection."
+  end
+
   test "an entry that names no title or adapter: the core gives no sentence for it" do
     entry = %Entry{action: "collection.move", actor_kind: :instance, details: %{}}
     assert Core.sentence(:"collection.move", entry, %{}) == nil

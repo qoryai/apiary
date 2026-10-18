@@ -357,7 +357,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(title_only)} .q-rl-about")
     end
 
-    test "a run's title and kind are isolated, so a bidi override reorders nothing", %{
+    test "a run's title and kind are isolated, without a bidi override to reorder anything", %{
       conn: conn,
       scope: scope
     } do
@@ -366,9 +366,115 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), about: %{"title" => title, "kind" => kind})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", title)
-      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="#{title}"]))
-      assert has_element?(view, "#{row(run)} .q-rl-about bdi", kind)
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the loginredirect")
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the loginredirect"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", "Implementation")
+    end
+
+    test "a run's title, kind, runtime and host as a page shows them, and in the Filter menu",
+         %{conn: conn, scope: scope} do
+      # A bidirectional override, a zero-width space and a control character; the run's
+      # `about` keeps no control character, so the title is given one in the record.
+      run =
+        started_run(scope, shop(),
+          runtime: "\u202Eclaude\u200B\a",
+          host: "\u202Ebuild-02\u200B\a",
+          about: %{"kind" => "\u202EReview\u200B"}
+        )
+
+      run = Repo.update!(Ecto.Changeset.change(run, about_title: "\u202EFix the login\u200B\a"))
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", "Fix the login\uFFFD")
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="Fix the login\uFFFD"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", ~r/^Review$/)
+      assert has_element?(view, "#{row(run)} .q-rl-c4 > span > bdi", "claude\uFFFD")
+      assert has_element?(view, "#{row(run)} .q-rl-host > bdi", "build-02\uFFFD")
+
+      assert text(view, "#filter-runtime-form") =~ "claude\uFFFD 1"
+      assert text(view, "#filter-host-form") =~ "build-02\uFFFD 1"
+    end
+
+    test "a run's target, its node's instance and a filter's value as a page shows them",
+         %{conn: conn, scope: scope} do
+      # A target's labels may carry a bidirectional override and a zero-width space.
+      path = "acme/\u202Eshop\u200B"
+      host = "build\u202E-02"
+      repository = &%{"forge" => "github.example", "repository" => &1}
+      blank = started_run(scope, repository.("\u202E\u200B"), ago: 300)
+      run = started_run(scope, repository.(path), ago: 30, host: host)
+      run = Repo.update!(Ecto.Changeset.change(run, node_instance_id: "i-\u202E42"))
+      view = open(conn, scope)
+
+      assert text(view, "#{row(run)} .q-rl-c3") == "acme/shop"
+
+      assert has_element?(
+               view,
+               ~s(#{row(run)} .q-rl-c3 .q-tname[title="github.example/acme/shop"])
+             )
+
+      # A path with nothing left to show is no target.
+      assert text(view, "#{row(blank)} .q-rl-c3") == "n/a"
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert has_element?(view, "#{row(run)}[aria-current=true]")
+      assert text(view, "#runs-preview .q-pv-m .q-tname") == "acme/shop"
+      assert text(view, "#runs-preview-instance") == "i-42"
+
+      render_hook(view, "select", %{"id" => blank.public_id})
+      render_async(view)
+      assert has_element?(view, "#{row(blank)}[aria-current=true]")
+      refute has_element?(view, "#runs-preview .q-pv-m .q-tname")
+
+      narrowed =
+        open(
+          conn,
+          runs(
+            scope,
+            "?" <>
+              URI.encode_query(%{"target" => tg(scope, "github.example", path), "host" => host})
+          )
+        )
+
+      assert token(narrowed, "host") == "host:build-02"
+      assert has_element?(narrowed, "#runs-token-host .q-tok-v > bdi", "build-02")
+      assert token(narrowed, "target") =~ ~r/^[a-z]+:acme\/shop$/
+
+      assert has_element?(
+               narrowed,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to acme/shop"])
+             )
+
+      # Only what the filter is matched by, an option's value, is as sent.
+      refute narrowed |> render() |> String.replace(~s(value="#{host}"), "") =~ "\u202E"
+    end
+
+    test "a host with nothing left to show is marked in the Filter menu, picking it as sent",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(), host: "\u200B")
+      view = open(conn, scope)
+
+      assert has_element?(view, "#filter-host-form .q-filter-option > span > bdi", "\uFFFD")
+      assert has_element?(view, ~s(#filter-host-form .q-filter-option > span[title="\uFFFD"]))
+      assert has_element?(view, ~s(#filter-host-form input[value="\u200B"]))
+    end
+
+    test "a title with nothing left to show is no title: the row is its id", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), about: %{"title" => "\u202E\u200B"})
+      view = open(conn, scope)
+
+      refute has_element?(view, "#{row(run)} .q-rowlink > bdi")
+      refute has_element?(view, "#{row(run)} .q-rowlink[title]")
+
+      assert has_element?(
+               view,
+               "#{row(run)} .q-rowlink.q-rl-id",
+               RunComponents.short_id(run.public_id)
+             )
     end
 
     test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{
@@ -1761,6 +1867,24 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       }
     end
 
+    test "a log line as a page shows a text a run sent", %{
+      conn: conn,
+      older: older,
+      scope: scope
+    } do
+      # A bidirectional override and a C1 control, which the log's plain lines keep.
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("ok \u202Edone\u0085 here\n")}
+      event_fixture(older, 60, "run.log", log)
+      {:ok, _} = Projector.project(older)
+
+      view = open(conn, runs(scope, "?run=#{older.public_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert text(view, "#runs-preview-log") == "ok done\uFFFD here"
+      refute view |> element("#runs-preview-log") |> render() =~ "\u202E"
+    end
+
     test "below 1920 px there is none, and a row is its link", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       refute has_element?(view, "#runs-preview")
@@ -1888,6 +2012,35 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-preview-log") == "first line second line"
     end
 
+    test "a host the wall refused for its form: in the preview marked, in a <bdi>", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "Files\u202E.CDN\u200B.example."
+
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "refused"},
+          egress: [%{"decision" => "denied", "rule" => "wall:host-form", "host" => host}]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.public_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      marked = "Files\uFFFD.CDN\uFFFD.example."
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", marked)
+
+      outside =
+        view
+        |> element("#runs-preview-denials")
+        |> render()
+        |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
+        |> String.replace(~r{<[^>]*>}, " ")
+
+      refute outside =~ "\u202E"
+    end
+
     test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{
       conn: conn,
       scope: scope
@@ -1904,8 +2057,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
 
-      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
-      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443"
+      # The preview drops the override (`Apiary.ExternalText.line/1`), and isolates the
+      # rest.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", shown)
+      assert render(view) =~ "evillpmaxe.&lt;script&gt;</bdi>:443"
+      refute render(view) =~ "\u202E"
       refute render(view) =~ "elpmaxe.<script>"
     end
 

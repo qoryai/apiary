@@ -60,6 +60,16 @@ defmodule ApiaryWeb.SourceComponentsTest do
     assert LazyHTML.text(written) == body
   end
 
+  test "markdown: Show as written drops invisible characters, shows controls as U+FFFD" do
+    # A bidirectional override, a zero-width space and a control character, with the
+    # tab and the line breaks a text of several lines keeps
+    # (`Apiary.ExternalText.lines/1`).
+    body = "## Fix\u202E the\u200B login\a\n\n\tline two\n"
+    written = body |> render("markdown") |> LazyHTML.query("#ticket-written")
+
+    assert LazyHTML.text(written) == "## Fix the login\uFFFD\n\n\tline two\n"
+  end
+
   test "text: the text as written alone, escaped, and no switch" do
     body = "# not a heading\n<script>alert(1)</script>\n  **kept**\n"
     html = html(body, "text")

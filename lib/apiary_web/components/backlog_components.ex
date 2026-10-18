@@ -10,6 +10,11 @@ defmodule ApiaryWeb.BacklogComponents do
   # interpolates it, so HEEx escapes it, and never puts it in a `class` or a `style`, or
   # in a url other than the link out ("Open on %{integration}"), which the core's https
   # rule checks and `CoreComponents.external_link/1` draws. This module calls no `raw/1`.
+  # It is shown as an external system's text is: the ticket's key, title, repository,
+  # filer, labels and comments' authors in markup isolated in `<bdi>`
+  # (`ApiaryWeb.ExternalText.external_text/1`), and `Apiary.ExternalText.line/1` in an
+  # attribute or a sentence, and for a closed row's state word. What the page is given
+  # stays as it was sent.
   # A ticket's text and its comments' are the page's to render, into the `rendered_body`
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
@@ -78,8 +83,8 @@ defmodule ApiaryWeb.BacklogComponents do
 
     sub =
       gettext("%{ref} · by %{who} · %{ago}",
-        ref: full_form(ticket),
-        who: ticket.filer.name,
+        ref: shown_full_form(ticket),
+        who: Apiary.ExternalText.line(ticket.filer.name),
         ago: compact(ticket.updated_at, now)
       )
 
@@ -88,20 +93,34 @@ defmodule ApiaryWeb.BacklogComponents do
       |> assign(:now, now)
       |> assign(view)
       |> assign(sub: sub, sub_title: if(view.word, do: sub <> " · " <> view.word, else: sub))
+      |> assign(
+        shown_key: Apiary.ExternalText.line(ticket.key),
+        shown_repository: Apiary.ExternalText.line(ticket.repository)
+      )
 
     ~H"""
     <li id={@id} class="q-bl-row">
       <.integration_tile :if={@integration} name={@integration} class="q-bl-mk" />
-      <span class="q-bl-no" title={@ticket.key}>{@ticket.key}</span>
+      <span class="q-bl-no" title={@shown_key}><.external_text text={@ticket.key} /></span>
       <span class="q-bl-ttl">
-        <.link patch={@patch} class="q-bl-t" aria-current={@selected && "true"}>{@ticket.title}</.link>
+        <.link
+          patch={@patch}
+          class="q-bl-t"
+          aria-current={@selected && "true"}
+        ><.external_text text={@ticket.title} /></.link>
         <span :if={@word} class="q-bl-w">{@word}</span>
         <span class="q-bl-sub" title={@sub_title}>
           {@sub}<span :if={@word}> · {@word}</span>
         </span>
       </span>
-      <span class="q-bl-rp q-mono" title={@ticket.repository}>{@ticket.repository}</span>
-      <span class="q-bl-by" title={gettext("Filed by %{name}", name: @ticket.filer.name)}>
+      <span
+        class="q-bl-rp q-mono"
+        title={@shown_repository}
+      ><.external_text text={@ticket.repository} /></span>
+      <span
+        class="q-bl-by"
+        title={gettext("Filed by %{name}", name: Apiary.ExternalText.line(@ticket.filer.name))}
+      >
         <.filer name={@ticket.filer.name} kind={@ticket.filer.kind} />
       </span>
       <span class="q-bl-cm">
@@ -151,7 +170,8 @@ defmodule ApiaryWeb.BacklogComponents do
         _taken -> :taken
       end
 
-    %{word: ticket.state_reason, link: link, action: nil}
+    # The state word with nothing left to show is none.
+    %{word: shown(ticket.state_reason), link: link, action: nil}
   end
 
   defp row_view(%{work_item: nil}), do: %{word: nil, link: nil, action: :take_in}
@@ -223,11 +243,19 @@ defmodule ApiaryWeb.BacklogComponents do
 
   def full_form(%{repository: repository}), do: repository
 
+  # The full form as the Backlog shows it, a text the integration sent
+  # (`Apiary.ExternalText.line/1`).
+  defp shown_full_form(ticket), do: ticket |> full_form() |> Apiary.ExternalText.line()
+
+  # A text the integration sent, as a page shows it; nil where there is none, or where
+  # nothing is left to show.
+  defp shown(text), do: Apiary.ExternalText.present(text)
+
   @doc """
   Who filed a ticket: their mark and their name. A person (`kind` `:person`) has the
   person mark; a bot (`:bot`), an account the source says is not a person, has a neutral
   tile with its name's first letter, and no word for its kind. The name is the source's,
-  as it gave it.
+  shown as an external system's text is (`ApiaryWeb.ExternalText.external_text/1`).
   """
   attr :name, :string, required: true, doc: "the filer's name at the source"
   attr :kind, :atom, required: true, values: [:person, :bot], doc: "a person or a bot"
@@ -238,20 +266,21 @@ defmodule ApiaryWeb.BacklogComponents do
     <span class={["q-bl-filer", @class]}>
       <.icon :if={@kind == :person} name="hero-user-circle-micro" class="q-bl-by-i size-3" />
       <.bot_tile :if={@kind == :bot} name={@name} />
-      <span>{@name}</span>
+      <span><.external_text text={@name} /></span>
     </span>
     """
   end
 
   @doc """
-  A bot's neutral tile: its name's first letter, which a screen reader skips, since the
-  name follows it. A row's filer and Filed by's values in the Filter menu draw it.
+  A bot's neutral tile: its name's first letter, as the page shows the name
+  (`Apiary.ExternalText.line/1`), which a screen reader skips, since the name follows it.
+  A row's filer and Filed by's values in the Filter menu draw it.
   """
   attr :name, :string, required: true, doc: "the bot's name at the source"
 
   def bot_tile(assigns) do
     ~H"""
-    <span class="q-bl-bot-av" aria-hidden="true">{String.first(@name)}</span>
+    <span class="q-bl-bot-av" aria-hidden="true">{String.first(Apiary.ExternalText.line(@name))}</span>
     """
   end
 
@@ -395,12 +424,12 @@ defmodule ApiaryWeb.BacklogComponents do
       assign(assigns,
         now: now,
         out: Apiary.Sources.Body.https?(ticket.url) and external_url?(ticket.url),
-        full_form: full_form(ticket),
+        full_form: shown_full_form(ticket),
         item: SourceComponents.item(assigns.item_noun),
         open_on: gettext("Open on %{integration}", integration: assigns.integration),
         meta:
           gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
-            name: ticket.filer.name,
+            name: Apiary.ExternalText.line(ticket.filer.name),
             filed_ago: Format.time_ago(ticket.filed_at, now, case: :inline),
             updated_ago: Format.time_ago(ticket.updated_at, now, case: :inline)
           )
@@ -425,7 +454,7 @@ defmodule ApiaryWeb.BacklogComponents do
     <div id={@id} class="q-bl-prev" role="dialog" aria-label={SourceComponents.item_label(@item_noun)}>
       <div class="q-bl-tb">
         <.integration_tile name={@integration} class="q-bl-src" />
-        <span class="q-bl-key" title={@full_form}>{@full_form}</span>
+        <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
         <span class="q-bl-grow"></span>
         <.button
           :if={@full_path}
@@ -459,7 +488,7 @@ defmodule ApiaryWeb.BacklogComponents do
           <.icon name="hero-x-mark-micro" class="size-3.5" />
         </.button>
       </div>
-      <h2 id={"#{@id}-title"} class="q-bl-h">{@ticket.title}</h2>
+      <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
       <p class="q-bl-meta">{@meta}</p>
       <.facts
         id={@id}
@@ -489,9 +518,9 @@ defmodule ApiaryWeb.BacklogComponents do
       <div class="q-bl-tk-head">
         <div class="q-bl-key">
           <.integration_tile name={@integration} class="q-bl-src" />
-          <span class="q-bl-key-text" title={@full_form}>{@full_form}</span>
+          <span class="q-bl-key-text" title={@full_form}><.external_text text={@full_form} /></span>
         </div>
-        <h1 id={"#{@id}-title"}>{@ticket.title}</h1>
+        <h1 id={"#{@id}-title"}><.external_text text={@ticket.title} /></h1>
         <p class="q-bl-meta">{@meta}</p>
       </div>
       <div class="q-bl-tk-grid">
@@ -525,14 +554,14 @@ defmodule ApiaryWeb.BacklogComponents do
     ~H"""
     <dl id={"#{@id}-facts"} class="q-bl-facts">
       <dt>{SourceComponents.collection_label(@collection_noun)}</dt>
-      <dd class="q-bl-repo q-mono">{@ticket.repository}</dd>
+      <dd class="q-bl-repo q-mono"><.external_text text={@ticket.repository} /></dd>
       <%= if @ticket.labels != [] do %>
         <dt>{pgettext("ticket", "Labels")}</dt>
-        <dd class="q-bl-lb">{Enum.join(@ticket.labels, ", ")}</dd>
+        <dd class="q-bl-lb" phx-no-format><%= for {label, index} <- Enum.with_index(@ticket.labels) do %>{if index > 0, do: ", "}<.external_text text={label} /><% end %></dd>
       <% end %>
       <%= if @filed_by do %>
         <dt>{gettext("Filed by")}</dt>
-        <dd>{@ticket.filer.name}</dd>
+        <dd><.external_text text={@ticket.filer.name} /></dd>
       <% end %>
     </dl>
     """
@@ -558,8 +587,8 @@ defmodule ApiaryWeb.BacklogComponents do
       </h3>
       <div :for={comment <- @comments} id={"#{@id}-comment-#{comment.id}"} class="q-bl-cmt">
         <div class="q-bl-who">
-          <.avatar name={comment.author} size="sm" />
-          <b>{comment.author}</b>
+          <.avatar name={Apiary.ExternalText.line(comment.author)} size="sm" />
+          <b><.external_text text={comment.author} /></b>
           <span class="q-bl-when">{Format.time_ago(comment.at, @now)}</span>
         </div>
         <div class="q-bl-txt">{render_slot(@rendered_comment, comment)}</div>

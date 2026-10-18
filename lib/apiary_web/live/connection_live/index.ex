@@ -88,7 +88,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       counts={@nav_counts}
       nav={:network}
       width="work"
-      narrowed={Narrowing.carried(@narrowing, @filters.target)}
+      narrowed={shown_carried(Narrowing.carried(@narrowing, @filters.target))}
     >
       <:crumb>{gettext("Network access")}</:crumb>
 
@@ -179,7 +179,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             label={gettext("Target")}
             icon="hero-folder"
             qualifier={pgettext("qualifier", "target")}
-            value={Narrowing.text(@narrowing, @filters.target)}
+            value={shown(Narrowing.text(@narrowing, @filters.target))}
             rail
           >
             <.filter_options
@@ -204,7 +204,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             label={gettext("Host")}
             icon="hero-globe-alt"
             qualifier="host"
-            value={@filters.host}
+            value={shown(@filters.host)}
           >
             <.filter_options
               id="filter-host"
@@ -280,7 +280,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           patch={token.remove}
           label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
         >
-          <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}>{token.value}</span>
+          <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}><bdi>{token.value}</bdi></span>
         </:token>
       </.filter_tokens>
 
@@ -1195,7 +1195,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: ApiaryWeb.TargetComponents.target_label(r.system, r.path, socket.assigns.shared),
+          label: shown_target_label(r.system, r.path, socket.assigns.shared),
           runs: r.runs,
           connection_id: r.connection_id
         }
@@ -1467,7 +1467,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       %{
         id: "connections-token-#{token.key}",
         qualifier: qualifier(token.key),
-        value: token.value,
+        value: shown(token.value),
         remove: token.without && page_path(scope, token.without)
       }
     end)
@@ -1489,6 +1489,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     |> Filters.tokens(except: [:decision])
     |> Enum.count(&(&1.key != :started or Filters.any_range?(filters)))
   end
+
+  # A filter's value as a section and a token show it: a host or a target may be a text
+  # Forager sent, shown as one is (`Apiary.ExternalText.present/1`), or marked
+  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since the filter matches
+  # it as sent. The page's texts are unchanged by it.
+  defp shown(value) when is_binary(value) and value != "",
+    do: Apiary.ExternalText.present(value) || Apiary.ExternalText.marked(value)
+
+  defp shown(value), do: value
+
+  # What the sidebar carries of the target the list is narrowed to, its names shown so.
+  defp shown_carried(%{system: system, path: path} = carried),
+    do: %{carried | system: shown(system), path: shown(path)}
+
+  defp shown_carried(nil), do: nil
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
   defp qualifier(:started), do: "seen"
@@ -1615,7 +1630,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           assign(assigns,
             path: path,
             system: system,
-            label: if(system, do: "#{system}/#{path}", else: path),
+            label: shown_target_label(system, path, true),
             shared_alone: Narrowing.shared_alone?(narrowing),
             page: found && TargetComponents.target_path(scope, found),
             policy:

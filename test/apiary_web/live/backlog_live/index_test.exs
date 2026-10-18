@@ -920,4 +920,73 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert words(view, "#backlog-views") == "Open 1 Taken in 0 Declined 0 Closed 0"
     end
   end
+
+  describe "what the integration sent, as a page shows an external system's text" do
+    # A bidirectional override, a zero-width space and a control character, and what is
+    # left of them on the page (`Apiary.ExternalText.line/1`).
+    defp sent(text), do: "\u202E" <> text <> "\u200B\a"
+    defp shown(text), do: text <> "\uFFFD"
+
+    test "a row in <bdi>, and the Filter menu's values and a token: cleaned", ctx do
+      web = source_collection_fixture(ctx.scope, ctx.connection, %{title: sent("acme/web")})
+
+      item =
+        ticket(web,
+          title: sent("Fix the login"),
+          filed_by_name: sent("Lea"),
+          labels: [sent("bug")]
+        )
+
+      query = "?" <> Plug.Conn.Query.encode(repository: [web.id])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      assert has_element?(view, "#{row(item)} a.q-bl-t > bdi", shown("Fix the login"))
+      assert has_element?(view, "#{row(item)} .q-bl-rp > bdi", shown("acme/web"))
+      assert has_element?(view, ~s(#{row(item)} .q-bl-rp[title="#{shown("acme/web")}"]))
+      assert has_element?(view, "#{row(item)} .q-bl-filer bdi", shown("Lea"))
+
+      for {section, value} <- [repository: "acme/web", filed_by: "Lea", label: "bug"] do
+        assert has_element?(
+                 view,
+                 ~s(#backlog-filter-#{section}-form span[title="#{shown(value)}"]),
+                 shown(value)
+               )
+      end
+
+      assert words(view, "#backlog-token-repository") == "Repository " <> shown("acme/web")
+    end
+
+    test "a value with nothing left to show, offered or only chosen: marked", ctx do
+      web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      ticket(web, title: "Fix the login", labels: ["\u200B"])
+      # The first a ticket carries, so it is offered; the second only chosen.
+      query = "?" <> Plug.Conn.Query.encode(label: ["\u200B", "\u2060"])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      form = view |> element("#backlog-filter-label-form") |> render() |> LazyHTML.from_fragment()
+
+      shown =
+        form |> LazyHTML.query(".q-filter-option > span > bdi") |> Enum.map(&LazyHTML.text/1)
+
+      assert Enum.count(shown, &(&1 == "\uFFFD")) == 2
+
+      token = view |> element("#backlog-token-label") |> render() |> LazyHTML.from_fragment()
+      values = token |> LazyHTML.query(".q-tok-v bdi") |> Enum.map(&LazyHTML.text/1)
+      assert values == ["\uFFFD", "\uFFFD"]
+    end
+
+    test "a token's values: each isolated in a <bdi>, all of them in its title", ctx do
+      web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      ticket(web, title: "Fix the login", labels: ["\u05D1\u05D0\u05D2", "checkout"])
+      query = "?" <> Plug.Conn.Query.encode(label: ["\u05D1\u05D0\u05D2", "checkout"])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      token = view |> element("#backlog-token-label") |> render() |> LazyHTML.from_fragment()
+      values = token |> LazyHTML.query(".q-tok-v bdi") |> Enum.map(&LazyHTML.text/1)
+      assert Enum.sort(values) == Enum.sort(["\u05D1\u05D0\u05D2", "checkout"])
+      [title] = token |> LazyHTML.query(".q-tok-v") |> LazyHTML.attribute("title")
+      assert title == Enum.join(values, ", ")
+      assert words(view, "#backlog-token-label") == "Label " <> Enum.join(values, ", ")
+    end
+  end
 end
