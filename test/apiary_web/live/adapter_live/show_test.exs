@@ -49,7 +49,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   defp time(at), do: ApiaryWeb.Format.time(at)
 
-  test "with no connection: not installed, and the install block with Install disabled",
+  test "with no connection: not installed, and the install block with Install",
        %{conn: conn, scope: scope, adapter: adapter} do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
@@ -72,8 +72,34 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
              "Acme tracker then brings you back here. The repositories it reaches are listed on this page. #{scope.organisation.name} can have one installation of Acme tracker. Install"
 
     refute has_element?(lv, "#integration-install-name")
-    assert has_element?(lv, "button#integration-install-install[disabled]")
+    refute has_element?(lv, "#integration-install-cancel")
+
+    assert has_element?(
+             lv,
+             ~s{form#integration-install-form[action="#{page(scope, adapter)}/install"]}
+           )
+
+    assert has_element?(lv, "#integration-install-form-install:not([disabled])")
     refute has_element?(lv, "#collections")
+
+    form = form(lv, "#integration-install-form")
+    render_submit(form)
+
+    assert words(lv, "#integration-install-sending") == "Taking you to Acme tracker…"
+
+    conn = follow_trigger_action(form, conn)
+    assert conn.request_path == page(scope, adapter) <> "/install"
+    assert conn.resp_body =~ "https://tracker.example.com/connect?state="
+  end
+
+  test "an integration not set up yet: Install disabled, and why", %{conn: conn, scope: scope} do
+    adapter = adapter_fixture(%{name: "Shop tracker"})
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert has_element?(lv, "#integration-install-form-install[disabled]")
+
+    assert words(lv, "#integration-install-not-ready") ==
+             "Shop tracker can't be installed yet: this instance's admins are still setting it up."
   end
 
   test "pending, its pass still good: who started it today and when", %{
@@ -136,7 +162,13 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     send(lv.pid, :late)
 
     assert has_element?(lv, "#collections-late span", "If nothing appears, install again.")
-    assert has_element?(lv, "#collections-late button#collections-install", "Install")
+    assert has_element?(lv, "#collections-late button#collections-install-install", "Install")
+
+    form = form(lv, "#collections-install")
+    render_submit(form)
+    conn = follow_trigger_action(form, conn)
+    assert conn.request_path == page(scope, adapter) <> "/install"
+    assert conn.resp_body =~ "https://tracker.example.com/connect?state="
   end
 
   test "the collections are named in the adapter's words", %{

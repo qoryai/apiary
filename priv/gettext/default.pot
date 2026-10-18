@@ -642,6 +642,11 @@ msgid_plural "%{instance} is cleared: its %{count} open runs are marked lost."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} can't be installed yet: this instance's admins are still setting it up."
+msgstr ""
+
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "%{integration} couldn't confirm that installation for you. Install it again from Integrations."
@@ -3245,6 +3250,7 @@ msgstr ""
 msgid "Add a workspace to %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add an integration"
@@ -4040,6 +4046,7 @@ msgid "Can you trust your agents? With Qory *you don't have to*."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -7208,7 +7215,6 @@ msgid "In this browser"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
-#: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Install"
 msgstr ""
@@ -7216,6 +7222,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Install address"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Install one of this instance's integrations for %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -13040,6 +13051,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Taking %{items} into the Backlog turned on or off"
+msgstr ""
+
+#: lib/apiary_web/components/integration_components.ex
+#, elixir-autogen, elixir-format
+msgid "Taking you to %{integration}…"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

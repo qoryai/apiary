@@ -1,8 +1,10 @@
 defmodule ApiaryWeb.AdapterLive.IndexTest do
-  # Organisation settings › Integrations (`ApiaryWeb.AdapterLive.Index`, `:index`): the
-  # instance's adapters by name, each installed in the organisation or not, Add for an
-  # owner or an admin, the chevron to an installed one's page, and the foot notes, the
-  # members' by the organisation's workspaces; behind the feature, for members.
+  # Organisation settings › Integrations (`ApiaryWeb.AdapterLive.Index`): the list
+  # (`:index`), the instance's adapters by name, each installed in the organisation or
+  # not, Add for an owner or an admin, the chevron to an installed one's page, and the foot
+  # notes, the members' by the organisation's workspaces; behind the feature, for members.
+  # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
+  # installed, Install, which posts to the Install path, or not ready yet.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -153,5 +155,98 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     %{user: other} = sign_up_fixture()
 
     assert log_in_user(build_conn(), other) |> get(list_path(scope)) |> response(404)
+  end
+
+  describe "Add an integration" do
+    defp new_path(scope), do: ~p"/#{scope.organisation}/settings/integrations/new"
+
+    test "a block for each integration not installed, with Install and Cancel", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+      %{adapter: installed} = connectable_adapter_fixture(%{name: "Platform tracker"})
+      connection_fixture(scope, installed, :listed)
+      org = scope.organisation.name
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(lv, "h1", "Add an integration")
+
+      assert page_title(lv) =~
+               "Add an integration · Integrations · Organisation settings · #{org}"
+
+      assert has_element?(lv, ~s{#settings-tab-integrations[aria-current="true"]})
+      assert has_element?(lv, ~s{#breadcrumb-section[href="#{list_path(scope)}"]})
+
+      assert words(lv, ".q-settings-head-sub") ==
+               "Install one of this instance's integrations for #{org}."
+
+      id = "#add-#{acme.public_id}"
+      assert words(lv, "#{id}-name") == "Acme tracker"
+
+      assert words(lv, id) ==
+               "Acme tracker Acme tracker then brings you back here. The repositories it reaches are listed on this page. #{org} can have one installation of Acme tracker. Install Cancel"
+
+      install = "#{list_path(scope)}/#{acme.public_id}/install"
+      assert has_element?(lv, ~s{form#{id}-form[action="#{install}"][method="post"]})
+      assert has_element?(lv, "#{id}-form-install:not([disabled])")
+      assert has_element?(lv, ~s{a#{id}-cancel[href="#{list_path(scope)}"]})
+      refute has_element?(lv, "#{id}-not-ready")
+      refute has_element?(lv, "#add-#{installed.public_id}")
+    end
+
+    test "Install sends the person on to the integration, saying so meanwhile", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      form = form(lv, "#add-#{acme.public_id}-form")
+      render_submit(form)
+
+      assert words(lv, "#add-#{acme.public_id}-sending") == "Taking you to Acme tracker…"
+      refute has_element?(lv, "#add-#{acme.public_id}-cancel")
+
+      conn = follow_trigger_action(form, conn)
+      assert conn.method == "POST"
+
+      assert conn.request_path ==
+               "/#{scope.organisation.slug}/settings/integrations/#{acme.public_id}/install"
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "https://tracker.example.com/connect?state="
+    end
+
+    test "an integration not set up yet: Install disabled, and why", %{conn: conn, scope: scope} do
+      adapter = adapter_fixture(%{name: "Shop tracker"})
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      id = "#add-#{adapter.public_id}"
+      assert has_element?(lv, "#{id}-form-install[disabled]")
+
+      assert words(lv, "#{id}-not-ready") ==
+               "Shop tracker can't be installed yet: this instance's admins are still setting it up."
+
+      render_submit(form(lv, "#{id}-form"))
+      refute has_element?(lv, "#{id}-sending")
+    end
+
+    test "names the collections in each adapter's words", %{conn: conn, scope: scope} do
+      %{adapter: adapter} = connectable_adapter_fixture(%{name: "Acme tracker"})
+      describe_source(adapter, "example-tracker.json")
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert words(lv, "#add-#{adapter.public_id}") =~
+               "The projects it reaches are listed on this page."
+    end
+
+    test "an admin has it too; a member does not", %{scope: scope} do
+      connectable_adapter_fixture()
+      {:ok, _lv, _html} = live(member_conn(scope, :admin), new_path(scope))
+
+      assert_raise ApiaryWeb.NotFound, fn -> live(member_conn(scope), new_path(scope)) end
+    end
   end
 end

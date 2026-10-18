@@ -21,9 +21,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #
   # While it is not installed, the install block follows
   # (`ApiaryWeb.IntegrationComponents`), to whoever may connect one (`adapter.connect`,
-  # owners and admins). The page follows the organisation's connections and collections
-  # as they change
-  # (`Apiary.Adapters.Collections.subscribe/1`).
+  # owners and admins), whose Install posts to the Install path, as the line to install
+  # again does. The page follows the organisation's connections and collections as they
+  # change (`Apiary.Adapters.Collections.subscribe/1`).
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -56,7 +56,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
        adapter: adapter,
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        late: false,
-       timer: false
+       timer: false,
+       sending: false
      )
      |> load()}
   end
@@ -73,6 +74,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     socket
     |> assign(connection: connection, state: state, person: person)
+    |> assign(:ready, IntegrationComponents.ready?(adapter))
     |> wait()
   end
 
@@ -106,6 +108,16 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp state(%Connection{}), do: :not_installed
 
   defp today?(at), do: DateTime.to_date(Format.local(at)) == Format.today()
+
+  # Install, pressed while the page offers it: the form then posts to Install's path.
+  @impl true
+  def handle_event("install", _params, socket) do
+    %{connects: connects, ready: ready, state: state, late: late} = socket.assigns
+
+    if connects and ready and (state in [:not_installed, :pending, :expired] or late),
+      do: {:noreply, assign(socket, :sending, true)},
+      else: {:noreply, socket}
+  end
 
   @impl true
   def handle_info(:late, socket) do
@@ -166,6 +178,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
           organisation={@current_scope.organisation}
           collections={collection_word(@adapter, :other)}
           named={false}
+          action={@paths.install}
+          ready={@ready}
+          sending={@sending}
         />
 
         <section :if={@state == :waiting} id="collections" aria-labelledby="collections-heading">
@@ -190,9 +205,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
             class="mb-3 flex flex-wrap items-center gap-2.5 text-[13.5px] text-muted"
           >
             <span>{gettext("If nothing appears, install again.")}</span>
-            <.button id="collections-install" type="button" disabled>
-              <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Install")}
-            </.button>
+            <IntegrationComponents.install_form
+              id="collections-install"
+              adapter={@adapter}
+              action={@paths.install}
+              ready={@ready}
+              sending={@sending}
+              variant="default"
+            />
           </div>
         </section>
       </.settings_page>

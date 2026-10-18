@@ -15,7 +15,12 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # connect one, who does: with several workspaces, who assigns their collections too.
   # The words for the collections are the adapters', when they all name the same.
   #
-  # Add an integration answers as a path that does not exist until it is built here.
+  # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
+  # it is a path that does not exist. Each adapter not installed is a block
+  # (`ApiaryWeb.IntegrationComponents.install_block/1`): what Install does, in its words
+  # for its collections, then Install, which posts to the Install path and sends the
+  # person on to the integration, and Cancel, back to the list. Once pressed, the block
+  # says where the person is taken. One that cannot be installed yet has Install disabled.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -31,31 +36,88 @@ defmodule ApiaryWeb.AdapterLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    if socket.assigns.live_action == :new, do: raise(ApiaryWeb.NotFound)
-
     scope = socket.assigns.current_scope
+    connects = Access.can?(scope, :"adapter.connect", scope.organisation)
+    new? = socket.assigns.live_action == :new
+    if new? and not connects, do: raise(ApiaryWeb.NotFound)
+
     adapters = Adapters.list_adapters(scope)
     live = Connections.live_by_adapter(scope)
 
     rows =
       for adapter <- adapters do
         connection = Map.get(live, adapter.id)
-        %{adapter: adapter, installed: match?(%{state: :connected}, connection)}
+
+        %{
+          adapter: adapter,
+          installed: match?(%{state: :connected}, connection),
+          ready: new? and IntegrationComponents.ready?(adapter)
+        }
       end
 
     {:ok,
      assign(socket,
-       page_title: IntegrationComponents.page_title(scope, []),
+       page_title: IntegrationComponents.page_title(scope, if(new?, do: [add_title()], else: [])),
        sections: SettingsComponents.sections(scope, :organisation),
        paths: IntegrationComponents.paths(scope),
        rows: rows,
        noun: Adapters.shared_collection_noun(adapters),
-       connects: Access.can?(scope, :"adapter.connect", scope.organisation),
-       several: length(Organisations.list_workspaces(scope)) > 1
+       connects: connects,
+       several: length(Organisations.list_workspaces(scope)) > 1,
+       sending: nil
      )}
   end
 
+  defp add_title, do: gettext("Add an integration")
+
   @impl true
+  def handle_event("install", %{"integration" => public_id}, socket) do
+    case Enum.find(socket.assigns.rows, &(&1.adapter.public_id == public_id)) do
+      %{installed: false, ready: true} -> {:noreply, assign(socket, :sending, public_id)}
+      _none -> {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def render(%{live_action: :new} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:organisation}
+      sections={@sections}
+      section={:integrations}
+    >
+      <:crumb>{add_title()}</:crumb>
+
+      <.settings_page section={:integrations} title={add_title()}>
+        <:subtitle>
+          {gettext("Install one of this instance's integrations for %{organisation}.",
+            organisation: @current_scope.organisation.name
+          )}
+        </:subtitle>
+
+        <div class="grid gap-4">
+          <IntegrationComponents.install_block
+            :for={row <- @rows}
+            :if={!row.installed}
+            id={"add-#{row.adapter.public_id}"}
+            adapter={row.adapter}
+            organisation={@current_scope.organisation}
+            collections={collection_word(Adapters.collection_noun(row.adapter), :other)}
+            action={IntegrationComponents.paths(@current_scope, row.adapter).install}
+            ready={row.ready}
+            sending={@sending == row.adapter.public_id}
+            cancel={@paths.list}
+          />
+        </div>
+      </.settings_page>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
