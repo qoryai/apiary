@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.Contract.PoolClaimTest do
   # `POST /v1/pools/claim` (`ApiaryWeb.Contract.PoolClaimController`): the claim answer,
-  # signed, held to the vendored `claim-answer.schema.json`; the refusals in their order;
+  # signed, held to the vendored `claim-answer.schema.json`, a prebuild's at revision 2
+  # and never at revision 1; the refusals in their order;
   # another pool's id refused as an unknown one is; `dispatch.claim` refused or not found
   # as one answer; the hold, its wake, its end and its cap per key; and the key read again
   # after the wait. Not async: the features, the hold's settings and the registry of holds
@@ -86,9 +87,19 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       body,
       target: @claim,
       content_type: "application/json",
-      delivery: nil
+      delivery: nil,
+      contract_version: Keyword.get(opts, :contract_version, "1")
     )
   end
+
+  defp prebuild!(collection, pool) do
+    {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-1") end)
+    run
+  end
+
+  # The members of a JSON object, in their order.
+  defp members(json),
+    do: json |> Jason.decode!(objects: :ordered_objects) |> Map.get(:values) |> keys()
 
   defp queue!(work_item) do
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
@@ -199,6 +210,74 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       run = queued!(ctx.scope)
       conn = claim(ctx, body(%{}, 1))
       assert Jason.decode!(conn.resp_body)["run_id"] == run.run_id
+    end
+  end
+
+  describe "a claim at revision 2" do
+    test "takes a prebuild held for its pool, answered 200, signed, as the contract's prebuild",
+         ctx do
+      collection = collection_fixture(ctx.scope, target_path: "acme/shop")
+      run = prebuild!(collection, ctx.pool)
+
+      conn = claim(ctx, body(%{"pool_id" => ctx.pool.public_id}), contract_version: "2")
+      assert conn.status == 200
+      assert signed_answer?(conn)
+
+      answer = Jason.decode!(conn.resp_body)
+      assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
+
+      assert members(conn.resp_body) ==
+               @fixtures |> Path.join("claim-answer/prebuild.json") |> File.read!() |> members()
+
+      dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
+      lease_until = dispatch.lease_until |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      assert answer == %{
+               "version" => 1,
+               "revision" => 2,
+               "dispatch_id" => dispatch.public_id,
+               "run_id" => run.run_id,
+               "pool_id" => ctx.pool.public_id,
+               "lease_until" => lease_until,
+               "step" => "prebuild",
+               "access" => "read",
+               "target" => %{"system" => "code.example.com", "path" => "acme/shop"}
+             }
+
+      assert Repo.get!(DispatchRun, run.id).state == :claimed
+    end
+
+    test "takes an explore run as at revision 1, its answer naming revision 2", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      run = queue!(work_item)
+
+      conn = claim(ctx, body(), contract_version: "2")
+      answer = Jason.decode!(conn.resp_body)
+      assert {conn.status, answer["revision"], answer["run_id"]} == {200, 2, run.run_id}
+      assert answer["work_item"]["id"] == work_item.public_id
+      assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
+    end
+
+    test "a claim at revision 1 never takes a prebuild, nor another pool's claim at revision 2",
+         ctx do
+      # The pool made before the collection, whose fixture applies no trigger.
+      other = pool_fixture(ctx.scope)
+      %{access_key: other_key, pair: other_pair} = enrolled_key_fixture(ctx.scope, other)
+      run = prebuild!(collection_fixture(ctx.scope), ctx.pool)
+
+      conn = claim(ctx, body())
+      assert {conn.status, conn.resp_body} == {204, ""}
+
+      conn =
+        claim(ctx, body(%{}, 1),
+          key_id: other_key.key_id,
+          seed: other_pair.secret,
+          contract_version: "2"
+        )
+
+      assert {conn.status, conn.resp_body} == {204, ""}
+      assert Repo.get!(DispatchRun, run.id).state == :waiting
+      assert dispatches() == 0
     end
   end
 

@@ -13,6 +13,13 @@ defmodule Apiary.Dispatches.DispatchRun do
   # from 1 to `of`: the database holds `1 <= attempt <= of`, and one row per work item,
   # take in and attempt.
   #
+  # A run for the step `prebuild` (`prebuild_changeset/2`) has no work item and no take
+  # in: it builds the environment of a collection's target (`source_collection_id`) for
+  # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
+  # collection's `environment_ref` it was queued for. At most one waits per collection and
+  # pool (`Apiary.Dispatches.queue_prebuild/3`). Every other run is held for no pool and
+  # has none of the three (`20261017200200_queue_prebuilds`).
+  #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`
   # orders the queue, oldest first.
@@ -31,8 +38,15 @@ defmodule Apiary.Dispatches.DispatchRun do
   # work item closed or undone before its handover (refusal.schema.json, 410 gone);
   # `run_ended`, the run ended by its outcome or its exit after its handover, and a stale
   # dispatch with its run (handover.schema.json); `lost`, a handed-over run the liveness
-  # check ended.
-  @end_causes [:released, :closed, :undone, :run_ended, :lost]
+  # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
+  # none or to another workspace, has no target or no `environment_ref`, or its
+  # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
+  # lapsed while another prebuild of its collection and pool waited or went back to
+  # waiting (`Apiary.Dispatches.Slots`).
+  @end_causes [:released, :closed, :undone, :run_ended, :lost, :collection_ended, :superseded]
+
+  # The step that builds a collection's environment for a node pool.
+  @prebuild "prebuild"
 
   # The contract's step pattern, definitions.schema.json `$defs.step`.
   @step ~r/\A[a-z][a-z_]{0,39}\z/
@@ -48,10 +62,13 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :state, Ecto.Enum, values: @states, default: :waiting
     field :end_cause, Ecto.Enum, values: @end_causes
     field :queued_at, :utc_datetime_usec
+    field :environment_ref, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :work_item, Apiary.WorkItems.WorkItem
+    belongs_to :source_collection, Apiary.Adapters.Collection
+    belongs_to :pool, Apiary.Nodes.Node
 
     has_many :dispatches, Apiary.Dispatches.Dispatch
     has_one :run, Apiary.Runs.Run
@@ -93,6 +110,34 @@ defmodule Apiary.Dispatches.DispatchRun do
     |> unique_constraint(:run_id, name: :dispatch_runs_run_id_index)
     |> unique_constraint(:attempt, name: :dispatch_runs_work_item_id_take_in_attempt_index)
     |> foreign_key_constraint(:work_item_id, name: :dispatch_runs_work_item_id_fkey)
+  end
+
+  # prebuild/0 is the step that builds a collection's environment for a node pool.
+  @doc false
+  @spec prebuild() :: String.t()
+  def prebuild, do: @prebuild
+
+  # prebuild_changeset/2 is the changeset of a new run of the queue for the step
+  # `prebuild`: the collection whose target it builds, the node pool it is held for, the
+  # collection's `environment_ref` it is queued for, 1 to 200 characters, and when it was
+  # queued, waiting, with a fresh `run_id`. The organisation and the workspace are the
+  # caller's to put.
+  @doc false
+  @spec prebuild_changeset(t, map) :: Ecto.Changeset.t()
+  def prebuild_changeset(%__MODULE__{} = run, attrs) do
+    run
+    |> cast(attrs, [:source_collection_id, :pool_id, :environment_ref, :queued_at])
+    |> validate_required([:source_collection_id, :pool_id, :environment_ref, :queued_at])
+    |> validate_length(:environment_ref, min: 1, max: 200, count: :codepoints)
+    |> put_change(:step, @prebuild)
+    |> put_change(:run_id, Ecto.UUID.generate())
+    |> put_change(:state, :waiting)
+    |> check_constraint(:step, name: :dispatch_runs_step_shape_check)
+    |> unique_constraint(:run_id, name: :dispatch_runs_run_id_index)
+    |> foreign_key_constraint(:source_collection_id,
+      name: :dispatch_runs_source_collection_id_fkey
+    )
+    |> foreign_key_constraint(:pool_id, name: :dispatch_runs_pool_id_fkey)
   end
 
   # At most `of`, in the words Ecto gives a bound.
