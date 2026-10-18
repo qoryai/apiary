@@ -18,9 +18,13 @@ defmodule Apiary.Dispatches.RunEndTest do
 
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
+  alias Apiary.Environments.Record
   alias Apiary.Runs.{Attach, Batch, Event, Fold, Ingest, Liveness, Outcome, Projector, Run}
 
   @moduletag needs: :factory
+
+  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+  @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -52,8 +56,9 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "backstop_seconds/1" do
-    test "is 1200 for explore, and Explore's for a step it does not name" do
+    test "is 1200 for explore, 2100 for prebuild, and Explore's for a step it does not name" do
       assert Dispatches.backstop_seconds("explore") == 1200
+      assert Dispatches.backstop_seconds("prebuild") == 2100
       assert Dispatches.backstop_seconds("another_step") == 1200
       assert Dispatches.backstop_seconds(nil) == 1200
     end
@@ -297,6 +302,57 @@ defmodule Apiary.Dispatches.RunEndTest do
     test "of a run released before its gateway attached it is 410 gone", ctx do
       assert {:ok, %{run: %Run{state: "cancelled"}}} = release(ctx.dispatch_run)
       assert ctx.attach.() == {:error, :gone}
+    end
+  end
+
+  describe "a prebuild after its handover" do
+    # A collection, the pool's environment record of it, `env-1` queued and a good build
+    # kept, and a prebuild of it queued for a pool with a gateway, claimed at revision 2,
+    # said started and handed over: its registered run, its gateway not yet attached.
+    setup ctx do
+      place = handover_place_fixture(ctx.scope)
+      collection = collection_fixture(ctx.scope)
+
+      record =
+        Repo.insert!(%Record{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          pool_id: place.pool.id,
+          source_collection_id: collection.id,
+          queued_ref: "env-1",
+          queued_at: DateTime.utc_now(),
+          image: @image,
+          size: 734_003_200,
+          commit: "9c1e4a7b",
+          built_at: DateTime.utc_now(),
+          reported_ref: "env-1"
+        })
+
+      {:ok, queued} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, place.pool, "env-1") end)
+
+      %{dispatch: dispatch} = dispatched!(place.key, 2)
+
+      {:ok, %{run: run, run_key: run_key}} =
+        Dispatches.handover(place.key, dispatch.public_id, %{revision: 2, body: @body})
+
+      {gateway_key, _seed} = place.gateway_key
+      {:ok, body} = Attach.parse(attach_body(run_key))
+
+      %{
+        place: place,
+        collection: collection,
+        record: record,
+        handed: %{dispatch_run: queue_run!(queued), dispatch: dispatch!(dispatch), run: run},
+        attach: fn ->
+          Attach.attach(gateway_key, queued.run_id, body, %{instance_id: instance_id()})
+        end
+      }
+    end
+
+    test "its attach sets its backstop 2100 s after it", ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 2100 * 1_000_000
     end
   end
 

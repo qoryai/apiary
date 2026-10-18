@@ -55,8 +55,9 @@ defmodule Apiary.Dispatches.RunEnd do
   alias Apiary.Runs.{Event, Fold, Projector, Run}
 
   # The seconds from its attach by which a run of each step has its outcome or its exit,
-  # or is lost; a step not named here has Explore's.
-  @backstops %{"explore" => 1200}
+  # or is lost: Explore's 20 minutes, and a prebuild's 35, the prebuild workflow's 30
+  # minutes and a margin. A step not named here has Explore's.
+  @backstops %{"explore" => 1200, "prebuild" => 2100}
   @default_backstop 1200
   @exited "dev.qory.run.exited"
   # The runs of the queue one check looks at at most; the rest wait for the next.
