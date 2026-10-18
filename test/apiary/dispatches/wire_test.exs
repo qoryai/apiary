@@ -109,10 +109,10 @@ defmodule Apiary.Dispatches.WireTest do
 
   test "the vendored contract is the commit its ref names" do
     assert File.read!(Path.join(@contract, ".contract-ref")) ==
-             "ee9c563e2542f5c3b8292a6a62df343b007d8f98\n"
+             "2f073aa0ee826f950f35fdc18e4efb6385e6d133\n"
 
     assert File.read!(Path.join(@vendored, "integration/v1/.contract-ref")) ==
-             "ee9c563e2542f5c3b8292a6a62df343b007d8f98\n"
+             "2f073aa0ee826f950f35fdc18e4efb6385e6d133\n"
   end
 
   test "every fixture is valid under its vendored schema, or invalid under it as its directory says" do

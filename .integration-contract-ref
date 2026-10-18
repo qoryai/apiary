@@ -1,17 +1,19 @@
 # The commit of qoryai/integrations whose contracts/integration/v1 fixtures are under
 # test/fixtures/integration-contract/ (its description fixtures, accepted, refused under
 # invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
-# signed connect pass and return with their keys and payloads, the adapter's declarations,
-# accepted and refused, the change feed's answers, accepted and refused, the listings of
+# signed connect pass and return and the signed setup pass, with their keys and payloads,
+# setup passes refused, the adapter's declarations, accepted and refused, with a setup_url
+# among them, the change feed's answers, accepted and refused, the listings of
 # collections and a disconnect of one, accepted and refused, the bodies of a collection's
 # items and of an item's comments, accepted and refused, the refusals the control plane
 # answers with, and two signed requests, a POST and a GET, with the GET's signed answer),
-# and whose connect-return.schema.json is under test/fixtures/integration-contract/schema/:
-# a commit of the integrations, pinned by its id.
+# and whose connect-return.schema.json and setup-pass.schema.json are under
+# test/fixtures/integration-contract/schema/: a commit of the integrations, pinned by its
+# id.
 #
 # contracts/integration/v1/description.schema.json is vendored under
 # priv/contract/integration/ from this commit too. Qory Apiary holds the bounds of a
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-ee9c563e2542f5c3b8292a6a62df343b007d8f98
+2f073aa0ee826f950f35fdc18e4efb6385e6d133
