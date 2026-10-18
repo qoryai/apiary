@@ -646,7 +646,14 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
 
     test "whose input breaks the contract's rules ends inputs_invalid, gone", ctx do
-      {_work_item, queued} = queued!(ctx, %{first_instruction: "Look \e[31mhere\e[0m."})
+      {work_item, queued} = queued!(ctx)
+
+      # Written to the row, past the changeset that now refuses it: one stored before then.
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [first_instruction: "Look \e[31mhere\e[0m."]
+        )
+
       dispatch = claimed!(ctx)
       :ok = dispatched(ctx.key, dispatch)
 

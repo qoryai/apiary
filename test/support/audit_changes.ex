@@ -58,11 +58,17 @@ defmodule Apiary.AuditChanges do
   # `Apiary.Access` and the one entry in one transaction (`stand_in/3`), until that
   # function makes it instead.
   @stand_ins [
-    :"work_item.take_in",
-    :"work_item.undo",
-    :"work_item.close",
     :"work_item.comment",
     :"work_item.comment_delete"
+  ]
+
+  # The audited actions of a person on the work items, each made by its function of
+  # `Apiary.WorkItems`.
+  @work_item_moves [
+    :"work_item.take_in",
+    :"work_item.undo",
+    :"work_item.decline",
+    :"work_item.close"
   ]
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
@@ -121,7 +127,7 @@ defmodule Apiary.AuditChanges do
       :"dispatch.release",
       :"target.set_further_repositories",
       :"dispatch.prebuilt"
-    ] ++ @stand_ins
+    ] ++ @work_item_moves ++ @stand_ins
   end
 
   @doc """
@@ -566,6 +572,23 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # A member takes a ticket of the workspace's Backlog in, in the workspace's trail,
+  # about the new work item.
+  def make(:"work_item.take_in", %{scope: scope} = ctx) do
+    ticket = prepare(:"work_item.take_in", ctx)
+    before = entries()
+    {:ok, work_item} = Apiary.WorkItems.take_in(scope, ticket.public_id)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A member undoes, declines or closes a work item of the workspace, about it.
+  def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
+    work_item = prepare(action, ctx)
+    before = entries()
+    {:ok, _work_item} = attempt(action, scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
   def make(action, %{scope: scope} = ctx) when action in @stand_ins do
     subject = prepare(action, ctx)
     before = entries()
@@ -935,7 +958,10 @@ defmodule Apiary.AuditChanges do
     )
   end
 
-  defp prepare(action, %{scope: scope}) when action in @stand_ins,
+  defp prepare(:"work_item.take_in", %{scope: scope}),
+    do: Apiary.WorkItemsFixtures.backlog_ticket_fixture(scope)
+
+  defp prepare(action, %{scope: scope}) when action in @work_item_moves or action in @stand_ins,
     do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
@@ -1057,6 +1083,16 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"target.set_further_repositories", scope, target),
     do: Targets.set_further_repositories(scope, target, "acme/docs")
+
+  defp attempt(:"work_item.take_in", scope, ticket),
+    do: Apiary.WorkItems.take_in(scope, ticket.public_id)
+
+  defp attempt(:"work_item.undo", scope, work_item), do: Apiary.WorkItems.undo(scope, work_item)
+
+  defp attempt(:"work_item.decline", scope, work_item),
+    do: Apiary.WorkItems.decline(scope, work_item)
+
+  defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)

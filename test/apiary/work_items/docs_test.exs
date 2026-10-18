@@ -46,10 +46,12 @@ defmodule Apiary.WorkItems.DocsTest do
     assert Enum.sort(modules) ==
              Enum.sort([
                Apiary.WorkItems,
+               Apiary.WorkItems.Moves,
                Apiary.WorkItems.Number,
                Apiary.WorkItems.State,
                Apiary.WorkItems.WorkItem,
-               Apiary.WorkItems.WorkItemEvent
+               Apiary.WorkItems.WorkItemEvent,
+               Apiary.WorkItems.WorkList
              ])
 
     for module <- modules, do: assert_hidden(module)

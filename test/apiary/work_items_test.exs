@@ -1,6 +1,7 @@
 defmodule Apiary.WorkItemsTest do
   # How the work item pages name a work item's ticket (`Apiary.WorkItems.ticket_names/2`):
-  # its key and the title of its collection, as the Backlog draws them, from the record of
+  # its key and the title of its collection, as the Backlog draws them, and the public id
+  # of its live record, which the Backlog opens it by, from the record of
   # the work item's organisation, adapter and ref in a collection of its workspace, the
   # live one first, else the one that ended last; one query for a list; nothing for
   # another workspace or a person who may not read the workspace's work items; the ref
@@ -86,7 +87,11 @@ defmodule Apiary.WorkItemsTest do
       w = work_item(ctx, item)
 
       names = WorkItems.ticket_names(ctx.scope, [w])
-      assert names == %{w.id => %{key: "#1204", collection_title: "acme/shop"}}
+
+      assert names == %{
+               w.id => %{key: "#1204", collection_title: "acme/shop", ticket_id: item.public_id}
+             }
+
       refute inspect(names) =~ "123456"
     end
 
@@ -95,7 +100,7 @@ defmodule Apiary.WorkItemsTest do
       w = work_item(ctx, item)
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: nil, collection_title: "acme/shop"}}
+               %{w.id => %{key: nil, collection_title: "acme/shop", ticket_id: item.public_id}}
     end
 
     test "the live record of the ref first, else the one that ended last", ctx do
@@ -109,26 +114,26 @@ defmodule Apiary.WorkItemsTest do
       ticket(ctx, later, %{key: "#2"})
       end_collection(later, DateTime.add(now, -60))
 
-      # No record is live: the one that ended last.
+      # No record is live: the one that ended last, which the Backlog does not open.
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: "#2", collection_title: "acme/later"}}
+               %{w.id => %{key: "#2", collection_title: "acme/later", ticket_id: nil}}
 
       # A live record, whenever it was made.
       live = ticket(ctx, ctx.collection, %{key: "#3"})
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: "#3", collection_title: "acme/shop"}}
+               %{w.id => %{key: "#3", collection_title: "acme/shop", ticket_id: live.public_id}}
 
       # A disconnected record has ended too, at the time it was disconnected.
       disconnect(live, DateTime.add(now, -30))
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: "#3", collection_title: "acme/shop"}}
+               %{w.id => %{key: "#3", collection_title: "acme/shop", ticket_id: nil}}
 
       disconnect(live, DateTime.add(now, -7200))
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: "#2", collection_title: "acme/later"}}
+               %{w.id => %{key: "#2", collection_title: "acme/later", ticket_id: nil}}
     end
 
     test "only a record of the work item's workspace, adapter and ref", ctx do
@@ -152,7 +157,13 @@ defmodule Apiary.WorkItemsTest do
       ticket(ctx, ctx.collection, %{external_ref: "123456#43", key: "#7"})
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: "#1204", collection_title: "acme/shop"}}
+               %{
+                 w.id => %{
+                   key: "#1204",
+                   collection_title: "acme/shop",
+                   ticket_id: item.public_id
+                 }
+               }
 
       # Its only record moves to the other workspace: no key, and the collection's title
       # as it was taken in.
@@ -161,7 +172,7 @@ defmodule Apiary.WorkItemsTest do
       |> Repo.update!()
 
       assert WorkItems.ticket_names(ctx.scope, [w]) ==
-               %{w.id => %{key: nil, collection_title: "acme/shop as taken in"}}
+               %{w.id => %{key: nil, collection_title: "acme/shop as taken in", ticket_id: nil}}
     end
 
     test "one query for a list, whatever its length", ctx do
