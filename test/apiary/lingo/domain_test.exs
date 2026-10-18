@@ -57,6 +57,10 @@ defmodule Apiary.Lingo.DomainTest do
       assert Software.target_labels() == ["forge", "repository"]
     end
 
+    test "its label of a run's paths is repositories, the plural of the path's" do
+      assert Software.paths_label() == "repositories"
+    end
+
     test "its name is the modifier of its locales" do
       assert Software.name() == "software"
     end
@@ -136,6 +140,12 @@ defmodule Apiary.Lingo.DomainTest do
     test "target_labels/1 asks the workspace's domain" do
       assert Domain.target_labels(%Workspace{domain: "software"}) == Software.target_labels()
       assert Domain.target_labels(nil) == Software.target_labels()
+    end
+
+    test "paths_label/1 asks the workspace's domain, nil for a domain without one" do
+      assert Domain.paths_label(%Workspace{domain: "software"}) == "repositories"
+      assert Domain.paths_label(nil) == "repositories"
+      assert Domain.paths_label(%Workspace{domain: "example"}) == nil
     end
   end
 

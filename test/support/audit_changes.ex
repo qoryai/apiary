@@ -28,6 +28,7 @@ defmodule Apiary.AuditChanges do
     Repo,
     Retention,
     Secrets,
+    Targets,
     Variables
   }
 
@@ -64,11 +65,6 @@ defmodule Apiary.AuditChanges do
     :"work_item.confirm",
     :"work_item.explore_again"
   ]
-
-  # The audited action of a node pool's key on the runs dispatched to its workspace whose
-  # change has no context function yet either: made by the pool's key, as `stand_in/3`
-  # makes the others, asked of the workspace, its queue.
-  @pool_stand_ins [:"dispatch.release"]
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
@@ -122,8 +118,10 @@ defmodule Apiary.AuditChanges do
       :"adapter.declare",
       :"collection.assign",
       :"collection.set_backlog",
-      :"dispatch.handover"
-    ] ++ @work_item_moves ++ @stand_ins ++ @pool_stand_ins
+      :"dispatch.handover",
+      :"dispatch.release",
+      :"target.set_further_repositories"
+    ] ++ @work_item_moves ++ @stand_ins
   end
 
   @doc """
@@ -476,6 +474,15 @@ defmodule Apiary.AuditChanges do
     %{scope: ctx.scope, subject: {"target", target.id}, before: before}
   end
 
+  # An owner chooses what the runs of a target of the workspace also read, in the
+  # workspace's trail, about the target.
+  def make(:"target.set_further_repositories", ctx) do
+    target = prepare(:"target.set_further_repositories", ctx)
+    before = entries()
+    {:ok, _saved} = Targets.set_further_repositories(ctx.scope, target, "acme/docs")
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
   # An adapter's key declares, in the trail of the instance's organisation, and the
   # entry's actor is the key.
   def make(:"adapter.declare", _ctx) do
@@ -515,17 +522,27 @@ defmodule Apiary.AuditChanges do
     }
   end
 
-  # The pool's key acts in the trail of its workspace's organisation, and the entry's actor
-  # is the key.
-  def make(action, %{scope: scope}) when action in @pool_stand_ins do
-    %{access_key: key} = access_key_fixture(scope, node: pool_fixture(scope))
-    key_scope = Scope.for_access_key(key)
+  # A node pool's starter gives back the run of a dispatch its pool claimed, before its
+  # handover, in the trail of the workspace's organisation, about the pool; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.release", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(key)
     before = entries()
-    {:ok, _workspace} = stand_in(key_scope, action, scope.workspace)
+
+    :ok =
+      Apiary.Dispatches.release(key, dispatch.public_id, %{
+        revision: 1,
+        reason: "The job could not start.",
+        retry: false
+      })
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     %{
-      scope: key_scope,
-      subject: {"workspace", scope.workspace.id},
+      scope: Scope.for_access_key(key),
+      subject: {"node", key.node_id},
       before: before,
       actor: {:access_key, key.id}
     }
@@ -775,11 +792,20 @@ defmodule Apiary.AuditChanges do
     {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{revision: 1, body: "{}"})}
   end
 
-  # A node's key, of the same workspace, holds no dispatch action.
-  def refuse(action, %{scope: scope}) when action in @pool_stand_ins do
-    %{access_key: key} = access_key_fixture(scope)
+  # A dispatch another pool of the workspace claimed is not the key's to give back.
+  def refuse(:"dispatch.release", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(claimer)
     before = entries()
-    {before, stand_in(Scope.for_access_key(key), action, scope.workspace)}
+
+    {before,
+     Apiary.Dispatches.release(other, dispatch.public_id, %{
+       revision: 1,
+       reason: "The job could not start.",
+       retry: false
+     })}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
@@ -854,6 +880,16 @@ defmodule Apiary.AuditChanges do
 
     collection = Repo.get_by!(Collection, connection_id: connection.id)
     {connection, collection, workspace_fixture(scope.organisation)}
+  end
+
+  # A target of the scope's workspace, as a run's labels make it.
+  defp prepare(:"target.set_further_repositories", %{scope: scope}) do
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "code.example.com", path: "acme/shop"}
+      ])
+
+    Targets.get(scope, "code.example.com", "acme/shop")
   end
 
   # A collection with a target, listed for the organisation's connection and assigned to
@@ -1033,6 +1069,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"collection.set_backlog", scope, target),
     do: Collections.set_backlog(scope, target, false)
+
+  defp attempt(:"target.set_further_repositories", scope, target),
+    do: Targets.set_further_repositories(scope, target, "acme/docs")
 
   defp attempt(:"work_item.take_in", scope, ticket),
     do: Apiary.WorkItems.take_in(scope, ticket.public_id)

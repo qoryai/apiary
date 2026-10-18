@@ -198,4 +198,51 @@ defmodule Apiary.Runs.RunVariablesTest do
       assert Answer.append_members(document, [{"variables", nil}]) == document
     end
   end
+
+  describe "check_repositories/2" do
+    test "keeps a list of the target's owner, each once, and an empty one" do
+      assert RunVariables.check_repositories("acme/shop", []) == :ok
+      assert RunVariables.check_repositories("acme/shop", ["acme/docs", "ACME/tools"]) == :ok
+    end
+
+    test "names the first rule broken and the place of its path in the list, counted from 1" do
+      check = &RunVariables.check_repositories("acme/shop", &1)
+
+      for path <- ["acme", "acme/docs/x", "acme/", "acme/.", "acme/..", "acme/.Git", "a b/c", 7],
+          do: assert(check.(["acme/docs", path]) == {:error, {:not_a_path, 2}}, inspect(path))
+
+      assert check.(["acme/" <> segment(196)]) == {:error, {:too_long, 1}}
+      assert check.(["other/docs"]) == {:error, {:other_owner, 1}}
+      assert check.(["Acme/Shop"]) == {:error, {:itself, 1}}
+      assert check.(["acme/docs", "acme/api", "ACME/DOCS"]) == {:error, {:repeats, 3}}
+      # The first path that breaks one, by the order of the rules for that path.
+      assert check.(["acme/api", "other/docs", "not a path"]) == {:error, {:other_owner, 2}}
+    end
+
+    test "the target and the list, joined with commas, are at most 256 bytes" do
+      first = "acme/" <> segment(195)
+      second = "acme/" <> segment(40)
+      assert byte_size(Enum.join(["acme/shop", first, second], ",")) == 256
+
+      assert RunVariables.check_repositories("acme/shop", [first, second]) == :ok
+
+      assert RunVariables.check_repositories("acme/shop", [first, second <> "a"]) ==
+               {:error, {:too_long_together, 2}}
+    end
+
+    test "for_target/2 refuses exactly the lists it refuses" do
+      for picked <- [
+            ["acme/docs"],
+            ["acme"],
+            ["other/docs"],
+            ["acme/shop"],
+            ["acme/docs", "acme/docs"],
+            ["acme/" <> segment(195), "acme/" <> segment(41)]
+          ] do
+        assert match?({:ok, _variables}, RunVariables.for_target(target(), picked)) ==
+                 (RunVariables.check_repositories("acme/shop", picked) == :ok),
+               inspect(picked)
+      end
+    end
+  end
 end

@@ -22,11 +22,22 @@ defmodule ApiaryWeb.Contract.DispatchController do
   # could not do, `503` `unavailable`. Else `204`, signed, with no body: the first
   # `dispatched` of a dispatch records when and the job it names, a later one nothing.
   #
-  # A release is not served yet: an accepted one is answered as a route the instance does
-  # not serve, `404` `not_found`, signed.
+  # A release accepted gives the dispatch's run back (`Apiary.Dispatches.release/3`), with
+  # the body's `reason` and `retry`, for the revision the request named, with the refusals
+  # in the contract's order: the key read again and refused, `401`, unsigned; an unknown
+  # dispatch, another pool's, or the action refused, `403` `forbidden`, one answer, after
+  # which nothing is written; a prebuild's dispatch at revision 1, `404` `not_found`; a
+  # dispatch that ended, of a run that ended, or of a run whose outcome or exit came after
+  # its handover, `410` `gone`; one not handed over whose lease lapsed, `409`
+  # `lease_expired`, never one handed over; anything Qory could not do, `503`
+  # `unavailable`, after which nothing was written. Else `204`, signed, with no body:
+  # before the handover the run waits again or ends, and after it the run ends, and an
+  # explore run with retry queues the next run of its take in.
 
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :factory
+
+  require Logger
 
   alias Apiary.Dispatches
   alias Apiary.Dispatches.Wire
@@ -55,15 +66,39 @@ defmodule ApiaryWeb.Contract.DispatchController do
   end
 
   @doc false
-  def release(conn, _params) do
+  def release(conn, %{"dispatch_id" => dispatch_id}) do
     with {:ok, body} <- Wire.decode(conn.assigns.raw_body),
-         {:ok, %{time: time}} <- Wire.release(body),
-         {:ok, conn} <- AdapterRequest.accept(conn, time) do
-      refuse(conn, 404, "not_found")
+         {:ok, release} <- Wire.release(body),
+         {:ok, conn} <- AdapterRequest.accept(conn, release.time) do
+      meta = %{
+        revision: conn.assigns.contract_version,
+        reason: release.reason,
+        retry: release.retry
+      }
+
+      case release(conn.assigns.access_key, dispatch_id, meta) do
+        :ok -> send_resp(conn, 204, "")
+        {:error, :unauthorized} -> refuse(conn, 401, "unauthorized")
+        {:error, :forbidden} -> refuse(conn, 403, "forbidden")
+        {:error, :not_found} -> refuse(conn, 404, "not_found")
+        {:error, :gone} -> refuse(conn, 410, "gone")
+        {:error, :lease_expired} -> refuse(conn, 409, "lease_expired")
+        {:error, :unavailable} -> refuse(conn, 503, "unavailable")
+      end
     else
       :error -> refuse(conn, 400, "invalid_request")
       :unauthorized -> refuse(conn, 401, "unauthorized")
     end
+  end
+
+  # The release alone answers `503` for an exception: once it has answered, the run may
+  # be given back, so nothing after it is answered so.
+  defp release(access_key, dispatch_id, meta) do
+    Dispatches.release(access_key, dispatch_id, meta)
+  rescue
+    exception ->
+      Logger.error("a release could not be answered: #{inspect(exception.__struct__)}")
+      {:error, :unavailable}
   end
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})

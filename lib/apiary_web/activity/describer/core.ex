@@ -63,6 +63,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
 
+  def label(:"target.set_further_repositories"), do: gettext("Also read")
   def label(:"work_item.take_in"), do: gettext("Work item taken in")
   def label(:"work_item.undo"), do: gettext("Take in undone")
   def label(:"work_item.decline"), do: gettext("Work item declined")
@@ -73,6 +74,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
+  def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -96,9 +98,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
   # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
-  # of collections, the turning of a target's Backlog on or off and the handover of a
-  # claimed run have labels yet, so the filter offers those alone, where the reader is
-  # shown the feature (the page asks it); the others' entries show as any change.
+  # of collections, the turning of a target's Backlog on or off, the handover of a claimed
+  # run, its release and the choosing of what a target's runs also read have labels yet,
+  # so the filter offers those alone, where the reader is shown the feature (the page asks
+  # it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -115,7 +118,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment_delete",
           :"collection.assign",
           :"collection.set_backlog",
-          :"dispatch.handover"
+          :"dispatch.handover",
+          :"dispatch.release",
+          :"target.set_further_repositories"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -136,6 +141,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     if on,
       do: gettext("Turned on taking a collection's %{items} into the Backlog", items: items),
       else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
+  end
+
+  # What a target's runs also read, the list as it is after the change, joined as a list
+  # is on a page; the entry is the target's, which the subject names.
+  def sentence(
+        :"target.set_further_repositories",
+        %{after: %{"further_repositories" => paths}},
+        _names
+      )
+      when is_list(paths) do
+    case paths do
+      [] ->
+        gettext("Set its runs to read no other target")
+
+      paths ->
+        gettext("Changed what its runs read: %{paths}", paths: Enum.join(paths, ", "))
+    end
   end
 
   # A ticket taken in names the items of the work item's source (`Apiary.Audit.names/2`'s
@@ -326,6 +348,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")
+
+  # A run given back before its handover, or after it; the starter's reason is not shown.
+  defp said(:"dispatch.release", %{"handed_over" => false}, _actor),
+    do: gettext("Gave a claimed run back")
+
+  defp said(:"dispatch.release", %{"handed_over" => true}, _actor),
+    do: gettext("Gave back a run handed over to its machine")
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 

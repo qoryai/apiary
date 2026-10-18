@@ -54,13 +54,13 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
   defp turn_off(collection),
     do: collection |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
 
-  test "on by default: the card, last in the main column, with its switch on and its description",
+  test "on by default: the card, third in the main column, with its switch on and its description",
        %{conn: conn, path: path} do
     view = open(conn, path)
 
     assert has_element?(
              view,
-             "#target-overview .q-tgt-ov-main > section:last-child#target-backlog"
+             "#target-overview .q-tgt-ov-main > section + section + section#target-backlog"
            )
 
     assert has_element?(view, "#target-backlog-h", "Backlog")

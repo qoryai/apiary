@@ -14,6 +14,14 @@ defmodule Apiary.Targets do
   pin is the person's reading preference, not a change to what the organisation
   holds, so it leaves no audit entry; it goes with its target and with its workspace.
 
+  **What its runs also read.** A target's further repositories (`further_repositories/1`)
+  are the paths in its system its runs read after it, in the order a person put them:
+  owner/name each, of the target's owner, each once, the target's path and the list,
+  joined with commas, at most 256 bytes. `set_further_repositories/3` writes the whole
+  list at once (`target.set_further_repositories`, owners and admins, asked of the
+  target's workspace, with the `factory` feature), and refuses a list that breaks a rule,
+  so a saved list never does; nothing else writes it.
+
   **The notation.** A target is written as its path, with its system before it only where
   the same path is in more than one system of the workspace
   (`Apiary.Runs.shared_paths/2`), and on the target's page.
@@ -26,14 +34,16 @@ defmodule Apiary.Targets do
   workspace's, whatever the query.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query, warn: false
   import Apiary.Days, only: [sql_day: 2]
 
-  alias Apiary.{Access, PublicId}
+  alias Apiary.{Access, Audit, PublicId}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Run, Target}
+  alias Apiary.Runs.{Connection, Run, RunVariables, Target}
   alias Apiary.Targets.Pin
 
   @page_size 50
@@ -666,6 +676,153 @@ defmodule Apiary.Targets do
   defp to_integer(%Decimal{} = n), do: Decimal.to_integer(n)
   defp to_integer(n) when is_integer(n), do: n
   defp to_integer(nil), do: 0
+
+  ## What its runs also read
+
+  @doc """
+  further_repositories/1 is the further repositories of `target`: the paths in its system
+  that its runs also read after it, in the order they were saved, `[]` for none. It reads
+  the target as it was loaded; `set_further_repositories/3` checked every one of them.
+  """
+  @spec further_repositories(Target.t()) :: [String.t()]
+  def further_repositories(%Target{further_repositories: paths}) when is_list(paths), do: paths
+  def further_repositories(%Target{}), do: []
+
+  @doc """
+  set_further_repositories/3 replaces the further repositories of `target`, a target of
+  the scope's workspace, with `paths`: a text of one path a line, or a list, in order,
+  each trimmed, blank ones left out. It asks `Apiary.Access`
+  (`target.set_further_repositories`, of the target's workspace) before anything is read,
+  holds the target's row, and writes the whole list in one update, with its entry in the
+  audit trail, the list before and after, both in one transaction; a list the same as the
+  saved one writes nothing. The answers:
+
+    * `{:ok, target}`, the target as saved;
+    * `{:error, changeset}` for a list that breaks a rule, the rules a run's
+      QORY_RUN_REPOSITORIES keeps, the first of them on
+      `further_repositories`, naming its line, and nothing written: owner/name, two
+      segments of letters, digits, `.`, `_` and `-`, neither `.` nor `..`, and neither
+      `.git` in any case; at most 200 characters; of the target's owner, and
+      neither the target's path nor a line before it, all compared without case; and the
+      target's path and the list, joined with commas, at most 256 bytes;
+    * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
+      `{:error, :not_found}` for a target that is gone.
+  """
+  @spec set_further_repositories(Scope.t(), Target.t(), String.t() | [String.t()] | nil) ::
+          {:ok, Target.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def set_further_repositories(%Scope{} = scope, %Target{} = target, paths) do
+    lines = lines(paths)
+
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"target.set_further_repositories", target),
+           %Target{} = held <- hold(target) || {:error, :not_found},
+           :ok <- check_further(held, lines) do
+        write_further(scope, held, Enum.map(lines, &elem(&1, 0)))
+      end
+    end)
+  end
+
+  # The paths, each with its line, counted from 1, blank lines among the count, so a
+  # refusal names the line the person sees.
+  defp lines(nil), do: []
+
+  defp lines(text) when is_binary(text),
+    do: text |> String.split(["\r\n", "\n", "\r"]) |> lines()
+
+  defp lines(paths) when is_list(paths) do
+    for {path, line} <- Enum.with_index(paths, 1),
+        path = if(is_binary(path), do: String.trim(path), else: path),
+        path != "",
+        do: {path, line}
+  end
+
+  defp hold(%Target{id: id, organisation_id: organisation_id, workspace_id: workspace_id}) do
+    Repo.one(
+      from t in Target,
+        where: t.id == ^id,
+        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp check_further(%Target{} = target, lines) do
+    paths = Enum.map(lines, &elem(&1, 0))
+
+    case RunVariables.check_repositories(target.path, paths) do
+      :ok -> :ok
+      {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
+    end
+  end
+
+  defp write_further(_scope, %Target{further_repositories: paths} = target, paths),
+    do: {:ok, target}
+
+  defp write_further(scope, %Target{} = target, paths) do
+    {:ok, saved} = target |> Ecto.Changeset.change(further_repositories: paths) |> Repo.update()
+
+    {:ok, _entry} =
+      Audit.record(Repo, scope, :"target.set_further_repositories", saved, %{
+        before: %{further_repositories: target.further_repositories},
+        after: %{further_repositories: paths}
+      })
+
+    {:ok, saved}
+  end
+
+  # The target's owner, the first segment of its path, as the refusals name it.
+  defp owner(path), do: path |> String.split("/") |> hd()
+
+  # The changeset of a refused list: the reason of the path at place `n` of `lines`, in
+  # the words of a page, on `further_repositories`.
+  defp further_error(%Target{path: path} = target, lines, reason, n) do
+    {entry, line} = Enum.at(lines, n - 1)
+    owner = owner(path)
+
+    {message, keys} =
+      case reason do
+        :not_a_path ->
+          {dgettext_noop("errors", "Line %{line} is not a path such as %{owner}/docs."),
+           line: line, owner: owner}
+
+        :too_long ->
+          {dgettext_noop("errors", "Line %{line} is longer than 200 characters."), line: line}
+
+        :other_owner ->
+          {dgettext_noop(
+             "errors",
+             "Line %{line} is not a target of %{owner}; runs of %{target} read only targets of %{owner}."
+           ), line: line, owner: owner, target: path}
+
+        :itself ->
+          {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+
+        :repeats ->
+          first = first_line(lines, entry)
+
+          {dgettext_noop("errors", "Line %{line} repeats line %{first}."),
+           line: line, first: first}
+
+        :too_long_together ->
+          # Not `count:`, which `translate_error/1` takes for a plural.
+          bytes = byte_size(Enum.join([path | Enum.map(lines, &elem(&1, 0))], ","))
+
+          {dgettext_noop(
+             "errors",
+             "Together with %{target}, these come to %{bytes} characters; the most is 256."
+           ), target: path, bytes: bytes}
+      end
+
+    target
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:further_repositories, message, keys)
+    |> Map.put(:action, :update)
+  end
+
+  # The line of the first path of `lines` that is `entry`, compared without case.
+  defp first_line(lines, entry) do
+    lowered = String.downcase(entry)
+    Enum.find_value(lines, fn {path, line} -> if String.downcase(path) == lowered, do: line end)
+  end
 
   ## Pins
 

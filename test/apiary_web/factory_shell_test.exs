@@ -5,7 +5,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's
-  # words for the work item comments and the handover.
+  # words for the work item comments, the handover and the release.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -33,6 +33,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
+    ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController
   ]
@@ -176,7 +177,8 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/settings/remove"}
                ] ++
                  for(
-                   rest <- ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread),
+                   rest <-
+                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread /targets/x1/also-read),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )
@@ -364,7 +366,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers a person's actions on the work items, the assigning of repositories, the Backlog switch and the handover by their words, and no other action of the feature",
+    test "the Activity filter offers a person's actions on the work items, the assigning of repositories, the Backlog switch, the handover, the release and what runs also read by their words, and no other action of the feature",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -382,6 +384,9 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
       assert {"dispatch.handover", "Runs handed over"} in options
+      assert {"dispatch.release", "Runs given back"} in options
+
+      assert {"target.set_further_repositories", "Also read"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
@@ -399,7 +404,9 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment_delete",
             :"collection.assign",
             :"collection.set_backlog",
-            :"dispatch.handover"
+            :"dispatch.handover",
+            :"dispatch.release",
+            :"target.set_further_repositories"
           ],
           do: refute(action in offered, "#{action}")
     end
@@ -602,6 +609,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       refute "work_item.comment" in values
       refute "work_item.comment_delete" in values
       refute "dispatch.handover" in values
+      refute "dispatch.release" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",
@@ -693,6 +701,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       values = for {value, _words} <- action_options(conn, scope), do: value
       refute "work_item.comment" in values
       refute "dispatch.handover" in values
+      refute "dispatch.release" in values
     end
 
     test "⌘K's Go to, a switch of workspace and Organisation settings name none of it, to an owner",

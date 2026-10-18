@@ -99,7 +99,12 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
              |> Jason.decode!()
 
     assert answer["variables"]["QORY_RUN_REPOSITORIES"]["value"] == "acme/shop"
-    assert answer["labels"] == %{"forge" => "forge.example.com", "repository" => "acme/shop"}
+
+    assert answer["labels"] == %{
+             "forge" => "forge.example.com",
+             "repository" => "acme/shop",
+             "repositories" => "acme/shop"
+           }
 
     assert answer["about"] == %{
              "kind" => "explore",
@@ -134,5 +139,36 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
              Repo.get!(Dispatch, dispatch.id)
 
     assert Slots.held(ctx.pool.id) == 0
+  end
+
+  test "the attach answer's labels carry the repository and its further repositories", ctx do
+    :ok =
+      Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
+        %{system: "forge.example.com", path: "acme/shop"}
+      ])
+
+    target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")
+    {:ok, _target} = Apiary.Targets.set_further_repositories(ctx.scope, target, "acme/docs")
+
+    work_item = work_item_fixture(ctx.scope)
+    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 1)
+
+    assert pool_post(ctx, dispatch, "dispatched").status == 204
+    handover = pool_post(ctx, dispatch, "handover")
+    assert %{"run_id" => run_id, "run_key" => run_key} = json_response(handover, 200)
+
+    attached = gateway_attach(ctx, run_id, run_key)
+    assert attached.status == 200
+    assert get_resp_header(attached, "x-qory-run-configuration") == [ctx.digest]
+
+    answer = Jason.decode!(attached.resp_body)
+    assert answer["variables"]["QORY_RUN_REPOSITORIES"]["value"] == "acme/shop,acme/docs"
+
+    assert answer["labels"] == %{
+             "forge" => "forge.example.com",
+             "repository" => "acme/shop",
+             "repositories" => "acme/shop,acme/docs"
+           }
   end
 end

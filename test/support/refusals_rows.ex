@@ -196,6 +196,18 @@ defmodule ApiaryWeb.RefusalsRows do
        "set_backlog", %{}},
       {:"collection.set_backlog", :removed_member, "/:org/:workspace/targets/:target_page",
        "set_backlog", %{}},
+      # What a target's runs also read, on its form page: a member, and another
+      # organisation's owner naming this one's target, do not reach the page; a demoted
+      # admin's page was open.
+      {:"target.set_further_repositories", :member,
+       "/:org/:workspace/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}, answer: :not_found_at_mount},
+      {:"target.set_further_repositories", :demoted_admin,
+       "/:org/:workspace/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}},
+      {:"target.set_further_repositories", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}, answer: :not_found_at_mount},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
        %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.

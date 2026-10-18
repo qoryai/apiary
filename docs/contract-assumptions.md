@@ -424,6 +424,35 @@ dispatches, so two ends of one run take turns, and an outcome that comes as the 
 loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
 staying `lost`.
 
+The release gives a run back (`release.schema.json`), with the starter's `reason` and
+`retry`, in one transaction (`Apiary.Dispatches.Release`). The refusals come in the
+contract's order: `403` `forbidden` for an unknown dispatch, another pool's, or a key the
+action is refused to, one answer, decided before any lock and writing nothing; then a lease
+that lapsed unswept is freed, and that is committed whatever follows; `404` `not_found` for
+a prebuild's dispatch at revision 1; `410` `gone` for a dispatch that ended, of a run that
+ended, or of a run handed over whose outcome or exit came first; `409` `lease_expired` for a
+dispatch not handed over that is stale or past its `lease_until`; and `503` `unavailable`
+last, after which nothing was written. A dispatch handed over is never `409`, whatever its
+`lease_until`: the contract answers a release after the handover as a success, so
+`lease_expired` refuses a dispatch not handed over alone. Else the signed `204`, with no
+body. Before the handover the dispatch ends `released` and its slot is freed: an
+explore run with `retry` waits again with the same `run_id` and `queued_at`, and without it
+ends `released`, its work item left exploring; a prebuild with `retry` waits again with its
+environment record's `queued_ref`, or ends `superseded` while another prebuild of its
+collection and pool waits, and without it ends `released`, the record keeping the last
+build as failed with the reason. After the handover the run ends with its registered run,
+`released`, as above; an explore run with `retry` then queues the next run of its take in,
+with a new `run_id`, only while its work item explores that take in, and queues nothing
+once the take in's runs are used up; a prebuild queues nothing, whatever `retry` says, and
+its record keeps the last build as failed with the reason, its last good build as it was.
+The contract has the reason recorded as a prebuild's failure and says nothing of an explore
+run's: Qory Apiary keeps every release's reason in its audit entry too, and shows it
+nowhere. A
+release holds its run's work item, or a prebuild's environment record, before anything of
+the queue, then locks as the handover does; a work item is never locked after a run of the
+queue, so a release, a close, the handover and the sweep take turns, and of two releases
+at once one acts and the other is `410` `gone`.
+
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
 row lock, so a request both refuse is refused by the limit. A node runs one instance at a
