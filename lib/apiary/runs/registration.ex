@@ -611,17 +611,42 @@ defmodule Apiary.Runs.Registration do
     do: settings(access_key, registration.labels)
 
   defp answer({:gateway, gateway, keys}, access_key, registration, meta, now) do
+    issue_through(
+      gateway,
+      keys,
+      %{
+        run_id: registration.run_id,
+        workspace: access_key.workspace.public_id,
+        node_id: access_key.node.public_id,
+        instance_id: meta[:instance_id]
+      },
+      now,
+      registration.attach_seconds
+    )
+  end
+
+  # issue_through/5 is the run key of a run registered through `gateway`, whose active
+  # keys are `keys`, at most two: the run's `run_id`, `workspace` and `node_id`, by their
+  # public ids, and `instance_id` from `grant`; issued at `now` in whole seconds, its attach
+  # window `attach_window(attach_seconds)` from then. `{:ok, %{run_key: run_key, through:
+  # fields}}`, the run's fields of a run through a gateway, or `{:error, :unavailable}`,
+  # logged, when no run key can be made for the gateway's address. A handover of a run of
+  # the queue makes its run key here too (`Apiary.Dispatches.Handover`).
+  @doc false
+  @spec issue_through(Nodes.Node.t(), [AccessKey.t()], map, DateTime.t(), pos_integer | nil) ::
+          {:ok, %{run_key: String.t(), through: map}} | {:error, :unavailable}
+  def issue_through(%Nodes.Node{} = gateway, keys, %{} = grant, %DateTime{} = now, attach_seconds) do
     issued = DateTime.truncate(now, :second)
-    attach_by = DateTime.add(issued, attach_window(registration.attach_seconds), :second)
+    attach_by = DateTime.add(issued, attach_window(attach_seconds), :second)
 
     grant = %{
-      run_id: registration.run_id,
-      workspace: access_key.workspace.public_id,
-      node_id: access_key.node.public_id,
+      run_id: grant.run_id,
+      workspace: grant.workspace,
+      node_id: grant.node_id,
       gateway: gateway.public_id,
       gateway_url: gateway.url,
       gateway_public_keys: Enum.map(keys, & &1.public_key),
-      instance_id: meta[:instance_id],
+      instance_id: grant.instance_id,
       issued: issued,
       attach_by: attach_by
     }
