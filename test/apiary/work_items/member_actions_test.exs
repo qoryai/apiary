@@ -231,7 +231,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       # The account's email rules now refuse a bidirectional control in the local part,
       # but an account whose address took one before still holds it; the explore input's
       # name refuses it.
-      email = "ann\u202Ex@example.com"
+      email = "ann\u202Ex#{System.unique_integer([:positive])}@example.com"
 
       refute Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{email: email},
                validate_unique: false

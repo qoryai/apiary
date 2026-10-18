@@ -12,7 +12,9 @@ defmodule Apiary.Dispatches.RunEnd do
   #   (`run_ended/1`, from `Apiary.Runs.Projector`). A prebuild's exit ends nothing of the
   #   queue: its one session may be the fetch, whose exit comes before the build
   #   runs, so the exit folds onto the registered run as any exit does, and its outcome
-  #   alone ends it so;
+  #   alone ends it so. A run that is not a prebuild, ended so, has what it gave stored
+  #   on the run of the queue in the same transaction when it is decided already
+  #   (`Apiary.Dispatches.Settle`), and later otherwise;
   # - its starter's release after the handover (`released/2`, from
   #   `Apiary.Dispatches.Release`): `released`. The registered
   #   run reads as cancelled with the reason `released` (`runs.released_at`, which the fold
@@ -84,7 +86,7 @@ defmodule Apiary.Dispatches.RunEnd do
   require Logger
 
   alias Apiary.{Environments, Repo}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Runs.{Event, Fold, Projector, Run}
 
@@ -145,12 +147,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # finish/5 ends `dispatch_run`, locked by `lock/1` in the caller's transaction, with
   # `cause`, when it is still handed over and `run` is its registered run, locked after it,
   # and, for a prebuild its starter's outcome ends, records its last build as failed on
-  # `held`, the record `hold/1` held before (the moduledoc): the ids of the workspaces
-  # whose slots changed, for the caller to tell once its transaction commits
-  # (`Apiary.Dispatches.broadcast/1`); none otherwise.
+  # `held`, the record `hold/1` held before (the moduledoc). Ended `run_ended`, what the
+  # run gave is stored when it is decided already (`Apiary.Dispatches.Settle`). The ids of
+  # the workspaces whose slots changed, and the work item whose run settled, for the
+  # caller to tell once its transaction commits (`Apiary.Dispatches.broadcast/1`); none
+  # otherwise.
   @doc false
   @spec finish(DispatchRun.t() | nil, Run.t(), atom, DateTime.t(), Record.t() | nil) ::
-          [Ecto.UUID.t()]
+          [Ecto.UUID.t() | Settle.told()]
   def finish(
         %DispatchRun{state: :handed_over, id: id} = dispatch_run,
         %Run{dispatch_run_id: id} = run,
@@ -161,10 +165,15 @@ defmodule Apiary.Dispatches.RunEnd do
     in_transaction!()
     changed = end_locked(dispatch_run, cause, now)
     :ok = build_ended(held, dispatch_run, cause, run, now)
-    changed
+    changed ++ settled(dispatch_run, run, cause, now)
   end
 
   def finish(_dispatch_run, %Run{}, _cause, %DateTime{}, _held), do: []
+
+  defp settled(dispatch_run, run, :run_ended, now),
+    do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
+
+  defp settled(_dispatch_run, _run, _cause, _now), do: []
 
   # prebuilt/2 ends the run of the queue `dispatch_run_id`, a prebuild whose starter
   # reported the image it built after its handover, `prebuilt`, at `now`, inside the
@@ -288,9 +297,10 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # run_ended/1 ends the run of the queue of `run`, `run_ended`, once a projection folded
   # its exit, in a separate transaction: the ids of the workspaces whose slots changed,
-  # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # and the work item whose run settled, for the caller to tell
+  # (`Apiary.Dispatches.broadcast/1`).
   @doc false
-  @spec run_ended(Run.t()) :: [Ecto.UUID.t()]
+  @spec run_ended(Run.t()) :: [Ecto.UUID.t() | Settle.told()]
   def run_ended(%Run{id: run_id, dispatch_run_id: dispatch_run_id})
       when is_binary(dispatch_run_id) do
     {:ok, changed} =
@@ -316,10 +326,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # by its `backstop_at` (`lost`), or whose outcome or exit came and whose end was not
   # written (`run_ended`): at most `@batch`, each in a separate transaction. One that
   # raises is logged by its id and the exception's module, and the rest are still ended.
-  # The ids of the workspaces whose slots changed, for the caller to tell
-  # (`Apiary.Dispatches.broadcast/1`).
+  # The ids of the workspaces whose slots changed, and the work items whose run settled,
+  # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
-  @spec lose(DateTime.t()) :: [Ecto.UUID.t()]
+  @spec lose(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
   def lose(%DateTime{} = now) do
     from(d in DispatchRun,
       join: r in Run,

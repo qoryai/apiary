@@ -6,8 +6,8 @@ defmodule Apiary.Sources.Body do
   # `render/3` takes the text, its format, `"markdown"` or `"text"`, and the word for one
   # of its source's items (`ApiaryWeb.SourceComponents.item/1`). Markdown comes back as
   # safe HTML, formatted. Any other format, nil included, comes back as
-  # `{:as_written, text}`, the text unchanged, which a page interpolates, so HEEx escapes
-  # it.
+  # `{:as_written, text}`, the text as an external system's text of several lines is shown
+  # (`Apiary.ExternalText.lines/1`), which a page interpolates, so HEEx escapes it.
   #
   # The HTML is the one place the console shows markup it did not write
   # (`ApiaryWeb.SourceComponents.body/1`, docs/ui.md). It is made so:
@@ -16,6 +16,10 @@ defmodule Apiary.Sources.Body do
   #     and task lists. Raw HTML is not rendered, as markup or as text: its blocks and
   #     inline tags are dropped from the parsed document, and the renderer leaves out any
   #     left.
+  #   * The words of the parsed document, its text, code and an image's alt text, are
+  #     shown as an external system's text of several lines is
+  #     (`Apiary.ExternalText.lines/1`), after a character reference such as `&#x202E;`
+  #     has become its character.
   #   * A link whose URL is not an absolute `https` one with a host and no user name or
   #     password is its text, unlinked: `http`, `javascript:`, `data:`, `vbscript:`,
   #     `mailto:`, a relative or `//` URL, or one that does not parse. By choice, so is
@@ -125,9 +129,11 @@ defmodule Apiary.Sources.Body do
   # `"markdown"`, and `{:as_written, text}` for any other format, nil included, and for a Markdown text
   # `render/3` does not format: longer than `max_length/0`, asking for more table cells
   # than `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or
-  # nil text is `{:as_written, ""}`: there is nothing to format. The text as written is
-  # the text unchanged where it is valid UTF-8; otherwise its invalid bytes are replaced
-  # with U+FFFD, so a page can send it.
+  # nil text is `{:as_written, ""}`: there is nothing to format. Formatted or as written,
+  # the text is shown as an external system's text of several lines is
+  # (`Apiary.ExternalText.lines/1`): its invisible characters dropped, and its control
+  # characters but the tab and the line breaks, and its bytes that are not UTF-8, shown as
+  # U+FFFD.
   @doc false
   @spec render(String.t() | nil, String.t() | nil, String.t()) ::
           Phoenix.HTML.safe() | {:as_written, String.t()}
@@ -147,11 +153,7 @@ defmodule Apiary.Sources.Body do
   def render(body, _format, item) when is_binary(body) and is_binary(item),
     do: as_written(body)
 
-  defp as_written(body) do
-    if String.valid?(body),
-      do: {:as_written, body},
-      else: {:as_written, String.replace_invalid(body)}
-  end
+  defp as_written(body), do: {:as_written, Apiary.ExternalText.lines(body)}
 
   # A code point is at most four bytes, so a longer text is not counted.
   defp formattable?(body) do
@@ -250,7 +252,7 @@ defmodule Apiary.Sources.Body do
   end
 
   defp shown(%MDEx.Image{url: url} = image, in_link, _depth) do
-    alt = plain_text(image.nodes)
+    alt = image.nodes |> plain_text() |> Apiary.ExternalText.lines()
 
     # Text, which the renderer escapes, so the alt text is never markup.
     words =
@@ -266,8 +268,16 @@ defmodule Apiary.Sources.Body do
       else: text
   end
 
+  # A code block's text is its literal, as code's is. It has nodes too, so it is matched
+  # before the clause for nodes, which would leave its literal as written.
+  defp shown(%MDEx.CodeBlock{literal: literal} = block, _in_link, _depth),
+    do: [%{block | literal: Apiary.ExternalText.lines(literal)}]
+
   defp shown(%{nodes: nodes} = node, in_link, depth) when is_list(nodes),
     do: [%{node | nodes: walk(nodes, in_link, depth + 1)}]
+
+  defp shown(%{literal: literal} = node, _in_link, _depth) when is_binary(literal),
+    do: [%{node | literal: Apiary.ExternalText.lines(literal)}]
 
   defp shown(node, _in_link, _depth), do: [node]
 

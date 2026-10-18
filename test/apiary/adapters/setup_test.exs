@@ -18,7 +18,9 @@ defmodule Apiary.Adapters.SetupTest do
   @moduletag needs: :factory
 
   setup do
-    %{adapter: adapter, access_key: key} = settable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: adapter, access_key: key} =
+      settable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     %{admin: instance_admin_scope(), adapter: adapter, key: key}
   end
 
@@ -62,7 +64,7 @@ defmodule Apiary.Adapters.SetupTest do
     assert entry.organisation_id == Edition.instance_organisation_id()
     assert {entry.subject_kind, entry.subject_id} == {"node", adapter.id}
     assert {entry.actor_kind, entry.actor_id} == {:person, admin.user.id}
-    assert entry.details == %{"name" => "Acme tracker", "public_id" => adapter.public_id}
+    assert entry.details == %{"name" => adapter.name, "public_id" => adapter.public_id}
 
     stored = inspect(Map.from_struct(entry))
     refute stored =~ pass

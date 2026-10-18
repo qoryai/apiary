@@ -31,7 +31,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
   setup do
     %{scope: scope, user: user} = sign_up_fixture()
     other_workspace = workspace_fixture(scope.organisation, "Second")
-    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
 
     %{
@@ -281,7 +281,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
       assert Collections.set_collection_backlog(stranger, ctx.connection, docs.id, false) ==
                {:error, :not_found}
 
-      another = connectable_adapter_fixture(%{name: "Acme board"})
+      another = connectable_adapter_fixture(%{name: unique_adapter_name("Acme board")})
       {other, _nonce} = connection_fixture(ctx.scope, another.adapter, :connected)
 
       for {connection, id} <- [

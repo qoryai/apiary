@@ -170,7 +170,10 @@ defmodule ApiaryWeb.ActivityLive do
               </:col>
               <:col :let={row} label={gettext("Subject")}>
                 <span id={"entry-#{row.id}-subject"} class="flex min-w-0 items-baseline gap-2">
-                  <span class="q-cut shrink-[1000] max-w-[48ch]" title={row.subject.text}>
+                  <span
+                    class="q-cut shrink-[1000] max-w-[48ch]"
+                    title={Apiary.ExternalText.line(row.subject.text)}
+                  >
                     <.link :if={row.subject.href} navigate={row.subject.href} class="hover:underline">
                       <.subject_text subject={row.subject} />
                     </.link>
@@ -235,13 +238,13 @@ defmodule ApiaryWeb.ActivityLive do
 
   defp subject_text(%{subject: %{mono: true}} = assigns) do
     ~H"""
-    <span class="font-mono text-[12px]">{@subject.text}</span>
+    <.external_text text={@subject.text} class="font-mono text-[12px]" />
     """
   end
 
   defp subject_text(assigns) do
     ~H"""
-    <span>{@subject.text}</span>
+    <.external_text text={@subject.text} />
     """
   end
 

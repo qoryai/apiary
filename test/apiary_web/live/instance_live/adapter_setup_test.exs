@@ -20,7 +20,10 @@ defmodule ApiaryWeb.InstanceLive.AdapterSetupTest do
 
   setup do
     admin = instance_admin_scope()
-    %{adapter: adapter, access_key: key} = settable_adapter_fixture(%{name: "Acme tracker"})
+
+    %{adapter: adapter, access_key: key} =
+      settable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     %{admin: admin, adapter: adapter, key: key, conn: log_in_user(build_conn(), admin.user)}
   end
 
@@ -75,7 +78,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterSetupTest do
 
   test "the list offers Set up on the row of an adapter that can be set up, and no other",
        %{conn: conn, adapter: adapter} do
-    other = adapter_fixture(%{name: "Other tracker"})
+    other = adapter_fixture(%{name: unique_adapter_name("Other tracker")})
     {:ok, lv, _html} = live(conn, ~p"/instance/adapters")
 
     id = "#adapter-#{adapter.public_id}-setup"

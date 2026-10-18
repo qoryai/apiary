@@ -74,7 +74,7 @@ defmodule ApiaryWeb.CoreComponentsTest do
   end
 
   describe "an input with more than one error" do
-    test "shows each, with an id of its own, and is described by all of them" do
+    test "shows each, with a separate id, and is described by all of them" do
       form =
         Phoenix.Component.to_form(%{"email" => "dana"},
           as: :user,
@@ -204,6 +204,86 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "a Filter menu's label" do
+    test "is Filter unless given, on the button and as the menu's name, in both kinds" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.filter_menu id="runs-filter">
+          <:section key="state" label="State" icon="hero-check-circle">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(runs-filter network-filter) do
+        assert doc |> LazyHTML.query("##{id}-button") |> LazyHTML.text() |> String.trim() ==
+                 "Filter"
+      end
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#runs-filter-panel"), "aria-label") ==
+               ["Filter"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#network-filter [role=menu]"), "aria-label") ==
+               ["Filter"]
+    end
+
+    test "is what the caller gives, on the button and as the menu's name, in both kinds" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.filter_menu id="runs-filter" label="Workspace" count={1}>
+          <:section key="state" label="State" icon="hero-check-circle">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter" label="Workspace">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(runs-filter network-filter) do
+        text = doc |> LazyHTML.query("##{id}-button") |> LazyHTML.text()
+        assert text =~ "Workspace"
+        refute text =~ "Filter"
+      end
+
+      assert doc |> LazyHTML.query("#runs-filter-button .q-listmenu-n") |> LazyHTML.text() == "1"
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#runs-filter-panel"), "aria-label") ==
+               ["Workspace"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#network-filter [role=menu]"), "aria-label") ==
+               ["Workspace"]
+    end
+  end
+
+  describe "a list's bar with the Assign to workspace button" do
+    # Opt-in by a class on the bar: no other bar's search changes, and a phone keeps the
+    # search on a separate line.
+    test "narrows its search to 260px from 768px; the assign menu's search fills its item, up to 260px" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      assert css =~
+               ~r/@media \(min-width: 768px\) \{\s*\.q-bar\.q-int-assignbar > \.q-find \{\s*width: min\(260px, 100%\);\s*\}\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-int-assign li > form \{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-int-assign \.q-filter-search \{\s*width: 100%;\s*max-width: 260px;\s*\}/
+    end
+  end
+
   describe "a page's header" do
     test "has a title that takes focus after a navigation, without a ring" do
       assigns = %{}
@@ -266,6 +346,75 @@ defmodule ApiaryWeb.CoreComponentsTest do
              ]
 
       assert doc |> LazyHTML.query("th .sr-only") |> LazyHTML.text() == "Pinned"
+    end
+
+    # A column's header cell is its label as text, beside a screen reader's header; a
+    # header slot changes nothing for a table that gives none.
+    test "heads its columns with their labels when no header slot is given" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="keys" label="Access keys" rows={@rows}>
+          <:col :let={row} label="Name" kind="title">{row.name}</:col>
+          <:col label="Runs" kind="num" from="sm" class="w-24">3</:col>
+          <:col sr_label="Pinned"></:col>
+          <:action>x</:action>
+        </CoreComponents.table>
+        """)
+
+      [thead] = Regex.run(~r/<thead>.*<\/thead>/s, html)
+
+      assert thead <> "\n" == ~S"""
+             <thead>
+                   <tr>
+                     <th scope="col" class="">
+                       Name
+                     </th><th scope="col" class="q-num q-from-sm w-24">
+                       Runs
+                     </th><th scope="col" class="">
+                       <span class="sr-only">Pinned</span>
+                     </th>
+                     <th scope="col" class="w-px">
+                       <span class="sr-only">Actions</span>
+                     </th>
+                   </tr>
+                 </thead>
+             """
+    end
+
+    test "gives a column's header cell the header slot that names its key, in place of its label" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}, %{id: 2, name: "build-02"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="keys" label="Access keys" rows={@rows}>
+          <:header col="pick">
+            <input id="keys-all" type="checkbox" aria-label="Select every key" />
+          </:header>
+          <:col :let={row} key="pick" label="Unused" class="q-int-cb">
+            <input type="checkbox" aria-label={row.name} />
+          </:col>
+          <:col :let={row} key="name" label="Name" kind="title">{row.name}</:col>
+        </CoreComponents.table>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      [pick, name] = doc |> LazyHTML.query("thead th") |> Enum.to_list()
+
+      assert pick |> LazyHTML.query("input#keys-all[type=checkbox]") |> Enum.count() == 1
+      assert LazyHTML.attribute(pick, "class") == ["q-int-cb"]
+      refute LazyHTML.text(pick) =~ "Unused"
+
+      # A column whose key no header slot names keeps its label.
+      assert name |> LazyHTML.text() |> String.trim() == "Name"
+
+      # The rows keep their cells: a checkbox each, then the name.
+      assert doc |> LazyHTML.query("tbody input[type=checkbox]") |> Enum.count() == 2
+
+      assert doc
+             |> LazyHTML.query("tbody td.q-td-title")
+             |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim())) == ["build-01", "build-02"]
     end
 
     # A table wider than its box scrolls sideways: the confirmation is one cell across the

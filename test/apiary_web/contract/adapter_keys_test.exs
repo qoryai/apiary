@@ -31,7 +31,12 @@ defmodule ApiaryWeb.Contract.AdapterKeysTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, admin: instance_admin_scope(), adapter: adapter_fixture(name: "Acme tracker")}
+
+    %{
+      scope: scope,
+      admin: instance_admin_scope(),
+      adapter: adapter_fixture(name: unique_adapter_name("Acme tracker"))
+    }
   end
 
   defp enrol(code, pair) do

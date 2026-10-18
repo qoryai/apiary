@@ -3,7 +3,8 @@ defmodule Apiary.Dispatches.PrebuiltTest do
   # (`Apiary.Dispatches.Prebuilt`): each refusal in the contract's order, the lapse judged
   # and committed, nothing written on any refusal; on success the build recorded on the
   # claiming pool's record with the target the registered run was handed over for, the
-  # reported ref as it is, the last failure cleared and `retired_at` kept, the run ended as
+  # reported ref as it is, the last failure cleared and the record kept retired by a
+  # prebuild that took its ref before the retirement, the run ended as
   # a release after its handover with retry false ends it, nothing queued; a second
   # prebuilt and one after the run's outcome or exit, gone; a failure that writes nothing;
   # the one audit entry, about the registered run; and a prebuild queued before the one
@@ -202,7 +203,8 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert prebuilds(collection) == [queued.id]
     end
 
-    test "after the ref went absent, stores the build and keeps it retired", ctx do
+    test "after the ref went absent, stores the build of a prebuild that took its ref before and keeps it retired",
+         ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
 
       {1, _rows} =

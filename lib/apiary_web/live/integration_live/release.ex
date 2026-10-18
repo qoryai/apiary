@@ -144,18 +144,19 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   defp found(assigns) do
     ~H"""
-    <p :if={@description.about} id="release-about" class="max-w-[72ch] text-[13.5px]/5">
-      {@description.about}
+    <p :if={@description.about} id="release-about" dir="auto" class="max-w-[72ch] text-[13.5px]/5">
+      {Apiary.ExternalText.lines(@description.about)}
     </p>
 
     <SettingsComponents.part id="release-found" title={gettext("Found in its description.json")}>
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
         <dt class="text-faint">{gettext("Name")}</dt>
         <dd>
-          {@description.title} <span class="q-mono text-muted">({@description.name})</span>
+          <.external_text text={@description.title} />
+          <span class="q-mono text-muted">(<.external_text text={@description.name} />)</span>
         </dd>
         <dt class="text-faint">{gettext("Version")}</dt>
-        <dd class="q-mono">{@description.program_version}</dd>
+        <dd><.external_text text={@description.program_version} class="q-mono" /></dd>
         <dt :if={@description.domains} class="text-faint">{gettext("Domains")}</dt>
         <dd :if={@description.domains} class="q-mono">{Enum.join(@description.domains, ", ")}</dd>
         <dt class="text-faint">{gettext("Released on")}</dt>
@@ -166,7 +167,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd :if={@description.secrets != []}>
           <span :for={secret <- @description.secrets} class="block">
             <span class="q-mono">{secret.name}</span>
-            <span class="text-muted">· {secret.title}</span>
+            <span class="text-muted">· <.external_text text={secret.title} /></span>
           </span>
         </dd>
         <dd :if={@description.secrets == []} class="text-muted">{gettext("None")}</dd>
@@ -250,7 +251,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
                 id={"release-setting-#{setting.name}"}
                 name={"integration[settings][#{setting.name}]"}
                 type="checkbox"
-                label={setting.title}
+                label={Apiary.ExternalText.line(setting.title)}
                 value={@form.params["settings"][setting.name]}
                 aria-describedby={setting.description && "release-setting-#{setting.name}-hint"}
               />
@@ -259,15 +260,15 @@ defmodule ApiaryWeb.IntegrationLive.Release do
                 id={"release-setting-#{setting.name}-hint"}
                 class="text-[12.5px]/[18px] text-muted"
               >
-                {setting.description}
+                <.external_text text={setting.description} />
               </p>
             </div>
             <.input
               :if={setting.type != :boolean}
               id={"release-setting-#{setting.name}"}
               name={"integration[settings][#{setting.name}]"}
-              label={setting.title}
-              hint={setting.description}
+              label={Apiary.ExternalText.line(setting.title)}
+              hint={Apiary.ExternalText.line(setting.description)}
               value={@form.params["settings"][setting.name]}
               optional
               autocomplete="off"
@@ -298,7 +299,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             cancel_by="navigate"
           >
             <.button type="submit" variant="primary" loading_text={gettext("Adding")}>
-              {gettext("Add %{title}", title: @description.title)}
+              {gettext("Add %{title}", title: Apiary.ExternalText.line(@description.title))}
             </.button>
             <:note :if={@description.secrets != []}>
               {gettext("Qory Apiary links no stored secret to it.")}
@@ -310,7 +311,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
     """
   end
 
-  defp title(%{state: "ready"}, %{title: title}), do: title
+  defp title(%{state: "ready"}, %{title: title}), do: Apiary.ExternalText.line(title)
   defp title(release, _description), do: release.source
 
   defp fetching, do: gettext("Fetching the release's description.json and checksums.txt…")
