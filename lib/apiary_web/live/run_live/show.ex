@@ -1100,8 +1100,10 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # Which image the rail shows under the Wall, and what it says of it. Only a run of the
-  # workspace's queue, which the `factory` feature makes, is given an image or starts in
-  # its policy's: where the reader is not shown the feature, every run shows the image it
+  # workspace's queue, which the `factory` feature makes, is given an image: where the
+  # reader is not shown the feature, every run shows the image it reported, with no line
+  # under it. Any attached run, one a node registered itself included, starts in its
+  # policy's image where its `security_policy` sets one; such a run shows the image it
   # reported, with no line under it. `:configured` is the image Qory gave the run at its
   # attach, which it started in whatever it reported; `:pool_default`, a run of the queue
   # given none and not started in its policy's image, which starts in its pool's default

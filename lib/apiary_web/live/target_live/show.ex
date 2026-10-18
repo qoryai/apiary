@@ -32,26 +32,27 @@ defmodule ApiaryWeb.TargetLive.Show do
   inserted under the reader, and comes in when asked.
   """
 
-  # With the `factory` feature, which the documentation leaves out, Overview ends with three
-  # more parts. Where the target's collection is assigned to the workspace, and it and its
-  # adapter have items, the Backlog card: one switch, whether its tickets come into the
-  # workspace's Backlog, named with its source's word for them, which owners and admins
-  # turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
+  # With the `factory` feature, which the documentation leaves out, Overview ends with
+  # three more parts. Where the target's collection is assigned to the workspace, and it
+  # and its adapter have items, the Backlog card: one switch, whether its tickets come
+  # into the workspace's Backlog, named with its source's word for them, which owners and
+  # admins turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
   # disabled, with who may change it. After it, where the reader may read the workspace's
-  # work items, the Environment card (Apiary.Environments.section/2): for each node pool of
-  # the workspace, the image a run of the target on the pool starts in, as
+  # work items, the Environment card (Apiary.Environments.section/2): for each node pool
+  # of the workspace, the image a run of the target on the pool starts in, as
   # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
   # and the whole reference its title, when it was built and from which commit, or that
-  # runs use the pool's default image and why, or, where the workspace's policy sets an
-  # image, that runs use the image set in the policy; whether a build runs or waits; and
-  # the last build's failure, never the reason a starter gave. Where no pool serves the
-  # workspace, or the target names no environment, one line says so instead. Its Rebuild
-  # queues a build for each pool (Apiary.Environments.rebuild/2), for whoever may ask for
-  # one (`target.rebuild_environment`), where the target names an environment and a pool
-  # serves the workspace; a reader who may not sees no button. After it, under the same
-  # condition, what its runs also read (`Apiary.Targets.further_repositories/1`), one path
-  # a line, with Change, for those who may change it (`target.set_further_repositories`),
-  # which leads to its form page (`ApiaryWeb.TargetLive.FurtherRepositories`).
+  # runs use the pool's default image and why, or, where the policy in force for the
+  # target sets an image, that runs use the image set in the policy; whether a build runs
+  # or waits; and the last build's failure, never the reason a starter gave. Where no pool
+  # serves the workspace, or the target names no environment, one line says so instead.
+  # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
+  # may ask for one (`target.rebuild_environment`), where the target names an environment
+  # and a pool serves the workspace; a reader who may not sees no button. After it, under
+  # the same condition, what its runs also read (`Apiary.Targets.further_repositories/1`),
+  # one path a line, with Change, for those who may change it
+  # (`target.set_further_repositories`), which leads to its form page
+  # (`ApiaryWeb.TargetLive.FurtherRepositories`).
 
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
