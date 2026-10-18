@@ -1441,11 +1441,26 @@ defmodule ApiaryWeb.CoreComponents do
   `inline_confirm/1`, in one cell across the row; where the table is wider than its box,
   the confirmation stays in the box's view however far the table is scrolled sideways.
 
+  A column's header cell holds its `label`, as text. Where it holds a control instead, as
+  a leading column of checkboxes holds one that selects every row, the column takes a
+  `key` and a `header` slot with that key as its `col` gives the cell's content in place
+  of the label.
+
   ## Examples
 
       <.table id="users" label="Users" rows={@users}>
         <:col :let={user} label="Name" kind="title">{user.name}</:col>
         <:col :let={user} label="Joined" from="sm">{Format.date(user.inserted_at)}</:col>
+      </.table>
+
+      <.table id="keys" label="Access keys" rows={@keys}>
+        <:header col="pick">
+          <input type="checkbox" aria-label="Select every key" phx-click="select_all" />
+        </:header>
+        <:col :let={key} key="pick">
+          <input type="checkbox" aria-label={key.name} phx-click="select" phx-value-id={key.id} />
+        </:col>
+        <:col :let={key} label="Name" kind="title">{key.name}</:col>
       </.table>
   """
   attr :id, :string, required: true
@@ -1466,6 +1481,12 @@ defmodule ApiaryWeb.CoreComponents do
     attr :class, :string
     attr :kind, :string, doc: "title, hot, faint or num"
     attr :from, :string, doc: "sm, md or lg: the table width from which the column shows"
+    attr :key, :string, doc: "the name a `header` slot gives the column by"
+  end
+
+  slot :header,
+    doc: "the content of a column's header cell in place of its label, as a checkbox" do
+    attr :col, :string, required: true, doc: "the `key` of the column"
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -1499,7 +1520,9 @@ defmodule ApiaryWeb.CoreComponents do
               scope="col"
               class={[head_class(col), col[:class]]}
             >
-              {col[:label]}<span :if={col[:sr_label]} class="sr-only">{col[:sr_label]}</span>
+              {if header = col_header(@header, col),
+                do: render_slot(header),
+                else: col[:label]}<span :if={col[:sr_label]} class="sr-only">{col[:sr_label]}</span>
             </th>
             <th :if={@action != []} scope="col" class="w-px">
               <span class="sr-only">{gettext("Actions")}</span>
@@ -1546,6 +1569,11 @@ defmodule ApiaryWeb.CoreComponents do
     </div>
     """
   end
+
+  defp col_header(headers, %{key: key}) when is_binary(key),
+    do: Enum.find(headers, &(&1.col == key))
+
+  defp col_header(_headers, _col), do: nil
 
   defp confirming?(nil, _row_id, _row), do: false
   defp confirming?(_id, nil, _row), do: false
@@ -2003,9 +2031,16 @@ defmodule ApiaryWeb.CoreComponents do
   the browser (`Phoenix.LiveView.JS`), so a section opens at once and stays open while
   the page patches. A section marked `rail` is one the page's rail does from 1280 px, and
   shows only below it.
+
+  `label` is what the button says and what names the menu; it is Filter unless given.
   """
   attr :id, :string, required: true
   attr :count, :integer, default: 0
+
+  attr :label, :string,
+    default: nil,
+    doc: "what the button says, and the menu's name; Filter unless given"
+
   slot :inner_block
 
   slot :section do
@@ -2037,13 +2072,13 @@ defmodule ApiaryWeb.CoreComponents do
           |> JS.hide(to: "##{@id}-panel .q-fm-section")
         }
       >
-        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{filter_label(@label)}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <div
         id={"#{@id}-panel"}
         role="group"
-        aria-label={gettext("Filter")}
+        aria-label={filter_label(@label)}
         class="dropdown-content q-fm-panel"
         tabindex="-1"
       >
@@ -2122,13 +2157,13 @@ defmodule ApiaryWeb.CoreComponents do
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{filter_label(@label)}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <ul
         class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
         role="menu"
-        aria-label={gettext("Filter")}
+        aria-label={filter_label(@label)}
         popover="manual"
         phx-mounted={JS.ignore_attributes(["style"])}
       >
@@ -2137,6 +2172,9 @@ defmodule ApiaryWeb.CoreComponents do
     </div>
     """
   end
+
+  defp filter_label(nil), do: gettext("Filter")
+  defp filter_label(label), do: label
 
   @doc """
   A list's Sort: the orders it can be read in, as `menu_item/1`s with `checked`; the
