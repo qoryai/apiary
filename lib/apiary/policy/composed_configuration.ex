@@ -5,16 +5,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
   another. Immutable, like the configuration it is composed from.
 
   `shape/4` decides, for the run configuration in force (its bytes, or nil where the
-  workspace serves none), the image a run is given, whether the run is a prebuild, and
-  whether the image is already fixed, as it is for every answer after a run's attach
+  workspace serves none), the image a run is given, whether the run must build on its
+  pool's default image, and whether the image is already fixed, as it is for every answer after a run's attach
   (`fixed?`). Before the attach, the image is the one the run is given at the top level
   (`image`, nil for none). Once it is fixed, it is what the run started in
   (`started/1`): the image it was given at the top level, `{:policy, image}` for the
   image its policy named, `:none` for none, or nil for a run whose start was not kept.
 
-    * a document whose `security_policy` names an `image`, for a prebuild, is composed
-      with that member left out and nothing else changed, so a prebuild always builds on
-      the pool's default image;
+    * a document whose `security_policy` names an `image`, for a run that must build on
+      its pool's default image, is composed with that member left out and nothing else
+      changed, so such a run always builds on the pool's default image;
     * for a run whose image is fixed (its reloads), the gateway takes a reload only when
       it names the image the start named at the top level, or none as the start did, and
       selects the image the run started in. So a run given an image at the top level is
@@ -46,6 +46,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   configuration was stored under, and prefer the one in force (`policy_digests/2`). A row
   goes with its run configuration, and with its workspace.
   """
+
+  # With the `factory` feature, which the documentation leaves out, a run that must build
+  # on its pool's default image is a prebuild: a run of a workspace's queue for the step
+  # `prebuild` (`prebuild?/1`). No other run is one.
   use Ecto.Schema
 
   import Ecto.Query, only: [from: 2]
@@ -84,8 +88,9 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @doc """
   What a run is given for the run configuration `document` in force (its bytes, or nil
   for none), the `image` it is given, or what it started in once fixed (`t:image/0`, or a
-  function that reads it, asked only when the image is used) and whether it is a prebuild (a boolean, or a function that reads it,
-  asked only when it matters), and whether the image is fixed for the run, as after its
+  function that reads it, asked only when the image is used) and whether the run must
+  build on its pool's default image (a boolean, or a function that reads it, asked only
+  when it matters), and whether the image is fixed for the run, as after its
   attach (`fixed?`, false unless given): `:as_is`, the document as stored, or
   `{:composed, bytes, image}`, with the image the bytes name at the top level, nil for
   none. See the moduledoc.
@@ -329,9 +334,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @doc """
   The digest a run is answered on a reload under the run configuration `configuration`:
   the document composed for it as `shape/4` decides, with what the run started in
-  (`started/1`), as a prebuild or not, its image fixed; the digest `configuration` is
-  stored under where nothing is composed. A run that is nil is one the caller does not
-  know: no image, no prebuild. A read, nothing stored.
+  (`started/1`), whether it must build on its pool's default image or not, its image
+  fixed; the digest `configuration` is stored under where nothing is composed. A run that
+  is nil is one the caller does not know: no image, and no build on the default image. A
+  read, nothing stored.
   """
   @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t()
   def run_digest(%RunConfiguration{document: document, digest: digest}, run) do
@@ -339,10 +345,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
       digest
   end
 
-  @doc """
-  Whether `run` is a run of a workspace's queue for the step `prebuild`: one read, and none
-  for a run of no queue.
-  """
+  # Whether `run` is a run of a workspace's queue for the step `prebuild`: one read, and
+  # none for a run of no queue. Of the `factory` feature, which the documentation leaves
+  # out.
+  @doc false
   @spec prebuild?(Run.t()) :: boolean
   def prebuild?(%Run{dispatch_run_id: nil}), do: false
 

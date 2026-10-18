@@ -193,9 +193,6 @@ defmodule ApiaryWeb.RunComponents do
   A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
   the refusal's code as its reason, reads the same.
 
-  A run its starter released after a workspace's queue handed it over, with no outcome
-  given, reads "the starter released it".
-
   Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
   value that is no code.
   """
@@ -225,7 +222,9 @@ defmodule ApiaryWeb.RunComponents do
 
   # A run its starter released after a workspace's queue handed it over, which Qory
   # recorded as cancelled with the reason `released`, no outcome given
-  # (`Apiary.Runs.Fold.settle/1`). An outcome after it decides the state and the reason.
+  # (`Apiary.Runs.Fold.settle/1`), reads "the starter released it". An outcome after it
+  # decides the state and the reason. Of the `factory` feature, which the documentation
+  # leaves out.
   defp given_words(%{reason: "released", released_at: %DateTime{}, outcome_state: nil}),
     do: gettext("the starter released it")
 
