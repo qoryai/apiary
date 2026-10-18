@@ -254,6 +254,23 @@ defmodule Apiary.ConnectionsTest do
   end
 
   describe "a service" do
+    test "its name is refused with a control character or a bidirectional control",
+         %{scope: scope} do
+      for cp <- [0x1B, 0x9F, 0x202D, 0x2066, 0x200F] do
+        name = "Sentry#{<<cp::utf8>>}EU"
+
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Connections.create_service(scope, %{service: "sentry", name: name})
+
+        assert errors_on(changeset) == %{name: ["must not contain control characters"]}
+      end
+
+      name = "Sentry 👩#{<<0x200D::utf8>>}💻"
+
+      assert {:ok, %Connection{name: ^name}} =
+               Connections.create_service(scope, %{service: "sentry", name: name})
+    end
+
     test "names a built-in definition and holds no host or auth of its own", %{scope: scope} do
       assert {:ok,
               %Connection{kind: "service", name: "Sentry", service_builtin: "sentry"} = connection} =

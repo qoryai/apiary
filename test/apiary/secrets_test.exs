@@ -249,6 +249,15 @@ defmodule Apiary.SecretsTest do
       assert changeset.errors[:note]
       assert {:error, changeset} = Secrets.update_secret(scope, secret, %{note: "two\nlines"})
       assert changeset.errors[:note]
+
+      for cp <- [0x202E, 0x2068, 0x061C, 0x9B] do
+        note = "Opens#{<<cp::utf8>>} pull requests"
+        assert {:error, changeset} = Secrets.update_secret(scope, secret, %{note: note})
+        assert errors_on(changeset) == %{note: ["must not contain control characters"]}
+      end
+
+      note = "Opens pull requests 👩#{<<0x200D::utf8>>}💻"
+      assert {:ok, %{note: ^note}} = Secrets.update_secret(scope, secret, %{note: note})
     end
   end
 

@@ -449,7 +449,17 @@ defmodule Apiary.MailSettingsTest do
             {"smtp_port", "70000", "must be less than or equal to 65535"},
             {"smtp_tls", "sometimes", "is invalid"},
             {"mail_from", "qory at example.com", "must have the @ sign and no spaces"},
-            {"mail_from", "Qory <qory@example.com>", "must have the @ sign and no spaces"}
+            {"mail_from", "Qory <qory@example.com>", "must have the @ sign and no spaces"},
+            {"mail_from", "qory\"@example.com", "must have the @ sign and no spaces"},
+            {"mail_from", "qory#{<<0xA0::utf8>>}@example.com",
+             "must have the @ sign and no spaces"},
+            {"mail_from", "qo\0ry@example.com", "must not contain control characters"},
+            {"mail_from", "qo\ary@example.com", "must not contain control characters"},
+            {"mail_from", "qo#{<<0x202E::utf8>>}ry@example.com",
+             "must not contain control characters"},
+            {"mail_from", "qo#{<<0x200D::utf8>>}ry@example.com",
+             "must not contain control characters"},
+            {"mail_from", <<0xFF>> <> "qory@example.com", "must be UTF-8 text"}
           ] do
         assert {:error, changeset} =
                  Mail.save_settings(scope, Map.put(@attrs, field, value), &url/1)

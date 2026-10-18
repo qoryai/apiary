@@ -75,9 +75,20 @@ defmodule Apiary.Mail.Settings do
     |> validate_length(:smtp_username, max: 320, count: :bytes)
     |> validate_length(:smtp_password, max: 1_000)
     |> validate_length(:mail_from, max: 160, count: :bytes)
-    |> validate_format(:mail_from, ~r/\A[^@,;<>"\s]+@[^@,;<>"\s]+\z/,
-      message: dgettext_noop("errors", "must have the @ sign and no spaces")
-    )
+    |> validate_mail_from()
+  end
+
+  # An account's address checks (`Apiary.Accounts.User.validate_address/2`) and, where the
+  # address has no error yet, no `<`, `>` or `"`, which mean something else in a From header.
+  defp validate_mail_from(changeset) do
+    changeset = Apiary.Accounts.User.validate_address(changeset, :mail_from)
+
+    if Keyword.has_key?(changeset.errors, :mail_from),
+      do: changeset,
+      else:
+        validate_format(changeset, :mail_from, ~r/\A[^<>"]+\z/,
+          message: dgettext_noop("errors", "must have the @ sign and no spaces")
+        )
   end
 
   # A username logs in with the password: STARTTLS that is never asked for, or that goes
