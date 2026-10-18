@@ -241,8 +241,7 @@ defmodule ApiaryWeb.JumpController do
         for run <- Runs.search_runs(scope, text, @per_group) do
           item(
             run_label(run),
-            Apiary.ExternalText.line(run.target_path) ||
-              ApiaryWeb.RunComponents.state_label(run.state),
+            run_detail(run),
             ~p"/#{scope.organisation}/#{workspace}/runs/#{run.public_id}",
             "hero-play-circle"
           )
@@ -255,6 +254,14 @@ defmodule ApiaryWeb.JumpController do
   end
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
+
+  # Where a run ran, else its state's word: a path with nothing left to show is no path.
+  defp run_detail(run) do
+    case Apiary.ExternalText.line(run.target_path) do
+      path when path in [nil, ""] -> ApiaryWeb.RunComponents.state_label(run.state)
+      path -> path
+    end
+  end
 
   defp run_label(run) do
     short_id = ApiaryWeb.RunComponents.short_id(run.public_id)

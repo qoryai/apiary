@@ -253,14 +253,14 @@ defmodule ApiaryWeb.IntegrationLive.Release do
                 type="checkbox"
                 label={Apiary.ExternalText.line(setting.title)}
                 value={@form.params["settings"][setting.name]}
-                aria-describedby={setting.description && "release-setting-#{setting.name}-hint"}
+                aria-describedby={Common.hint(setting) && "release-setting-#{setting.name}-hint"}
               />
               <p
-                :if={setting.description}
+                :if={Common.hint(setting)}
                 id={"release-setting-#{setting.name}-hint"}
                 class="text-[12.5px]/[18px] text-muted"
               >
-                <.external_text text={setting.description} />
+                <.external_text text={Common.hint(setting)} />
               </p>
             </div>
             <.input
@@ -268,7 +268,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               id={"release-setting-#{setting.name}"}
               name={"integration[settings][#{setting.name}]"}
               label={Apiary.ExternalText.line(setting.title)}
-              hint={Apiary.ExternalText.line(setting.description)}
+              hint={Common.hint(setting)}
               value={@form.params["settings"][setting.name]}
               optional
               autocomplete="off"

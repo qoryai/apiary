@@ -55,4 +55,16 @@ defmodule ApiaryWeb.OverviewComponentsTest do
     assert OverviewComponents.row_title(run) == "claude -p fix it"
     assert OverviewComponents.row_title(%{run | command: nil}) == "rn_7f3e9b20"
   end
+
+  test "a command line with nothing left to show is none: the short id" do
+    run = %{
+      public_id: @public_id,
+      about_title: nil,
+      labels: %{},
+      command: "#{<<0x202E::utf8>>}#{<<0x200B::utf8>>}",
+      args: []
+    }
+
+    assert OverviewComponents.row_title(run) == "rn_7f3e9b20"
+  end
 end
