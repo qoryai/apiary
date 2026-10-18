@@ -441,6 +441,18 @@ defmodule Apiary.OrganisationsTest do
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
       end
 
+      # A workspace's name refuses a bidirectional control and a C1 control as well, and
+      # keeps a join control (`Apiary.Names`).
+      for cp <- [0x202E, 0x2067, 0x200F, 0x85] do
+        name = "Build#{<<cp::utf8>>}ing"
+        assert {:error, changeset} = Organisations.update_workspace(owner_scope, %{name: name})
+        assert %{name: ["must not contain control characters"]} = errors_on(changeset)
+      end
+
+      for name <- ["می#{<<0x200C::utf8>>}خواهم", "👩#{<<0x200D::utf8>>}💻 builds"] do
+        assert {:ok, _} = Organisations.update_workspace(owner_scope, %{name: name})
+      end
+
       assert {:ok, %Organisation{name: "Übergrößen & Söhne"}} =
                Organisations.update_organisation(owner_scope, %{name: "Übergrößen & Söhne"})
 

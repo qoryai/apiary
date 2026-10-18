@@ -32,7 +32,8 @@ defmodule Apiary.Dispatches do
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
   # the collection's, held for that pool, for the collection's `environment_ref`. At most
   # one waits per collection and pool: while one waits, it is that run, its
-  # `environment_ref` set to the newer one and its place in the queue kept; a claimed or
+  # `environment_ref` set to the newer one, with when it took it (`environment_ref_at`),
+  # and its place in the queue kept; a claimed or
   # handed-over one is left as it is. It has no work item and counts toward no take in;
   # like any run, it takes a slot of the pool when it is claimed. `Apiary.Environments`
   # decides when one is due, and writes it under the lock of the pool's environment record
@@ -108,7 +109,7 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `handover/3` and `release/3`
+  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3` and `prebuilt/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the job for a dispatch its pool claimed, and
@@ -126,6 +127,12 @@ defmodule Apiary.Dispatches do
   # dispatch ends, `released`, and its run waits again or ends; after it the run ends with
   # its registered run, `released`, and an explore run with retry queues the next run of
   # its take in (`queue_next/2`).
+  #
+  # `prebuilt(access_key, dispatch_id, meta)` records the image the job for a prebuild
+  # built, on the environment record of its collection and the pool that claimed it, and
+  # ends its run of the queue and its dispatch, `prebuilt`, the registered run left to its
+  # outcome, in one transaction, or refuses in the contract's order
+  # (`Apiary.Dispatches.Prebuilt`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -163,7 +170,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Release, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Prebuilt, Release, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -302,8 +309,9 @@ defmodule Apiary.Dispatches do
   end
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
-  # node pool `pool` of the collection's workspace, for `environment_ref`, or sets it on
-  # the one that waits, inside the caller's transaction (the moduledoc).
+  # node pool `pool` of the collection's workspace, for `environment_ref`, or sets it, and
+  # when it was taken, on the one that waits, inside the caller's transaction (the
+  # moduledoc).
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -333,7 +341,7 @@ defmodule Apiary.Dispatches do
         queued_at: now()
       })
       |> Repo.insert(
-        on_conflict: {:replace, [:environment_ref, :updated_at]},
+        on_conflict: {:replace, [:environment_ref, :environment_ref_at, :updated_at]},
         conflict_target: {:unsafe_fragment, @waiting_prebuild},
         returning: true
       )
@@ -778,6 +786,14 @@ defmodule Apiary.Dispatches do
   def release(%AccessKey{} = access_key, dispatch_id, meta),
     do: Release.release(access_key, dispatch_id, meta)
 
+  # prebuilt/3 records the image the job for the prebuild of the dispatch `dispatch_id`
+  # built, and ends its run (`Apiary.Dispatches.Prebuilt.prebuilt/3`).
+  @doc false
+  @spec prebuilt(AccessKey.t(), term, Prebuilt.prebuilt()) ::
+          :ok | {:error, Prebuilt.refusal()}
+  def prebuilt(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Prebuilt.prebuilt(access_key, dispatch_id, meta)
+
   ## The end of a run handed over
 
   # end_run_released/2 ends the run of the queue `dispatch_run_id`, which its starter
@@ -796,7 +812,7 @@ defmodule Apiary.Dispatches do
     do: RunEnd.released(dispatch_run_id, now)
 
   # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # outcome or its exit, or is lost: 1200 for `explore`.
+  # outcome or its exit, or is lost: 1200 for `explore` and 2100 for `prebuild`.
   @doc false
   @spec backstop_seconds(String.t() | nil) :: pos_integer
   def backstop_seconds(step), do: RunEnd.backstop_seconds(step)

@@ -161,6 +161,7 @@ defmodule Apiary.WorkItems.WorkItem do
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:collection_title, name: :work_items_collection_title_check)
     |> check_constraint(:target_system, name: :work_items_target_check)
+    |> check_constraint(:target_path, name: :work_items_target_shape_check)
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> unique_constraint(:external_ref,
@@ -220,6 +221,7 @@ defmodule Apiary.WorkItems.WorkItem do
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:collection_title, name: :work_items_collection_title_check)
     |> check_constraint(:target_system, name: :work_items_target_check)
+    |> check_constraint(:target_path, name: :work_items_target_shape_check)
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)

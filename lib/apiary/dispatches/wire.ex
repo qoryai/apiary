@@ -26,9 +26,15 @@ defmodule Apiary.Dispatches.Wire do
   # - `release/1`, `POST /v1/dispatches/<dispatch_id>/release` (`release.schema.json`):
   #   exactly `version` (1), `time`, `reason`, 1 to 200 characters, and `retry`, a
   #   boolean.
+  # - `prebuilt/1`, `POST /v1/dispatches/<dispatch_id>/prebuilt` (`prebuilt.schema.json`):
+  #   exactly `version` (1), `time`, `run_id`, a UUID in the canonical lower-case form,
+  #   `image`, pinned by its digest (`definitions.schema.json`, `$defs/image`: a lower-case
+  #   name of at most 255 characters, `@sha256:` and 64 lower-case hexadecimal digits, at
+  #   most 327 characters in all), `size`, an integer from 1 to 2^53 - 1, and
+  #   `environment_ref` and `commit`, each 1 to 200 characters.
   #
   # A length in characters is the schema's: Unicode code points. The text a body carries,
-  # `ref` and `reason`, is read as an adapter's text is (`Apiary.Adapters.Wire.text?/3`):
+  # `ref`, `reason`, `environment_ref` and `commit`, is read as an adapter's text is (`Apiary.Adapters.Wire.text?/3`):
   # valid UTF-8 and no U+0000, which the database cannot keep. Every other string is held
   # to a pattern or a URL's characters, none of which is U+0000.
   #
@@ -48,10 +54,18 @@ defmodule Apiary.Dispatches.Wire do
   @max_wait_seconds 25
   @max_ref 200
   @max_reason 200
+  @max_commit 200
+  @max_size 9_007_199_254_740_991
+  @run_id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+  # The provisioner contract's `$defs/image`, whose name is at most 255 characters: with
+  # the digest's 72 after it, at most 327 in all, held before the pattern is matched.
+  @image ~r/\A(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::[0-9]{1,5})?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}\z/
+  @max_image_bytes 327
   # The bytes a string of the contract's may take at most: `pool_id` is ASCII, of a fixed
   # length; `time` is ASCII, `2026-10-15T12:00:00Z`; `type` is ASCII, at most 40; a string
   # of at most 200 characters takes at most 800 bytes (`Apiary.Adapters.Wire.text?/3`).
   @pool_id_bytes 19
+  @run_id_bytes 36
   @time_bytes 20
   @max_job_system_bytes 40
 
@@ -62,12 +76,21 @@ defmodule Apiary.Dispatches.Wire do
   @external_keys ~w(ref type url)
   @handover_keys ~w(time version)
   @release_keys ~w(reason retry time version)
+  @prebuilt_keys ~w(commit environment_ref image run_id size time version)
 
   @type claim :: %{time: DateTime.t(), pool_id: String.t() | nil, wait_seconds: 0..25}
   @type external :: %{type: String.t(), ref: String.t(), url: String.t()}
   @type dispatched :: %{time: DateTime.t(), external: external | nil}
   @type handover :: %{time: DateTime.t()}
   @type release :: %{time: DateTime.t(), reason: String.t(), retry: boolean}
+  @type prebuilt :: %{
+          time: DateTime.t(),
+          run_id: String.t(),
+          image: String.t(),
+          size: pos_integer,
+          environment_ref: String.t(),
+          commit: String.t()
+        }
 
   # The raw body as a map of maps, or `:error`, as `Apiary.Adapters.Wire.decode/1` reads
   # it, and `:error`, undecoded, for a body over 1 MiB.
@@ -149,6 +172,36 @@ defmodule Apiary.Dispatches.Wire do
 
   def release(_body), do: :error
 
+  # The body of a prebuilt, decoded (`decode/1`): `{:ok, prebuilt}` or `:error`.
+  @doc false
+  @spec prebuilt(term) :: {:ok, prebuilt} | :error
+  def prebuilt(%{} = body) do
+    with true <- members?(body, @prebuilt_keys, []),
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         {:ok, run_id} <- run_id(body["run_id"]),
+         {:ok, image} <- image(body["image"]),
+         size when is_integer(size) and size in 1..@max_size//1 <- body["size"],
+         ref when is_binary(ref) <- body["environment_ref"],
+         true <- AdapterWire.text?(ref, 1, @max_ref),
+         commit when is_binary(commit) <- body["commit"],
+         true <- AdapterWire.text?(commit, 1, @max_commit) do
+      {:ok,
+       %{
+         time: time,
+         run_id: run_id,
+         image: image,
+         size: size,
+         environment_ref: ref,
+         commit: commit
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  def prebuilt(_body), do: :error
+
   # Every member `required` holds is there, and nothing but those and `optional`'s:
   # counted first, so an object of many members is refused before its keys are compared.
   defp members?(body, required, optional) do
@@ -164,6 +217,18 @@ defmodule Apiary.Dispatches.Wire do
     do: AdapterWire.time(value)
 
   defp time(_value), do: :error
+
+  defp run_id(value) when is_binary(value) and byte_size(value) == @run_id_bytes do
+    if Regex.match?(@run_id, value), do: {:ok, value}, else: :error
+  end
+
+  defp run_id(_value), do: :error
+
+  defp image(value) when is_binary(value) and byte_size(value) <= @max_image_bytes do
+    if Regex.match?(@image, value), do: {:ok, value}, else: :error
+  end
+
+  defp image(_value), do: :error
 
   defp optional_pool_id(%{"pool_id" => pool_id})
        when is_binary(pool_id) and byte_size(pool_id) == @pool_id_bytes do

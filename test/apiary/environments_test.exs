@@ -4,8 +4,10 @@ defmodule Apiary.EnvironmentsTest do
   # pinned by its digest, the bounds of the refs, a failure's cause and reason), the
   # composite keys that hold a record to its pool's workspace and its collection's
   # organisation, the purges of a workspace and of an organisation, the trigger that
-  # queues a prebuild per node pool from a listing, an assign and a new pool, one waiting
-  # per collection and pool, and a run's image: which record gives it.
+  # queues a prebuild per node pool from a listing, an assign and a new pool, keyed on the
+  # target and the `environment_ref`, one waiting per collection and pool, a build
+  # recorded with the target it was built for and when it was queued, whether a prebuild
+  # took its ref before the recorded build took its, and a run's image: which record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -199,7 +201,12 @@ defmodule Apiary.EnvironmentsTest do
             {%{failure_cause: :lost, failure_reason: "x", failed_at: DateTime.utc_now()},
              "failure"},
             {%{failure_cause: :lost}, "failure"},
-            {%{failure_reason: "x", failed_at: DateTime.utc_now()}, "failure"}
+            {%{failure_reason: "x", failed_at: DateTime.utc_now()}, "failure"},
+            {%{queued_target_system: "code.example.com"}, "queued_target"},
+            {%{queued_target_path: "acme/shop"}, "queued_target"},
+            {Map.put(built(), :built_target_system, "code.example.com"), "built_target"},
+            {Map.put(built(), :built_target_path, "acme/shop"), "built_target"},
+            {%{built_queued_at: DateTime.utc_now()}, "built_queued_at"}
           ] do
         assert_raise Ecto.ConstraintError, ~r/environments_#{constraint}_check/, fn ->
           fresh.(attrs)
@@ -213,7 +220,13 @@ defmodule Apiary.EnvironmentsTest do
               failed_at: DateTime.utc_now()
             },
             %{failure_cause: :timed_out, failed_at: DateTime.utc_now()},
-            Map.merge(built(), %{retired_at: DateTime.utc_now(), size: 9_007_199_254_740_991})
+            Map.merge(built(), %{retired_at: DateTime.utc_now(), size: 9_007_199_254_740_991}),
+            %{queued_target_system: "code.example.com", queued_target_path: "acme/shop"},
+            Map.merge(built(), %{
+              built_target_system: "code.example.com",
+              built_target_path: "acme/shop"
+            }),
+            Map.put(built(), :built_queued_at, DateTime.utc_now())
           ] do
         assert {:ok, _} = fresh.(attrs)
       end
@@ -606,6 +619,78 @@ defmodule Apiary.EnvironmentsTest do
       assert Environments.fetch(new.id, shop.id).queued_ref == "env-1"
     end
 
+    test "keeps the target each prebuild was queued for", ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+
+      assert %Record{
+               queued_ref: "env-1",
+               queued_target_system: "code.example.com",
+               queued_target_path: "acme/shop",
+               built_target_system: nil,
+               built_target_path: nil
+             } = Environments.fetch(ctx.pool.id, shop.id)
+    end
+
+    test "a target that changes with the same environment_ref queues a prebuild, as a changed environment_ref does",
+         ctx do
+      moved = %{system: "code.example.com", path: "acme/shop-next"}
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      claim!(ctx, ctx.pool)
+
+      list(ctx, 2, %{environment_ref: "env-1", target: moved})
+      assert prebuilds(shop) == [{ctx.pool.id, "env-1"}, {ctx.pool.id, "env-1"}]
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+
+      assert %Record{
+               queued_ref: "env-1",
+               queued_target_system: "code.example.com",
+               queued_target_path: "acme/shop-next"
+             } = Environments.fetch(ctx.pool.id, shop.id)
+
+      # The same target and environment_ref named again queue nothing.
+      list(ctx, 3, %{environment_ref: "env-1", target: moved})
+      assert length(prebuilds(shop)) == 2
+
+      # Back to the first target while one waits: still one waits, and the record has the
+      # target it is queued for now.
+      list(ctx, 4, %{environment_ref: "env-1"})
+      assert length(prebuilds(shop)) == 2
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+
+      assert %Record{queued_target_path: "acme/shop"} =
+               Environments.fetch(ctx.pool.id, shop.id)
+
+      # A system that changes, with the same path, is another target too.
+      claim!(ctx, ctx.pool)
+
+      list(ctx, 5, %{
+        environment_ref: "env-1",
+        target: %{system: "git.example.com", path: "acme/shop"}
+      })
+
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+      assert length(prebuilds(shop)) == 3
+
+      assert %Record{queued_target_system: "git.example.com", queued_target_path: "acme/shop"} =
+               Environments.fetch(ctx.pool.id, shop.id)
+    end
+
+    test "a record of no queued target, as one kept before the target was, is queued for the collection's target",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      claim!(ctx, ctx.pool)
+
+      Repo.update_all(from(r in Record, where: r.source_collection_id == ^shop.id),
+        set: [queued_target_system: nil, queued_target_path: nil]
+      )
+
+      list(ctx, 2, %{environment_ref: "env-1"})
+      assert waiting(shop) == [{ctx.pool.id, "env-1"}]
+
+      assert %Record{queued_target_system: "code.example.com", queued_target_path: "acme/shop"} =
+               Environments.fetch(ctx.pool.id, shop.id)
+    end
+
     test "runs only inside the caller's transaction", ctx do
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->
         Environments.trigger([ctx.app], DateTime.utc_now())
@@ -614,6 +699,148 @@ defmodule Apiary.EnvironmentsTest do
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->
         Environments.trigger_for_pool(ctx.pool, DateTime.utc_now())
       end
+    end
+  end
+
+  describe "a build recorded" do
+    @target %{system: "code.example.com", path: "acme/app"}
+    @build %{
+      image: "registry.example.com/acme/app-env@sha256:" <> String.duplicate("7", 64),
+      size: 1_048_576,
+      commit: "4b7d0a3f",
+      environment_ref: "env-2"
+    }
+
+    # A prebuild of APP for the pool, queued for `env-1`, as the run of the queue holds it.
+    defp prebuild_run(ctx) do
+      %DispatchRun{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        pool_id: ctx.pool.id,
+        source_collection_id: ctx.app.id,
+        step: DispatchRun.prebuild(),
+        environment_ref: "env-1",
+        queued_at: ~U[2026-10-15 10:00:00.000000Z],
+        environment_ref_at: ~U[2026-10-15 11:00:00.000000Z]
+      }
+    end
+
+    defp record_build!(ctx, target \\ @target, now \\ DateTime.utc_now()) do
+      {:ok, :ok} =
+        Repo.transact(fn ->
+          {:ok, Environments.record_build(prebuild_run(ctx), @build, target, now)}
+        end)
+
+      Environments.fetch(ctx.pool.id, ctx.app.id)
+    end
+
+    test "keeps the build and its target, the reported ref as it is, and clears the last failure",
+         ctx do
+      failed_at = DateTime.add(DateTime.utc_now(), -60, :second)
+      queued_at = DateTime.add(DateTime.utc_now(), -120, :second)
+
+      Repo.insert!(
+        record(
+          ctx,
+          Map.merge(built(), %{
+            queued_at: queued_at,
+            queued_target_system: "code.example.com",
+            queued_target_path: "acme/app",
+            failure_cause: :released,
+            failure_reason: "no space",
+            failed_at: failed_at
+          })
+        )
+      )
+
+      now = DateTime.utc_now()
+      recorded = record_build!(ctx, @target, now)
+
+      assert %Record{
+               image: image,
+               size: 1_048_576,
+               commit: "4b7d0a3f",
+               reported_ref: "env-2",
+               built_target_system: "code.example.com",
+               built_target_path: "acme/app",
+               failure_cause: nil,
+               failure_reason: nil,
+               failed_at: nil,
+               retired_at: nil,
+               queued_ref: "env-1",
+               queued_target_system: "code.example.com",
+               queued_target_path: "acme/app"
+             } = recorded
+
+      assert image == @build.image
+      assert DateTime.compare(recorded.built_at, now) == :eq
+      assert DateTime.compare(recorded.queued_at, queued_at) == :eq
+      assert recorded.built_queued_at == ~U[2026-10-15 11:00:00.000000Z]
+    end
+
+    test "keeps a record retired, and queues nothing", ctx do
+      retired_at = DateTime.add(DateTime.utc_now(), -30, :second)
+      Repo.insert!(record(ctx, %{retired_at: retired_at}))
+
+      recorded = record_build!(ctx)
+      assert recorded.image == @build.image
+      assert DateTime.compare(recorded.retired_at, retired_at) == :eq
+      assert prebuilds(ctx.app) == []
+    end
+
+    test "makes a record that is missing, queued for the run's environment_ref and the built target",
+         ctx do
+      assert Environments.fetch(ctx.pool.id, ctx.app.id) == nil
+
+      assert %Record{
+               queued_ref: "env-1",
+               queued_at: ~U[2026-10-15 10:00:00.000000Z],
+               queued_target_system: "code.example.com",
+               queued_target_path: "acme/app",
+               built_target_path: "acme/app",
+               reported_ref: "env-2"
+             } = record_build!(ctx)
+    end
+
+    test "keeps no built target for a run whose labels named none", ctx do
+      assert %Record{built_target_system: nil, built_target_path: nil, image: image} =
+               record_build!(ctx, nil)
+
+      assert image == @build.image
+    end
+
+    test "runs only inside the caller's transaction", ctx do
+      assert_raise ArgumentError, ~r/caller's transaction/, fn ->
+        Environments.record_build(prebuild_run(ctx), @build, @target, DateTime.utc_now())
+      end
+    end
+  end
+
+  describe "a build whose ref is older than the image's" do
+    # A prebuild queued an hour before it took its ref at `at`, as one that waited again.
+    defp run_queued_at(at),
+      do: %DispatchRun{
+        step: DispatchRun.prebuild(),
+        queued_at: DateTime.add(at, -3600, :second),
+        environment_ref_at: at
+      }
+
+    test "is newer where the record's image was made by a prebuild that took its ref after the run took its, whatever the run's queued_at",
+         ctx do
+      at = ~U[2026-10-15 11:00:00.000000Z]
+      record = record(ctx, Map.put(built(), :built_queued_at, at))
+
+      assert Environments.newer_build?(record, run_queued_at(DateTime.add(at, -1, :microsecond)))
+      refute Environments.newer_build?(record, run_queued_at(at))
+      refute Environments.newer_build?(record, run_queued_at(DateTime.add(at, 1, :second)))
+    end
+
+    test "is never newer with no image, no built_queued_at or no record", ctx do
+      run = run_queued_at(~U[2026-10-15 11:00:00.000000Z])
+
+      refute Environments.newer_build?(record(ctx), run)
+      refute Environments.newer_build?(record(ctx, built()), run)
+      refute Environments.newer_build?(nil, run)
     end
   end
 

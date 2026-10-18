@@ -21,6 +21,29 @@ defmodule Apiary.WorkItems.ProposalTest do
     )
   end
 
+  # `fun` run in a process whose heap is bounded at 2,000,000 words, about 16 MB, and that
+  # is killed past it: its answer, or why it went down.
+  defp bounded(fun) do
+    parent = self()
+
+    {pid, ref} =
+      spawn_monitor(fn ->
+        Process.flag(:max_heap_size, %{size: 2_000_000, kill: true, error_logger: false})
+        send(parent, {self(), fun.()})
+      end)
+
+    receive do
+      {^pid, answer} ->
+        Process.demonitor(ref, [:flush])
+        answer
+
+      {:DOWN, ^ref, :process, ^pid, reason} ->
+        {:down, reason}
+    end
+  end
+
+  @ten_mb 10_000_000
+
   test "from_result/1 draws a proposal, and questions/1 a run's questions" do
     assert proposal() == %{
              complexity: %{level: :standard, reason: "Two screens read the price."},
@@ -72,6 +95,29 @@ defmodule Apiary.WorkItems.ProposalTest do
 
       assert {:ok, _} = Proposal.check_answers(["A?"], %{"1" => String.duplicate("é", 2000)})
       assert {:ok, [{1, "A?", "a\tb\nc"}]} = Proposal.check_answers(["A?"], %{"1" => "a\tb\nc"})
+    end
+
+    test "an answer of more bytes than its code points can hold is too long, first" do
+      assert Proposal.check_answers(["A?"], %{"1" => String.duplicate("a", 8001)}) ==
+               {:error, %{"1" => {:too_long, 2000}}}
+
+      # 2,000 code points of four bytes each are within the bound.
+      assert {:ok, _} =
+               Proposal.check_answers(["A?"], %{"1" => String.duplicate("\u{1F600}", 2000)})
+
+      # Past the bound, the length is the reason, before its characters or white space.
+      assert Proposal.check_answers(["A?", "B?"], %{
+               "1" => String.duplicate("a", 8000) <> "\u200B",
+               "2" => String.duplicate(" ", 8001)
+             }) ==
+               {:error, %{"1" => {:too_long, 2000}, "2" => {:too_long, 2000}}}
+    end
+
+    test "a 10 MB answer is refused without counting it" do
+      answer = String.duplicate("a", @ten_mb)
+
+      assert bounded(fn -> Proposal.check_answers(["A?"], %{"1" => answer}) end) ==
+               {:error, %{"1" => {:too_long, 2000}}}
     end
 
     test "invalid UTF-8 is a character the input refuses" do
@@ -167,6 +213,68 @@ defmodule Apiary.WorkItems.ProposalTest do
                )
 
       assert {:ok, %{scope_out: []}} = Proposal.changes(proposal(), form(%{"scope_out" => " "}))
+    end
+
+    test "a text of more bytes than its code points can hold is too long, first" do
+      assert Proposal.changes(
+               proposal(),
+               form(%{
+                 "complexity" => %{"level" => "simple", "reason" => String.duplicate("a", 8001)},
+                 "understanding" => String.duplicate("a", 80_001),
+                 "approach" => String.duplicate(" ", 8001)
+               })
+             ) ==
+               {:error,
+                %{
+                  reason: {:too_long, 2000},
+                  understanding: {:too_long, 20_000},
+                  approach: {:too_long, 2000}
+                }}
+
+      assert {:ok, %{understanding: _}} =
+               Proposal.changes(
+                 proposal(),
+                 form(%{"understanding" => String.duplicate("\u{1F600}", 20_000)})
+               )
+    end
+
+    test "a scope of more bytes than its lines can hold: too many lines, or a line too long" do
+      many = Enum.map_join(1..60, "\n", fn _ -> String.duplicate("a", 7000) end)
+      long = Enum.map_join(1..10, "\n", fn _ -> String.duplicate("a", 41_000) end)
+      # Blank lines are no entries: one long line after a hundred of them is too long.
+      padded = String.duplicate(" \r\n", 100) <> String.duplicate("a", 400_200)
+
+      assert Proposal.changes(proposal(), form(%{"scope_in" => many, "scope_out" => many})) ==
+               {:error, %{scope_in: {:too_many_lines, 50}, scope_out: {:too_many_lines, 50}}}
+
+      # Lines are counted before the text is checked as UTF-8.
+      invalid = Enum.map_join(1..60, "\n", fn _ -> String.duplicate(<<0xFF>>, 7000) end)
+
+      assert Proposal.changes(proposal(), form(%{"scope_in" => invalid})) ==
+               {:error, %{scope_in: {:too_many_lines, 50}}}
+
+      assert Proposal.changes(proposal(), form(%{"scope_in" => long, "scope_out" => padded})) ==
+               {:error, %{scope_in: {:line_too_long, 2000}, scope_out: {:line_too_long, 2000}}}
+
+      # 50 lines of 2,000 code points of four bytes each are within the bound.
+      most = Enum.map_join(1..50, "\n", fn _ -> String.duplicate("\u{1F600}", 2000) end)
+
+      assert {:ok, %{scope_in: in_lines, scope_out: out_lines}} =
+               Proposal.changes(proposal(), form(%{"scope_in" => most, "scope_out" => most}))
+
+      assert length(in_lines) == 50 and length(out_lines) == 50
+    end
+
+    test "a 10 MB understanding or scope is refused without counting it" do
+      understanding = String.duplicate("a", @ten_mb)
+      line_feeds = String.duplicate("\n", @ten_mb)
+
+      assert bounded(fn ->
+               Proposal.changes(proposal(), form(%{"understanding" => understanding}))
+             end) == {:error, %{understanding: {:too_long, 20_000}}}
+
+      assert bounded(fn -> Proposal.changes(proposal(), form(%{"scope_in" => line_feeds})) end) ==
+               {:error, %{scope_in: {:line_too_long, 2000}}}
     end
 
     test "a form missing a field, giving no text, or naming no level of the three, is refused" do

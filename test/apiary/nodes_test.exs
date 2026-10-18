@@ -111,8 +111,13 @@ defmodule Apiary.NodesTest do
 
       assert %{name: [_]} = errors(changeset)
 
-      assert {:error, changeset} = Nodes.create_node(scope, %{kind: "node", name: "build\n01"})
-      assert %{name: ["must not contain control characters"]} = errors(changeset)
+      for name <- ["build\n01", "build#{<<0x202E::utf8>>}01", "build#{<<0x85::utf8>>}01"] do
+        assert {:error, changeset} = Nodes.create_node(scope, %{kind: "node", name: name})
+        assert %{name: ["must not contain control characters"]} = errors(changeset)
+      end
+
+      assert {:ok, _} =
+               Nodes.create_node(scope, %{kind: "node", name: "👩#{<<0x200D::utf8>>}💻 01"})
 
       assert {:ok, _} = Nodes.create_node(scope, %{kind: "node", name: String.duplicate("a", 80)})
     end

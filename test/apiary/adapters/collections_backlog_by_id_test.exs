@@ -265,7 +265,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
       %{scope: member} = member_fixture(ctx.scope, :member)
       %{scope: admin} = member_fixture(ctx.scope, :admin)
 
-      assert {:error, _refused} = switch(ctx, "DOCS", false, member)
+      assert switch(ctx, "DOCS", false, member) == {:error, :forbidden}
       assert collection(ctx, "DOCS").backlog
       assert switch_entries() == []
 

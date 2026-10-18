@@ -285,14 +285,15 @@ a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapt
 so a pool registers its runs, posts their events and their outcome and is served the run
 configuration as a node is; reading the configuration document asks no role, only the
 signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
-actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover` and
-`dispatch.release`, of an opt-in feature the module's tables leave out (`docs: false`). A
+actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover`,
+`dispatch.release` and `dispatch.prebuilt`, of an opt-in feature the module's tables leave out (`docs: false`). A
 pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
 queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
 pool claimed; another workspace's queue, or a dispatch another pool claimed or that names
-no pool, is not found to it. A handover and a release leave an audit entry; a claim and
-the start of its machine do not.
+no pool, is not found to it. A handover, a release and a prebuilt that records its image
+leave an audit entry; a claim, the start of its machine, and a prebuilt whose
+`environment_ref` is older than the recorded image's do not.
 
 A gateway of an organisation, which has no workspace, is asked at the organisation: its
 making and listing (`node.create`, `node.read` of the organisation), its changes and

@@ -4,7 +4,9 @@ defmodule Apiary.Dispatches.Inputs do
   # The input of a step, `inputs` of the provisioner contract's `handover-answer.schema.json`,
   # which Qory writes at the handover (`Apiary.Dispatches.Handover`) and the job reads.
   #
-  # - `prebuild/0`: exactly `{"version": 1}`, as the contract closes it.
+  # - `prebuild/1`: exactly `{"version": 1, "environment_ref": ref}`, as the contract closes
+  #   it, the ref the run of the queue was queued for (`dispatch_runs.environment_ref`),
+  #   which the job reports back, unchanged, in its `prebuilt`.
   # - `explore/2`: the explore contract's `inputs.schema.json`, version 1, every member in
   #   the schema's order, from the rows Qory keeps and nothing the starter sent:
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
@@ -72,10 +74,12 @@ defmodule Apiary.Dispatches.Inputs do
   @spec former_member() :: String.t()
   def former_member, do: @former_member
 
-  # prebuild/0 is the input of a prebuild, exactly `{"version": 1}`.
+  # prebuild/1 is the input of a prebuild queued for `environment_ref`, exactly
+  # `{"version": 1, "environment_ref": environment_ref}`.
   @doc false
-  @spec prebuild() :: Jason.OrderedObject.t()
-  def prebuild, do: Jason.OrderedObject.new([{"version", @version}])
+  @spec prebuild(String.t()) :: Jason.OrderedObject.t()
+  def prebuild(environment_ref) when is_binary(environment_ref),
+    do: Jason.OrderedObject.new([{"version", @version}, {"environment_ref", environment_ref}])
 
   # explore/2 is the input of the explore run `dispatch_run` of `work_item` (the moduledoc).
   @doc false

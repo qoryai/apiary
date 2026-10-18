@@ -4,7 +4,8 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
   # workspace's too; an unlink, a move away or an end leaves it; and a run of the target,
   # with the labels a dispatched run carries, lands on it. A listing's part makes them
   # too: where it links a collection to the organisation's only workspace, and where it
-  # changes the target of a collection assigned to a workspace.
+  # changes the target of a collection assigned to a workspace. And whether a connection
+  # has a live collection with a target (`Collections.targets?/1`).
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -279,5 +280,43 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
       )
 
     assert length(targets(ctx.workspace)) == 2
+  end
+
+  describe "targets?/1" do
+    test "false with no collections, and with live ones that have no target", ctx do
+      refute Collections.targets?(ctx.connection)
+
+      {:ok, :accepted} = post(ctx, [{"TRK", nil}])
+      refute Collections.targets?(ctx.connection)
+    end
+
+    test "true when only some of its collections have a target", ctx do
+      {:ok, :accepted} = post(ctx, [{"TRK", nil}, {"SHOP", @shop}, {"NOTES", nil}])
+
+      assert Collections.targets?(ctx.connection)
+    end
+
+    test "the target of an ended collection counts not", ctx do
+      {:ok, :accepted} = post(ctx, [{"TRK", nil}, {"SHOP", @shop}])
+      assert Collections.targets?(ctx.connection)
+
+      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "SHOP"})
+
+      assert ids(ctx, ["SHOP"]) == []
+      assert length(ids(ctx, ["TRK"])) == 1
+      refute Collections.targets?(ctx.connection)
+    end
+
+    test "the target of another connection's collection counts not", ctx do
+      {:ok, :accepted} = post(ctx, [{"TRK", nil}])
+
+      # Another organisation, connected to the same adapter, with a target.
+      %{scope: scope} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+      {:ok, :accepted} = post(%{ctx | connection: theirs}, [{"THEIRS", @shop}])
+
+      assert Collections.targets?(theirs)
+      refute Collections.targets?(ctx.connection)
+    end
   end
 end

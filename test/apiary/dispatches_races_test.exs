@@ -183,6 +183,7 @@ defmodule Apiary.DispatchesRacesTest do
           pool_id: pool.id,
           environment_ref: "env-1",
           queued_at: back,
+          environment_ref_at: back,
           inserted_at: back,
           updated_at: back
         }

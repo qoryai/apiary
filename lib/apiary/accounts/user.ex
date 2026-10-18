@@ -58,24 +58,25 @@ defmodule Apiary.Accounts.User do
   @shape ~r/^[^@,;\s]+@[^@,;\s]+$/u
 
   @doc """
-  Refuses an `:email` no person's address can be: bytes that are not UTF-8 text, a
-  control or format character (`must not contain control characters`), or no single `@`
-  with text on each side, or a comma, a semicolon or a space. An account's address is
-  checked so, and an invitation's (`Apiary.Organisations.Invitation`), which becomes
-  the account's.
+  Refuses a `field`, `:email` unless another, that no address can be: bytes that are not
+  UTF-8 text, a control or format character (`must not contain control characters`), or
+  no single `@` with text on each side, or a comma, a semicolon or a space. An account's
+  address is checked so, an invitation's (`Apiary.Organisations.Invitation`), which
+  becomes the account's, and the address the instance's mail is sent from
+  (`Apiary.Mail.Settings`).
   """
-  @spec validate_address(Ecto.Changeset.t()) :: Ecto.Changeset.t()
-  def validate_address(changeset) do
-    validate_change(changeset, :email, fn :email, email ->
+  @spec validate_address(Ecto.Changeset.t(), atom) :: Ecto.Changeset.t()
+  def validate_address(changeset, field \\ :email) do
+    validate_change(changeset, field, fn ^field, address ->
       cond do
-        not String.valid?(email) ->
-          [email: dgettext_noop("errors", "must be UTF-8 text")]
+        not String.valid?(address) ->
+          [{field, dgettext_noop("errors", "must be UTF-8 text")}]
 
-        Regex.match?(@unseen, email) ->
-          [email: dgettext_noop("errors", "must not contain control characters")]
+        Regex.match?(@unseen, address) ->
+          [{field, dgettext_noop("errors", "must not contain control characters")}]
 
-        not Regex.match?(@shape, email) ->
-          [email: dgettext_noop("errors", "must have the @ sign and no spaces")]
+        not Regex.match?(@shape, address) ->
+          [{field, dgettext_noop("errors", "must have the @ sign and no spaces")}]
 
         true ->
           []

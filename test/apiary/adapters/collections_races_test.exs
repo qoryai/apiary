@@ -8,8 +8,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # names the switch's refs, a disconnect against a part that completes its listing, a
   # listing's part against a restore and a marking of workspaces, a start that changes
   # the adapter's items against a listing's part, a Backlog switch and an assign, and a
-  # collection's Backlog switch, by its id, against a listing's part, its target's switch
-  # and a start. Each side runs on a separate connection, outside the SQL sandbox, so
+  # collection's Backlog switch, by its id, against a listing's part, its target's switch,
+  # a start and an assign. Each side runs on a separate connection, outside the SQL sandbox, so
   # each commits and each waits on the other's locks as it would in production. Not
   # async: what these tests commit is visible to every other test while they run, and
   # they delete it again before they end.
@@ -28,7 +28,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # holds the adapter's row first, then its connections, then every live collection of
   # theirs, and a listing's part holds the adapter's row `FOR SHARE` before its
   # connection, so the two come one after the other; a switch reads the adapters again
-  # once it holds its collections.
+  # once it holds its collections, and a collection's switch reads the collection's
+  # workspace again once it holds it.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -1037,6 +1038,53 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert Task.await(switched.task) == {:error, :not_found}
     refute Repo.get!(Collection, shop).backlog
     assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+  end
+
+  # `SHOP`, with items, assigned to the scope's workspace, its Backlog on: linked.
+  defp assigned_shop(ctx) do
+    {:ok, :accepted} = items_part(ctx, "SHOP", true, "first", @started, nil).()
+    [shop] = ids(ctx.connection, ["SHOP"])
+    {:ok, 1} = assign(ctx, [shop], ctx.scope.workspace).()
+    assert statuses(ctx, "SHOP") == ["linked"]
+    shop
+  end
+
+  test "an assign that moves the collection to another workspace held, then a collection's switch: it reads the workspace again once it holds the collection, and turns nothing",
+       ctx do
+    shop = assigned_shop(ctx)
+
+    {assigned, assign_pid} = hold(assign(ctx, [shop], ctx.other_workspace))
+    assert assigned.result == {:ok, 1}
+
+    # The switch finds the collection in the scope's workspace with no lock, then waits
+    # on the collection the assign holds.
+    switched = start(by_id(ctx, shop, false))
+    await_blocked(switched.backend, assign_pid)
+    commit(assigned)
+
+    assert Task.await(switched.task) == {:error, :not_found}
+    assert Repo.get!(Collection, shop).backlog
+    assert Repo.get!(Collection, shop).workspace_id == ctx.other_workspace.id
+    assert statuses(ctx, "SHOP") == ["linked"]
+    assert switch_entries(ctx) == []
+  end
+
+  test "an assign that unlinks the collection held, then a collection's switch: it reads the workspace again once it holds the collection, and turns nothing",
+       ctx do
+    shop = assigned_shop(ctx)
+
+    {assigned, assign_pid} = hold(assign(ctx, [shop], nil))
+    assert assigned.result == {:ok, 1}
+
+    switched = start(by_id(ctx, shop, false))
+    await_blocked(switched.backend, assign_pid)
+    commit(assigned)
+
+    assert Task.await(switched.task) == {:error, :not_found}
+    assert Repo.get!(Collection, shop).backlog
+    assert Repo.get!(Collection, shop).workspace_id == nil
+    assert statuses(ctx, "SHOP") == ["linked", "unlinked"]
+    assert switch_entries(ctx) == []
   end
 
   test "parts, collections' and targets' switches, assigns and starts at once: none deadlocks, and the last entry says how each collection stands",
