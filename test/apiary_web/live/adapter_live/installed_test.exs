@@ -1,13 +1,15 @@
 defmodule ApiaryWeb.AdapterLive.InstalledTest do
   # The pages of an adapter installed with Qory Apiary, for an instance admin: the line
-  # under its name, its Overview with no key yet, its Access key tab without a key and with
-  # one, which offers no command and shows no code of the instance, the refusal of a Get
-  # the command asked anyway, the revocation of its only key, its key card, and its danger
-  # zone and Remove page, while it is listed and once it is not; with its name off the
-  # list, its Overview and its Access key tab say it is turned off there, and promise no
-  # code, a Get the command asked anyway is refused with that, neither page offers Set up,
-  # and a Set up posted anyway is refused, with no pass and no entry. Not async: the names
-  # listed are the whole node's.
+  # under its name; its Overview before its first start, not set up yet, with the Set it
+  # up box, and set up, seen and not seen lately, with the Installed row; its Access key
+  # tab without a key and with one, which offers no command, no Add a key, and shows no
+  # code of the instance, the refusal of a Get the command asked anyway, the revocation of
+  # its only key, its key card; its Settings' Remove while it is listed, and its danger
+  # zone and Remove page once it is not; with its name off the list, its Overview says it
+  # is turned off there, with a grey dot, its Access key tab promises no code, a Get the
+  # command asked anyway is refused with that, neither page offers Set up, and a Set up
+  # posted anyway is refused, with no pass and no entry. Anyone but an instance admin
+  # meets Not Found. Not async: the names listed are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query
@@ -50,6 +52,30 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
 
   defp list(names), do: Application.put_env(:apiary, :installed_adapters, names)
 
+  @setup_url "https://tracker.example.com/setup"
+
+  # The adapter declaring where to be set up, as it does until it is set up.
+  defp declare_setup(adapter) do
+    {1, _} =
+      Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [setup_url: @setup_url]
+      )
+
+    Apiary.Repo.reload!(adapter)
+  end
+
+  # The key last used `seconds` ago, as an accepted request of the adapter records.
+  defp used(key, seconds) do
+    at = DateTime.add(DateTime.utc_now(:second), -seconds)
+
+    {1, _} =
+      Apiary.Repo.update_all(from(k in Apiary.AccessKeys.AccessKey, where: k.id == ^key.id),
+        set: [last_used_at: at]
+      )
+
+    at
+  end
+
   defp page_path(adapter, rest \\ ""), do: "/instance/adapters/#{adapter.public_id}" <> rest
 
   defp words(lv, selector) do
@@ -63,16 +89,79 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
     |> Enum.join(" ")
   end
 
-  test "the line under its name and its Overview with no key yet", %{conn: conn, adapter: adapter} do
-    {:ok, lv, _html} = live(conn, page_path(adapter))
+  test "the line under its name says it is installed with Qory Apiary, on every tab",
+       %{conn: conn, adapter: adapter} do
+    for rest <- ["", "/keys", "/settings"] do
+      {:ok, lv, _html} = live(conn, page_path(adapter, rest))
+      assert words(lv, "#adapter-meta") == "Installed with Qory Apiary · #{adapter.public_id}"
+    end
+  end
 
-    assert words(lv, "#adapter-meta") ==
-             "Installed with Qory Apiary, #{Format.date(adapter.inserted_at)} · #{adapter.public_id}"
+  describe "the Overview" do
+    test "before its first start: no key yet, it enrols at its first start, and no Connect it",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, html} = live(conn, page_path(adapter))
 
-    assert words(lv, "#adapter-overview-state") ==
-             "No key yet · it connects by itself once it is running"
+      assert words(lv, "#adapter-overview-state") == "No key yet · it enrols at its first start"
+      assert words(lv, "#adapter-overview-installed") == "With Qory Apiary"
+      refute has_element?(lv, "#adapter-enrolled")
+      refute has_element?(lv, "#adapter-connect-it")
+      refute has_element?(lv, "#adapter-setup-box")
+      refute html =~ "organisations can install it once it is connected and running"
+    end
 
-    refute has_element?(lv, "#adapter-connect-it")
+    test "not set up yet: the Set it up box, with Set up and the address it opens, in place of the Set-up row",
+         %{conn: conn, adapter: adapter} do
+      installed_key_fixture(adapter)
+      adapter = declare_setup(adapter)
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-setup-box") ==
+               "Set it up Until it is set up, organisations can't install it. Set up Opens #{@setup_url}"
+
+      form = element(lv, "#adapter-setup-box #adapter-setup")
+      assert render(form) =~ ~s(action="/instance/adapters/#{adapter.public_id}/setup")
+      assert render(form) =~ ~s(method="post")
+      assert render(form) =~ ~s(name="_csrf_token")
+      refute render(form) =~ ~s(name="back")
+
+      # Above the rows, which hold no Set-up row and no hint of the adapter deployed
+      # apart.
+      [before, _after] = String.split(html, ~s(id="adapter-overview"), parts: 2)
+      assert before =~ ~s(id="adapter-setup-box")
+      refute has_element?(lv, "#adapter-overview-setup")
+      refute has_element?(lv, "#adapter-setup-hint")
+      refute html =~ "Takes you to the adapter"
+      refute html =~ "Replace"
+    end
+
+    test "set up and seen: no box; its state, and when its key was enrolled",
+         %{conn: conn, adapter: adapter} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      at = used(key, 60)
+      {:ok, lv, html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") == "Last seen #{Format.relative(at)}"
+
+      assert words(lv, "#adapter-overview-installed") ==
+               "With Qory Apiary · Enrolled at its first start, #{Format.datetime(key.received_at)}"
+
+      refute has_element?(lv, "#adapter-setup-box")
+      refute has_element?(lv, "#adapter-overview-setup")
+      refute has_element?(lv, "#adapter-setup")
+      refute html =~ "it enrols at its first start"
+      refute html =~ "Replace"
+    end
+
+    test "set up and not seen lately: its state keeps its words, with when it was last seen",
+         %{conn: conn, adapter: adapter} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      at = used(key, 3 * 3600)
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") == "Last seen #{Format.relative(at)}"
+      refute has_element?(lv, "#adapter-state.q-sdot")
+    end
   end
 
   describe "the Access key tab" do
@@ -101,21 +190,26 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
              |> Enum.all?(&(&1.node_id != adapter.id))
     end
 
-    test "with its key: no way to add one, the key card, and the revocation of its only key",
+    test "with its key: how it came, no Add a key, the key card, and the revocation of its only key",
          %{conn: conn, adapter: adapter} do
       %{access_key: key} = installed_key_fixture(adapter)
-      {:ok, lv, _html} = live(conn, page_path(adapter, "/keys"))
+      {:ok, lv, html} = live(conn, page_path(adapter, "/keys"))
 
-      assert words(lv, "#adapter-add-intro") ==
-               "An adapter installed with Qory Apiary holds one key. To replace it, revoke it: the adapter gets a new code at once and makes a new key by itself."
+      assert words(lv, "#adapter-keys-installed") ==
+               "The adapter made this key at its first start, and enrolled with a code that Qory Apiary handed it. No command was run."
 
+      assert words(lv, "#adapter-keys-revoking") ==
+               "Revoking it makes the adapter enrol again with a new key."
+
+      refute has_element?(lv, "#adapter-add")
       refute has_element?(lv, "#code-new-button")
+      refute html =~ "Get the command"
+      refute html =~ "Replace"
 
       assert words(lv, "#key-#{key.key_id}-added") ==
-               "Connected by itself, with a code from Qory Apiary, #{Format.datetime(key.received_at)}"
+               "Enrolled at its first start, #{Format.datetime(key.received_at)}"
 
-      assert words(lv, "#key-#{key.key_id}-secret") ==
-               "On #{adapter.name}, saved there by the adapter"
+      assert words(lv, "#key-#{key.key_id}-secret") == "Kept by the adapter; never shown"
 
       {:ok, lv, _html} = live(conn, page_path(adapter, "/keys/#{key.key_id}/revoke"))
 
@@ -131,15 +225,30 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       :ok
     end
 
-    test "the Overview says it is turned off there and can be removed",
+    test "the Overview says it is turned off in the AWS stack or the Compose file, with a grey dot and when it was last seen",
          %{conn: conn, adapter: adapter} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      at = used(key, 2 * 86_400)
       {:ok, lv, html} = live(conn, page_path(adapter))
 
       assert words(lv, "#adapter-overview-state") ==
-               "No key yet · turned off where Qory Apiary is installed; it can be removed"
+               "Turned off in the AWS stack or the Compose file · Last seen #{Format.relative(at)}"
 
-      refute html =~ "it connects by itself once it is running"
+      assert has_element?(lv, ~s{#adapter-state[class~="q-sdot"] > i[aria-hidden="true"]})
+      refute has_element?(lv, ~s{#adapter-state[class*="q-sdot-"]})
+      refute has_element?(lv, "#adapter-setup-box")
+      refute html =~ "it enrols at its first start"
       refute has_element?(lv, "#adapter-connect-it")
+    end
+
+    test "the Overview, with no key, says only that it is turned off there",
+         %{conn: conn, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-state") ==
+               "Turned off in the AWS stack or the Compose file"
+
+      assert words(lv, "#adapter-overview-installed") == "With Qory Apiary"
     end
 
     test "the Access key tab, with no key, says it gets no new code until it is turned on again",
@@ -163,6 +272,8 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       assert words(lv, "#adapter-add") ==
                "Add a key Turn it on again where Qory Apiary is installed to give it a new key."
 
+      assert has_element?(lv, "#adapter-keys-installed")
+      refute has_element?(lv, "#adapter-keys-revoking")
       refute html =~ "the adapter gets a new code at once"
       refute has_element?(lv, "#adapter-way")
       refute has_element?(lv, "#code-new-button")
@@ -256,14 +367,17 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
   end
 
   describe "removing it" do
-    test "while listed, the danger zone says to turn it off first, and a removal is refused",
+    test "while listed, Remove says to turn it off in the AWS stack or the Compose file, with no danger zone, and a removal is refused",
          %{conn: conn, adapter: adapter} do
-      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      {:ok, lv, html} = live(conn, page_path(adapter, "/settings"))
 
-      assert words(lv, "#adapter-remove-listed") ==
-               "Installed with Qory Apiary. To remove it, first turn it off where Qory Apiary is installed; then it can be removed here."
+      assert words(lv, "#adapter-remove-part") ==
+               "Remove This adapter is installed with Qory Apiary. To remove it, turn it off in the AWS stack or the Compose file that installs Qory Apiary."
 
+      refute has_element?(lv, "#adapter-danger")
       refute has_element?(lv, "#adapter-remove-link")
+      refute html =~ "Danger zone"
+      refute html =~ "Replace"
 
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
       lv |> element("#adapter-remove-button") |> render_click()
@@ -276,8 +390,10 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
          %{conn: conn, adapter: adapter} do
       list([])
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
-      refute has_element?(lv, "#adapter-remove-listed")
-      assert has_element?(lv, "#adapter-remove-link")
+      refute has_element?(lv, "#adapter-remove-part")
+
+      assert words(lv, "#adapter-danger") ==
+               "Danger zone Remove this adapter Its keys are revoked, and every organisation's installation of it ends. This cannot be undone. Remove adapter…"
 
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
 
@@ -297,5 +413,40 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
     {:ok, lv, _html} = live(conn, page_path(adapter, "/keys"))
     assert has_element?(lv, "#code-new-button")
     refute render(lv) =~ "installed with Qory Apiary"
+    refute has_element?(lv, "#adapter-keys-installed")
+
+    {:ok, lv, html} = live(conn, page_path(adapter))
+    assert words(lv, "#adapter-meta") =~ ~r/^Added by .+, .+ · #{adapter.public_id}$/
+    assert has_element?(lv, "#adapter-connect-it")
+    refute has_element?(lv, "#adapter-overview-installed")
+    refute html =~ "Installed with Qory Apiary"
+    refute html =~ "it enrols at its first start"
+
+    {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+    assert has_element?(lv, "#adapter-danger #adapter-remove-link")
+    refute has_element?(lv, "#adapter-remove-part")
+  end
+
+  test "an adapter deployed apart that can be set up keeps its Set-up row, with no box",
+       %{conn: conn} do
+    %{adapter: adapter} = settable_adapter_fixture()
+    {:ok, lv, _html} = live(conn, page_path(adapter))
+
+    assert words(lv, "#adapter-overview-setup") =~ "Not set up yet · Set up"
+    assert has_element?(lv, "#adapter-overview-setup #adapter-setup")
+    assert has_element?(lv, "#adapter-setup-hint")
+    refute has_element?(lv, "#adapter-setup-box")
+  end
+
+  test "anyone but an instance admin meets Not Found on its pages",
+       %{adapter: adapter} do
+    installed_key_fixture(adapter)
+    declare_setup(adapter)
+    %{user: owner} = sign_up_fixture()
+    owner_conn = log_in_user(build_conn(), owner)
+
+    for rest <- ["", "/keys", "/settings", "/settings/remove"] do
+      assert_raise ApiaryWeb.NotFound, fn -> live(owner_conn, page_path(adapter, rest)) end
+    end
   end
 end

@@ -985,10 +985,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp added_words(key, node) do
     if installed_key?(key, node),
-      do:
-        gettext("Connected by itself, with a code from Qory Apiary, %{date}",
-          date: Format.datetime(key.received_at)
-        ),
+      do: gettext("Enrolled at its first start, %{time}", time: Format.datetime(key.received_at)),
       else: added_words(key)
   end
 
@@ -2413,12 +2410,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # adapter's key, for an adapter's Access key tab, without what only Forager's keys have:
   # the Forager file, the Forager version it was last used with, and stored secrets; and
   # its secret is said to be on the machine that ran the command, since the adapter the
-  # card names is not that machine; for an adapter installed with Qory Apiary, the key came
-  # by itself, with the instance's code, and its secret is the adapter's, saved there. Its
-  # Last used is the key's `last_used_at`, which every accepted request of an adapter's key
-  # records. An adapter's card is for an instance
-  # admin's page alone (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an
-  # adapter's key and when it was used are the instance admins'.
+  # card names is not that machine; for an adapter installed with Qory Apiary, the key was
+  # enrolled at the adapter's first start, with the instance's code, and the adapter keeps
+  # its secret. Its Last used is the key's `last_used_at`, which every accepted request of
+  # an adapter's key records. An adapter's card is for an instance admin's page alone
+  # (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an adapter's key and
+  # when it was used are the instance admins'.
   def key_card(assigns) do
     %{key: key, may: may} = assigns
 
@@ -2481,7 +2478,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dd id={"#{@dom}-secret"}>
           {cond do
             installed_key?(@key, @node) ->
-              gettext("On %{name}, saved there by the adapter", name: @node.name)
+              gettext("Kept by the adapter; never shown")
 
             @adapter ->
               gettext("On the machine that ran the command; never shown")

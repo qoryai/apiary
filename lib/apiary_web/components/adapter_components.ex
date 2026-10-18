@@ -10,7 +10,7 @@ defmodule ApiaryWeb.AdapterComponents do
   # from here.
   #
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) says so in place of
-  # who added it.
+  # who added it and when.
   #
   # Set up (`setup_form/1`) starts an adapter's set-up at the system it reads from, a POST
   # to `ApiaryWeb.AdapterSetupController`; a page shows it only while the adapter
@@ -113,12 +113,12 @@ defmodule ApiaryWeb.AdapterComponents do
 
   @doc false
   # The line under an adapter's name: who added it and when, or, for an adapter installed
-  # with Qory Apiary, that it was and when; then its public id.
+  # with Qory Apiary, that it was; then its public id.
   def adapter_meta(assigns) do
     ~H"""
     <span id="adapter-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
       <span :if={@adapter.installed_as} id="adapter-added">
-        {gettext("Installed with Qory Apiary, %{date}", date: Format.date(@adapter.inserted_at))}
+        {gettext("Installed with Qory Apiary")}
       </span>
       <span :if={!@adapter.installed_as} id="adapter-added">
         {gettext("Added by %{person}, %{date}",
