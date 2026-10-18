@@ -28,14 +28,14 @@ defmodule ApiaryWeb.TargetLive.Show do
     into the workspace's Backlog, named with its source's word for them, which owners and
     admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
     and anyone else reads, disabled, with who may change it. After it, where the reader is
-    shown the work items, the Environment card (`Apiary.Environments.section/2`): for each
+    shown the work items, the Environment card (Apiary.Environments.section/2): for each
     node pool of the workspace, the image the pool's last build for the target made, in
     mono, its digest cut to twelve characters and the whole reference its title, when it
     was built and from which commit, or that runs use the pool's default image and why;
     whether a build runs or waits; and the last build's failure, never the reason a
     starter gave. Where no pool serves the workspace, or the target names no environment,
     one line says so instead. Its Rebuild queues a build for each pool
-    (`Apiary.Environments.rebuild/2`), for whoever may ask for one
+    (Apiary.Environments.rebuild/2), for whoever may ask for one
     (`target.rebuild_environment`), where the target names an environment and a pool
     serves the workspace; a reader who may not sees no button. After it, where the reader
     is shown the work items, what its runs also read (`Apiary.Targets.further_repositories/1`),
