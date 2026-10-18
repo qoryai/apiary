@@ -56,6 +56,9 @@ defmodule Apiary.WorkItems.Proposal do
   @max_long 20_000
   @max_questions 20
   @max_lines 50
+  # The most bytes a scope's text holds: `@max_lines` entries of `@max_short` code points,
+  # four bytes each at most, each with its line break.
+  @max_scope_bytes @max_lines * (4 * @max_short + 2)
   @levels ~w(simple standard complex)
   # result.schema.json `$defs/text`: the characters a text refuses.
   @refused ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
@@ -222,7 +225,10 @@ defmodule Apiary.WorkItems.Proposal do
   def changes(_proposal, _params), do: {:error, :invalid}
 
   # A text: valid UTF-8, its line breaks line feeds and trimmed, not empty, at most `max`
-  # code points, holding no character the contract refuses.
+  # code points, holding no character the contract refuses. One past 4 × `max` bytes, more
+  # than `max` code points hold, is refused as too long before it is cleaned or counted.
+  defp text(value, max) when byte_size(value) > 4 * max, do: {:error, {:too_long, max}}
+
   defp text(value, max) do
     with {:ok, value} <- clean(value) do
       cond do
@@ -234,7 +240,11 @@ defmodule Apiary.WorkItems.Proposal do
   end
 
   # One entry per line, each trimmed, empty lines left out: at least `min`, at most
-  # `@max_lines`, each at most `@max_short` code points.
+  # `@max_lines`, each at most `@max_short` code points. A text past `@max_scope_bytes` is
+  # refused before it is cleaned, split or counted (`oversized/1`).
+  defp entries(value, _min) when byte_size(value) > @max_scope_bytes,
+    do: {:error, oversized(value)}
+
   defp entries(value, min) do
     with {:ok, value} <- clean(value) do
       lines = split(value)
@@ -246,7 +256,7 @@ defmodule Apiary.WorkItems.Proposal do
         length(lines) > @max_lines ->
           {:error, {:too_many_lines, @max_lines}}
 
-        Enum.any?(lines, &(code_points(&1) > @max_short)) ->
+        Enum.any?(lines, &(byte_size(&1) > 4 * @max_short or code_points(&1) > @max_short)) ->
           {:error, {:line_too_long, @max_short}}
 
         true ->
@@ -254,6 +264,31 @@ defmodule Apiary.WorkItems.Proposal do
       end
     end
   end
+
+  # Why a scope past `@max_scope_bytes` is refused: more than `@max_lines` lines that are
+  # not blank, counted one line break at a time and no further than one past the limit;
+  # else a line past `@max_short` code points, as `@max_lines` lines within it fit in
+  # `@max_scope_bytes`.
+  defp oversized(value) do
+    breaks = :binary.compile_pattern(["\r\n", "\r", "\n"])
+
+    if lines(value, breaks, 0, 0) > @max_lines,
+      do: {:too_many_lines, @max_lines},
+      else: {:line_too_long, @max_short}
+  end
+
+  defp lines(_value, _breaks, _from, count) when count > @max_lines, do: count
+
+  defp lines(value, breaks, from, count) do
+    case :binary.match(value, breaks, scope: {from, byte_size(value) - from}) do
+      {at, length} -> lines(value, breaks, at + length, count + line(value, from, at))
+      :nomatch -> count + line(value, from, byte_size(value))
+    end
+  end
+
+  # 1 for the bytes of `value` from `from` to `to` when they are not blank once trimmed.
+  defp line(value, from, to),
+    do: if(String.trim(binary_part(value, from, to - from)) == "", do: 0, else: 1)
 
   defp clean(value) do
     if String.valid?(value) and not Regex.match?(@refused, value),
