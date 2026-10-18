@@ -4,7 +4,8 @@ defmodule Apiary.Lingo.Domain.Software do
   the one `qory run` follows when it takes the labels from the origin remote: the
   `forge` label is the system and the `repository` label the path. Both must be labels
   that can name a target (`Apiary.Runs.Target.label/1`), or the run names none. Any
-  other label, sent by Forager beside them, names nothing here.
+  other label, sent by Forager beside them, names nothing here. The `repositories` label,
+  which Qory adds to a run it hands over (`paths_label/0`), names nothing here either.
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -12,6 +13,7 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @system_label "forge"
   @path_label "repository"
+  @paths_label "repositories"
 
   @impl true
   def target(%{} = labels) do
@@ -25,6 +27,9 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @impl true
   def target_labels, do: [@system_label, @path_label]
+
+  @impl true
+  def paths_label, do: @paths_label
 
   @impl true
   def name, do: "software"

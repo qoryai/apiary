@@ -136,7 +136,8 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert run.registration_labels == %{
                "forge" => "forge.example.com",
-               "repository" => "acme/shop"
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop"
              }
 
       assert run.registration_about == %{
@@ -267,7 +268,8 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert run.registration_labels == %{
                "forge" => collection.target_system,
-               "repository" => collection.target_path
+               "repository" => collection.target_path,
+               "repositories" => collection.target_path
              }
 
       assert run.registration_variables == %{
@@ -559,9 +561,32 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert {:ok, handed} = handover(ctx.key, dispatch)
 
-      assert Repo.get!(Run, handed.run.id).registration_variables == %{
+      run = Repo.get!(Run, handed.run.id)
+
+      assert run.registration_variables == %{
                "QORY_RUN_SYSTEM" => "forge.example.com",
                "QORY_RUN_REPOSITORIES" => "acme/shop,acme/docs,acme/tools"
+             }
+
+      assert run.registration_labels == %{
+               "forge" => "forge.example.com",
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop,acme/docs,acme/tools"
+             }
+    end
+
+    test "an empty saved list gives the repositories label its repository alone", ctx do
+      further!(ctx, "")
+      {_work_item, _queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch)
+
+      assert Repo.get!(Run, handed.run.id).registration_labels == %{
+               "forge" => "forge.example.com",
+               "repository" => "acme/shop",
+               "repositories" => "acme/shop"
              }
     end
 

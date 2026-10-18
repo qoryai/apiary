@@ -67,6 +67,13 @@ defmodule Apiary.Runs.RunVariables do
   end
 
   @doc """
+  The value of QORY_RUN_REPOSITORIES in run variables `for_target/2` made: the target's
+  path first, then the further repositories, joined with commas.
+  """
+  @spec repositories(variables) :: String.t()
+  def repositories(%{@repositories => repositories}), do: repositories
+
+  @doc """
   Whether `picked`, the further repositories in order after the target's `path`, keep the
   rules of QORY_RUN_REPOSITORIES: `:ok`, or `{:error, {reason, index}}` for the first they
   break, its index the place in `picked` counted from 1. Each path in turn, in this order:

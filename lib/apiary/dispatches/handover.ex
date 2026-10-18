@@ -69,7 +69,9 @@ defmodule Apiary.Dispatches.Handover do
   # Else the run is registered, as a registration through the gateway by the pool:
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
   # `run_id` too, under the pool's key, its labels the target's
-  # (`Apiary.Lingo.Domain.target_labels/1`), `about` the step and, for an explore run, its
+  # (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one, the label of its
+  # paths (`Apiary.Lingo.Domain.paths_label/1`) with its QORY_RUN_REPOSITORIES as the value,
+  # `about` the step and, for an explore run, its
   # work item, its run variables (`registration_variables`), its registration digest the
   # SHA-256 of the handover's body, with no heartbeat interval, no answer digest and no
   # contract version until its attach; with the gateway, its run key's payload and
@@ -367,7 +369,7 @@ defmodule Apiary.Dispatches.Handover do
 
       {:ok,
        %{
-         labels: Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path])),
+         labels: labels(workspace, target, variables),
          about: about,
          variables: variables,
          workspace: workspace,
@@ -381,6 +383,19 @@ defmodule Apiary.Dispatches.Handover do
     else
       {:variables, {:error, _rule}} -> {:end, :variables_invalid}
       {:inputs, {:error, cause}} -> {:end, cause}
+    end
+  end
+
+  # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
+  # domain has one, the label of the run's paths (`Apiary.Lingo.Domain.paths_label/1`),
+  # whose value is the run variables' QORY_RUN_REPOSITORIES, the same list in the same
+  # order.
+  defp labels(workspace, target, variables) do
+    labels = Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path]))
+
+    case Domain.paths_label(workspace) do
+      nil -> labels
+      key -> Map.put(labels, key, RunVariables.repositories(variables))
     end
   end
 

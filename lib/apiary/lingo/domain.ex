@@ -49,6 +49,16 @@ defmodule Apiary.Lingo.Domain do
   @callback target_labels() :: [String.t()]
 
   @doc """
+  The label, the plural of the path's, that Qory adds beside `target_labels/0` to a run
+  it hands over: its value is the run's path first, then the paths of the other targets
+  its target's runs also read (`Apiary.Targets.further_repositories/1`), joined with
+  commas. It names no target. A domain without it gives a run no such label.
+  """
+  @callback paths_label() :: String.t()
+
+  @optional_callbacks paths_label: 0
+
+  @doc """
   The domain's name: what a workspace of the domain stores, and the GNU `@modifier` of its
   locales (`software` of `en@software`).
   """
@@ -86,4 +96,16 @@ defmodule Apiary.Lingo.Domain do
   @doc "The labels that name a target in the workspace: `target_labels/0` of its domain."
   @spec target_labels(%Workspace{} | nil) :: [String.t()]
   def target_labels(workspace), do: for_workspace(workspace).target_labels()
+
+  @doc """
+  The label of a run's paths in the workspace: `paths_label/0` of its domain, or nil for a
+  domain without one.
+  """
+  @spec paths_label(%Workspace{} | nil) :: String.t() | nil
+  def paths_label(workspace) do
+    domain = for_workspace(workspace)
+
+    if Code.ensure_loaded?(domain) and function_exported?(domain, :paths_label, 0),
+      do: domain.paths_label()
+  end
 end
