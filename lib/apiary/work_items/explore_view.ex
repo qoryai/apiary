@@ -15,6 +15,9 @@ defmodule Apiary.WorkItems.ExploreView do
   #     end that recorded none, the stage its current take in was at;
   #   * `ended_reason`: for a work item the instance closed, the reason its `:closed` event
   #     gives (`"adapter_removed"`); nil otherwise;
+  #   * `ended_by_id` and `ended_at`: for an ended work item, who ended it, nil where the
+  #     instance closed it, and when, by its latest event of the kind of its state; nil for
+  #     a live one;
   #   * `take_in`: the current take in, and `previous`, how the work item had ended before
   #     it (`:declined`, `:closed` or `:undone`), nil for a first take in;
   #   * `run`: the latest run of the current take in, nil for none, and `earlier_runs` the
@@ -93,6 +96,8 @@ defmodule Apiary.WorkItems.ExploreView do
         if(live?, do: Explore.status(current, not is_nil(confirmation)), else: work_item.state),
       stage: unless(live?, do: ended_stage(work_item, events, current, confirmation)),
       ended_reason: unless(live?, do: ended_reason(work_item, events)),
+      ended_by_id: unless(live?, do: ended_by_id(work_item, events)),
+      ended_at: unless(live?, do: ended_at(work_item, events)),
       take_in: take_in,
       previous: previous(taken, take_in),
       run: List.last(runs),
@@ -214,6 +219,26 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   defp ended_reason(_work_item, _events), do: nil
+
+  # Who ended an ended work item, and when: its latest event of the kind of its state;
+  # nil for who where the instance closed it. An end with no event, which no move writes,
+  # reads the row.
+  defp ended_by_id(work_item, events) do
+    case ended_event(work_item, events) do
+      %{actor_id: actor_id} -> actor_id
+      nil -> work_item.declined_by_id || work_item.closed_by_id
+    end
+  end
+
+  defp ended_at(work_item, events) do
+    case ended_event(work_item, events) do
+      %{at: at} -> at
+      nil -> work_item.declined_at || work_item.closed_at || work_item.updated_at
+    end
+  end
+
+  defp ended_event(work_item, events),
+    do: events |> Enum.filter(&(&1.kind == work_item.state)) |> List.last()
 
   # How the work item had ended before the take in `take_in`, from its `:taken_in` event's
   # `before`: nil for a first take in.

@@ -457,15 +457,26 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       explore_run_fixture(ctx.work_item, result: understood_result())
       closed = instance_close!(ctx.work_item, "adapter_removed")
 
-      assert %{status: :closed, stage: :confirm, ended_reason: "adapter_removed"} =
-               WorkItems.explore(ctx.scope, closed)
+      assert %{
+               status: :closed,
+               stage: :confirm,
+               ended_reason: "adapter_removed",
+               ended_by_id: nil,
+               ended_at: %DateTime{}
+             } = WorkItems.explore(ctx.scope, closed)
 
       assert %{kind: :closed, actor_id: nil, reason: "adapter_removed"} =
                List.last(WorkItems.explore_thread(ctx.scope, closed))
 
       other = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
       {:ok, by_person} = WorkItems.close(ctx.scope, other)
-      assert %{ended_reason: nil} = WorkItems.explore(ctx.scope, by_person)
+      user_id = ctx.scope.user.id
+
+      assert %{ended_reason: nil, ended_by_id: ^user_id, ended_at: %DateTime{}} =
+               WorkItems.explore(ctx.scope, by_person)
+
+      live = work_item_fixture(ctx.scope, external_ref: "acme/shop#15")
+      assert %{ended_by_id: nil, ended_at: nil} = WorkItems.explore(ctx.scope, live)
 
       assert %{kind: :closed, reason: nil} =
                List.last(WorkItems.explore_thread(ctx.scope, by_person))
