@@ -41,6 +41,15 @@ defmodule ApiaryWeb.FactoryShellTest do
   # an instance admin as a path that does not exist.
   @unbuilt []
 
+  # The modules of the feature's pages of an organisation or a workspace not built yet,
+  # which answer anyone as a path that does not exist.
+  @unbuilt_pages [
+    ApiaryWeb.BacklogLive.Index,
+    ApiaryWeb.BacklogLive.Ticket,
+    ApiaryWeb.WorkItemLive.Index,
+    ApiaryWeb.WorkItemLive.Show
+  ]
+
   # The modules of the feature's pages of the Instance level.
   @instance_modules [
     ApiaryWeb.InstanceLive.Adapters,
@@ -215,7 +224,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       adapter: adapter
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
-          module != ApiaryWeb.AdapterRedirectController do
+          module in @unbuilt_pages or module in @instance_modules do
         assert {404, _body, _headers} = answer(fn -> get(conn, path) end), path
       end
     end
@@ -226,8 +235,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       adapter: adapter
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
-          module != ApiaryWeb.AdapterRedirectController,
-          Enum.member?(@unbuilt, module) or module not in @instance_modules do
+          Enum.member?(@unbuilt, module) or module in @unbuilt_pages do
         {:ok, view, _html} = navigable(conn, scope, path)
 
         assert {%{status: 404, reason: "reload"}, _call} =
