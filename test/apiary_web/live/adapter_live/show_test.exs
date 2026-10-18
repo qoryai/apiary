@@ -1328,20 +1328,52 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert length(rows(lv)) == 2
   end
 
-  test "a page of a search that shows no rows, where the search finds some, says nothing", %{
+  test "past the live rows, a page steps back to the last with some, and says no search line",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..100), 1, true)
+    relist(key, connection, titles(1..50), "second", ~U[2026-10-02 09:00:00Z])
+
+    # Past the first page, only ended rows are left.
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    refute has_element?(lv, "#collections-pager")
+    render_patch(lv, page(scope, adapter) <> "?page=2")
+    assert_patch(lv, page(scope, adapter))
+    assert length(rows(lv)) == 51
+
+    render_patch(lv, page(scope, adapter) <> "?q=repo&page=2")
+    assert_patch(lv, page(scope, adapter) <> "?q=repo")
+    refute has_element?(lv, "#collections-table-none")
+    assert length(rows(lv)) == 51
+  end
+
+  test "a page of the list that holds only ended rows goes into the page after it", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
     key: key
   } do
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
-    post(key, connection, titles(1..100), 1, true)
-    relist(key, connection, titles(1..50), "second", ~U[2026-10-02 09:00:00Z])
+    post(key, connection, titles(1..150), 1, true)
+    kept = titles(1..50) ++ titles(101..150)
+    relist(key, connection, kept, "second", ~U[2026-10-02 09:00:00Z])
 
-    # Its second page holds only ended rows, which are not shown.
-    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo&page=2")
-    refute has_element?(lv, "#collections-table-none")
-    assert length(rows(lv)) == 1
+    for query <- ["", "?q=repo"] do
+      join = if query == "", do: "?", else: "&"
+      {:ok, lv, _html} = live(conn, page(scope, adapter) <> query)
+      assert words(lv, "#collections-pager-footer") == "1–50 of 100"
+      assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(1..50)
+
+      lv |> element("#collections-pager-next") |> render_click()
+      assert_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
+      assert words(lv, "#collections-pager-footer") == "51–100 of 100"
+      assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(101..150)
+      assert has_element?(lv, "#collections-pager-next[disabled]")
+
+      render_patch(lv, page(scope, adapter) <> query <> join <> "page=3")
+      assert_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
+      assert words(lv, "#collections-pager-footer") == "51–100 of 100"
+    end
   end
 
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{
