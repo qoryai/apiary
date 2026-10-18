@@ -475,7 +475,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-heading") == "Projects 1"
     assert words(lv, "#collections-lead") =~ "so every project is assigned to it, and its issues"
     assert words(lv, "#collections-count") == "1 project"
-    assert hd(rows(lv)) == "Project Workspace Open tickets Added"
+    assert hd(rows(lv)) == "Project Workspace Open issues Added"
     assert words(lv, "#collections-targets") =~ "Assigning a project here"
   end
 
