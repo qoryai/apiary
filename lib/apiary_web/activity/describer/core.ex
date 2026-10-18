@@ -68,6 +68,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.undo"), do: gettext("Take in undone")
   def label(:"work_item.decline"), do: gettext("Work item declined")
   def label(:"work_item.close"), do: gettext("Work item closed")
+  def label(:"work_item.answer"), do: gettext("Work item questions answered")
+  def label(:"work_item.confirm"), do: gettext("Work item proposal confirmed")
+  def label(:"work_item.explore_again"), do: gettext("Work item explored again")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
@@ -95,7 +98,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
-  # work items (a take in, its undo, a decline, a close and the comments), the assigning
+  # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
+  # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
   # run, its release, the choosing of what a target's runs also read, the installing of an
   # adapter and the start of its set-up have labels yet, so the filter offers those alone,
@@ -110,6 +114,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.undo",
           :"work_item.decline",
           :"work_item.close",
+          :"work_item.answer",
+          :"work_item.confirm",
+          :"work_item.explore_again",
           :"work_item.comment",
           :"work_item.comment_delete",
           :"collection.assign",
@@ -332,6 +339,30 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
+  # The count of questions answered, one where the entry says none.
+  defp said(:"work_item.answer", details, _actor) do
+    count =
+      case details["count"] do
+        count when is_integer(count) and count >= 1 -> count
+        _none -> 1
+      end
+
+    ngettext(
+      "Answered Qory's question on a work item",
+      "Answered Qory's %{count} questions on a work item",
+      count
+    )
+  end
+
+  defp said(:"work_item.confirm", %{"changed" => [_ | _]}, _actor),
+    do: gettext("Changed Qory's proposal for a work item and confirmed it")
+
+  defp said(:"work_item.confirm", _details, _actor),
+    do: gettext("Confirmed Qory's proposal for a work item")
+
+  defp said(:"work_item.explore_again", _details, _actor),
+    do: gettext("Asked Qory to explore a work item again")
 
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")

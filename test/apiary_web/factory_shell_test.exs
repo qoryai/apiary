@@ -377,6 +377,9 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"work_item.undo", "Take in undone"} in options
       assert {"work_item.decline", "Work item declined"} in options
       assert {"work_item.close", "Work item closed"} in options
+      assert {"work_item.answer", "Work item questions answered"} in options
+      assert {"work_item.confirm", "Work item proposal confirmed"} in options
+      assert {"work_item.explore_again", "Work item explored again"} in options
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
       assert {"collection.assign", "Repositories assigned"} in options
@@ -400,6 +403,9 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.undo",
             :"work_item.decline",
             :"work_item.close",
+            :"work_item.answer",
+            :"work_item.confirm",
+            :"work_item.explore_again",
             :"work_item.comment",
             :"work_item.comment_delete",
             :"collection.assign",

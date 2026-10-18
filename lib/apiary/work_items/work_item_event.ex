@@ -2,7 +2,8 @@ defmodule Apiary.WorkItems.WorkItemEvent do
   # A work item event: one thing that happened to a work item, at `at`, kept in the order
   # it happened.
   #
-  # `kind` is what happened: `:taken_in`, `:declined`, `:closed` or `:undone`. Who did it
+  # `kind` is what happened: `:taken_in`, `:declined`, `:closed` or `:undone`; or what a
+  # member gave Explore, `:answered`, `:confirmed` or `:explore_again`. Who did it
   # is `actor_kind`, `:person`, `:adapter` or `:instance`, with `actor_id`, the person's
   # account or the adapter's node, and none for the instance. `data` is what else the
   # event says, a JSON object of 16,384 bytes at most as the database encodes it.
@@ -17,12 +18,13 @@ defmodule Apiary.WorkItems.WorkItemEvent do
   @type t :: %__MODULE__{}
 
   @typedoc "What happened to a work item."
-  @type kind :: :taken_in | :declined | :closed | :undone
+  @type kind ::
+          :taken_in | :declined | :closed | :undone | :answered | :confirmed | :explore_again
 
   @typedoc "Who did it: a person, an adapter or the instance."
   @type actor_kind :: :person | :adapter | :instance
 
-  @kinds [:taken_in, :declined, :closed, :undone]
+  @kinds [:taken_in, :declined, :closed, :undone, :answered, :confirmed, :explore_again]
   @actor_kinds [:person, :adapter, :instance]
 
   @primary_key {:id, :binary_id, autogenerate: true}

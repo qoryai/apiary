@@ -46,8 +46,13 @@ defmodule Apiary.WorkItems.DocsTest do
     assert Enum.sort(modules) ==
              Enum.sort([
                Apiary.WorkItems,
+               Apiary.WorkItems.Answer,
+               Apiary.WorkItems.Confirmation,
+               Apiary.WorkItems.Explore,
+               Apiary.WorkItems.ExploreView,
                Apiary.WorkItems.Moves,
                Apiary.WorkItems.Number,
+               Apiary.WorkItems.Proposal,
                Apiary.WorkItems.State,
                Apiary.WorkItems.WorkItem,
                Apiary.WorkItems.WorkItemEvent,

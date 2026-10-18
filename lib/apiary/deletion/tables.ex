@@ -67,6 +67,8 @@ defmodule Apiary.Deletion.Tables do
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},
+    {"work_item_answers", :workspace},
+    {"work_item_confirmations", :workspace},
     {"work_items", :workspace},
     {"work_item_counters", :workspace},
     {"retention_runs", :workspace},

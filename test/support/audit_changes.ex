@@ -60,7 +60,10 @@ defmodule Apiary.AuditChanges do
     :"work_item.take_in",
     :"work_item.undo",
     :"work_item.decline",
-    :"work_item.close"
+    :"work_item.close",
+    :"work_item.answer",
+    :"work_item.confirm",
+    :"work_item.explore_again"
   ]
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
@@ -582,7 +585,8 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
-  # A member undoes, declines or closes a work item of the workspace, about it.
+  # A member undoes, declines or closes a work item of the workspace, answers the questions
+  # of its run, confirms its run's proposal or asks for another run, about it.
   def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
     work_item = prepare(action, ctx)
     before = entries()
@@ -963,6 +967,27 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"work_item.take_in", %{scope: scope}),
     do: Apiary.WorkItemsFixtures.backlog_ticket_fixture(scope)
 
+  # A work item whose run asked, or proposed, or gave no result, as the action needs.
+  defp prepare(:"work_item.answer", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    result = Apiary.WorkItemsFixtures.questions_result(["Which basket?"])
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: result)
+    work_item
+  end
+
+  defp prepare(:"work_item.confirm", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    result = Apiary.WorkItemsFixtures.understood_result()
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: result)
+    work_item
+  end
+
+  defp prepare(:"work_item.explore_again", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
+    work_item
+  end
+
   defp prepare(action, %{scope: scope}) when action in @work_item_moves or action in @stand_ins,
     do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
@@ -1097,6 +1122,15 @@ defmodule Apiary.AuditChanges do
     do: Apiary.WorkItems.decline(scope, work_item)
 
   defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
+
+  defp attempt(:"work_item.answer", scope, work_item),
+    do: Apiary.WorkItems.answer(scope, work_item, 1, %{"1" => "The one at checkout."})
+
+  defp attempt(:"work_item.confirm", scope, work_item),
+    do: Apiary.WorkItems.confirm(scope, work_item, 1)
+
+  defp attempt(:"work_item.explore_again", scope, work_item),
+    do: Apiary.WorkItems.explore_again(scope, work_item, 1)
 
   defp attempt(action, scope, subject) when action in @stand_ins,
     do: stand_in(scope, action, subject)

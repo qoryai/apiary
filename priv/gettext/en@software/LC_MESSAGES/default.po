@@ -3917,6 +3917,13 @@ msgstr ""
 msgid "Answered %{status}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Answered Qory's question on a work item"
+msgid_plural "Answered Qory's %{count} questions on a work item"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
@@ -4012,6 +4019,11 @@ msgid "Asked %{number} question"
 msgid_plural "Asked %{number} questions"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Asked Qory to explore a work item again"
+msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -4414,6 +4426,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "field edited"
 msgid "Changed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed Qory's proposal for a work item and confirmed it"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4932,6 +4949,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Confirmed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Confirmed Qory's proposal for a work item"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -11665,6 +11687,11 @@ msgstr ""
 msgid "Remove the allow rule %{host}?"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the control or invisible characters."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}?"
@@ -15965,6 +15992,21 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Work item declined"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item explored again"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item proposal confirmed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Work item questions answered"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
