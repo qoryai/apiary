@@ -9,9 +9,9 @@ defmodule ApiaryWeb.IntegrationComponents do
   # The mark is a neutral glyph, the same for every integration: never a vendor's logo.
   #
   # The collections an installed integration reaches are a table
-  # (`collections_table/1`): each one's name, its workspace or Unassigned, its open
-  # items, for an adapter with items, and the day it was added; where they may be
-  # assigned, a checkbox on each row and one over them all. The selection's menu
+  # (`collections_table/1`): each one's name, its workspace or Unassigned, for an adapter
+  # with items its Backlog switch and its open items, and the day it was added; where they
+  # may be assigned, a checkbox on each row and one over them all. The selection's menu
   # (`assign_menu/1`) lists the workspaces to assign it to, and a list menu
   # (`workspace_filter/1`) keeps the table to one workspace.
   #
@@ -193,6 +193,11 @@ defmodule ApiaryWeb.IntegrationComponents do
     default: nil,
     doc: "the open items column's head; no such column without one"
 
+  attr :backlog, :any,
+    default: nil,
+    doc: "the word for the source's items, for the Backlog column; no such column without one"
+
+  attr :may_set_backlog, :boolean, default: false, doc: "whether the switches may be turned"
   attr :picks, :boolean, default: false, doc: "whether the rows may be selected"
   attr :selected, :map, default: %{}, doc: "the selected rows' names, by their ids"
   attr :every, :string, default: nil, doc: "the name of the checkbox over every row shown"
@@ -200,9 +205,15 @@ defmodule ApiaryWeb.IntegrationComponents do
 
   @doc false
   # The collections of a page, a row each: the name, the workspace it is assigned to or
-  # Unassigned behind a warning mark, how many of its items are open (a faint dash for
-  # none), and the day it was added. The open items and the day show from 600 px of the
-  # table's width. With `picks`, a checkbox first on each row (`"select"`, the row's
+  # Unassigned behind a warning mark, with `backlog` its Backlog switch, how many of its
+  # items are open (a faint dash for none), and the day it was added. The switch is the
+  # row's `backlog` (`Apiary.Adapters.Collections.list_collections/3`), named for the
+  # collection and its items, turned by a press (`"set_backlog"`, the row's public id as
+  # `collection`) where `may_set_backlog`, else disabled; an assigned row with none, a
+  # collection with no items, has a faint dash named for that; any other row has nothing.
+  # The Backlog column, the open items and the day show from 600 px of the table's width;
+  # below it, the switch goes on the name's second line, beside the column's word, which
+  # screen readers skip. With `picks`, a checkbox first on each row (`"select"`, the row's
   # public id as `collection`), and one in the head over every row shown
   # (`"select_all"`), checked while all of them are. With no rows, `none` in their place.
   def collections_table(assigns) do
@@ -230,6 +241,7 @@ defmodule ApiaryWeb.IntegrationComponents do
             </th>
             <th scope="col">{@column}</th>
             <th scope="col">{gettext("Workspace")}</th>
+            <th :if={@backlog} scope="col" class="q-from-sm">{gettext("Backlog")}</th>
             <th :if={@open} scope="col" class="q-num q-from-sm">{@open}</th>
             <th scope="col" class="q-from-sm">{gettext("Added")}</th>
           </tr>
@@ -253,12 +265,41 @@ defmodule ApiaryWeb.IntegrationComponents do
             </td>
             <td class="q-td-title">
               <span class="q-title-mono block truncate" title={row.name}>{row.name}</span>
+              <span :if={@backlog && row.backlog} class="q-to-sm mt-1 flex items-center gap-2">
+                <.backlog_switch
+                  id={"collection-#{row.public_id}-backlog-line"}
+                  row={row}
+                  items={@backlog}
+                  may={@may_set_backlog}
+                />
+                <span aria-hidden="true" class="text-xs text-muted">{gettext("Backlog")}</span>
+              </span>
             </td>
             <td>
               <span :if={row.workspace}>{row.workspace.name}</span>
               <span :if={!row.workspace} class="q-int-un">
                 <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
                   "Unassigned"
+                )}</span>
+              </span>
+            </td>
+            <td :if={@backlog} class="q-from-sm">
+              <.backlog_switch
+                :if={row.backlog}
+                id={"collection-#{row.public_id}-backlog"}
+                row={row}
+                items={@backlog}
+                may={@may_set_backlog}
+              />
+              <span
+                :if={!row.backlog && row.workspace && is_nil(row.ended_at)}
+                id={"collection-#{row.public_id}-backlog-none"}
+                class="q-faint"
+                title={gettext("No %{items} to take in", items: @backlog)}
+              >
+                <span aria-hidden="true">—</span><span class="sr-only">{gettext(
+                  "No %{items} to take in",
+                  items: @backlog
                 )}</span>
               </span>
             </td>
@@ -269,13 +310,42 @@ defmodule ApiaryWeb.IntegrationComponents do
             <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
           </tr>
           <tr :if={@rows == [] && @none} id={"#{@id}-none"}>
-            <td colspan="5" class="text-muted">{@none}</td>
+            <td colspan="6" class="text-muted">{@none}</td>
           </tr>
         </tbody>
       </table>
     </div>
     """
   end
+
+  attr :id, :string, required: true
+  attr :row, :map, required: true, doc: "a row of the table, with its `backlog`"
+  attr :items, :string, required: true, doc: "the word for the source's items"
+  attr :may, :boolean, required: true, doc: "whether it may be turned"
+
+  # A row's Backlog switch, the kit's track without a visible label: its name, for screen
+  # readers and as its title, says whose items it takes into the Backlog.
+  defp backlog_switch(assigns) do
+    assigns = assign(assigns, :label, backlog_label(assigns.items, assigns.row.name))
+
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      role="switch"
+      class="q-toggle"
+      aria-checked={to_string(@row.backlog.on)}
+      aria-label={@label}
+      title={@label}
+      disabled={!@may}
+      phx-click={@may && "set_backlog"}
+      phx-value-collection={@row.public_id}
+    ></button>
+    """
+  end
+
+  defp backlog_label(items, name),
+    do: gettext("Take the %{items} of %{name} into the Backlog", items: items, name: name)
 
   attr :id, :string, required: true
   attr :heading, :string, required: true, doc: "what is assigned: the menu's heading and name"
