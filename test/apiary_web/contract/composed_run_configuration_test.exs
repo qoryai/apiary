@@ -409,6 +409,61 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     end
   end
 
+  describe "a workspace that stops serving its policy mid-run" do
+    # The instance without the `security` feature, for what `fun` does: the workspace's
+    # policy is served to nobody.
+    defp without_security(fun) do
+      features = Application.get_env(:apiary, :features)
+
+      try do
+        Application.put_env(:apiary, :features, List.delete(features, :security))
+        fun.()
+      after
+        Application.put_env(:apiary, :features, features)
+      end
+    end
+
+    test "never loosens a run given an image: its reload is not found", ctx do
+      managed!(ctx)
+      recorded!(ctx, @shop)
+      {run_id, run_key} = explore!(ctx)
+      assert attach(ctx, run_id, run_key).status == 200
+      assert run(run_id).configured_image == @image
+
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+
+      # Served again, the reload is the policy with the image.
+      assert reload(ctx, run_id).status == 200
+    end
+
+    test "never loosens a run given no image: its reload is not found", ctx do
+      managed!(ctx)
+      {run_id, run_key} = explore!(ctx)
+      assert attach(ctx, run_id, run_key).status == 200
+      assert run(run_id).configured_image == nil
+
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+    end
+
+    test "gives a run that was given no policy at its attach its image alone again", ctx do
+      recorded!(ctx, @shop)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+
+      without_security(fn ->
+        reloaded = reload(ctx, run_id)
+        assert reloaded.status == 200
+        assert Jason.decode!(reloaded.resp_body)["image"] == @image
+        refute Map.has_key?(Jason.decode!(reloaded.resp_body), "security_policy")
+      end)
+    end
+  end
+
   describe "a run answered as before" do
     test "a run a node registered itself, whatever the pool recorded", ctx do
       policy = managed!(ctx)
@@ -525,7 +580,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       refute digest == run(run_id).attach_answer_digest
 
       # The batch tells the run its policy moved; the reload is the policy in force without
-      # its image, beside the run's image, under a digest of its own.
+      # its image, beside the run's image, under the composed document's digest.
       assert batch_digest(ctx, run_id, 2) == digest
 
       reloaded = reload(ctx, run_id)

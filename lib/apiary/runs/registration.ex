@@ -97,7 +97,8 @@ defmodule Apiary.Runs.Registration do
   `configured_image`, or a prebuild of a workspace whose policy names an image) is given
   the configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
-  configuration gives such a run with an image `{"version":1,"image":…}`. A policy that
+  configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
+  its attach, and not found to every other. A policy that
   names an image since such a run's attach is composed without its `image`, beside the
   run's: the rest of the policy applies at once, and its image from the next attach.
 
@@ -541,8 +542,9 @@ defmodule Apiary.Runs.Registration do
   # The run configuration in force for the labels, composed with the image for a run
   # (`Apiary.Policy.ComposedConfiguration.serve/6`), the composed document kept: `{:ok,
   # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
-  # composed.
-  defp composed(access_key, labels, image, prebuild?, fixed?) do
+  # composed. Where it serves none, a document is composed from no policy only when
+  # `from_no_policy?` holds (a boolean, or a function that reads it).
+  defp composed(access_key, labels, image, prebuild?, fixed?, from_no_policy? \\ true) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
 
     case Serving.fetch(access_key, labels) do
@@ -563,25 +565,28 @@ defmodule Apiary.Runs.Registration do
         end
 
       {:error, :unmanaged} ->
-        case ComposedConfiguration.serve(
-               organisation_id,
-               workspace_id,
-               nil,
-               image,
-               prebuild?,
-               fixed?
-             ) do
-          :as_is ->
-            :unmanaged
-
-          {:ok, composed} ->
-            {:ok, settings(composed.document, composed.digest, false), composed.image}
+        with true <- asked(from_no_policy?),
+             {:ok, composed} <-
+               ComposedConfiguration.serve(
+                 organisation_id,
+                 workspace_id,
+                 nil,
+                 image,
+                 prebuild?,
+                 fixed?
+               ) do
+          {:ok, settings(composed.document, composed.digest, false), composed.image}
+        else
+          _none -> :unmanaged
         end
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  defp asked(fun) when is_function(fun, 0), do: fun.()
+  defp asked(value), do: value
 
   defp settings(access_key, labels) do
     case Serving.fetch(access_key, labels) do
@@ -915,9 +920,10 @@ defmodule Apiary.Runs.Registration do
   does not have the `security` feature, or `Apiary.Access` refuses
   `run_configuration.fetch`. That last is never the document of no policy, which would
   take the policy in force off a run that started under it: a policy removed mid-run
-  never loosens a run already started. A run given an image (`configured_image`) is given
-  `{"version":1,"image":…}` there instead, never not found: the image is fixed when the
-  run starts, and a reload without it would be refused.
+  never loosens a run already started, one given an image included. Only a run given an
+  image where the workspace served no run configuration at its attach, whose attach
+  answer was `{"version":1,"image":…}`, is given that again there, since it started
+  under no policy of the workspace.
   `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
   the run's workspace (`Apiary.Runs.Sender.serves?/2`).
   `{:error, :unavailable}` when the configuration cannot be read.
@@ -941,7 +947,8 @@ defmodule Apiary.Runs.Registration do
              run.registration_labels,
              run.configured_image,
              fn -> ComposedConfiguration.prebuild?(run) end,
-             true
+             true,
+             fn -> given_no_policy?(run) end
            ) do
         {:ok, settings, _image} ->
           {:ok, %{settings | settings: with_variables(settings.settings, run)}}
@@ -959,6 +966,13 @@ defmodule Apiary.Runs.Registration do
   rescue
     _exception -> {:error, :unavailable}
   end
+
+  # Whether the run was given no policy at its attach: its attach answer was a document
+  # composed from none, its image alone. Only such a run is reloaded from no policy; a
+  # run given a policy is reloaded with none, `not_found`, as any other, so a workspace
+  # that stops serving its policy mid-run never loosens it.
+  defp given_no_policy?(%Run{workspace_id: workspace_id, attach_answer_digest: digest}),
+    do: ComposedConfiguration.from_no_policy?(workspace_id, digest)
 
   # A reload's bytes: the stored or composed document, with the run variables Qory set for
   # the run, as its attach was given them (`Apiary.Runs.Attach.answer_body/4`). The digest
