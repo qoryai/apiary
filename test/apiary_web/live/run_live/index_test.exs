@@ -413,8 +413,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                ~s(#{row(run)} .q-rl-c3 .q-tname[title="github.example/acme/shop"])
              )
 
-      # A path with nothing left to show is no target.
-      assert text(view, "#{row(blank)} .q-rl-c3") == "n/a"
+      # A path sent with nothing left to show is marked, never n/a.
+      assert text(view, "#{row(blank)} .q-rl-c3") == "\uFFFD\uFFFD"
 
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
@@ -425,7 +425,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_hook(view, "select", %{"id" => blank.public_id})
       render_async(view)
       assert has_element?(view, "#{row(blank)}[aria-current=true]")
-      refute has_element?(view, "#runs-preview .q-pv-m .q-tname")
+      assert text(view, "#runs-preview .q-pv-m .q-tname") == "\uFFFD\uFFFD"
 
       narrowed =
         open(
@@ -458,6 +458,29 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#filter-host-form .q-filter-option > span > bdi", "\uFFFD")
       assert has_element?(view, ~s(#filter-host-form .q-filter-option > span[title="\uFFFD"]))
       assert has_element?(view, ~s(#filter-host-form input[value="\u200B"]))
+    end
+
+    test "a host and a runtime sent with nothing left to show are marked, never n/a or blank",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop(), host: " \u00A0")
+      run = Repo.update!(Ecto.Changeset.change(run, runtime: "\u200B", runtime_version: nil))
+      none = started_run(scope, shop(), ago: 60)
+      none = Repo.update!(Ecto.Changeset.change(none, runtime: nil, host: nil))
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-rl-host > bdi", "\uFFFD")
+      assert text(view, "#{row(run)} .q-rl-host") == "\uFFFD"
+      assert text(view, "#{row(run)} .q-rl-c4:not(.q-rl-host)") == "\uFFFD"
+
+      # A host and a runtime never sent keep n/a.
+      assert text(view, "#{row(none)} .q-rl-host") == "n/a"
+      assert text(view, "#{row(none)} .q-rl-c4:not(.q-rl-host)") == "n/a"
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_hook(view, "select", %{"id" => run.public_id})
+      render_async(view)
+      assert has_element?(view, "#runs-preview .q-pv-m bdi", "\uFFFD")
+      refute text(view, "#runs-preview .q-pv-m") =~ "n/a"
     end
 
     test "a title with nothing left to show is no title: the row is its id", %{
@@ -1534,6 +1557,33 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                view,
                ~s(#runs-narrowed-network[aria-label="Network access, narrowed to gitlab.example/acme/shop"])
              )
+    end
+
+    test "the line of one path on two systems names each system cleaned, linking by its id",
+         %{conn: conn, scope: scope} do
+      path = "acme/\u202Eshop"
+      one = "git\u202E.example"
+      two = "lab.example\u200B"
+      started_run(scope, %{"forge" => one, "repository" => path})
+      started_run(scope, %{"forge" => two, "repository" => path})
+      first = tg(scope, one, path)
+      second = tg(scope, two, path)
+      view = open(conn, runs(scope, "?target=#{first},#{second}"))
+
+      what = view |> text("#runs-narrowed-what") |> String.replace(" .", ".")
+      assert what == "Showing acme/shop only, on git.example and lab.example."
+      refute view |> element("#runs-narrowed-what") |> render() =~ ~r/[\x{202E}\x{200B}]/u
+
+      # Each system leads to the runs of its target, by its id as given.
+      for id <- [first, second],
+          do:
+            assert(
+              href(
+                view,
+                "#runs-narrowed-what a[data-phx-link=patch]",
+                runs(scope, "?target=#{id}")
+              )
+            )
     end
 
     test "the targets of one path on two systems, named together, cover both, and name each system's runs",

@@ -2372,7 +2372,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert conn |> get(~p"/#{scope.organisation}/#{scope.workspace}") |> html_response(404)
   end
 
-  test "a lost run's target path: cleaned; one with nothing left to show is no target", %{
+  test "a lost run's target path: cleaned; one sent with nothing left to show is marked", %{
     conn: conn,
     scope: scope
   } do
@@ -2382,7 +2382,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     view = open(conn, scope)
 
     assert text(view, "#att-run-#{named.public_id} .q-ar-where") == "acme/shop\uFFFD"
-    assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "no repository"
+    assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "\uFFFD\uFFFD"
+
+    # A run that sent no path keeps no repository.
+    none = lost_run(scope, at.(nil))
+    view = open(conn, scope)
+    assert text(view, "#att-run-#{none.public_id} .q-ar-where") == "no repository"
   end
 
   test "a lost run's target is named with its system where the path as sent is shared", %{

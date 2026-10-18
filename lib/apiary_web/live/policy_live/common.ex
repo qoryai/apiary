@@ -1229,9 +1229,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The destinations an enforce confirm lists, each on its row: the first eight."
   def would_shown(%{destinations: destinations}), do: Enum.take(destinations, 8)
 
-  @doc "A destination of the list as its Allow names it: the host, and its path where it has one."
-  def would_name(%{host: host, path: path}) when is_binary(path), do: host <> path
-  def would_name(%{host: host}), do: host
+  @doc """
+  A destination of the list as its Allow names it: the host, and its path where it has
+  one, texts Forager sent, each shown as one where it was sent
+  (`Apiary.ExternalText.sent/1`).
+  """
+  def would_name(%{host: host, path: path}) when is_binary(path),
+    do: "#{Apiary.ExternalText.sent(host)}#{Apiary.ExternalText.sent(path)}"
+
+  def would_name(%{host: host}), do: Apiary.ExternalText.sent(host)
 
   @doc """
   After an Allow of the list, the focus goes on to the next Allow still open among those

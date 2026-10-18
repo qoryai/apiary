@@ -23,7 +23,16 @@ defmodule ApiaryWeb.ExternalTextTest do
              ~s(<bdi class="q-mono">&lt;b&gt;Fix&lt;/b&gt; &amp; co</bdi>)
   end
 
-  test "shows nothing for nil" do
+  test "shows nothing for nil and an empty text" do
     assert html(nil) == ""
+    assert html("") == ""
+  end
+
+  test "marks a text that was sent but has nothing left to show, or only whitespace" do
+    for text <- ["\u200B", "   ", "\u00A0\u3000"] do
+      assert html(text) == ~s(<bdi class="q-mono">\u{FFFD}</bdi>), inspect(text)
+    end
+
+    assert html(" \u2066 ") == ~s(<bdi class="q-mono"> \u{FFFD} </bdi>)
   end
 end

@@ -680,7 +680,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     runs = if is_integer(details["runs"]), do: details["runs"], else: 0
 
     [
-      [{:m, id}],
+      [{:m, Apiary.ExternalText.sent(id)}],
       rich_ngettext("%{number} open run marked lost", "%{number} open runs marked lost", runs,
         number: Format.number(runs)
       )

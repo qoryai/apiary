@@ -89,7 +89,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       refute has_element?(lv, "#run-about-more")
     end
 
-    test "isolates a subject's words, and its tooltip names the url's own host", %{
+    test "isolates a subject's words, and its tooltip names the host of the url", %{
       conn: conn,
       scope: scope
     } do

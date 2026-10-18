@@ -1170,7 +1170,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-would .q-dest-tool") =~ "files.tools.internal"
     end
 
-    test "what enforce would deny isolates each host, a tool's too, so a bidi override reorders nothing",
+    test "what enforce would deny cleans and isolates each host, a tool's too, so nothing is reordered",
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
 
@@ -1184,10 +1184,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
       pick_mode(view, "enforce")
 
-      assert has_element?(view, "#mode-would .q-dest:not(.q-dest-tool) > bdi", host)
-      assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> host)
-      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
-      refute render(view) =~ "elpmaxe.<script>"
+      # The override is dropped (`Apiary.ExternalText.sent/1`), the rest isolated.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#mode-would .q-dest:not(.q-dest-tool) > bdi", shown)
+      assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> shown)
+      assert render(view) =~ ~r{<bdi[^>]*>evillpmaxe.&lt;script&gt;</bdi>}
+      refute view |> element("#mode-would") |> render() =~ "\u202E"
     end
 
     test "going to enforce asks, lists what would be denied, and allows from the list",
@@ -1476,6 +1478,22 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-mode-q-effect") =~
                "1 repository overrides the mode and does not change."
+    end
+
+    test "the targets list names a target's system and path cleaned, in its row and its title",
+         %{conn: conn, scope: scope} do
+      path = "acme/\u202Ewiki\u200B"
+      started_run(scope, %{"forge" => "git\u202E.example", "repository" => path})
+      started_run(scope, %{"forge" => "lab.example", "repository" => path})
+
+      view = open(conn, scope, "/policy/targets")
+      list = view |> element("#policy-targets") |> render()
+      assert list =~ ~s(title="git.example/acme/wiki")
+
+      assert list =~
+               ~r{<bdi[^>]*>git.example</bdi>/</span><span[^>]*class="q-target-path"><bdi[^>]*>acme/wiki</bdi>}
+
+      refute list |> String.replace(~r/ (id|href)="[^"]*"/, "") =~ ~r/[\x{202E}\x{200B}]/u
     end
 
     test "the targets list has a Mode column, and ?mode=own keeps those with their own",

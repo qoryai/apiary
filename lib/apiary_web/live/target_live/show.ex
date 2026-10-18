@@ -548,13 +548,13 @@ defmodule ApiaryWeb.TargetLive.Show do
             <li
               :for={row <- @denied.rows}
               id={"target-denied-#{:erlang.phash2({row.host, row.port, row.path})}"}
-              title={"#{row.host}:#{row.port}#{row.path}"}
+              title={"#{sent(row.host)}:#{row.port}#{sent(row.path)}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{sent(row.host)}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
-              >{row.path}</span></span>
+              ><bdi>{sent(row.path)}</bdi></span></span>
               <span>{attempts_words(row)}</span>
               <span class="q-tgt-dn-t">
                 <.rich text={rich_gettext("last %{time}", time: {:part, :time})}>
@@ -634,9 +634,9 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("About")}</h3>
           <dl class="q-tgt-kv">
             <dt>{gettext("System")}</dt>
-            <dd class="font-mono">{@target.system}</dd>
+            <dd class="font-mono"><.external_text text={@target.system} /></dd>
             <dt>{gettext("Path")}</dt>
-            <dd class="break-all font-mono">{@target.path}</dd>
+            <dd class="break-all font-mono"><.external_text text={@target.path} /></dd>
             <dt>{gettext("First seen")}</dt>
             <dd>
               {Format.date(@target.first_seen_at)}
@@ -682,7 +682,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Machines")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{host, runs} <- @machines}>
-              <span class="q-tgt-pl-name font-mono">{host}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={host} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
@@ -692,7 +692,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Runtimes")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{runtime, runs} <- @runtimes}>
-              <span class="q-tgt-pl-name font-mono">{runtime}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={runtime} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
@@ -764,6 +764,10 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   # The target in words, in its notation: its system only where its path is shared.
   defp name(target, shared), do: target_label(target.system, target.path, shared)
+
+  # A text Forager sent, a denied destination's host or path, as the page shows it where
+  # markup cannot go or around a cut (`Apiary.ExternalText.sent/1`).
+  defp sent(text), do: Apiary.ExternalText.sent(text)
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.

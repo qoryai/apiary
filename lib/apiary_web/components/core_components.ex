@@ -1942,8 +1942,9 @@ defmodule ApiaryWeb.CoreComponents do
 
   `suggest` makes the field a combobox (the ARIA list autocomplete, manual selection): the
   form sends `suggest` 150 ms after the reader stops typing, and the page answers with
-  `suggestions`, `%{value:, detail:}` each, at most a handful, listed under the field as
-  options of the listbox `<id>-hosts`, and `status`, what a screen reader is told of them.
+  `suggestions`, `%{value:, label:, detail:}` each, at most a handful, listed under the
+  field as options of the listbox `<id>-hosts`, and `status`, what a screen reader is told
+  of them. An option shows its `label`, else its `value`; the value is what is chosen.
   The `HostSuggest` hook moves among them with ↑ and ↓; Enter or a click puts the chosen
   one in place of the word being typed, as `host:<value>`, and sends the query; Escape,
   Tab and leaving the field close the list.
@@ -1957,7 +1958,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :live, :boolean, default: true
   attr :class, :any, default: nil
   attr :suggest, :string, default: nil, doc: "the event that asks for suggestions; nil for none"
-  attr :suggestions, :list, default: [], doc: "`%{value:, detail:}` each, as the page answered"
+
+  attr :suggestions, :list,
+    default: [],
+    doc: "`%{value:, label:, detail:}` each, as the page answered; `label` is optional"
+
   attr :suggestions_label, :string, default: nil, doc: "the listbox's accessible name"
   attr :status, :string, default: nil, doc: "what the answer is, for a screen reader"
 
@@ -2008,7 +2013,7 @@ defmodule ApiaryWeb.CoreComponents do
           aria-selected="false"
           data-value={suggestion.value}
         >
-          <span class="q-suggest-v"><bdi>{suggestion.value}</bdi></span>
+          <span class="q-suggest-v"><bdi>{suggestion[:label] || suggestion.value}</bdi></span>
           <span :if={suggestion[:detail]} class="q-suggest-d">{suggestion.detail}</span>
         </li>
       </ul>

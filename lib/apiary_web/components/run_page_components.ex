@@ -6,9 +6,12 @@ defmodule ApiaryWeb.RunPageComponents do
 
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of a run's events. Everything
   in it came from Forager and is untrusted: it is interpolated, so it is escaped, and it
-  is never `raw/1`. A link is built by the caller from a verified route and a sequence
-  number, never from a string of the record. The terminal's bytes are not rendered here
-  at all: the `Terminal` hook feeds them to xterm.js.
+  is never `raw/1`. Its texts are shown as a page shows a text an external system sent
+  (`Apiary.ExternalText`), and one that was sent but has nothing left to show is marked
+  (`Apiary.ExternalText.marked/1`), but for a session's reason, a signal and a folded
+  group's tool, which then read as none. A link is built by the caller from a verified
+  route and a sequence number, never from a string of the record. The terminal's bytes
+  are not rendered here at all: the `Terminal` hook feeds them to xterm.js.
 
   `security={false}` is an instance without `security`: the timeline's connections say
   what Forager reported and nothing of a rule. The run page leaves the policy's items
@@ -77,7 +80,8 @@ defmodule ApiaryWeb.RunPageComponents do
       <%= if @lane.id == "main" do %>
         {gettext("Main session")}
       <% else %>
-        {@lane.type || gettext("Subagent")} <small>{@lane.id}</small>
+        <.external_text text={@lane.type} />{if !sent(@lane.type), do: gettext("Subagent")}
+        <small><.external_text text={@lane.id} /></small>
       <% end %>
     </button>
     """
@@ -91,7 +95,9 @@ defmodule ApiaryWeb.RunPageComponents do
   def who(assigns) do
     ~H"""
     <span class={["q-who", "q-lane-#{@lane.color}"]}>
-      {if @lane.id == "main", do: gettext("Main session"), else: @lane.type || @lane.id}
+      <bdi>{if @lane.id == "main",
+        do: gettext("Main session"),
+        else: sent(@lane.type) || sent(@lane.id)}</bdi>
     </span>
     """
   end
@@ -127,8 +133,10 @@ defmodule ApiaryWeb.RunPageComponents do
           <b :if={i == 0} class="font-medium">
             {background_words(@background.count, @ended)}
           </b>
-          <span class={["font-mono text-[12.5px] text-muted", i == 0 && "ml-1.5"]}>{task.what ||
-            task.type || gettext("task")}</span>
+          <span class={["font-mono text-[12.5px] text-muted", i == 0 && "ml-1.5"]}><bdi>{sent(
+            task.what
+          ) ||
+            sent(task.type) || gettext("task")}</bdi></span>
         </span>
         <span
           class="q-bgtasks-since tooltip tooltip-left q-tip-wide text-xs text-faint"
@@ -136,8 +144,8 @@ defmodule ApiaryWeb.RunPageComponents do
           data-tip={@tip}
         >
           {gettext("%{task} %{id} · listed at #%{sequence}",
-            task: task.type || gettext("task"),
-            id: task.id,
+            task: sent(task.type) || gettext("task"),
+            id: sent(task.id),
             sequence: pad(task.listed_at)
           )}
         </span>
@@ -508,8 +516,8 @@ defmodule ApiaryWeb.RunPageComponents do
       <div class={["q-b", connection?(@item) && "q-b-cx"]}>
         <span :if={@item.lane.id != "main"} class="sr-only">
           {gettext("in %{agent} %{id}:",
-            agent: @item.lane.type || gettext("subagent"),
-            id: short_agent(@item.lane.id)
+            agent: sent(@item.lane.type) || gettext("subagent"),
+            id: short_agent(sent(@item.lane.id))
           )}
         </span>
         <.item_body
@@ -647,52 +655,56 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       {gettext("reloaded")} ·
       <%= if @item.was_mode do %>
-        <b class="font-semibold text-base-content">{@item.mode || gettext("n/a")}</b> {gettext(
+        <b class="font-semibold text-base-content">{sent(@item.mode) || gettext("n/a")}</b> {gettext(
           "(was %{mode})",
-          mode: @item.was_mode
+          mode: sent(@item.was_mode)
         )}
       <% else %>
-        {@item.mode || gettext("n/a")}
+        {sent(@item.mode) || gettext("n/a")}
       <% end %>
       · {hosts_allowed(@item.allowed_hosts)}<span :if={@item.denied_hosts > 0}> · {hosts_denied(
         @item.denied_hosts
       )}</span>
       <:chips :if={@item.delta}>
-        <span :for={host <- @item.delta.added} class="q-delta q-delta-add" title={host}>
-          <span aria-hidden="true">+</span><span class="sr-only">{gettext("Added:")}</span> {middle(
-            host,
+        <span :for={host <- @item.delta.added} class="q-delta q-delta-add" title={sent(host)}>
+          <span aria-hidden="true">+</span><span class="sr-only">{gettext("Added:")}</span>
+          <bdi>{middle(
+            sent(host),
             48
-          )}
+          )}</bdi>
         </span>
-        <span :for={host <- @item.delta.removed} class="q-delta q-delta-del" title={host}>
-          <span aria-hidden="true">−</span><span class="sr-only">{gettext("Removed:")}</span> {middle(
-            host,
+        <span :for={host <- @item.delta.removed} class="q-delta q-delta-del" title={sent(host)}>
+          <span aria-hidden="true">−</span><span class="sr-only">{gettext("Removed:")}</span>
+          <bdi>{middle(
+            sent(host),
             48
-          )}
+          )}</bdi>
         </span>
         <span
           :for={host <- @item.delta.deny_added}
           class="q-delta q-delta-deny q-delta-deny-add"
-          title={gettext("Denied from here: %{host}", host: host)}
+          title={gettext("Denied from here: %{host}", host: sent(host))}
         >
           <span aria-hidden="true">+</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">{gettext(
             "Deny added:"
-          )}</span> {middle(
-            host,
+          )}</span>
+          <bdi>{middle(
+            sent(host),
             48
-          )}
+          )}</bdi>
         </span>
         <span
           :for={host <- @item.delta.deny_removed}
           class="q-delta q-delta-deny q-delta-deny-del"
-          title={gettext("No longer denied: %{host}", host: host)}
+          title={gettext("No longer denied: %{host}", host: sent(host))}
         >
           <span aria-hidden="true">−</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">{gettext(
             "Deny removed:"
-          )}</span> {middle(
-            host,
+          )}</span>
+          <bdi>{middle(
+            sent(host),
             48
-          )}
+          )}</bdi>
         </span>
         <span :if={delta_more(@item.delta) > 0} class="text-xs text-faint">
           {and_more(delta_more(@item.delta))}
@@ -731,7 +743,7 @@ defmodule ApiaryWeb.RunPageComponents do
       kind={pgettext("plain", "Policy applied")}
     >
       <:version><.item_version version={@item[:version]} /></:version>
-      {@item.mode || gettext("n/a")} · {hosts_allowed(@item.allowed_hosts)}<span :if={
+      {sent(@item.mode) || gettext("n/a")} · {hosts_allowed(@item.allowed_hosts)}<span :if={
         @item.denied_hosts > 0
       }> · {hosts_denied(@item.denied_hosts)}</span>
       · {policy_source(@item.source)}
@@ -743,13 +755,15 @@ defmodule ApiaryWeb.RunPageComponents do
               {if i > 0, do: ", "}<.icon
                 name="hero-wrench-screwdriver-micro"
                 class="q-tool-icon size-3.5"
-              /><span class="font-mono text-[12.5px]">{tool.name}</span><span :if={tool[:argument]}>{" "}<code
+              /><span class="font-mono text-[12.5px]"><.external_text text={tool.name} /></span><span :if={
+                tool[:argument]
+              }>{" "}<code
                 class="q-rule"
-                title={tool.argument}
-              >{tool.argument_shown}</code></span><span
+                title={sent(tool.argument)}
+              ><bdi>{sent(tool.argument_shown)}</bdi></code></span><span
                 :if={tool.hosts != []}
                 class="text-faint"
-              > ({Enum.join(tool.hosts, ", ")})</span>
+              > ({Enum.map_join(tool.hosts, ", ", &sent/1)})</span>
             </span>
           </:part>
         </.rich>
@@ -759,7 +773,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <.rich text={rich_gettext("reads requests to %{hosts}", hosts: {:part, :hosts})}>
           <:part name={:hosts}>
             <span :for={{host, i} <- Enum.with_index(@item.terminated)}>
-              {if i > 0, do: ", "}<span class="font-mono text-[12.5px]">{host}</span>
+              {if i > 0, do: ", "}<span class="font-mono text-[12.5px]"><.external_text text={host} /></span>
             </span>
             <span :if={@item.terminated_count > length(@item.terminated)}>
               {and_more(@item.terminated_count - length(@item.terminated))}
@@ -780,10 +794,12 @@ defmodule ApiaryWeb.RunPageComponents do
       kind={gettext("Session started")}
     >
       <span :if={@item.model}><.rich text={rich_gettext("model %{model}", model: {:part, :model})}>
-        <:part name={:model}><span class="font-mono text-[12.5px]">{@item.model}</span></:part>
+        <:part name={:model}>
+          <span class="font-mono text-[12.5px]"><.external_text text={@item.model} /></span>
+        </:part>
       </.rich></span>
-      <span :if={@item.source}> · {@item.source}</span>
-      <span :if={@item.cwd}> · <span class="font-mono text-[12.5px]">{@item.cwd}</span></span>
+      <span :if={@item.source}> · <.external_text text={@item.source} /></span>
+      <span :if={@item.cwd}> · <span class="font-mono text-[12.5px]"><.external_text text={@item.cwd} /></span></span>
     </.head>
     """
   end
@@ -805,7 +821,7 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <summary class="q-hd">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <span class="q-k q-k-mono">{@item.tool}</span>
+        <span class="q-k q-k-mono"><.external_text text={@item.tool} /></span>
         <.who :if={@item.who} lane={@item.lane} />
         <span class="q-s q-s-mono"><.tool_summary summary={@item.summary} /></span>
         <.badge :if={@item.in_background} color="info" class="self-center">
@@ -861,7 +877,10 @@ defmodule ApiaryWeb.RunPageComponents do
         do: gettext("Subagent started"),
         else: gettext("Subagent finished")}</span>
       <.who lane={@item.lane} />
-      <span class="q-s font-mono text-xs">{if @item.kind == :subagent_started, do: @item.agent_id}</span>
+      <span class="q-s font-mono text-xs"><.external_text
+        :if={@item.kind == :subagent_started}
+        text={@item.agent_id}
+      /></span>
       <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
         <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
       </.tail>
@@ -873,7 +892,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp item_body(%{item: %{kind: :notification}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Notification")}>
-      {[@item.notification_kind, @item.message] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
+      {said([@item.notification_kind, @item.message])}
     </.head>
     """
   end
@@ -894,7 +913,7 @@ defmodule ApiaryWeb.RunPageComponents do
       kind={gettext("Turn failed")}
       tone="error"
     >
-      {[@item.error, @item.message] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
+      {said([@item.error, @item.message])}
     </.head>
     <div :if={@item.wells != []} class="q-xb q-xb-bad">
       <div class="q-io">
@@ -970,14 +989,16 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   # A run of allowed connections to one destination, folded. The summary's host and tool
-  # are texts Forager sent, shown as such (`Apiary.ExternalText.present/1`): one with
-  # nothing left to show, or only whitespace, is none. A host that is none reads n/a, as
-  # for a connection that sent none (`Apiary.Runs.Record.Timeline`); a tool that is none
-  # reads as no tool, so the summary leads with the host and counts connections.
+  # are texts Forager sent, shown as such (`Apiary.ExternalText`). A host with nothing
+  # left to show is marked (`sent/1`), since it was sent, and one never sent reads n/a,
+  # as for a connection that sent none (`Apiary.Runs.Record.Timeline`). A tool with
+  # nothing left to show, or only whitespace, reads as no tool
+  # (`Apiary.ExternalText.present/1`), so the summary leads with the host and counts
+  # connections.
   defp item_body(%{item: %{kind: :connection_group}} = assigns) do
     assigns =
       assign(assigns,
-        host: ExternalText.present(assigns.item.host) || gettext("n/a"),
+        host: sent(assigns.item.host) || gettext("n/a"),
         tool: ExternalText.present(assigns.item.tool)
       )
 
@@ -1046,16 +1067,16 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp run_started_words(item) do
     bindings = [
-      runtime: item.runtime || gettext("n/a"),
-      version: item.runtime_version,
-      host: item.host || gettext("n/a")
+      runtime: sent(item.runtime) || gettext("n/a"),
+      version: sent(item.runtime_version),
+      host: sent(item.host) || gettext("n/a")
     ]
 
     if item.wall,
       do:
         gettext(
           "%{runtime} %{version} on %{host}, behind a %{wall} wall",
-          [wall: item.wall] ++ bindings
+          [wall: sent(item.wall)] ++ bindings
         ),
       else: gettext("%{runtime} %{version} on %{host}, without a wall", bindings)
   end
@@ -1214,15 +1235,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp tool_summary(%{summary: {:pattern, _pattern, _path}} = assigns) do
     ~H"""
-    {elem(@summary, 1)}
-    <span class="text-faint">{pgettext("a pattern in a path", "in")}</span> {elem(
-      @summary,
-      2
-    )}
+    <.external_text text={elem(@summary, 1)} />
+    <span class="text-faint">{pgettext("a pattern in a path", "in")}</span>
+    <.external_text text={elem(@summary, 2)} />
     """
   end
 
-  defp tool_summary(%{summary: {:text, _text}} = assigns), do: ~H"{elem(@summary, 1)}"
+  defp tool_summary(%{summary: {:text, _text}} = assigns),
+    do: ~H"<.external_text text={elem(@summary, 1)} />"
+
   defp tool_summary(assigns), do: ~H""
 
   attr :item, :map, required: true
@@ -1230,7 +1251,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp say(assigns) do
     ~H"""
-    <p :if={@item.text} class={["q-say", @class]} phx-no-format>{@item.text}<.show_all :if={@item.text_cut} seq={@item.sequence} bytes={@item.text_bytes} /></p>
+    <p :if={@item.text} class={["q-say", @class]} phx-no-format>{sent_lines(@item.text)}<.show_all :if={@item.text_cut} seq={@item.sequence} bytes={@item.text_bytes} /></p>
     """
   end
 
@@ -1247,8 +1268,8 @@ defmodule ApiaryWeb.RunPageComponents do
         <span>{@well.label}</span>
         <span>{well_size(@well)}</span>
       </div>
-      <pre :if={@well.format == :json} tabindex="0" phx-no-format><%= for {indent, key, rest} <- json_lines(@well.text) do %>{indent}<span :if={key} class="q-key">{key}</span>{rest}{"\n"}<% end %><.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
-      <pre :if={@well.format == :text} tabindex="0" phx-no-format>{@well.text}<.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
+      <pre :if={@well.format == :json} tabindex="0" phx-no-format><%= for {indent, key, rest} <- json_lines(ExternalText.lines(@well.text)) do %>{indent}<span :if={key} class="q-key">{key}</span>{rest}{"\n"}<% end %><.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
+      <pre :if={@well.format == :text} tabindex="0" phx-no-format>{ExternalText.lines(@well.text)}<.show_all :if={@well.cut} seq={@seq} bytes={@well.bytes} /></pre>
     </div>
     """
   end
@@ -1321,7 +1342,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp result_words(item) do
     [
-      item.outcome,
+      sent(item.outcome),
       item.turns &&
         ngettext("%{number} turn", "%{number} turns", item.turns,
           number: Format.number(item.turns)
@@ -1332,6 +1353,22 @@ defmodule ApiaryWeb.RunPageComponents do
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join(" · ")
   end
+
+  # A text the run's report sent, as the timeline shows it (`Apiary.ExternalText.sent/1`):
+  # marked where nothing is left of it, since it was sent; nil where it sent none or an
+  # empty text. A value that is no text is shown as it is.
+  defp sent(text) when is_binary(text), do: ExternalText.sent(text)
+  defp sent(text), do: text
+
+  # The same for a text of several lines, which keeps its tabs and line breaks
+  # (`Apiary.ExternalText.present_lines/1`).
+  defp sent_lines(text) when is_binary(text) and text != "",
+    do: ExternalText.present_lines(text) || ExternalText.marked(text)
+
+  defp sent_lines(_text), do: nil
+
+  # The texts an item said, each as `sent/1` shows it, joined by a middle dot.
+  defp said(texts), do: texts |> Enum.map(&sent/1) |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
 
   # Two places, four when under a cent.
   defp cost(usd) when usd < 0.01, do: "$" <> Format.number(usd / 1, digits: 4)

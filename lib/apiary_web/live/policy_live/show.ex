@@ -1598,9 +1598,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <.link
                   navigate={ApiaryWeb.TargetComponents.target_path(@scope, row, ["policy"])}
                   class="q-target-name q-rowlink q-cut"
-                  title={"#{row.system}/#{row.path}"}
+                  title={ApiaryWeb.TargetComponents.target_label(row.system, row.path, true)}
                 >
-                  <span :if={MapSet.member?(@shared, row.path)} class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
+                  <span :if={MapSet.member?(@shared, row.path)} class="q-target-system"><.external_text text={
+                    row.system
+                  } />/</span><span class="q-target-path"><.external_text text={row.path} /></span>
                 </.link>
               </td>
               <td role="cell" class="q-c-mode">
@@ -1773,10 +1775,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.tool_mark name={destination.tool} /><span
               :if={destination.path}
               class="text-muted"
-            >{destination.path}</span><span class="text-faint"><bdi>{destination.host}</bdi></span>
+            ><.external_text text={destination.path} /></span><span class="text-faint"><.external_text text={
+              destination.host
+            } /></span>
           </span>
           <span :if={!destination[:tool]} class="q-dest">
-            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
+            <.external_text text={destination.host} /><span :if={destination.path} class="text-muted"><.external_text text={
+              destination.path
+            } /></span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,

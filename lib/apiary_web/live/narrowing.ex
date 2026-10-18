@@ -212,7 +212,9 @@ defmodule ApiaryWeb.Narrowing do
   systems or more: "Showing acme/shop only, on git.example and code.example.", the systems in
   their order, one sentence on Runs and on Network access, each system a link (`id` and
   its system) to the same list narrowed to that system's target (`link`, a function of
-  its ids, `[tg_…]`).
+  its ids, `[tg_…]`). The path and each system are texts Forager sent, written as a page
+  shows one, or marked where nothing is left of one (`ApiaryWeb.RunComponents.target_name/1`
+  for the path, `Apiary.ExternalText` for a system).
   """
   @spec shared_sentence(t, String.t(), (Filters.target() -> String.t())) :: term
   def shared_sentence(%{targets: targets} = narrowing, id, link) do
@@ -247,9 +249,16 @@ defmodule ApiaryWeb.Narrowing do
 
   defp system_link(assigns) do
     ~H"""
-    <.link id={@id} patch={@to} class="q-link font-mono">{@system}</.link>
+    <.link id={@id} patch={@to} class="q-link font-mono"><bdi>{shown_system_name(@system)}</bdi></.link>
     """
   end
+
+  # A system as the line writes it: as a page shows a text Forager sent, or marked where
+  # nothing is left of it, since the target's system was sent.
+  defp shown_system_name(system) when is_binary(system) and system != "",
+    do: Apiary.ExternalText.present(system) || Apiary.ExternalText.marked(system)
+
+  defp shown_system_name(system), do: system
 
   @doc """
   The way back to the page's title when a narrowed line goes while focus is in it ("Show

@@ -2304,6 +2304,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert texts(cx(refused, "table"), ".q-cx-path") == ["GET /a/%2e%2e/b\uFFFD"]
     end
 
+    test "a tool's name, as a connection leads with it: cleaned; one sent blank marked" do
+      for {name, shown} <- [{"files\u202E\u200B", "files"}, {" ", "\uFFFD"}] do
+        html = render_component(&RunComponents.tool_mark/1, name: name)
+        assert texts(LazyHTML.from_fragment(html), ".q-tool-name") == [shown]
+      end
+    end
+
     test "a rule panel's host and path sent with nothing left to show: marked" do
       panel = %{
         anchor: "a-allow",
@@ -2326,6 +2333,20 @@ defmodule ApiaryWeb.RunComponentsTest do
       doc = LazyHTML.from_fragment(html)
       assert texts(doc, "#rule-panel-title .q-rp-host > bdi") == ["\uFFFD"]
       assert texts(doc, "#rule-panel-what .q-rule") == ["\uFFFD"]
+      # The host's title agrees with the host shown beside it.
+      assert doc |> LazyHTML.query("#rule-panel-title .q-rp-host") |> LazyHTML.attribute("title") ==
+               ["\uFFFD"]
+
+      html =
+        render_component(&RunComponents.rule_panel/1,
+          panel: %{panel | host: "\u202Eapi.example\u200B", path: "/v1"}
+        )
+
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, "#rule-panel-title .q-rp-host > bdi") == ["api.example"]
+
+      assert doc |> LazyHTML.query("#rule-panel-title .q-rp-host") |> LazyHTML.attribute("title") ==
+               ["api.example"]
     end
   end
 end

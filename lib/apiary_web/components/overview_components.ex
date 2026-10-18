@@ -541,11 +541,12 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # The run's target path is a text Forager sent (`shown/1`): one with nothing left to
-  # show is no target.
+  # The run's target path is a text Forager sent: one with nothing left to show is marked
+  # (`ApiaryWeb.RunComponents.target_name/1`), since it was sent; a run that sent none has
+  # no target.
   defp attention_where(%{item: %{kind: kind, run: run}} = assigns)
        when kind in [:quiet, :lost, :behind] do
-    assigns = assign(assigns, run: run, path: shown(run.target_path))
+    assigns = assign(assigns, run: run, path: run.target_path not in [nil, ""])
 
     ~H"""
     <.target_name

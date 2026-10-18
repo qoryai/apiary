@@ -79,4 +79,89 @@ defmodule ApiaryWeb.TargetComponentsTest do
       assert TargetComponents.with_system?(system, path, shared) == (name == "#{system}/#{path}")
     end
   end
+
+  describe "a target's system and path, texts Forager sent, as a page shows them" do
+    test "target_label/3 writes them cleaned, and marked where nothing is left of one" do
+      assert TargetComponents.target_label("\u202Egit.example\u200B", "acme/\u202Eshop", true) ==
+               "git.example/acme/shop"
+
+      assert TargetComponents.target_label("git.example", "\u200B\u2066", false) ==
+               "\uFFFD\uFFFD"
+
+      assert TargetComponents.target_label(" ", "acme/shop", true) == "\uFFFD/acme/shop"
+      assert TargetComponents.target_label("git.example", "\u00A0\u3000", false) == "\uFFFD"
+
+      # What decides whether the system is written is the path as sent.
+      assert TargetComponents.target_label("git.example", "acme/shop\u200B", @shared) ==
+               "acme/shop"
+    end
+
+    test "the pin button names the target cleaned, and pins it by its id" do
+      target = %{id: "t-1", system: "git.example", path: "acme/\u202Eshop\u200B"}
+
+      html =
+        render_component(&TargetComponents.pin_button/1,
+          id: "pin",
+          target: target,
+          pinned: false
+        )
+
+      doc = LazyHTML.from_fragment(html)
+      assert LazyHTML.attribute(doc, "aria-label") == ["Pin acme/shop"]
+      assert LazyHTML.attribute(doc, "phx-value-id") == ["t-1"]
+      refute html =~ "\u202E"
+
+      blank =
+        render_component(&TargetComponents.pin_button/1,
+          id: "pin",
+          target: %{target | path: "\u200B"},
+          pinned: true
+        )
+
+      assert LazyHTML.attribute(LazyHTML.from_fragment(blank), "aria-label") == ["Unpin \uFFFD"]
+    end
+
+    test "a target's runs: the runtime and the host cleaned, and marked where sent blank" do
+      run = fn attrs ->
+        struct!(
+          %Apiary.Runs.Run{
+            id: Ecto.UUID.generate(),
+            public_id: "rn_0123456789abcdef",
+            state: "completed",
+            denied_count: 0,
+            duration_ms: 1000,
+            inserted_at: DateTime.utc_now()
+          },
+          attrs
+        )
+      end
+
+      runs = [
+        run.(%{runtime: "\u202Eclaude", runtime_version: "2.1\u200B", host: "dev\u202E-box"}),
+        run.(%{runtime: "\u200B", runtime_version: nil, host: " \u00A0"}),
+        run.(%{runtime: nil, runtime_version: nil, host: nil})
+      ]
+
+      for {one, i} <- Enum.with_index(runs) do
+        html =
+          render_component(&TargetComponents.run_rows/1,
+            id: "runs",
+            label: "Runs",
+            runs: [%{one | id: "r#{i}"}],
+            scope: @scope
+          )
+
+        doc = LazyHTML.from_fragment(html)
+        bdis = doc |> LazyHTML.query("bdi") |> Enum.map(&LazyHTML.text/1)
+
+        case i do
+          0 -> assert bdis == ["claude", "2.1", "dev-box"]
+          1 -> assert bdis == ["\uFFFD", "\uFFFD"]
+          2 -> assert bdis == []
+        end
+
+        refute html =~ "\u202E"
+      end
+    end
+  end
 end

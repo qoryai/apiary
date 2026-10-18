@@ -361,6 +361,18 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       refute Enum.any?(ids, &(&1 =~ "alpha-41" or &1 =~ "beta-42"))
     end
 
+    test "an instance's id and Forager's version: cleaned in its row and its title",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      node_run_fixture(pool, "i\u202E-gamma-43", %{forager_version: "0.7\u200B.0"})
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "#nodes .q-cut[title='i-gamma-43'] > bdi", "i-gamma-43")
+      assert has_element?(lv, "#nodes tr", "0.7.0")
+      refute lv |> element("#nodes") |> render() =~ ~r/[\x{202E}\x{200B}]/u
+    end
+
     test "the views count and keep the running and the rest", %{conn: conn, scope: scope} do
       running = node_fixture(scope, name: "build-01")
       idle = node_fixture(scope, name: "build-02")

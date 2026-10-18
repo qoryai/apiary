@@ -34,14 +34,15 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
     )
   end
 
-  defp card(key, adapter, may \\ @may) do
+  defp card(key, adapter, may \\ @may, hosts \\ nil) do
     assigns = %{
       key: key,
       node: %Node{name: "example-host", kind: if(adapter, do: :adapter, else: :node)},
       scope: %Scope{},
       paths: @paths,
       may: may,
-      adapter: adapter
+      adapter: adapter,
+      hosts: hosts
     }
 
     rendered_to_string(~H"""
@@ -53,7 +54,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
       may={@may}
       intact
       last_run={nil}
-      hosts={nil}
+      hosts={@hosts}
       confirming={false}
       adapter={@adapter}
     />
@@ -104,6 +105,21 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
       assert text(LazyHTML.query(doc, "#key-ak_3n7p2x9k4m8q1v5t-used")) =~ "Forager 0.9.0"
       assert has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-forager-file")
       assert has?(doc, "#key-ak_3n7p2x9k4m8q1v5t-revoke")
+    end
+
+    test "Forager's version and the one host of 14 days: cleaned, a host sent blank marked" do
+      doc =
+        card(key(last_forager_version: "0.9\u202E.0"), false, @may, %{
+          host: "ci\u200B-1",
+          count: 1
+        })
+
+      assert text(LazyHTML.query(doc, "#key-ak_3n7p2x9k4m8q1v5t-used")) =~ "Forager 0.9.0"
+      assert text(doc) =~ "ci-1"
+      refute LazyHTML.to_html(doc) =~ ~r/[\x{202E}\x{200B}]/u
+
+      blank = card(key(), false, @may, %{host: " ", count: 1})
+      assert blank |> LazyHTML.query("dd > bdi") |> Enum.map(&LazyHTML.text/1) == ["\uFFFD"]
     end
 
     test "an adapter's key card says where its secret is and when it was last used, without Forager's rows" do

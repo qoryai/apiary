@@ -139,7 +139,9 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
                 phx-mounted={JS.focus()}
               />
               <p id="further-repositories-limit" class="text-[12.5px]/[18px] text-muted">
-                {gettext("Together with %{target}, at most 256 characters.", target: @target.path)}
+                {gettext("Together with %{target}, at most 256 characters.",
+                  target: Apiary.ExternalText.sent(@target.path)
+                )}
               </p>
             </div>
             <.page_form_foot

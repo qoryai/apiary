@@ -104,6 +104,16 @@ defmodule Apiary.ExternalTextTest do
     end
   end
 
+  describe "sent/1" do
+    test "is the line as present/1 shows it, else marked; nil for nil and an empty text" do
+      assert ExternalText.sent("\u202Eapi.example\u200B") == "api.example"
+      assert ExternalText.sent("\u200B\u2066") == "#{@fffd}#{@fffd}"
+      assert ExternalText.sent(" \u00A0") == @fffd
+      assert ExternalText.sent(nil) == nil
+      assert ExternalText.sent("") == nil
+    end
+  end
+
   describe "marked/1" do
     test "shows every invisible character, the join controls too, as U+FFFD" do
       for code <- @invisible ++ [0x200C, 0x200D] do
@@ -135,6 +145,17 @@ defmodule Apiary.ExternalTextTest do
     test "is never empty: U+FFFD alone for nil and an empty text" do
       assert ExternalText.marked(nil) == @fffd
       assert ExternalText.marked("") == @fffd
+    end
+
+    test "is never visibly blank: U+FFFD alone for a text of whitespace alone" do
+      for text <- [" ", "   ", "\u00A0", "\u3000", " \u00A0\u3000\u2003 ", "\u2009\u00A0"] do
+        assert ExternalText.marked(text) == @fffd, inspect(text)
+      end
+    end
+
+    test "keeps the whitespace around a text that is not blank, and marks a sent tab" do
+      assert ExternalText.marked(" a\u00A0") == " a\u00A0"
+      assert ExternalText.marked(" \t ") == " #{@fffd} "
     end
   end
 end

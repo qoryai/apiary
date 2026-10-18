@@ -1564,8 +1564,8 @@ defmodule ApiaryWeb.RunComponents do
   attr :shared, :any, default: nil, doc: "as `target_name/1` takes it"
   attr :class, :any, default: nil
 
-  # A run's target as a row names it (`target_name/1`): nothing for a run with no target,
-  # or one whose path, a text Forager sent, has nothing left to show (`shown_target/1`).
+  # A run's target as a row names it (`target_name/1`): nothing for a run with no target
+  # (`shown_target/1`). A path Forager sent with nothing left to show is marked.
   defp run_target(assigns) do
     ~H"""
     <.target_name
@@ -1578,10 +1578,11 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  # A run's target path as a page shows it (`Apiary.ExternalText.present/1`); nil for a
-  # run with no target, or one whose path has nothing left to show, which is no target.
+  # A run's target path as a page shows it (`shown_sent/1`): as an external system's text
+  # is, or marked where nothing is left of it, since it was sent; nil for a run with no
+  # target.
   defp shown_target(%{target_system: system, target_path: path}) when is_binary(system),
-    do: Apiary.ExternalText.present(path)
+    do: shown_sent(path)
 
   defp shown_target(_run), do: nil
 
@@ -2100,14 +2101,14 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-rl-c4 q-rl-faint" role="cell">
         <%= cond do %>
           <% @run.runtime -> %>
-            <span><.external_text text={@run.runtime} />
-            <.external_text text={@run.runtime_version} /></span>
+            <span><.external_text text={shown_sent(@run.runtime)} />
+            <.external_text text={shown_sent(@run.runtime_version)} /></span>
           <% true -> %>
             <span>{gettext("n/a")}</span>
         <% end %>
       </td>
       <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">
-        <.external_text text={@run.host} />{if !@run.host, do: gettext("n/a")}
+        <.external_text text={shown_sent(@run.host)} />{if !@run.host, do: gettext("n/a")}
       </td>
       <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
         <.node_name :if={@run.node_id} scope={@scope} node={Map.get(@nodes, @run.node_id)} />
@@ -2418,7 +2419,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   The name of a tool as a connection leads with it: the wrench, "Tool" for a screen reader,
   and the name. Every surface that shows a tool invocation (`Apiary.Runs.tool_invocation?/2`)
-  names the tool with this; a request refused before it reached the tool never does.
+  names the tool with this; a request refused before it reached the tool never does. The
+  name is a text Forager sent, shown as one where it was sent (`Apiary.ExternalText.sent/1`).
   """
   attr :name, :string, required: true
 
@@ -2427,7 +2429,7 @@ defmodule ApiaryWeb.RunComponents do
     <.icon name="hero-wrench-screwdriver-micro" class="q-tool-icon size-3.5" /><span class="sr-only">{gettext(
       "Tool"
     )}</span>
-    <b class="q-tool-name">{@name}</b>
+    <b class="q-tool-name">{Apiary.ExternalText.sent(@name)}</b>
     """
   end
 
@@ -4065,7 +4067,7 @@ defmodule ApiaryWeb.RunComponents do
             <.spliced text={panel_title(@deny, @what && @what.kind == :path)}>
               <span
                 class="q-rp-host"
-                title={Apiary.ExternalText.line(@panel.host)}
+                title={shown_sent(@panel.host)}
               ><bdi>{shown_middle(@panel.host, 40)}</bdi></span>
             </.spliced>
           </h3>
