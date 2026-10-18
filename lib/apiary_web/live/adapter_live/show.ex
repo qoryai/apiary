@@ -43,7 +43,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # unassigned, and, for an adapter with items, that their items reach no backlog until
   # they are assigned, by the person or by an owner or an admin. Views over the table
   # show every one or the unassigned ones (`?view=unassigned`), the warning's Show them
-  # leads to the second, and a menu keeps those of one workspace (`?workspace=`).
+  # leads to the second, and a menu keeps those of one workspace (`?workspace_id=`).
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
   # those shown, then picks a workspace from the selection's menu, Assign to workspace
   # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where.
@@ -107,7 +107,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The collections the address asks for: the page (`?page=`, from 1), the view
-  # (`?view=unassigned`), the search (`?q=`) and the workspace (`?workspace=`, its id).
+  # (`?view=unassigned`), the search (`?q=`) and the workspace (`?workspace_id=`, its id).
   @impl true
   def handle_params(params, _uri, socket) do
     query = %{
