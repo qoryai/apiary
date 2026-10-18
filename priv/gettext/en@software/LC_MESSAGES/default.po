@@ -9264,6 +9264,7 @@ msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newest"
 msgstr ""
@@ -11685,6 +11686,7 @@ msgid "Recently changed"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Recently updated"
 msgstr ""
@@ -13315,11 +13317,13 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sort"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sort by"
 msgstr ""

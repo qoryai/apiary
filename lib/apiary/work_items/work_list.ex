@@ -28,19 +28,23 @@ defmodule Apiary.WorkItems.WorkList do
   # came through (`integration`), its state and take in, where Explore stands for it
   # (`status`; for an ended one, that of its last take in), the attempt and the run limit
   # of its take in's latest run (`attempt`, `of`, nil before its first run), its owner's
-  # account id, when it was taken in and last changed, and for an ended one when and by
-  # whom it ended (`ended_at`, `ended_by_id`, nil where no person did), with the reason
-  # the instance gave where it closed the work item (`ended_reason`, nil otherwise). The
-  # ticket's ref at the source is never in a row.
+  # account id, when it was taken in (`taken_in_at`, at its latest take in), created
+  # (`inserted_at`) and last changed, and for an ended one when and by whom it ended
+  # (`ended_at`, `ended_by_id`, nil where no person did), with the reason the instance
+  # gave where it closed the work item (`ended_reason`, nil otherwise). The ticket's ref
+  # at the source is never in a row.
   #
-  # **Order and pages.** The rows go from the latest changed to the earliest, then by
-  # public id; those of `:you` the other way, oldest first. At most `page_size/0` a page.
-  # A cursor names a row's place in that order, `u.`, its last change in microseconds
-  # since 1970, `.` and its public id, opaque to the page; `next` is the cursor of the
-  # page after, nil for the last, and `prev` that of the page before, nil for the first.
+  # **Order and pages.** The rows go by the sort, from the latest changed to the earliest
+  # (`:updated`, the default) or from the latest created to the earliest (`:created`),
+  # then by public id; those of `:you` from the earliest changed, oldest first, whatever
+  # the sort. At most `page_size/0` a page. A cursor names a row's place in its sort
+  # alone: `u.` and its last change, or `c.` and when it was created, in microseconds
+  # since 1970, then `.` and its public id, opaque to the page; a cursor of the other sort
+  # matches nothing. `next` is the cursor of the page after, nil for the last, and `prev`
+  # that of the page before, nil for the first.
   #
   # **The bands** (`bands/3`) are the Open view by stage: at most `band_size/0` rows of
-  # each stage, those that wait for the reader first, then the latest changed.
+  # each stage, those that wait for the reader first, then by the sort.
   #
   # Every input a person gives (a search, a filter value, a cursor) is bounded and checked
   # before a query reads it.
@@ -65,6 +69,7 @@ defmodule Apiary.WorkItems.WorkList do
   @max_filter_values 100
   @max_title 1024
   @views [:open, :you, :declined, :closed]
+  @sorts [:updated, :created]
   @stages [:explore, :confirm, :shape]
   @explore_statuses [:queued, :running, :questions, :no_result, :lost, :cancelled, :used_up]
   @no_counts %{open: 0, you: 0, declined: 0, closed: 0}
@@ -98,6 +103,9 @@ defmodule Apiary.WorkItems.WorkList do
   @typedoc "A view of the Work items list."
   @type view :: :open | :you | :declined | :closed
 
+  @typedoc "An order of the list: by the last change, or by when the work item was created."
+  @type sort :: :updated | :created
+
   @typedoc "A stage of a live work item."
   @type stage :: :explore | :confirm | :shape
 
@@ -116,6 +124,7 @@ defmodule Apiary.WorkItems.WorkList do
           of: pos_integer | nil,
           owner_id: Ecto.UUID.t(),
           taken_in_at: DateTime.t(),
+          inserted_at: DateTime.t(),
           updated_at: DateTime.t(),
           ended_at: DateTime.t() | nil,
           ended_by_id: Ecto.UUID.t() | nil,
@@ -193,13 +202,16 @@ defmodule Apiary.WorkItems.WorkList do
   #   * `repository:` the title of a collection, as a row names it, or a list of them;
   #   * `updated:` a window the runs list offers, by its value (`1h`, `24h`, `7d`, `14d`
   #     or `30d`): the work items last changed at or after that long before `now`;
+  #   * `sort:` one of `t:sort/0` (`:updated` by default), or its string; the view `:you`
+  #     goes by the last change, oldest first, whatever the sort;
   #   * `after:` the cursor of the page before (`next`), for the page after it;
   #   * `before:` the cursor of the page after (`prev`), for the page before it.
   #
   # A filter takes at most 100 values; one with more, or with a value that is not one,
-  # matches nothing, and so does a cursor not in the shape this module gives, and
-  # `after:` and `before:` together. An empty filter, an empty stage or an empty cursor
-  # is none. A view it does not know is `:open`.
+  # matches nothing, and so does a cursor not in the shape this module gives, a cursor of
+  # the other sort, and `after:` and `before:` together. An empty filter, an empty stage
+  # or an empty cursor is none. A view it does not know is `:open`, and a sort it does not
+  # know `:updated`.
   @doc false
   @spec list(Scope.t(), map | keyword, DateTime.t()) :: page
   def list(scope, params, now \\ DateTime.utc_now())
@@ -215,7 +227,7 @@ defmodule Apiary.WorkItems.WorkList do
         filtered
         |> view(params.view, reader)
         |> stage(params.view, params.stage)
-        |> page(params, order(params.view))
+        |> page(params, order(params))
         |> Map.merge(counts(filtered, reader))
 
       :error ->
@@ -228,8 +240,8 @@ defmodule Apiary.WorkItems.WorkList do
   # bands/3 is the Open view of the scope's workspace by stage, to a person who may read
   # its work items, under the search and the filters of `params` as `list/3` reads them
   # (its view, stage and cursors aside): each stage's first `band_size/0` rows, the work
-  # items that wait for the reader first, then the latest changed; with the counts of the
-  # views and the stages. Nothing to anyone else.
+  # items that wait for the reader first, then by its sort; with the counts of the views
+  # and the stages. Nothing to anyone else.
   @doc false
   @spec bands(Scope.t(), map | keyword, DateTime.t()) :: bands
   def bands(scope, params, now \\ DateTime.utc_now())
@@ -257,7 +269,7 @@ defmodule Apiary.WorkItems.WorkList do
                     type(^reader, :binary_id)
                   )
               )
-              |> rows(:desc, @band_size)
+              |> rows({params.sort, :desc}, @band_size)
 
             {stage, rows}
           end)
@@ -422,8 +434,8 @@ defmodule Apiary.WorkItems.WorkList do
   defp stage(query, _view, nil), do: query
   defp stage(query, _view, _stage), do: where(query, false)
 
-  defp order(:you), do: :asc
-  defp order(_view), do: :desc
+  defp order(%{view: :you}), do: {:updated, :asc}
+  defp order(%{sort: sort}), do: {sort, :desc}
 
   ## Search and filters
 
@@ -535,8 +547,9 @@ defmodule Apiary.WorkItems.WorkList do
 
   ## Pages
 
-  # `order` is the list's: `:desc` from the latest changed, `:asc` from the earliest. A
-  # row behind a place comes after it in that order, one ahead of it before it.
+  # `order` is the list's: its sort, and `:desc` from the latest, or `:asc` from the
+  # earliest. A row behind a place comes after it in that order, one ahead of it before
+  # it.
   # `first` is the place of the page's first row in the whole list, from 1.
   defp page(query, params, order) do
     page =
@@ -553,17 +566,17 @@ defmodule Apiary.WorkItems.WorkList do
   defp first(_query, %{prev: nil}, _order), do: 1
 
   defp first(query, %{rows: [row | _]}, order),
-    do: Repo.aggregate(beyond(query, order, :ahead, position(row)), :count) + 1
+    do: Repo.aggregate(beyond(query, order, :ahead, position(row, order)), :count) + 1
 
   defp first(_query, _page, _order), do: 1
 
   defp first_page(query, order) do
     {rows, more} = query |> rows(order, @page_size + 1) |> Enum.split(@page_size)
-    %{rows: rows, next: if(more != [], do: cursor(List.last(rows))), prev: nil}
+    %{rows: rows, next: if(more != [], do: cursor(List.last(rows), order)), prev: nil}
   end
 
   defp later(query, cursor, order) do
-    case parse_cursor(cursor) do
+    case parse_cursor(cursor, order) do
       {:ok, position} ->
         {rows, more} =
           query
@@ -571,12 +584,12 @@ defmodule Apiary.WorkItems.WorkList do
           |> rows(order, @page_size + 1)
           |> Enum.split(@page_size)
 
-        anchor = if rows == [], do: position, else: position(hd(rows))
+        anchor = if rows == [], do: position, else: position(hd(rows), order)
 
         %{
           rows: rows,
-          next: if(more != [], do: cursor(List.last(rows))),
-          prev: if(Repo.exists?(beyond(query, order, :ahead, anchor)), do: encode(anchor))
+          next: if(more != [], do: cursor(List.last(rows), order)),
+          prev: if(Repo.exists?(beyond(query, order, :ahead, anchor)), do: encode(anchor, order))
         }
 
       :error ->
@@ -585,17 +598,17 @@ defmodule Apiary.WorkItems.WorkList do
   end
 
   defp earlier(query, cursor, order) do
-    with {:ok, position} <- parse_cursor(cursor),
+    with {:ok, position} <- parse_cursor(cursor, order),
          reversed =
            query |> beyond(order, :ahead, position) |> rows(reverse(order), @page_size + 1),
          {page, [_more | _]} <- Enum.split(reversed, @page_size) do
       rows = Enum.reverse(page)
-      last = position(List.last(rows))
+      last = position(List.last(rows), order)
 
       %{
         rows: rows,
-        next: if(Repo.exists?(beyond(query, order, :behind, last)), do: encode(last)),
-        prev: cursor(hd(rows))
+        next: if(Repo.exists?(beyond(query, order, :behind, last)), do: encode(last, order)),
+        prev: cursor(hd(rows), order)
       }
     else
       :error -> %{rows: [], next: nil, prev: nil}
@@ -603,12 +616,18 @@ defmodule Apiary.WorkItems.WorkList do
     end
   end
 
-  defp reverse(:desc), do: :asc
-  defp reverse(:asc), do: :desc
+  defp reverse({sort, :desc}), do: {sort, :asc}
+  defp reverse({sort, :asc}), do: {sort, :desc}
+
+  # The column a sort goes by.
+  defp sort_field(:updated), do: :updated_at
+  defp sort_field(:created), do: :inserted_at
 
   # At most `limit` rows of the query in `order`, after any order the query has, each
   # with its integration and its take in's latest run.
-  defp rows(query, order, limit) do
+  defp rows(query, {sort, direction}, limit) do
+    sort_field = sort_field(sort)
+
     query
     |> join(:inner, [work_item: w], n in Node, on: n.id == w.adapter_id, as: :adapter)
     |> join(
@@ -626,7 +645,10 @@ defmodule Apiary.WorkItems.WorkList do
       on: true,
       as: :latest_run
     )
-    |> order_by([work_item: w], [{^order, w.updated_at}, {^order, w.public_id}])
+    |> order_by([work_item: w], [
+      {^direction, field(w, ^sort_field)},
+      {^direction, w.public_id}
+    ])
     |> limit(^limit)
     |> select(
       [work_item: w, ticket: t, ended: e, explore_status: s, adapter: n, latest_run: r],
@@ -644,6 +666,7 @@ defmodule Apiary.WorkItems.WorkList do
         of: r.of,
         owner_id: w.owner_id,
         taken_in_at: w.taken_in_at,
+        inserted_at: w.inserted_at,
         updated_at: w.updated_at,
         ended_at:
           fragment(
@@ -698,48 +721,59 @@ defmodule Apiary.WorkItems.WorkList do
   defp uuid(id) when is_binary(id), do: id
 
   # The rows behind `position` in `order` (after it), or ahead of it (before it).
-  defp beyond(query, order, side, position) do
-    if {order, side} in [{:desc, :behind}, {:asc, :ahead}],
-      do: changed_before(query, position),
-      else: changed_after(query, position)
+  defp beyond(query, {sort, direction}, side, position) do
+    if {direction, side} in [{:desc, :behind}, {:asc, :ahead}],
+      do: placed_before(query, sort_field(sort), position),
+      else: placed_after(query, sort_field(sort), position)
   end
 
-  defp changed_before(query, {at, public_id}),
+  defp placed_before(query, sort_field, {at, public_id}),
     do:
       where(
         query,
         [work_item: w],
         fragment(
           "(?, ?) < (?, ?)",
-          w.updated_at,
+          field(w, ^sort_field),
           w.public_id,
           type(^at, :utc_datetime_usec),
           ^public_id
         )
       )
 
-  defp changed_after(query, {at, public_id}),
+  defp placed_after(query, sort_field, {at, public_id}),
     do:
       where(
         query,
         [work_item: w],
         fragment(
           "(?, ?) > (?, ?)",
-          w.updated_at,
+          field(w, ^sort_field),
           w.public_id,
           type(^at, :utc_datetime_usec),
           ^public_id
         )
       )
 
-  defp position(row), do: {row.updated_at, row.id}
-  defp cursor(row), do: row |> position() |> encode()
+  defp position(row, {sort, _direction}), do: {Map.fetch!(row, sort_field(sort)), row.id}
+  defp cursor(row, order), do: row |> position(order) |> encode(order)
 
-  defp encode({%DateTime{} = at, public_id}),
-    do: "u." <> Integer.to_string(DateTime.to_unix(at, :microsecond)) <> "." <> public_id
+  defp encode({%DateTime{} = at, public_id}, {sort, _direction}),
+    do:
+      mark(sort) <>
+        "." <> Integer.to_string(DateTime.to_unix(at, :microsecond)) <> "." <> public_id
 
-  defp parse_cursor(cursor) when is_binary(cursor) and byte_size(cursor) <= 64 do
-    with ["u", micro, public_id] <- String.split(cursor, "."),
+  # The mark a cursor of a sort starts with.
+  defp mark(:updated), do: "u"
+  defp mark(:created), do: "c"
+
+  # The place a cursor names, or `:error` for a cursor not in the shape `encode/2` gives,
+  # or of the other sort.
+  defp parse_cursor(cursor, {sort, _direction})
+       when is_binary(cursor) and byte_size(cursor) <= 64 do
+    mark = mark(sort)
+
+    with [^mark, micro, public_id] <- String.split(cursor, "."),
          {micro, ""} when micro in @cursor_microseconds <- Integer.parse(micro),
          true <- Apiary.PublicId.valid?(WorkItem.prefix(), public_id),
          {:ok, at} <- DateTime.from_unix(micro, :microsecond) do
@@ -749,7 +783,7 @@ defmodule Apiary.WorkItems.WorkList do
     end
   end
 
-  defp parse_cursor(_cursor), do: :error
+  defp parse_cursor(_cursor, _order), do: :error
 
   # How many work items of the query each view and each stage holds, by one grouped
   # query: by state and status, with how many of each the reader owns.
@@ -811,6 +845,7 @@ defmodule Apiary.WorkItems.WorkList do
       owner: values(params["owner"]),
       repository: values(params["repository"]),
       updated: window(params["updated"]),
+      sort: sort_of(params["sort"]),
       after: blank(params["after"]),
       before: blank(params["before"])
     }
@@ -822,6 +857,13 @@ defmodule Apiary.WorkItems.WorkList do
     do: Enum.find(@views, :open, &(Atom.to_string(&1) == view))
 
   defp view_of(_view), do: :open
+
+  defp sort_of(sort) when sort in @sorts, do: sort
+
+  defp sort_of(sort) when is_binary(sort),
+    do: Enum.find(@sorts, :updated, &(Atom.to_string(&1) == sort))
+
+  defp sort_of(_sort), do: :updated
 
   defp stage_of(nil), do: nil
   defp stage_of(""), do: nil

@@ -4,7 +4,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # does not reach the workspace; the stages strip, the Open view's bands and a stage
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
-  # count; the pager; a forged view, stage or cursor; the texts of an external system;
+  # count; Sort; the pager; a forged view, stage, sort or cursor; the texts of an external system;
   # a row the instance closed, and an owner no longer a member; the empty list; the list
   # read again on a message of its workspace's work items, with the scope first; and an
   # event it does not know.
@@ -423,7 +423,137 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
     end
   end
 
+  # A work item created `created` seconds before `base` and last changed `changed`
+  # seconds before it.
+  defp timed!(work_item, base, created, changed, fields \\ []) do
+    set!(
+      work_item,
+      [
+        inserted_at: DateTime.add(base, -created, :second),
+        updated_at: DateTime.add(base, -changed, :second)
+      ] ++ fields
+    )
+  end
+
+  describe "Sort" do
+    setup %{scope: scope} do
+      base = DateTime.utc_now()
+      # Created in one order, last changed in the other.
+      older = scope |> item!() |> timed!(base, 60, 10)
+      newer = scope |> item!() |> timed!(base, 30, 20)
+      %{base: base, older: older, newer: newer}
+    end
+
+    test "offers Recently updated and Newest on Open, Declined, Closed and a stage alone",
+         ctx do
+      for query <- ["", "?view=declined", "?view=closed", "?stage=explore"] do
+        {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+        assert has_element?(
+                 view,
+                 ~s(#work-items-sort-button[aria-label="Sort: Recently updated"])
+               ),
+               query
+
+        assert words(view, "#work-items-sort ul") == "Sort by Recently updated Newest", query
+        assert has_element?(view, ~s(#work-items-sort-updated[aria-checked="true"])), query
+        assert has_element?(view, ~s(#work-items-sort-created[aria-checked="false"])), query
+      end
+    end
+
+    test "Newest lists the latest created first; Recently updated leaves sort out", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?stage=explore"))
+      assert rows(view) == ids([ctx.older, ctx.newer])
+
+      view |> element("#work-items-sort-created") |> render_click()
+      assert patched(view) == %{"stage" => "explore", "sort" => "created"}
+      assert rows(view) == ids([ctx.newer, ctx.older])
+      assert has_element?(view, ~s(#work-items-sort-created[aria-checked="true"]))
+      assert has_element?(view, ~s(#work-items-sort-button[aria-label="Sort: Newest"]))
+
+      view |> element("#work-items-sort-updated") |> render_click()
+      assert patched(view) == %{"stage" => "explore"}
+      assert rows(view) == ids([ctx.older, ctx.newer])
+    end
+
+    test "orders the Open view's bands", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?sort=created"))
+      assert rows(view, "#work-items-explore") == ids([ctx.newer, ctx.older])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      assert rows(view, "#work-items-explore") == ids([ctx.older, ctx.newer])
+    end
+
+    test "keeps the other params and leaves out the page's cursor", ctx do
+      query = "?view=closed&q=checkout&owner[]=#{ctx.scope.user.id}&updated=24h&after=u.1.wi_0"
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      view |> element("#work-items-sort-created") |> render_click()
+
+      assert patched(view) == %{
+               "view" => "closed",
+               "q" => "checkout",
+               "owner[]" => ctx.scope.user.id,
+               "updated" => "24h",
+               "sort" => "created"
+             }
+    end
+
+    test "is kept as the view, the stage and the search change", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?sort=created"))
+
+      view |> element("#work-items-views-closed") |> render_click()
+      assert patched(view) == %{"view" => "closed", "sort" => "created"}
+
+      view |> element("#work-items-views-open") |> render_click()
+      assert patched(view) == %{"sort" => "created"}
+
+      view |> element("#work-items-stages-explore") |> render_click()
+      assert patched(view) == %{"stage" => "explore", "sort" => "created"}
+
+      view |> form("#work-items-search", %{q: "checkout"}) |> render_change()
+      assert patched(view) == %{"stage" => "explore", "q" => "checkout", "sort" => "created"}
+      assert rows(view) == ids([ctx.newer, ctx.older])
+    end
+
+    test "a sort it does not know is Recently updated", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?stage=explore&sort=comments"))
+      assert rows(view) == ids([ctx.older, ctx.newer])
+      assert has_element?(view, ~s(#work-items-sort-updated[aria-checked="true"]))
+    end
+
+    test "Waiting on you shows no Sort and stays oldest first", ctx do
+      first = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
+      second = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 40, 45)
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=you&sort=created"))
+      assert rows(view) == ids([first, second])
+      refute has_element?(view, "#work-items-sort")
+    end
+  end
+
   describe "the pager" do
+    test "pages Newest, both ways, keeping the sort", %{conn: conn, scope: scope} do
+      base = DateTime.utc_now()
+      size = WorkList.page_size()
+      closed = [state: :closed, closed_at: base, closed_by_id: scope.user.id]
+
+      # The latest created is the earliest changed.
+      items = for n <- 1..(size + 2), do: scope |> item!() |> timed!(base, n, -n, closed)
+
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed&sort=created"))
+      assert rows(view) == ids(Enum.take(items, size))
+
+      view |> element("#work-items-pager-next") |> render_click()
+      assert %{"view" => "closed", "sort" => "created", "after" => "c." <> _} = patched(view)
+      assert rows(view) == ids(Enum.drop(items, size))
+      assert words(view, "#work-items-pager") =~ "#{size + 1}–#{size + 2} of #{size + 2}"
+
+      view |> element("#work-items-pager-previous") |> render_click()
+      assert %{"view" => "closed", "sort" => "created", "before" => "c." <> _} = patched(view)
+      assert rows(view) == ids(Enum.take(items, size))
+    end
+
     test "pages a view of more than a page, both ways", %{conn: conn, scope: scope} do
       base = DateTime.utc_now()
       size = WorkList.page_size()
