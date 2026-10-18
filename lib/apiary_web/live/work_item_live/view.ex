@@ -37,10 +37,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   def people(%Scope{} = scope, ids) do
     me = scope.user && scope.user.id
 
-    members =
-      for %{user: user} <- Organisations.list_members(scope),
-          into: %{},
-          do: {user.id, People.email(user)}
+    members = People.members(scope)
 
     for id <- ids, is_binary(id), into: %{} do
       {id, %{id: id, name: People.short(People.member(members, id)), you: id == me}}

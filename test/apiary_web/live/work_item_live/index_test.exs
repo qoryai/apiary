@@ -5,8 +5,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
   # count; the pager; a forged view, stage or cursor; the texts of an external system;
-  # a row the instance closed; the empty list; and the list read again on a message of its
-  # workspace's work items.
+  # a row the instance closed, and an owner no longer a member; the empty list; and the
+  # list read again on a message of its workspace's work items.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -337,6 +337,17 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
       assert words(view, row(work_item) <> " .q-wl-nx") ==
                "Closed when its integration was removed"
+    end
+
+    test "a row whose owner is no longer a member names them a former member",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+      work_item = item!(scope, owner_id: member.user.id)
+      Repo.delete!(member.membership)
+
+      {:ok, view, html} = live(conn, page(scope))
+      assert has_element?(view, row(work_item) <> " .q-wl-own[aria-label='Owner: Former member']")
+      refute html =~ name(member.user)
     end
 
     test "a forged view is Open", %{conn: conn, scope: scope} do

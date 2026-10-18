@@ -320,7 +320,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
-    people = people(rows, socket.assigns.options.owner)
+    people = people(scope, rows, socket.assigns.options.owner)
 
     assign(socket,
       list: list,
@@ -336,7 +336,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp load_options(socket) do
     scope = socket.assigns.current_scope
     owners = WorkItems.list_filter_values(scope, :owner)
-    names = names(Enum.map(owners, & &1.key))
+    names = names(scope, Enum.map(owners, & &1.key))
 
     options = %{
       owner: Enum.map(owners, &%{key: &1.key, label: Map.fetch!(names, &1.key), count: &1.count}),
@@ -398,7 +398,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   # The people the rows name, their owners and who ended them, by account id, with the
   # owners the Filter menu offers: `%{id => name}`.
-  defp people(rows, offered) do
+  defp people(scope, rows, offered) do
     known = Map.new(offered, &{&1.key, &1.label})
 
     ids =
@@ -407,16 +407,17 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       |> Enum.reject(&(is_nil(&1) or Map.has_key?(known, &1)))
       |> Enum.uniq()
 
-    Map.merge(known, names(ids))
+    Map.merge(known, names(scope, ids))
   end
 
-  # The name of each account of `ids`, as the pages name a person: the local part of the
-  # email address of an account in use, "Former member" for a deleted one or none.
-  defp names([]), do: %{}
+  # The name of each person of `ids`, as the work item page names one: the local part of
+  # the email address of a member of the organisation, "Former member" for a person who
+  # is no longer one, a deleted account, or none.
+  defp names(_scope, []), do: %{}
 
-  defp names(ids) do
-    emails = People.accounts(ids)
-    Map.new(ids, &{&1, People.short(People.member(emails, &1))})
+  defp names(scope, ids) do
+    members = People.members(scope)
+    Map.new(ids, &{&1, People.short(People.member(members, &1))})
   end
 
   defp person(_people, nil, _scope), do: nil
