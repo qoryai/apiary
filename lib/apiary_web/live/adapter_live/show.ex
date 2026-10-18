@@ -17,7 +17,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #     adapter's words for its items;
   #   * pending, started today, its pass still good: who started the install and when,
   #     and that it may be finished on the integration or started again; with the pass
-  #     expired, that it expired;
+  #     expired, that it expired. Both say to press Install, so whoever may not connect
+  #     one, and has no Install, reads not installed;
   #   * installed: who installed it and when, then its collections, the section's heading
   #     in the adapter's words. Until the adapter's first listing names the connection, a
   #     line says the page waits for the integration to send them; a minute after the page
@@ -244,6 +245,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
         )
   end
 
+  defp status(%{state: state, connects: false}) when state in [:pending, :expired],
+    do: gettext("Not installed.")
+
   defp status(%{state: :pending} = assigns) do
     gettext(
       "Not installed. %{person} started an install today at %{time} that isn't finished: finish it on %{integration}, or press Install to start again.",
@@ -293,7 +297,6 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # The word for many of the adapter's collections: what it calls them
   # (`Apiary.Adapters.collection_noun/1`), else the domain's word.
-  # Swap for SourceComponents.collection/1 and collections/1 once they're on next.
   defp collection_word(adapter, :other) do
     case Adapters.collection_noun(adapter) do
       %{other: other} -> other

@@ -266,7 +266,6 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # The word for one of the integrations' collections (a count of 1) or for many
   # (`:other`, or any other count): what `noun` says (`Apiary.Adapters`'s
   # `%{one:, other:}`), else the domain's word.
-  # Swap for SourceComponents.collection/1 and collections/1 once they're on next.
   defp collection_word(%{one: one}, 1), do: one
   defp collection_word(%{other: other}, _n), do: other
 

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.AdapterLive.ShowTest do
   # An integration's page in Organisation settings › Integrations
   # (`ApiaryWeb.AdapterLive.Show`): where the organisation's connection to it stands, not
-  # installed, pending, its pass expired, ended on the integration, or installed; while
-  # not installed, the install
+  # installed, pending, its pass expired, ended on the integration, or installed, with a
+  # pending or expired install not installed to a member; while not installed, the install
   # block to an owner or an admin; installed, the wait for the first listing and, a minute
   # on, the line to install again; the return's flash; behind the feature, for members.
   use ApiaryWeb.ConnCase, async: true
@@ -308,6 +308,29 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     send(lv.pid, :late)
     _ = render(lv)
     refute has_element?(lv, "#collections-late")
+  end
+
+  test "a member reads a pending install, or an expired one, as not installed, with no Install",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    member = member_conn(scope)
+    {connection, _nonce} = connection_fixture(scope, adapter, :pending)
+
+    {:ok, lv, _html} = live(member, page(scope, adapter))
+    assert words(lv, "#integration-status") == "Not installed."
+    refute render(lv) =~ ~r/press Install/i
+    refute has_element?(lv, "#integration-install")
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") ==
+             "Not installed. #{scope.user.email} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on Acme tracker, or press Install to start again."
+
+    set(connection, pass_expires_at: DateTime.add(DateTime.utc_now(:second), -1))
+
+    {:ok, lv, _html} = live(member, page(scope, adapter))
+    assert words(lv, "#integration-status") == "Not installed."
+    refute render(lv) =~ ~r/press Install/i
+    refute has_element?(lv, "#integration-install")
   end
 
   test "an admin has the install block too", %{scope: scope, adapter: adapter} do
