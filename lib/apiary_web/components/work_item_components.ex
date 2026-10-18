@@ -26,7 +26,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
-  #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when;
+  #   * `:ended_by`, `:ended_at` - who declined, closed or undid it, and when; `nil` for
+  #     `:ended_by` where the instance closed it, with `:ended_reason` saying why:
+  #     `:adapter_removed`, when its integration was removed. A close by the instance for
+  #     any other reason, or none, has no words yet: the parts that name who closed it
+  #     draw nothing there;
   #   * `:updated_at` - when it last changed.
   #
   # A part that names the ticket takes the words its source has for its items,
@@ -82,6 +86,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   @no_result [:no_result, :lost, :cancelled]
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
+
+  # The most UTF-16 units a field takes, the unit a browser's `maxlength` counts: twice
+  # the most code points the server takes (`Apiary.WorkItems.Proposal`), so no valid text
+  # is refused there, and a paste stays well within the socket's frame. A scope's field
+  # takes 50 lines of 2,000 code points, each with its line break.
+  @answer_units 2 * 2_000
+  @short_units 2 * 2_000
+  @long_units 2 * 20_000
+  @scope_units 2 * 50 * (2_000 + 1)
 
   ## The status and its mark
 
@@ -163,6 +176,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: gettext("Declined by %{name}", name: by.name)
   end
 
+  defp words_of(%{status: :closed, ended_by: nil} = work_item) do
+    if instance_removed?(work_item), do: gettext("Closed when its integration was removed")
+  end
+
   defp words_of(%{status: :closed, ended_by: by}) do
     if you?(by), do: gettext("Closed by you"), else: gettext("Closed by %{name}", name: by.name)
   end
@@ -198,6 +215,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   def you?(%{you: true}), do: true
   def you?(_person), do: false
+
+  # Whether the instance closed it when its integration was removed: the one close without
+  # a person that has words.
+  defp instance_removed?(work_item), do: work_item[:ended_reason] == :adapter_removed
 
   @doc false
   def stage_name(:explore), do: gettext("Explore")
@@ -841,17 +862,18 @@ defmodule ApiaryWeb.WorkItemComponents do
                 of: Format.number(run.of)
               ),
             else:
-              rich_gettext(
-                "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
-                run: run_ref(run),
-                attempt: Format.number(run.attempt),
-                of: Format.number(run.of)
-              )
+              run[:id] &&
+                rich_gettext(
+                  "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
+                  run: run_ref(run),
+                  attempt: Format.number(run.attempt),
+                  of: Format.number(run.of)
+                )
           )
       )
 
     ~H"""
-    <p id={"#{@id}-line"}><.rich text={@line} /></p>
+    <p :if={@line} id={"#{@id}-line"}><.rich text={@line} /></p>
     <p :if={@can_act && @backlog_off} id={"#{@id}-ways"}>
       {gettext("Decline the work item if it is not wanted, or close it.")}
     </p>
@@ -898,7 +920,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p id={"#{@id}-line"}><.rich text={@line} /></p>
+    <p :if={@line} id={"#{@id}-line"}><.rich text={@line} /></p>
     <div :if={@can_act} class="q-wi-acts">
       <.button
         id={"#{@id}-again"}
@@ -1028,7 +1050,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # What happened to a run that gave no result, as one sentence with its id.
+  # What happened to a run that gave no result, as one sentence with its id; none for a
+  # run that ended before its handover, which has no id to name.
+  defp no_result_line(_status, %{id: nil}), do: nil
+
   defp no_result_line(:no_result, run) do
     case run[:outcome] do
       :none ->
@@ -1186,7 +1211,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp person_key(person), do: person[:id] || make_ref()
 
   # A run's id, `short_id/1` of its public id (`rn_` and 8 hex), as a link to its page
-  # where the page gives one.
+  # where the page gives one. A run that ended before its handover has none: no part names
+  # it with this.
   defp run_ref(%{path: path, id: id}) when is_binary(path),
     do: {:link, path, RunComponents.short_id(id), "q-wi-run"}
 
@@ -1384,6 +1410,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  defp end_line(%{status: :closed, ended_by: nil} = work_item, now) do
+    if instance_removed?(work_item),
+      do:
+        rich_gettext(
+          "This work item was closed on %{date}, when its integration was removed.",
+          date: day(work_item.ended_at, now)
+        )
+  end
+
   defp end_line(%{status: :closed, ended_by: by} = work_item, now) do
     date = day(work_item.ended_at, now)
 
@@ -1462,7 +1497,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   """
   attr :id, :string, default: "work-item-details"
   attr :work_item, :map, required: true, doc: "the work item"
-  attr :ticket, :map, required: true, doc: "its ticket: `:filer` and `:filed_at`"
+
+  attr :ticket, :map,
+    required: true,
+    doc: "its ticket: `:filer` and `:filed_at`; nil once its record is gone, with no line"
+
   attr :integration, :string, required: true, doc: "the integration's name"
   attr :uninstalled, :boolean, default: false, doc: "whether the integration was uninstalled"
 
@@ -1493,9 +1532,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         instruction: instruction(work_item.first_instruction),
         ticket_line: ticket_line(assigns, now),
         taken_in: by_line(work_item.taken_in_at, work_item.taken_in_by, now),
-        ended:
-          ended?(work_item) &&
-            {end_word(work_item.status), by_line(work_item.ended_at, work_item.ended_by, now)},
+        ended: ended?(work_item) && ended_row(work_item, now),
         runs: work_item[:runs]
       )
 
@@ -1538,7 +1575,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               {@work_item[:key]}
             </.external_link>
           </span>
-          <span class="q-wi-sub"><.rich text={@ticket_line} /></span>
+          <span :if={@ticket_line} class="q-wi-sub"><.rich text={@ticket_line} /></span>
         </dd>
         <dt>{SourceComponents.collection_label(@collection_noun)}</dt>
         <dd id={"#{@id}-repository"} class="q-mono">{@work_item.repository}</dd>
@@ -1563,6 +1600,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  defp ticket_line(%{ticket: nil}, _now), do: nil
+
   defp ticket_line(%{ticket: ticket, integration: integration, uninstalled: uninstalled}, now) do
     filed = inline_ago(ticket.filed_at, now)
 
@@ -1581,6 +1620,20 @@ defmodule ApiaryWeb.WorkItemComponents do
           when: filed
         )
   end
+
+  # How it ended, for Details: its word and when and by whom; a close by the instance
+  # with words says why, and one without has no row.
+  defp ended_row(%{status: :closed, ended_by: nil} = work_item, now) do
+    if instance_removed?(work_item),
+      do:
+        {end_word(:closed),
+         rich_gettext("Closed %{when}, when its integration was removed",
+           when: day(work_item.ended_at, now)
+         )}
+  end
+
+  defp ended_row(work_item, now),
+    do: {end_word(work_item.status), by_line(work_item.ended_at, work_item.ended_by, now)}
 
   defp by_line(at, by, now) do
     if you?(by),
@@ -1688,7 +1741,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   urls). A change is `%{value:, by:}` under the field's key (`:complexity`,
   `:understanding`, `:scope_in`, `:scope_out` or `:approach`), the value as the proposal
   has it. A take in is `%{taken_in_by:, taken_in_at:, ended:, ended_by:, ended_at:, runs:}`,
-  `ended` being `:declined`, `:closed` or `:undone`.
+  `ended` being `:declined`, `:closed` or `:undone`, its runs as above; a close by the
+  instance has `ended_by` nil and `ended_reason`, as the work item's.
 
   Every word a run wrote is plain text in a frame that names the run: escaped, its line
   breaks kept, isolated from the text around it. A source is a link only where it is an
@@ -2193,7 +2247,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         field: field,
         error_id: "#{field}-error",
         name: "answers[#{pid}]",
-        message: answer_error(assigns.error)
+        message: answer_error(assigns.error),
+        answer_units: @answer_units
       )
 
     ~H"""
@@ -2208,6 +2263,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           id={@field}
           name={@name}
           rows="2"
+          maxlength={@answer_units}
           placeholder={gettext("Your answer")}
           aria-describedby={if @message, do: "#{@q_id} #{@error_id}", else: @q_id}
           aria-invalid={@message && "true"}
@@ -2520,7 +2576,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
         <p>{@body}</p>
-        <p>
+        <p :if={@run[:id]}>
           <.rich text={rich_gettext("The run's page, %{run}, shows what it did.", run: run_ref(@run))} />
         </p>
       </div>
@@ -2573,23 +2629,28 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
       <h3 id={"#{@id}-h"}>{gettext("Earlier runs of this take in")}</h3>
-      <details :for={run <- @runs} id={"#{@id}-#{run.id}"}>
+      <details :for={run <- @runs} id={"#{@id}-#{run_dom(run)}"}>
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
           <span class="q-xp-it"><b>{run_place(run)}</b></span>
-          <span class="q-xp-it q-mono">{RunComponents.short_id(run.id)}</span>
+          <span :if={run.id} class="q-xp-it q-mono">{RunComponents.short_id(run.id)}</span>
           <span class="q-xp-it">{run_gave(run)}</span>
           <span :if={run[:ended_at]} class="q-xp-it">
             {time_tag(run.ended_at, Format.relative(run.ended_at, @now))}
           </span>
         </summary>
         <div class="q-xp-inner">
-          <.run_body id={"#{@id}-#{run.id}-body"} run={run} item={@item} now={@now} />
+          <.run_body id={"#{@id}-#{run_dom(run)}-body"} run={run} item={@item} now={@now} />
         </div>
       </details>
     </section>
     """
   end
+
+  # A run in a DOM id: its public id, or for a run that ended before its handover, which
+  # has none, its place in the take in.
+  defp run_dom(%{id: id}) when is_binary(id), do: id
+  defp run_dom(run), do: "run-#{run.attempt}"
 
   # What a run gave, in a fold's summary.
   defp run_gave(%{outcome: :questions, questions: questions}) do
@@ -2674,7 +2735,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
           <span class="q-xp-it"><b><.rich text={taken_in_words(take_in, @now)} /></b></span>
-          <span class="q-xp-it"><.rich text={ended_words(take_in, @now)} /></span>
+          <span :if={ended_words(take_in, @now)} class="q-xp-it">
+            <.rich text={ended_words(take_in, @now)} />
+          </span>
           <span class="q-xp-it">
             {ngettext("%{count} run", "%{count} runs", length(take_in.runs))}
           </span>
@@ -2682,8 +2745,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         <div class="q-xp-inner">
           <p>{gettext("Its runs counted apart from this take in.")}</p>
           <%= for run <- take_in.runs do %>
-            <.run_line id={"#{@id}-#{i}-#{run.id}"} run={run} now={@now} />
-            <.run_body id={"#{@id}-#{i}-#{run.id}-body"} run={run} item={@item} now={@now} />
+            <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
+            <.run_body
+              id={"#{@id}-#{i}-#{run_dom(run)}-body"}
+              run={run}
+              item={@item}
+              now={@now}
+            />
           <% end %>
         </div>
       </details>
@@ -2697,7 +2765,16 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: rich_gettext("Taken in %{date} by %{name}", date: day(at, now), name: by.name)
   end
 
-  defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now) do
+  defp ended_words(%{ended: :closed, ended_by: nil} = take_in, now) do
+    if take_in[:ended_reason] == :adapter_removed,
+      do:
+        rich_gettext("Closed %{when}, when its integration was removed",
+          when: inline_ago(take_in.ended_at, now)
+        )
+  end
+
+  defp ended_words(%{ended: ended, ended_by: by, ended_at: at}, now)
+       when ended in [:declined, :closed, :undone] do
     at = inline_ago(at, now)
 
     case {ended, you?(by)} do
@@ -2709,6 +2786,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       {:undone, false} -> rich_gettext("Undone by %{name} %{when}", name: by.name, when: at)
     end
   end
+
+  defp ended_words(_take_in, _now), do: nil
 
   defp present?(text) when is_binary(text), do: String.trim(text) != ""
   defp present?(_text), do: false
@@ -2949,11 +3028,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :error, :string, default: nil
 
   defp edit_area(assigns) do
+    assigns = assign(assigns, :units, edit_units(assigns.name))
+
     ~H"""
     <textarea
       id={@id}
       name={@name}
       rows={@rows}
+      maxlength={@units}
       aria-describedby={described(@described ++ [@error && "#{@id}-err"])}
       aria-invalid={@error && "true"}
     >{["\n", @value || ""]}</textarea>
@@ -2962,6 +3044,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     </p>
     """
   end
+
+  defp edit_units("understanding"), do: @long_units
+  defp edit_units(scope) when scope in ["scope_in", "scope_out"], do: @scope_units
+  defp edit_units(_short), do: @short_units
 
   defp described(ids) do
     case Enum.filter(ids, &is_binary/1) do
@@ -3208,11 +3294,13 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:explore_again` - who asked Qory to explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
     * `:closed`, `:declined` - who closed or declined it, and where it was declined
-      (`stage`);
+      (`stage`); a close by the instance has no `actor`, and says why (`reason`), where
+      it has words for the reason, else draws nothing;
     * `:undone` - who undid it, before a run started.
 
   A run is `%{id:, path:, attempt:, of:}`, its id shown as `short_id/1` and linked where
-  `path` is given. A question is `%{public_id:, text:, answer:}`. Every kind takes
+  `path` is given. A run that ended before its handover has no id: a line that would name
+  it draws nothing. A question is `%{public_id:, text:, answer:}`. Every kind takes
   `integration`, so no page draws the key without its mark. What a run wrote, and a
   member's answers, are quoted as plain text, never inside a sentence.
   """
@@ -3256,12 +3344,25 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :changed, :boolean, default: false, doc: "`:confirmed`: with the member's changes"
 
+  attr :reason, :atom,
+    default: nil,
+    values: [nil, :adapter_removed],
+    doc: "`:closed` by the instance (no `actor`): why"
+
   attr :stage, :atom,
     default: :confirm,
     values: [:explore, :confirm],
     doc: "`:declined`: where"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+
+  def thread_event(%{kind: kind, run: %{id: nil}} = assigns)
+      when kind in [:started, :no_result, :lost, :cancelled],
+      do: ~H""
+
+  def thread_event(%{kind: :closed, actor: nil, reason: reason} = assigns)
+      when reason != :adapter_removed,
+      do: ~H""
 
   def thread_event(assigns) do
     now = now(assigns)
@@ -3490,6 +3591,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       else:
         rich_gettext("%{name} confirmed Qory's proposal. Ready for Shape", name: {:b, actor.name})
   end
+
+  defp event_line(%{kind: :closed, actor: nil, reason: reason}),
+    do: if(reason == :adapter_removed, do: gettext("Closed when its integration was removed"))
 
   defp event_line(%{kind: :closed, actor: actor}) do
     if you?(actor),

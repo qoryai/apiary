@@ -1384,4 +1384,85 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert composer =~ "Members of Main see this. Nothing is posted on the bug."
     end
   end
+
+  describe "a close by the instance" do
+    defp by_instance(reason, extra \\ %{}) do
+      work_item(
+        Map.merge(
+          %{
+            number: 64,
+            status: :closed,
+            stage: :confirm,
+            ended_by: nil,
+            ended_reason: reason,
+            ended_at: ~U[2026-10-12 10:07:00Z]
+          },
+          extra
+        )
+      )
+    end
+
+    test "when its integration was removed: the status, the end line, Details and the Thread say so" do
+      w = by_instance(:adapter_removed)
+
+      status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+      assert text(status, ".q-wi-st") == "Closed when its integration was removed"
+      assert attr(status, ".q-wi-mk", "class") == ["q-wi-mk q-wi-mk-closed"]
+
+      notice =
+        render_component(&WorkItemComponents.end_notice/1,
+          work_item: w,
+          integration: "GitHub",
+          backlog_off: true,
+          now: @now
+        )
+
+      assert text(notice, "#work-item-ended-line") ==
+               "This work item was closed on 12 Oct, when its integration was removed."
+
+      assert count(notice, "#work-item-ended-again") == 0
+
+      html = details(w)
+      [dt | _] = html |> query("dt") |> Enum.reverse()
+      assert LazyHTML.text(dt) == "Closed"
+
+      assert text(html, "#work-item-details-ended") ==
+               "Closed 12 Oct, when its integration was removed"
+
+      thread = event(kind: :closed, actor: nil, reason: :adapter_removed)
+      assert line(thread) == "Closed when its integration was removed 14 Oct, 11:24"
+    end
+
+    test "for a reason without words, or none: those parts draw nothing, and nothing fails" do
+      for reason <- [nil, :unknown] do
+        w = by_instance(reason)
+
+        status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+        assert text(status, ".q-wi-st") == ""
+        assert attr(status, ".q-wi-mk", "class") == ["q-wi-mk q-wi-mk-closed"]
+
+        notice =
+          render_component(&WorkItemComponents.end_notice/1,
+            work_item: w,
+            integration: "GitHub",
+            backlog_off: true,
+            now: @now
+          )
+
+        assert count(notice, "#work-item-ended") == 0
+
+        html = details(w)
+        assert count(html, "#work-item-details-ended") == 0
+        refute html =~ "integration was removed"
+
+        assert event(kind: :closed, actor: nil, reason: nil) == ""
+      end
+    end
+
+    test "Details without the ticket's record: its key, and no line under it" do
+      html = details(work_item(), ticket: nil)
+      assert text(html, "#work-item-details-ticket a") == "#1204 (opens in a new tab)"
+      assert count(html, "#work-item-details-ticket .q-wi-sub") == 0
+    end
+  end
 end

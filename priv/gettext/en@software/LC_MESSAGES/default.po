@@ -4763,6 +4763,11 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Closed %{when}, when its integration was removed"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Closed a work item"
@@ -4791,6 +4796,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when a new policy denied the host."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Closed when its integration was removed"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15149,6 +15159,11 @@ msgstr "This repository's mode is %{mode}."
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "This work item stays in Qory Apiary. Qory no longer changes anything on the %{item}, and the %{item} is no longer in the Backlog."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "This work item was closed on %{date}, when its integration was removed."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
