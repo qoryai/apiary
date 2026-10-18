@@ -20,13 +20,9 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      address, holds no key in use, or no pass could be made), to Add an integration.
   #      Neither changes anything.
   #
-  # The address is outside the console, and the console's pages say `form-action 'self'`
-  # (`ApiaryWeb.ContentSecurityPolicy`), which a browser applies to the redirects that
-  # follow a form's POST too. So the person is not sent there by a redirect: the answer is
-  # a page with no text that refreshes to it at once (`<meta http-equiv="refresh">`), a
-  # new navigation, not a form's. It says `Referrer-Policy: no-referrer`, so the address is not
-  # told which page sent the person, and `Cache-Control: no-store`, so the pass is kept by
-  # no cache. The pass is never logged.
+  # The address is outside the console, so the person is sent there by a page that
+  # refreshes to it (`ApiaryWeb.SendOn`), told no referrer and kept by no cache. The pass
+  # is never logged.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -36,7 +32,7 @@ defmodule ApiaryWeb.AdapterInstallController do
 
   alias Apiary.{Access, Adapters}
   alias Apiary.Nodes.Node
-  alias ApiaryWeb.ConnectSession
+  alias ApiaryWeb.{ConnectSession, SendOn}
 
   def create(conn, %{"adapter_id" => adapter_id}) do
     scope = conn.assigns.current_scope
@@ -46,7 +42,7 @@ defmodule ApiaryWeb.AdapterInstallController do
          {:ok, url, session} <- Adapters.connect(scope, adapter) do
       conn
       |> ConnectSession.put(session)
-      |> send_on(url)
+      |> SendOn.send_on(url)
     else
       {:error, :forbidden} ->
         conn
@@ -64,27 +60,5 @@ defmodule ApiaryWeb.AdapterInstallController do
       {:error, reason} when reason in [:no_connect_url, :no_key, :invalid, :too_long] ->
         redirect(conn, to: ~p"/#{scope.organisation}/settings/integrations/new")
     end
-  end
-
-  # The page that sends the person on to `url`, the connect address the adapter declared,
-  # held to `Apiary.Adapters.Wire.url?/1` and stored under
-  # `Apiary.Nodes.Node.connect_url_changeset/2`, with the pass, escaped as an attribute.
-  defp send_on(conn, url) do
-    content = Phoenix.HTML.attributes_escape(content: "0;url=" <> url)
-
-    conn
-    |> put_resp_header("referrer-policy", "no-referrer")
-    |> put_resp_header("cache-control", "no-store")
-    |> put_resp_content_type("text/html")
-    |> send_resp(
-      200,
-      [
-        ~s(<!DOCTYPE html><html><head><meta charset="utf-8">),
-        ~s(<meta name="referrer" content="no-referrer">),
-        ~s(<meta http-equiv="refresh"),
-        Phoenix.HTML.safe_to_string(content),
-        ~s(></head><body></body></html>)
-      ]
-    )
   end
 end

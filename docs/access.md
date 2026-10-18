@@ -201,6 +201,9 @@ the product's name in Instance settings › General (`instance.rename`,
 Changing the instance's settings in Instance settings › Configuration
 (`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
 by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
+Starting an adapter's set-up at the system it reads from (`adapter.setup`,
+`Apiary.Adapters.setup/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
 Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
 new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its
 log shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no

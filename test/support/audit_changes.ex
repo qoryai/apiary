@@ -110,6 +110,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.set_interval",
       :"adapter.delete",
       :"adapter.install",
+      :"adapter.setup",
       :"adapter.connect",
       :"adapter.declare",
       :"collection.assign",
@@ -416,6 +417,23 @@ defmodule Apiary.AuditChanges do
     {:ok, adapter} = Adapters.install(instance, "tracker")
 
     %{scope: instance, actor: :instance, subject: {"node", adapter.id}, before: before}
+  end
+
+  # An instance admin starts the set-up of an adapter that declares where, in the trail
+  # of the instance's organisation, about the adapter, never with the pass.
+  def make(:"adapter.setup", _ctx) do
+    %{adapter: adapter} = settable_adapter_fixture()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, url} = Adapters.setup(admin, adapter)
+    %{"state" => pass} = URI.decode_query(URI.parse(url).query)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"node", adapter.id},
+      secret: pass,
+      before: before
+    }
   end
 
   def make(:"adapter.edit", _ctx) do
@@ -824,6 +842,10 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
   defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
   defp prepare(:"adapter.connect", _ctx), do: adapter_fixture()
+
+  defp prepare(:"adapter.setup", _ctx),
+    do: settable_adapter_fixture() |> Map.fetch!(:adapter)
+
   # A collection the adapter listed for the organisation's connection, and a workspace
   # made after it, so assigning it there changes its link.
   defp prepare(:"collection.assign", %{scope: scope}) do
@@ -992,6 +1014,8 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"adapter.connect", scope, adapter),
     do: Adapters.connect(scope, adapter)
+
+  defp attempt(:"adapter.setup", scope, adapter), do: Adapters.setup(scope, adapter)
 
   defp attempt(:"collection.assign", scope, {connection, collection, workspace}),
     do: Collections.assign_collections(scope, connection, [collection.id], workspace)

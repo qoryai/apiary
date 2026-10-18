@@ -4,8 +4,8 @@ defmodule ApiaryWeb.FactoryShellTest do
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
-  # Adapters; and the Activity filter's
-  # words for the work item comments and the handover.
+  # Adapters; and the Activity filter's words for the work item comments, the handover, an
+  # adapter installed and a set-up started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
   # whole node's.
@@ -34,7 +34,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.AdapterRedirectController,
-    ApiaryWeb.AdapterInstallController
+    ApiaryWeb.AdapterInstallController,
+    ApiaryWeb.AdapterSetupController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -173,7 +174,9 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/keys/codes/x1/revoke"},
                  {:get, managed <> "/settings"},
                  {:get, managed <> "/settings/rename"},
-                 {:get, managed <> "/settings/remove"}
+                 {:get, managed <> "/settings/remove"},
+                 # Set up, which starts an adapter's set-up at the system it reads from.
+                 {:post, managed <> "/setup"}
                ] ++
                  for(
                    rest <- ~w(/backlog /backlog/x1 /work /work/1 /work/1/thread),
@@ -364,7 +367,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert has_element?(view, "a#settings-tab-integrations[href='#{href}']")
     end
 
-    test "the Activity filter offers the work item comments, the assigning of repositories, the Backlog switch and the handover by their words, and no other action of the feature",
+    test "the Activity filter offers the work item comments, the assigning of repositories, the Backlog switch, the handover, an adapter installed and a set-up started by their words, and no other action of the feature",
          %{conn: conn, scope: scope} do
       options = action_options(conn, scope)
 
@@ -375,6 +378,8 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
       assert {"dispatch.handover", "Runs handed over"} in options
+      assert {"adapter.install", "Adapter installed"} in options
+      assert {"adapter.setup", "Adapter set-up started"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
@@ -385,7 +390,9 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment_delete",
             :"collection.assign",
             :"collection.set_backlog",
-            :"dispatch.handover"
+            :"dispatch.handover",
+            :"adapter.install",
+            :"adapter.setup"
           ],
           do: refute(action in offered, "#{action}")
     end

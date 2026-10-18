@@ -3231,6 +3231,11 @@ msgstr ""
 msgid "Adapter installed"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Adapter set-up started"
+msgstr ""
+
 #: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
@@ -9941,6 +9946,11 @@ msgstr ""
 msgid "Not set"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Not set up yet"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke %{label} and generate another key."
@@ -12687,6 +12697,7 @@ msgstr ""
 msgid "Set to follow the workspace"
 msgstr ""
 
+#: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
@@ -12731,6 +12742,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set your password"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Set-up"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -13059,6 +13075,11 @@ msgstr ""
 msgid "Started"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Started setting up an adapter"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -13289,6 +13310,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Takes you to the adapter, to set it up where it reads from. Each use gives it a new one-time pass."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13608,6 +13634,11 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The adapter makes the key there and sends Qory Apiary only its public half."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_setup_controller.ex
+#, elixir-autogen, elixir-format
+msgid "The adapter needs a key in use before it can be set up."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -14601,6 +14632,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
+msgstr ""
+
+#: lib/apiary_web/controllers/adapter_setup_controller.ex
+#, elixir-autogen, elixir-format
+msgid "This adapter has nothing to set up now."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex

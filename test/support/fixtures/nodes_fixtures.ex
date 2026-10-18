@@ -122,6 +122,22 @@ defmodule Apiary.NodesFixtures do
     %{adapter: Repo.get!(Node, adapter.id), access_key: key, pair: pair}
   end
 
+  @setup_url "https://tracker.example.com/setup?site=main"
+
+  @doc """
+  An adapter an instance admin may set up (`connectable_adapter_fixture/1`): with its key,
+  and an address to be set up at, #{@setup_url}, as an adapter that is not set up yet
+  declares one. Returns what `connectable_adapter_fixture/1` does.
+  """
+  def settable_adapter_fixture(attrs \\ %{}) do
+    %{adapter: adapter} = made = connectable_adapter_fixture(attrs)
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [setup_url: @setup_url])
+
+    %{made | adapter: Repo.get!(Node, adapter.id)}
+  end
+
   @doc """
   Links `collection` (`Apiary.Adapters.Collection`) to `workspace`, of the same
   organisation, or to none, as nothing in the product does: it asks no one and writes no

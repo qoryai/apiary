@@ -12,6 +12,10 @@ defmodule ApiaryWeb.AdapterComponents do
   # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) says so in place of
   # who added it.
   #
+  # Set up (`setup_form/1`) starts an adapter's set-up at the system it reads from, a POST
+  # to `ApiaryWeb.AdapterSetupController`; a page shows it only while the adapter
+  # declares where to be set up (`setup_url`) and holds a key in use (`settable?/2`).
+  #
   # An adapter's state is "No key yet" while it holds no active key, with the dot of a
   # state that needs someone. Once it holds one, it is a node's: when it was last seen,
   # the latest use of one of its keys (`Apiary.Adapters.last_seen/2`), or "Never seen"
@@ -33,7 +37,7 @@ defmodule ApiaryWeb.AdapterComponents do
   @doc false
   # The paths of the pages of Instance settings › Adapters: the list, and the adapter's
   # (by its public id) Overview, Access key tab, command page, Settings tab, Rename and
-  # Remove.
+  # Remove; and the path Set up posts to (`setup`).
   @spec paths(Node.t() | String.t()) :: %{atom => String.t()}
   def paths(%Node{public_id: public_id}), do: paths(public_id)
 
@@ -43,12 +47,45 @@ defmodule ApiaryWeb.AdapterComponents do
     %{
       list: ~p"/instance/adapters",
       overview: overview,
+      setup: overview <> "/setup",
       keys: overview <> "/keys",
       new_code: overview <> "/keys/new-code",
       settings: overview <> "/settings",
       rename: overview <> "/settings/rename",
       remove: overview <> "/settings/remove"
     }
+  end
+
+  @doc false
+  # Whether Set up shows for `adapter`: while it declares where to be set up
+  # (`setup_url`, which it declares only while it is not set up) and holds a key in use
+  # (`connected`, `Apiary.AccessKeys.active_key?/1`), as `Apiary.Adapters.setup/2` asks.
+  @spec settable?(Node.t(), boolean) :: boolean
+  def settable?(%Node{setup_url: url}, connected), do: is_binary(url) and connected == true
+
+  attr :id, :string, required: true
+  attr :adapter, Node, required: true
+  attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
+
+  @doc false
+  # Set up for `adapter`: a form that posts to its set-up's path, `paths/1`'s `setup`,
+  # with the session's CSRF token, and the instance admin is sent on to the adapter
+  # (`ApiaryWeb.AdapterSetupController`).
+  def setup_form(assigns) do
+    ~H"""
+    <.form
+      for={to_form(%{}, as: :setup)}
+      id={@id}
+      action={paths(@adapter).setup}
+      method="post"
+      class="contents"
+    >
+      <input :if={@back} type="hidden" name="back" value={@back} />
+      <.button id={"#{@id}-button"} type="submit" size="xs">
+        <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Set up")}
+      </.button>
+    </.form>
+    """
   end
 
   @doc false

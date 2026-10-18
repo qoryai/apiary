@@ -23,13 +23,14 @@ defmodule ApiaryWeb.AdapterComponentsTest do
   defp text(html),
     do: html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.split() |> Enum.join(" ")
 
-  test "paths/1 are the adapter's pages under /instance/adapters, by its public id" do
+  test "paths/1 are the adapter's pages under /instance/adapters, and its Set up, by its public id" do
     paths = AdapterComponents.paths(@adapter)
     overview = "/instance/adapters/na_8f3k2m9q4x7v1t6r"
 
     assert paths == %{
              list: "/instance/adapters",
              overview: overview,
+             setup: overview <> "/setup",
              keys: overview <> "/keys",
              new_code: overview <> "/keys/new-code",
              settings: overview <> "/settings",

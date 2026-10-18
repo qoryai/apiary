@@ -11,9 +11,11 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # The Overview says the adapter's state, No key yet, with the way to connect it, or,
   # once it holds a key, when it was last seen or Never seen
   # (`ApiaryWeb.AdapterComponents.adapter_seen/1`), and reads it again as a key arrives
-  # (`Apiary.Adapters.subscribe_keys/2`); the install address the adapter declared, and
-  # how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or that it
-  # declared neither yet.
+  # (`Apiary.Adapters.subscribe_keys/2`); while the adapter declares where to be set up
+  # (`setup_url`), that it is not set up yet, with Set up while it holds a key in use
+  # (`ApiaryWeb.AdapterComponents.setup_form/1`); the install address the adapter
+  # declared, and how often it pulls (`Apiary.Adapters.sync_settings/2`), with Change, or
+  # that it declared neither yet.
   #
   # The Settings tab holds how often the adapter pulls, chosen among the intervals its
   # declaration allows, its default marked, and saved with
@@ -415,8 +417,10 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   attr :seen, DateTime, default: nil
   attr :sync, :map, required: true, doc: "`Apiary.Adapters.sync_settings/2`'s"
 
-  # The Overview: the adapter's state, the install address it declared, and how often it
-  # pulls.
+  # The Overview: the adapter's state; while it declares where to be set up (`setup_url`,
+  # which it declares only while it is not set up), its Set-up, Not set up yet, with Set
+  # up and what it does while it holds a key in use; the install address it declared, and
+  # how often it pulls.
   defp overview(assigns) do
     ~H"""
     <dl
@@ -451,6 +455,21 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           {gettext("Connect it")}
         </.link>
       </dd>
+      <%= if @adapter.setup_url do %>
+        <dt class="text-faint">{gettext("Set-up")}</dt>
+        <dd id="adapter-overview-setup" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span id="adapter-setup-state">{gettext("Not set up yet")}</span>
+          <%= if AdapterComponents.settable?(@adapter, @connected) do %>
+            <span aria-hidden="true" class="text-faint">·</span>
+            <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} />
+            <p id="adapter-setup-hint" class="basis-full text-[12.5px]/[18px] text-muted">
+              {gettext(
+                "Takes you to the adapter, to set it up where it reads from. Each use gives it a new one-time pass."
+              )}
+            </p>
+          <% end %>
+        </dd>
+      <% end %>
       <dt class="text-faint">{gettext("Install address")}</dt>
       <dd id="adapter-overview-install">
         <%= if @adapter.connect_url do %>

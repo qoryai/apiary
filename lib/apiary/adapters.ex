@@ -33,6 +33,12 @@ defmodule Apiary.Adapters do
   # as. Such an adapter holds one key at most, gets no code from a person, and is not
   # deleted while it is listed (`delete_adapter/2`, `{:error, :installed}`).
   #
+  # An adapter that is not set up at the system it reads from declares where to set it
+  # up (`setup_url`, `declare/2`). While it does and holds a key in use, an instance admin
+  # starts its set-up (`setup/2`, `adapter.setup`): a new setup pass
+  # (`Apiary.Adapters.SetupPass`) each time, which the trail of the instance's
+  # organisation records without the pass.
+  #
   # **The lock order** of every change here: the adapter's row first, then its connections,
   # then what hangs from them; its keys and codes after its row (`Apiary.AccessKeys`, which
   # takes the row `FOR UPDATE`). Nothing locks a connection, a key or a code, and then its
@@ -67,6 +73,7 @@ defmodule Apiary.Adapters do
     Connections,
     Feed,
     Installed,
+    SetupPass,
     Wire
   }
 
@@ -594,9 +601,10 @@ defmodule Apiary.Adapters do
   defp connectable(%Node{} = adapter),
     do: if(AccessKeys.active_key?(adapter), do: :ok, else: {:error, :no_key})
 
-  # The connect address with the pass as the query parameter `state`, before any fragment:
-  # `?state=` when the address has no query, `&state=` after one. A pass is base64url and
-  # a dot, which a query carries as they are.
+  # The connect address, or the `setup_url`, with the pass as the query parameter `state`,
+  # before any fragment (a `setup_url` has none): `?state=` when the address has no
+  # query, `&state=` after one. A pass is base64url and a dot, which a query carries as
+  # they are.
   defp with_state(url, pass) do
     {base, fragment} =
       case String.split(url, "#", parts: 2) do
@@ -613,6 +621,45 @@ defmodule Apiary.Adapters do
 
     base <> separator <> "state=" <> pass <> fragment
   end
+
+  @doc false
+  # Starts the set-up of `adapter` at the system it reads from (`adapter.setup`, an
+  # instance admin, `authorize_instance/2`, with no recent sign-in asked: the pass grants
+  # nothing in Qory Apiary), with `adapter` as it is now, in use and held `FOR SHARE`: a
+  # new setup pass for it (`Apiary.Adapters.SetupPass`), whose nonce nothing here keeps.
+  # `{:ok, url}`: the `setup_url` the adapter declared, with the pass as its query
+  # parameter `state`, where the page sends the instance admin. The entry is in the trail
+  # of the instance's organisation (`instance_scope/1`), about the adapter, naming it,
+  # never the pass or its nonce.
+  #
+  # `{:error, :no_setup_url}` while the adapter declares no `setup_url`, which it does only
+  # while it is not set up; `{:error, :no_key}` while it holds no access key in use;
+  # `{:error, :forbidden}`; `{:error, :not_found}`, for an adapter deleted, or where the
+  # feature is off; none of them changes anything or leaves an entry.
+  @spec setup(Scope.t(), Node.t()) ::
+          {:ok, String.t()} | {:error, :no_setup_url | :no_key | :invalid | Access.reason()}
+  def setup(%Scope{} = scope, %Node{id: id}) do
+    Repo.transact(fn ->
+      with :ok <- authorize_instance(scope),
+           {:ok, recorder} <- instance_scope(scope),
+           %Node{} = current <-
+             live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
+               {:error, :not_found},
+           :ok <- settable(current),
+           {:ok, pass} <- SetupPass.issue(current.public_id),
+           {:ok, _entry} <-
+             Audit.record(Repo, recorder, :"adapter.setup", current, %{
+               details: Map.take(current, [:name, :public_id])
+             }) do
+        {:ok, with_state(current.setup_url, pass)}
+      end
+    end)
+  end
+
+  defp settable(%Node{setup_url: nil}), do: {:error, :no_setup_url}
+
+  defp settable(%Node{} = adapter),
+    do: if(AccessKeys.active_key?(adapter), do: :ok, else: {:error, :no_key})
 
   @doc false
   # Deletes `adapter` (`adapter.delete`, an instance admin): it leaves every page, its name

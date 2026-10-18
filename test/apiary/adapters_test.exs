@@ -678,7 +678,8 @@ defmodule Apiary.AdaptersTest do
             :"adapter.create",
             :"adapter.edit",
             :"adapter.set_interval",
-            :"adapter.delete"
+            :"adapter.delete",
+            :"adapter.setup"
           ] do
         assert Access.action(action).roles == []
       end
