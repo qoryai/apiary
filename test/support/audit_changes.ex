@@ -9,7 +9,15 @@ defmodule Apiary.AuditChanges do
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
-  import Apiary.DispatchedRunsFixtures, only: [dispatched!: 1, handover_place_fixture: 1]
+
+  import Apiary.DispatchedRunsFixtures,
+    only: [
+      dispatched!: 1,
+      handover_place_fixture: 1,
+      prebuild_handed_over!: 2,
+      prebuilt_meta: 1
+    ]
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
@@ -111,7 +119,8 @@ defmodule Apiary.AuditChanges do
       :"collection.set_backlog",
       :"dispatch.handover",
       :"dispatch.release",
-      :"target.set_further_repositories"
+      :"target.set_further_repositories",
+      :"dispatch.prebuilt"
     ] ++ @stand_ins
   end
 
@@ -539,6 +548,24 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # A node pool's starter reports the image a prebuild its pool claimed built, after its
+  # handover, in the trail of the workspace's organisation, about the run registered for
+  # it; the entry's actor is the pool's key.
+  def make(:"dispatch.prebuilt", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    %{dispatch: dispatch, dispatch_run: queued, run: run} = prebuild_handed_over!(scope, key)
+    before = entries()
+    :ok = Apiary.Dispatches.prebuilt(key, dispatch.public_id, prebuilt_meta(queued))
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", run.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
   def make(action, %{scope: scope} = ctx) when action in @stand_ins do
     subject = prepare(action, ctx)
     before = entries()
@@ -779,6 +806,15 @@ defmodule Apiary.AuditChanges do
        reason: "The job could not start.",
        retry: false
      })}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to report on.
+  def refuse(:"dispatch.prebuilt", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    %{dispatch: dispatch, dispatch_run: queued} = prebuild_handed_over!(scope, claimer)
+    before = entries()
+    {before, Apiary.Dispatches.prebuilt(other, dispatch.public_id, prebuilt_meta(queued))}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,

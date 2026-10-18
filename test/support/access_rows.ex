@@ -143,7 +143,8 @@ defmodule Apiary.AccessRows do
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
       {:"dispatch.handover", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},
-      {:"target.set_further_repositories", yes: @owners ++ [:admin]}
+      {:"target.set_further_repositories", yes: @owners ++ [:admin]},
+      {:"dispatch.prebuilt", yes: [:pool_key, :hidden]}
     ]
   end
 

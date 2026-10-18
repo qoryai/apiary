@@ -408,12 +408,12 @@ handed over.
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
-handover ends it `released`; and the lost-run check ends it `lost` when its gateway never
-attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
-backstop, 1200 seconds after its attach for the step `explore` (Liveness). Its dispatch ends
-with it, with the same end cause, a stale dispatch of it with `run_ended`, and the slot the
-dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where it is
-empty). An end after the first changes none of them. A release after the handover records
+handover, or its `prebuilt`, ends it `released`; and the lost-run check ends it `lost` when
+its gateway never attached it by its `attach_by`, or when it has neither an outcome nor an
+exit by its backstop, 1200 seconds after its attach for the step `explore` (Liveness). Its
+dispatch ends with it, with the same end cause, a stale dispatch of it with `run_ended`, and
+the slot the dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where
+it is empty). An end after the first changes none of them. A release after the handover records
 the registered run cancelled with the reason `released` (`runs.released_at`), which the fold
 applies after every pass and over its exit, and records no outcome: no `end` is sent for
 it, an end following only the starter's outcome, and its gateway's attach is `410` from
@@ -454,6 +454,33 @@ release holds its run's work item, or a prebuild's environment record, before an
 the queue, then locks as the handover does; a work item is never locked after a run of the
 queue, so a release, a close, the handover and the sweep take turns, and of two releases
 at once one acts and the other is `410` `gone`.
+
+The prebuilt reports the image a prebuild built (`prebuilt.schema.json`), with the run's
+`run_id`, the `image`, its `size`, the `environment_ref` the job read from its handover's
+input and the `commit` it built from, in one transaction (`Apiary.Dispatches.Prebuilt`).
+The refusals come in the contract's order: `404` `not_found` at revision 1, which does not
+serve the route, first, before anything that depends on the dispatch; `403` `forbidden` for
+an unknown dispatch, another pool's, or a key the action is refused to, one answer, decided
+before any lock and writing nothing; then a lease that lapsed unswept is freed, and that is
+committed whatever follows; `410` `gone` for a dispatch that ended, of a run that ended, a
+second prebuilt among them, or of a run whose outcome or exit came first; `409`
+`lease_expired` for a dispatch not handed over that is stale or past its `lease_until`;
+`409` `not_prebuild` for a dispatch of another step; `409` `not_handed_over` for a dispatch
+not handed over yet; `409` `run_mismatch` for a `run_id` that is not the dispatch's run;
+and `503` `unavailable` last, after which nothing was written. Else the signed `204`, with
+no body. The run ends with its registered run as a release after its handover with `retry`
+false ends it, `released`, as above, its slot freed once. The prebuild's environment record
+then keeps the build: the image, its size, its commit, when it was recorded, the
+`environment_ref` reported, as it is even where it differs from the record's `queued_ref`,
+and the target it was built for, the registered run's target, which its handover named
+from the collection's target as it was then. The last failure is cleared, `retired_at` is
+left as it is, and nothing is queued, so a reported ref that differs never queues a
+prebuild again. The audit entry, by the pool's key, about the registered run, keeps the
+dispatch's public id, the size, the commit and the `environment_ref` reported; the image is
+on the record alone. A prebuilt holds the prebuild's environment record before anything of
+the queue, then locks as the release does, so a prebuilt, a release, the sweep and the end
+of the collection take turns, and of two prebuilts at once one acts and the other is `410`
+`gone`.
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's

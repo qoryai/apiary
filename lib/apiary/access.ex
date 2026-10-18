@@ -444,6 +444,10 @@ defmodule Apiary.Access do
       "choose the other targets that runs of a target also read",
       feature: :factory,
       roles: @admins
+    ),
+    Action.new(:"dispatch.prebuilt", "record the image a prebuild built",
+      feature: :factory,
+      roles: [:pool_key]
     )
   ]
 
@@ -452,7 +456,8 @@ defmodule Apiary.Access do
     :"dispatch.claim",
     :"dispatch.dispatched",
     :"dispatch.handover",
-    :"dispatch.release"
+    :"dispatch.release",
+    :"dispatch.prebuilt"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the

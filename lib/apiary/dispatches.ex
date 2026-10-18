@@ -108,7 +108,7 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `handover/3` and `release/3`
+  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3` and `prebuilt/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the job for a dispatch its pool claimed, and
@@ -126,6 +126,11 @@ defmodule Apiary.Dispatches do
   # dispatch ends, `released`, and its run waits again or ends; after it the run ends with
   # its registered run, `released`, and an explore run with retry queues the next run of
   # its take in (`queue_next/2`).
+  #
+  # `prebuilt(access_key, dispatch_id, meta)` records the image the job for a prebuild
+  # built, on the environment record of its collection and the pool that claimed it, and
+  # ends its run as a release after its handover with `retry` false ends it, in one
+  # transaction, or refuses in the contract's order (`Apiary.Dispatches.Prebuilt`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -163,7 +168,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Release, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Prebuilt, Release, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -777,6 +782,14 @@ defmodule Apiary.Dispatches do
   @spec release(AccessKey.t(), term, Release.release()) :: :ok | {:error, Release.refusal()}
   def release(%AccessKey{} = access_key, dispatch_id, meta),
     do: Release.release(access_key, dispatch_id, meta)
+
+  # prebuilt/3 records the image the job for the prebuild of the dispatch `dispatch_id`
+  # built, and ends its run (`Apiary.Dispatches.Prebuilt.prebuilt/3`).
+  @doc false
+  @spec prebuilt(AccessKey.t(), term, Prebuilt.prebuilt()) ::
+          :ok | {:error, Prebuilt.refusal()}
+  def prebuilt(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Prebuilt.prebuilt(access_key, dispatch_id, meta)
 
   ## The end of a run handed over
 

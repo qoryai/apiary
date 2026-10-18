@@ -459,7 +459,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"dispatch.claim",
         :"dispatch.dispatched",
         :"dispatch.handover",
-        :"dispatch.release"
+        :"dispatch.release",
+        :"dispatch.prebuilt"
       ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],
