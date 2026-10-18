@@ -96,7 +96,6 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       # A right-to-left override in the ref and a host-like title: neither may pass for
       # where the link leads. The override is dropped (`Apiary.ExternalText.line/1`).
       ref = "ENG-17\u202Emoc.elpmaxe.live"
-      shown_ref = "ENG-17moc.elpmaxe.live"
 
       subject = %{
         "type" => "ticket",

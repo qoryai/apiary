@@ -975,7 +975,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       assert values == ["\uFFFD", "\uFFFD"]
     end
 
-    test "a token's values: each isolated in its own <bdi>, all of them in its title", ctx do
+    test "a token's values: each isolated in a <bdi>, all of them in its title", ctx do
       web = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
       ticket(web, title: "Fix the login", labels: ["\u05D1\u05D0\u05D2", "checkout"])
       query = "?" <> Plug.Conn.Query.encode(label: ["\u05D1\u05D0\u05D2", "checkout"])

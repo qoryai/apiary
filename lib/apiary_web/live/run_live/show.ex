@@ -2785,9 +2785,9 @@ defmodule ApiaryWeb.RunLive.Show do
   defp exited?(%Run{exited_at: exited_at}), do: exited_at != nil
 
   # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
-  # gateway's placeholder for an exit it wrote: the program's own was not recorded. A
-  # signal is shown as a text Forager sent is, and one with nothing left to show is none
-  # (`shown_signal/1`).
+  # gateway's placeholder for an exit it wrote: the program's exit code was not
+  # recorded. A signal is shown as a text Forager sent is, and one with nothing left to
+  # show is none (`shown_signal/1`).
   defp exit_value(%Run{} = run) do
     if signal = shown_signal(run), do: signal, else: exit_code_value(run)
   end

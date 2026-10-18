@@ -1867,7 +1867,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       }
     end
 
-    test "a log line as a page shows a text a run sent", %{conn: conn, older: older, scope: scope} do
+    test "a log line as a page shows a text a run sent", %{
+      conn: conn,
+      older: older,
+      scope: scope
+    } do
       # A bidirectional override and a C1 control, which the log's plain lines keep.
       log = %{"stream" => "stdout", "bytes" => Base.encode64("ok \u202Edone\u0085 here\n")}
       event_fixture(older, 60, "run.log", log)

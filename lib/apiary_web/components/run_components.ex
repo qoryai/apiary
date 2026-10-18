@@ -2962,8 +2962,8 @@ defmodule ApiaryWeb.RunComponents do
   # The host's copy icon, on its line: it copies the host as sent, which Allow, Deny and
   # the `host:` filter act on, and its name and hint say so, with the host as the row
   # shows it. "Copied" is said in the shell's one announcer, never in a live region of
-  # each row (docs/ui.md). Its empty title keeps the destination's own from showing over
-  # its hint.
+  # each row (docs/ui.md). Its empty title keeps the destination's title from showing
+  # over its hint.
   defp host_copy(assigns) do
     ~H"""
     <button
