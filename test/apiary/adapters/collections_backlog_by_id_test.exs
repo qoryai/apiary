@@ -356,7 +356,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
   end
 
   describe "the row's switch" do
-    test "on or off where assigned, with items; none unassigned, ended, or with no items",
+    test "on or off where assigned, with items; none unassigned or with no items; an ended one not listed",
          ctx do
       {:ok, :accepted} = post(ctx, [{"DOCS", nil}, {"LOOSE", nil}, {"BARE", nil, false}])
       {:ok, 2} = assign(ctx, ["DOCS", "BARE"], ctx.workspace)
@@ -375,7 +375,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
       assert row(ctx, "DOCS").backlog == %{on: false}
 
       {:ok, :disconnected} = disconnect(ctx, "DOCS")
-      assert row(ctx, "DOCS").backlog == nil
+      assert row(ctx, "DOCS") == nil
     end
   end
 end

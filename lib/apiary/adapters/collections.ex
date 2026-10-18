@@ -252,12 +252,11 @@ defmodule Apiary.Adapters.Collections do
   @max_assign 10_000
 
   @typedoc """
-  A collection a connection reaches, as a page lists it: its id and public id, its title
-  (`name`) and address, its workspace, when it was added and last listed, when and why it
-  ended (nil while live), its open tickets, and its Backlog switch (`backlog`):
-  `%{on: on}`, whether its items come into its workspace's Backlog, where it has one;
-  nil where it has none: ended, assigned to no workspace, or with no items, it or its
-  adapter.
+  A live collection a connection reaches, as a page lists it: its id and public id, its
+  title (`name`) and address, its workspace, when it was added and last listed, its open
+  tickets, and its Backlog switch (`backlog`): `%{on: on}`, whether its items come into
+  its workspace's Backlog, where it has one; nil where it has none: assigned to no
+  workspace, or with no items, it or its adapter.
   """
   @type row :: %{
           id: Ecto.UUID.t(),
@@ -267,8 +266,6 @@ defmodule Apiary.Adapters.Collections do
           workspace: Workspace.t() | nil,
           added_at: DateTime.t(),
           last_listed_at: DateTime.t(),
-          ended_at: DateTime.t() | nil,
-          ended_reason: Collection.ended_reason() | nil,
           open_tickets: non_neg_integer,
           backlog: %{on: boolean} | nil
         }
@@ -1201,20 +1198,20 @@ defmodule Apiary.Adapters.Collections do
   ## For people
 
   @doc false
-  # list_collections/3 is a page of the collections of `connection`, of the scope's
+  # list_collections/3 is a page of the live collections of `connection`, of the scope's
   # organisation, to a person who may read the instance's adapters there (`adapter.read`):
   # at most `page_size/0` rows, in the order `order:` names; `[]` to anyone else, and for
   # a connection of another organisation. `opts`:
   #
-  #   * `view:` `:all` (the default): each ref the connection's listings named once, its
-  #     live collection, or, when none is live, the one that ended last; `:unassigned`,
-  #     the live ones linked to no workspace; `:assigned`, the live ones linked to one;
+  #   * `view:` `:all` (the default), every one; `:unassigned`, those linked to no
+  #     workspace; `:assigned`, those linked to one;
   #   * `search:` text the title holds, any case, `%`, `_` and `\` as they are, the
   #     spaces around it left out; at most 1,024 characters, a title's most, of valid
   #     UTF-8 with no NUL, else nothing matches;
   #   * `workspace:` a workspace of the organisation, or its id: those linked to it;
   #   * `after:` the public id (`sc_…`) of the last row of the page before, for the next;
-  #     one that names no collection of the connection gives `[]`;
+  #     one that names no collection of the connection gives `[]`. For a collection that
+  #     ended after that page was read, the next page starts past it all the same;
   #   * `order:` `:title` (the default), by title, then id; `:unassigned_first`, those
   #     linked to no workspace first, then those linked to one, each by title, then id.
   #     The page after `after:` starts past that row in the same order: its link to a
@@ -1258,12 +1255,12 @@ defmodule Apiary.Adapters.Collections do
     |> preload([_c, w, n], workspace: w, adapter: n)
   end
 
-  # The collections of `connection` that the filters of `opts` find, `view:`, `search:`
-  # and `workspace:`, unordered: what `list_collections/3` pages through and
+  # The live collections of `connection` that the filters of `opts` find, `view:`,
+  # `search:` and `workspace:`, unordered: what `list_collections/3` pages through and
   # `count_collections/3` counts.
   defp found_query(%Connection{id: connection_id}, opts) do
-    from(c in Collection, where: c.connection_id == ^connection_id)
-    |> view(Keyword.get(opts, :view, :all), connection_id)
+    from(c in Collection, where: c.connection_id == ^connection_id and is_nil(c.ended_at))
+    |> view(Keyword.get(opts, :view, :all))
     |> search(Keyword.get(opts, :search))
     |> in_workspace(Keyword.get(opts, :workspace))
   end
@@ -1281,25 +1278,11 @@ defmodule Apiary.Adapters.Collections do
   defp sort(_query, _order),
     do: raise(ArgumentError, "an order is :title or :unassigned_first")
 
-  defp view(query, :all, connection_id) do
-    # Per ref, the live one first, then the one that ended last.
-    shown =
-      from c in Collection,
-        where: c.connection_id == ^connection_id,
-        distinct: c.external_ref,
-        order_by: [desc_nulls_first: c.ended_at, desc: c.inserted_at, desc: c.id],
-        select: c.id
+  defp view(query, :all), do: query
+  defp view(query, :unassigned), do: where(query, [c], is_nil(c.workspace_id))
+  defp view(query, :assigned), do: where(query, [c], not is_nil(c.workspace_id))
 
-    where(query, [c], c.id in subquery(shown))
-  end
-
-  defp view(query, :unassigned, _connection_id),
-    do: where(query, [c], is_nil(c.ended_at) and is_nil(c.workspace_id))
-
-  defp view(query, :assigned, _connection_id),
-    do: where(query, [c], is_nil(c.ended_at) and not is_nil(c.workspace_id))
-
-  defp view(_query, _view, _connection_id),
+  defp view(_query, _view),
     do: raise(ArgumentError, "a view is :all, :unassigned or :assigned")
 
   # The title holds `text`, any case, its `%`, `_` and `\` as they are. Its size is bounded
@@ -1382,8 +1365,6 @@ defmodule Apiary.Adapters.Collections do
       workspace: collection.workspace,
       added_at: collection.inserted_at,
       last_listed_at: collection.last_listed_at,
-      ended_at: collection.ended_at,
-      ended_reason: collection.ended_reason,
       open_tickets: Map.get(tickets, collection.id, 0),
       backlog: row_backlog(collection)
     }
@@ -1422,9 +1403,9 @@ defmodule Apiary.Adapters.Collections do
   # count_collections/3 is how many live collections of `connection` the filters of
   # `opts` find, to a person who may read the instance's adapters in the scope's
   # organisation (`adapter.read`): `view:`, `search:` and `workspace:` as
-  # `list_collections/3` takes them, the rows of all its pages counted, its ended ones left
-  # out; `after:` and `order:` are not read. 0 to anyone else, and for a connection of
-  # another organisation.
+  # `list_collections/3` takes them, the rows of all its pages counted; `after:` and
+  # `order:` are not read. 0 to anyone else, and for a connection of another
+  # organisation.
   @spec count_collections(Scope.t(), Connection.t(), keyword) :: non_neg_integer
   def count_collections(scope, connection, opts \\ [])
 
@@ -1445,8 +1426,8 @@ defmodule Apiary.Adapters.Collections do
   # linked to no workspace (`unassigned`), and those linked to each workspace, by its id
   # (`by_workspace`, a workspace with none left out). An ended collection is counted in
   # none of these; `ended` is how many refs the connection's listings named whose
-  # collections all ended, the refs the `:all` view of `list_collections/3` shows as
-  # ended. All 0 to anyone else, and for a connection of another organisation.
+  # collections all ended. All 0 to anyone else, and for a connection of another
+  # organisation.
   @spec counts(Scope.t(), Connection.t()) :: counts
   def counts(%Scope{} = scope, %Connection{id: connection_id} = connection) do
     {by_workspace, ended} =
@@ -1475,13 +1456,20 @@ defmodule Apiary.Adapters.Collections do
     )
   end
 
-  # The refs of the connection `connection_id` the `:all` view shows as ended: those with
-  # no live collection.
+  # How many refs of the connection `connection_id` have an ended collection and no live
+  # one.
   defp ended_refs(connection_id) do
-    from(c in Collection, where: c.connection_id == ^connection_id)
-    |> view(:all, connection_id)
-    |> where([c], not is_nil(c.ended_at))
-    |> Repo.aggregate(:count)
+    live =
+      from c in Collection,
+        where: c.connection_id == ^connection_id and is_nil(c.ended_at),
+        select: c.external_ref
+
+    Repo.one(
+      from c in Collection,
+        where: c.connection_id == ^connection_id and not is_nil(c.ended_at),
+        where: c.external_ref not in subquery(live),
+        select: count(c.external_ref, :distinct)
+    )
   end
 
   @doc false

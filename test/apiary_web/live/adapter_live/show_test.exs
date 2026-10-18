@@ -1575,7 +1575,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert length(rows(lv)) == 51
   end
 
-  test "a page of the list that holds only ended rows goes into the page after it", %{
+  test "a run of ended collections between live ones leaves no gap in the pages", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
@@ -1602,6 +1602,64 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       assert_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
       assert words(lv, "#collections-pager-footer") == "51–100 of 100"
     end
+  end
+
+  test "more than a page of ended collections sorting before the live ones: page 1 shows the first 50 live",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..130), 1, true)
+    # 60 ended, acme/repo-001 to -060, then 70 live.
+    relist(key, connection, titles(61..130), "second", ~U[2026-10-02 09:00:00Z])
+
+    for query <- ["", "?q=repo"] do
+      join = if query == "", do: "?", else: "&"
+      {:ok, lv, _html} = live(conn, page(scope, adapter) <> query)
+      assert words(lv, "#collections-pager-footer") == "1–50 of 70"
+      assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(61..110)
+
+      lv |> element("#collections-pager-next") |> render_click()
+      assert_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
+      assert words(lv, "#collections-pager-footer") == "51–70 of 70"
+      assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(111..130)
+      assert has_element?(lv, "#collections-pager-next[disabled]")
+
+      render_patch(lv, page(scope, adapter) <> query <> join <> "page=3")
+      assert_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
+      assert words(lv, "#collections-pager-footer") == "51–70 of 70"
+      refute render(lv) =~ "71–70"
+    end
+
+    # A search that finds only ended collections: no rows, no pager.
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-00")
+    assert words(lv, "#collections-table-none") == "No repositories match “repo-00”."
+    refute has_element?(lv, "#collections-pager")
+  end
+
+  test "exactly 50 live collections after ended ones: no next page, and page 2 shows page 1",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..110), 1, true)
+    # 60 ended, acme/repo-001 to -060, then 50 live.
+    relist(key, connection, titles(61..110), "second", ~U[2026-10-02 09:00:00Z])
+
+    for query <- ["", "?q=repo"] do
+      join = if query == "", do: "?", else: "&"
+      {:ok, lv, _html} = live(conn, page(scope, adapter) <> query)
+      refute has_element?(lv, "#collections-pager")
+      assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(61..110)
+
+      render_patch(lv, page(scope, adapter) <> query <> join <> "page=2")
+      assert_patch(lv, page(scope, adapter) <> query)
+      refute has_element?(lv, "#collections-pager")
+      assert length(rows(lv)) == 51
+      refute render(lv) =~ "51–50"
+    end
+
+    # 51 live: the second page has the 51st.
+    relist(key, connection, titles(60..110), "third", ~U[2026-10-03 09:00:00Z])
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?page=2")
+    assert words(lv, "#collections-pager-footer") == "51–51 of 51"
+    assert Enum.drop(rows(lv), 1) |> Enum.map(&hd(String.split(&1))) == titles(110..110)
   end
 
   test "Show them opens the unassigned view; the filter keeps one workspace's", %{

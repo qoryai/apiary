@@ -297,7 +297,7 @@ defmodule ApiaryWeb.IntegrationComponents do
                 may={@may_set_backlog}
               />
               <span
-                :if={!row.backlog && row.workspace && is_nil(row.ended_at)}
+                :if={!row.backlog && row.workspace}
                 id={"collection-#{row.public_id}-backlog-none"}
                 class="q-faint"
                 title={gettext("No %{items} to take in", items: @backlog)}
