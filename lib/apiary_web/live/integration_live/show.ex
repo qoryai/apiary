@@ -724,7 +724,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
        may_write: Common.may_write?(scope),
-       people: Common.people(scope),
        confirming: nil,
        find: to_form(%{"text" => ""}, as: :find),
        candidates: [],
@@ -793,7 +792,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       plain: if(description, do: Common.plain_settings(description), else: []),
       patterns: if(description, do: Common.argument_patterns(description), else: []),
       settings: Connection.settings_map(connection),
-      target_rows: target_rows
+      target_rows: target_rows,
+      people: Common.people([connection.created_by_id, connection.updated_by_id])
     )
   end
 

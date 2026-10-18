@@ -249,7 +249,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
        may_write: Common.may_write?(scope),
-       people: Common.people(scope),
+       people: %{},
        problems: [],
        definition: nil,
        decoded: nil,
@@ -268,6 +268,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
          {:ok, connections} <- Connections.list_connections(scope) do
       assign(socket,
         definition: definition,
+        people: Common.people([definition.created_by_id, definition.updated_by_id]),
         decoded: ServiceDefinition.decoded(definition),
         users: Enum.filter(connections, &(&1.service_definition_id == definition.id))
       )

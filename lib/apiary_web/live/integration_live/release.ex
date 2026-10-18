@@ -357,7 +357,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
          |> assign(
            sections: SettingsComponents.sections(scope, :workspace),
            may_write: Common.may_write?(scope),
-           people: Common.people(scope),
+           people: Common.people([release.requested_by_id]),
            moving: nil
          )
          |> assign_release(release)}

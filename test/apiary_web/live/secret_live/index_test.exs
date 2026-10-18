@@ -1524,4 +1524,82 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
                "That variable is no longer in this workspace."
     end
   end
+
+  describe "who changed a secret or a variable" do
+    # The rows of a secret and a variable that `admin` changed last, once `change` ran on
+    # them, as their views show them, their tags left out.
+    defp changed_by(conn, scope, admin, change) do
+      secret = secret!(admin.scope, %{name: "DEPLOY_TOKEN"})
+      variable = variable!(admin.scope, :workspace, "REGION", "eu-west")
+      change.(secret, variable)
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+      secret_row = lv |> element("#secret-#{secret.public_id}") |> render() |> plain()
+      {:ok, lv, _html} = live(conn, variables_path(scope))
+      variable_row = lv |> element("#variable-#{variable.id}") |> render() |> plain()
+      {secret_row, variable_row}
+    end
+
+    defp plain(html),
+      do: html |> String.replace(~r/<[^>]+>/, " ") |> String.split() |> Enum.join(" ")
+
+    # The changed rows name `user` instead: the secret, its value and the variable.
+    defp changed_by_user(secret, variable, user) do
+      for schema <- [Apiary.Secrets.Secret, Apiary.Variables.Variable] do
+        id = if schema == Apiary.Secrets.Secret, do: secret.id, else: variable.id
+        Repo.update_all(from(r in schema, where: r.id == ^id), set: [updated_by_id: user.id])
+      end
+
+      Repo.update_all(from(v in Value, where: v.secret_id == ^secret.id),
+        set: [updated_by_id: user.id]
+      )
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      rows =
+        changed_by(conn, scope, admin, fn _secret, _variable ->
+          Repo.delete!(admin.membership)
+        end)
+
+      short = Apiary.Accounts.User.short_name(admin.user.email)
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by #{short}"
+        refute row =~ "Former member"
+      end
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      rows =
+        changed_by(conn, scope, admin, fn _secret, _variable ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
+        end)
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by Former member"
+        refute row =~ Apiary.Accounts.User.short_name(admin.user.email)
+      end
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      user = Apiary.AccountsFixtures.user_fixture()
+
+      rows =
+        changed_by(conn, scope, admin, fn secret, variable ->
+          changed_by_user(secret, variable, user)
+        end)
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by #{Apiary.Accounts.User.short_name(user.email)}"
+        refute row =~ "Former member"
+      end
+    end
+  end
 end

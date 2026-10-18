@@ -1895,4 +1895,43 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     :ok = EditionStubs.HidesNamed.put([:factory])
     assert_raise ApiaryWeb.Features.NotFound, fn -> live(conn, page(scope, adapter)) end
   end
+
+  describe "who installed it" do
+    # The status line of a connection installed today by `user`, once `change` ran.
+    defp installed_by(conn, scope, adapter, user, change) do
+      {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+      set(connection, created_by_id: user.id)
+      change.()
+      {:ok, lv, _html} = live(conn, page(scope, adapter))
+      words(lv, "#integration-status")
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      member = member_fixture(scope, :member)
+
+      line =
+        installed_by(conn, scope, adapter, member.user, fn -> Repo.delete!(member.membership) end)
+
+      assert line == "Installed by #{member.user.email} today."
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope, adapter: adapter} do
+      member = member_fixture(scope, :member)
+
+      line =
+        installed_by(conn, scope, adapter, member.user, fn ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(member.user)
+        end)
+
+      assert line == "Installed by Former member today."
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      user = Apiary.AccountsFixtures.user_fixture()
+      line = installed_by(conn, scope, adapter, user, fn -> :ok end)
+      assert line == "Installed by #{user.email} today."
+    end
+  end
 end

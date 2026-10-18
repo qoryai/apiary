@@ -21,7 +21,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   alias Apiary.Connections.Connection
   alias Apiary.Integrations.Description
   alias Apiary.Kinds.Runtimes
-  alias Apiary.Organisations
   alias ApiaryWeb.People
 
   ## Paths
@@ -241,16 +240,18 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     end
   end
 
-  @doc "people/1 is the members of the scope's organisation by user id, for who added or changed a thing."
-  def people(scope) do
-    for %{user: user} <- Organisations.list_members(scope),
-        email = People.email(user),
-        into: %{},
-        do: {user.id, email}
-  end
+  @doc """
+  people/1 is the email address of the account of each id of `ids`, by user id, read in
+  one query (`ApiaryWeb.People.accounts/1`), for who added or changed a thing.
+  """
+  def people(ids), do: People.accounts(ids)
 
-  @doc "who/2 is the person `id` among `people`, or nil for none."
-  def who(people, id), do: People.member(people, id)
+  @doc """
+  who/2 is the person `id` among `people`, named by their account
+  (`ApiaryWeb.People.account/2`): "Former member" for a deleted account or an id no
+  account has, nil for none.
+  """
+  def who(people, id), do: People.account(people, id)
 
   @doc "may_write?/1 says whether the scope may change the organisation's integrations."
   def may_write?(scope),

@@ -311,6 +311,32 @@ defmodule Apiary.Sources.BacklogTest do
       assert declined_by.(by_nobody) == nil
     end
 
+    # Who declined the work item of a new ticket, `user`, once `change` ran.
+    defp declined_by(ctx, user, change) do
+      item = ticket(ctx.collection)
+
+      work_item(ctx.scope, item, :declined)
+      |> Ecto.Changeset.change(declined_by_id: user.id)
+      |> Repo.update!()
+
+      change.()
+      Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
+    end
+
+    test "a declined work item names a person removed from the organisation by their account",
+         ctx do
+      member = member_fixture(ctx.scope, :member)
+      [local, "example.com"] = String.split(member.user.email, "@")
+      assert declined_by(ctx, member.user, fn -> Repo.delete!(member.membership) end) == local
+    end
+
+    test "a declined work item names a person who is not a member of the organisation by their account",
+         ctx do
+      user = Apiary.AccountsFixtures.user_fixture()
+      [local, "example.com"] = String.split(user.email, "@")
+      assert declined_by(ctx, user, fn -> :ok end) == local
+    end
+
     test "a filer the source says is no person is a bot", ctx do
       bot = ticket(ctx.collection, filed_by_name: "deploy-bot", filed_by_kind: :automation)
       [row] = list(ctx.scope, filed_by: "deploy-bot").rows

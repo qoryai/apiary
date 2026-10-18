@@ -339,7 +339,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
-    people = people(scope, rows, socket.assigns.options.owner)
+    people = people(rows, params.owner, socket.assigns.options.owner)
 
     assign(socket,
       list: list,
@@ -355,7 +355,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp load_options(socket) do
     scope = socket.assigns.current_scope
     owners = WorkItems.list_filter_values(scope, :owner)
-    names = names(scope, Enum.map(owners, & &1.key))
+    names = names(Enum.map(owners, & &1.key))
 
     options = %{
       owner: Enum.map(owners, &%{key: &1.key, label: Map.fetch!(names, &1.key), count: &1.count}),
@@ -415,28 +415,30 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   ## People
 
-  # The people the rows name, their owners and who ended them, by account id, with the
-  # owners the Filter menu offers: `%{id => name}`.
-  defp people(scope, rows, offered) do
+  # The people the rows name, their owners and who ended them, and the owners the list is
+  # filtered to, by account id, with the owners the Filter menu offers: `%{id => name}`.
+  # A filtered owner that is not an id is left out, and its line says "Former member".
+  defp people(rows, filtered, offered) do
     known = Map.new(offered, &{&1.key, &1.label})
 
     ids =
       rows
       |> Enum.flat_map(&[&1.owner_id, &1.ended_by_id])
+      |> Enum.concat(Enum.filter(filtered, &match?({:ok, _}, Ecto.UUID.cast(&1))))
       |> Enum.reject(&(is_nil(&1) or Map.has_key?(known, &1)))
       |> Enum.uniq()
 
-    Map.merge(known, names(scope, ids))
+    Map.merge(known, names(ids))
   end
 
-  # The name of each person of `ids`, as the work item page names one: the local part of
-  # the email address of a member of the organisation, "Former member" for a person who
-  # is no longer one, a deleted account, or none.
-  defp names(_scope, []), do: %{}
+  # The name of each person of `ids`, as the work item page names one, read in one query:
+  # the local part of the email address of their account, whether or not they are a member
+  # of the organisation, "Former member" for a deleted account or an id no account has.
+  defp names([]), do: %{}
 
-  defp names(scope, ids) do
-    members = People.members(scope)
-    Map.new(ids, &{&1, People.short(People.member(members, &1))})
+  defp names(ids) do
+    accounts = People.accounts(ids)
+    Map.new(ids, &{&1, People.short(People.account(accounts, &1))})
   end
 
   defp person(_people, nil, _scope), do: nil

@@ -46,7 +46,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"secret.read"}
 
-  alias Apiary.{Access, Organisations, Secrets, Variables}
+  alias Apiary.{Access, Secrets, Variables}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
   alias ApiaryWeb.{People, SettingsComponents, UserAuth}
@@ -429,7 +429,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     assigns =
       assign(assigns,
         at: assigns.changed.at,
-        by: People.short(People.member(assigns.people, assigns.changed.by))
+        by: People.short(People.account(assigns.people, assigns.changed.by))
       )
 
     ~H"""
@@ -1731,17 +1731,20 @@ defmodule ApiaryWeb.SecretLive.Index do
          variables: variables,
          resolution: resolution,
          targets: targets,
-         people: people(scope)
+         people: people(secrets, variables)
        }}
     end
   end
 
-  # user id => email, of the organisation's members: who changed a value or a variable.
-  defp people(scope) do
-    for %{user: user} <- Organisations.list_members(scope),
-        email = People.email(user),
-        into: %{},
-        do: {user.id, email}
+  # user id => email, of the accounts that changed a secret, a value or a variable, read
+  # in one query (`ApiaryWeb.People.accounts/1`).
+  defp people(secrets, variables) do
+    secrets
+    |> Enum.flat_map(fn secret ->
+      [secret.updated_by_id | Enum.map(secret.values, & &1.updated_by_id)]
+    end)
+    |> Enum.concat(Enum.map(variables, & &1.updated_by_id))
+    |> People.accounts()
   end
 
   defp reload(socket) do

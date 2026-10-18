@@ -5,7 +5,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
   # count; the pager; a forged view, stage or cursor; the texts of an external system;
-  # a row the instance closed, and an owner no longer a member; the empty list; the list
+  # a row the instance closed; the people the list names, by their accounts; the empty
+  # list; the list
   # read again on a message of its workspace's work items, with the scope first; and an
   # event it does not know.
   use ApiaryWeb.ConnCase, async: true
@@ -345,21 +346,74 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
                "Closed when its integration was removed"
     end
 
-    test "a row whose owner is no longer a member names them a former member",
-         %{conn: conn, scope: scope} do
-      member = member_fixture(scope, :member)
-      work_item = item!(scope, owner_id: member.user.id)
-      Repo.delete!(member.membership)
-
-      {:ok, view, html} = live(conn, page(scope))
-      assert has_element?(view, row(work_item) <> " .q-wl-own[aria-label='Owner: Former member']")
-      refute html =~ name(member.user)
-    end
-
     test "a forged view is Open", %{conn: conn, scope: scope} do
       work_item = item!(scope)
       {:ok, view, _html} = live(conn, page(scope, "?view=nonsense"))
       assert rows(view) == ids([work_item])
+    end
+  end
+
+  describe "people" do
+    # What the list says of `user`, who owns a work item at Confirm and closed another,
+    # once `change` ran: the row's owner, Confirm's line on the strip filtered to them,
+    # the Filter menu's owners, and the Closed view's line.
+    defp said_of(conn, scope, user, change) do
+      owned = at!(scope, :confirm, owner_id: user.id)
+
+      closed =
+        item!(scope) |> set!(state: :closed, closed_at: DateTime.utc_now(), closed_by_id: user.id)
+
+      change.()
+
+      {:ok, view, _html} = live(conn, page(scope, "?owner[]=#{user.id}"))
+
+      owner =
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query(row(owned) <> " .q-wl-own")
+        |> LazyHTML.attribute("aria-label")
+
+      said = %{
+        owner: owner,
+        waiting: texts(view, "#work-items-stages-confirm .q-wl-attn"),
+        options: texts(view, "#work-items-filter-owner-form .q-filter-option")
+      }
+
+      {:ok, view, _html} = live(conn, page(scope, "?view=closed"))
+      Map.put(said, :closed, words(view, row(closed) <> " .q-wl-nx"))
+    end
+
+    defp assert_named(said, name) do
+      assert said.owner == ["Owner: #{name}"]
+      assert said.waiting == ["1 waits for #{name}"]
+      assert Enum.any?(said.options, &String.starts_with?(&1, name)), inspect(said.options)
+      assert said.closed == "Closed by #{name}"
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+      said = said_of(conn, scope, member.user, fn -> Repo.delete!(member.membership) end)
+      assert_named(said, name(member.user))
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+
+      said =
+        said_of(conn, scope, member.user, fn ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(member.user)
+        end)
+
+      assert_named(said, "Former member")
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      user = Apiary.AccountsFixtures.user_fixture()
+      said = said_of(conn, scope, user, fn -> :ok end)
+      assert_named(said, name(user))
     end
   end
 
