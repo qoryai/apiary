@@ -18,9 +18,12 @@ defmodule ApiaryWeb.SourceComponents do
   # or a sentence about one item passes its source's; one about many, the words their
   # sources share (`Apiary.Adapters.shared_item_noun/1`), nil where they differ.
   #
-  # **The word for a source's collection** (`collection/1`) is what its adapter calls one
-  # of them (`Apiary.Adapters.collection_noun/1`), or the domain's word where it names
-  # none (nil), bound as data, `%{collection}`, with the same rules.
+  # **The words for a source's collections** (`collection/1`, `collections/1`,
+  # `collection_label/1`) are what its adapter calls one of them and many
+  # (`Apiary.Adapters.collection_noun/1`), or the domain's word where it names none (nil),
+  # bound as data, `%{collection}` or `%{collections}`, with the same rules: a page or a
+  # sentence about many collections passes the words their sources share
+  # (`Apiary.Adapters.shared_collection_noun/1`), nil where they differ.
   #
   # **The line after a collection's Backlog switch is pressed** (`backlog_turned/5`)
   # says what the press changed, and is nil when it changed nothing.
@@ -52,6 +55,14 @@ defmodule ApiaryWeb.SourceComponents do
 
   def collection(nil),
     do: pgettext("source collection, when its adapter names none", "collection")
+
+  @doc false
+  # collections/1 is the word for many of a source's collections, from `noun`, as above.
+  @spec collections(%{one: String.t(), other: String.t()} | nil) :: String.t()
+  def collections(%{other: other}) when is_binary(other), do: other
+
+  def collections(nil),
+    do: pgettext("source collection, when its adapter names none", "collections")
 
   @doc false
   # backlog_turned/5 is the line a page shows once
@@ -90,8 +101,16 @@ defmodule ApiaryWeb.SourceComponents do
   # item_label/1 is `item/1` with its first letter in upper case: a label that is the
   # noun alone, such as a tab's.
   @spec item_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
-  def item_label(noun) do
-    {first, rest} = noun |> item() |> String.split_at(1)
+  def item_label(noun), do: noun |> item() |> upcase_first()
+
+  @doc false
+  # collection_label/1 is `collection/1` with its first letter in upper case: a label
+  # that is the noun alone, such as a fact's beside a collection's title.
+  @spec collection_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
+  def collection_label(noun), do: noun |> collection() |> upcase_first()
+
+  defp upcase_first(word) do
+    {first, rest} = String.split_at(word, 1)
     String.upcase(first) <> rest
   end
 

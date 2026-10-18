@@ -408,8 +408,14 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       ]
     end
 
-    defp list_frame(ticket, comments, item_noun \\ nil) do
-      assigns = %{ticket: ticket, comments: comments, now: @now, item_noun: item_noun}
+    defp list_frame(ticket, comments, item_noun \\ nil, collection_noun \\ nil) do
+      assigns = %{
+        ticket: ticket,
+        comments: comments,
+        now: @now,
+        item_noun: item_noun,
+        collection_noun: collection_noun
+      }
 
       rendered_to_string(~H"""
       <BacklogComponents.ticket
@@ -419,6 +425,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         comments={@comments}
         now={@now}
         item_noun={@item_noun}
+        collection_noun={@collection_noun}
         full_path="/acme/shop/backlog/tk_01"
         close_patch="/acme/shop/backlog"
       >
@@ -435,8 +442,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       """)
     end
 
-    defp full_frame(ticket, comments) do
-      assigns = %{ticket: ticket, comments: comments, now: @now}
+    defp full_frame(ticket, comments, collection_noun \\ nil) do
+      assigns = %{ticket: ticket, comments: comments, now: @now, collection_noun: collection_noun}
 
       rendered_to_string(~H"""
       <BacklogComponents.ticket
@@ -446,6 +453,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         integration="GitHub"
         comments={@comments}
         now={@now}
+        collection_noun={@collection_noun}
         back_path="/acme/shop/backlog"
       >
         <:take_in>
@@ -546,6 +554,18 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert lea |> LazyHTML.query(".q-bl-when") |> LazyHTML.text() == "3 minutes ago"
 
       refute_not_drawn(html)
+    end
+
+    test "the collection's fact takes its source's word for one of its collections" do
+      project = %{one: "project", other: "projects"}
+      t = ticket(%{repository: "Shop board"})
+
+      html = list_frame(t, [], nil, project)
+      assert texts(html, "#tk-facts dt") == ["Project", "Labels"]
+      assert text(html, "#tk-facts .q-bl-repo") == "Shop board"
+
+      html = full_frame(t, [], project)
+      assert texts(html, ".q-bl-tk-side #tk-facts dt") == ["Project", "Labels", "Filed by"]
     end
 
     test "the full ticket: a page with the back link, the text left, the facts right" do
