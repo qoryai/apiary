@@ -61,7 +61,8 @@ defmodule ApiaryWeb.AdapterComponentsTest do
     assigns = %{adapter: @adapter}
     html = rendered_to_string(~H"<AdapterComponents.adapter_meta adapter={@adapter} />")
 
-    assert text(html) == "Added by dana@example.com, 14 Oct 2026 · na_8f3k2m9q4x7v1t6r"
+    assert text(html) == "Added by dana, 14 Oct 2026 · na_8f3k2m9q4x7v1t6r"
+    refute text(html) =~ "dana@example.com"
 
     assigns = %{adapter: %{@adapter | created_by: nil}}
     html = rendered_to_string(~H"<AdapterComponents.adapter_meta adapter={@adapter} />")

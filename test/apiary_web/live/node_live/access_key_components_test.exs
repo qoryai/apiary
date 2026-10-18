@@ -163,14 +163,16 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
   describe "waiting/1" do
     test "a node's waiting command names the node" do
       assert text(waiting(false)) =~ "A command is waiting to be run on example-host."
-      assert text(waiting(false)) =~ "dana@example.com got it at"
+      assert text(waiting(false)) =~ "dana got it at"
+      refute text(waiting(false)) =~ "dana@example.com"
     end
 
     test "an adapter's waiting command names no place where it runs" do
       doc = waiting(true)
       assert text(LazyHTML.query(doc, "p:first-child")) == "A command is waiting to be run."
       refute text(doc) =~ "example-host"
-      assert text(doc) =~ "dana@example.com got it at"
+      assert text(doc) =~ "dana got it at"
+      refute text(doc) =~ "dana@example.com"
       assert has?(doc, "[id$=-revoke]")
     end
   end

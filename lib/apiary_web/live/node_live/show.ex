@@ -896,7 +896,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           <dt :if={@node.created_by} class="text-faint">{gettext("Made")}</dt>
           <dd :if={@node.created_by}>
             {gettext("by %{person}, %{date}",
-              person: People.email(@node.created_by),
+              person: People.short(People.email(@node.created_by)),
               date: Format.date(@node.inserted_at)
             )}
           </dd>

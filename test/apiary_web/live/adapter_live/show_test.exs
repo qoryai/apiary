@@ -240,7 +240,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -251,7 +251,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email}'s install, started today at #{time(connection.updated_at)}, expired before it was finished. Press Install to start again."
+             "Not installed. #{short(scope.user)}'s install, started today at #{time(connection.updated_at)}, expired before it was finished. Press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -1854,7 +1854,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{scope.user.email} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     set(connection, pass_expires_at: DateTime.add(DateTime.utc_now(:second), -1))
 

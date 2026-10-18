@@ -958,7 +958,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       conn = as_member(context)
       unknown = "#rule-#{rule(scope, "*.paste.example").id}-lock"
       known = "#rule-#{rule(scope, "github.example").id}-lock"
-      by = Regex.escape("Locked by #{scope.user.email} on ")
+      by = Regex.escape("Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on ")
 
       view = open(conn, scope)
 
@@ -1632,7 +1632,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "registry.example is already allowed for the workspace, by #{local} on"
 
       view = open(conn, scope, "/policy/history")
-      assert text(view, "#history-list") =~ "#{user.email} allowed registry.example"
+      assert text(view, "#history-list") =~ "#{local} allowed registry.example"
+      refute text(view, "#history-list") =~ user.email
     end
   end
 
@@ -1732,7 +1733,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
-               "#{user.email} switched the workspace's default mode from observe to enforce"
+               "#{Apiary.Accounts.User.short_name(user.email)} switched the workspace's default mode from observe to enforce"
+
+      refute text(view, "#history-list") =~ user.email
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"

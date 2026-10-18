@@ -20,7 +20,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   alias Apiary.Connections
   alias Apiary.Connections.ServiceDefinition
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.SettingsComponents
+  alias ApiaryWeb.{People, SettingsComponents}
 
   # The most bytes of JSON a definition's form takes; more is refused before it is read.
   @json_max 65_536
@@ -172,12 +172,12 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             <dd class="q-mono break-all">{@definition.digest}</dd>
             <dt class="text-faint">{gettext("Added")}</dt>
             <dd>
-              {Common.who(@people, @definition.created_by_id)}
+              {People.short(Common.who(@people, @definition.created_by_id))}
               <span class="text-muted">· <.time_ago at={@definition.inserted_at} /></span>
             </dd>
             <dt class="text-faint">{gettext("Last changed")}</dt>
             <dd>
-              {Common.who(@people, @definition.updated_by_id)}
+              {People.short(Common.who(@people, @definition.updated_by_id))}
               <span class="text-muted">· <.time_ago at={@definition.updated_at} /></span>
             </dd>
           </dl>

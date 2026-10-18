@@ -548,7 +548,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> Map.new(fn change ->
       {change.subject,
        %{
-         by: People.email(change.changed_by),
+         by: People.short(People.email(change.changed_by)),
          at: Format.date(change.inserted_at)
        }}
     end)
@@ -1672,11 +1672,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
         made = made_version(versions, holder, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
+        who = People.short(People.email(change.changed_by))
+
         %{
           id: change.id,
-          sentence: change_sentence(change, People.email(change.changed_by), above),
+          sentence: change_sentence(change, who, above),
           origin: origin(change, made),
-          who: People.email(change.changed_by),
+          who: who,
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,

@@ -121,7 +121,7 @@ defmodule ApiaryWeb.NodeComponents do
           <span :if={@node.created_by} class="text-faint" aria-hidden="true">·</span>
           <span :if={@node.created_by} id="node-made">
             {gettext("made by %{person}, %{date}",
-              person: People.email(@node.created_by),
+              person: People.short(People.email(@node.created_by)),
               date: Format.day(@node.inserted_at)
             )}
           </span>

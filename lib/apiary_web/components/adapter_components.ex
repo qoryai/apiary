@@ -124,7 +124,7 @@ defmodule ApiaryWeb.AdapterComponents do
       </span>
       <span :if={!@adapter.installed_as} id="adapter-added">
         {gettext("Added by %{person}, %{date}",
-          person: People.email(@adapter.created_by) || People.former_member(),
+          person: People.short(People.email(@adapter.created_by)) || People.former_member(),
           date: Format.date(@adapter.inserted_at)
         )}
       </span>

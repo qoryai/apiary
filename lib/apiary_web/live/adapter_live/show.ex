@@ -179,7 +179,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     person =
       connection &&
-        People.account(People.accounts([connection.created_by_id]), connection.created_by_id)
+        People.short(
+          People.account(People.accounts([connection.created_by_id]), connection.created_by_id)
+        )
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)
@@ -900,13 +902,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp status(%{state: state} = assigns) when state in [:waiting, :listed] do
     at = assigns.connection.connected_at
 
-    person = People.short(assigns.person)
-
     if today?(at),
-      do: gettext("Installed by %{person} today.", person: person),
+      do: gettext("Installed by %{person} today.", person: assigns.person),
       else:
         gettext("Installed by %{person} on %{date}.",
-          person: person,
+          person: assigns.person,
           date: Format.day(at)
         )
   end

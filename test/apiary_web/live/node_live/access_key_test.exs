@@ -176,7 +176,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{made.key_id}-added",
-               "Generated in a browser by #{scope.user.email}, #{Format.datetime(made.received_at)}"
+               "Generated in a browser by #{Apiary.Accounts.User.short_name(scope.user.email)}, #{Format.datetime(made.received_at)}"
              )
 
       assert has_element?(
@@ -220,8 +220,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{enrolled.key_id}-added",
-               "Connected with a command by #{scope.user.email}"
+               "Connected with a command by #{Apiary.Accounts.User.short_name(scope.user.email)}"
              )
+
+      refute has_element?(lv, "#key-#{enrolled.key_id}-added", scope.user.email)
 
       assert has_element?(
                lv,
@@ -251,7 +253,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
       assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
-      assert has_element?(lv, "#key-#{key.key_id}", "by #{scope.user.email}")
+
+      assert has_element?(
+               lv,
+               "#key-#{key.key_id}",
+               "by #{Apiary.Accounts.User.short_name(scope.user.email)}"
+             )
+
+      refute has_element?(lv, "#key-#{key.key_id}", scope.user.email)
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
     end
@@ -854,7 +863,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#node-codes")
 
       assert words(lv, "#code-#{row.id}") =~
-               "A command is waiting to be run on build-01. #{scope.user.email} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+               "A command is waiting to be run on build-01. #{Apiary.Accounts.User.short_name(scope.user.email)} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
 
       assert has_element?(lv, "#code-new-button", "Get a new command")
 
@@ -1648,7 +1657,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{added.key_id}-added",
-               "Generated in a browser by #{scope.user.email}, #{Format.datetime(added.received_at)}"
+               "Generated in a browser by #{Apiary.Accounts.User.short_name(scope.user.email)}, #{Format.datetime(added.received_at)}"
              )
 
       # Back to the key's page: opened again, nothing says the secret is shown, or offers
