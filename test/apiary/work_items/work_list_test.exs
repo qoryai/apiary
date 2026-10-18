@@ -1,7 +1,7 @@
 defmodule Apiary.WorkItems.WorkListTest do
   # The Work items list (`Apiary.WorkItems.list_work_items/3`): its views and their
-  # counts, its rows as the page draws them, its search, its filters and its pages, and an
-  # empty page to anyone who may not read the workspace's work items.
+  # counts, its rows as the page draws them, its search, its filters, its sort and its
+  # pages, and an empty page to anyone who may not read the workspace's work items.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -121,6 +121,7 @@ defmodule Apiary.WorkItems.WorkListTest do
                of: nil,
                owner_id: ctx.scope.user.id,
                taken_in_at: ctx.open.taken_in_at,
+               inserted_at: ctx.open.inserted_at,
                updated_at: ctx.open.updated_at,
                ended_at: nil,
                ended_by_id: nil,
@@ -291,6 +292,129 @@ defmodule Apiary.WorkItems.WorkListTest do
             [after: "u.99999999999999999999.wi_0000000000000000"],
             [after: String.duplicate("u", 100)],
             [after: first.next, before: first.next]
+          ] do
+        assert list(ctx.scope, params).rows == [], inspect(params)
+      end
+    end
+  end
+
+  # A work item created `created` seconds before `base` and last changed `changed`
+  # seconds before it.
+  defp timed!(work_item, base, created, changed),
+    do:
+      set!(work_item,
+        inserted_at: DateTime.add(base, -created, :second),
+        updated_at: DateTime.add(base, -changed, :second)
+      )
+
+  describe "the sort" do
+    setup %{scope: scope} do
+      base = DateTime.utc_now()
+      # Created in one order, last changed in the other.
+      older = scope |> item!() |> timed!(base, 60, 10)
+      newer = scope |> item!() |> timed!(base, 30, 20)
+      %{base: base, older: older, newer: newer}
+    end
+
+    test "goes from the latest changed by default, or from the latest created", ctx do
+      by_change = [ctx.older.public_id, ctx.newer.public_id]
+      by_creation = [ctx.newer.public_id, ctx.older.public_id]
+
+      assert ids(list(ctx.scope)) == by_change
+      assert ids(list(ctx.scope, sort: :updated)) == by_change
+      assert ids(list(ctx.scope, %{"sort" => "updated"})) == by_change
+      assert ids(list(ctx.scope, sort: :created)) == by_creation
+      assert ids(list(ctx.scope, %{"sort" => "created"})) == by_creation
+      assert ids(list(ctx.scope, view: :open, stage: :explore, sort: :created)) == by_creation
+
+      for sort <- ["nonsense", "", "comments", :comments, 1, nil] do
+        assert ids(list(ctx.scope, sort: sort)) == by_change, inspect(sort)
+      end
+    end
+
+    test "leaves Waiting on you oldest first", ctx do
+      # Oldest first by the last change, unlike either order by creation.
+      a = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 90, 50)
+      b = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 30, 45)
+      c = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 60, 40)
+      oldest_first = [a.public_id, b.public_id, c.public_id]
+
+      assert ids(list(ctx.scope, view: :you)) == oldest_first
+      assert ids(list(ctx.scope, view: :you, sort: :created)) == oldest_first
+      assert ids(list(ctx.scope, view: :you, sort: "created")) == oldest_first
+    end
+
+    test "orders each band by the sort after the work items that wait for the reader", ctx do
+      %{user: member} = member_fixture(ctx.scope)
+      mine = ctx.scope |> at!(:confirm) |> timed!(ctx.base, 120, 120)
+      theirs_older = ctx.scope |> at!(:confirm, owner_id: member.id) |> timed!(ctx.base, 60, 10)
+      theirs_newer = ctx.scope |> at!(:confirm, owner_id: member.id) |> timed!(ctx.base, 30, 20)
+
+      by_change = WorkItems.list_bands(ctx.scope).bands
+      by_creation = WorkItems.list_bands(ctx.scope, sort: :created).bands
+
+      assert ids(%{rows: by_change.confirm}) ==
+               [mine.public_id, theirs_older.public_id, theirs_newer.public_id]
+
+      assert ids(%{rows: by_creation.confirm}) ==
+               [mine.public_id, theirs_newer.public_id, theirs_older.public_id]
+
+      assert ids(%{rows: by_change.explore}) == [ctx.older.public_id, ctx.newer.public_id]
+      assert ids(%{rows: by_creation.explore}) == [ctx.newer.public_id, ctx.older.public_id]
+
+      assert ids(%{rows: WorkItems.list_bands(ctx.scope, sort: "nonsense").bands.explore}) ==
+               [ctx.older.public_id, ctx.newer.public_id]
+    end
+  end
+
+  describe "the pages of Newest" do
+    setup %{scope: scope} do
+      base = DateTime.utc_now()
+
+      # The latest created is the earliest changed, so the two sorts page apart.
+      items =
+        for n <- 1..(WorkList.page_size() + 2) do
+          scope |> item!() |> timed!(base, n, -n)
+        end
+
+      %{items: Enum.map(items, & &1.public_id)}
+    end
+
+    test "go from the latest created, a page at a time, and back", ctx do
+      size = WorkList.page_size()
+      {first_page, rest} = Enum.split(ctx.items, size)
+
+      first = list(ctx.scope, sort: :created)
+      assert ids(first) == first_page
+      assert first.prev == nil
+      assert first.first == 1
+      assert "c." <> _cursor = first.next
+
+      second = list(ctx.scope, sort: :created, after: first.next)
+      assert ids(second) == rest
+      assert second.next == nil
+      assert second.first == size + 1
+      assert "c." <> _cursor = second.prev
+
+      back = list(ctx.scope, sort: :created, before: second.prev)
+      assert ids(back) == first_page
+      assert back.prev == nil
+      assert back.first == 1
+      assert back.next == first.next
+
+      assert ids(list(ctx.scope)) == ctx.items |> Enum.reverse() |> Enum.take(size)
+    end
+
+    test "a cursor of the other sort matches nothing", ctx do
+      created = list(ctx.scope, sort: :created)
+      updated = list(ctx.scope)
+      assert "u." <> _cursor = updated.next
+
+      for params <- [
+            [after: created.next],
+            [sort: :updated, before: created.next],
+            [sort: :created, after: updated.next],
+            [sort: :created, before: updated.next]
           ] do
         assert list(ctx.scope, params).rows == [], inspect(params)
       end
