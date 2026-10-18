@@ -3467,6 +3467,11 @@ msgid_plural "All %{number} workspaces"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "All integrations are installed."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "All people"

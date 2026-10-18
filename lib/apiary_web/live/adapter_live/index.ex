@@ -24,6 +24,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # for its collections, then Install, which posts to the Install path and sends the
   # person on to the integration, and Cancel, back to the list. Once pressed, the block
   # says where the person is taken. One that cannot be installed yet has Install disabled.
+  # With every adapter installed, a line says so.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -67,6 +68,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
        sections: SettingsComponents.sections(scope, :organisation),
        paths: IntegrationComponents.paths(scope),
        rows: rows,
+       all_installed: rows != [] and Enum.all?(rows, & &1.installed),
        noun: Adapters.shared_collection_noun(adapters),
        connects: connects,
        several: length(Organisations.list_workspaces(scope)) > 1,
@@ -105,7 +107,15 @@ defmodule ApiaryWeb.AdapterLive.Index do
           )}
         </:subtitle>
 
-        <div class="grid gap-4">
+        <p
+          :if={@all_installed}
+          id="add-none"
+          class="text-[13.5px]/5 text-muted"
+        >
+          {gettext("All integrations are installed.")}
+        </p>
+
+        <div :if={!@all_installed} class="grid gap-4">
           <IntegrationComponents.install_block
             :for={row <- @rows}
             :if={!row.installed}
