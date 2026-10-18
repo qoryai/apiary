@@ -39,14 +39,19 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # no items, only that each is assigned to one workspace. The lead shows while the page
   # waits too. Where any live collection has a target
   # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
-  # changes no workspace's targets; a source without code has none. Past a page, the pager
-  # walks the pages, from the first, as the list pages by the row before (`?page=`). Ended
-  # collections are not shown: the counts leave them out too, and a line under the table
-  # says how many there are. A run of them that fills a page of the list goes into the
-  # page after it, so no page is empty while collections are left after it. A page past
-  # the last one with collections shows that one, and the address then names it. A search
-  # finds collections by their names (`?q=`), and one that finds none says so, on any
-  # page. The foot notes' block shows only while one of its notes does.
+  # changes no workspace's targets; a source without code has none. The first foot note,
+  # over the rest, is the source's line on how to change, at the source, which collections
+  # the integration reaches (`Apiary.Integrations.Description.access/1`, as the adapter's
+  # latest start stored it), shown as sent and isolated (`ApiaryWeb.ExternalText`), while
+  # the collections show; there is none without a line, or for one with nothing left to
+  # show. Past a page, the pager walks the pages, from the first, as the list pages by the
+  # row before (`?page=`). Ended collections are not shown: the counts leave them out too,
+  # and a line under the table says how many there are. A run of them that fills a page of
+  # the list goes into the page after it, so no page is empty while collections are left
+  # after it. A page past the last one with collections shows that one, and the address
+  # then names it. A search finds collections by their names (`?q=`), and one that finds
+  # none says so, on any page. The foot notes' block shows only while one of its notes
+  # does.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -159,11 +164,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp page_param(_value), do: 1
 
-  # The connection as it stands, the state it puts the page in, who started it, and whether
-  # any of its live collections has a target, for the foot note.
+  # The connection as it stands, with its adapter, whose line on its access the first foot
+  # note shows; the state it puts the page in, who started it, and whether any of its live
+  # collections has a target, for the foot note.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
-    connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
+
+    connection =
+      case Map.get(Connections.live_by_adapter(scope), adapter.id) do
+        %Connection{} = connection -> %{connection | adapter: adapter}
+        nil -> nil
+      end
+
     ended = if is_nil(connection), do: Connections.latest_ended(scope, adapter)
     state = if reported_gone?(ended), do: :ended, else: state(connection)
 
@@ -833,6 +845,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
           />
 
           <div :if={foot_notes?(assigns)} id="collections-foot" class="mt-3 grid gap-1.5">
+            <p :if={access_line(assigns)} id="collections-access" class="q-foot-note">
+              <.external_text text={access_line(assigns)} />
+            </p>
             <p
               :if={ended_line?(assigns)}
               id="collections-ended"
@@ -862,7 +877,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # Whether the block of foot notes under the table shows: while any of its notes does.
-  defp foot_notes?(assigns), do: ended_line?(assigns) or assigns.targets
+  defp foot_notes?(assigns),
+    do: access_line(assigns) != nil or ended_line?(assigns) or assigns.targets
+
+  # The source's line on how to change which collections the adapter reaches, as stored,
+  # while the collections show; nil without one, or for one with nothing left once shown
+  # (`Apiary.ExternalText.line/1`).
+  defp access_line(%{state: state, connection: %Connection{adapter: %{source_access: text}}})
+       when state in [:waiting, :listed] do
+    if Apiary.ExternalText.line(text) in [nil, ""], do: nil, else: text
+  end
+
+  defp access_line(_assigns), do: nil
 
   # Whether the line that says how many collections ended shows: once a listing names the
   # connection, while some have.
