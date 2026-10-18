@@ -189,6 +189,22 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
   end
 
+  # A collection ended because its adapter now lists it under another connection: the
+  # entry is the collection's, in the trail of the organisation it left, and names it by
+  # the title it had then (`name`) and the adapter by its name then (`integration`).
+  def sentence(
+        :"collection.move",
+        %{details: %{"name" => name, "integration" => integration}},
+        _names
+      )
+      when is_binary(name) and is_binary(integration) do
+    gettext(
+      "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection.",
+      collection: name,
+      integration: integration
+    )
+  end
+
   # Collections assigned to a workspace, or unassigned from theirs (the entry of an
   # unassign names no workspace, `"workspace_id"` nil), in the words of the source behind
   # the connection the entry names (`Apiary.Audit.names/2`'s

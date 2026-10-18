@@ -126,6 +126,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.declare",
       :"collection.assign",
       :"collection.set_backlog",
+      :"collection.move",
       :"dispatch.handover",
       :"dispatch.release",
       :"target.set_further_repositories",
@@ -509,6 +510,24 @@ defmodule Apiary.AuditChanges do
     %{scope: ctx.scope, subject: {"target", target.id}, before: before}
   end
 
+  # The adapter lists a ref live under the organisation's connection under another
+  # organisation's connection: the instance ends the organisation's collection, in the
+  # trail of the organisation, about the collection.
+  def make(:"collection.move", %{scope: scope}) do
+    %{mine: mine, theirs: theirs, key_scope: key_scope} = moving(scope)
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(mine, "first"))
+    collection = Repo.get_by!(Collection, connection_id: mine.id)
+    before = entries()
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(theirs, "second"))
+
+    %{
+      scope: Scope.for_instance(scope.organisation),
+      actor: :instance,
+      subject: {"collection", collection.id},
+      before: before
+    }
+  end
+
   # An owner chooses what the runs of a target of the workspace also read, in the
   # workspace's trail, about the target.
   def make(:"target.set_further_repositories", ctx) do
@@ -833,6 +852,16 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.install(scope, "tracker")}
   end
 
+  # A listing's part of an ended connection names the ref live under the organisation's
+  # connection: it is refused, and moves nothing.
+  def refuse(:"collection.move", %{scope: scope}) do
+    %{mine: mine, theirs: theirs, key_scope: key_scope} = moving(scope)
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(mine, "first"))
+    {:ok, _ended} = Adapters.Connections.end_connection(key_scope, theirs.public_id)
+    before = entries()
+    {before, Collections.post_listing(key_scope, listed(theirs, "second"))}
+  end
+
   # A node's key declares no adapter.
   def refuse(:"adapter.declare", %{scope: scope}) do
     connectable_adapter_fixture()
@@ -881,6 +910,29 @@ defmodule Apiary.AuditChanges do
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
+
+  # An adapter connected to the scope's organisation (`mine`) and to another
+  # organisation (`theirs`), and its key's scope.
+  defp moving(scope) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {mine, _nonce} = connection_fixture(scope, adapter, :connected)
+    %{scope: other} = sign_up_fixture()
+    {theirs, _nonce} = connection_fixture(other, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    %{mine: mine, theirs: theirs, key_scope: Scope.for_access_key(key)}
+  end
+
+  # A complete listing of `connection` naming the ref `TRK`.
+  defp listed(connection, id) do
+    %{
+      time: DateTime.utc_now(:second),
+      connection_id: connection.public_id,
+      collections: [
+        %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+      ],
+      listing: %{id: id, part: 1, started_at: DateTime.utc_now(:second), complete: true}
+    }
+  end
 
   # What an adapter declares as it starts (`Apiary.Adapters.Wire.declaration/1`).
   defp declaration do

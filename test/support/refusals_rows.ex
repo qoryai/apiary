@@ -451,7 +451,13 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.read",
         :"work_item.read"
       ],
-      jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune", :"adapter.install"],
+      jobs: [
+        :"organisation.purge",
+        :"workspace.purge",
+        :"audit.prune",
+        :"adapter.install",
+        :"collection.move"
+      ],
       contract: [
         :"run.post_events",
         :"run_configuration.fetch",
