@@ -1,0 +1,257 @@
+defmodule Apiary.Environments do
+  @moduledoc false
+
+  # The environment records of the collections (`Apiary.Environments.Record`), one per
+  # node pool and collection: what the last prebuild of a collection's target built for a
+  # pool, and what was asked of it.
+  #
+  # The reads here serve the paths that queue, record and use a build: they ask nothing
+  # of `Apiary.Access`, and whoever answers a person with them asks it first.
+  #
+  # ## The trigger: `trigger/2` and `trigger_for_pool/2`
+  #
+  # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
+  # held for that pool) when the collection is live, assigned to the pool's workspace, has a
+  # target and an `environment_ref`, and the pool's record of it is missing, was queued
+  # for another `environment_ref`, or was retired after it was last queued. Queuing sets
+  # the record's `queued_ref` and `queued_at`, making the record when there was none. So
+  # the same `environment_ref` named again queues nothing. A change while a prebuild of
+  # the collection waits for the pool sets the change's `environment_ref` on that waiting
+  # one, in the same transaction as the record's `queued_ref`, so at most one waits per
+  # collection and pool; a change while one is claimed or runs queues the one that waits
+  # next.
+  #
+  # `trigger(collections, now)` applies it, inside the caller's transaction, to
+  # collections as they now stand, for every live pool of each one's workspace: a
+  # listing's part calls it for the collections it made or updated, and an assign for
+  # those it assigned or moved to a workspace (`Apiary.Adapters.Collections`). A collection
+  # without an `environment_ref` queues nothing, its records not retired since they were
+  # last queued are retired at `now`, and its prebuilds that wait end, `collection_ended`
+  # (`Apiary.Dispatches.end_waiting_prebuilds/2`): the image goes from new runs, nothing
+  # is left to build, and the record keeps the rest. A collection assigned to no
+  # workspace, or without a target, queues nothing.
+  #
+  # `trigger_for_pool(pool, now)` applies it, inside the caller's transaction, to a new
+  # node pool, for every collection assigned to its workspace (`Apiary.Nodes.create_node/2`).
+  #
+  # `trigger/2` first locks every record of its collections, of every pool, `FOR UPDATE`,
+  # in one statement, by collection and then pool, whatever order its caller names them
+  # in; a free of lapsed leases locks the records of every claimed prebuild that lapsed
+  # in its scope in the same order, in one statement, before its first batch decides
+  # which prebuild waits (`Apiary.Dispatches.Slots`, which names the order of every
+  # lock). The record is then written by one statement that decides whether it is
+  # due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the same
+  # pool and collection take turns, and the second sees the first's `queued_ref`; and the
+  # prebuild that waits is one per pool and collection in the database too
+  # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
+  # transaction: two calls would lock in two orders.
+  #
+  # ## A run's image: `image_for/2`
+  #
+  # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
+  # live collections assigned to the pool's workspace with that target, only those with an
+  # `environment_ref` count, and of their records for the pool, the one built last
+  # (`built_at`) that is not retired gives its `image`; nil when there is none.
+
+  import Ecto.Query, only: [from: 2]
+
+  alias Apiary.{Dispatches, Repo}
+  alias Apiary.Adapters.Collection
+  alias Apiary.Environments.Record
+  alias Apiary.Nodes.Node
+
+  # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
+  @doc false
+  @spec fetch(Ecto.UUID.t(), Ecto.UUID.t()) :: Record.t() | nil
+  def fetch(pool_id, collection_id) when is_binary(pool_id) and is_binary(collection_id),
+    do: Repo.get_by(Record, pool_id: pool_id, source_collection_id: collection_id)
+
+  # for_collection/1 is every record of the collection `collection_id`, of any pool and
+  # workspace, the oldest first.
+  @doc false
+  @spec for_collection(Ecto.UUID.t()) :: [Record.t()]
+  def for_collection(collection_id) when is_binary(collection_id) do
+    Repo.all(
+      from r in Record,
+        where: r.source_collection_id == ^collection_id,
+        order_by: [asc: r.inserted_at, asc: r.id]
+    )
+  end
+
+  ## A run's image
+
+  # image_for/2 is the image a run of `pool` for `target` starts in, or nil (the
+  # moduledoc).
+  @doc false
+  @spec image_for(Node.t(), %{system: String.t(), path: String.t()}) :: String.t() | nil
+  def image_for(%Node{kind: :pool, id: pool_id, workspace_id: workspace_id}, %{
+        system: system,
+        path: path
+      })
+      when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
+    Repo.one(
+      from r in Record,
+        join: c in Collection,
+        on: c.id == r.source_collection_id,
+        where: r.pool_id == ^pool_id and not is_nil(r.image) and is_nil(r.retired_at),
+        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+        where: not is_nil(c.environment_ref),
+        where: c.target_system == ^system and c.target_path == ^path,
+        order_by: [desc: r.built_at, desc: r.id],
+        limit: 1,
+        select: r.image
+    )
+  end
+
+  ## The trigger
+
+  # trigger/2 applies the trigger to `collections` as they now stand, at `now`, inside
+  # the caller's transaction (the moduledoc): the prebuilds it queued.
+  @doc false
+  @spec trigger([Collection.t()], DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
+  def trigger(collections, %DateTime{} = now) when is_list(collections) do
+    in_transaction!("trigger/2")
+
+    :ok = lock_records(collections)
+    {absent, present} = Enum.split_with(collections, &is_nil(&1.environment_ref))
+    :ok = retire(absent, now)
+    due = Enum.filter(present, &due?/1)
+    pools = pools(due |> Enum.map(& &1.workspace_id) |> Enum.uniq())
+
+    for collection <- Enum.sort_by(due, & &1.id),
+        run <- queue(collection, Map.get(pools, collection.workspace_id, []), now),
+        do: run
+  end
+
+  # trigger_for_pool/2 applies the trigger to the new node pool `pool`, at `now`, for
+  # every collection assigned to its workspace, inside the caller's transaction (the
+  # moduledoc): the prebuilds it queued.
+  @doc false
+  @spec trigger_for_pool(Node.t(), DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
+  def trigger_for_pool(
+        %Node{kind: :pool, deleted_at: nil, workspace_id: workspace_id} = pool,
+        now
+      )
+      when is_binary(workspace_id) do
+    in_transaction!("trigger_for_pool/2")
+
+    collections =
+      Repo.all(
+        from c in Collection,
+          where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+          where: not is_nil(c.environment_ref) and not is_nil(c.target_system),
+          order_by: c.id
+      )
+
+    for collection <- collections, run <- queue(collection, [pool], now), do: run
+  end
+
+  # A live collection assigned to a workspace, with a target and an `environment_ref`.
+  defp due?(%Collection{ended_at: nil, workspace_id: workspace_id, target_system: system}),
+    do: is_binary(workspace_id) and is_binary(system)
+
+  defp due?(%Collection{}), do: false
+
+  # The live node pools of `workspace_ids`, by workspace, each list by id.
+  defp pools([]), do: %{}
+
+  defp pools(workspace_ids) do
+    Repo.all(
+      from n in Node,
+        where: n.workspace_id in ^workspace_ids and n.kind == :pool and is_nil(n.deleted_at),
+        order_by: n.id
+    )
+    |> Enum.group_by(& &1.workspace_id)
+  end
+
+  # Locks the records of `collections`, of every pool, `FOR UPDATE`, by collection and
+  # then pool, in one statement, before any of them is written (the moduledoc).
+  defp lock_records([]), do: :ok
+
+  defp lock_records(collections) do
+    ids = Enum.map(collections, & &1.id)
+
+    _locked =
+      Repo.all(
+        from r in Record,
+          where: r.source_collection_id in ^ids,
+          order_by: [r.source_collection_id, r.pool_id],
+          lock: "FOR UPDATE",
+          select: r.id
+      )
+
+    :ok
+  end
+
+  # Retires, at `now`, the records of `collections` not retired since they were last
+  # queued, and ends their prebuilds that wait, `collection_ended`.
+  defp retire([], _now), do: :ok
+
+  defp retire(collections, now) do
+    ids = Enum.map(collections, & &1.id)
+
+    {_count, _rows} =
+      Repo.update_all(
+        from(r in Record,
+          where: r.source_collection_id in ^ids,
+          where: is_nil(r.retired_at) or r.retired_at < r.queued_at
+        ),
+        set: [retired_at: now, updated_at: now]
+      )
+
+    Dispatches.end_waiting_prebuilds(ids, now)
+  end
+
+  # Writes the record of `collection` for each of `pools` that is due, in one statement,
+  # and queues a prebuild held for each of those pools.
+  defp queue(_collection, [], _now), do: []
+
+  defp queue(%Collection{environment_ref: ref} = collection, pools, now) do
+    rows =
+      for pool <- pools do
+        %{
+          id: Ecto.UUID.generate(),
+          organisation_id: collection.organisation_id,
+          workspace_id: pool.workspace_id,
+          pool_id: pool.id,
+          source_collection_id: collection.id,
+          queued_ref: ref,
+          queued_at: now,
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    due =
+      from r in Record,
+        where:
+          r.queued_ref != fragment("EXCLUDED.queued_ref") or
+            (not is_nil(r.retired_at) and r.queued_at < r.retired_at),
+        update: [
+          set: [
+            queued_ref: fragment("EXCLUDED.queued_ref"),
+            queued_at: fragment("EXCLUDED.queued_at"),
+            updated_at: fragment("EXCLUDED.updated_at")
+          ]
+        ]
+
+    {_count, written} =
+      Repo.insert_all(Record, rows,
+        on_conflict: due,
+        conflict_target: [:pool_id, :source_collection_id],
+        returning: [:pool_id]
+      )
+
+    queued = MapSet.new(written, & &1.pool_id)
+
+    for pool <- pools, MapSet.member?(queued, pool.id) do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+      run
+    end
+  end
+
+  defp in_transaction!(what) do
+    unless Repo.in_transaction?(),
+      do: raise(ArgumentError, "Apiary.Environments.#{what} runs inside the caller's transaction")
+  end
+end

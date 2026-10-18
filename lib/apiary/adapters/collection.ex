@@ -6,16 +6,19 @@ defmodule Apiary.Adapters.Collection do
   # `external_ref` is the adapter's ref for it, which the core compares and stores and
   # never reads meaning into; `url`, `title` and the target (`target_system`,
   # `target_path`, both or neither) are as the listing last gave them, and
-  # `last_listed_at` is the `started_at` of the newest listing that named it. It is live
-  # until `ended_at`, for `ended_reason`, which is final: `:disconnected`, `:not_listed`
-  # (a complete listing left it out) or `:connection_ended`. One collection per adapter
-  # and ref is live at a time. `workspace_id` is the one workspace it is assigned to, or
-  # none. `backlog` is whether its items come into that workspace's Backlog, on unless a
-  # person turned it off (`Apiary.Adapters.Collections.set_backlog/3`); it stays with the
-  # collection when it moves to another workspace. `items` is false while the latest
-  # listing that named it said it has no items; a listing that names it without `items`
-  # makes it true, and one that leaves it out keeps it. A collection is linked while it is
-  # assigned to a workspace, `backlog` is on, it has items and so does its adapter
+  # `last_listed_at` is the `started_at` of the newest listing that named it.
+  # `environment_ref` is the adapter's id of its environment definition, as that listing
+  # gave it, compared and stored, never read; nil when that listing named it without one,
+  # so it has none. It is live until `ended_at`, for `ended_reason`, which is final:
+  # `:disconnected`, `:not_listed` (a complete listing left it out) or
+  # `:connection_ended`. One collection per adapter and ref is live at a time.
+  # `workspace_id` is the one workspace it is assigned to, or none. `backlog` is whether
+  # its items come into that workspace's Backlog, on unless a person turned it off
+  # (`Apiary.Adapters.Collections.set_backlog/3`); it stays with the collection when it
+  # moves to another workspace. `items` is false while the latest listing that named it
+  # said it has no items; a listing that names it without `items` makes it true, and one
+  # that leaves it out keeps it. A collection is linked while it is assigned to a
+  # workspace, `backlog` is on, it has items and so does its adapter
   # (`Apiary.Nodes.Node`'s `items`) (`linked?/1`): the adapter mirrors it, and its items
   # and comments are taken. `backlog` keeps its value while the collection or its adapter
   # has no items.
@@ -49,6 +52,7 @@ defmodule Apiary.Adapters.Collection do
     field :title, :string
     field :target_system, :string
     field :target_path, :string
+    field :environment_ref, :string
     field :last_listed_at, :utc_datetime
     field :ended_at, :utc_datetime_usec
     field :backlog, :boolean, default: true

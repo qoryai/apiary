@@ -130,8 +130,15 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert accepted?(conn, @claim)
     end
 
-    test "is served the provisioner contract's revisions, 1 alone", _ctx do
-      assert AdapterRequest.revisions(:pool) == [1]
+    test "is served the provisioner contract's revisions 1 and 2", ctx do
+      assert AdapterRequest.revisions(:pool) == [1, 2]
+
+      for target <- @targets do
+        conn = signed(ctx, target, body(target), contract_version: "2")
+        assert accepted?(conn, target), target
+        assert signed_answer?(conn), target
+      end
+
       assert AdapterRequest.revisions(:adapter) == [1]
       assert AdapterRequest.revisions() == [1]
     end
@@ -348,14 +355,14 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "400 bad_request for an instance id absent or malformed, signed, before the revision",
          ctx do
       for instance_id <- [nil, "-starts-with-a-dash", String.duplicate("a", 65)] do
-        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "2")
+        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "3")
         assert json_response(conn, 400) == @bad_request, inspect(instance_id)
         assert signed_answer?(conn)
       end
     end
 
     test "400 unsupported_contract_version, signed, before the body", ctx do
-      for version <- [nil, "2", "01", "1.0", "one"] do
+      for version <- [nil, "3", "02", "01", "1.0", "one"] do
         conn = claim(ctx, %{"version" => 2}, contract_version: version)
         assert json_response(conn, 400) == @unsupported, inspect(version)
         assert signed_answer?(conn)

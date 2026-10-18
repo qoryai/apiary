@@ -527,6 +527,11 @@ defmodule Apiary.Adapters.WireTest do
         assert listing("invalid/source-collections-items-#{name}.json") == :error, name
       end
 
+      for name <- ~w(201 empty nul) do
+        assert listing("invalid/source-collections-environment-ref-#{name}.json") == :error,
+               name
+      end
+
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
@@ -534,25 +539,44 @@ defmodule Apiary.Adapters.WireTest do
 
     test "a collection's items is false when given, and true when not; any other value is refused" do
       {:ok, body} = Wire.decode(fixture("source-collections/code-host-items-false.json"))
-      [with_environment, without_items] = body["collections"]
-
-      # The fixture's other collection names an environment, which the core does not read.
-      assert Wire.listing(body) == :error
+      [_with_environment, without_items] = body["collections"]
 
       assert {:ok,
               %{collections: [%{ref: "C_2001", items: true}, %{ref: "C_2002", items: false}]}} =
-               Wire.listing(
-                 Map.put(body, "collections", [
-                   Map.delete(with_environment, "environment_ref"),
-                   without_items
-                 ])
-               )
+               Wire.listing(body)
 
       for value <- [true, nil, "false", 0, %{}] do
         assert Wire.listing(
                  Map.put(body, "collections", [Map.put(without_items, "items", value)])
                ) == :error,
                inspect(value)
+      end
+    end
+
+    test "a collection's environment_ref is read as given, and is nil when absent" do
+      assert {:ok,
+              %{
+                collections: [
+                  %{ref: "C_2001", environment_ref: "env-3f2a91c4"},
+                  %{ref: "C_2002", environment_ref: nil}
+                ]
+              }} = listing("source-collections/code-host-environment-ref.json")
+
+      assert {:ok, %{collections: [%{environment_ref: nil}]}} =
+               listing("source-collections/code-host.json")
+
+      {:ok, body} = Wire.decode(fixture("source-collections/code-host-environment-ref.json"))
+      [first | rest] = body["collections"]
+      with_ref = &Map.put(body, "collections", [Map.put(first, "environment_ref", &1) | rest])
+
+      # 1 to 200 code points, as a ref; a string, never null.
+      for ref <- ["e", String.duplicate("😀", 200), String.duplicate("e\u0301", 100)] do
+        assert {:ok, %{collections: [%{environment_ref: ^ref} | _]}} =
+                 Wire.listing(with_ref.(ref))
+      end
+
+      for ref <- ["", String.duplicate("😀", 201), "a\u0000b", nil, 7, ["env"], %{}] do
+        assert Wire.listing(with_ref.(ref)) == :error, inspect(ref)
       end
     end
 

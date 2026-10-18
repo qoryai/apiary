@@ -56,7 +56,8 @@ defmodule Apiary.Adapters.CollectionsTest do
             ref: ref,
             url: "https://tracker.acme.example/" <> ref,
             title: Keyword.get(opts, :title, "Title of " <> ref),
-            target: Keyword.get(opts, :target)
+            target: Keyword.get(opts, :target),
+            environment_ref: Keyword.get(opts, :environment_ref)
           }
         end,
       listing: %{
@@ -243,6 +244,54 @@ defmodule Apiary.Adapters.CollectionsTest do
 
       assert %Collection{title: "Newest"} = collection(ctx.connection, "TRK")
       assert Repo.aggregate(Collection, :count) == 1
+    end
+
+    test "a collection's environment_ref is the newest listing's, and none when it names none",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["APP"], id: "first", environment_ref: "env-1")
+      assert %Collection{environment_ref: "env-1"} = collection(ctx.connection, "APP")
+
+      # An older listing changes nothing, its environment_ref included.
+      {:ok, :accepted} =
+        post(ctx, ["APP"],
+          id: "older",
+          complete: false,
+          environment_ref: "env-old",
+          started_at: DateTime.add(@started, -60)
+        )
+
+      assert %Collection{environment_ref: "env-1"} = collection(ctx.connection, "APP")
+
+      {:ok, :accepted} =
+        post(ctx, ["APP"],
+          id: "second",
+          environment_ref: "env-2",
+          started_at: DateTime.add(@started, 1)
+        )
+
+      assert %Collection{environment_ref: "env-2"} = collection(ctx.connection, "APP")
+
+      # Named without one: the collection has none.
+      {:ok, :accepted} = post(ctx, ["APP"], id: "third", started_at: DateTime.add(@started, 2))
+      assert %Collection{environment_ref: nil} = collection(ctx.connection, "APP")
+      assert Repo.aggregate(Collection, :count) == 1
+    end
+
+    test "a listing that is not complete and leaves a collection out changes neither it nor its environment_ref",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["APP", "DOCS"], id: "first", environment_ref: "env-1")
+      app = collection(ctx.connection, "APP")
+
+      # As an adapter that cannot read APP's environment definition lists: APP left out of
+      # every part, the last part not complete.
+      later = DateTime.add(@started, 60)
+
+      {:ok, :accepted} =
+        post(ctx, ["DOCS"], id: "second", part: 1, complete: false, started_at: later)
+
+      assert live(ctx.connection) == ["APP", "DOCS"]
+      assert collection(ctx.connection, "APP") == app
+      assert %Collection{environment_ref: nil} = collection(ctx.connection, "DOCS")
     end
 
     test "a complete listing leaves alone what a newer listing named, and another connection's",
@@ -704,6 +753,9 @@ defmodule Apiary.Adapters.CollectionsTest do
             {%{external_ref: "A", target_system: "Bad Host", target_path: "p"}, "target"},
             {%{external_ref: "A", target_system: "x.example"}, "target"},
             {%{external_ref: "A", public_id: "ac_0000000000000000"}, "public_id"},
+            {%{external_ref: "A", environment_ref: ""}, "environment_ref"},
+            {%{external_ref: "A", environment_ref: String.duplicate("e", 201)},
+             "environment_ref"},
             {%{external_ref: "A", ended_at: DateTime.utc_now()}, "ended"}
           ] do
         assert_raise Ecto.ConstraintError, ~r/source_collections_#{constraint}_check/, fn ->
@@ -712,6 +764,13 @@ defmodule Apiary.Adapters.CollectionsTest do
       end
 
       assert {:ok, _} = insert.(%{external_ref: String.duplicate("é", 200)})
+
+      assert {:ok, _} =
+               insert.(%{
+                 external_ref: "B",
+                 public_id: Apiary.PublicId.generate("sc"),
+                 environment_ref: String.duplicate("é", 200)
+               })
     end
 
     test "a collection keeps its connection's organisation and adapter", ctx do

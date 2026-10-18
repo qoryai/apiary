@@ -29,11 +29,15 @@ defmodule Apiary.Dispatches.SchemaTest do
   # last.
   @again_version 20_261_017_190_100
   @again Apiary.Repo.Migrations.TakeWorkItemsInAgain
+  # The later migration that queues prebuilds: down first, up last.
+  @prebuilds_version 20_261_017_200_200
+  @prebuilds Apiary.Repo.Migrations.QueuePrebuilds
 
   setup_all do
     for {version, migration, name} <- [
           {@version, @migration, "keep_dispatches"},
-          {@again_version, @again, "take_work_items_in_again"}
+          {@again_version, @again, "take_work_items_in_again"},
+          {@prebuilds_version, @prebuilds, "queue_prebuilds"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -234,8 +238,8 @@ defmodule Apiary.Dispatches.SchemaTest do
       assert {:error, changeset} = queue(scope, work_item_id: theirs.id)
       assert {"does not exist", _} = changeset.errors[:work_item_id]
 
-      # By the organisation, MATCH FULL, so that it stays where it was queued when its
-      # work item moves to another workspace.
+      # By the organisation, so that it stays where it was queued when its work item moves
+      # to another workspace; MATCH SIMPLE, so that a prebuild names none.
       assert %{rows: [[definition]]} =
                Repo.query!(
                  "SELECT pg_get_constraintdef(oid) FROM pg_constraint " <>
@@ -244,7 +248,74 @@ defmodule Apiary.Dispatches.SchemaTest do
 
       assert definition ==
                "FOREIGN KEY (work_item_id, organisation_id) " <>
-                 "REFERENCES work_items(id, organisation_id) MATCH FULL ON DELETE CASCADE"
+                 "REFERENCES work_items(id, organisation_id) ON DELETE CASCADE"
+    end
+
+    @tag needs: :factory
+    test "a prebuild: no work item nor take in, a collection and a pool of its workspace",
+         %{scope: scope} do
+      %{pool: pool} = pool!(scope)
+      collection = collection_fixture(scope)
+
+      prebuild = fn attrs ->
+        %DispatchRun{organisation_id: scope.organisation.id, workspace_id: scope.workspace.id}
+        |> DispatchRun.prebuild_changeset(
+          Enum.into(attrs, %{
+            source_collection_id: collection.id,
+            pool_id: pool.id,
+            environment_ref: "env-1",
+            queued_at: now()
+          })
+        )
+        |> Repo.insert()
+      end
+
+      assert {:ok, run} = prebuild.(%{})
+      assert %DispatchRun{step: "prebuild", work_item_id: nil, take_in: nil} = run
+
+      for {attrs, field} <- [
+            {%{environment_ref: ""}, :environment_ref},
+            {%{environment_ref: String.duplicate("é", 201)}, :environment_ref},
+            {%{source_collection_id: nil}, :source_collection_id},
+            {%{pool_id: nil}, :pool_id}
+          ] do
+        assert {:error, changeset} = prebuild.(attrs)
+        assert Keyword.has_key?(changeset.errors, field), inspect({attrs, changeset.errors})
+      end
+
+      # A pool of another workspace, and a collection of another organisation.
+      elsewhere = workspace_fixture(scope.organisation)
+      %{pool: theirs} = pool!(%{scope | workspace: elsewhere})
+      assert {:error, changeset} = prebuild.(%{pool_id: theirs.id})
+      assert {"does not exist", _} = changeset.errors[:pool_id]
+
+      %{scope: other} = sign_up_fixture()
+
+      assert {:error, changeset} =
+               prebuild.(%{source_collection_id: collection_fixture(other).id})
+
+      assert {"does not exist", _} = changeset.errors[:source_collection_id]
+
+      # The database holds the shape of each step.
+      explore = queued!(scope)
+      work_item_id = Ecto.UUID.dump!(explore.work_item_id)
+
+      for {id, assignments, params} <- [
+            {run.id, "work_item_id = $2, take_in = 1, attempt = 1, of = 3", [work_item_id]},
+            {run.id, "take_in = 1", []},
+            {run.id, "environment_ref = NULL", []},
+            {run.id, "environment_ref = ''", []},
+            {run.id, "source_collection_id = NULL", []},
+            {run.id, "pool_id = NULL", []},
+            {run.id, "step = 'explore'", []},
+            {explore.id, "pool_id = $2", [Ecto.UUID.dump!(pool.id)]},
+            {explore.id, "environment_ref = 'env-1'", []},
+            {explore.id, "step = 'prebuild'", []}
+          ] do
+        refused("dispatch_runs_step_shape_check", fn ->
+          update!("dispatch_runs", id, assignments, params)
+        end)
+      end
     end
 
     test "stays in its workspace when its work item moves to another", %{scope: scope} do
@@ -722,6 +793,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @prebuilds_version, @prebuilds, @options)
     assert :ok = Ecto.Migrator.down(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
   end
@@ -729,6 +801,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   defp up! do
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert :ok = Ecto.Migrator.up(Repo, @again_version, @again, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @prebuilds_version, @prebuilds, @options)
   end
 
   defp exists?(sql) do
