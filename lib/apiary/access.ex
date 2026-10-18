@@ -437,6 +437,13 @@ defmodule Apiary.Access do
     Action.new(:"dispatch.release", "give a claimed run back, to wait again or to end",
       feature: :factory,
       roles: [:pool_key]
+    ),
+    # The further repositories a target's runs also read (`Apiary.Targets`).
+    Action.new(
+      :"target.set_further_repositories",
+      "choose the other targets that runs of a target also read",
+      feature: :factory,
+      roles: @admins
     )
   ]
 
