@@ -170,16 +170,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
   title in the catalogue or an integration's in its description, with the name it has
-  there beside it (`claude`, `github`); a service's name alone, `{name, nil}`. The
-  machine name is nil where it is the title.
+  there beside it (`claude`, `tracker`); a service's name alone, `{name, nil}`. The
+  machine name is nil where it is the title. Both are shown as an external system's text
+  is (`Apiary.ExternalText.line/1`): an integration's description gives them.
   """
   def names(%Connection{kind: kind, name: name} = connection)
       when kind in ["runtime", "integration"] do
     title = title(connection)
-    {title, if(title != name, do: name)}
+    {Apiary.ExternalText.line(title), if(title != name, do: Apiary.ExternalText.line(name))}
   end
 
-  def names(%Connection{name: name}), do: {name, nil}
+  def names(%Connection{name: name}), do: {Apiary.ExternalText.line(name), nil}
 
   defp title(%Connection{kind: "runtime", name: name}) do
     case Runtimes.fetch(name) do
@@ -196,12 +197,19 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   end
 
   @doc """
-  label/1 is a connection's title with its machine name beside it, "GitHub (github)", for
+  label/1 is a connection's title with its machine name beside it, "Tracker (tracker)", for
   a sentence, a heading or a message that names it in plain text (`names/1`).
   """
   def label(%Connection{} = connection), do: connection |> names() |> label()
   def label({title, nil}), do: title
   def label({title, name}), do: gettext("%{title} (%{name})", title: title, name: name)
+
+  @doc """
+  hint/1 is a setting's description, as a page shows an integration's text
+  (`Apiary.ExternalText.line/1`): nil where it has none, or one with nothing left to show,
+  or only whitespace (`Apiary.ExternalText.present/1`), so the setting has no hint.
+  """
+  def hint(%{description: description}), do: Apiary.ExternalText.present(description)
 
   @doc """
   name/1 is a connection's title and, in mono beside it, its machine name (`names/1`),
@@ -215,10 +223,10 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   def name(assigns) do
     ~H"""
-    <span class={@class}>{elem(@names, 0)}</span><span
+    <span class={@class}><.external_text text={elem(@names, 0)} /></span><span
       :if={elem(@names, 1)}
       class="q-mono text-[12.5px] font-normal text-muted"
-    > ({elem(@names, 1)})</span>
+    > (<.external_text text={elem(@names, 1)} />)</span>
     """
   end
 

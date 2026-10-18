@@ -220,8 +220,8 @@ defmodule ApiaryWeb.JumpController do
       if Access.can?(scope, :"run.read", workspace) do
         for target <- Runs.search_targets(scope, text, @per_group) do
           item(
-            target.path,
-            target.system,
+            Apiary.ExternalText.sent(target.path),
+            Apiary.ExternalText.sent(target.system),
             ApiaryWeb.TargetComponents.target_path(scope, target),
             "hero-folder"
           )
@@ -241,7 +241,7 @@ defmodule ApiaryWeb.JumpController do
         for run <- Runs.search_runs(scope, text, @per_group) do
           item(
             run_label(run),
-            run.target_path || ApiaryWeb.RunComponents.state_label(run.state),
+            run_detail(run),
             ~p"/#{scope.organisation}/#{workspace}/runs/#{run.public_id}",
             "hero-play-circle"
           )
@@ -255,10 +255,21 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
+  # Where a run ran, else its state's word: a path sent with nothing left to show is
+  # marked, since it was sent (`Apiary.ExternalText.sent/1`).
+  defp run_detail(run) do
+    case Apiary.ExternalText.sent(run.target_path) do
+      nil -> ApiaryWeb.RunComponents.state_label(run.state)
+      path -> path
+    end
+  end
+
   defp run_label(run) do
     short_id = ApiaryWeb.RunComponents.short_id(run.public_id)
 
-    case ApiaryWeb.RunComponents.given_title(run) do
+    # A title with nothing left to show, or only whitespace, is no title
+    # (`Apiary.ExternalText.present/1`).
+    case Apiary.ExternalText.present(ApiaryWeb.RunComponents.given_title(run)) do
       nil -> short_id
       title -> "#{short_id} · #{title}"
     end

@@ -178,6 +178,54 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
+  test "a run whose title is whitespace alone is said as a run with no title",
+       %{conn: conn, scope: scope} do
+    run = started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"})
+    short = String.slice(run.public_id, 0, 11)
+
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short}] = group(answer, "Runs")["items"]
+
+    for title <- [" ", "\u00A0", "\u200B\u00A0\u3000"] do
+      run |> Ecto.Changeset.change(about_title: title) |> Apiary.Repo.update!()
+      answer = jump(conn, workspace_path(scope, "/jump"), short)
+      assert [%{"label" => ^short}] = group(answer, "Runs")["items"], inspect(title)
+    end
+  end
+
+  test "a target's path and system are shown as texts Forager sent are", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, %{"forge" => "git\u202E.example", "repository" => "acme/docs\u200B"})
+
+    answer = jump(conn, workspace_path(scope, "/jump"), "docs")
+    [target] = group(answer, "Repositories")["items"]
+    assert target["label"] =~ ~r{^acme/(<b>)?docs(</b>)?$}
+    assert target["detail"] == "git.example"
+    assert target["href"] == target_page_path(scope, "git\u202E.example", "acme/docs\u200B")
+  end
+
+  test "a run's title and target path are shown as a text Forager sent is",
+       %{conn: conn, scope: scope} do
+    run =
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"},
+        about: %{"title" => "\u202E\u200B"}
+      )
+
+    run |> Ecto.Changeset.change(target_path: "acme/\u202Eshop") |> Apiary.Repo.update!()
+    short = String.slice(run.public_id, 0, 11)
+
+    # A title with nothing left to show is no title: the run is its short id.
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
+
+    # A path sent with nothing left to show is marked, never the state's word.
+    run |> Ecto.Changeset.change(target_path: "\u202E\u200B") |> Apiary.Repo.update!()
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"detail" => "\uFFFD\uFFFD"}] = group(answer, "Runs")["items"]
+  end
+
   test "a run with no target is said by its state's word, an old name by its new state's",
        %{conn: conn, scope: scope} do
     completed =

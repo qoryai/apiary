@@ -29,19 +29,29 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #     opened so, it says to install again if nothing appears, beside Install.
   #
   # Once a listing names the connection, its collections are a table, a page of them at a
-  # time (`Apiary.Adapters.Collections.list_collections/3`), by title: each one's
-  # workspace, or Unassigned, its open items, for an adapter with items, and when it was
-  # added. Until a listing of the connection is complete, a line says the integration is
-  # still sending them, with how many so far; then the heading says how many there are.
-  # A lead says what being assigned means, in the adapter's words for its collections
-  # and its items: with one workspace, that every one is assigned to it; for an adapter
-  # with no items, only that each is assigned to one workspace. The lead shows while the
-  # page waits too. Where any live collection has a target
-  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one changes
-  # no workspace's targets; a source without code has none. Past a page, the pager walks
-  # the pages, from the first, as the list pages by the row before (`?page=`). Ended
-  # collections are not shown: the counts leave them out too. A search finds collections
-  # by their names (`?q=`).
+  # time (`Apiary.Adapters.Collections.list_collections/3`), by title while a listing is
+  # still arriving, then those unassigned first: each one's workspace, or Unassigned, its
+  # open items, for an adapter with items, and when it was added. Until a listing of the
+  # connection is complete, a line says the integration is still sending them, with how
+  # many so far; then the heading says how many there are.
+  # A lead says what being assigned means, in the adapter's words for its collections and
+  # its items: with one workspace, that every one is assigned to it; for an adapter with
+  # no items, only that each is assigned to one workspace. The lead shows while the page
+  # waits too. Where any live collection has a target
+  # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
+  # changes no workspace's targets; a source without code has none. The first foot note,
+  # over the rest, is the source's line on how to change, at the source, which collections
+  # the integration reaches (`Apiary.Integrations.Description.access/1`, as the adapter's
+  # latest start stored it), shown as sent and isolated (`ApiaryWeb.ExternalText`), while
+  # the collections show; there is none without a line, or for one with nothing left to
+  # show, or only whitespace. Past a page, the pager walks the pages, from the first, as
+  # the list pages by the row before (`?page=`). Ended collections are not shown: the
+  # counts leave them out too, and a line under the table says how many there are. A run
+  # of them that fills a page of the list goes into the page after it, so no page is empty
+  # while collections are left after it. A page past the last one with collections shows
+  # that one, and the address then names it. A search finds collections by their names
+  # (`?q=`), and one that finds none says so, on any page. The foot notes' block shows
+  # only while one of its notes does.
   #
   # With several workspaces, the lead says that each is assigned to one workspace and, for
   # an adapter with items, that their items come into that workspace's Backlog while their
@@ -52,7 +62,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # leads to the second, and a menu keeps those of one workspace (`?workspace_id=`).
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
   # those shown, then picks a workspace from the selection's menu, Assign to workspace
-  # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where.
+  # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where,
+  # over the first page of the same view, search and workspace.
   # Before anything is selected, the menu's button shows disabled. While a listing is
   # still arriving, nothing can be selected, and there is no warning, view or filter.
   #
@@ -153,11 +164,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp page_param(_value), do: 1
 
-  # The connection as it stands, the state it puts the page in, who started it, and whether
-  # any of its live collections has a target, for the foot note.
+  # The connection as it stands, with its adapter, whose line on its access the first foot
+  # note shows; the state it puts the page in, who started it, and whether any of its live
+  # collections has a target, for the foot note.
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
-    connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
+
+    connection =
+      case Map.get(Connections.live_by_adapter(scope), adapter.id) do
+        %Connection{} = connection -> %{connection | adapter: adapter}
+        nil -> nil
+      end
+
     ended = if is_nil(connection), do: Connections.latest_ended(scope, adapter)
     state = if reported_gone?(ended), do: :ended, else: state(connection)
 
@@ -270,17 +288,16 @@ defmodule ApiaryWeb.AdapterLive.Show do
       ) do
     %{current_scope: scope, connection: connection, selected: selected} = socket.assigns
     workspace = Enum.find(socket.assigns.workspaces, &(&1.id == id))
+    asked = socket.assigns.query.page
 
     socket =
       with true <- map_size(selected) > 0,
            %{} <- workspace || {:error, :not_found},
            {:ok, _changed} <-
              Collections.assign_collections(scope, connection, Map.keys(selected), workspace) do
-        put_flash(
-          socket,
-          :info,
-          assigned(socket.assigns.adapter, Map.values(selected), workspace)
-        )
+        socket
+        |> put_flash(:info, assigned(socket.assigns.adapter, Map.values(selected), workspace))
+        |> update(:query, &%{&1 | page: 1})
       else
         false ->
           socket
@@ -294,7 +311,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
           put_flash(socket, :error, refused(socket.assigns, reason))
       end
 
-    {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload()}
+    {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload() |> follow(asked)}
   end
 
   # A row's Backlog switch, turned the other way from what the page shows: a flash says
@@ -319,7 +336,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         socket =
           case Collections.set_collection_backlog(scope, connection, row.id, on) do
             {:ok, count} ->
-              turned(socket, count, on, row.name, adapter)
+              turned(socket, count, on, Apiary.ExternalText.line(row.name), adapter)
 
             {:error, :forbidden} ->
               socket
@@ -414,12 +431,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
           value != nil,
           do: {key, value}
 
-    {page, rows, before, last?} = walk(scope, connection, opts, query.page)
+    order = if complete, do: :unassigned_first, else: :title
+    {page, rows, before} = walk(scope, connection, [order: order] ++ opts, query.page)
 
     total =
       cond do
-        query.q && last? -> before + length(rows)
-        query.q -> found(scope, connection, opts)
+        query.q -> Collections.count_collections(scope, connection, opts)
         query.view == :unassigned -> counts.unassigned
         query.workspace -> Map.get(counts.by_workspace, query.workspace, 0)
         true -> counts.total
@@ -432,7 +449,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       complete: complete,
       several: several,
       picks: several and socket.assigns.may_assign,
-      query: query,
+      query: %{query | page: page},
       rows: rows,
       selected: Map.take(socket.assigns.selected, Map.keys(shown)),
       pager: %{
@@ -444,7 +461,20 @@ defmodule ApiaryWeb.AdapterLive.Show do
         next: before + length(rows) < total
       }
     )
+    |> follow(query.page)
   end
+
+  # The address patched to the page the query now names, when the one asked for, `asked`,
+  # was another: a page past the last one with rows, or one left for the first. Once
+  # connected, and unless the page leaves.
+  defp follow(%{assigns: %{query: query, paths: paths}, redirected: nil} = socket, asked)
+       when query.page != asked do
+    if connected?(socket),
+      do: push_patch(socket, to: page_path(paths.show, query), replace: true),
+      else: socket
+  end
+
+  defp follow(socket, _asked), do: socket
 
   # The query as the page can show it: the views and the workspace filter only with
   # several workspaces once a listing is complete, the workspace one of the organisation's
@@ -461,37 +491,37 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The page `page` of the connection's live collections `opts` asks for, walked to a page
-  # at a time from the first, as the list pages by the row before; the last page there is,
-  # if `page` is past it: a full page followed by none is the last one. `{page, its live
-  # rows, how many live rows the pages before it hold, whether it is the last}`.
+  # at a time from the first, as the list pages by the row before (`fetch/4`); the last
+  # page with live rows, if `page` is past it. `{page, its live rows, how many live rows
+  # the pages before it hold}`.
   defp walk(scope, connection, opts, page) do
-    size = Collections.page_size()
-
     Enum.reduce_while(1..page//1, {nil, 0, nil}, fn n, {after_id, before, previous} ->
-      raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
-      rows = Enum.filter(raw, &is_nil(&1.ended_at))
+      case fetch(scope, connection, opts, after_id) do
+        {[], _next, _last} when previous != nil ->
+          {:halt, previous}
 
-      cond do
-        raw == [] and previous != nil ->
-          {:halt, put_elem(previous, 3, true)}
+        {rows, _next, last} when n == page or last ->
+          {:halt, {n, rows, before}}
 
-        n == page or length(raw) < size ->
-          {:halt, {n, rows, before, length(raw) < size}}
-
-        true ->
-          {:cont, {List.last(raw).public_id, before + length(rows), {n, rows, before, false}}}
+        {rows, next, _last} ->
+          {:cont, {next, before + length(rows), {n, rows, before}}}
       end
     end)
   end
 
-  # How many live collections of the connection `opts` finds, every page walked.
-  defp found(scope, connection, opts, after_id \\ nil, count \\ 0) do
+  # The live rows of the page after the row `after_id`: the list's pages from there, until
+  # one holds a live row or is the last, so a full page of ended rows goes into the page
+  # after it. `{its live rows, the public id of the last row read, whether no row is left
+  # after it}`: a short page is the last one, and a full page may have none after it.
+  defp fetch(scope, connection, opts, after_id) do
     raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
-    count = count + Enum.count(raw, &is_nil(&1.ended_at))
+    rows = Enum.filter(raw, &is_nil(&1.ended_at))
+    last = length(raw) < Collections.page_size()
+    next = if raw == [], do: after_id, else: List.last(raw).public_id
 
-    if length(raw) < Collections.page_size(),
-      do: count,
-      else: found(scope, connection, opts, List.last(raw).public_id, count)
+    if rows == [] and not last,
+      do: fetch(scope, connection, opts, next),
+      else: {rows, next, last}
   end
 
   @impl true
@@ -636,7 +666,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
             </div>
           </.notice>
 
-          <div :if={@state == :listed} id="collections-bar" class="q-bar mb-3">
+          <div
+            :if={@state == :listed}
+            id="collections-bar"
+            class={["q-bar mb-3", @picks && "q-int-assignbar"]}
+          >
             <%= if @selected != %{} do %>
               <div
                 id="collections-selection"
@@ -657,8 +691,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
                       "Assign %{number} %{collections} to",
                       map_size(@selected),
                       number: Format.number(map_size(@selected)),
-                      collection: collection_word(@adapter, 1),
-                      collections: collection_word(@adapter, :other)
+                      collection: sent_word(@adapter, 1),
+                      collections: sent_word(@adapter, :other)
                     )
                   }
                   find={length(@workspaces) > 8}
@@ -793,7 +827,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
               gettext("Select every %{collection} shown", collection: collection_word(@adapter, 1))
             }
             none={
-              @query.q && @query.page == 1 &&
+              @query.q && @pager.total == 0 &&
                 gettext("No %{collections} match “%{search}”.",
                   collections: collection_word(@adapter, :other),
                   search: @query.q
@@ -814,8 +848,26 @@ defmodule ApiaryWeb.AdapterLive.Show do
             next_label={gettext("Next")}
           />
 
-          <div :if={@targets} class="mt-3 grid gap-1.5">
-            <p id="collections-targets" class="q-foot-note">
+          <div :if={foot_notes?(assigns)} id="collections-foot" class="mt-3 grid gap-1.5">
+            <p :if={access_line(assigns)} id="collections-access" class="q-foot-note">
+              <.external_text text={access_line(assigns)} />
+            </p>
+            <p
+              :if={ended_line?(assigns)}
+              id="collections-ended"
+              class="q-foot-note"
+            >
+              {ngettext(
+                "%{number} %{collection} that %{integration} no longer reaches isn't shown.",
+                "%{number} %{collections} that %{integration} no longer reaches aren't shown.",
+                @counts.ended,
+                number: Format.number(@counts.ended),
+                collection: collection_word(@adapter, 1),
+                collections: collection_word(@adapter, :other),
+                integration: @adapter.name
+              )}
+            </p>
+            <p :if={@targets} id="collections-targets" class="q-foot-note">
               {gettext(
                 "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
                 collection: collection_word(@adapter, 1)
@@ -827,6 +879,25 @@ defmodule ApiaryWeb.AdapterLive.Show do
     </Layouts.app>
     """
   end
+
+  # Whether the block of foot notes under the table shows: while any of its notes does.
+  defp foot_notes?(assigns),
+    do: access_line(assigns) != nil or ended_line?(assigns) or assigns.targets
+
+  # The source's line on how to change which collections the adapter reaches, as stored,
+  # while the collections show; nil without one, or for one with nothing left once shown,
+  # or only whitespace (`Apiary.ExternalText.present/1`).
+  defp access_line(%{state: state, connection: %Connection{adapter: %{source_access: text}}})
+       when state in [:waiting, :listed] do
+    if Apiary.ExternalText.present(text), do: text
+  end
+
+  defp access_line(_assigns), do: nil
+
+  # Whether the line that says how many collections ended shows: once a listing names the
+  # connection, while some have.
+  defp ended_line?(%{state: :listed, counts: %{ended: ended}}), do: ended > 0
+  defp ended_line?(_assigns), do: false
 
   # Whether the page shows the Backlog switches' column, and so the hint over it: once a
   # listing names the connection, for an adapter with items.
@@ -963,9 +1034,12 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The flash after assigning: the names of what went where, up to three, else how many.
+  # A collection's name is a text the integration sent, shown as one is
+  # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of it.
   defp assigned(_adapter, names, workspace) when length(names) <= 3 do
     gettext("Assigned %{names} to %{workspace}.",
-      names: names |> Enum.sort() |> join_names(),
+      names: names |> Enum.map(&shown_name/1) |> Enum.sort() |> join_names(),
       workspace: workspace.name
     )
   end
@@ -1012,6 +1086,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
       collections: collection_word(adapter, :other)
     )
   end
+
+  defp shown_name(name), do: Apiary.ExternalText.present(name) || Apiary.ExternalText.marked(name)
 
   defp join_names([name]), do: name
 
@@ -1064,6 +1140,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
   defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
   defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
+
+  # `collection_word/2` as a text the source sent is shown (`Apiary.ExternalText.line/1`).
+  defp sent_word(adapter, n),
+    do: adapter |> collection_word(n) |> Apiary.ExternalText.line()
 
   defp noun(adapter), do: Adapters.collection_noun(adapter)
 end

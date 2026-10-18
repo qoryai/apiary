@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.TargetLive.Show do
   @moduledoc """
-  One target's page, GitHub's repository page in the target's words.
+  One target's page, in the target's words.
 
   **Its address** is the target's public id, `/:org/:workspace/targets/tg_…`
   (`ApiaryWeb.TargetComponents.target_path/3`), never its system or its path, which are
@@ -13,7 +13,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   the target, by its id (`?target=tg_…`, `Apiary.Runs.Filters.target_params/1`).
 
   The header names the target in its notation, its path, `acme/shop`, and its system
-  before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
+  before it only where the path is shared, `git.example/acme/shop` (the title and the
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
   policy mode only where it overrides the workspace's) and a link to it in its system when the system
@@ -23,27 +23,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
     plain text, what it is, the same path in other systems, its runs a day, its machines
-    and runtimes. Last, where the target's collection is assigned to the workspace, and
-    it and its adapter have items, the Backlog card: one switch, whether its tickets come
-    into the workspace's Backlog, named with its source's word for them, which owners and
-    admins turn at once (Apiary.Adapters.Collections.set_backlog/3)
-    and anyone else reads, disabled, with who may change it. After it, where the reader is
-    shown the work items, the Environment card (Apiary.Environments.section/2): for each
-    node pool of the workspace, the image a run of the target on the pool starts in, as
-    Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
-    and the whole reference its title, when it was built and from which commit, or that
-    runs use the pool's default image and why, or, where the policy in force for the
-    target names an image, that runs use the image the workspace's policy names;
-    whether a build runs or waits; and the last build's failure, never the reason a
-    starter gave. Where no pool serves the workspace, or the target names no environment,
-    one line says so instead. Its Rebuild queues a build for each pool
-    (Apiary.Environments.rebuild/2), for whoever may ask for one
-    (`target.rebuild_environment`), where the target names an environment and a pool
-    serves the workspace; a reader who may not sees no button. After it, where the reader
-    is shown the work items, what its runs also read (`Apiary.Targets.further_repositories/1`),
-    one path a line, with Change, for those who may change it
-    (`target.set_further_repositories`), which leads to its form page
-    (`ApiaryWeb.TargetLive.FurtherRepositories`).
+    and runtimes.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
   A tab is a separate mount: the tabs are navigations, and the Policy tab gets the page's
@@ -51,6 +31,28 @@ defmodule ApiaryWeb.TargetLive.Show do
   topic: a run of the target on the page changes in place; a new one is counted, never
   inserted under the reader, and comes in when asked.
   """
+
+  # With the `factory` feature, which the documentation leaves out, Overview ends with three
+  # more parts. Where the target's collection is assigned to the workspace, and it and its
+  # adapter have items, the Backlog card: one switch, whether its tickets come into the
+  # workspace's Backlog, named with its source's word for them, which owners and admins
+  # turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
+  # disabled, with who may change it. After it, where the reader may read the workspace's
+  # work items, the Environment card (Apiary.Environments.section/2): for each node pool of
+  # the workspace, the image a run of the target on the pool starts in, as
+  # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
+  # and the whole reference its title, when it was built and from which commit, or that
+  # runs use the pool's default image and why, or, where the workspace's policy sets an
+  # image, that runs use the image set in the policy; whether a build runs or waits; and
+  # the last build's failure, never the reason a starter gave. Where no pool serves the
+  # workspace, or the target names no environment, one line says so instead. Its Rebuild
+  # queues a build for each pool (Apiary.Environments.rebuild/2), for whoever may ask for
+  # one (`target.rebuild_environment`), where the target names an environment and a pool
+  # serves the workspace; a reader who may not sees no button. After it, under the same
+  # condition, what its runs also read (`Apiary.Targets.further_repositories/1`), one path
+  # a line, with Change, for those who may change it (`target.set_further_repositories`),
+  # which leads to its form page (`ApiaryWeb.TargetLive.FurtherRepositories`).
+
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
   on_mount {ApiaryWeb.Access, :"run.read"}
@@ -612,13 +614,13 @@ defmodule ApiaryWeb.TargetLive.Show do
             <li
               :for={row <- @denied.rows}
               id={"target-denied-#{:erlang.phash2({row.host, row.port, row.path})}"}
-              title={"#{row.host}:#{row.port}#{row.path}"}
+              title={"#{sent(row.host)}:#{row.port}#{sent(row.path)}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{sent(row.host)}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
-              >{row.path}</span></span>
+              ><bdi>{sent(row.path)}</bdi></span></span>
               <span>{attempts_words(row)}</span>
               <span class="q-tgt-dn-t">
                 <.rich text={rich_gettext("last %{time}", time: {:part, :time})}>
@@ -761,9 +763,9 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("About")}</h3>
           <dl class="q-tgt-kv">
             <dt>{gettext("System")}</dt>
-            <dd class="font-mono">{@target.system}</dd>
+            <dd class="font-mono"><.external_text text={@target.system} /></dd>
             <dt>{gettext("Path")}</dt>
-            <dd class="break-all font-mono">{@target.path}</dd>
+            <dd class="break-all font-mono"><.external_text text={@target.path} /></dd>
             <dt>{gettext("First seen")}</dt>
             <dd>
               {Format.date(@target.first_seen_at)}
@@ -809,7 +811,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Machines")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{host, runs} <- @machines}>
-              <span class="q-tgt-pl-name font-mono">{host}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={host} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
@@ -819,7 +821,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Runtimes")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{runtime, runs} <- @runtimes}>
-              <span class="q-tgt-pl-name font-mono">{runtime}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={runtime} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
@@ -939,6 +941,10 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   # The target in words, in its notation: its system only where its path is shared.
   defp name(target, shared), do: target_label(target.system, target.path, shared)
+
+  # A text Forager sent, a denied destination's host or path, as the page shows it where
+  # markup cannot go or around a cut (`Apiary.ExternalText.sent/1`).
+  defp sent(text), do: Apiary.ExternalText.sent(text)
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.

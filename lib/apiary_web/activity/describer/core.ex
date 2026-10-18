@@ -154,7 +154,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # A collection's Backlog turned on or off: the entry is the collection's, and names it
   # by the title it had then (`name`), in the words of the source behind its connection
   # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and the
-  # domain's word.
+  # domain's word. The title is its adapter's, shown as an external system's text is
+  # (`Apiary.ExternalText.line/1`).
   @impl true
   def sentence(
         :"collection.set_backlog",
@@ -162,6 +163,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         names
       )
       when is_boolean(on) and is_binary(name) do
+    name = Apiary.ExternalText.line(name)
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     collection = SourceComponents.collection(names[:collection_nouns][entry.subject_id])
 
@@ -189,6 +191,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     if on,
       do: gettext("Turned on taking a collection's %{items} into the Backlog", items: items),
       else: gettext("Turned off taking a collection's %{items} into the Backlog", items: items)
+  end
+
+  # A collection ended because its adapter now lists it under another connection: the
+  # entry is the collection's, in the trail of the organisation it left, and names it by
+  # the title it had then (`name`), shown as an external system's text is
+  # (`Apiary.ExternalText.line/1`), and the adapter by its name then (`integration`).
+  def sentence(
+        :"collection.move",
+        %{details: %{"name" => name, "integration" => integration}},
+        _names
+      )
+      when is_binary(name) and is_binary(integration) do
+    gettext(
+      "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection.",
+      collection: Apiary.ExternalText.line(name),
+      integration: integration
+    )
   end
 
   # Collections assigned to a workspace, or unassigned from theirs (the entry of an
@@ -422,6 +441,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.explore_again", _details, _actor),
     do: gettext("Asked Qory to explore a work item again")
+
+  defp said(:"work_item.comment", _details, _actor), do: gettext("Commented on a work item")
+
+  defp said(:"work_item.comment_delete", _details, _actor),
+    do: gettext("Deleted a comment on a work item")
 
   defp said(:"dispatch.handover", _details, _actor),
     do: gettext("Handed a claimed run over to the machine that runs it")
@@ -662,7 +686,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     runs = if is_integer(details["runs"]), do: details["runs"], else: 0
 
     [
-      [{:m, id}],
+      [{:m, Apiary.ExternalText.sent(id)}],
       rich_ngettext("%{number} open run marked lost", "%{number} open runs marked lost", runs,
         number: Format.number(runs)
       )

@@ -7,15 +7,19 @@ defmodule Apiary.Adapters.SyncTest do
   use Apiary.DataCase, async: true
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
-  import Apiary.DescriptionFixtures, only: [read_description: 0, read_description: 1]
+
+  import Apiary.DescriptionFixtures,
+    only: [contract_description: 0, read_description: 0, read_description: 1]
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, Adapters, Edition}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Feed
+  alias Apiary.Adapters.{Collections, Feed}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
 
@@ -251,6 +255,155 @@ defmodule Apiary.Adapters.SyncTest do
 
       assert_raise Postgrex.Error, ~r/nodes_collection_noun_check/, fn ->
         set.(pool, collection_noun_one: "project", collection_noun_other: "projects")
+      end
+    end
+
+    test "stores the source role's access line at each start, and only an adapter holds one",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      line =
+        "In Example Tracker, open Settings, then Connected adapters, to change which " <>
+          "projects the adapter reads."
+
+      # Before its first start, none.
+      assert reload(adapter).source_access == nil
+
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
+      assert declared.source_access == line
+      assert reload(adapter).source_access == line
+
+      # The next start replaces it, whatever it says; no source role, no line.
+      boards =
+        Apiary.DescriptionFixtures.contract_description()
+        |> put_in(["roles", "source", "access"], "Ask an owner to change the boards.")
+
+      for {name, description, expected} <- [
+            {"another line", boards, "Ask an owner to change the boards."},
+            {"example-projects.json", "example-projects.json", line},
+            {"acme-tracker.json", "acme-tracker.json", nil},
+            {"example-tracker.json", "example-tracker.json", line}
+          ] do
+        assert {:ok, _} =
+                 Adapters.declare(key_scope, %{
+                   declaration()
+                   | description: read_description(description)
+                 })
+
+        assert reload(adapter).source_access == expected, name
+      end
+
+      # It is no part of the trail's entries.
+      assert [entry] = entries(:"adapter.declare")
+      refute Map.has_key?(entry.after, "source_access")
+
+      # Only an adapter holds one (`nodes_source_access_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert_raise Postgrex.Error, ~r/nodes_source_access_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [source_access: line])
+        end
+      end
+    end
+
+    test "a start that changes the access line or a word tells each connected organisation once",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      %{scope: other} = sign_up_fixture()
+      %{scope: unconnected} = sign_up_fixture()
+      {listed, _nonce} = connection_fixture(scope, adapter, :listed)
+      {pending, _nonce} = connection_fixture(other, adapter, :pending)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
+
+      for subscriber <- [scope, other, unconnected],
+          do: assert(Collections.subscribe(subscriber) == :ok)
+
+      start = fn description ->
+        assert {:ok, _} = Adapters.declare(key_scope, %{declaration() | description: description})
+
+        receive_all = fn receive_all, acc ->
+          receive do
+            {kind, _payload} = message when kind in [:connection_changed, :collections_changed] ->
+              receive_all.(receive_all, [message | acc])
+          after
+            0 -> Enum.sort(acc)
+          end
+        end
+
+        receive_all.(receive_all, [])
+      end
+
+      told =
+        Enum.sort(
+          for connection <- [listed, pending],
+              do: {:connection_changed, %{connection_id: connection.id, adapter_id: adapter.id}}
+        )
+
+      # Each start changes one field of the source role from the start before it.
+      put = &put_in(&1, ["roles", "source", &2], &3)
+      access = put.(contract_description(), "access", "Ask an owner to change the boards.")
+      tasks = put.(access, "item_noun", %{"one" => "task", "other" => "tasks"})
+      boards = put.(tasks, "collection_noun", %{"one" => "board", "other" => "boards"})
+
+      # Only the access line, then only the words for the items, then only those for the
+      # collections: each organisation with a connection hears once, the other none.
+      assert start.(read_description(access)) == told
+      assert start.(read_description(tasks)) == told
+      assert start.(read_description(boards)) == told
+
+      # The same start again, and one that changes its connect address alone: none.
+      assert start.(read_description(boards)) == []
+
+      assert {:ok, _} =
+               Adapters.declare(key_scope, %{
+                 declaration()
+                 | connect_url: "https://b.example/c",
+                   description: read_description(boards)
+               })
+
+      refute_received {:connection_changed, _payload}
+    end
+
+    test "a start whose connections the database fails to read answers as stored, and logs it",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      {_connection, _nonce} = connection_fixture(scope, adapter, :listed)
+      {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert Collections.subscribe(scope) == :ok
+
+      line = "Ask an owner to change the boards."
+
+      description =
+        contract_description()
+        |> put_in(["roles", "source", "access"], line)
+        |> read_description()
+
+      for failure <- [
+            %DBConnection.ConnectionError{message: "connection closed"},
+            %Postgrex.Error{postgres: %{code: :query_canceled, message: "a detail of the row"}}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+        log =
+          capture_log(fn ->
+            assert {:ok, %Node{source_access: ^line}} =
+                     Adapters.declare(key_scope, %{declaration() | description: description},
+                       connections: fn _adapter -> raise failure end
+                     )
+          end)
+
+        assert reload(adapter).source_access == line
+        assert log =~ "could not tell the organisations connected to adapter #{adapter.public_id}"
+        # The error's kind alone: never its message.
+        refute log =~ "connection closed"
+        refute log =~ "a detail of the row"
+        refute_received {:connection_changed, _payload}
+      end
+
+      # Anything else is no failure of the database, and is not caught.
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_access: nil])
+
+      assert_raise RuntimeError, fn ->
+        Adapters.declare(key_scope, %{declaration() | description: description},
+          connections: fn _adapter -> raise "not a database failure" end
+        )
       end
     end
 

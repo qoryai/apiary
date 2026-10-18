@@ -1857,15 +1857,28 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       end
     end
 
-    test "a lost run's title is isolated, so a bidi override flips nothing",
+    test "a lost run whose title has nothing left to show is called as a run with no title is",
          %{conn: conn, scope: scope} do
-      title = "nightly\u202Erorrim"
-      lost = lost_run(scope, %{about_title: title})
+      lost = lost_run(scope, %{about_title: "\u202E\u200B"})
+      shown = ApiaryWeb.OverviewComponents.row_title(%{lost | about_title: nil})
       view = open(conn, scope)
 
-      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", title)
+      refute has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi")
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t", shown)
+      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{shown}"]))
+    end
+
+    test "a lost run's title is isolated, its bidi override dropped",
+         %{conn: conn, scope: scope} do
+      lost = lost_run(scope, %{about_title: "nightly\u202Erorrim"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", "nightlyrorrim")
       # The label for a screen reader stays plain text.
-      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{title}"]))
+      assert has_element?(
+               view,
+               ~s(#att-run-#{lost.public_id}-act[aria-label="Open nightlyrorrim"])
+             )
     end
 
     test "a lost run whose heartbeats are sent late keeps its row until its exit arrives",
@@ -1928,15 +1941,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
       selector = "#attention-list li[data-kind=denied]"
 
-      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", host)
-      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", host)
+      # The page drops the override (`Apiary.ExternalText.line/1`) and isolates the rest.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", shown)
+      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", shown)
       html = render(view)
 
       assert html =~
-               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
+               "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
 
       assert html =~
-               "<span class=\"q-port\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443</span>"
+               "<span class=\"q-port\"><bdi>evillpmaxe.&lt;script&gt;</bdi>:443</span>"
 
       refute html =~ "elpmaxe.<script>"
     end
@@ -2355,5 +2370,147 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   test "answers not found to a user who is not a member", %{scope: scope} do
     conn = log_in_user(build_conn(), Apiary.AccountsFixtures.user_fixture())
     assert conn |> get(~p"/#{scope.organisation}/#{scope.workspace}") |> html_response(404)
+  end
+
+  test "a lost run's target path: cleaned; one sent with nothing left to show is marked", %{
+    conn: conn,
+    scope: scope
+  } do
+    at = &%{target_system: "git.example", target_path: &1}
+    named = lost_run(scope, at.("acme/\u202Eshop\a"))
+    blank = lost_run(scope, at.("\u202E\u200B"))
+    view = open(conn, scope)
+
+    assert text(view, "#att-run-#{named.public_id} .q-ar-where") == "acme/shop\uFFFD"
+    assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "\uFFFD\uFFFD"
+
+    # A run that sent no path keeps no repository.
+    none = lost_run(scope, at.(nil))
+    view = open(conn, scope)
+    assert text(view, "#att-run-#{none.public_id} .q-ar-where") == "no repository"
+  end
+
+  test "a lost run's target is named with its system where the path as sent is shared", %{
+    conn: conn,
+    scope: scope
+  } do
+    path = "acme/\u202Eshop"
+
+    for system <- ~w(github.example gitlab.example),
+        do: started_run(scope, %{"forge" => system, "repository" => path})
+
+    run = lost_run(scope, %{target_system: "github.example", target_path: path})
+    view = open(conn, scope)
+
+    assert text(view, "#att-run-#{run.public_id} .q-ar-where") == "github.example / acme/shop"
+  end
+
+  # The page's markup with what `<bdi>` isolates taken out, as text: what of a host is
+  # left outside an isolate.
+  defp outside_bdi(html) do
+    html
+    |> String.replace(~r{<bdi[^>]*>.*?</bdi>}s, "")
+    |> String.replace(~r{<[^>]*>}, " ")
+  end
+
+  @tag needs: :security
+  test "a denied request's tool, path and host as a page shows what Forager sent", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, shop(),
+      egress: [
+        tool_invocation_data(%{
+          "tool" => "fi\u202Eles\a",
+          "host" => "files.tools\u200B.internal",
+          "rule" => "",
+          "path" => "/media/\u202Ea.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+      ]
+    )
+
+    view = open(conn, scope)
+    selector = "#attention-list li[data-kind=denied]"
+
+    assert text(view, "#{selector} .q-dest-tool") ==
+             "Tool files\uFFFD /media/a.png files.tools.internal:443"
+
+    title = "files.tools.internal:443/media/a.png, a host the tool files\uFFFD serves"
+    assert has_element?(view, ~s(#{selector} .q-host[title="#{title}"]))
+    assert has_element?(view, "#{selector} .q-host .q-port > bdi", "files.tools.internal")
+    refute render(element(view, "#{selector} .q-ar-subj")) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a host the wall refused for its form: marked, inside a <bdi>", %{
+    conn: conn,
+    scope: scope
+  } do
+    host = "Files\u202E.CDN\u200B.example."
+
+    started_run(scope, shop(),
+      egress: [%{"host" => host, "decision" => "denied", "rule" => "wall:host-form"}]
+    )
+
+    view = open(conn, scope)
+    subject = "#attention-list li[data-kind=denied] .q-ar-subj"
+
+    marked = "Files\uFFFD.CDN\uFFFD.example."
+    assert has_element?(view, "#{subject} .q-host > bdi", marked)
+    refute view |> element(subject) |> render() |> outside_bdi() =~ "\u202E"
+    refute render(view) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a denied request's tool and path with nothing left to show: marked, not none",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop(),
+      egress: [
+        tool_invocation_data(%{
+          "tool" => "\u200B",
+          "path" => "\u202E",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+      ]
+    )
+
+    view = open(conn, scope)
+    selector = "#attention-list li[data-kind=denied]"
+
+    assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "\uFFFD")
+    assert has_element?(view, "#{selector} .q-dest-tool .q-path", "\uFFFD")
+    refute render(element(view, selector)) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a target's name in an Allow's label and among the targets with a mode: cleaned", %{
+    conn: conn,
+    scope: scope
+  } do
+    # A target's path may carry a bidirectional override and a zero-width space.
+    path = "acme/\u202Eshop\u200B"
+
+    run =
+      started_run(scope, %{"forge" => "github.example", "repository" => path},
+        egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
+      )
+
+    target = Repo.get!(Apiary.Runs.Target, run.target_id)
+    {:ok, _} = Policy.set_mode(scope, target, "observe")
+    view = open(conn, scope)
+    render_async(view, 5_000)
+
+    assert has_element?(
+             view,
+             "#attention-list li[data-kind=denied] button[aria-label='Allow files.cdn.example for acme/shop']"
+           )
+
+    assert text(view, "#overview-own") =~ "acme/shop observes; the rest follow the workspace."
+    refute render(view) =~ "\u202E"
   end
 end

@@ -542,26 +542,27 @@ defmodule Apiary.Audit do
   in one query per kind: the email address of each person (the person named as actor, or
   in `details` as `user_id`), the label and key id of each access key, the name of each
   node, a deleted one's too, the name of each workspace (an entry's, or its subject),
-  `system/path` of each target, the run id of each run, the title of each source's
-  collection, and the name of each other organisation an entry names by id, under a key
-  that ends in `_id` in its `details`, `before` or `after`: the other side of a change
-  that concerns two organisations, which an edition records. For the target of each
-  entry that turned a Backlog on or off (`collection.set_backlog`), what its sources call
-  its items, where they name it (Apiary.Adapters.target_item_nouns/2); for the work
-  item of each take in (`work_item.take_in`), what its source calls its items, where it
-  names them (Apiary.WorkItems.item_nouns/2); and for the collection of each entry about
-  a collection, what the source behind the connection its `details` name by public id
-  (`connection_id`) calls its items and its collections, where it names them
-  (`collection_nouns`), even once the collection is gone; and for each entry that assigns
-  collections to a workspace or unassigns them (`collection.assign`), what the source
-  behind the connection its `details` name calls its collections, by that public id
-  (`connection_collection_nouns`), where it names them. Only what the scope's
-  organisation holds is looked up, people and those organisations aside; in the instance's
-  organisation, the nodes and access keys of the instance, which no organisation holds,
-  too. A person whose account is deleted, a key or a row
-  that is gone has no key: the page says so. A workspace marked for deletion is still
-  named until it is purged.
+  `system/path` of each target, the run id of each run, and the name of each other
+  organisation an entry names by id, under a key that ends in `_id` in its `details`,
+  `before` or `after`: the other side of a change that concerns two organisations, which
+  an edition records. Only what the scope's organisation holds is looked up, people and
+  those organisations aside; in the instance's organisation, the nodes and access keys of
+  the instance, which no organisation holds, too. A person whose account is deleted, a key
+  or a row that is gone has no key: the page says so. A workspace marked for deletion is
+  still named until it is purged.
   """
+  # For the entries of the `factory` feature, which the documentation leaves out, names/2
+  # also looks up the title of each source's collection; for the target of each entry
+  # that turned a Backlog on or off (`collection.set_backlog`), what its sources call its
+  # items, where they name it (Apiary.Adapters.target_item_nouns/2); for the work item of
+  # each take in (`work_item.take_in`), what its source calls its items, where it names
+  # them (Apiary.WorkItems.item_nouns/2); for the collection of each entry about a
+  # collection, what the source behind the connection its `details` name by public id
+  # (`connection_id`) calls its items and its collections, where it names them
+  # (`collection_nouns`), even once the collection is gone; and for each entry that
+  # assigns collections to a workspace or unassigns them (`collection.assign`), what the
+  # source behind the connection its `details` name calls its collections, by that public
+  # id (`connection_collection_nouns`), where it names them.
   @spec names(Scope.t(), [Entry.t()]) :: names
   def names(%Scope{organisation: %Organisation{id: organisation_id}}, entries)
       when is_list(entries) do

@@ -147,9 +147,9 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
 
     assert rows(lv) == [
              "Repository Workspace Backlog Open tickets Added",
+             "acme/web Unassigned — Today",
              "acme/api Backlog Platform — Today",
-             "acme/shop Backlog Platform — Today",
-             "acme/web Unassigned — Today"
+             "acme/shop Backlog Platform — Today"
            ]
 
     lv |> element("#collections-view-unassigned") |> render_click()
@@ -444,5 +444,23 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     api = collection(connection, "acme/api")
     {:ok, _changed} = Collections.assign_collections(scope, connection, [api.id], platform)
     assert has_element?(lv, ~s{#{switch(connection, "acme/api")}[aria-checked="true"]})
+  end
+
+  test "the flash names the collection as an external system's text is", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _platform} = several(scope, adapter, key, ["acme/shop"], ["acme/shop"])
+    :ok = set_collection(connection, "acme/shop", title: "\u202Eacme/shop\u200B\a")
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    lv |> element(switch(connection, "\u202Eacme/shop\u200B\a")) |> render_click()
+
+    assert words(lv, "#flash-info") =~
+             "No longer taking tickets into the Backlog from repository acme/shop\uFFFD."
+
+    refute render(element(lv, "#flash-info")) =~ "\u202E"
   end
 end

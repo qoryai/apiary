@@ -46,6 +46,14 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
     Scope.for_access_key(verified)
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   # One part of a listing naming `collections`, `{ref, target}` each.
   defp post(ctx, collections, opts \\ []) do
     Collections.post_listing(ctx.key_scope, %{
@@ -215,7 +223,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
       {:ok, 1} = Collections.set_backlog(ctx.scope, target(ctx.workspace, @shop), false)
       told = length(feed(ctx))
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "SHOP"})
+      {:ok, :disconnected} = disconnect(ctx, "SHOP")
       assert Enum.drop(feed(ctx), told) == []
 
       {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
@@ -304,7 +312,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
       assert Collections.set_backlog(ctx.scope, lone, false) == {:error, :not_found}
       assert Collections.backlog_switch(ctx.scope, lone) == nil
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "SHOP"})
+      {:ok, :disconnected} = disconnect(ctx, "SHOP")
       assert Collections.set_backlog(ctx.scope, target, false) == {:error, :not_found}
       assert Collections.backlog_switch(ctx.scope, target) == nil
       assert switch_entries() == []

@@ -149,6 +149,32 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert Description.collection_noun(projects) == %{one: "project", other: "projects"}
     end
 
+    test "a source role's access line, and none without a source role" do
+      line =
+        "In Example Tracker, open Settings, then Connected adapters, to change which " <>
+          "projects the adapter reads."
+
+      for name <- ~w(example-tracker.json example-projects.json) do
+        assert {:ok, description} = parse_fixture(name)
+        assert Description.access(description) == line, name
+      end
+
+      {:ok, tracker} = parse_fixture("example-tracker.json")
+
+      assert {:ok, read} =
+               tracker.document
+               |> put_in(["roles", "source", "access"], "Ask an owner to change the boards.")
+               |> Jason.encode!()
+               |> Description.parse()
+
+      assert Description.access(read) == "Ask an owner to change the boards."
+
+      for name <- ~w(acme-tracker.json unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        assert Description.access(description) == nil, name
+      end
+    end
+
     test "collection_noun's words: the same as item_noun's, never work item" do
       {:ok, tracker} = parse_fixture("example-tracker.json")
 

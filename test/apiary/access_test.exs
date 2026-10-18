@@ -673,6 +673,30 @@ defmodule Apiary.AccessTest do
                {:error, :not_found}
     end
 
+    test "a comment row is where its workspace is, and of another workspace is not found",
+         ctx do
+      %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.owner
+
+      row = %Apiary.WorkItems.Comment{
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        author_id: ctx.author.user.id
+      }
+
+      assert Access.place(row) == {organisation_id, workspace_id}
+      assert Access.check_place(ctx.owner, :"work_item.comment_delete", row) == :ok
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", row) == :ok
+
+      elsewhere = workspace_fixture(ctx.owner.organisation)
+      there = %{row | workspace_id: elsewhere.id}
+
+      assert Access.check_place(ctx.author.scope, :"work_item.comment_delete", there) ==
+               {:error, :not_found}
+
+      assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", there) ==
+               {:error, :not_found}
+    end
+
     test "where the feature is hidden from them, it is not found", ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
       :ok = Apiary.EditionStubs.HidesNamed.put([:factory])

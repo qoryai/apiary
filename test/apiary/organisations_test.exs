@@ -434,7 +434,14 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, %Ecto.Changeset{}} =
                Organisations.update_organisation(owner_scope, %{name: ""})
 
-      for name <- ["two\nlines", "bell\a", "esc\e[2J", "nul\0"] do
+      for name <- [
+            "two\nlines",
+            "bell\a",
+            "esc\e[2J",
+            "nul\0",
+            "two\u2028lines",
+            "two\u2029parts"
+          ] do
         assert {:error, changeset} = Organisations.update_organisation(owner_scope, %{name: name})
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
         assert {:error, changeset} = Organisations.update_workspace(owner_scope, %{name: name})

@@ -4,19 +4,23 @@ defmodule ApiaryWeb.SourceComponents do
   #
   # **A ticket's text** (`body/1`) is shown as the integration sent it. Markdown is shown
   # formatted (`Apiary.Sources.Body.render/3`), with Show as written, which shows the
-  # exact text instead, and Show formatted, back; the switch happens in the browser, with
-  # no trip to the server. Plain text and a Markdown text too long to format are shown as
+  # text as written, with invisible characters dropped and control characters shown as
+  # U+FFFD instead, and Show formatted, back; the switch happens in the browser, with no
+  # trip to the server. Plain text and a Markdown text too long to format are shown as
   # written alone, with no switch; a format the console does not know, none included, is
   # shown as written under a muted line that says so. A ticket with no text says it has
-  # no description. As written is the exact characters, interpolated, so HEEx escapes
-  # them, with their spaces and line breaks kept and long lines wrapped.
+  # no description. As written is the text as written, with invisible characters dropped
+  # and control characters shown as U+FFFD (`Apiary.ExternalText.lines/1`), interpolated,
+  # so HEEx escapes it, with its spaces and line breaks kept and long lines wrapped.
   #
-  # **The words for a source's items** (`item/1`, `items/1`, `item_label/1`) are what its
-  # adapter calls one of them and many (`Apiary.Adapters.item_noun/1`, `%{one:, other:}`),
-  # or ticket and tickets where it names none (nil). They are lower case, and a sentence
-  # binds them as data, `%{item}` or `%{items}`, with no "a" or "an" before them. A page
-  # or a sentence about one item passes its source's; one about many, the words their
-  # sources share (`Apiary.Adapters.shared_item_noun/1`), nil where they differ.
+  # **The words for a source's items** (`item/1`, `items/1`, `item_label/1`,
+  # `items_label/1`) are what its adapter calls one of them and many
+  # (`Apiary.Adapters.item_noun/1`, `%{one:, other:}`), or ticket and tickets where it
+  # names none (nil). They are lower case, but for the labels, whose first letter is in
+  # upper case, and a sentence binds them as data, `%{item}` or `%{items}`, with no "a"
+  # or "an" before them. A page or a sentence about one item passes its source's; one
+  # about many, the words their sources share (`Apiary.Adapters.shared_item_noun/1`), nil
+  # where they differ.
   #
   # **The words for a source's collections** (`collection/1`, `collections/1`,
   # `collection_label/1`) are what its adapter calls one of them and many
@@ -104,6 +108,13 @@ defmodule ApiaryWeb.SourceComponents do
   def item_label(noun), do: noun |> item() |> upcase_first()
 
   @doc false
+  # items_label/1 is `items/1` with its first letter in upper case: the words for many of
+  # a source's items at the start of a sentence or as a label, "Tickets" where it names
+  # none.
+  @spec items_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
+  def items_label(noun), do: noun |> items() |> upcase_first()
+
+  @doc false
   # collection_label/1 is `collection/1` with its first letter in upper case: a label
   # that is the noun alone, such as a fact's beside a collection's title.
   @spec collection_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
@@ -182,7 +193,7 @@ defmodule ApiaryWeb.SourceComponents do
             id={"#{@id}-written"}
             class="q-ticket-written q-ticket-source hidden"
             phx-no-format
-          >{@body}</div>
+          >{Apiary.ExternalText.lines(@body)}</div>
         </div>
         """
     end

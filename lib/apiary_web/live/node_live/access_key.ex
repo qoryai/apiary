@@ -2510,7 +2510,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
             <span :if={@key.last_forager_version && !@adapter} class="text-muted">
-              {gettext("Forager %{version}", version: @key.last_forager_version)}
+              {gettext("Forager %{version}",
+                version: Apiary.ExternalText.sent(@key.last_forager_version)
+              )}
             </span>
           <% else %>
             {gettext("Not yet")}
@@ -2529,7 +2531,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt :if={@hosts} class="text-faint">{gettext("Hosts, 14 days")}</dt>
         <dd :if={@hosts}>
-          {@hosts.host ||
+          <.external_text text={@hosts.host} />{!@hosts.host &&
             ngettext("%{number} host", "%{number} hosts", @hosts.count,
               number: Format.number(@hosts.count)
             )}

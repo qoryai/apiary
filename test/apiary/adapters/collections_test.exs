@@ -1,8 +1,10 @@
 defmodule Apiary.Adapters.CollectionsTest do
   # The collections an adapter's listing names through a connection: the listing in
   # parts, a complete listing ending the collections it left out, parts out of order or
-  # sent again, a part that disagrees with the ones before it; the disconnect of a
-  # collection, which changes nothing for a ref with no live collection; the ref's
+  # sent again, a part that disagrees with the ones before it, a ref live under another
+  # connection of the adapter that moves to the listing's; the disconnect of a
+  # collection, by its ref and its connection, which changes nothing for a ref with no
+  # live collection under that connection; the ref's
   # resolution for items and comments, in the contract's order; the end of a collection
   # with its connection, by every end, with the feed's `unlinked` entry for each linked
   # one; a workspace's and an organisation's purge; and the bookkeeping's purge.
@@ -12,11 +14,13 @@ defmodule Apiary.Adapters.CollectionsTest do
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures, only: [source_item_fixture: 2]
 
   alias Apiary.{AccessKeys, Adapters, Deletion, Edition, EditionStubs, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections, Feed}
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Sources.Item
 
   @moduletag needs: :factory
 
@@ -101,7 +105,19 @@ defmodule Apiary.Adapters.CollectionsTest do
 
   defp unlinked(ref), do: %{"collection_ref" => ref, "status" => "unlinked"}
 
-  defp disconnect(ctx, ref), do: Collections.disconnect(ctx.key_scope, %{collection_ref: ref})
+  # A disconnect of `ref`, naming the connection `connection_id` (this test's, by default).
+  defp disconnect(ctx, ref), do: disconnect(ctx, ctx.connection.public_id, ref)
+
+  defp disconnect(ctx, connection_id, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{connection_id: connection_id, collection_ref: ref})
+
+  # Everything a disconnect that changes nothing leaves as it was: the collections, the
+  # items, the adapter's change feed and the trails.
+  defp state(adapter) do
+    {Repo.all(from c in Collection, order_by: c.id), Repo.all(from i in Item, order_by: i.id),
+     Feed.entries(adapter), Repo.all(from e in Apiary.Audit.Entry, order_by: e.id)}
+  end
 
   describe "the listing" do
     test "one complete part makes its collections live, under its connection, and records the listing",
@@ -309,14 +325,124 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert live(theirs) == ["THEIRS"]
     end
 
-    test "a ref live under another connection of the adapter stays with it", ctx do
+    test "a ref live under another connection of the adapter moves: that collection ends as a disconnect ends it, and a new one is made, with nothing of the old",
+         ctx do
+      # Another organisation with one workspace, so what its listing makes is assigned
+      # there and linked.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
+      old_trk = collection(theirs, "TRK")
+      old_doc = collection(theirs, "DOC")
+      assert old_trk.workspace_id == other.workspace.id
+
+      {1, _} =
+        Repo.update_all(from(c in Collection, where: c.id == ^old_doc.id), set: [backlog: false])
+
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Collections.topic(other.organisation.id))
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Collections.topic(ctx.scope.organisation.id))
+
+      assert post(ctx, ["DOC", "TRK", "OPS"]) == {:ok, :accepted}
+      assert live(theirs) == []
+      assert live(ctx.connection) == ["DOC", "OPS", "TRK"]
+
+      for old <- [old_trk, old_doc] do
+        assert %Collection{ended_reason: :disconnected, ended_at: %DateTime{}} =
+                 Repo.get!(Collection, old.id)
+
+        new = collection(ctx.connection, old.external_ref)
+        refute new.id == old.id
+        refute new.public_id == old.public_id
+        # This organisation has two workspaces: the new one is assigned to none, with its
+        # Backlog switch as any new one has it.
+        assert %Collection{workspace_id: nil, backlog: true, last_listed_at: @started} = new
+        refute Collection.linked?(Repo.preload(new, :adapter))
+      end
+
+      # The linked one's end wrote its `unlinked` entry, as a disconnect does; the other,
+      # its Backlog turned off, was not linked.
+      assert unlinked_entries(ctx.adapter) == [
+               %{"collection_ref" => "DOC", "status" => "linked"},
+               %{"collection_ref" => "TRK", "status" => "linked"},
+               unlinked("TRK")
+             ]
+
+      # Each end is broadcast to the organisation it left, and what the part made, then
+      # what the move made, to this one.
+      theirs_id = theirs.id
+
+      for old <- [old_doc, old_trk] do
+        id = old.id
+
+        assert_receive {:collections_changed, %{connection_id: ^theirs_id, collection_ids: [^id]}}
+      end
+
+      mine_id = ctx.connection.id
+      ops = [collection(ctx.connection, "OPS").id]
+      made = [collection(ctx.connection, "DOC").id, collection(ctx.connection, "TRK").id]
+      assert_receive {:collections_changed, %{connection_id: ^mine_id, collection_ids: ^ops}}
+      assert_receive {:collections_changed, %{connection_id: ^mine_id, collection_ids: got}}
+      assert Enum.sort(got) == Enum.sort(made)
+
+      # The organisation it left has one entry for each, by the instance, about the
+      # collection; this one has none.
+      moves =
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "collection.move",
+            order_by: e.inserted_at,
+            select: {e.organisation_id, e.actor_kind, e.subject_id, e.details}
+        )
+
+      assert moves == [
+               {other.organisation.id, :instance, old_doc.id,
+                %{
+                  "name" => "Title of DOC",
+                  "connection_id" => theirs.public_id,
+                  "integration" => ctx.adapter.name
+                }},
+               {other.organisation.id, :instance, old_trk.id,
+                %{
+                  "name" => "Title of TRK",
+                  "connection_id" => theirs.public_id,
+                  "integration" => ctx.adapter.name
+                }}
+             ]
+    end
+
+    test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["TRK"])
+      old = collection(ctx.connection, "TRK")
+
+      # Another organisation, with one workspace.
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
 
+      assert Repo.get!(Collection, old.id).ended_reason == :disconnected
+      assert %Collection{workspace_id: workspace_id} = collection(theirs, "TRK")
+      assert workspace_id == other.workspace.id
+
+      # Linked as it is made, with its `linked` entry; the old one was not linked.
+      assert unlinked_entries(ctx.adapter) == [%{"collection_ref" => "TRK", "status" => "linked"}]
+    end
+
+    test "a ref live under another connection that a newer listing named stays with it",
+         ctx do
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+
+      {:ok, :accepted} =
+        Collections.post_listing(
+          ctx.key_scope,
+          part(theirs, ["TRK"], started_at: DateTime.add(@started, 60))
+        )
+
       assert post(ctx, ["TRK", "OPS"]) == {:ok, :accepted}
       assert live(theirs) == ["TRK"]
       assert live(ctx.connection) == ["OPS"]
+      refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "collection.move")
     end
 
     test "a ref named again after its collection ended makes a new collection", ctx do
@@ -416,8 +542,10 @@ defmodule Apiary.Adapters.CollectionsTest do
       {:ok, :accepted} = post(ctx, ["TRK"])
       other = connectable_adapter_fixture()
 
-      assert Collections.disconnect(key_scope(other.access_key), %{collection_ref: "TRK"}) ==
-               {:ok, :unchanged}
+      assert Collections.disconnect(key_scope(other.access_key), %{
+               connection_id: ctx.connection.public_id,
+               collection_ref: "TRK"
+             }) == {:ok, :unchanged}
 
       assert live(ctx.connection) == ["TRK"]
     end
@@ -437,8 +565,118 @@ defmodule Apiary.Adapters.CollectionsTest do
         assert disconnect(ctx, ref) == {:error, :forbidden}
       end
 
-      assert Collections.disconnect(ctx.scope, %{collection_ref: "TRK"}) == {:error, :forbidden}
+      assert Collections.disconnect(ctx.scope, %{
+               connection_id: ctx.connection.public_id,
+               collection_ref: "TRK"
+             }) == {:error, :forbidden}
+
       assert live(ctx.connection) == ["TRK"]
+    end
+
+    test "after a move, the old connection's disconnect of the ref changes nothing; the holding connection's ends it",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["TRK"])
+      old = collection(ctx.connection, "TRK")
+
+      # Another organisation, with one workspace: what its listing makes is linked.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
+      assert Repo.get!(Collection, old.id).ended_reason == :disconnected
+      moved = collection(theirs, "TRK")
+      item = source_item_fixture(other, collection: moved)
+      before = state(ctx.adapter)
+
+      # A late disconnect from the connection the ref moved away from: the signed 204's
+      # answer, and the collection stays live under the connection that holds it.
+      assert disconnect(ctx, "TRK") == {:ok, :unchanged}
+      assert state(ctx.adapter) == before
+      assert live(theirs) == ["TRK"]
+      assert %Item{disconnected_at: nil} = Repo.get!(Item, item.id)
+      assert unlinked_entries(ctx.adapter) == [%{"collection_ref" => "TRK", "status" => "linked"}]
+
+      # A disconnect naming the connection that holds it ends it, as any disconnect.
+      assert disconnect(ctx, theirs.public_id, "TRK") == {:ok, :disconnected}
+      assert live(theirs) == []
+      assert Repo.get!(Collection, moved.id).ended_reason == :disconnected
+
+      assert unlinked_entries(ctx.adapter) == [
+               %{"collection_ref" => "TRK", "status" => "linked"},
+               unlinked("TRK")
+             ]
+    end
+
+    test "a connection_id unknown, of another adapter, pending or ended has no live collection: unchanged",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["TRK"])
+
+      # Another adapter's connection, of this organisation, with the same ref live.
+      another = connectable_adapter_fixture()
+      {another_connection, _nonce} = connection_fixture(ctx.scope, another.adapter, :connected)
+
+      {:ok, :accepted} =
+        Collections.post_listing(key_scope(another.access_key), part(another_connection, ["TRK"]))
+
+      # A pending connection of this adapter, and one that ended with a collection.
+      %{scope: second} = sign_up_fixture()
+      {pending, _nonce} = connection_fixture(second, ctx.adapter, :pending)
+      %{scope: third} = sign_up_fixture()
+      {ended, _nonce} = connection_fixture(third, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(ended, ["GONE"]))
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ended.public_id)
+
+      ids = [
+        "ac_0000000000000000",
+        another_connection.public_id,
+        pending.public_id,
+        ended.public_id
+      ]
+
+      before = state(ctx.adapter)
+
+      for id <- ids, ref <- ["TRK", "GONE", "NEVER"] do
+        assert disconnect(ctx, id, ref) == {:ok, :unchanged}, "#{id} #{ref}"
+      end
+
+      # Whatever the organisations' state.
+      Edition.put_test_stub(EditionStubs.OutOfUse)
+
+      Process.put(:out_of_use, [
+        ctx.scope.organisation.id,
+        second.organisation.id,
+        third.organisation.id
+      ])
+
+      for id <- ids, ref <- ["TRK", "GONE", "NEVER"] do
+        assert disconnect(ctx, id, ref) == {:ok, :unchanged}, "#{id} #{ref}"
+      end
+
+      assert state(ctx.adapter) == before
+      assert live(ctx.connection) == ["TRK"]
+      assert live(another_connection) == ["TRK"]
+    end
+
+    test "suspended only for a live collection under the connection named, never for a ref live under another",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["OPS"])
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
+
+      Edition.put_test_stub(EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [other.organisation.id])
+      before = state(ctx.adapter)
+
+      # `TRK` is live under their connection, whose organisation is out of use; named under
+      # this connection it has no live collection.
+      assert disconnect(ctx, "TRK") == {:ok, :unchanged}
+      assert disconnect(ctx, theirs.public_id, "OPS") == {:ok, :unchanged}
+      assert disconnect(ctx, theirs.public_id, "TRK") == {:error, :suspended}
+      assert state(ctx.adapter) == before
+
+      assert disconnect(ctx, "OPS") == {:ok, :disconnected}
+      assert live(ctx.connection) == []
+      assert live(theirs) == ["TRK"]
     end
   end
 
@@ -492,8 +730,8 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert Collections.resolve(ctx.key_scope, "TRK", :"source_item.post") ==
                {:error, :not_linked}
 
-      # Disconnected after: the last to end ended otherwise.
-      {:ok, :disconnected} = disconnect(ctx, "TRK")
+      # Disconnected after, under the newer connection: the last to end ended otherwise.
+      {:ok, :disconnected} = disconnect(ctx, newer.public_id, "TRK")
 
       assert Collections.resolve(ctx.key_scope, "TRK", :"source_item.post") ==
                {:error, :not_linked}

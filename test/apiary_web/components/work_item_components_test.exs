@@ -1111,6 +1111,43 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert attr(html, "textarea", "name") == ["body"]
       assert html =~ "Members of Main see this. Nothing is posted on the ticket."
       assert text(html, "button[type=submit]") == "Comment"
+      assert attr(html, "textarea", "maxlength") == ["4000"]
+      assert attr(html, "textarea", "aria-invalid") == []
+      refute html =~ "q-xp-err"
+    end
+
+    test "a draft is kept, with the words of what was wrong with it" do
+      for {error, words} <- [
+            {{:too_long, 4000}, "Write at most 4,000 characters."},
+            {:characters, "Remove the control or invisible characters."}
+          ] do
+        html =
+          render_component(&WorkItemComponents.composer/1,
+            number: 88,
+            workspace: "Main",
+            reader: "Dana",
+            value: "Sam, does the\nmobile app round the same way?",
+            error: error
+          )
+
+        assert text(html, "textarea") == "Sam, does the mobile app round the same way?"
+        assert text(html, "#work-item-composer-error") == words
+        assert attr(html, "textarea", "aria-describedby") == ["work-item-composer-error"]
+        assert attr(html, "textarea", "aria-invalid") == ["true"]
+      end
+    end
+
+    test "a blank text has no words" do
+      html =
+        render_component(&WorkItemComponents.composer/1,
+          number: 88,
+          workspace: "Main",
+          reader: "Dana",
+          error: :blank
+        )
+
+      refute html =~ "work-item-composer-error"
+      assert attr(html, "textarea", "aria-invalid") == []
     end
   end
 
@@ -1382,6 +1419,125 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert composer =~ "Members of Main see this. Nothing is posted on the bug."
+    end
+  end
+
+  describe "a close by the instance" do
+    defp by_instance(reason, extra \\ %{}) do
+      work_item(
+        Map.merge(
+          %{
+            number: 64,
+            status: :closed,
+            stage: :confirm,
+            ended_by: nil,
+            ended_reason: reason,
+            ended_at: ~U[2026-10-12 10:07:00Z]
+          },
+          extra
+        )
+      )
+    end
+
+    test "when its integration was removed: the status, the end line, Details and the Thread say so" do
+      w = by_instance(:adapter_removed)
+
+      status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+      assert text(status, ".q-wi-st") == "Closed when its integration was removed"
+      assert attr(status, ".q-wi-mk", "class") == ["q-wi-mk q-wi-mk-closed"]
+
+      notice =
+        render_component(&WorkItemComponents.end_notice/1,
+          work_item: w,
+          integration: "GitHub",
+          backlog_off: true,
+          now: @now
+        )
+
+      assert text(notice, "#work-item-ended-line") ==
+               "This work item was closed on 12 Oct, when its integration was removed."
+
+      assert count(notice, "#work-item-ended-again") == 0
+
+      html = details(w)
+      [dt | _] = html |> query("dt") |> Enum.reverse()
+      assert LazyHTML.text(dt) == "Closed"
+
+      assert text(html, "#work-item-details-ended") ==
+               "Closed 12 Oct, when its integration was removed"
+
+      thread = event(kind: :closed, actor: nil, reason: :adapter_removed)
+      assert line(thread) == "Closed when its integration was removed 14 Oct, 11:24"
+    end
+
+    test "for a reason without words, or none: those parts draw nothing, and nothing fails" do
+      for reason <- [nil, :unknown] do
+        w = by_instance(reason)
+
+        status = render_component(&WorkItemComponents.work_item_status/1, work_item: w)
+        assert text(status, ".q-wi-st") == ""
+        assert attr(status, ".q-wi-mk", "class") == ["q-wi-mk q-wi-mk-closed"]
+
+        notice =
+          render_component(&WorkItemComponents.end_notice/1,
+            work_item: w,
+            integration: "GitHub",
+            backlog_off: true,
+            now: @now
+          )
+
+        assert count(notice, "#work-item-ended") == 0
+
+        html = details(w)
+        assert count(html, "#work-item-details-ended") == 0
+        refute html =~ "integration was removed"
+
+        assert event(kind: :closed, actor: nil, reason: nil) == ""
+      end
+    end
+
+    test "Details without the ticket's record: its key, and no line under it" do
+      html = details(work_item(), ticket: nil)
+      assert text(html, "#work-item-details-ticket a") == "#1204 (opens in a new tab)"
+      assert count(html, "#work-item-details-ticket .q-wi-sub") == 0
+    end
+  end
+
+  describe "a source's text, as a page shows it" do
+    test "the title, the key, the collection, the filer, an author and a label: no invisible character, each isolated" do
+      w =
+        work_item(%{
+          title: "Totals \u202Eoff\u202C by a cent",
+          key: "#12\u200B04",
+          repository: "acme/\u2066shop"
+        })
+
+      head = header(w)
+      assert text(head, "h1") == "Totals off by a cent#88"
+      assert count(head, "h1 bdi") == 1
+      assert text(head, "a.q-wi-ref bdi") == "#1204"
+      assert attr(head, "a.q-wi-ref", "title") == ["Open acme/shop#1204 on GitHub"]
+
+      html = details(w, ticket: ticket(%{filer: %{name: "Pri\u202Eya"}}))
+      assert text(html, "#work-item-details-repository bdi") == "acme/shop"
+      assert text(html, "#work-item-details-ticket .q-wi-sub") =~ "Priya filed it"
+      refute html =~ "\u202E"
+
+      tab =
+        ticket_tab(
+          ticket: ticket(%{filer: %{name: "Pri\u202Eya"}, labels: ["bu\u200Bg"]}),
+          comments: [hd(comments()) |> Map.put(:author, "Mi\u202Erek")]
+        )
+
+      refute tab =~ "\u202E"
+      refute tab =~ "\u200B"
+      assert tab =~ "Mirek"
+    end
+
+    test "a title with nothing left to show is none: the number alone" do
+      html = header(work_item(%{title: "\u202E\u200B\u2066"}))
+      assert text(html, "h1") == "#88"
+      assert count(html, "h1 bdi") == 0
     end
   end
 end

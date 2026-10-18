@@ -118,6 +118,8 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
+  # The causes a claimed run ends for when its handover cannot form what it is made from.
+  @unformed [:variables_invalid, :ticket_gone, :inputs_invalid]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
@@ -511,14 +513,16 @@ defmodule Apiary.Dispatches.Handover do
     do: %{"kind" => step, "subjects" => [%{"type" => "work_item", "ref" => public_id}]}
 
   # end_claimed/3 ends the run of the queue, claimed, and its dispatch with `cause`; a
-  # stale dispatch of it `run_ended`; the slot freed once. The workspaces whose queue or
-  # slots changed. Inside the transaction that holds the run of the queue.
+  # stale dispatch of it `run_ended`; the slot freed once. A run that is not a prebuild,
+  # ended because its handover could not form it, gave an error, stored in the same
+  # write (`Apiary.Dispatches.Settle`). The workspaces whose queue or slots changed.
+  # Inside the transaction that holds the run of the queue.
   @doc false
   @spec end_claimed(DispatchRun.t(), atom, DateTime.t()) :: [Ecto.UUID.t()]
-  def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now) do
+  def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
-        set: [state: :ended, end_cause: cause, updated_at: now]
+        set: [state: :ended, end_cause: cause, updated_at: now] ++ gave(run, cause)
       )
 
     {_count, _rows} =
@@ -541,6 +545,12 @@ defmodule Apiary.Dispatches.Handover do
 
     [workspace_id | Slots.free({:runs, [id]}, now)]
   end
+
+  defp gave(%DispatchRun{step: step}, cause)
+       when step != @prebuild and cause in @unformed,
+       do: [result_outcome: :error]
+
+  defp gave(%DispatchRun{}, _cause), do: []
 
   # The registered run, the dispatch handed over and the audit entry: one write.
   defp register(

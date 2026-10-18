@@ -907,9 +907,8 @@ defmodule Apiary.Nodes do
   inside the transaction of the batch that would create the run. A pool without a limit
   admits any, with neither a lock nor a count. Otherwise it locks the node's row
   `FOR UPDATE`, so two checks for one node take turns, reads the limit as it is now (1 for
-  a Node), and counts the distinct instance ids of the node's runs alive at `now`
-  (`Apiary.Runs.Liveness.alive/2`) that were not dispatched, and the slots the node's
-  claims hold, which count its dispatched runs (`instances_in_use/2`):
+  a Node), and counts what is in use on the node (`instances_in_use/2`): the distinct
+  instance ids of its runs alive at `now` (`Apiary.Runs.Liveness.alive/2`):
 
   - `:already_counted` when `instance_id` is among those instance ids: it runs already,
     and a second run of it takes no slot;
@@ -923,6 +922,9 @@ defmodule Apiary.Nodes do
   whatever the batch locks after it, the run's row among them. Raises outside a
   transaction. `admit/4` is the whole of it, with the refusal counted.
   """
+  # With the `factory` feature, which the documentation leaves out, the runs alive counted
+  # are those that were not dispatched, and the slots the node's claims hold count its
+  # dispatched runs (`Apiary.Dispatches.Slots.held/1`).
   @spec check_instance_limit(Node.t(), String.t(), DateTime.t()) ::
           :ok | :already_counted | {:error, :instance_limit}
   def check_instance_limit(%Node{kind: :pool, instance_limit: nil}, _instance_id, _now),

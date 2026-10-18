@@ -32,6 +32,8 @@ defmodule ApiaryWeb.OverviewComponents do
       steps: 1
     ]
 
+  import ApiaryWeb.ExternalText, only: [external_text: 1]
+
   import ApiaryWeb.RunComponents,
     only: [
       beat: 1,
@@ -41,6 +43,7 @@ defmodule ApiaryWeb.OverviewComponents do
       relative_time: 1,
       rule_panel: 1,
       short_id: 1,
+      shown_target_label: 3,
       state_label: 1,
       target_name: 1,
       tool_mark: 1
@@ -404,29 +407,16 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :scope, :map, required: true
   attr :item, :map, required: true
 
-  # A denied destination of a tool's host is a denied request to that tool: it leads with
-  # the tool, then the path, then the host, as the list of what enforce would start
-  # denying names it (`Apiary.Policy.denied_destinations/2`).
-  defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
-    ~H"""
-    <span class="q-host q-dest-tool q-ar-t q-mono" title={destination_title(@item)}>
-      <.tool_mark name={@item.tool} /><span
-        :if={@item.path != ""}
-        class="q-path"
-      >{@item.path}</span><span class="q-port"><bdi>{@item.host}</bdi>:{@item.port}</span>
-    </span>
-    """
-  end
+  # A denied destination, its texts as a page shows Forager's (`shown_destination/1`).
+  # One of a tool's host is a denied request to that tool: it leads with the tool, then
+  # the path, then the host, as the list of what enforce would start denying names it
+  # (`Apiary.Policy.denied_destinations/2`).
+  defp attention_subject(%{item: %{kind: :denied} = item} = assigns) do
+    assigns = assign(assigns, :d, shown_destination(item))
 
-  defp attention_subject(%{item: %{kind: :denied}} = assigns) do
-    ~H"""
-    <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
-      <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span><span
-        :if={@item.held && @item.path != ""}
-        class="q-path"
-      >{@item.path}</span>
-    </span>
-    """
+    if is_binary(item[:tool]),
+      do: denied_tool_subject(assigns),
+      else: denied_subject(assigns)
   end
 
   defp attention_subject(%{item: %{kind: kind}} = assigns)
@@ -437,8 +427,8 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-ar-t"
       title={row_title(@item.run)}
     >
-      <bdi :if={given_title(@item.run)}>{given_title(@item.run)}</bdi>
-      {if !given_title(@item.run), do: row_title(@item.run)}
+      <.external_text text={shown_title(@item.run)} />
+      {if !shown_title(@item.run), do: row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
     """
@@ -469,6 +459,63 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  defp denied_tool_subject(assigns) do
+    ~H"""
+    <span
+      class="q-host q-dest-tool q-ar-t q-mono"
+      title={destination_title(@d, @item.port)}
+    >
+      <.tool_mark name={@d.tool} /><span
+        :if={@item.path not in [nil, ""]}
+        class="q-path"
+      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>:{@item.port}</span>
+    </span>
+    """
+  end
+
+  defp denied_subject(assigns) do
+    ~H"""
+    <span class="q-host q-ar-t q-mono" title={destination_title(@d, @item.port)}>
+      <bdi>{@d.host}</bdi><span class="q-port">:{@item.port}</span><span
+        :if={@item.held && @item.path not in [nil, ""]}
+        class="q-path"
+      >{@d.path}</span>
+    </span>
+    """
+  end
+
+  # A denied destination's host, path and tool, texts Forager sent, as an external
+  # system's text is shown (`shown/1`), or marked (`Apiary.ExternalText.marked/1`) where
+  # nothing is left of one it sent, since the item's case follows what was sent. A host
+  # the wall refused for its form, and a path it refused as one that reads two ways
+  # (`wall`), are marked, since what is wrong with them is the reason.
+  defp shown_destination(item) do
+    %{
+      host: shown_host(item),
+      path: shown_path(item),
+      tool: shown_sent(item[:tool])
+    }
+  end
+
+  defp shown_host(%{wall: %{rule: "wall:host-form"}, host: host}),
+    do: Apiary.ExternalText.marked(host)
+
+  defp shown_host(%{host: host}), do: shown_sent(host)
+
+  defp shown_path(%{path: path}) when path in [nil, ""], do: ""
+
+  defp shown_path(%{wall: %{path_rule: "wall:ambiguous-path"}, path: path}),
+    do: Apiary.ExternalText.marked(path)
+
+  defp shown_path(%{path: path}), do: shown_sent(path)
+
+  defp shown_sent(text) when text in [nil, ""], do: nil
+  defp shown_sent(text), do: shown(text) || Apiary.ExternalText.marked(text)
+
+  # A denied destination's host in an act's name, where `<bdi>` cannot go, as the
+  # subject shows it (`shown_destination/1`).
+  defp label_host(item), do: shown_host(item)
+
   attr :item, :map, required: true
   attr :shared, :any, required: true
 
@@ -494,18 +541,21 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # The run's target path is a text Forager sent: one with nothing left to show is marked
+  # (`ApiaryWeb.RunComponents.target_name/1`), since it was sent; a run that sent none has
+  # no target.
   defp attention_where(%{item: %{kind: kind, run: run}} = assigns)
        when kind in [:quiet, :lost, :behind] do
-    assigns = assign(assigns, :run, run)
+    assigns = assign(assigns, run: run, path: run.target_path not in [nil, ""])
 
     ~H"""
     <.target_name
-      :if={@run.target_system && @run.target_path}
+      :if={@run.target_system && @path}
       system={@run.target_system}
       path={@run.target_path}
       shared={@shared}
     />
-    <span :if={!(@run.target_system && @run.target_path)} class="q-faint">
+    <span :if={!(@run.target_system && @path)} class="q-faint">
       {gettext("no target")}
     </span>
     """
@@ -781,6 +831,7 @@ defmodule ApiaryWeb.OverviewComponents do
       assign(assigns,
         level: level,
         new_rule_path: new_rule_path,
+        host: label_host(assigns.item),
         tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
       )
 
@@ -798,7 +849,7 @@ defmodule ApiaryWeb.OverviewComponents do
       }
       class="q-act"
       title={@tip}
-      aria-label={gettext("Allow %{host} in %{name}'s policy", host: @item.host, name: @level.name)}
+      aria-label={gettext("Allow %{host} in %{name}'s policy", host: @host, name: @level.name)}
     >
       {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
@@ -823,8 +874,8 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-act"
       aria-label={
         gettext("Allow %{host} for %{target}",
-          host: @item.host,
-          target: ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)
+          host: label_host(@item),
+          target: shown_target_label(@target.system, @target.path, @shared)
         )
       }
       aria-expanded={to_string(@item[:expanded] == true)}
@@ -842,7 +893,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
+      aria-label={gettext("Allow %{host} for the workspace", host: label_host(@item))}
       aria-expanded={to_string(@item[:expanded] == true)}
       aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
@@ -858,7 +909,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Allow %{host}, choose a scope", host: @item.host)}
+      aria-label={gettext("Allow %{host}, choose a scope", host: label_host(@item))}
       aria-expanded={to_string(@item[:expanded] == true)}
       aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "choose"})}
@@ -999,7 +1050,8 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp destination_title(%{tool: tool, host: host, port: port, path: path})
+  # The destination as shown (`shown_destination/1`), whole, for a cut subject's title.
+  defp destination_title(%{tool: tool, host: host, path: path}, port)
        when is_binary(tool),
        do:
          gettext("%{destination}, a host the tool %{tool} serves",
@@ -1007,7 +1059,7 @@ defmodule ApiaryWeb.OverviewComponents do
            tool: tool
          )
 
-  defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
+  defp destination_title(%{host: host, path: path}, port), do: "#{host}:#{port}#{path}"
 
   # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
   # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the
@@ -1080,16 +1132,28 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
-  else its short id: what a row calls it.
+  else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
+  a text Forager sent is (`Apiary.ExternalText.line/1`). A title or a command line with
+  nothing left to show, or only whitespace, is none (`Apiary.ExternalText.present/1`).
   """
-  def row_title(run), do: given_title(run) || command_title(run)
+  def row_title(run), do: shown_title(run) || shown_command(run) || short_id(run.public_id)
 
-  defp command_title(%{command: command, args: args}) when is_binary(command) do
-    line = Enum.join([command | args || []], " ")
-    if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
+  # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
+  # left to show, or only whitespace.
+  defp shown_title(run), do: shown(given_title(run))
+
+  # A run's command line, as a page shows it, cut to 40 characters; nil where it has none,
+  # or one with nothing left to show, or only whitespace.
+  defp shown_command(%{command: command, args: args}) when is_binary(command) do
+    case shown(Enum.join([command | args || []], " ")) do
+      nil -> nil
+      line -> if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
+    end
   end
 
-  defp command_title(%{public_id: public_id}), do: short_id(public_id)
+  defp shown_command(_run), do: nil
+
+  defp shown(text), do: Apiary.ExternalText.present(text)
 
   ## Active targets
 
@@ -1705,7 +1769,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       navigate={ApiaryWeb.TargetComponents.target_path(@scope, @target, ["policy"])}
       class="q-mono hover:underline"
-    >{ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)}</.link>
+    >{shown_target_label(@target.system, @target.path, @shared)}</.link>
     """
   end
 

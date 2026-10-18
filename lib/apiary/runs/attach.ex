@@ -36,8 +36,7 @@ defmodule Apiary.Runs.Attach do
        attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
        ended it, its starter ended it without one, it was lost after its attach, or its
-       events were pruned. So is a run whose record is gone, and a prebuild whose run of
-       the queue its starter's prebuilt ended, to any attach but a repeat;
+       events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -77,15 +76,13 @@ defmodule Apiary.Runs.Attach do
   starts, so they change no digest: a run is never told its configuration moved because
   of them.
 
-  A run a workspace's queue handed over that is not a prebuild is given the image the node
-  pool that claimed it recorded for the run's target, the one its registration's labels
-  name, on its environment record, fixed at the attach (`runs.configured_image`): its
-  configuration is composed with that image at the top level, beside the
-  `security_policy` (`Apiary.Policy.ComposedConfiguration`), and the digest is the
-  composed document's. A prebuild whose workspace's policy names an image is given the
-  policy without it. A workspace's policy that names an image gives no run an image. Any
-  other run, and a run with no recorded image, is given the configuration as stored. Every
-  run keeps what it started in, which its reloads carry (`runs.started_image_from`,
+  A run given an image at the attach (`runs.configured_image`) has its configuration
+  composed with that image at the top level, beside the `security_policy`
+  (`Apiary.Policy.ComposedConfiguration`), and the digest is the composed document's. A
+  run that must build on its pool's default image, of a workspace whose policy names an
+  image, is given the policy without it. A workspace's policy that names an image gives
+  no run an image. Any other run is given the configuration as stored. Every run keeps
+  what it started in, which its reloads carry (`runs.started_image_from`,
   `runs.started_image`): the image it was given at the top level, the image the policy it
   was given names, or none.
 
@@ -98,6 +95,17 @@ defmodule Apiary.Runs.Attach do
   a resend from another instance of the gateway once the run's sending has ended
   (`Apiary.Runs.Sender.sending_ended?/1`).
   """
+
+  # With the `factory` feature, which the documentation leaves out:
+  #
+  # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
+  #   starter's `prebuilt` ended, to any attach but a repeat.
+  # - A run a workspace's queue handed over that is not a prebuild is given the image the
+  #   node pool that claimed it recorded for the run's target, the one its registration's
+  #   labels name, on its environment record, fixed at the attach
+  #   (`runs.configured_image`); that is the run given an image at the attach. A prebuild
+  #   whose workspace's policy names an image is given the policy without it. A run with
+  #   no recorded image is given the configuration as stored.
 
   import Ecto.Query, warn: false
 

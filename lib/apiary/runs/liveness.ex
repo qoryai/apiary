@@ -68,7 +68,7 @@ defmodule Apiary.Runs.Liveness do
 
   require Logger
 
-  alias Apiary.Dispatches.RunEnd
+  alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Event, Projector, Run}
@@ -101,6 +101,10 @@ defmodule Apiary.Runs.Liveness do
     # by their outcome or exit: their dispatches end and free their slots once
     # (`Apiary.Dispatches.RunEnd`).
     Apiary.Dispatches.broadcast(RunEnd.lose(now))
+    # Then the runs of the queue ended by their outcome or exit whose registered run is
+    # settled since, and whose outcome is not yet stored: what each gave is stored
+    # (`Apiary.Dispatches.Settle`).
+    Apiary.Dispatches.broadcast(Settle.sweep(now))
     lost
   end
 

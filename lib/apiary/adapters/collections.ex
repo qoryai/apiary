@@ -17,8 +17,16 @@ defmodule Apiary.Adapters.Collections do
   # listing named it already; a collection a part leaves out keeps its `items`. A
   # collection named without `environment_ref` has none; one a listing leaves out keeps
   # its record and its `environment_ref` as they are, and only a complete listing ends it
-  # (below). A ref live under another connection of the adapter stays with that
-  # connection. A part that disagrees with the parts before it (another `started_at`, a
+  # (below). A ref live under another connection of the adapter, which no listing newer
+  # than the part named there, moves to the part's connection once the part commits
+  # (`move_here/5`, three rounds at most, should another connection make it live again
+  # in between): that connection's collection ends as a disconnect ends it, its
+  # organisation's trail gets the entry `collection.move`, and a new collection is made
+  # under the part's connection, as any collection a part makes, with nothing of the
+  # ended one. The end and the new collection are separate transactions: between them the
+  # ref is live nowhere, and if the second is refused (the part's connection ended, or
+  # its organisation is out of use, by then), the ref stays ended until a later listing
+  # names it. A part that disagrees with the parts before it (another `started_at`, a
   # second last part, a part after the last) is refused and changes nothing. Once every
   # part from 1 to the last has arrived, the listing is complete: every live collection
   # of the connection whose `last_listed_at` is before its `started_at` ends
@@ -64,15 +72,19 @@ defmodule Apiary.Adapters.Collections do
   # without one retires its records.
   #
   # **The end of a collection** is final: by `POST /v1/sources/disconnect`
-  # (`disconnect/2`), by a complete listing that leaves it out, or with its connection
-  # (`end_for_connections/2`, which `Apiary.Adapters.Connections` calls in each end's
-  # transaction). Each end of a linked collection writes the feed's entry
-  # `%{kind: "collection", collection_ref: ref, status: "unlinked"}`
-  # (`Apiary.Adapters.Feed`), in the same transaction; a workspace's purge unlinks its
-  # collections so too (`unlink_workspace/2`), and they stay with their organisation.
+  # (`disconnect/2`), by a listing of another connection of the adapter that names its
+  # ref (`move_here/5`, ended as a disconnect ends it), by a complete listing that leaves
+  # it out, or with its connection (`end_for_connections/2`, which
+  # `Apiary.Adapters.Connections` calls in each end's transaction). Each end of a linked
+  # collection writes the feed's entry `%{kind: "collection", collection_ref: ref,
+  # status: "unlinked"}` (`Apiary.Adapters.Feed`), in the same transaction; a workspace's
+  # purge unlinks its collections so too (`unlink_workspace/2`), and they stay with their
+  # organisation.
   #
   # **A ref** names a collection of the key's adapter (`resolve/3`): the live one with that
-  # ref, or, when none is live, the one with that ref that ended last.
+  # ref, or, when none is live, the one with that ref that ended last. A disconnect names
+  # one by its ref and its connection: only the live one with that ref under that
+  # connection (`disconnect/2`).
   #
   # **For people**, each read asks `adapter.read` of the scope's organisation (members), and
   # answers nothing to anyone else, and nothing of a connection of another organisation:
@@ -114,7 +126,10 @@ defmodule Apiary.Adapters.Collections do
   #     changes as its page shows it (`broadcast_connection/1`): a press of Install that
   #     takes or makes it, or that replaces it (its end), its return that connects it, its
   #     end by the adapter, by the adapter's deletion or by its organisation's purge, the
-  #     first listing that names it and each listing of it that completes.
+  #     first listing that names it, each listing of it that completes, and a start of its
+  #     adapter that changes the source's line on access or its words for its items or its
+  #     collections (`Apiary.Adapters.declare/2`), which tells each organisation with a
+  #     connection to the adapter once.
   #
   # Locks, in one order for every change here, so none waits on another in turn:
   #
@@ -143,14 +158,21 @@ defmodule Apiary.Adapters.Collections do
   #      that insert only waits for a change writing the row to end, and it runs before
   #      the part writes the collections it holds (`put_collections/5`). A change that
   #      holds collections by id holds their connections first, so it holds none of a
-  #      connection's collections while a part of that connection runs;
+  #      connection's collections while a part of that connection runs. A ref live under
+  #      another connection moves after the part commits (`move_here/5`): first its
+  #      collection ends in a separate transaction that holds that one row, by adapter
+  #      and ref, and no connection, then the feed's counter (`end_elsewhere/3`); then a
+  #      transaction that holds what a part holds makes the new one. A disconnect
+  #      (`disconnect/2`) holds one row too, by adapter, connection and ref, and no
+  #      connection's row, then the feed's counter;
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
   #      (`finish_part/4`);
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
-  #      a work item;
+  #      a work item; a work item's comment is held `FOR UPDATE` only right after its
+  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
   #   7. the environment records of the collections an assign assigns or moves to a
@@ -203,6 +225,9 @@ defmodule Apiary.Adapters.Collections do
   @listing_action :"source_item.post"
   @disconnect_action :"adapter.disconnect"
   @live_index "(adapter_id, external_ref) WHERE ended_at IS NULL"
+  # How many times a listing's part moves a ref live under another connection of the
+  # adapter, at most (`move_here/5`).
+  @move_rounds 3
   # What a listing's part reads back of each collection it makes or updates.
   @put_fields [
     :id,
@@ -273,7 +298,13 @@ defmodule Apiary.Adapters.Collections do
   # `{:error, :ended}` for one that ended; `{:error, :suspended}` while its organisation is
   # out of use (`Apiary.Adapters.Connections.connection_for_key/3`); `{:error, :invalid}`
   # for a part that disagrees with the listing's parts before it. Each refusal changes
-  # nothing.
+  # nothing. Once an accepted part commits, each ref it named that was live under another
+  # connection of the adapter, which no listing newer than the part named there, moves to
+  # the part's connection (`move_here/5`, three rounds at most; a ref that another
+  # connection makes live again each time stays there): that collection ends as a
+  # disconnect ends it, with the entry `collection.move` in its organisation's trail, and
+  # a new collection is made under the part's connection; the answer is
+  # `{:ok, :accepted}` whether or not the move's second step is refused.
   @spec post_listing(Scope.t() | nil, Wire.listing()) ::
           {:ok, :accepted} | {:error, :forbidden | :unknown | :ended | :suspended | :invalid}
   def post_listing(key_scope, %{
@@ -282,28 +313,146 @@ defmodule Apiary.Adapters.Collections do
         listing: part
       }) do
     Repo.transact(fn ->
-      with {:ok, adapter_id} <- Connections.key_rights(key_scope, @listing_action),
-           adapter = hold_adapter(adapter_id),
-           {:ok, found, _scope} <-
-             Connections.connection_for_key(key_scope, public_id, @listing_action),
-           {:ok, connection} <- Connections.mark_listed(found),
+      with {:ok, adapter, found, connection} <- hold_listed(key_scope, public_id),
            {:ok, listing} <- record_part(connection, part) do
         now = DateTime.utc_now()
         put = put_collections(connection, adapter, collections, part.started_at, now)
         {ended, completed?} = complete(connection, listing, now)
         :ok = finish_part(connection, put, ended, now)
         ids = Enum.map(put.put, & &1.id) ++ Enum.map(ended, & &1.id)
-        {:ok, {connection, ids, is_nil(found.listed_at) or completed?}}
+        {:ok, {connection, ids, is_nil(found.listed_at) or completed?, put.elsewhere}}
       end
     end)
     |> case do
-      {:ok, {connection, collection_ids, connection_changed?}} ->
+      {:ok, {connection, collection_ids, connection_changed?, elsewhere}} ->
         :ok = broadcast_collections(connection, collection_ids)
         if connection_changed?, do: :ok = broadcast_connection(connection)
+        :ok = move_here(key_scope, connection, elsewhere, part.started_at, @move_rounds)
         {:ok, :accepted}
 
       {:error, _reason} = refused ->
         refused
+    end
+  end
+
+  # The first holds of a listing's part, and of the second step of a move
+  # (`move_here/5`): the adapter of the key of `key_scope`, `FOR SHARE`
+  # (`hold_adapter/1`), then its connection `public_id`, found as the module says and
+  # held `FOR UPDATE` (`Apiary.Adapters.Connections.mark_listed/1`). `{:ok, adapter,
+  # found, connection}`, the connection as found and as held; else the refusal, in the
+  # order `post_listing/2` gives.
+  defp hold_listed(key_scope, public_id) do
+    with {:ok, adapter_id} <- Connections.key_rights(key_scope, @listing_action),
+         adapter = hold_adapter(adapter_id),
+         {:ok, found, _scope} <-
+           Connections.connection_for_key(key_scope, public_id, @listing_action),
+         {:ok, connection} <- Connections.mark_listed(found) do
+      {:ok, adapter, found, connection}
+    end
+  end
+
+  # After a listing's part commits: each collection it named whose ref was live under
+  # another connection of the adapter (`elsewhere`, as the wire gave it), which the part
+  # left as it was, moves to `connection`, in two steps, so that no transaction holds a
+  # row out of the module's lock order:
+  #
+  #   1. in order of ref, in one transaction for each ref, the collection live under
+  #      another connection is held and ended as a disconnect ends it
+  #      (`end_elsewhere/3`), with the entry `collection.move` in its organisation's
+  #      trail; once each commits, it is broadcast to that organisation;
+  #   2. then, in one transaction, the refs no connection holds live any more are made
+  #      under `connection` as a listing's part makes collections (`hold_listed/2`,
+  #      `put_collections/5`, `finish_part/4`): new, with nothing of the ended one, so no
+  #      workspace and no Backlog switch come over, and assigned to the organisation's
+  #      only workspace when it has one, as any collection a part makes. Once it commits,
+  #      they are broadcast.
+  #
+  # A ref that a listing newer than `started_at` named under the other connection, or that
+  # is live under `connection` by then, stays as it is. A ref that another connection made
+  # live again between the two steps is moved again, `rounds` times in all; after that it
+  # stays where it is until a listing names it again. A connection that ended or whose
+  # organisation is out of use by the second step makes none.
+  defp move_here(_key_scope, _connection, [], _started_at, _rounds), do: :ok
+  defp move_here(_key_scope, _connection, _elsewhere, _started_at, 0), do: :ok
+
+  defp move_here(key_scope, %Connection{} = connection, elsewhere, started_at, rounds) do
+    free =
+      for collection <- Enum.sort_by(elsewhere, & &1.ref),
+          end_elsewhere(connection, collection.ref, started_at) != :kept,
+          do: collection
+
+    Repo.transact(fn ->
+      with {:ok, adapter, _found, held} <- hold_listed(key_scope, connection.public_id) do
+        now = DateTime.utc_now()
+        put = put_collections(held, adapter, free, started_at, now)
+        :ok = finish_part(held, put, [], now)
+        {:ok, {held, Enum.map(put.put, & &1.id), put.elsewhere}}
+      end
+    end)
+    |> case do
+      {:ok, {held, ids, again}} ->
+        :ok = broadcast_collections(held, ids)
+        move_here(key_scope, connection, again, started_at, rounds - 1)
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  # The first step of a move (`move_here/5`), for the ref `ref` of the adapter of
+  # `connection`, in a separate transaction: the collection live with that ref is held
+  # by adapter and ref, under whichever connection (`lock_live/2`), with no connection
+  # held.
+  # One of another connection that no listing newer than `started_at` named is ended as a
+  # disconnect ends it (`end_disconnected/2`), whatever its organisation's state, and its
+  # organisation's trail gets the entry `collection.move`, by the instance, about the
+  # collection, with its title as it was then (`name`), its connection's public id
+  # (`connection_id`) and the adapter's name (`integration`), written before the end, as a
+  # Backlog switch writes its entry before its change. `:ended` once that commits, after
+  # which the collection is broadcast to its organisation; `:free` for a ref no
+  # connection holds live; `:kept` otherwise.
+  defp end_elsewhere(%Connection{id: connection_id, adapter_id: adapter_id}, ref, started_at) do
+    {:ok, outcome} =
+      Repo.transact(fn ->
+        case lock_live(adapter_id, ref) do
+          nil ->
+            {:ok, :free}
+
+          %Collection{connection_id: ^connection_id} ->
+            {:ok, :kept}
+
+          %Collection{} = collection ->
+            if DateTime.compare(collection.last_listed_at, started_at) == :gt do
+              {:ok, :kept}
+            else
+              scope = Scope.for_instance(collection.connection.organisation)
+
+              {:ok, _entry} =
+                Audit.record(Repo, scope, :"collection.move", collection, %{
+                  details: %{
+                    name: collection.title,
+                    connection_id: collection.connection.public_id,
+                    integration: Repo.get!(Node, adapter_id).name
+                  }
+                })
+
+              {:ok, {:ended, end_disconnected(collection, DateTime.utc_now())}}
+            end
+        end
+      end)
+
+    case outcome do
+      {:ended, %Collection{} = ended} ->
+        :ok =
+          broadcast_collections(
+            %Connection{id: ended.connection_id, organisation_id: ended.organisation_id},
+            [ended.id]
+          )
+
+        :ended
+
+      free_or_kept ->
+        free_or_kept
     end
   end
 
@@ -393,13 +542,15 @@ defmodule Apiary.Adapters.Collections do
   end
 
   # Makes each collection live under `connection`, or updates the one live under it, as
-  # the module says. A ref live under another connection of the adapter is left as it is.
-  # A collection made here is assigned to the organisation's only workspace, when it has
-  # one (`only_workspace/1`). It makes no target and writes no feed entry: `finish_part/4`
-  # does, after `complete/3`. `%{put: collections, made: ids, assigned: before,
-  # workspaces: held}`: the collections made or updated, each with its adapter, the ids of
+  # the module says. A ref live under another connection of the adapter is left as it is
+  # here, and moved once the part commits (`move_here/5`). A collection made here is
+  # assigned to the organisation's only workspace, when it has one (`only_workspace/1`).
+  # It makes no target and writes no feed entry: `finish_part/4` does, after
+  # `complete/3`. `%{put: collections, made: ids, assigned: before, workspaces: held,
+  # elsewhere: named}`: the collections made or updated, each with its adapter, the ids of
   # those made, the assigned ones as they stood before the part (`assigned_before/2`),
-  # with their `items`, and the workspaces held, by id.
+  # with their `items`, the workspaces held, by id, and those of `collections` whose ref
+  # was live under another connection, as the wire gave them.
   #
   # The only workspace is read without a lock, then held with the workspaces the named
   # collections are assigned to, in one statement, by id, so the part holds every
@@ -411,7 +562,9 @@ defmodule Apiary.Adapters.Collections do
   # `FOR UPDATE`, by ref (`hold_live/2`), and no other collection is held. The other refs
   # are made with an insert that does nothing where a ref is live (`ON CONFLICT DO
   # NOTHING`): a ref live under another connection, however recently it became live,
-  # while it is live at the insert, stays with that connection, and its row is never
+  # while it is live at the insert, is left with that connection in this transaction
+  # (`elsewhere`, which `move_here/5` moves once the part commits, unless a listing newer
+  # than the part named it there, three rounds at most), and its row is never
   # locked; the insert only waits for a change that is writing that row to end. The
   # collections held are updated after the insert, so while it runs they are held but not
   # yet written, and the insert of a part of another connection that meets one of them
@@ -419,7 +572,7 @@ defmodule Apiary.Adapters.Collections do
   # part to end. Each collection is given `adapter`, which the part holds `FOR SHARE`
   # (`hold_adapter/1`), for its `items`.
   defp put_collections(_connection, _adapter, [], _started_at, _now),
-    do: %{put: [], made: MapSet.new(), assigned: %{}, workspaces: %{}}
+    do: %{put: [], made: MapSet.new(), assigned: %{}, workspaces: %{}, elsewhere: []}
 
   defp put_collections(
          %Connection{} = connection,
@@ -498,7 +651,17 @@ defmodule Apiary.Adapters.Collections do
         returning: @put_fields
       )
 
+    # Neither held nor made: live under another connection at the insert.
+    made_refs = MapSet.new(made, & &1.external_ref)
+
+    elsewhere =
+      Enum.reject(
+        collections,
+        &(MapSet.member?(held, &1.ref) or MapSet.member?(made_refs, &1.ref))
+      )
+
     %{
+      elsewhere: elsewhere,
       put: Enum.map(made ++ updated, &%{&1 | adapter: adapter}),
       made: MapSet.new(made, & &1.id),
       assigned: assigned,
@@ -696,20 +859,26 @@ defmodule Apiary.Adapters.Collections do
 
   @doc false
   # disconnect/2 ends the live collection of the key's adapter named by `collection_ref`
+  # under the connection `connection_id`, its public id
   # (`Apiary.Adapters.Wire.source_disconnect/1`), for the adapter's key of `key_scope`
   # (`adapter.disconnect`), as `POST /v1/sources/disconnect` asks, with the feed's
-  # `unlinked` entry when it is linked. In this order: `{:error,
-  # :forbidden}` for a request outside the key's rights, decided before any collection is
-  # looked up; `{:ok, :unchanged}` for a ref with no live collection, which changes
-  # nothing and writes no entry (never seen, disconnected already, left out by a complete
-  # listing, ended with its connection); `{:error, :suspended}` for a live collection
-  # whose organisation is out of use, which changes nothing; `{:ok, :disconnected}`.
+  # `unlinked` entry when it is linked. It holds that one row `FOR UPDATE`, by adapter,
+  # connection and ref (`lock_live/3`), and no connection's row, then the feed's counter
+  # when it writes an entry. In this order: `{:error, :forbidden}` for a request outside the
+  # key's rights, decided before any collection is looked up; `{:ok, :unchanged}` for a
+  # ref with no live collection under that connection, which changes nothing and writes
+  # no entry (never seen, disconnected already, left out by a complete listing, ended
+  # with its connection, or live under another connection of the adapter, where it stays
+  # live), and so for a `connection_id` that names no connection of the adapter, a
+  # pending one or one that ended; `{:error, :suspended}` for a live collection under
+  # that connection whose organisation is out of use, which changes nothing;
+  # `{:ok, :disconnected}`. Never `:unknown` or `:ended`.
   @spec disconnect(Scope.t() | nil, Wire.source_disconnect()) ::
           {:ok, :disconnected | :unchanged} | {:error, :forbidden | :suspended}
-  def disconnect(key_scope, %{collection_ref: ref}) do
+  def disconnect(key_scope, %{connection_id: public_id, collection_ref: ref}) do
     with {:ok, adapter_id} <- Connections.key_rights(key_scope, @disconnect_action) do
       Repo.transact(fn ->
-        case lock_live(adapter_id, ref) do
+        case lock_live(adapter_id, public_id, ref) do
           nil ->
             {:ok, :unchanged}
 
@@ -718,13 +887,7 @@ defmodule Apiary.Adapters.Collections do
                    Connections.in_use(key_scope, collection.connection, @disconnect_action) do
               now = DateTime.utc_now()
 
-              {1, ended} =
-                Repo.update_all(
-                  from(c in Collection, where: c.id == ^collection.id, select: c),
-                  set: [ended_at: now, ended_reason: :disconnected, updated_at: now]
-                )
-
-              :ok = tell_unlinked(ended)
+              %Collection{} = end_disconnected(collection, now)
               {:ok, :disconnected}
             end
         end
@@ -732,10 +895,46 @@ defmodule Apiary.Adapters.Collections do
     end
   end
 
+  # Ends `collection`, held, as a disconnect ends one: `disconnected`, at `now`, with the
+  # feed's `unlinked` entry when it was linked (`tell_unlinked/1`). The collection as it
+  # was written.
+  defp end_disconnected(%Collection{} = collection, now) do
+    {1, [ended]} =
+      Repo.update_all(
+        from(c in Collection, where: c.id == ^collection.id, select: c),
+        set: [ended_at: now, ended_reason: :disconnected, updated_at: now]
+      )
+
+    :ok = tell_unlinked([ended])
+    ended
+  end
+
+  # The live collection of the adapter `adapter_id` with the ref `ref`, under any of its
+  # connections, held `FOR UPDATE`, with its connection and organisation; `nil` for none.
   defp lock_live(adapter_id, ref) do
     Repo.one(
       from c in Collection,
         where: c.adapter_id == ^adapter_id and c.external_ref == ^ref and is_nil(c.ended_at),
+        lock: "FOR UPDATE",
+        preload: [connection: :organisation]
+    )
+  end
+
+  # The live collection of the adapter `adapter_id` with the ref `ref` under its
+  # connection `public_id`, held `FOR UPDATE`, with its connection and organisation;
+  # `nil` for none. The connection is found in a subquery, which holds no lock on its
+  # row, so only the collection's row is held.
+  defp lock_live(adapter_id, public_id, ref) do
+    connection_ids =
+      from k in Connection,
+        where: k.adapter_id == ^adapter_id and k.public_id == ^public_id,
+        select: k.id
+
+    Repo.one(
+      from c in Collection,
+        where:
+          c.adapter_id == ^adapter_id and c.external_ref == ^ref and is_nil(c.ended_at) and
+            c.connection_id in subquery(connection_ids),
         lock: "FOR UPDATE",
         preload: [connection: :organisation]
     )

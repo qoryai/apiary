@@ -51,8 +51,9 @@ defmodule Apiary.Organisations.Organisation do
 
   @doc """
   validate_name/2 checks `field` of `changeset` by the rules of an organisation's name: at
-  most 120 characters, and none that is a control character, an invisible one, a joining
-  character at either end, a web address or a quotation mark. The name an instance admin
+  most 120 characters, and none that is a control character or a line or paragraph
+  separator, an invisible one, a joining character at either end, a web address or a
+  quotation mark. The name an instance admin
   gives the product keeps the same rules (`Apiary.ProductName`): both are shown inside
   sentences Qory writes.
   """
@@ -60,7 +61,7 @@ defmodule Apiary.Organisations.Organisation do
   def validate_name(changeset, field) do
     changeset
     |> validate_length(field, min: 1, max: 120)
-    |> validate_format(field, ~r/\A[^[:cntrl:]]+\z/u,
+    |> validate_format(field, ~r/\A[^[:cntrl:]\x{2028}\x{2029}]+\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
     )
     |> refuse_in_name(

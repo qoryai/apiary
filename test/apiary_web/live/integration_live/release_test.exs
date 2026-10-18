@@ -151,6 +151,16 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert to =~ "/settings/integrations/#{connection.public_id}"
   end
 
+  test "a release's description takes its direction, its invisible characters dropped and its controls shown",
+       %{conn: conn, scope: scope} do
+    about = "Mints\u202E tokens.\nPer installation\e."
+    release = ready_release!(scope, github_description(%{"description" => about}))
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert lv |> element("#release-about[dir=auto]") |> render() =~
+             "Mints tokens.\nPer installation\u{FFFD}."
+  end
+
   test "a yes/no setting says what it is", %{conn: conn, scope: scope} do
     description =
       github_description()
@@ -169,6 +179,81 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
            )
 
     assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request it makes.")
+  end
+
+  test "a setting whose description has nothing left to show has no hint",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => "\u202E\u200B"
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "\u2066"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose")
+    assert has_element?(lv, "#release-setting-region")
+    refute has_element?(lv, "#release-setting-verbose-hint")
+    refute has_element?(lv, "#release-setting-region-hint")
+    refute has_element?(lv, "#release-setting-verbose[aria-describedby]")
+    refute has_element?(lv, "#release-setting-region[aria-describedby]")
+  end
+
+  test "a setting whose description is only whitespace has no hint",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => " "
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "\u00A0\u200B\u3000"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose")
+    assert has_element?(lv, "#release-setting-region")
+    refute has_element?(lv, "#release-setting-verbose-hint")
+    refute has_element?(lv, "#release-setting-region-hint")
+    refute has_element?(lv, "#release-setting-verbose[aria-describedby]")
+    refute has_element?(lv, "#release-setting-region[aria-describedby]")
+  end
+
+  test "a setting's hint and the program's version are shown as an integration's text is",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => "Logs every\u202E request\u0085"
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "Where\u200B it runs\e"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request\u{FFFD}")
+    assert has_element?(lv, "#release-setting-region-hint", "Where it runs\u{FFFD}")
+    assert has_element?(lv, "bdi.q-mono", "0.1.0")
   end
 
   test "a release whose only role Qory Apiary does not know shows that role as given",

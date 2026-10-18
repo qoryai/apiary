@@ -37,6 +37,18 @@ defmodule ApiaryWeb.People do
   end
 
   @doc """
+  members/1 is the email address of each member of the scope's organisation, by user id
+  (`%{user_id => email}`), as `email/1` gives it, read once: the people `member/2` names,
+  for a page that names people among the members of the organisation.
+  """
+  @spec members(Apiary.Accounts.Scope.t()) :: %{optional(Ecto.UUID.t()) => String.t()}
+  def members(scope) do
+    for %{user: user} <- Apiary.Organisations.list_members(scope),
+        into: %{},
+        do: {user.id, email(user)}
+  end
+
+  @doc """
   member/2 is the email address of the person `id` among `people`, the members a page
   read by user id (`%{user_id => email}`): "Former member" for an id that is not among
   them, nil for no id.

@@ -76,7 +76,7 @@ defmodule ApiaryWeb.RunLive.Index do
       counts={@nav_counts}
       nav={:runs}
       width="work"
-      narrowed={Narrowing.carried(@narrowing, @filters.target)}
+      narrowed={shown_carried(Narrowing.carried(@narrowing, @filters.target))}
     >
       <:crumb>{gettext("Runs")}</:crumb>
 
@@ -154,7 +154,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 label={gettext("Target")}
                 icon="hero-folder"
                 qualifier={pgettext("qualifier", "target")}
-                value={Narrowing.text(@narrowing, @filters.target)}
+                value={shown(Narrowing.text(@narrowing, @filters.target))}
                 rail
               >
                 <.filter_options
@@ -200,7 +200,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 label={label}
                 icon={icon}
                 qualifier={name}
-                value={text_param(@filters, name)}
+                value={shown(text_param(@filters, name))}
               >
                 <.filter_options
                   id={"filter-#{name}"}
@@ -208,11 +208,10 @@ defmodule ApiaryWeb.RunLive.Index do
                   label={label}
                   values={List.wrap(text_param(@filters, name))}
                   options={
-                    with_chosen(
-                      facet_options(@facets, String.to_existing_atom(name)),
-                      text_param(@filters, name),
-                      text_param(@filters, name)
-                    )
+                    @facets
+                    |> facet_options(String.to_existing_atom(name))
+                    |> with_chosen(text_param(@filters, name), text_param(@filters, name))
+                    |> shown_options(name)
                   }
                   total={facet_total(@facets, String.to_existing_atom(name))}
                   query={@narrow[name]}
@@ -282,7 +281,7 @@ defmodule ApiaryWeb.RunLive.Index do
               patch={token.remove}
               label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
             >
-              <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}>{token.value}</span>
+              <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}><bdi>{token.value}</bdi></span>
             </:token>
           </.filter_tokens>
 
@@ -540,7 +539,7 @@ defmodule ApiaryWeb.RunLive.Index do
             kind: :target,
             system: system,
             path: path,
-            label: if(system, do: "#{system}/#{path}", else: path),
+            label: shown_target_label(system, path, true),
             shared_alone: Narrowing.shared_alone?(narrowing),
             page: found && ApiaryWeb.TargetComponents.target_path(scope, found),
             policy:
@@ -1424,7 +1423,7 @@ defmodule ApiaryWeb.RunLive.Index do
       %{
         id: "runs-token-#{token.key}",
         qualifier: qualifier(token.key),
-        value: token.value,
+        value: shown(token.value),
         remove: page_path(scope, token.without)
       }
     end)
@@ -1566,6 +1565,27 @@ defmodule ApiaryWeb.RunLive.Index do
       do: options,
       else: [{label, value, 0} | options]
   end
+
+  # A runtime and a host are what the runs reported: `filter_options/1` shows each label
+  # as a text Forager sent, marked where nothing is left of it, so it is given as sent; an
+  # option's value stays as sent, which the filter matches. A node is named by the
+  # organisation.
+  defp shown_options(options, _name), do: options
+
+  # A filter's value as a section and a token show it: a host, a runtime or a target may
+  # be a text Forager sent, shown as one is (`Apiary.ExternalText.present/1`), or marked
+  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since the filter matches
+  # it as sent. The page's texts are unchanged by it.
+  defp shown(value) when is_binary(value) and value != "",
+    do: Apiary.ExternalText.present(value) || Apiary.ExternalText.marked(value)
+
+  defp shown(value), do: value
+
+  # What the sidebar carries of the target the list is narrowed to, its names shown so.
+  defp shown_carried(%{system: system, path: path} = carried),
+    do: %{carried | system: shown(system), path: shown(path)}
+
+  defp shown_carried(nil), do: nil
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: nil

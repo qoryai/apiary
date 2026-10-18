@@ -635,10 +635,13 @@ defmodule ApiaryWeb.Routes do
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
               # The work, with the `factory` feature: the work items, one by its number in
-              # the workspace, with its ticket and its thread; and the Backlog, the tickets
-              # it takes in from, and one ticket by its public id (`tk_…`).
+              # the workspace, with its ticket, its Explore and the proposal's edit, and its
+              # thread; and the Backlog, the tickets it takes in from, and one ticket by its
+              # public id (`tk_…`).
               live "/work", WorkItemLive.Index, :index
               live "/work/:number", WorkItemLive.Show, :ticket
+              live "/work/:number/explore", WorkItemLive.Show, :explore
+              live "/work/:number/explore/edit", WorkItemLive.Show, :edit
               live "/work/:number/thread", WorkItemLive.Show, :thread
               live "/backlog", BacklogLive.Index, :index
               live "/backlog/:item_id", BacklogLive.Ticket, :show

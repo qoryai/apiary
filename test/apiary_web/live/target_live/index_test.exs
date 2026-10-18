@@ -147,6 +147,25 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert_patch(view, workspace_path(scope, "/targets?q=shop"))
   end
 
+  test "a system and a path Forager sent: cleaned in the Filter menu, a token and a row's title",
+       %{conn: conn, scope: scope} do
+    system = "zz\u202E.example"
+    started_run(scope, repo(system, "acme/\u202Edocs\u200B"), ago: 30)
+
+    view = open(conn, scope)
+    menu = view |> element("#targets-filter") |> render()
+    assert menu =~ ~r{<bdi[^>]*>zz.example</bdi>}
+    # Only an item's id, which addresses it, keeps the system as sent.
+    refute String.replace(menu, ~r/ id="[^"]*"/, "") =~ "\u202E"
+    assert has_element?(view, ~s(#targets tr .q-tgt-name[title="zz.example/acme/docs"]))
+
+    view = open(conn, scope, "?" <> URI.encode_query(%{"q" => "forge:#{system}"}))
+    assert has_element?(view, "#targets-tokens .q-tok bdi", "zz.example")
+    assert has_element?(view, ~s(#targets-tokens [aria-label="Remove forge:zz.example"]))
+    refute view |> element("#targets-tokens") |> render() =~ "\u202E"
+    assert rows(view) == ["acme/docs"]
+  end
+
   test "the Filter menu writes the qualifiers, and Sort orders", %{
     conn: conn,
     scope: scope,

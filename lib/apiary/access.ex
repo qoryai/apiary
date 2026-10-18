@@ -273,14 +273,14 @@ defmodule Apiary.Access do
       audited:
         {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
     ),
-    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+    Action.new(:"variable.read", "read the variables of the workspace and its targets",
       feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"variable.edit",
-      "set, change, lock and remove the variables of the workspace and its repositories",
+      "set, change, lock and remove the variables of the workspace and its targets",
       feature: :secrets,
       roles: @admins
     ),
@@ -375,6 +375,15 @@ defmodule Apiary.Access do
       "choose whether the items of a collection come into its workspace's Backlog",
       feature: :factory,
       roles: @admins,
+      asked_of: :organisation
+    ),
+    # A collection whose adapter now lists its ref under another connection: ended as a
+    # disconnect ends it, after the listing's part that names it there.
+    Action.new(
+      :"collection.move",
+      "end a collection whose adapter now lists it under another connection: the instance, by itself, after the listing's part (Apiary.Adapters.Collections.post_listing/2)",
+      feature: :factory,
+      roles: [:instance],
       asked_of: :organisation
     ),
     # A workspace's work items, people's actions. A comment's author may delete it too,

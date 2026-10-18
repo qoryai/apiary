@@ -21,15 +21,6 @@ defmodule Apiary.Integrations.Description do
   matches the schema's pattern and its value is within the bounds. A refusal is
   `{:error, {:description_invalid, problems}}`.
 
-  Of the `source` role, three members are read out (`item_noun/1`, `items?/1`,
-  `collection_noun/1`): its words for one item and for many, `item_noun`, `one` and
-  `other`, each 1 to 32 characters: lower-case letters in words joined by single spaces
-  or hyphens, never work item or work items, with a space or a hyphen; `items`, which,
-  when there, is `false`: the source reports collections and no items, and names no words
-  for them; and its words for one collection and for many, `collection_noun`, `one` and
-  `other`, the same shape as `item_noun`'s, never work item or work items either, beside
-  `items: false` too. The schema holds all three to that.
-
   A description of more than 262144 bytes (256 KiB), as `parse/1` is given it, is refused
   before it is decoded, `{:error, {:description_invalid, [:too_large]}}`: the schema's
   description bounds its raw bytes so, and only the bytes as they were sent can be
@@ -49,6 +40,18 @@ defmodule Apiary.Integrations.Description do
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
+
+  # The `source` role is the `factory` feature's, which the documentation leaves out. Of
+  # it, four members are read out (`item_noun/1`, `items?/1`, `collection_noun/1`,
+  # `access/1`): its words for one item and for many, `item_noun`, `one` and `other`, each
+  # 1 to 32 characters: lower-case letters in words joined by single spaces or hyphens,
+  # never a noun the schema keeps out (the `not` of `$defs.noun`); `items`, which, when
+  # there, is `false`: the source reports collections and no items, and names no words for
+  # them; its words for one collection and for many, `collection_noun`, `one` and `other`,
+  # the same shape as `item_noun`'s, never such a noun either, beside `items: false` too;
+  # and `access`, a prose line of 1 to 300 characters with no control characters, on how
+  # to change, at the source, which collections the adapter reaches. The schema holds all
+  # four to that.
 
   require Logger
 
@@ -75,16 +78,19 @@ defmodule Apiary.Integrations.Description do
             item_noun: nil,
             items: true,
             collection_noun: nil,
+            access: nil,
             document: nil
 
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
   `domains`, `program_version`, every role it names, its secrets (each `name`, and `title`,
-  the secret's title or else its name), the names of its plain settings, its source
-  role's words for its items (`item_noun`, nil where it names none), whether that source
-  reports items (`items`, true without a source role), its words for its collections
-  (`collection_noun`, nil where it names none), and the decoded document.
+  the secret's title or else its name), the names of its plain settings, what its source
+  role says (nil, and `items` true, without one), and the decoded document.
   """
+  # Of the source role: its words for its items (`item_noun`, nil where it names none),
+  # whether that source reports items (`items`, true without a source role), its words for
+  # its collections (`collection_noun`, nil where it names none), and its line on how to
+  # change which collections the adapter reaches (`access`, nil without a source role).
   @type t :: %__MODULE__{
           name: String.t(),
           title: String.t(),
@@ -97,13 +103,15 @@ defmodule Apiary.Integrations.Description do
           item_noun: item_noun | nil,
           items: boolean,
           collection_noun: collection_noun | nil,
+          access: String.t() | nil,
           document: map
         }
 
   @typedoc "A source's words for one of its items and for many, as its description gives them."
   @type item_noun :: %{one: String.t(), other: String.t()}
 
-  @typedoc "A source's words for one collection and for many, as its description gives them."
+  # A source's words for one collection and for many, as its description gives them.
+  @typedoc false
   @type collection_noun :: %{one: String.t(), other: String.t()}
 
   @settings_max 65_536
@@ -286,6 +294,7 @@ defmodule Apiary.Integrations.Description do
       item_noun: read_noun(get_in(document, ["roles", "source", "item_noun"])),
       items: get_in(document, ["roles", "source", "items"]) != false,
       collection_noun: read_noun(get_in(document, ["roles", "source", "collection_noun"])),
+      access: get_in(document, ["roles", "source", "access"]),
       document: document
     }
   end
@@ -303,19 +312,25 @@ defmodule Apiary.Integrations.Description do
 
   @doc """
   items?/1 says whether the source of `description` reports items: false when its source
-  role says `items: false`, a source that reports collections and no items; true
-  otherwise.
+  role says `items: false`; true otherwise.
   """
   @spec items?(t) :: boolean
   def items?(%__MODULE__{items: items}), do: items
 
-  @doc """
-  collection_noun/1 is the source role's words for one of its collections and for many,
-  `%{one: one, other: other}`, or nil when it names none, as for a description with no
-  source role.
-  """
+  # collection_noun/1 is the source role's words for one of its collections and for many,
+  # `%{one: one, other: other}`, or nil when it names none, as for a description with no
+  # source role.
+  @doc false
   @spec collection_noun(t) :: collection_noun | nil
   def collection_noun(%__MODULE__{collection_noun: collection_noun}), do: collection_noun
+
+  @doc """
+  access/1 is the source role's `access` line, how to change, at the source, what the
+  adapter reaches, as the integration's words, or nil for a description with no source
+  role.
+  """
+  @spec access(t) :: String.t() | nil
+  def access(%__MODULE__{access: access}), do: access
 
   defp title(%{"title" => title}, name) when is_binary(title),
     do: if(String.trim(title) == "", do: name, else: title)

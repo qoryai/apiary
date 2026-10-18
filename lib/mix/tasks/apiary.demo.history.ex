@@ -21,8 +21,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   the same runs on any day, and a run still running at a time long past is found lost at
   once.
 
-  Each run is a record Forager could have sent: its registration, then its start, with what it is about (an
-  issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
+  Each run is a record Forager could have sent: its registration, then its start, with what it is about (a
+  fix and the change that makes it, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. A run on a shared machine has a starter, which may give its
   outcome; a run on a laptop has none. Most runs complete and some fail, by the

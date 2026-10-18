@@ -50,14 +50,16 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     "outcome" => "refused"
   }
 
-  # A run of github.example/acme/shop: started, a policy applied, the egress given, and
-  # with `again:` a second policy applied; `exit: true` ends it.
+  # A run of github.example/acme/shop, or of the target `labels:` name: started, a
+  # policy applied, the egress given, and with `again:` a second policy applied;
+  # `exit: true` ends it.
   defp policy_run(scope, opts \\ []) do
     run = run_fixture(scope)
     time = DateTime.add(DateTime.utc_now(), -60, :second)
     at = &DateTime.add(time, &1, :second)
+    labels = opts[:labels] || shop()
 
-    event_fixture(run, 2, "run.started", started_data(%{"labels" => shop()}), time: time)
+    event_fixture(run, 2, "run.started", started_data(%{"labels" => labels}), time: time)
 
     event_fixture(
       run,
@@ -735,6 +737,25 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "Denied. No rule matches. Enforce mode denies it."
 
       refute text(timeline, "#e-5 .q-cx-denied") =~ "matched"
+    end
+
+    test "a target's path, in the panel and the toast: as a page shows a text a run sent", %{
+      conn: conn,
+      scope: scope
+    } do
+      # A target's path may carry a bidirectional override and a zero-width space.
+      labels = %{"forge" => "github.example", "repository" => "acme/\u202Eshop\u200B"}
+      run = policy_run(scope, labels: labels, egress: [@denied])
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+
+      view |> element("#cx-#{id}-allow") |> render_click()
+      assert text(view, "#rule-panel") =~ "This repository acme/shop"
+      refute view |> element("#rule-panel") |> render() =~ "\u202E"
+
+      view |> form("#rule-panel-form") |> render_submit()
+      assert text(view, "#flash-info") =~ "files.cdn.example is allowed for acme/shop."
+      refute view |> element("#flash-info") |> render() =~ "\u202E"
     end
 
     test "a target whose path another system has is named and linked with its system", %{

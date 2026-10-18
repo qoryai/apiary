@@ -117,6 +117,45 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     end
   end
 
+  describe "a target's path and a row's path, as a page shows a text a run sent" do
+    # A bidirectional override and a zero-width space, which a path may carry.
+    test "the version's holder and the toast's path are cleaned" do
+      target = %{id: "t", system: "git\u202E.example", path: "acme/\u202Eshop\u200B"}
+      assert Rules.version_label("t", target, true) == "git.example/acme/shop"
+      assert Rules.version_label("t", target) == "git.example/acme/shop"
+
+      assert Rules.version_label("t", target, MapSet.new([target.path])) ==
+               "git.example/acme/shop"
+
+      assert Rules.version_label("t", target, MapSet.new(["acme/shop"])) == "acme/shop"
+
+      rule = %{paths: ["/v1/*"], action: "allow"}
+
+      assert Rules.toast(rule, :allow, "api.example", "/v1/\u202Eitems", :workspace) ==
+               "/v1/items on api.example is allowed for the workspace."
+    end
+
+    test "a target's path, in the panel and the toast", %{conn: conn, scope: scope} do
+      docs = %{"host" => "docs.cdn.example", "decision" => "denied", "rule" => ""}
+      path = "acme/\u202Edocs\u200B"
+      started_run(scope, %{"forge" => "github.example", "repository" => path}, egress: [docs])
+      target = Enum.find(Policy.list_targets(scope), &(&1.target.path == path)).target
+
+      view = open(conn, scope)
+      view |> element("##{dst("docs.cdn.example")}-allow") |> render_click()
+      assert text(view, "#rule-panel-target") =~ "acme/docs · 1 run"
+      refute view |> element("#rule-panel") |> render() =~ "\u202E"
+
+      view
+      |> form("#rule-panel-form", %{"for" => "target", "target" => target.id})
+      |> render_change()
+
+      view |> form("#rule-panel-form") |> render_submit()
+      assert text(view, "#flash-info") =~ "docs.cdn.example is allowed for acme/docs."
+      refute view |> element("#flash-info") |> render() =~ "\u202E"
+    end
+  end
+
   describe "the workspace's Network access page" do
     test "a member's refusal of a locked rule says who may change it: the core's words, or an edition's sentence",
          %{scope: scope} do

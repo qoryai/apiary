@@ -969,7 +969,11 @@ defmodule Apiary.SecretLogFilterTest do
 
     @impl true
     def handle_info({:value, value}, _state), do: raise(ArgumentError, "refused #{value}")
-    def handle_info({:clause, value}, state), do: {:noreply, only_ok(value) && state}
+
+    def handle_info({:clause, value}, state) do
+      :ok = only_ok(value)
+      {:noreply, state}
+    end
 
     def only_ok(:ok), do: :ok
   end

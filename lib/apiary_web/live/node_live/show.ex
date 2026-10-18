@@ -465,8 +465,14 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp refused_default(socket),
     do: refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :overview)
 
+  # An instance in words: its name, else its id, a text Forager sent, shown as one where
+  # it was sent (`shown_id/1`).
   defp instance_label(%{name: name}) when is_binary(name), do: name
-  defp instance_label(%{instance_id: instance_id}), do: instance_id
+  defp instance_label(%{instance_id: instance_id}), do: shown_id(instance_id)
+
+  # An instance's id, or Forager's version, as a page shows a text Forager sent
+  # (`Apiary.ExternalText.sent/1`).
+  defp shown_id(text), do: Apiary.ExternalText.sent(text)
 
   ## Live
 
@@ -745,11 +751,11 @@ defmodule ApiaryWeb.NodeLive.Show do
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
-              <span class="q-cut" title={instance.name || instance.instance_id}>
-                {instance.name || instance.instance_id}
+              <span class="q-cut" title={instance_label(instance)}>
+                <bdi>{instance_label(instance)}</bdi>
               </span>
-              <span :if={instance.name} class="q-side q-mono" title={instance.instance_id}>
-                {instance.instance_id}
+              <span :if={instance.name} class="q-side q-mono" title={shown_id(instance.instance_id)}>
+                <.external_text text={instance.instance_id} />
               </span>
             </span>
           </:col>
@@ -760,16 +766,13 @@ defmodule ApiaryWeb.NodeLive.Show do
             <.run_link scope={@scope} public_id={instance.run_public_id} may_runs={@may_runs} />
           </:col>
           <:col :let={instance} label={gettext("Forager")} kind="faint" from="md">
-            {instance.forager_version || gettext("n/a")}
+            <.external_text text={instance.forager_version} />{if !instance.forager_version,
+              do: gettext("n/a")}
           </:col>
           <:action :let={instance} :if={@may_clear}>
             <.row_menu
               id={"#{instance_dom_id(instance)}-menu"}
-              label={
-                gettext("Actions for %{instance}",
-                  instance: instance.name || instance.instance_id
-                )
-              }
+              label={gettext("Actions for %{instance}", instance: instance_label(instance))}
             >
               <.menu_item
                 id={"#{instance_dom_id(instance)}-clear"}
@@ -1038,28 +1041,32 @@ defmodule ApiaryWeb.NodeLive.Show do
       <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <%= if @running do %>
           <span id="node-instance-name" class="font-medium">
-            {@running.name || @running.instance_id}
+            <bdi>{@running.name || shown_id(@running.instance_id)}</bdi>
           </span>
-          <span :if={@running.name} class="q-mono text-muted">{@running.instance_id}</span>
+          <span :if={@running.name} class="q-mono text-muted"><.external_text text={
+            @running.instance_id
+          } /></span>
           <span class="q-sdot q-sdot-running">
             <i aria-hidden="true"></i><span>{gettext("Running since")}</span>
           </span>
           <.relative_time format="clock" at={@running.since} />
           <.run_link scope={@scope} public_id={@running.run_public_id} may_runs={@may_runs} />
           <span :if={@running.forager_version} class="text-muted">
-            {gettext("Forager %{version}", version: @running.forager_version)}
+            {gettext("Forager %{version}", version: shown_id(@running.forager_version))}
           </span>
         <% else %>
           <span id="node-instance-name" class="font-medium">
-            {@last.name || @last.node_instance_id}
+            <bdi>{@last.name || shown_id(@last.node_instance_id)}</bdi>
           </span>
-          <span :if={@last.name} class="q-mono text-muted">{@last.node_instance_id}</span>
+          <span :if={@last.name} class="q-mono text-muted"><.external_text text={
+            @last.node_instance_id
+          } /></span>
           <span class="text-muted">
             {gettext("Last seen")}
             <.relative_time id="node-instance-seen" at={@last.last_seen_at} />
           </span>
           <span :if={@last.last_forager_version} class="text-muted">
-            {gettext("Forager %{version}", version: @last.last_forager_version)}
+            {gettext("Forager %{version}", version: shown_id(@last.last_forager_version))}
           </span>
         <% end %>
       </p>

@@ -10,12 +10,13 @@ defmodule Apiary.Runs.Target do
   `system` and `path` are the labels Forager sent, named after the system they come
   from. `insert_new/3` sets the id when it creates the target; a row written without one
   gets the column's default, of the same shape, read back on insert.
-
-  `further_repositories` are the paths in its system that its runs also read, after it, in
-  the order a person put them, empty for none: read through
-  `Apiary.Targets.further_repositories/1`, written whole through
-  `Apiary.Targets.set_further_repositories/3`, which checks them.
   """
+
+  # With the `factory` feature, which the documentation leaves out:
+  # `further_repositories` are the paths in its system that its runs also read, after it,
+  # in the order a person put them, empty for none: read through
+  # `Apiary.Targets.further_repositories/1`, written whole through
+  # `Apiary.Targets.set_further_repositories/3`, which checks them.
   use Ecto.Schema
 
   alias Apiary.Repo

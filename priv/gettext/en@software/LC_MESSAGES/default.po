@@ -131,6 +131,11 @@ msgid_plural "%{attempt} of %{of} runs used"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} chosen workspace"
@@ -687,6 +692,21 @@ msgstr ""
 msgid "%{interval}, and changes are sent as they happen"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} from the %{assigned}. Take one in to make it a work item."
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} that closed after they reached the backlog."
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{items} whose work item a member declined after Explore. They stay open on %{integration}, and Open leaves them out. Take in again brings back the same work item."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -1160,6 +1180,13 @@ msgid_plural "%{number} %{collections}"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} assigned to %{workspace}"
+msgid_plural "%{number} %{collections} assigned to %{workspace}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection} is unassigned."
@@ -1178,6 +1205,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection} is unassigned. Its %{items} reach no backlog until you assign it to a workspace."
 msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no backlog until you assign each to a workspace."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} that %{integration} no longer reaches isn't shown."
+msgid_plural "%{number} %{collections} that %{integration} no longer reaches aren't shown."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4790,6 +4824,11 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Closed %{when}, when its integration was removed"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Closed a work item"
@@ -4822,6 +4861,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Closed when its integration was removed"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Closing ends the work on it in Qory Apiary. %{integration} is no longer connected, so nothing changes on the %{item}."
 msgstr ""
 
@@ -4839,12 +4883,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
 msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgctxt "ticket"
-msgid "Collection"
-msgstr "Repository"
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4881,6 +4919,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Comment on work item #%{number}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Commented on a work item"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -5551,6 +5594,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted %{collection}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a comment on a work item"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6608,6 +6656,7 @@ msgid "Find a host, e.g. *.github.example seen:no"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a name"
 msgstr ""
@@ -10850,6 +10899,11 @@ msgstr ""
 msgid "Organisation settings › %{page}"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation settings › Integrations › %{integration}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation's deletion cancelled"
@@ -10953,6 +11007,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
 msgid "Owner"
@@ -11816,15 +11871,15 @@ msgstr ""
 msgid "Remove runtime…"
 msgstr ""
 
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the %{collection} filter"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the allow rule %{host}?"
 msgstr ""
-
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the collection filter"
-msgstr "Remove the repository filter"
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -11844,6 +11899,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the filter %{filter}"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the label filter"
+msgstr ""
+
+#: lib/apiary_web/live/backlog_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the updated filter"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -12029,6 +12094,7 @@ msgid "Repository"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
 msgid "Repository"
@@ -15285,6 +15351,11 @@ msgstr "This repository's mode is %{mode}."
 msgid "This work item stays in Qory Apiary. Qory no longer changes anything on the %{item}, and the %{item} is no longer in the Backlog."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "This work item was closed on %{date}, when its integration was removed."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace"
@@ -15672,6 +15743,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Updated"
 msgstr ""
@@ -16217,6 +16289,7 @@ msgid "Work"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Work item #%{number}"
 msgstr ""
@@ -16268,6 +16341,8 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
+#: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Work items"
 msgstr ""

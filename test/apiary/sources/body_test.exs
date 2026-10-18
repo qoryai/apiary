@@ -323,6 +323,14 @@ defmodule Apiary.Sources.BodyTest do
       refute words(doc) =~ "d.png"
     end
 
+    test "an image whose alt text is whitespace alone is drawn as one with no alt text" do
+      empty = html("![](https://example.com/d.png)")
+
+      for alt <- [" ", "\u00A0", "\u2003\u200B\u00A0"] do
+        assert html("![#{alt}](https://example.com/d.png)") == empty, inspect(alt)
+      end
+    end
+
     test "an image whose URL is not https is the same words, unlinked" do
       for url <- [
             "http://example.com/d.png",
@@ -437,12 +445,45 @@ defmodule Apiary.Sources.BodyTest do
   end
 
   describe "as written" do
-    test "text, nil and an unknown format come back unchanged, byte for byte" do
+    test "text, nil and an unknown format, with nothing to drop or show as U+FFFD, come back byte for byte" do
       text = "# Not a heading\n  <script>alert(1)</script>\r\n\ttabbed  **x** é\n"
 
       for format <- ["text", nil, "html", "Markdown", "markdown "] do
         assert Body.render(text, format, "ticket") == {:as_written, text}
       end
+    end
+
+    test "drops an invisible format character and shows a control character as U+FFFD, keeping the lines" do
+      text = "Steps:\r\n\t1. Log in#{<<0x202E::utf8>>}#{<<0x200B::utf8>>}\n2. Esc\e[2J"
+
+      for format <- ["text", nil] do
+        assert Body.render(text, format, "ticket") ==
+                 {:as_written, "Steps:\r\n\t1. Log in\n2. Esc\u{FFFD}[2J"}
+      end
+
+      html = Body.render(text, "markdown", "ticket") |> Phoenix.HTML.safe_to_string()
+      refute html =~ <<0x202E::utf8>>
+      refute html =~ <<0x200B::utf8>>
+      refute html =~ "\e"
+      assert html =~ "Esc\u{FFFD}[2J"
+    end
+
+    test "formatted, drops what a character reference, code or an image's alt text brings back" do
+      rlo = <<0x202E::utf8>>
+      zwsp = <<0x200B::utf8>>
+
+      text =
+        "Log in &#x202E; now &#27; &#x200B;x `a#{rlo}b` ![a&#x202E;b](https://x.example/i.png)\n\n" <>
+          "```\nc#{zwsp}d\e\n```\n"
+
+      html = Body.render(text, "markdown", "ticket") |> Phoenix.HTML.safe_to_string()
+      refute html =~ rlo
+      refute html =~ zwsp
+      refute html =~ "\e"
+      assert html =~ "Log in  now \u{FFFD} x"
+      assert html =~ "<code>ab</code>"
+      assert html =~ "Image: ab"
+      assert html =~ "cd\u{FFFD}"
     end
 
     test "an empty or nil text is the empty text, as written" do
