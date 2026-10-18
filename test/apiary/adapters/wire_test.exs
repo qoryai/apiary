@@ -1,6 +1,7 @@
 defmodule Apiary.Adapters.WireTest do
   # The body of an adapter's declaration read as the integration contract has it
-  # (`adapter.schema.json`): the contract's fixtures accepted, and each field refused in
+  # (`adapter.schema.json`): the contract's fixtures accepted, all but the declaration
+  # with a setup_url, refused until the declaration reads one, and each field refused in
   # turn, with every value that is not exactly what the contract allows.
   use ExUnit.Case, async: true
 
@@ -30,7 +31,7 @@ defmodule Apiary.Adapters.WireTest do
   defp put_sync(key, value), do: put_in(valid(), ["sync", key], value)
 
   describe "the contract's fixtures" do
-    test "the declarations of fixtures/adapter/adapter are accepted as written" do
+    test "acme-tracker.json and code-host.json of fixtures/adapter/adapter are accepted as written" do
       assert {:ok, declaration} = read(fixture("adapter/acme-tracker.json"))
 
       assert %{
@@ -60,6 +61,10 @@ defmodule Apiary.Adapters.WireTest do
                %{"type" => "number", "maximum" => 1.0e3, "multipleOf" => 0.5}
     end
 
+    test "acme-tracker-setup.json, with a setup_url, is refused until the declaration reads one" do
+      assert read(fixture("adapter/acme-tracker-setup.json")) == :error
+    end
+
     test "the schema's refusals and the control plane's are refused" do
       names =
         Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) ++
@@ -70,6 +75,7 @@ defmodule Apiary.Adapters.WireTest do
                "invalid/adapter-description-string.json",
                "invalid/adapter-description-version-2.json",
                "invalid/adapter-description-without-roles.json",
+               # Refused for now as any setup_url is; the declaration reads none yet.
                "invalid/adapter-setup-url-and-state.json",
                "invalid/adapter-setup-url-bare-state.json",
                "invalid/adapter-setup-url-fragment.json",
