@@ -547,9 +547,13 @@ defmodule Apiary.Retention do
   # was answered, for this run, or confirmed; the work item was declined, closed or undone
   # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
   # the take in was queued. Each is kept for good once written, so a result cleared is
-  # never waited for again. One statement over at most `:batch` rows at a time, each a
-  # short transaction of its own, read with no lock on a work item. A dry run clears
-  # nothing. A failure is logged by the workspace, and the next daily job goes on.
+  # never waited for again. One statement over at most `:batch` rows at a time, a short
+  # transaction for each, with no lock on a work item. It locks the runs of the queue it
+  # clears, by id, and passes by one another holds (`SKIP LOCKED`): it never waits on a
+  # lock, so it never forms a cycle with a path that holds a work item or runs of the
+  # queue (`Apiary.Dispatches.cancel_for_undo/1`), and a run passed by is cleared by the
+  # next daily job. A dry run clears nothing. A failure is logged by the workspace, and
+  # the next daily job goes on.
   defp clear_results(_workspace, nil, _opts), do: :ok
 
   defp clear_results(workspace, cutoff, opts) do
@@ -571,7 +575,12 @@ defmodule Apiary.Retention do
   end
 
   defp clear_batches(query, batch, cleared) do
-    ids = from d in query, limit: ^batch, select: d.id
+    ids =
+      from [dispatch_run: d] in query,
+        order_by: d.id,
+        limit: ^batch,
+        lock: fragment("FOR UPDATE OF ? SKIP LOCKED", d),
+        select: d.id
 
     {count, _rows} =
       Repo.update_all(from(d in DispatchRun, where: d.id in subquery(ids)), set: [result: nil])

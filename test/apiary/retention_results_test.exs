@@ -189,6 +189,18 @@ defmodule Apiary.RetentionResultsTest do
     assert kept(old) == {:proposal, nil}
   end
 
+  test "clears across several batches, `:batch` rows at a time", ctx do
+    closed =
+      for _ <- 1..5 do
+        ran = ran!(ctx.scope, understood_result())
+        {:ok, _} = WorkItems.close(ctx.scope, current(ran))
+        ran
+      end
+
+    prune!(ctx.workspace, batch: 2)
+    for ran <- closed, do: assert(kept(ran) == {:proposal, nil})
+  end
+
   test "the pages read a cleared run as one whose events were pruned", ctx do
     asked = ran!(ctx.scope, questions_result())
     {:ok, _} = WorkItems.answer(ctx.scope, current(asked), 1, @answers)
