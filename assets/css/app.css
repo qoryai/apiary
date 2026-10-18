@@ -10264,6 +10264,22 @@
   .q-tgt-dn-t {
     text-align: right;
   }
+
+  /* What a target's runs also read: a path in mono, one line each, in the saved order. */
+  .q-tgt-also > li {
+    padding: 0 16px;
+    line-height: 40px;
+    border-top: 1px solid var(--q-border-subtle);
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-tgt-also > li:first-child {
+    border-top: 0;
+  }
   @media (max-width: 767px) {
     .q-tgt-dn > li {
       grid-template-columns: 16px minmax(0, 1fr) auto;

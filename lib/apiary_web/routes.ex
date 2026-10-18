@@ -651,6 +651,9 @@ defmodule ApiaryWeb.Routes do
               live "/targets/:target_id/policy/versions/:n/export", TargetLive.Show, :export
               live "/targets/:target_id/policy/rules/new", TargetLive.Show, :new_rule
               live "/targets/:target_id/policy/rules/:id/edit", TargetLive.Show, :edit_rule
+              # What a target's runs also read, a form page of the target whose words and
+              # change are the `factory` feature's (`TargetLive.FurtherRepositories`).
+              live "/targets/:target_id/also-read", TargetLive.FurtherRepositories, :edit
               # The workspace's nodes, node pools and gateways: the list, with New node, New
               # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
