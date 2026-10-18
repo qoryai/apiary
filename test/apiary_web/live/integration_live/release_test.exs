@@ -151,6 +151,16 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert to =~ "/settings/integrations/#{connection.public_id}"
   end
 
+  test "a release's description takes its direction, its invisible characters dropped and its controls shown",
+       %{conn: conn, scope: scope} do
+    about = "Mints\u202E tokens.\nPer installation\e."
+    release = ready_release!(scope, github_description(%{"description" => about}))
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert lv |> element("#release-about[dir=auto]") |> render() =~
+             "Mints tokens.\nPer installation\u{FFFD}."
+  end
+
   test "a yes/no setting says what it is", %{conn: conn, scope: scope} do
     description =
       github_description()

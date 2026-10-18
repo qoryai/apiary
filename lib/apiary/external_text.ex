@@ -8,8 +8,6 @@ defmodule Apiary.ExternalText do
       isolates, the marks LRM, RLM and ALM, the Mongolian vowel separator, the zero-width
       space, the soft hyphen, the word joiner and the invisible operators, the byte order
       mark, the interlinear annotation characters, and the line and paragraph separators.
-      The set is the one an explore result's text refuses (`Apiary.WorkItems.WorkItem`,
-      `Apiary.Dispatches.Inputs`).
       The join controls ZWNJ and ZWJ stay: a name in some scripts, and an emoji sequence,
       needs them.
     * A control character, C0, DEL or C1, is shown as U+FFFD, so a reader sees that one
@@ -22,6 +20,8 @@ defmodule Apiary.ExternalText do
   not run into the text around it.
   """
 
+  # The set an explore result's text refuses (Apiary.WorkItems.WorkItem,
+  # Apiary.Dispatches.Inputs).
   @invisible ~r/[\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
   @control ~r/[\x{0}-\x{1F}\x{7F}-\x{9F}]/u
   @control_but_lines ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u
