@@ -267,9 +267,10 @@ defmodule ApiaryWeb.JumpController do
   defp run_label(run) do
     short_id = ApiaryWeb.RunComponents.short_id(run.public_id)
 
-    # A title with nothing left to show is no title.
-    case Apiary.ExternalText.line(ApiaryWeb.RunComponents.given_title(run)) do
-      title when title in [nil, ""] -> short_id
+    # A title with nothing left to show, or only whitespace, is no title
+    # (`Apiary.ExternalText.present/1`).
+    case Apiary.ExternalText.present(ApiaryWeb.RunComponents.given_title(run)) do
+      nil -> short_id
       title -> "#{short_id} · #{title}"
     end
   end
