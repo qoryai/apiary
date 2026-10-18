@@ -786,8 +786,14 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :listed)
       :ok = Collections.subscribe(other)
 
-      # The ref is live under this organisation's connection, so their part takes nothing.
-      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["A"])))
+      # The ref is live under this organisation's connection, and a listing newer than
+      # their part named it there, so their part takes nothing.
+      {:ok, :accepted} =
+        Collections.post_listing(
+          ctx.key_scope,
+          part(theirs, titled(["A"]), started_at: DateTime.add(@started, -60))
+        )
+
       assert messages() == []
     end
 
