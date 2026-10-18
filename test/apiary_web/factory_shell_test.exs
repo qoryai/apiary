@@ -47,7 +47,6 @@ defmodule ApiaryWeb.FactoryShellTest do
   # which answer anyone as a path that does not exist.
   @unbuilt_pages [
     ApiaryWeb.BacklogLive.Ticket,
-    ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show
   ]
 
@@ -300,7 +299,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert before?(html, ~s(id="nav-work_items"), ~s(id="nav-backlog"))
       assert before?(html, ~s(id="nav-backlog"), ~s(id="nav-group-record"))
 
-      # Nothing waits on anyone yet: no count beside Work items.
+      # No work item waits for the reader: no count beside Work items.
       refute has_element?(view, "#nav-work_items .q-nav-count")
       refute Map.has_key?(ApiaryWeb.UserAuth.nav_counts(scope), :waiting_on)
     end
