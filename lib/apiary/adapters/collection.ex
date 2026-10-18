@@ -14,10 +14,12 @@ defmodule Apiary.Adapters.Collection do
   # `:connection_ended`. One collection per adapter and ref is live at a time.
   # `workspace_id` is the one workspace it is assigned to, or none. `backlog` is whether
   # its items come into that workspace's Backlog, on unless a person turned it off
-  # (`Apiary.Adapters.Collections.set_backlog/3`); it stays with the collection when it
-  # moves to another workspace. `items` is false while the latest listing that named it
-  # said it has no items; a listing that names it without `items` makes it true, and one
-  # that leaves it out keeps it. A collection is linked while it is assigned to a
+  # (`Apiary.Adapters.Collections.set_backlog/3`, for a target, or
+  # `Apiary.Adapters.Collections.set_collection_backlog/4`, for the collection alone,
+  # with or without a target); it stays with the collection when it moves to another
+  # workspace. `items` is false while the latest listing that named it said it has no
+  # items; a listing that names it without `items` makes it true, and one that leaves it
+  # out keeps it. A collection is linked while it is assigned to a
   # workspace, `backlog` is on, it has items and so does its adapter
   # (`Apiary.Nodes.Node`'s `items`) (`linked?/1`): the adapter mirrors it, and its items
   # and comments are taken. `backlog` keeps its value while the collection or its adapter

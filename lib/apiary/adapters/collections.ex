@@ -78,7 +78,9 @@ defmodule Apiary.Adapters.Collections do
   # answers nothing to anyone else, and nothing of a connection of another organisation:
   # `list_collections/3`, a connection's collections a page at a time; `counts/2` and
   # `count_unassigned/2`; `backlog_switch/2`, whether a target's items come into the
-  # Backlog, to a person who may read the workspace's work items.
+  # Backlog, to a person who may read the workspace's work items. Each row of
+  # `list_collections/3` says too whether the collection's items come into the Backlog,
+  # where it has a switch.
   #
   # `assign_collections/4` assigns collections to a workspace, or to none
   # (`collection.assign`, owners and admins), by the ids Qory Apiary gives them, never by
@@ -91,7 +93,12 @@ defmodule Apiary.Adapters.Collections do
   # Backlog of a workspace's target on or off (`collection.set_backlog`, owners and
   # admins): its live collections assigned to the workspace with that target that have
   # items, as their adapters do, with the feed's `linked` or `unlinked` entry for each it
-  # changes; `set_backlog/3` makes no target.
+  # changes; `set_backlog/3` makes no target. `set_collection_backlog/4` turns the Backlog
+  # of one collection assigned to a workspace on or off, by the id Qory Apiary gives it,
+  # with or without a target (`collection.set_backlog` too), with the same feed entries;
+  # it makes no target either. The two write the switch the same way
+  # (`switch_backlog/2`), and each writes one entry, about what its press named: the
+  # target, or the collection.
   #
   # **Broadcasts**, after the change commits, carry ids only, on the organisation's topic
   # (`topic/1`, `"adapter_collections:"` and the organisation's id), which `subscribe/1`
@@ -117,23 +124,26 @@ defmodule Apiary.Adapters.Collections do
   #      and a listing's part `FOR SHARE` (`hold_adapter/1`), before its connection; no
   #      other change here holds it;
   #   1. the connections: a listing's part holds its connection `FOR UPDATE`, and no other
-  #      connection; an assign its connection `FOR SHARE`; a Backlog switch
-  #      (`set_backlog/3`) and a workspace's unlink (`unlink_workspace/2`) the connections
-  #      of the collections they change, `FOR SHARE`, by id;
+  #      connection; an assign and a collection's switch (`set_collection_backlog/4`) their
+  #      connection `FOR SHARE`; a target's Backlog switch (`set_backlog/3`) and a
+  #      workspace's unlink (`unlink_workspace/2`) the connections of the collections they
+  #      change, `FOR SHARE`, by id;
   #   2. the workspaces, `FOR SHARE`, all in one statement, by id, as a marking
   #      (`Apiary.Deletion`) and a policy write hold them: the workspace an assign or a
-  #      switch names, and for a listing's part the organisation's only workspace with
-  #      those its collections are assigned to; an unlink holds none;
+  #      target's switch names, the one a collection's switch finds the collection in,
+  #      read with no lock first, and for a listing's part the organisation's only
+  #      workspace with those its collections are assigned to; an unlink holds none;
   #   3. the collections, `FOR UPDATE`: by id for an assign, a switch and an unlink, read
-  #      again once held; for a listing's part, the live ones of its connection that it
-  #      names, by ref, then, when it completes the listing, those of its connection it
-  #      ends (`complete/3`), and no collection of another connection. A part makes the
-  #      others it names with an insert that leaves a ref live under another connection
-  #      as it is and never locks its row (`ON CONFLICT DO NOTHING`); that insert only
-  #      waits for a change writing the row to end, and it runs before the part writes the
-  #      collections it holds (`put_collections/5`). A change that holds collections by id
-  #      holds their connections first, so it holds none of a connection's collections
-  #      while a part of that connection runs;
+  #      again once held, so a collection's switch finds out there whether its collection
+  #      is still in the workspace it holds; for a listing's part, the live ones of its
+  #      connection that it names, by ref, then, when it completes the listing, those of
+  #      its connection it ends (`complete/3`), and no collection of another connection.
+  #      A part makes the others it names with an insert that leaves a ref live under
+  #      another connection as it is and never locks its row (`ON CONFLICT DO NOTHING`);
+  #      that insert only waits for a change writing the row to end, and it runs before
+  #      the part writes the collections it holds (`put_collections/5`). A change that
+  #      holds collections by id holds their connections first, so it holds none of a
+  #      connection's collections while a part of that connection runs;
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
   #      (`finish_part/4`);
@@ -163,7 +173,8 @@ defmodule Apiary.Adapters.Collections do
   #   * a Backlog switch reads the target's collections and their adapters with no lock
   #     first (`target_collections/1`), then reads the adapters again once it holds the
   #     collections, and leaves out those whose adapter has no items
-  #     (`lock_target_collections/3`);
+  #     (`lock_target_collections/3`); a collection's switch reads its adapter once it
+  #     holds the collection (`lock_switchable/4`);
   #   * an end, a disconnect and a workspace's unlink read it once they hold, or have
   #     written, the collections they end or unlink (`tell_unlinked/1`);
   #   * a post of items or of comments decides on a collection once it holds it
@@ -218,7 +229,10 @@ defmodule Apiary.Adapters.Collections do
   @typedoc """
   A collection a connection reaches, as a page lists it: its id and public id, its title
   (`name`) and address, its workspace, when it was added and last listed, when and why it
-  ended (nil while live), and its open tickets.
+  ended (nil while live), its open tickets, and its Backlog switch (`backlog`):
+  `%{on: on}`, whether its items come into its workspace's Backlog, where it has one;
+  nil where it has none: ended, assigned to no workspace, or with no items, it or its
+  adapter.
   """
   @type row :: %{
           id: Ecto.UUID.t(),
@@ -230,7 +244,8 @@ defmodule Apiary.Adapters.Collections do
           last_listed_at: DateTime.t(),
           ended_at: DateTime.t() | nil,
           ended_reason: Collection.ended_reason() | nil,
-          open_tickets: non_neg_integer
+          open_tickets: non_neg_integer,
+          backlog: %{on: boolean} | nil
         }
 
   @typedoc "How many live collections a connection reaches: all, unassigned, by workspace id."
@@ -998,7 +1013,8 @@ defmodule Apiary.Adapters.Collections do
   #   * `after:` the public id (`sc_…`) of the last row of the page before, for the next;
   #     one that names no collection of the connection gives `[]`.
   #
-  # A page of `page_size/0` rows may have more after it; a shorter one is the last.
+  # A page of `page_size/0` rows may have more after it; a shorter one is the last. Each
+  # row's `backlog` is its switch, which `set_collection_backlog/4` turns (`row/0`).
   @spec list_collections(Scope.t(), Connection.t(), keyword) :: [row]
   def list_collections(scope, connection, opts \\ [])
 
@@ -1028,9 +1044,10 @@ defmodule Apiary.Adapters.Collections do
     |> in_workspace(Keyword.get(opts, :workspace))
     |> after_row(connection, Keyword.get(opts, :after))
     |> join(:left, [c], w in assoc(c, :workspace))
+    |> join(:inner, [c], n in assoc(c, :adapter))
     |> order_by([c], asc: c.title, asc: c.id)
     |> limit(@page_size)
-    |> preload([_c, w], workspace: w)
+    |> preload([_c, w, n], workspace: w, adapter: n)
   end
 
   defp view(query, :all, connection_id) do
@@ -1118,9 +1135,25 @@ defmodule Apiary.Adapters.Collections do
       last_listed_at: collection.last_listed_at,
       ended_at: collection.ended_at,
       ended_reason: collection.ended_reason,
-      open_tickets: Map.get(tickets, collection.id, 0)
+      open_tickets: Map.get(tickets, collection.id, 0),
+      backlog: row_backlog(collection)
     }
   end
+
+  # The switch of a live collection assigned to a workspace, with items, as its adapter
+  # (loaded) has: whether it is on. A collection with no items, or of an adapter with
+  # none, has no switch: it is never linked, and its `backlog` keeps its value, unread.
+  defp row_backlog(%Collection{
+         ended_at: nil,
+         workspace_id: workspace_id,
+         items: true,
+         adapter: %Node{items: true},
+         backlog: on
+       })
+       when is_binary(workspace_id),
+       do: %{on: on}
+
+  defp row_backlog(%Collection{}), do: nil
 
   # The open tickets of each of the collections `ids`, by id: those open at their source
   # and not disconnected (`Apiary.Sources.Item`); one with none is left out.
@@ -1227,7 +1260,7 @@ defmodule Apiary.Adapters.Collections do
       with :ok <- Access.authorize(scope, :"collection.assign", scope.organisation),
            {:ok, ids, every_id?} <- cast_ids(ids),
            organisation_id = scope.organisation.id,
-           :ok <- lock_connection(organisation_id, connection),
+           {:ok, _held} <- lock_connection(organisation_id, connection),
            {:ok, workspace_id} <- lock_target(organisation_id, workspace),
            true <- every_id? || {:error, :not_found},
            {:ok, collections} <- lock_collections(organisation_id, connection, ids) do
@@ -1283,7 +1316,7 @@ defmodule Apiary.Adapters.Collections do
          ) do
       nil -> {:error, :not_found}
       %Connection{state: :ended} -> {:error, :ended}
-      %Connection{} -> :ok
+      %Connection{} = held -> {:ok, held}
     end
   end
 
@@ -1444,7 +1477,16 @@ defmodule Apiary.Adapters.Collections do
              lock_workspace(scope.organisation.id, target.workspace_id) || {:error, :not_found},
            [_ | _] = collections <- lock_target_collections(target, found, connections) do
         changed = Enum.reject(collections, &(&1.backlog == on))
-        :ok = switch_backlog(scope, target, changed, on)
+
+        if changed != [] do
+          {:ok, _entry} =
+            Audit.record(Repo, scope, :"collection.set_backlog", target, %{
+              details: %{backlog: on, count: length(changed)}
+            })
+
+          :ok = switch_backlog(changed, on)
+        end
+
         {:ok, changed}
       else
         [] -> {:error, :not_found}
@@ -1541,11 +1583,11 @@ defmodule Apiary.Adapters.Collections do
     Enum.filter(held, &MapSet.member?(with_items, &1.adapter_id))
   end
 
-  # Turns `changed`, held, on or off, with its entry, then the feed's entries, the
-  # adapter's feed counter last.
-  defp switch_backlog(_scope, _target, [], _on), do: :ok
-
-  defp switch_backlog(scope, target, changed, on) do
+  # Turns `changed`, held, assigned to a workspace and with items, as their adapters
+  # have, on or off, then writes the feed's entries, the adapter's feed counter last: each
+  # such change flips whether the collection is linked. The caller writes its entry
+  # first, once, about what the press named: the target, or the collection.
+  defp switch_backlog(changed, on) do
     ids = Enum.map(changed, & &1.id)
 
     {_count, _} =
@@ -1553,14 +1595,126 @@ defmodule Apiary.Adapters.Collections do
         set: [backlog: on, updated_at: DateTime.utc_now()]
       )
 
-    {:ok, _entry} =
-      Audit.record(Repo, scope, :"collection.set_backlog", target, %{
-        details: %{backlog: on, count: length(changed)}
-      })
-
     if on,
       do: tell(changed, "linked"),
       else: tell(changed, "unlinked")
+  end
+
+  ## The Backlog of a collection
+
+  @doc false
+  # set_collection_backlog/4 turns the Backlog of one collection of `connection` on or off
+  # (`on`), whatever its target, and with none: the collection whose id, the id Qory
+  # Apiary gives it (`id`, never a ref), is `collection_id`, in one transaction
+  # (`collection.set_backlog`, owners and admins, asked of the organisation, as an assign
+  # is). In this order:
+  #
+  #   * `Apiary.Access`'s refusal, before anything is read;
+  #   * `{:error, :not_found}` for an id that is not a UUID, and for a connection of
+  #     another organisation;
+  #   * `{:error, :ended}` for a connection that ended;
+  #   * `{:error, :not_found}` for an id that names no live collection of the connection
+  #     assigned to a workspace: of another connection or organisation, ended, assigned
+  #     to none, or in a workspace marked for deletion or claimed by its purge; and for a
+  #     collection with no items, or of an adapter with none, which has no switch
+  #     (`row/0`'s `backlog`);
+  #   * `{:ok, 1}` once it changed; `{:ok, 0}` for one as asked already, which writes
+  #     nothing.
+  #
+  # It holds the connection `FOR SHARE`, then the workspace the collection is in, read
+  # with no lock first, `FOR SHARE`, then the collection `FOR UPDATE`, read again once
+  # held, then reads its adapter, then the adapter's feed counter, last, as an assign and
+  # `set_backlog/3` hold them. A collection that moved to another workspace in between is
+  # not found. Turned on, it writes the feed's `linked` entry, turned off its `unlinked`
+  # entry, as `set_backlog/3` does. The entry of `collection.set_backlog`, in the trail of
+  # the collection's workspace, is about the collection, with `backlog`, the new state,
+  # the count, 1, the collection's title as it is then (`name`) and the connection's
+  # public id (`connection_id`), so the entry names it whatever becomes of it later. After
+  # the commit, the collection is broadcast.
+  @spec set_collection_backlog(Scope.t(), Connection.t(), Ecto.UUID.t(), boolean) ::
+          {:ok, 0 | 1} | {:error, :ended | Access.reason()}
+  def set_collection_backlog(%Scope{} = scope, %Connection{} = connection, collection_id, on)
+      when is_boolean(on) do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"collection.set_backlog", scope.organisation),
+           {:ok, id} <- cast_id(collection_id),
+           organisation_id = scope.organisation.id,
+           {:ok, held} <- lock_connection(organisation_id, connection),
+           workspace_id when is_binary(workspace_id) <- assigned_to(held, id),
+           ^workspace_id <- lock_workspace(organisation_id, workspace_id),
+           %Collection{} = collection <- lock_switchable(held, id, workspace_id) do
+        if collection.backlog == on do
+          {:ok, {held, []}}
+        else
+          {:ok, _entry} =
+            Audit.record(Repo, scope, :"collection.set_backlog", collection, %{
+              details: %{
+                backlog: on,
+                count: 1,
+                name: collection.title,
+                connection_id: held.public_id
+              }
+            })
+
+          :ok = switch_backlog([collection], on)
+          {:ok, {held, [collection.id]}}
+        end
+      else
+        {:error, _reason} = refused -> refused
+        _none -> {:error, :not_found}
+      end
+    end)
+    |> case do
+      {:ok, {held, changed}} ->
+        :ok = broadcast_collections(held, changed)
+        {:ok, length(changed)}
+
+      {:error, _reason} = refused ->
+        refused
+    end
+  end
+
+  defp cast_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  # The workspace the live collection `id` of `connection` is assigned to, read with no
+  # lock; nil for none.
+  defp assigned_to(%Connection{id: connection_id, organisation_id: organisation_id}, id) do
+    Repo.one(
+      from c in Collection,
+        where: c.id == ^id and c.connection_id == ^connection_id,
+        where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
+        select: c.workspace_id
+    )
+  end
+
+  # The collection `id` of `connection`, held `FOR UPDATE`, and read again once held:
+  # live, still in the workspace `workspace_id`, with items; then, in the next statement,
+  # its adapter, which must have items too, as `lock_target_collections/3` reads it, and
+  # for the same reason. nil otherwise.
+  defp lock_switchable(
+         %Connection{id: connection_id, organisation_id: organisation_id},
+         id,
+         workspace_id
+       ) do
+    with %Collection{} = collection <-
+           Repo.one(
+             from c in Collection,
+               where: c.id == ^id and c.connection_id == ^connection_id,
+               where: c.organisation_id == ^organisation_id and is_nil(c.ended_at),
+               where: c.workspace_id == ^workspace_id and c.items,
+               lock: "FOR UPDATE"
+           ),
+         true <-
+           Repo.exists?(from n in Node, where: n.id == ^collection.adapter_id and n.items) do
+      collection
+    else
+      _none -> nil
+    end
   end
 
   ## Broadcasts

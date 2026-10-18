@@ -61,7 +61,8 @@ defmodule Apiary.Adapters.Connections do
   #     another connection; then the targets it makes; then the adapter's feed counter
   #     (`Apiary.Adapters.Collections.post_listing/2`). An assign holds the connection
   #     `FOR SHARE`, then the workspace, the collections and the feed counter
-  #     (`Apiary.Adapters.Collections.assign_collections/4`); a Backlog switch and a
+  #     (`Apiary.Adapters.Collections.assign_collections/4`), and so does a collection's
+  #     Backlog switch (`set_collection_backlog/4` there); a target's Backlog switch and a
   #     workspace's unlink hold the connections of the collections they change
   #     `FOR SHARE`, by id, then the collections (`set_backlog/3`, `unlink_workspace/2`
   #     there). An end (`end_connection/2`,
