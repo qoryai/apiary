@@ -35,8 +35,9 @@ defmodule Apiary.Sources.Backlog do
   # and Declined. The counts of each view, and the total, come from one grouped query,
   # under the same search and filters as the page, without its view.
   #
-  # **The facts** (`backlog_facts/1`) name the integrations the organisation is connected
-  # through, each by its adapter's name and public id, read with the connections.
+  # **The facts** (`backlog_facts/1`) name the integrations that bring items the
+  # organisation is connected through, each by its adapter's name and public id, read
+  # with the connections.
   #
   # Every text a ticket holds came from an adapter and is untrusted: these reads return it
   # as data. Every input a person gives (a search, a filter value, a cursor, a public id)
