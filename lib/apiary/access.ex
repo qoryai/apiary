@@ -489,6 +489,12 @@ defmodule Apiary.Access do
     Action.new(:"dispatch.prebuilt", "record the image a prebuild built",
       feature: :factory,
       roles: [:pool_key]
+    ),
+    # A member asks for a build of a target's environment, for each node pool of its
+    # workspace (`Apiary.Environments.rebuild/2`).
+    Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
+      feature: :factory,
+      roles: @members
     )
   ]
 

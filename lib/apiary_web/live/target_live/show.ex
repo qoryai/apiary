@@ -32,15 +32,27 @@ defmodule ApiaryWeb.TargetLive.Show do
   inserted under the reader, and comes in when asked.
   """
 
-  # With the `factory` feature, which the documentation leaves out, Overview ends with two
-  # more parts. Where the target's collection is assigned to the workspace, and it and its
-  # adapter have items, the Backlog card: one switch, whether its tickets come into the
-  # workspace's Backlog, named with its source's word for them, which owners and admins
-  # turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
+  # With the `factory` feature, which the documentation leaves out, Overview ends with
+  # three more parts. Where the target's collection is assigned to the workspace, and it
+  # and its adapter have items, the Backlog card: one switch, whether its tickets come
+  # into the workspace's Backlog, named with its source's word for them, which owners and
+  # admins turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
   # disabled, with who may change it. After it, where the reader may read the workspace's
-  # work items, what its runs also read (`Apiary.Targets.further_repositories/1`), one path
-  # a line, with Change, for those who may change it (`target.set_further_repositories`),
-  # which leads to its form page (`ApiaryWeb.TargetLive.FurtherRepositories`).
+  # work items, the Environment card (Apiary.Environments.section/2): for each node pool
+  # of the workspace, the image a run of the target on the pool starts in, as
+  # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
+  # and the whole reference its title, when it was built and from which commit, or that
+  # runs use the pool's default image and why, or, where the policy in force for the
+  # target sets an image, that runs use the image set in the policy; whether a build runs
+  # or waits; and the last build's failure, never the reason a starter gave. Where no pool
+  # serves the workspace, or the target names no environment, one line says so instead.
+  # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
+  # may ask for one (`target.rebuild_environment`), where the target names an environment
+  # and a pool serves the workspace; a reader who may not sees no button. After it, under
+  # the same condition, what its runs also read (`Apiary.Targets.further_repositories/1`),
+  # one path a line, with Change, for those who may change it
+  # (`target.set_further_repositories`), which leads to its form page
+  # (`ApiaryWeb.TargetLive.FurtherRepositories`).
 
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
@@ -48,7 +60,7 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Runs, Targets}
+  alias Apiary.{Access, Environments, Runs, Targets}
   alias Apiary.Adapters.Collections
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.{PolicyLive, SourceComponents}
@@ -84,6 +96,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       new_runs: 0
     )
     |> load_backlog()
+    |> load_environment()
     |> load_further()
     |> load_summary()
     |> mount_tab(tab)
@@ -180,6 +193,37 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
+  # Rebuild: a build queued for each pool whose build of the target does not wait
+  # unclaimed, with a toast that says whether one was queued or every pool's waits
+  # already. A refusal, or a target that names no environment any more, reads the card
+  # again and says nothing.
+  def handle_event("rebuild_environment", _params, %{assigns: %{tab: :overview}} = socket) do
+    %{current_scope: scope, target: target, shared: shared} = socket.assigns
+
+    case Environments.rebuild(scope, target) do
+      {:ok, 0} ->
+        {:noreply,
+         socket
+         |> load_environment()
+         |> put_flash(
+           :info,
+           gettext("A build of %{target} is already waiting.", target: name(target, shared))
+         )}
+
+      {:ok, _queued} ->
+        {:noreply,
+         socket
+         |> load_environment()
+         |> put_flash(
+           :info,
+           gettext("A build of %{target} is queued.", target: name(target, shared))
+         )}
+
+      {:error, _refused} ->
+        {:noreply, load_environment(socket)}
+    end
+  end
+
   def handle_event("show_new_runs", _params, %{assigns: %{tab: :overview}} = socket),
     do: {:noreply, socket |> assign(:new_runs, 0) |> load_summary() |> load_overview()}
 
@@ -238,6 +282,25 @@ defmodule ApiaryWeb.TargetLive.Show do
       may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation)
     )
   end
+
+  # What the target's environment is for each node pool of the workspace, where the reader
+  # may read its work items, and whether the reader may ask for a build of it: where it
+  # names an environment, which only a collection assigned to the workspace does, and a
+  # pool serves the workspace.
+  defp load_environment(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+    environment = Environments.section(scope, target)
+
+    assign(socket,
+      environment: environment,
+      may_rebuild: may_rebuild?(scope, target, environment)
+    )
+  end
+
+  defp may_rebuild?(scope, target, %{named: true, pools: [_ | _]}),
+    do: Access.can?(scope, :"target.rebuild_environment", target)
+
+  defp may_rebuild?(_scope, _target, _environment), do: false
 
   # What the target's runs also read, where the reader is shown the work items, and whether
   # the reader may change it.
@@ -394,6 +457,8 @@ defmodule ApiaryWeb.TargetLive.Show do
         scope={@current_scope}
         backlog={@backlog}
         may_set_backlog={@may_set_backlog}
+        environment={@environment}
+        may_rebuild={@may_rebuild}
         further={@further}
         may_set_further={@may_set_further}
       />
@@ -480,6 +545,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   attr :scope, :any, required: true
   attr :backlog, :map, default: nil
   attr :may_set_backlog, :boolean, default: false
+  attr :environment, :map, default: nil
+  attr :may_rebuild, :boolean, default: false
   attr :further, :list, default: nil
   attr :may_set_further, :boolean, default: false
 
@@ -594,6 +661,71 @@ defmodule ApiaryWeb.TargetLive.Show do
         </section>
 
         <section
+          :if={@environment}
+          id="target-environment"
+          class="q-tgt-card"
+          aria-labelledby="target-environment-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-environment-h">{gettext("Environment")}</h2>
+            <span class="grow"></span>
+            <.button
+              :if={@may_rebuild}
+              id="target-environment-rebuild"
+              size="xs"
+              phx-click="rebuild_environment"
+              loading_text={gettext("Asking")}
+            >
+              {gettext("Rebuild")}
+            </.button>
+          </div>
+          <p
+            :if={@environment.state == :no_pool}
+            id="target-environment-no-pool"
+            class="q-tgt-card-empty"
+          >
+            {gettext("No pool serves the workspace of this target.")}
+          </p>
+          <p
+            :if={@environment.state == :no_environment}
+            id="target-environment-none"
+            class="q-tgt-card-empty"
+          >
+            {gettext("This target has no environment set, so runs use each pool's default image.")}
+          </p>
+          <ul :if={@environment.state == :pools} id="target-environment-pools" class="q-tgt-env">
+            <li :for={pool <- @environment.pools} id={"target-environment-pool-#{pool.id}"}>
+              <h3 class="q-tgt-env-pool">{pool.name}</h3>
+              <p class="q-tgt-env-line">
+                <.environment_image id={"target-environment-pool-#{pool.id}"} pool={pool} />
+                <span :if={pool.running} id={"target-environment-pool-#{pool.id}-running"}>
+                  {gettext("A build is running.")}
+                </span>
+                <span :if={pool.waiting} id={"target-environment-pool-#{pool.id}-waiting"}>
+                  {gettext("A build is waiting.")}
+                </span>
+              </p>
+              <p
+                :if={pool.serves == :image && pool.commit}
+                id={"target-environment-pool-#{pool.id}-commit"}
+                class="q-tgt-env-line"
+              >
+                <.rich text={
+                  rich_gettext("from %{commit}", commit: {:m, {:bdi, short_commit(pool.commit)}})
+                } />
+              </p>
+              <p
+                :if={pool.failure}
+                id={"target-environment-pool-#{pool.id}-failure"}
+                class="q-tgt-env-line q-hot"
+              >
+                {failure_words(pool.failure)}
+              </p>
+            </li>
+          </ul>
+        </section>
+
+        <section
           :if={@further}
           id="target-further-repositories"
           class="q-tgt-card"
@@ -702,6 +834,54 @@ defmodule ApiaryWeb.TargetLive.Show do
     """
   end
 
+  # What runs of a pool start in: the image the pool's last build for the target made,
+  # with when it was built, or the pool's default image, and why.
+  attr :id, :string, required: true
+  attr :pool, :map, required: true
+
+  defp environment_image(%{pool: %{serves: :image}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-image"} class="q-tgt-env-image" title={@pool.image}>
+      {short_image(@pool.image)}
+    </span>
+    <span id={"#{@id}-built"}>
+      <.rich text={rich_gettext("built %{time}", time: {:part, :time})}>
+        <:part name={:time}>
+          <time datetime={DateTime.to_iso8601(@pool.built_at)}>{built_time(@pool.built_at)}</time>
+        </:part>
+      </.rich>
+    </span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :default}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-default"}>{gettext("The pool's default image.")}</span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :other_target}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-other-target"}>
+      {gettext("Runs use the pool's default image until this target is built.")}
+    </span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :policy}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-policy"}>{gettext("Runs use the image set in this workspace's policy.")}</span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :retired}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-retired"}>
+      {gettext("Runs use the pool's default image: this target no longer has an environment set.")}
+    </span>
+    """
+  end
+
   # The runs that landed since the list was read: counted, and in when asked.
   attr :count, :integer, required: true
 
@@ -784,6 +964,38 @@ defmodule ApiaryWeb.TargetLive.Show do
       "https://#{system}/" <> Enum.join(segments, "/")
     end
   end
+
+  # An image pinned by its digest, its digest cut to the twelve characters every page
+  # shows of one; a reference without a digest as it is.
+  defp short_image(reference) do
+    case String.split(reference, "@sha256:", parts: 2) do
+      [name, hex] when byte_size(hex) > 12 ->
+        name <> "@sha256:" <> String.slice(hex, 0, 12) <> "…"
+
+      _whole ->
+        reference
+    end
+  end
+
+  # The commit a build was made from, as a pool reported it, cleaned as a page shows a text
+  # a node sent (`Apiary.ExternalText.sent/1`), then cut to its first seven characters.
+  # The cut counts graphemes, so a control character shown as U+FFFD is one of the seven,
+  # and a character is never cut apart from what joins it.
+  defp short_commit(commit), do: commit |> Apiary.ExternalText.sent() |> String.slice(0, 7)
+
+  # When a build was made, its year only where it is not the current one.
+  defp built_time(at) do
+    if Format.local(at).year == Format.local(DateTime.utc_now()).year,
+      do: Format.datetime(at, year: false),
+      else: Format.datetime(at)
+  end
+
+  # The last build's failure, by its cause; the reason a starter gave is never shown.
+  defp failure_words(:released), do: gettext("The last build was given back.")
+  defp failure_words(:lost), do: gettext("The last build was lost before it finished.")
+
+  defp failure_words(:timed_out),
+    do: gettext("The last build failed: it ran past 35 minutes.")
 
   defp own_mode_words("observe"), do: gettext("overrides the mode: observe")
   defp own_mode_words("enforce"), do: gettext("overrides the mode: enforce")

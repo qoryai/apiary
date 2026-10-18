@@ -10190,6 +10190,40 @@
     font-size: 0.8125rem;
     line-height: 1.25rem;
   }
+  /* The Environment card: one block per node pool, its name, then what its runs start
+     in and the state of its builds, one muted line each. */
+  .q-tgt-env {
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .q-tgt-env-pool {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .q-tgt-env-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    min-width: 0;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-tgt-env-line.q-hot {
+    color: var(--color-base-content);
+  }
+  .q-tgt-env-image {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   /* A table inside a card is the card's list, not a box of its own, and its columns
      are named for a screen reader only. */
   .q-tgt-card .q-tgt-inset {
