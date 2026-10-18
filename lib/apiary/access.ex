@@ -273,14 +273,14 @@ defmodule Apiary.Access do
       audited:
         {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
     ),
-    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+    Action.new(:"variable.read", "read the variables of the workspace and its targets",
       feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"variable.edit",
-      "set, change, lock and remove the variables of the workspace and its repositories",
+      "set, change, lock and remove the variables of the workspace and its targets",
       feature: :secrets,
       roles: @admins
     ),

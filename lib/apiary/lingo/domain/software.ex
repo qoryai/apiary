@@ -5,8 +5,10 @@ defmodule Apiary.Lingo.Domain.Software do
   `forge` label is the system and the `repository` label the path. Both must be labels
   that can name a target (`Apiary.Runs.Target.label/1`), or the run names none. Any
   other label, sent by Forager beside them, names nothing here. The `repositories` label,
-  which Qory adds to a run it hands over (`paths_label/0`), names nothing here either.
+  which Qory may add to a run (`paths_label/0`), names nothing here either.
   """
+  # Qory adds the `repositories` label to a run it hands over, with the `factory` feature,
+  # which the documentation leaves out.
   @behaviour Apiary.Lingo.Domain
 
   alias Apiary.Runs.Target

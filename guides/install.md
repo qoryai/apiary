@@ -12,7 +12,7 @@ page is the reference for an installation that stays.
 ## The pieces
 
 - **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
-  CI builds it on every pull request and push and publishes nothing; only a release
+  CI builds it on every proposed change and every push and publishes nothing; only a release
   publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
   `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
   `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and

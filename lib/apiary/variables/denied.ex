@@ -11,7 +11,7 @@ defmodule Apiary.Variables.Denied do
 
   Forager's `QORY_*` entry leaves in two names when the server sets them, by these names
   exactly, in upper case: `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`, the system and the
-  repositories a run's preparation may use. Only the server sets them, for a run it
+  paths in it a run's preparation may use. Only the server sets them, for a run it
   composes them for; a level's variable of either name is still refused on save.
 
   The list holds only `QORY_*` until the contract's file is vendored and read here.

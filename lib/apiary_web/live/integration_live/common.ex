@@ -170,7 +170,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
   title in the catalogue or an integration's in its description, with the name it has
-  there beside it (`claude`, `github`); a service's name alone, `{name, nil}`. The
+  there beside it (`claude`, `tracker`); a service's name alone, `{name, nil}`. The
   machine name is nil where it is the title. Both are shown as an external system's text
   is (`Apiary.ExternalText.line/1`): an integration's description gives them.
   """
@@ -197,7 +197,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   end
 
   @doc """
-  label/1 is a connection's title with its machine name beside it, "GitHub (github)", for
+  label/1 is a connection's title with its machine name beside it, "Tracker (tracker)", for
   a sentence, a heading or a message that names it in plain text (`names/1`).
   """
   def label(%Connection{} = connection), do: connection |> names() |> label()
