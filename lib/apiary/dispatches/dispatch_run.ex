@@ -47,7 +47,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # lapsed while another prebuild of its collection and pool waited or went back to
   # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
   # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
-  # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone.
+  # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
+  # `prebuilt`, a prebuild handed over whose starter reported the image it built
+  # (prebuilt.schema.json), its registered run left to its outcome.
   @end_causes [
     :released,
     :closed,
@@ -58,7 +60,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :superseded,
     :variables_invalid,
     :ticket_gone,
-    :inputs_invalid
+    :inputs_invalid,
+    :prebuilt
   ]
 
   # The step that builds a collection's environment for a node pool.

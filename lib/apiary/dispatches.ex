@@ -130,8 +130,9 @@ defmodule Apiary.Dispatches do
   #
   # `prebuilt(access_key, dispatch_id, meta)` records the image the job for a prebuild
   # built, on the environment record of its collection and the pool that claimed it, and
-  # ends its run as a release after its handover with `retry` false ends it, in one
-  # transaction, or refuses in the contract's order (`Apiary.Dispatches.Prebuilt`).
+  # ends its run of the queue and its dispatch, `prebuilt`, the registered run left to its
+  # outcome, in one transaction, or refuses in the contract's order
+  # (`Apiary.Dispatches.Prebuilt`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #

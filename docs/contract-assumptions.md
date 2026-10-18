@@ -408,18 +408,22 @@ handed over.
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
-handover, or its `prebuilt`, ends it `released`; and the lost-run check ends it `lost` when
-its gateway never attached it by its `attach_by`, or when it has neither an outcome nor an
-exit by its backstop, 1200 seconds after its attach for the step `explore` and 2100 for
-`prebuild` (Liveness). A prebuild the check ends so records that end as its last build's
+handover ends it `released`; and the lost-run check ends it `lost` when its gateway never
+attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
+backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
+(Liveness). A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
+registered run ends: the registered run is left as it is, to its starter's outcome, which
+the contract has follow the prebuilt and which decides its state as any outcome does; the
+lost-run check passes it by from then on, and the liveness rules alone find it lost should
+neither an outcome nor an exit come. A prebuild the check ends so records that end as its last build's
 failure on the environment record of its collection and of the pool that claimed it, `lost`
 at its `attach_by` and `timed_out` at its backstop, with no reason; the record keeps its last
 good build, nothing is queued, and the check holds that record before the run of the queue,
 as a release does; a prebuild whose `environment_ref` is older than the record's image's
 records no failure, and ends all the same. Its dispatch ends with it, with the same end
-cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim is freed once
-(`dispatches.slot_freed_at`, set only where it is empty). An end after the first changes
-none of them. A release after the handover records
+cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim
+is freed once (`dispatches.slot_freed_at`, set only where it is empty). An end after the
+first changes none of them. A release after the handover records
 the registered run cancelled with the reason `released` (`runs.released_at`), which the fold
 applies after every pass and over its exit, and records no outcome: no `end` is sent for
 it, an end following only the starter's outcome, and its gateway's attach is `410` from
@@ -474,8 +478,10 @@ second prebuilt among them, or of a run whose outcome or exit came first; `409`
 `409` `not_prebuild` for a dispatch of another step; `409` `not_handed_over` for a dispatch
 not handed over yet; `409` `run_mismatch` for a `run_id` that is not the dispatch's run;
 and `503` `unavailable` last, after which nothing was written. Else the signed `204`, with
-no body. The run ends with its registered run as a release after its handover with `retry`
-false ends it, `released`, as above, its slot freed once. The prebuild's environment record
+no body. The run of the queue ends, `prebuilt`, as above, its dispatch with it and its slot
+freed once; the registered run is not cancelled and records no `released_at`, and its
+gateway's attach is `410` from then on, but for the gateway that attached it, whose repeat
+is answered as before. The prebuild's environment record
 then keeps the build: the image, its size, its commit, when it was recorded, the
 `environment_ref` reported, as it is even where it differs from the record's `queued_ref`,
 and the target it was built for, the registered run's target, which its handover named
@@ -603,7 +609,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
-| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone | empty |
+| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone; or it is a prebuild whose `prebuilt` ended its run of the queue | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |

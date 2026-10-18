@@ -161,7 +161,7 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
     assert record.image == body["image"]
     assert record.commit == body["commit"]
     assert record.built_target_path == collection.target_path
-    assert %DispatchRun{state: :ended, end_cause: :released} = Repo.get!(DispatchRun, queued.id)
+    assert %DispatchRun{state: :ended, end_cause: :prebuilt} = Repo.get!(DispatchRun, queued.id)
     assert entries() == 1
 
     # Any later request naming the dispatch is gone.

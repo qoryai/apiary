@@ -86,7 +86,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       {Environments.fetch(queued.pool_id, collection.id), dispatch!(dispatch), queue_run!(queued)}
 
   describe "on success" do
-    test "records the build for the claiming pool, ends the run as a release, and queues nothing",
+    test "records the build for the claiming pool, ends the run of the queue prebuilt, leaves the registered run to its outcome, and queues nothing",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued, run: run} =
         handed_over!(ctx)
@@ -113,16 +113,21 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert {record.queued_target_system, record.queued_target_path} ==
                {collection.target_system, collection.target_path}
 
-      # The run ends as a release after its handover with retry false ends it.
-      assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
+      # The run of the queue and its dispatch end, prebuilt, and the slot is freed.
+      assert %DispatchRun{state: :ended, end_cause: :prebuilt} = queue_run!(queued)
 
-      assert %Dispatch{end_cause: :released, ended_at: %DateTime{} = at, slot_freed_at: at} =
+      assert %Dispatch{end_cause: :prebuilt, ended_at: %DateTime{} = at, slot_freed_at: at} =
                dispatch!(dispatch)
 
       assert DateTime.compare(record.built_at, at) == :eq
       assert DateTime.compare(record.built_queued_at, queued.environment_ref_at) == :eq
       assert Slots.held(ctx.pool.id) == 0
-      assert %Run{released_at: %DateTime{}, outcome_state: nil} = Repo.get!(Run, run.id)
+      # The registered run is left as it was: not cancelled, no released_at, no outcome.
+      assert %Run{released_at: nil, outcome_state: nil, reason: nil} =
+               left = Repo.get!(Run, run.id)
+
+      assert left.state == run.state
+      refute left.state == "cancelled"
 
       # Nothing queued after it.
       assert prebuilds(collection) == [queued.id]
@@ -243,10 +248,15 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
   describe "a prebuild whose ref is older than the recorded image's (V-804)" do
     # The run of `claimed` ended as a release after its handover ends it, its slot freed.
-    defp released!(%{dispatch: dispatch, dispatch_run: queued, run: run}) do
-      assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
-      assert %Dispatch{end_cause: :released, slot_freed_at: %DateTime{}} = dispatch!(dispatch)
-      assert %Run{released_at: %DateTime{}} = Repo.get!(Run, run.id)
+    defp released!(claimed, cause \\ :prebuilt)
+
+    defp released!(%{dispatch: dispatch, dispatch_run: queued, run: run}, cause) do
+      assert %DispatchRun{state: :ended, end_cause: ^cause} = queue_run!(queued)
+      assert %Dispatch{end_cause: ^cause, slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+
+      if cause == :released,
+        do: assert(%Run{released_at: %DateTime{}} = Repo.get!(Run, run.id)),
+        else: assert(%Run{released_at: nil} = Repo.get!(Run, run.id))
     end
 
     defp release(key, %{dispatch: dispatch}),
@@ -296,7 +306,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       assert record!(older.collection, ctx.pool) == kept
       assert %Record{commit: "b2", failure_cause: nil, failure_reason: nil} = kept
-      released!(older)
+      released!(older, :released)
       assert Slots.held(ctx.pool.id) == 0
     end
 
