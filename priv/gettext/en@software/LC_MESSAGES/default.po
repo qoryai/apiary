@@ -6588,6 +6588,7 @@ msgid "Find a host, e.g. *.github.example seen:no"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a name"
 msgstr ""
@@ -10933,6 +10934,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
 msgid "Owner"
@@ -12014,6 +12016,7 @@ msgid "Repository"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "work item"
 msgid "Repository"
@@ -15617,6 +15620,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Updated"
 msgstr ""
@@ -16213,6 +16217,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Work items"
 msgstr ""
