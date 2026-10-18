@@ -60,7 +60,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
 
   # A complete listing of `connection`, as the adapter of `key` sends it: a collection per
   # title, with no target; `{title, :no_items}` for one with no items.
-  defp list(key, connection, titles) do
+  defp list(key, connection, titles, id \\ "first") do
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     {:ok, :accepted} =
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
         collections: Enum.map(titles, &listed/1),
-        listing: %{id: "first", part: 1, started_at: ~U[2026-10-01 09:00:00Z], complete: true}
+        listing: %{id: id, part: 1, started_at: ~U[2026-10-01 09:00:00Z], complete: true}
       })
 
     :ok
@@ -275,6 +275,35 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     assert %Collection{backlog: true} = collection(connection, "acme/shop")
   end
 
+  test "a press naming another organisation's collection, or no collection, does nothing", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _platform} = several(scope, adapter, key, ["acme/shop"], ["acme/shop"])
+
+    %{user: stranger} = sign_up_fixture()
+    other = Apiary.Organisations.load_scope(Scope.for_user(stranger))
+    {other_connection, _nonce} = connection_fixture(other, adapter, :connected)
+    list(key, other_connection, ["beta/shop"], "theirs")
+    theirs = collection(other_connection, "beta/shop")
+    assert theirs.workspace_id
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    for public_id <- [theirs.public_id, "sc_0000000000000000", "not-an-id"] do
+      render_click(lv, "set_backlog", %{"collection" => public_id})
+
+      refute has_element?(lv, "#flash-info")
+      refute has_element?(lv, "#flash-error")
+      assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="true"]})
+    end
+
+    assert %Collection{backlog: true} = collection(other_connection, "beta/shop")
+    assert %Collection{backlog: true} = collection(connection, "acme/shop")
+  end
+
   test "a member sees the switches disabled, and who may turn them", %{
     scope: scope,
     adapter: adapter,
@@ -311,7 +340,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
 
     assert words(lv, "#collections-backlog-hint") == @hint
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="true"]})

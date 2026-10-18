@@ -886,9 +886,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   # What being assigned means, above the table: for an adapter with no items, that each
   # collection is assigned to one workspace; with one workspace, that every one is
-  # assigned to it, and its items come into that workspace's Backlog; with several, that
-  # each is assigned to one, and their items come into its Backlog while their Backlog
-  # switches are on.
+  # assigned to it, and its items come into that workspace's Backlog while its Backlog
+  # switch is on; with several, that each is assigned to one, and their items come into
+  # its Backlog while their Backlog switches are on.
   defp lead(scope, adapter, workspaces) do
     cond do
       not Adapters.items?(adapter) ->
@@ -900,7 +900,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         [workspace] = workspaces
 
         gettext(
-          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog.",
+          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on.",
           organisation: scope.organisation.name,
           workspace: workspace.name,
           collection: collection_word(adapter, 1),

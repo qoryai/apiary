@@ -453,7 +453,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-filling")
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
 
     assert words(lv, "#collections-count") == "2 repositories"
     assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
