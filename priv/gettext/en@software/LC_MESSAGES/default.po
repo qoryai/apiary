@@ -6746,6 +6746,16 @@ msgstr ""
 msgid "Gateways"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Gave a claimed run back"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Gave back a run handed over to its machine"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -11910,6 +11920,11 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs are going through this gateway: %{runs}. Delete it once they end."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Runs given back"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
