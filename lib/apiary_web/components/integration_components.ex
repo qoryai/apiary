@@ -146,6 +146,7 @@ defmodule ApiaryWeb.IntegrationComponents do
       id={@id}
       action={@action}
       method="post"
+      novalidate
       phx-submit="install"
       phx-trigger-action={@sending}
       class="contents"
