@@ -322,10 +322,20 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       scope: scope
     } do
       work_item = queued(scope)
+      other = queued(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-ended")
 
-      {:ok, _closed} = WorkItems.close(scope, work_item)
+      # Closed in the database without a word to the page: only a message that names it
+      # makes the page read it again.
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [state: :closed, closed_at: DateTime.utc_now(), closed_by_id: scope.user.id]
+      )
+
+      send(view.pid, {:work_items_changed, [other.public_id]})
+      refute has_element?(view, "#work-item-ended")
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
       assert has_element?(view, "#work-item-ended")
     end
 
@@ -383,14 +393,16 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
+      short = String.slice(ctx.run.public_id, 0, 11)
       refute has_element?(view, ~s(a[href*="/runs/"]))
-      assert html =~ String.slice(ctx.run.public_id, 0, 11)
+      assert has_element?(view, ".q-wi-run-id", short)
       assert html =~ "At checkout."
 
       {:ok, thread, _html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/thread")
 
       refute has_element?(thread, ~s(a[href*="/runs/"]))
+      assert has_element?(thread, ".q-wi-run-id", short)
       assert render(thread) =~ "At checkout."
     end
   end
