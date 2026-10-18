@@ -7,6 +7,7 @@ defmodule Apiary.Adapters.CollectionNounTest do
   # so it counts.
   use Apiary.DataCase, async: true
 
+  import Apiary.DescriptionFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -17,6 +18,7 @@ defmodule Apiary.Adapters.CollectionNounTest do
   @moduletag needs: :factory
 
   @project %{one: "project", other: "projects"}
+  @board %{one: "board", other: "boards"}
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -28,6 +30,20 @@ defmodule Apiary.Adapters.CollectionNounTest do
     adapter = Repo.get!(Node, connection.adapter_id)
     adapter = if description, do: describe_source(adapter, description), else: adapter
     %{adapter: adapter, connection: connection}
+  end
+
+  # An adapter whose source calls its collections boards: example-tracker.json with other
+  # words for them, which no description of the contract names.
+  defp boards_adapter(scope) do
+    %{adapter: adapter} = adapter(scope)
+
+    description =
+      "example-tracker.json"
+      |> contract_description()
+      |> put_in(["roles", "source", "collection_noun"], %{"one" => "board", "other" => "boards"})
+      |> read_description()
+
+    adapter |> Node.source_role_changeset(description) |> Repo.update!()
   end
 
   test "an adapter's: the description's, or none for the domain's word", ctx do
@@ -42,9 +58,8 @@ defmodule Apiary.Adapters.CollectionNounTest do
     refute Adapters.items?(projects)
     assert Adapters.collection_noun(projects) == @project
 
-    # No word is refused for a collection.
-    %{adapter: work_items} = adapter(ctx.scope, "example-work-items.json")
-    assert Adapters.collection_noun(work_items) == %{one: "work item", other: "work-items"}
+    # Another source's words.
+    assert Adapters.collection_noun(boards_adapter(ctx.scope)) == @board
 
     # Described again, with none: the words go.
     assert Adapters.collection_noun(describe_source(tracker, "acme-tracker.json")) == nil
@@ -54,14 +69,15 @@ defmodule Apiary.Adapters.CollectionNounTest do
     %{adapter: tracker} = adapter(ctx.scope, "example-tracker.json")
     %{adapter: projects} = adapter(ctx.scope, "example-projects.json")
     %{adapter: plain} = adapter(ctx.scope)
-    %{adapter: work_items} = adapter(ctx.scope, "example-work-items.json")
+    boards = boards_adapter(ctx.scope)
 
     assert Adapters.shared_collection_noun([]) == nil
     assert Adapters.shared_collection_noun([tracker]) == @project
     assert Adapters.shared_collection_noun([tracker, projects]) == @project
     assert Adapters.shared_collection_noun([projects]) == @project
     assert Adapters.shared_collection_noun([tracker, plain]) == nil
-    assert Adapters.shared_collection_noun([tracker, work_items]) == nil
+    assert Adapters.shared_collection_noun([tracker, boards]) == nil
+    assert Adapters.shared_collection_noun([boards]) == @board
     assert Adapters.shared_collection_noun([plain]) == nil
   end
 
