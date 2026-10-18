@@ -99,9 +99,12 @@ defmodule Apiary.Runs.Registration do
   digest, so every reload names the image the run started in; a workspace that serves no
   configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
   its attach, while the workspace has never stored a run configuration, and not found to
-  every other. A policy that
-  names an image since such a run's attach is composed without its `image`, beside the
-  run's: the rest of the policy applies at once, and its image from the next attach.
+  every other. A run that attached is reloaded with what it started in
+  (`started_image_from`): a policy in force that selects another image than the run
+  started in is composed with the start's image, at the top level for a run given it there,
+  as the policy's `image` for a run that started in the image its policy named, and left
+  out for a run that started in none. The rest of the policy applies at once, and its image
+  from the next attach.
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -619,8 +622,9 @@ defmodule Apiary.Runs.Registration do
   (`Apiary.Runs.Sender.place_key/2`): the document of no policy, the stored configuration
   of the run's workspace with that digest, or the document composed for a run with that
   digest (`Apiary.Policy.ComposedConfiguration`). One no longer stored is read again, as
-  the run's registration's labels name it, composed with the image the run was given
-  (`configured_image`). A registration's repeat and an attach's are given it.
+  the run's registration's labels name it, composed with what the run started in
+  (`Apiary.Policy.ComposedConfiguration.started/1`). A registration's repeat and an
+  attach's are given it.
   """
   @spec answered(AccessKey.t(), Run.t(), String.t()) :: {:ok, settings} | {:error, :unavailable}
   def answered(access_key, %Run{} = run, digest) when is_binary(digest) do
@@ -635,7 +639,7 @@ defmodule Apiary.Runs.Registration do
       nil ->
         with {:ok, settings, _image} <-
                configuration(access_key, run.registration_labels,
-                 image: run.configured_image,
+                 image: ComposedConfiguration.started(run),
                  prebuild: fn -> ComposedConfiguration.prebuild?(run) end,
                  fixed: true
                ),
@@ -947,7 +951,7 @@ defmodule Apiary.Runs.Registration do
       case composed(
              Sender.place_key(run, access_key),
              run.registration_labels,
-             run.configured_image,
+             ComposedConfiguration.started(run),
              fn -> ComposedConfiguration.prebuild?(run) end,
              true,
              fn -> given_no_policy?(run) end

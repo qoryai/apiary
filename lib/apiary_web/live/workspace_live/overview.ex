@@ -539,10 +539,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the run would be answered now: the version in force, composed for a run that may
-  # be given a composed document (one given an image, or a run of the queue, which may be
-  # a prebuild); the version's digest for any other, read without its document.
+  # be given a composed document (one given an image, one whose start was kept, or a run
+  # of the queue, which may be a prebuild); the version's digest for any other, read
+  # without its document.
   defp answered(scope, run, in_force) do
-    if run.configured_image || run.dispatch_run_id,
+    if run.configured_image || run.started_image_from || run.dispatch_run_id,
       do: Policy.answered_digest(scope, run) || in_force.digest,
       else: in_force.digest
   end

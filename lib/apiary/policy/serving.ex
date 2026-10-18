@@ -138,7 +138,15 @@ defmodule Apiary.Policy.Serving do
     Repo.one(
       from r in Run,
         where: r.workspace_id == ^workspace_id and r.node_run_id == ^subject,
-        select: struct(r, [:target_id, :registration_labels, :configured_image, :dispatch_run_id])
+        select:
+          struct(r, [
+            :target_id,
+            :registration_labels,
+            :configured_image,
+            :started_image_from,
+            :started_image,
+            :dispatch_run_id
+          ])
     )
   end
 

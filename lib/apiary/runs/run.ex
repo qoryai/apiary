@@ -205,6 +205,14 @@ defmodule Apiary.Runs.Run do
     # (`Apiary.Policy.ComposedConfiguration`). Nil for a run given none, and for every
     # other run. Not folded: a rebuild keeps it.
     field :configured_image, :string
+    # Set at its attach, for every run that attaches: what the run started in, which its
+    # reloads carry as the gateway checks it (`Apiary.Policy.ComposedConfiguration`).
+    # `started_image_from` is `top_level`, the image beside the `security_policy`, the one
+    # in `configured_image`; `policy`, the image the `security_policy` named; or `none`,
+    # the gateway's default. `started_image` is the image, nil for `none`. Both nil for a
+    # run that did not attach, whose reloads are answered as they were. Not folded.
+    field :started_image_from, :string
+    field :started_image, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

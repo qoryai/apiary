@@ -153,6 +153,62 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert ComposedConfiguration.shape(@document, @image, false, true) ==
                ComposedConfiguration.shape(@document, @image, false)
     end
+
+    test "that started in its policy's image keeps it in the policy, the document as it is when the same" do
+      renaming = String.replace(@naming, ~s("with-docker"), ~s("with-gpu"))
+
+      assert ComposedConfiguration.shape(renaming, {:policy, "with-docker"}, false, true) ==
+               {:composed, @naming, nil}
+
+      assert ComposedConfiguration.shape(@naming, {:policy, "with-docker"}, false, true) ==
+               :as_is
+
+      # A policy that names none is given the start's image after its other members.
+      assert ComposedConfiguration.shape(@document, {:policy, "with-docker"}, false, true) ==
+               {:composed,
+                ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]},"image":"with-docker"}}),
+                nil}
+
+      # Never composed from no policy, nor before the attach, nor for a prebuild.
+      assert ComposedConfiguration.shape(nil, {:policy, "with-docker"}, false, true) == :as_is
+
+      assert ComposedConfiguration.shape(renaming, {:policy, "with-docker"}, true, true) ==
+               {:composed, ComposedConfiguration.without_image(renaming), nil}
+    end
+
+    test "that started in no image is given the policy without the image it comes to name" do
+      assert ComposedConfiguration.shape(@naming, :none, false, true) ==
+               {:composed, ComposedConfiguration.without_image(@naming), nil}
+
+      assert ComposedConfiguration.shape(@document, :none, false, true) == :as_is
+      assert ComposedConfiguration.shape(nil, :none, false, true) == :as_is
+    end
+
+    test "is read from what the run started in" do
+      run = %Apiary.Runs.Run{}
+      assert ComposedConfiguration.started(nil) == nil
+      assert ComposedConfiguration.started(run) == nil
+      assert ComposedConfiguration.started(%{run | configured_image: @image}) == @image
+
+      assert ComposedConfiguration.started(%{
+               run
+               | started_image_from: "top_level",
+                 started_image: @image,
+                 configured_image: @image
+             }) == @image
+
+      assert ComposedConfiguration.started(%{
+               run
+               | started_image_from: "policy",
+                 started_image: "with-docker"
+             }) == {:policy, "with-docker"}
+
+      assert ComposedConfiguration.started(%{run | started_image_from: "none"}) == :none
+
+      assert ComposedConfiguration.policy_image(@naming) == "with-docker"
+      assert ComposedConfiguration.policy_image(@document) == nil
+      assert ComposedConfiguration.policy_image(nil) == nil
+    end
   end
 
   describe "the rows" do
@@ -358,6 +414,44 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       assert in_force == newer.digest
       assert reported == ctx.configuration.digest
+    end
+
+    test "of a run that started in its policy's image is no drift while its policy is in force",
+         ctx do
+      renaming = stored!(ctx.scope, String.replace(@naming, ~s("with-docker"), ~s("with-gpu")))
+
+      {:ok, composed} =
+        ComposedConfiguration.serve(
+          ctx.scope.organisation.id,
+          ctx.scope.workspace.id,
+          renaming,
+          {:policy, "with-docker"},
+          false,
+          true
+        )
+
+      assert composed.document == @naming
+      assert composed.run_configuration_id == renaming.id
+
+      run =
+        run_fixture(ctx.scope, %{
+          started_image_from: "policy",
+          started_image: "with-docker",
+          reported_run_configuration_digest: composed.digest,
+          run_configuration_digest: composed.digest
+        })
+
+      assert ComposedConfiguration.run_digest(renaming, run) == composed.digest
+
+      assert Policy.digests(ctx.scope, run) == %{
+               in_force: renaming.digest,
+               reported: renaming.digest,
+               applied: renaming.digest,
+               drift: false
+             }
+
+      assert %{digest: digest} = Rules.version(ctx.scope, nil, composed.digest)
+      assert digest == renaming.digest
     end
 
     test "is in force for the events endpoint only for a run it would be answered to", ctx do

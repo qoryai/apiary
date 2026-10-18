@@ -645,4 +645,268 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert run(next_id).configured_image == nil
     end
   end
+
+  describe "what a run started in, on its reloads" do
+    # Versions of the baseline after `@naming`: one whose policy names another image, and
+    # one whose policy names none, each allowing one more host, so a reload that applies
+    # shows it.
+    @renaming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-gpu"}})
+    @unnaming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]}}})
+    @keeping ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
+
+    # The next version of the baseline, `document` written as it is.
+    defp version!(ctx, document) do
+      current = current!(ctx)
+
+      Repo.insert!(%RunConfiguration{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        version: current.version + 1,
+        document: document,
+        digest: Render.digest(document),
+        rendered_at: DateTime.utc_now()
+      })
+    end
+
+    # The gateway's check of a reload against the run's start, as Forager makes it
+    # (gateway/internal/run/run.go). A configuration's top-level image is `named`, "" for
+    # none (`Read`, lines 459-463); the image it selects is that image, which must agree
+    # with its policy's (`nameImage`, lines 499-503), else its policy's `image`, else the
+    # default, "" here. The run's image is the one its start selected (line 212). A reload
+    # is taken only when it names the start's top-level image, or none as the start did
+    # (`decide`, lines 738-739), and selects the run's image (lines 740-744).
+    defp named(body), do: Jason.decode!(body)["image"] || ""
+
+    defp selected(body) do
+      decoded = Jason.decode!(body)
+      policy_image = (decoded["security_policy"] || %{})["image"]
+      top_level = decoded["image"]
+
+      # nameImage, lines 499-503: a top-level image and the policy's agree.
+      if top_level && policy_image, do: assert(top_level == policy_image)
+      top_level || policy_image || ""
+    end
+
+    defp assert_gateway_takes(attached, reloaded) do
+      assert reloaded.status == 200
+      # decide, lines 738-739: `named != r.named` refuses the reload.
+      assert named(reloaded.resp_body) == named(attached.resp_body)
+      # decide, lines 740-744: `r.cfg.Images.resolve(in.Policy.Image)` must be `r.img`.
+      assert selected(reloaded.resp_body) == selected(attached.resp_body)
+    end
+
+    defp allowed(body), do: Jason.decode!(body)["security_policy"]["egress"]["allow"]
+
+    # The run reports the digest it reloaded under: its answer names the same, the digest
+    # maps back to `version`, and the run is behind nothing.
+    defp assert_not_behind(ctx, run_id, digest, version) do
+      {key, seed} = ctx.gateway_key
+      event = wire_event(run_id, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
+      conn = signed_post(build_conn(), key.key_id, seed, [event], run_configuration: digest)
+      assert response(conn, 202) == ""
+      assert get_resp_header(conn, "x-qory-run-configuration") == [digest]
+
+      assert Policy.policy_digest(ctx.scope, digest) == version.digest
+
+      assert %{drift: false, reported: reported, in_force: in_force} =
+               Policy.digests(ctx.scope, run(run_id))
+
+      assert reported == version.digest
+      assert in_force == version.digest
+    end
+
+    test "a run that started in its policy's image keeps it in the policy when the policy names another",
+         ctx do
+      managed!(ctx)
+      naming!(ctx)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      assert attached.resp_body == attach_bytes(@naming, run(run_id))
+      started = run(run_id)
+      assert {started.started_image_from, started.started_image} == {"policy", "with-docker"}
+      assert started.configured_image == nil
+
+      renaming = version!(ctx, @renaming)
+
+      composed =
+        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
+
+      digest = Render.digest(composed)
+      assert batch_digest(ctx, run_id, 2) == digest
+
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert digest_header(reloaded) == [digest]
+      assert Schema.validate(reloaded.resp_body) == :ok
+      assert named(reloaded.resp_body) == ""
+      assert selected(reloaded.resp_body) == "with-docker"
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert run(run_id).started_image == "with-docker"
+
+      assert [%ComposedConfiguration{image: nil} = row] =
+               Enum.filter(composed_rows(ctx), &(&1.digest == digest))
+
+      assert row.run_configuration_id == renaming.id
+      assert_not_behind(ctx, run_id, digest, renaming)
+
+      # The policy no longer served, the run keeps it: not found.
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+    end
+
+    test "a run that started in its policy's image keeps it in the policy when the policy names none",
+         ctx do
+      managed!(ctx)
+      naming!(ctx)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      assert run(run_id).started_image_from == "policy"
+
+      unnaming = version!(ctx, @unnaming)
+
+      composed =
+        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
+
+      digest = Render.digest(composed)
+
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert digest_header(reloaded) == [digest]
+      assert named(reloaded.resp_body) == ""
+      assert selected(reloaded.resp_body) == "with-docker"
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert run(run_id).started_image == "with-docker"
+      assert_not_behind(ctx, run_id, digest, unnaming)
+    end
+
+    test "a run a node registered itself that started in its policy's image keeps it", ctx do
+      managed!(ctx)
+      naming!(ctx)
+      {run_id, run_key} = session!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      assert attached.resp_body == attach_bytes(@naming, run(run_id))
+      assert run(run_id).started_image_from == "policy"
+
+      renaming = version!(ctx, @renaming)
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert selected(reloaded.resp_body) == "with-docker"
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert_not_behind(ctx, run_id, List.first(digest_header(reloaded)), renaming)
+    end
+
+    test "a run that started with an image at the top level keeps it there", ctx do
+      managed!(ctx)
+      recorded!(ctx, @shop)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      started = run(run_id)
+      assert {started.started_image_from, started.started_image} == {"top_level", @image}
+      assert started.configured_image == @image
+
+      renaming = version!(ctx, @renaming)
+
+      composed =
+        ComposedConfiguration.compose(ComposedConfiguration.without_image(@renaming), @image)
+
+      digest = Render.digest(composed)
+
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert digest_header(reloaded) == [digest]
+      assert named(reloaded.resp_body) == @image
+      assert selected(reloaded.resp_body) == @image
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert run(run_id).configured_image == @image
+      assert_not_behind(ctx, run_id, digest, renaming)
+    end
+
+    test "a run that started with no image is given the policy without the image it comes to name",
+         ctx do
+      managed!(ctx)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      started = run(run_id)
+      assert {started.started_image_from, started.started_image} == {"none", nil}
+
+      renaming = version!(ctx, @renaming)
+      composed = ComposedConfiguration.without_image(@renaming)
+      digest = Render.digest(composed)
+      assert batch_digest(ctx, run_id, 2) == digest
+
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert digest_header(reloaded) == [digest]
+      assert named(reloaded.resp_body) == ""
+      assert selected(reloaded.resp_body) == ""
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert run(run_id).configured_image == nil
+
+      assert [%ComposedConfiguration{image: nil} = row] =
+               Enum.filter(composed_rows(ctx), &(&1.digest == digest))
+
+      assert row.run_configuration_id == renaming.id
+      assert_not_behind(ctx, run_id, digest, renaming)
+
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+    end
+
+    test "a run that started under no policy and no image is given a policy made mid-run without its image",
+         ctx do
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      assert digest_header(attached) == [Render.digest(Render.no_policy_document())]
+      assert run(run_id).started_image_from == "none"
+
+      managed!(ctx)
+      renaming = version!(ctx, @renaming)
+      composed = ComposedConfiguration.without_image(@renaming)
+
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
+      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
+      assert_not_behind(ctx, run_id, Render.digest(composed), renaming)
+
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+    end
+
+    test "a policy whose image is the one the run started in reloads byte for byte", ctx do
+      managed!(ctx)
+      naming!(ctx)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+
+      # Unchanged: the attach's document again.
+      reloaded = reload(ctx, run_id)
+      assert reloaded.resp_body == reload_bytes(@naming, run(run_id))
+      assert digest_header(reloaded) == [Render.digest(@naming)]
+
+      # Changed, its image the same: the version as stored, nothing composed.
+      keeping = version!(ctx, @keeping)
+      reloaded = reload(ctx, run_id)
+      assert_gateway_takes(attached, reloaded)
+      assert reloaded.resp_body == reload_bytes(@keeping, run(run_id))
+      assert digest_header(reloaded) == [keeping.digest]
+      assert batch_digest(ctx, run_id, 2) == keeping.digest
+      assert composed_rows(ctx) == []
+      assert_not_behind(ctx, run_id, keeping.digest, keeping)
+    end
+  end
 end

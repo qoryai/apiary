@@ -596,14 +596,25 @@ configuration of a workspace (`composed_run_configurations`), since leaving a po
 `image` out can make two configurations give the same bytes; a row goes with its
 configuration and with the workspace. Where the workspace's policy names an image (`security_policy.image`) at a
 run's attach, no run is given one beside it: the run starts in the policy's, and the two
-never both name one. Where the policy comes to name one after the run's attach, the run's
-reloads keep its image at the top level and are given the policy in force without its
-`image`: the rest of the policy applies at once, the policy's image from the next attach,
-and the two still never both name one. A
+never both name one. The attach keeps what the run started in (`runs.started_image_from`
+and `runs.started_image`): the image given at the top level, the image its policy named, or
+none. Forager fixes the image when the run starts: it takes a reload only when the reload
+names, at the top level, the image the start named there, or none as the start did, and
+selects the image the run started in. So when the policy in force names another image than
+the run started in, or none where the run started in one, or one where it started in none,
+the reload carries the start's image that way. A run given an image at the top level keeps
+it there, beside the policy in force without its `image`. A run that started in the image
+its policy named is given the policy in force with that image as its `image`, and nothing
+at the top level. A run that started in no image is given the policy in force without its
+`image`. The rest of the policy applies at once, the policy's image from the next attach,
+and the two still never both name one. A policy that selects what the run started in is
+reloaded byte for byte as stored. A run that attached before the start was kept is reloaded
+as it was. A
 prebuild whose workspace's policy names an image is given that policy without its `image`,
 the rest as stored, so a prebuild always builds on the pool's default. Every other run, a
 run a node registered itself, a run with no recorded image and a prebuild under a policy
-that names none among them, is given the stored bytes, under their digest, as above. A
+that names none among them, is given the stored bytes, under their digest, as above, until
+its policy comes to select another image than it started in. A
 run is behind when the digest it reported is not the one it would be answered now, the
 configuration in force composed for it as its reload would be. A page that names the
 version a digest stands for reads a composed digest as the configuration it was composed
@@ -677,8 +688,9 @@ prebuild under a policy that names one, the configuration is the composed docume
 digest is the composed document's (The image, above); a repeat is given it by the stored digest. The run keeps
 `attached_at`, `attach_interval_seconds`, the digest given (`attach_answer_digest`), the
 instance id the attach was signed with (`gateway_instance_id`), the attach's Forager
-version (the `User-Agent`'s first) and contract version, and the image it was given
-(`configured_image`), nil for none.
+version (the `User-Agent`'s first) and contract version, the image it was given at the top
+level (`configured_image`), nil for none, and what it started in (`started_image_from`:
+`top_level`, `policy` or `none`; `started_image`, nil for none).
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
 to the active keys of the node that registered the run, or, for a run through a gateway,
@@ -696,9 +708,9 @@ longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
 attach composed its configuration is given the configuration in force now composed the
 same way, with the image it was given at its attach, under the composed digest: Forager
 fixes the image when the run starts, so every reload names the same one, and a policy
-change is the only reason the digest moves. A policy that names an image since the attach
-is composed without its `image` (The image, above), under a digest that maps back to the
-policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
+change is the only reason the digest moves. A policy in force that selects another image
+than the run started in is composed with the start's image (The image, above), under a
+digest that maps back to the policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`, a run given an image included; only a run whose
 attach was answered `{"version":1,"image":"…"}`, its image where the workspace served no
 run configuration, is answered that again there, and only while the workspace has never

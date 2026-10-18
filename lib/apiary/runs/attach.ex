@@ -84,7 +84,10 @@ defmodule Apiary.Runs.Attach do
   `security_policy` (`Apiary.Policy.ComposedConfiguration`), and the digest is the
   composed document's. A prebuild whose workspace's policy names an image is given the
   policy without it. A workspace's policy that names an image gives no run an image. Any
-  other run, and a run with no recorded image, is given the configuration as stored.
+  other run, and a run with no recorded image, is given the configuration as stored. Every
+  run keeps what it started in, which its reloads carry (`runs.started_image_from`,
+  `runs.started_image`): the image it was given at the top level, the image the policy it
+  was given names, or none.
 
   The gateway's row is read `FOR SHARE` in the attach's transaction, the way a gateway's
   deletion holds it (`Apiary.Gateways`), and the clock after it: a deletion either finds
@@ -107,6 +110,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
+  alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, RunVariables, Sender}
 
   @version "version"
@@ -420,6 +424,8 @@ defmodule Apiary.Runs.Attach do
              image: fn -> image(run, workspace, dispatched) end,
              prebuild: prebuild?(dispatched)
            ) do
+      {started_from, started_image} = started(settings.settings, image)
+
       run =
         run
         |> Ecto.Changeset.change(
@@ -431,11 +437,25 @@ defmodule Apiary.Runs.Attach do
           contract_version: attach.contract_version,
           backstop_at: backstop_at(dispatched, now),
           configured_image: image,
+          started_image_from: started_from,
+          started_image: started_image,
           updated_at: now
         )
         |> Repo.update!()
 
       {:ok, answer(run, settings, false)}
+    end
+  end
+
+  # What the run starts in, which its reloads carry (`Apiary.Runs.Run`): the image it is
+  # given at the top level, else the image the `security_policy` it is given names, else
+  # none.
+  defp started(_document, image) when is_binary(image), do: {"top_level", image}
+
+  defp started(document, nil) do
+    case ComposedConfiguration.policy_image(document) do
+      nil -> {"none", nil}
+      image -> {"policy", image}
     end
   end
 
