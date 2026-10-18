@@ -7,7 +7,7 @@ defmodule Apiary.Environments do
   #
   # The reads here serve the paths that queue, record and use a build: they ask nothing
   # of `Apiary.Access`, and whoever answers a person with them asks it first. A person's
-  # Rebuild (`rebuild/2`) asks it itself.
+  # Rebuild (`rebuild/2`) and what a target's page says (`section/2`) ask it themselves.
   #
   # ## The trigger: `trigger/2` and `trigger_for_pool/2`
   #
@@ -124,6 +124,24 @@ defmodule Apiary.Environments do
   # when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
   # `{:error, :not_found}` for a target that names no environment in its workspace, or
   # whose workspace has no node pool.
+  #
+  # ## What a target's page says: `section/2`
+  #
+  # `section(scope, target)` is the environment of a target of the scope's workspace, to a
+  # person who may read the workspace's work items (`work_item.read`, the feature
+  # `factory`'s), nil for anyone else: `state`, `:no_pool` where the workspace has no live
+  # node pool, `:no_environment` where no live collection assigned to the workspace with the
+  # target names an `environment_ref` and no pool's record of one is retired, else
+  # `:pools`; `named`, whether one of those collections names an `environment_ref`; and
+  # `pools`, one line for each live pool of the workspace, by id. Where the target names an
+  # environment a pool's line reads the records of the collections that name one, as
+  # `image_for/2` does: the newest build not retired gives the image, `serves` `:image`
+  # where it was built for the target and `:other_target` where it was built for another
+  # target or none, `:default` with no such build. Where the target names none, `serves`
+  # is `:retired` where a record of the pool is retired, else `:default`. `failure` is the
+  # cause of the last failure those records keep, nil for none; `running` and `waiting`
+  # are whether a prebuild of those collections, held for the pool, is claimed or handed
+  # over, and waits unclaimed.
 
   import Ecto.Query, only: [from: 2]
 
@@ -133,6 +151,7 @@ defmodule Apiary.Environments do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Workspace
   alias Apiary.Runs.Target
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
@@ -399,6 +418,145 @@ defmodule Apiary.Environments do
       })
 
     :ok
+  end
+
+  ## What a target's page says
+
+  @typedoc "A node pool's line of a target's environment (the moduledoc)."
+  @type pool_line :: %{
+          id: Ecto.UUID.t(),
+          name: String.t(),
+          serves: :image | :other_target | :default | :retired,
+          image: String.t() | nil,
+          built_at: DateTime.t() | nil,
+          commit: String.t() | nil,
+          failure: :released | :lost | :timed_out | nil,
+          running: boolean,
+          waiting: boolean
+        }
+
+  @typedoc "A target's environment, as its page says it (the moduledoc)."
+  @type section :: %{
+          state: :no_pool | :no_environment | :pools,
+          named: boolean,
+          pools: [pool_line]
+        }
+
+  # section/2 is the environment of `target`, a target of the scope's workspace, to a
+  # person who may read its work items, nil for anyone else (the moduledoc).
+  @doc false
+  @spec section(Scope.t(), Target.t()) :: section | nil
+  def section(
+        %Scope{
+          organisation: %{id: organisation_id},
+          workspace: %Workspace{id: workspace_id} = workspace
+        } = scope,
+        %Target{organisation_id: organisation_id, workspace_id: workspace_id} = target
+      ) do
+    if Access.can?(scope, :"work_item.read", workspace), do: read_section(target)
+  end
+
+  def section(%Scope{}, %Target{}), do: nil
+
+  defp read_section(%Target{} = target) do
+    collections = Repo.all(target_collections(target))
+    named = for %Collection{environment_ref: ref, id: id} <- collections, ref != nil, do: id
+    pools = Map.get(pools([target.workspace_id]), target.workspace_id, [])
+    ids = Enum.map(collections, & &1.id)
+    pool_ids = Enum.map(pools, & &1.id)
+
+    records =
+      Repo.all(
+        from r in Record,
+          where: r.source_collection_id in ^ids and r.pool_id in ^pool_ids,
+          order_by: r.id
+      )
+      |> Enum.group_by(& &1.pool_id)
+
+    runs =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.source_collection_id in ^ids and r.pool_id in ^pool_ids,
+          where: r.step == ^DispatchRun.prebuild(),
+          where: r.state in [:waiting, :claimed, :handed_over],
+          select: {r.pool_id, r.source_collection_id, r.state}
+      )
+      |> Enum.group_by(&elem(&1, 0))
+
+    lines =
+      for pool <- pools do
+        pool_line(
+          pool,
+          target,
+          named,
+          Map.get(records, pool.id, []),
+          Map.get(runs, pool.id, [])
+        )
+      end
+
+    %{state: section_state(pools, named, lines), named: named != [], pools: lines}
+  end
+
+  defp section_state([], _named, _lines), do: :no_pool
+
+  defp section_state(_pools, [], lines) do
+    if Enum.all?(lines, &(&1.serves == :default and not &1.running and not &1.waiting)),
+      do: :no_environment,
+      else: :pools
+  end
+
+  defp section_state(_pools, _named, _lines), do: :pools
+
+  # A pool's line: of the records and prebuilds of the collections that name an
+  # `environment_ref`, where one does; of every collection of the target, where none does.
+  defp pool_line(%Node{} = pool, target, named, records, runs) do
+    {records, runs} =
+      if named == [],
+        do: {records, runs},
+        else:
+          {Enum.filter(records, &(&1.source_collection_id in named)),
+           Enum.filter(runs, &(elem(&1, 1) in named))}
+
+    built =
+      if named == [],
+        do: nil,
+        else:
+          records
+          |> Enum.filter(&(&1.image != nil and is_nil(&1.retired_at)))
+          |> Enum.max_by(& &1.built_at, DateTime, fn -> nil end)
+
+    %{
+      id: pool.id,
+      name: pool.name,
+      serves: serves(named, built, records, target),
+      image: built && built.image,
+      built_at: built && built.built_at,
+      commit: built && built.commit,
+      failure: last_failure(records),
+      running: Enum.any?(runs, &(elem(&1, 2) in [:claimed, :handed_over])),
+      waiting: Enum.any?(runs, &(elem(&1, 2) == :waiting))
+    }
+  end
+
+  defp serves([], _built, records, _target) do
+    if Enum.any?(records, &(&1.retired_at != nil)), do: :retired, else: :default
+  end
+
+  defp serves(_named, nil, _records, _target), do: :default
+
+  defp serves(_named, %Record{} = built, _records, %Target{system: system, path: path}) do
+    if built.built_target_system == system and built.built_target_path == path,
+      do: :image,
+      else: :other_target
+  end
+
+  defp last_failure(records) do
+    case records
+         |> Enum.filter(&(&1.failure_cause != nil))
+         |> Enum.max_by(& &1.failed_at, DateTime, fn -> nil end) do
+      nil -> nil
+      %Record{failure_cause: cause} -> cause
+    end
   end
 
   ## The trigger

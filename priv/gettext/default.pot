@@ -2654,6 +2654,26 @@ msgstr ""
 msgid "587 for STARTTLS; 465 for TLS from the start."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A build is running."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A build is waiting."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A build of %{target} is already waiting."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A build of %{target} is queued."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -4020,6 +4040,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Asking"
 msgstr ""
@@ -6129,6 +6150,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter your password."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Environment"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -9443,6 +9469,11 @@ msgstr ""
 msgid "No policy event has arrived for this run."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No pool serves the workspace of this target."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "No prune has run yet. The job runs every day."
@@ -11529,6 +11560,11 @@ msgstr ""
 msgid "Reason"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Rebuild"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Recent runs"
@@ -12372,6 +12408,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Runs use each machine's local policy until the first change in this workspace."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs use the pool's default image until this target is built."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs use the pool's default image: this target no longer names an environment."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -14044,6 +14090,21 @@ msgstr ""
 msgid "The key's secret is on %{name}, in %{file}, where the command saved it. It has never been on a screen."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The last build failed: it ran past 35 minutes."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The last build was given back."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The last build was lost before it finished."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The last lines of the log"
@@ -14282,6 +14343,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The policy event was pruned with the run's events on %{date}."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The pool's default image."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -15036,6 +15102,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "This target has no rules."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This target names no environment, so runs use each pool's default image."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -16824,6 +16895,11 @@ msgstr ""
 msgid "both"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "built %{time}"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "built in"
@@ -17067,6 +17143,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "forager.yaml · the egress section"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "from %{commit}"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex

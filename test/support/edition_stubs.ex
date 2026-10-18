@@ -688,6 +688,15 @@ defmodule Apiary.EditionStubs do
     defdelegate who_may_sentence(about, scope), to: GatewaysWorded
   end
 
+  defmodule NoRebuild do
+    @moduledoc """
+    Nobody asks for a build of a target's environment (`target.rebuild_environment`),
+    whoever asks: `{:error, :forbidden}`.
+    """
+    def check(_scope, :"target.rebuild_environment", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoClaim do
     @moduledoc "No node pool's key claims a run (`dispatch.claim`): `{:error, :forbidden}`."
     def check(_scope, :"dispatch.claim", _subject), do: {:error, :forbidden}

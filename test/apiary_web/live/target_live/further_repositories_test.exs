@@ -70,7 +70,7 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
       refute has_element?(view, "#target-further-repositories .q-tgt-card-n")
     end
 
-    test "after the Backlog card, last in the main column", %{
+    test "after the Backlog and Environment cards, last in the main column", %{
       conn: conn,
       scope: scope,
       path: path
@@ -86,7 +86,7 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
 
       assert has_element?(
                view,
-               "#target-overview .q-tgt-ov-main > #target-backlog + section:last-child#target-further-repositories"
+               "#target-overview .q-tgt-ov-main > #target-backlog + #target-environment + section:last-child#target-further-repositories"
              )
     end
 

@@ -208,6 +208,13 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"target.set_further_repositories", :other_owner,
        "/:other_org/:other_ws/targets/:target_page/also-read", "save",
        %{"target" => %{"further_repositories" => "acme/docs"}}, answer: :not_found_at_mount},
+      # A target's Rebuild, which every member may use: a member removed since the page
+      # opened is refused and the card read again, with nothing said; another
+      # organisation's owner naming this one's target does not reach the page.
+      {:"target.rebuild_environment", :removed_member, "/:org/:workspace/targets/:target_page",
+       "rebuild_environment", %{}, answer: :ignored},
+      {:"target.rebuild_environment", :other_owner, "/:other_org/:other_ws/targets/:target_page",
+       "rebuild_environment", %{}, answer: :not_found_at_mount},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
        %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.
@@ -486,8 +493,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"work_item.decline",
         :"work_item.close",
         :"work_item.comment",
-        :"work_item.comment_delete",
-        :"target.rebuild_environment"
+        :"work_item.comment_delete"
       ]
     }
   end
