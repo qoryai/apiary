@@ -59,6 +59,14 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
     }
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   defp post(ctx, collections, opts \\ []),
     do: Collections.post_listing(ctx.key_scope, part(ctx.connection, collections, opts))
 
@@ -229,8 +237,8 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
           ctx.other_workspace
         )
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "D"})
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "E"})
+      {:ok, :disconnected} = disconnect(ctx, "D")
+      {:ok, :disconnected} = disconnect(ctx, "E")
       {:ok, :accepted} = post(ctx, titled(["E"]), id: "again")
 
       list = &names(Collections.list_collections(ctx.scope, ctx.connection, &1))
@@ -272,7 +280,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
           ctx.other_workspace
         )
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "B"})
+      {:ok, :disconnected} = disconnect(ctx, "B")
 
       assert Collections.counts(ctx.scope, ctx.connection) == %{
                total: 4,
@@ -289,11 +297,11 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       {:ok, :accepted} = post(ctx, titled(["A", "B", "C", "D"]))
 
       # A ended; B ended and is live again; C ended twice; D is live.
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "A"})
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "B"})
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "C"})
+      {:ok, :disconnected} = disconnect(ctx, "A")
+      {:ok, :disconnected} = disconnect(ctx, "B")
+      {:ok, :disconnected} = disconnect(ctx, "C")
       {:ok, :accepted} = post(ctx, titled(["B", "C"]), id: "again")
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "C"})
+      {:ok, :disconnected} = disconnect(ctx, "C")
 
       assert %{total: 2, unassigned: 2, ended: 2} = Collections.counts(ctx.scope, ctx.connection)
 
@@ -309,7 +317,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       workspace_fixture(other.organisation)
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["X"])))
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "X"})
+      {:ok, :disconnected} = disconnect(%{ctx | connection: theirs}, "X")
 
       assert %{ended: 1} = Collections.counts(other, theirs)
       assert %{ended: 0, total: 0} = Collections.counts(other, ctx.connection)
@@ -338,7 +346,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
         )
 
       for ref <- refs(111, 120),
-          do: {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: ref})
+          do: {:ok, :disconnected} = disconnect(ctx, ref)
 
       {:ok, :accepted} = post(ctx, titled(["R120"]), id: "again")
 
@@ -599,7 +607,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
                {:error, :not_found}
 
       # An id that names no live collection of the connection: none, not an id, ended.
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "C"})
+      {:ok, :disconnected} = disconnect(ctx, "C")
       ended = Repo.one!(from c in Collection, where: c.external_ref == "C", select: c.id)
 
       for bad <- [Ecto.UUID.generate(), "not an id", 7, ended] do

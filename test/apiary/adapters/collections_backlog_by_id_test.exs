@@ -50,6 +50,14 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
     Scope.for_access_key(verified)
   end
 
+  # A disconnect of `ref` under this test's connection, as the wire reads one.
+  defp disconnect(ctx, ref),
+    do:
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: ref
+      })
+
   # One part of a listing naming `collections`, `{ref, target}` or `{ref, target,
   # items}` each, its title "Title of" and its ref.
   defp post(ctx, collections, opts \\ []) do
@@ -304,7 +312,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
 
       assert switch(ctx, "LOOSE", false) == {:error, :not_found}
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "DOCS"})
+      {:ok, :disconnected} = disconnect(ctx, "DOCS")
       assert switch(ctx, "DOCS", false) == {:error, :not_found}
 
       assert switch_entries() == []
@@ -366,7 +374,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
       Repo.update_all(from(n in Node, where: n.id == ^ctx.adapter.id), set: [items: true])
       assert row(ctx, "DOCS").backlog == %{on: false}
 
-      {:ok, :disconnected} = Collections.disconnect(ctx.key_scope, %{collection_ref: "DOCS"})
+      {:ok, :disconnected} = disconnect(ctx, "DOCS")
       assert row(ctx, "DOCS").backlog == nil
     end
   end

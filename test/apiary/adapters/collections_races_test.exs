@@ -7,7 +7,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # refs run against their ids, a Backlog switch against a part of another connection
   # of the adapter that names the switch's refs and moves them, a collection's
   # Backlog switch against two connections' parts naming its ref, a disconnect
-  # against a part that completes its listing, a listing's part against a restore and
+  # against a part that completes its listing, a move against a disconnect that names
+  # the connection the ref moves away from, a listing's part against a restore and
   # a marking of workspaces, a start that changes the adapter's items against a
   # listing's part, a Backlog switch and an assign, and a collection's Backlog
   # switch, by its id, against a listing's part, its target's switch, a start and an
@@ -219,7 +220,14 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     {ended, ended_pid} =
       hold(fn -> Connections.end_connection(ctx.key_scope, ctx.connection.public_id) end)
 
-    disconnect = start(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+    disconnect =
+      start(fn ->
+        Collections.disconnect(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          collection_ref: "TRK"
+        })
+      end)
+
     await_blocked(disconnect.backend, ended_pid)
     commit(ended)
 
@@ -234,7 +242,12 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     {:ok, _} = set_collection_workspace(trk, ctx.scope.workspace)
 
     {disconnected, disconnect_pid} =
-      hold(fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "TRK"}) end)
+      hold(fn ->
+        Collections.disconnect(ctx.key_scope, %{
+          connection_id: ctx.connection.public_id,
+          collection_ref: "TRK"
+        })
+      end)
 
     assert disconnected.result == {:ok, :disconnected}
 
@@ -601,8 +614,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     {:ok, :accepted} = listing(ctx, ["Z"], "first", @started).()
     [z] = ids(ctx.connection, ["Z"])
 
-    # The disconnect's first step: it holds `Z`, by adapter and ref, without its
-    # connection.
+    # The disconnect's first step: it holds `Z`, by adapter, connection and ref, and no
+    # connection's row.
     {held, held_pid} = hold(lock_row(z))
 
     # The part makes `N`, linked, and ends `Z`, which the first listing named: it waits
@@ -611,7 +624,13 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     listed = start(safely(listing(ctx, ["N"], "second", DateTime.add(@started, 60))))
     await_blocked(listed.backend, held_pid)
 
-    disconnect = fn -> Collections.disconnect(ctx.key_scope, %{collection_ref: "Z"}) end
+    disconnect = fn ->
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: ctx.connection.public_id,
+        collection_ref: "Z"
+      })
+    end
+
     assert continue(held, safely(disconnect)) == {:ok, :disconnected}
     commit(held)
 
@@ -838,6 +857,50 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
            ) == []
 
     assert Repo.all(from c in Collection, where: c.connection_id == ^ctx.connection.id) == []
+  end
+
+  test "a move's first step waiting on a ref, then the old connection's disconnect of it: the disconnect waits behind the move, changes nothing, and the moved ref stays live",
+       ctx do
+    theirs = other_side(ctx)
+    z = linked_z(theirs)
+    unlinked_before = unlinked_refs(ctx.adapter)
+
+    # The move's first step waits on `Z`, held; then the disconnect that names their
+    # connection waits on the same row, behind it.
+    {held, held_pid} = hold(lock_row(z))
+    listed = start(safely(listing(ctx, ["Z"], "mine", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, held_pid)
+
+    disconnect =
+      start(
+        safely(fn ->
+          Collections.disconnect(ctx.key_scope, %{
+            connection_id: theirs.connection.public_id,
+            collection_ref: "Z"
+          })
+        end)
+      )
+
+    await_waiting(disconnect.backend)
+    commit(held)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert Task.await(disconnect.task) == {:ok, :unchanged}
+    assert Repo.get!(Collection, z).ended_reason == :disconnected
+    assert moves(theirs) == [z]
+    assert live(ctx.connection) == ["Z"]
+    assert live(theirs.connection) == []
+
+    # One end of `Z` under their connection, with its one `unlinked` entry, by the move.
+    assert unlinked_refs(ctx.adapter) == unlinked_before ++ ["Z"]
+
+    # A late disconnect that names their connection again leaves the moved one live.
+    assert Collections.disconnect(ctx.key_scope, %{
+             connection_id: theirs.connection.public_id,
+             collection_ref: "Z"
+           }) == {:ok, :unchanged}
+
+    assert live(ctx.connection) == ["Z"]
   end
 
   test "two connections' parts naming one ref and a switch of the live one, let go at once, again and again: none deadlocks, and the ref is live once",

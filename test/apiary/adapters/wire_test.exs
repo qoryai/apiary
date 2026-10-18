@@ -648,7 +648,12 @@ defmodule Apiary.Adapters.WireTest do
                listing("source-collections/acme-tracker-part-2.json")
 
       assert source_disconnect("sources-disconnect/code-host.json") ==
-               {:ok, %{time: ~U[2026-10-15 12:00:00Z], collection_ref: "R_1001"}}
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  connection_id: "ac_c0deh0st00000000",
+                  collection_ref: "R_1001"
+                }}
     end
 
     test "the contract's invalid ones are refused" do
@@ -665,6 +670,7 @@ defmodule Apiary.Adapters.WireTest do
       end
 
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
+      assert source_disconnect("invalid/sources-disconnect-without-connection-id.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
     end
@@ -725,6 +731,26 @@ defmodule Apiary.Adapters.WireTest do
 
       assert {:ok, %{collections: [%{ref: "B"}, %{ref: "R_1001", title: "renamed"}]}} =
                Wire.listing(twice)
+    end
+
+    test "a disconnect's connection_id is required, and is a connection's public id" do
+      {:ok, body} = Wire.decode(fixture("sources-disconnect/code-host.json"))
+      assert Wire.source_disconnect(Map.delete(body, "connection_id")) == :error
+
+      for id <- [
+            nil,
+            "",
+            7,
+            ["ac_c0deh0st00000000"],
+            "ac_c0deh0st0000000",
+            "ac_c0deh0st000000000",
+            "AC_C0DEH0ST00000000",
+            "na_c0deh0st00000000",
+            "sc_c0deh0st00000000",
+            "ac_c0deh0st0000000u"
+          ] do
+        assert Wire.source_disconnect(Map.put(body, "connection_id", id)) == :error, inspect(id)
+      end
     end
 
     test "lengths are counted in code points" do
