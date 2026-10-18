@@ -460,7 +460,7 @@ environment variable SMTP_TLS must be always, if_available or never
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `DNS_CLUSTER_QUERY` | none | A DNS name whose A and AAAA records list the other nodes to cluster with. Not set means one node, with Erlang distribution off. |
-| `RELEASE_COOKIE` | required with `DNS_CLUSTER_QUERY` | The secret the nodes connect with: a long random value, the same on every node. With `DNS_CLUSTER_QUERY` set and no `RELEASE_COOKIE`, Qory Apiary stops at start. |
+| `RELEASE_COOKIE` | required with `DNS_CLUSTER_QUERY` | The secret the nodes connect with: a long random value, the same on every node. With `DNS_CLUSTER_QUERY` set and no `RELEASE_COOKIE`, Qory Apiary stops at start. The release writes it to a file only the release user can read, in a new directory under `RELEASE_TMP`, and never puts it on a command line. Use printable ASCII only, such as the output of `openssl rand -base64 32`. |
 | `RELEASE_NODE` | `apiary@` and the first IPv4 address, other than a loopback address, that the container's host name resolves to | The node's name, read only with `DNS_CLUSTER_QUERY`. Set it to `apiary@<address>` when the other nodes reach this one at another address. |
 
 ### Features

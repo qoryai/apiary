@@ -123,16 +123,38 @@ if [ -z "${RELEASE_COOKIE:-}" ]; then
 fi
 
 # The cookie out of every command line, as the head of this file says. A directory or file
-# that cannot be made stops the command, with the reason mkdir, mktemp, the shell or chmod
-# gives.
+# that cannot be made stops the command with one line: the directory, RELEASE_TMP or the
+# one mktemp made, and the reason the failed command gave, what follows the last ": " of
+# its first line, or the command's name when it printed none. That command is mkdir,
+# mktemp, the shell that opens the file or chmod; none of them is given the cookie, so the
+# reason cannot hold it.
+distribution_fail() {
+  distribution_reason=${2%%"$distribution_newline"*}
+  distribution_reason=${distribution_reason##*: }
+  printf 'Cannot write the Erlang cookie to %s: %s. RELEASE_TMP has to be writable by the release user.\n' \
+    "$1" "${distribution_reason:-$3}" >&2
+  exit 1
+}
+
+distribution_newline='
+'
+
 if [ -z "$distribution_written" ] && [ "${RELEASE_COMMAND:-}" != version ]; then
   distribution_tmp=${RELEASE_TMP:-$RELEASE_ROOT/tmp}
-  distribution_home=$(mkdir -p "$distribution_tmp" && mktemp -d "$distribution_tmp/apiary-cookie.XXXXXXXX") || exit 1
+  distribution_output=$(mkdir -p "$distribution_tmp" 2>&1) ||
+    distribution_fail "$distribution_tmp" "$distribution_output" mkdir
+
+  # mktemp prints the directory it made, or only its error.
+  distribution_output=$(mktemp -d "$distribution_tmp/apiary-cookie.XXXXXXXX" 2>&1) ||
+    distribution_fail "$distribution_tmp" "$distribution_output" mktemp
+  distribution_home=$distribution_output
 
   # umask 077 in a subshell: the file is made owner-only, and the umask of the command is
-  # kept.
-  (umask 077 && printf '%s' "$RELEASE_COOKIE" >"$distribution_home/.erlang.cookie") || exit 1
-  chmod 0400 "$distribution_home/.erlang.cookie" || exit 1
+  # kept. printf writes to the file; only the shell's error reaches the output.
+  distribution_output=$( (umask 077 && printf '%s' "$RELEASE_COOKIE" >"$distribution_home/.erlang.cookie") 2>&1) ||
+    distribution_fail "$distribution_home" "$distribution_output" "the shell"
+  distribution_output=$(chmod 0400 "$distribution_home/.erlang.cookie" 2>&1) ||
+    distribution_fail "$distribution_home" "$distribution_output" chmod
 
   HOME=$distribution_home
   RELEASE_COOKIE=$distribution_marker

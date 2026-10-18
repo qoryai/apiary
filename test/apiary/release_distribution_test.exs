@@ -419,22 +419,66 @@ defmodule Apiary.ReleaseDistributionTest do
              {@cookie_stop, 1}
   end
 
+  # The line a command stops with when the cookie cannot be written to `dir`: the reason is
+  # what the failed command said, which differs between systems.
+  defp write_stop(dir) do
+    ~r/\ACannot write the Erlang cookie to #{Regex.escape(dir)}: [^:\n]+\. RELEASE_TMP has to be writable by the release user\.\n\z/
+  end
+
   @tag :tmp_dir
   test "the command stops when the file for the cookie cannot be written", %{tmp_dir: dir} do
     release(dir)
-    File.write!(Path.join(dir, "tmp"), "")
+    tmp = Path.join(dir, "tmp")
     env = clustering([{"RELEASE_COOKIE", "a-shared-secret"}])
 
-    for {program, args} <- [
-          {"apiary", ["start"]},
-          {"apiary", ["eval", "IO.puts(1)"]},
-          {"server", []}
-        ] do
+    commands = [
+      {"apiary", ["start"]},
+      {"apiary", ["eval", "IO.puts(1)"]},
+      {"server", []}
+    ]
+
+    # RELEASE_TMP is a file: mkdir fails.
+    File.write!(tmp, "")
+
+    for {program, args} <- commands do
       assert {output, 1} = run(dir, program, args, env)
-      refute output =~ "-setcookie"
+      assert output =~ write_stop(tmp)
       refute output =~ "a-shared-secret"
     end
 
+    # RELEASE_TMP no one may write to: mktemp fails.
+    File.rm!(tmp)
+    File.mkdir!(tmp)
+    File.chmod!(tmp, 0o500)
+
+    try do
+      for {program, args} <- commands do
+        assert {output, 1} = run(dir, program, args, env)
+        assert output =~ write_stop(tmp)
+        refute output =~ "a-shared-secret"
+      end
+    after
+      File.chmod!(tmp, 0o700)
+    end
+
+    assert cookie_homes(dir) == []
+
+    # chmod fails once the directory is made: the line names that directory.
+    script(
+      Path.join(dir, "stubs/chmod"),
+      "#!/bin/sh\necho \"chmod: $2: Operation not permitted\" >&2\nexit 1\n"
+    )
+
+    for {program, args} <- commands do
+      before = cookie_homes(dir)
+      assert {output, 1} = run(dir, program, args, env)
+      assert [home] = cookie_homes(dir) -- before
+      assert output =~ write_stop(home)
+      assert output =~ ": Operation not permitted. "
+      refute output =~ "a-shared-secret"
+    end
+
+    File.rm!(Path.join(dir, "stubs/chmod"))
     other = Path.join(dir, "other")
     assert {_, 0} = run(dir, "apiary", ["start"], [{"RELEASE_TMP", other} | env])
     assert [home] = Path.wildcard(Path.join(other, "apiary-cookie.*"))
