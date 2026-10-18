@@ -26,8 +26,9 @@ defmodule ApiaryWeb.BacklogLive.Index do
   #
   # **The words for the items** are their source's
   # (`Apiary.Adapters.workspace_item_noun/1`, `ApiaryWeb.SourceComponents.items/1`),
-  # "tickets" where it names none, and so are the words for its collections
-  # (`Apiary.Adapters.workspace_collection_noun/1`), "repositories" where it names none.
+  # "tickets" where it names none, and so are the words for its collections, the Filter
+  # menu's section of them included (`Apiary.Adapters.workspace_collection_noun/1`,
+  # `ApiaryWeb.SourceComponents.collections/1`), "repositories" where it names none.
   #
   # **Live.** The page listens on the topic of its workspace's Backlog
   # (`Apiary.Sources.Backlog.subscribe/1`). A message carries ids only: the page reads its
@@ -99,14 +100,14 @@ defmodule ApiaryWeb.BacklogLive.Index do
               <:section
                 :for={key <- lists()}
                 key={Atom.to_string(key)}
-                label={filter_label(key)}
+                label={filter_label(key, @collection_noun)}
                 icon={filter_icon(key)}
                 value={value_words(@params, key, @options)}
               >
                 <.filter_options
                   id={"backlog-filter-#{key}"}
                   name={Atom.to_string(key)}
-                  label={filter_label(key)}
+                  label={filter_label(key, @collection_noun)}
                   multiple
                   values={Map.fetch!(@params, key)}
                   options={options(@options, @narrowed, @params, key)}
@@ -124,14 +125,14 @@ defmodule ApiaryWeb.BacklogLive.Index do
               </:section>
               <:section
                 key="updated"
-                label={filter_label(:updated)}
+                label={filter_label(:updated, @collection_noun)}
                 icon={filter_icon(:updated)}
                 value={value_words(@params, :updated, @options)}
               >
                 <.filter_options
                   id="backlog-filter-updated"
                   name="updated"
-                  label={filter_label(:updated)}
+                  label={filter_label(:updated, @collection_noun)}
                   values={List.wrap(@params.updated)}
                   options={for {label, value} <- Filters.windows(), do: {label, value, nil}}
                 />
@@ -169,7 +170,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
               }
             >
               <:token
-                :for={token <- tokens(@params, @options)}
+                :for={token <- tokens(@params, @options, @collection_noun)}
                 id={"backlog-token-#{token.key}"}
                 patch={token.remove && list_path(@current_scope, @params, [{token.key, nil}])}
                 label={token.remove}
@@ -184,7 +185,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
               </span>
             </.filter_tokens>
             <p
-              :if={@params.q && tokens(@params, @options) == []}
+              :if={@params.q && tokens(@params, @options, @collection_noun) == []}
               id="backlog-match"
               class="text-[0.8125rem] text-muted tabular-nums"
             >
@@ -479,10 +480,13 @@ defmodule ApiaryWeb.BacklogLive.Index do
   defp sort_label(:created), do: gettext("Newest")
   defp sort_label(:comments), do: gettext("Most comments")
 
-  defp filter_label(:repository), do: pgettext("ticket", "Collection")
-  defp filter_label(:filed_by), do: gettext("Filed by")
-  defp filter_label(:label), do: gettext("Label")
-  defp filter_label(:updated), do: gettext("Updated")
+  # A filter's name; the collections' is in their source's word for one of them.
+  defp filter_label(:repository, collection_noun),
+    do: SourceComponents.collection_label(collection_noun)
+
+  defp filter_label(:filed_by, _collection_noun), do: gettext("Filed by")
+  defp filter_label(:label, _collection_noun), do: gettext("Label")
+  defp filter_label(:updated, _collection_noun), do: gettext("Updated")
 
   defp filter_icon(:repository), do: "hero-folder"
   defp filter_icon(:filed_by), do: "hero-user-circle"
@@ -543,11 +547,11 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # The tokens of the filters in force, in the Filter menu's order: what each keeps, and
   # what taking it away says to a screen reader; nil where the page has no words for that,
   # so that token goes with Clear.
-  defp tokens(params, options) do
+  defp tokens(params, options, collection_noun) do
     for key <- @filters, on?(params, key) do
       %{
         key: key,
-        label: filter_label(key),
+        label: filter_label(key, collection_noun),
         value: value_words(params, key, options),
         remove: remove_words(key)
       }
@@ -609,20 +613,11 @@ defmodule ApiaryWeb.BacklogLive.Index do
       "%{number} %{collections} assigned to %{workspace}",
       n,
       number: Format.number(n),
-      collection: collection_word(collection_noun, 1),
-      collections: collection_word(collection_noun, :other),
+      collection: SourceComponents.collection(collection_noun),
+      collections: SourceComponents.collections(collection_noun),
       workspace: scope.workspace.name
     )
   end
-
-  defp collection_word(%{one: one}, 1), do: one
-  defp collection_word(%{other: other}, _n), do: other
-
-  defp collection_word(nil, 1),
-    do: pgettext("source collection, when its adapter names none", "collection")
-
-  defp collection_word(nil, _n),
-    do: pgettext("source collection, when its adapter names none", "collections")
 
   defp match_words(page, params, item_noun) do
     n = Map.fetch!(page.counts, params.view)

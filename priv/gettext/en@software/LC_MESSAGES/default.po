@@ -4835,12 +4835,6 @@ msgstr ""
 msgid "Collapse sidebar"
 msgstr ""
 
-#: lib/apiary_web/live/backlog_live/index.ex
-#, elixir-autogen, elixir-format
-msgctxt "ticket"
-msgid "Collection"
-msgstr "Repository"
-
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -17015,7 +17009,6 @@ msgstr ""
 #: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
-#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collection"
@@ -17024,7 +17017,6 @@ msgstr "repository"
 #: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/adapter_live/show.ex
-#: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collections"

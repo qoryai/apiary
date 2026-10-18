@@ -420,6 +420,26 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       refute has_element?(view, "#backlog-filter-label-form .q-bl-bot-av")
     end
 
+    test "the collections' section and token are named in the source's word for one",
+         ctx do
+      query = "?" <> Plug.Conn.Query.encode(repository: [ctx.api.id])
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+
+      # "Repository" where the source names none.
+      assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Repository"
+      assert words(view, "#backlog-token-repository") == "Repository acme/api"
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^ctx.connection.adapter_id),
+          set: [collection_noun_one: "project", collection_noun_other: "projects"]
+        )
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
+      assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Project"
+      assert words(view, "#backlog-token-repository") == "Project acme/api"
+      assert words(view, "#backlog-filter-open-repository") == "Project acme/api"
+    end
+
     test "Filed by keeps a filer's tickets, its token says so and takes it away", ctx do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
