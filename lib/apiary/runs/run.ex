@@ -199,6 +199,12 @@ defmodule Apiary.Runs.Run do
     # folded: a rebuild keeps them.
     field :released_at, :utc_datetime_usec
     field :backstop_at, :utc_datetime_usec
+    # For such a run, not a prebuild: the image its attach gave it, its pool's recorded
+    # image for its target (`Apiary.Environments.image_for/2`), named at the top level of
+    # every run configuration it is answered from then on
+    # (`Apiary.Policy.ComposedConfiguration`). Nil for a run given none, and for every
+    # other run. Not folded: a rebuild keeps it.
+    field :configured_image, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
