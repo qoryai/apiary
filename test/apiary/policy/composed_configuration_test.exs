@@ -106,7 +106,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
                {:composed, ComposedConfiguration.compose(nil, @image), @image}
     end
 
-    test "under a policy that names an image is no top-level image (V-798), and for a prebuild the policy without it (V-796)" do
+    test "under a policy that names an image is no top-level image, and for a prebuild the policy without it" do
       # The image a prebuilt recorded is never asked for: the policy's wins.
       never = fn -> flunk("the image was read") end
       assert ComposedConfiguration.shape(@naming, never, false) == :as_is
@@ -133,7 +133,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       end
     end
 
-    test "whose image is fixed, under a policy that names one since, keeps it beside the policy without the policy's (V-837)" do
+    test "whose image is fixed, under a policy that names one since, keeps it beside the policy without the policy's" do
       without = ComposedConfiguration.without_image(@naming)
 
       assert ComposedConfiguration.shape(@naming, @image, false, true) ==

@@ -485,7 +485,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert_as_before(ctx, explore!(ctx), nil)
     end
 
-    test "a run of the queue whose recorded image was built for another target (V-714)",
+    test "a run of the queue whose recorded image was built for another target",
          ctx do
       policy = managed!(ctx)
       recorded!(ctx, @shop, {"forge.example.com", "acme/docs"})
@@ -505,7 +505,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   end
 
   describe "a policy that names an image" do
-    test "gives a prebuild the policy without it, on its attach and its reloads (V-796)", ctx do
+    test "gives a prebuild the policy without it, on its attach and its reloads", ctx do
       managed!(ctx)
       naming = naming!(ctx)
       {run_id, run_key} = prebuild!(ctx)
@@ -536,7 +536,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attach(ctx, run_id, run_key).resp_body == attached.resp_body
     end
 
-    test "gives a run of the queue no image beside it, even with one recorded (V-798)", ctx do
+    test "gives a run of the queue no image beside it, even with one recorded", ctx do
       managed!(ctx)
       naming!(ctx)
       recorded!(ctx, @shop)
@@ -559,7 +559,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert composed_rows(ctx) == []
     end
 
-    test "made mid-run keeps the run's image on its reloads, and applies the rest (V-837)",
+    test "made mid-run keeps the run's image on its reloads, and applies the rest",
          ctx do
       policy = managed!(ctx)
       recorded!(ctx, @shop)
@@ -613,7 +613,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert reported == naming.digest
       assert in_force == naming.digest
 
-      # The next run starts in the policy's image: no top-level image (V-798).
+      # The next run starts in the policy's image: no top-level image.
       {next_id, next_key} = explore!(ctx)
       attached = attach(ctx, next_id, next_key)
       assert attached.status == 200

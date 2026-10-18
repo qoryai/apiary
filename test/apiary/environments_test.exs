@@ -917,7 +917,7 @@ defmodule Apiary.EnvironmentsTest do
       assert Environments.image_for(other, @shop) == nil
     end
 
-    test "is only an image built for that target, else none, the pool's default (V-714)",
+    test "is only an image built for that target, else none, the pool's default",
          ctx do
       shop = shop(ctx)
       built!(ctx, shop, "1", 1)

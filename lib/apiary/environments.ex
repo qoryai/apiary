@@ -77,7 +77,7 @@ defmodule Apiary.Environments do
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
   # live collections assigned to the pool's workspace with that target, only those with an
   # `environment_ref` count, and of their records for the pool built for that target
-  # (`built_target_system`, `built_target_path`: V-714), the one built last (`built_at`)
+  # (`built_target_system`, `built_target_path`), the one built last (`built_at`)
   # that is not retired gives its `image`; nil when there is none, and the run starts in
   # the pool's default. A record whose image was built for another target gives none,
   # until a prebuild for its target lands.

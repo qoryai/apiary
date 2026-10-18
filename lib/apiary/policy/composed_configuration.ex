@@ -15,7 +15,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     * a document whose `security_policy` names an `image`, for a run whose image is fixed
       (its reloads), is composed with that member left out and the run's image at the top
       level: the run keeps the image it started in, takes the rest of the policy in force,
-      and the policy's image applies from the next attach (V-837);
+      and the policy's image applies from the next attach;
     * a document whose `security_policy` names an `image`, for any other run, is served
       as it is, with no top-level `image`: the run starts in the image the policy names,
       and the run configuration never names a second one beside it;
