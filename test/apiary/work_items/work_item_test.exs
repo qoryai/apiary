@@ -245,6 +245,32 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
     end
 
+    test "a target's system has no empty label, and no segment of its path starts with a dash",
+         ctx do
+      %{work_item: item} = ctx
+
+      for {column, value} <- [
+            {"target_system", "forge..example.com"},
+            {"target_system", ".example.com"},
+            {"target_system", "forge.example.com."},
+            {"target_path", "-acme/shop"},
+            {"target_path", "acme/-rf"}
+          ] do
+        refused("work_items_target_shape_check", fn ->
+          update!("work_items", item.id, "#{column} = $2", [value])
+        end)
+      end
+
+      for {column, value} <- [
+            {"target_system", "git.forge-1.example"},
+            {"target_path", "acme/a-b"},
+            {"target_path", "a-cme/shop"},
+            {"target_path", "p"}
+          ] do
+        assert %{num_rows: 1} = update!("work_items", item.id, "#{column} = $2", [value])
+      end
+    end
+
     test "a take in is counted from 1", %{work_item: item} do
       assert item.take_in == 1
 

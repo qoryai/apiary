@@ -420,7 +420,8 @@ defmodule Apiary.TargetsTest do
             ".Git/docs",
             "acme/do cs",
             "acme/dös",
-            "acme\\docs"
+            "acme\\docs",
+            "acme/-rf"
           ] do
         assert set.("acme/api\n" <> text) == ["Line 2 is not a path such as acme/docs."],
                inspect(text)
