@@ -85,8 +85,9 @@ defmodule Apiary.ReleaseDistributionTest do
   end
 
   # Runs bin/<program> with `args`, none of the variables below set unless `env` sets one.
-  # Returns the output, stderr included, and the exit status.
-  defp run(dir, program, args, env \\ []) do
+  # Returns the output, stderr included, and the exit status. `opts` are System.cmd's, :cd
+  # among them.
+  defp run(dir, program, args, env \\ [], opts \\ []) do
     base = [
       {"PATH", Path.join(dir, "stubs") <> ":" <> System.get_env("PATH")},
       {"ELIXIR_CLI_DRY_RUN", "1"},
@@ -99,7 +100,11 @@ defmodule Apiary.ReleaseDistributionTest do
       {"ELIXIR_ERL_OPTIONS", nil}
     ]
 
-    System.cmd(Path.join(dir, "bin/#{program}"), args, env: base ++ env, stderr_to_stdout: true)
+    System.cmd(
+      Path.join(dir, "bin/#{program}"),
+      args,
+      [env: base ++ env, stderr_to_stdout: true] ++ opts
+    )
   end
 
   # The node name flag of the Erlang command line a run printed and the cookie the node
@@ -107,10 +112,9 @@ defmodule Apiary.ReleaseDistributionTest do
   # escaped for run_erl, a backslash before each character other than letters, digits, _, /
   # and -.
   #
-  # A run that goes on writes one cookie file, and its cookie is the file's: the command
-  # line then holds the word, not the cookie, and the directory and the file are for the
-  # release user alone. A run that writes none, with an env.sh that does not source
-  # distribution.sh, gets the cookie of its command line.
+  # A run that goes on writes exactly one cookie file, and its cookie is the file's: the
+  # command line holds the word, not the cookie, and the directory and the file are for
+  # the release user alone. A run that writes no file, or two, fails the test.
   defp erl(dir, program, args, env \\ []) do
     before = cookie_homes(dir)
 
@@ -118,21 +122,28 @@ defmodule Apiary.ReleaseDistributionTest do
       {output, 0} ->
         words = output |> String.replace("\\", "") |> String.split()
 
-        case cookie_homes(dir) -- before do
-          [] ->
-            %{name: flag(words, ["-name", "-sname"]), cookie: cookie(words)}
+        assert [home] = cookie_homes(dir) -- before,
+               "bin/#{program} #{Enum.join(args, " ")} did not write exactly one cookie file"
 
-          [home] ->
-            written = written_cookie(home)
-            assert cookie(words) == @word
-            refute output =~ written
-            refute Enum.join(words, " ") =~ written
-            %{name: flag(words, ["-name", "-sname"]), cookie: written}
-        end
+        written = written_cookie(home)
+        assert cookie(words) == @word
+        refute output =~ written
+        refute Enum.join(words, " ") =~ written
+        %{name: flag(words, ["-name", "-sname"]), cookie: written}
 
       stopped ->
         stopped
     end
+  end
+
+  # The node name flag and the cookie of the command line a run printed, for a release
+  # whose env.sh does not source distribution.sh: it writes no cookie file.
+  defp erl_without_file(dir, program, args) do
+    before = cookie_homes(dir)
+    assert {output, 0} = run(dir, program, args)
+    assert cookie_homes(dir) == before
+    words = String.split(output)
+    %{name: flag(words, ["-name", "-sname"]), cookie: cookie(words)}
   end
 
   defp cookie_homes(dir), do: Path.wildcard(Path.join(dir, "tmp/apiary-cookie.*"))
@@ -320,7 +331,8 @@ defmodule Apiary.ReleaseDistributionTest do
   test "bin/server sets distribution also for a release whose env.sh does not", %{tmp_dir: dir} do
     release(dir, "#!/bin/sh\n")
 
-    assert erl(dir, "apiary", ["start"]) == %{name: {"-sname", "apiary"}, cookie: @baked}
+    assert erl_without_file(dir, "apiary", ["start"]) ==
+             %{name: {"-sname", "apiary"}, cookie: @baked}
 
     assert %{name: nil, cookie: cookie} = erl(dir, "server", [])
     assert random?(cookie)
@@ -396,7 +408,10 @@ defmodule Apiary.ReleaseDistributionTest do
     eval = "{ok, _} = auth:start_link(), io:put_chars(atom_to_list(auth:get_cookie())), halt()."
     erl = Path.join(:code.root_dir(), "bin/erl")
 
-    assert System.cmd(erl, ["-noshell" | setcookie] ++ ["-eval", eval], env: [{"HOME", home}]) ==
+    # No ERL_*FLAGS from the caller's environment, so nothing can start distribution.
+    env = [{"HOME", home}, {"ERL_FLAGS", nil}, {"ERL_AFLAGS", nil}, {"ERL_ZFLAGS", nil}]
+
+    assert System.cmd(erl, ["-noshell" | setcookie] ++ ["-eval", eval], env: env) ==
              {"a-shared-secret", 0}
   end
 
@@ -483,5 +498,112 @@ defmodule Apiary.ReleaseDistributionTest do
     assert {_, 0} = run(dir, "apiary", ["start"], [{"RELEASE_TMP", other} | env])
     assert [home] = Path.wildcard(Path.join(other, "apiary-cookie.*"))
     assert written_cookie(home) == "a-shared-secret"
+  end
+
+  @tag :tmp_dir
+  test "RELEASE_TMP and the cookie's directory are made under umask 077", %{tmp_dir: dir} do
+    release(dir)
+    tmp = Path.join(dir, "tmp")
+    refute File.exists?(tmp)
+
+    # bin/apiary start under umask 000.
+    {output, 0} =
+      System.cmd(
+        "/bin/sh",
+        ["-c", ~s(umask 000 && exec "$0" "$@"), Path.join(dir, "bin/apiary"), "start"],
+        env: [
+          {"PATH", Path.join(dir, "stubs") <> ":" <> System.get_env("PATH")},
+          {"ELIXIR_CLI_DRY_RUN", "1"},
+          {"DNS_CLUSTER_QUERY", "apiary.internal"},
+          {"RELEASE_COOKIE", "a-shared-secret"},
+          {"RELEASE_NODE", nil},
+          {"RELEASE_TMP", nil}
+        ],
+        stderr_to_stdout: true
+      )
+
+    refute output =~ "a-shared-secret"
+    assert mode(tmp) == 0o700
+    assert [home] = cookie_homes(dir)
+    assert written_cookie(home) == "a-shared-secret"
+  end
+
+  @tag :tmp_dir
+  test "the word counts as written only with HOME a directory this user owns, directly in RELEASE_TMP",
+       %{tmp_dir: dir} do
+    release(dir)
+    env = clustering([{"RELEASE_COOKIE", @word}])
+
+    home = fn path ->
+      File.mkdir_p!(path)
+      File.chmod!(path, 0o700)
+      file = Path.join(path, ".erlang.cookie")
+      File.write!(file, "a-planted-cookie")
+      File.chmod!(file, 0o400)
+      path
+    end
+
+    tmp = Path.join(dir, "tmp")
+    File.mkdir_p!(tmp)
+
+    # Elsewhere, below RELEASE_TMP, named otherwise, and a file in place of the directory.
+    file_home = Path.join(tmp, "apiary-cookie.FFFFFFFF")
+    File.write!(file_home, "")
+
+    for untrusted <- [
+          home.(Path.join(dir, "elsewhere/apiary-cookie.AAAAAAAA")),
+          home.(Path.join(tmp, "nested/apiary-cookie.BBBBBBBB")),
+          home.(Path.join(tmp, "other.CCCCCCCC")),
+          file_home
+        ] do
+      before = cookie_homes(dir)
+
+      assert run(dir, "apiary", ["start"], [{"HOME", untrusted} | env]) == {@cookie_stop, 1}
+      assert cookie_homes(dir) == before
+
+      assert %{cookie: cookie} =
+               erl(dir, "apiary", ["start"], [{"HOME", untrusted}, {"RELEASE_COOKIE", @word}])
+
+      assert random?(cookie)
+    end
+
+    # A directory of RELEASE_TMP that this user owns, with a file this user owns, is the
+    # cookie written already: the run writes no other.
+    trusted = home.(Path.join(tmp, "apiary-cookie.DDDDDDDD"))
+    before = cookie_homes(dir)
+    assert {output, 0} = run(dir, "apiary", ["start"], [{"HOME", trusted} | env])
+    assert output =~ "-setcookie #{@word} "
+    assert cookie_homes(dir) == before
+
+    # The same directory, once RELEASE_TMP names another: not trusted.
+    other = Path.join(dir, "other")
+
+    assert run(dir, "apiary", ["start"], [{"HOME", trusted}, {"RELEASE_TMP", other} | env]) ==
+             {@cookie_stop, 1}
+  end
+
+  @tag :tmp_dir
+  test "a relative RELEASE_TMP is the directory it names, and HOME is absolute",
+       %{tmp_dir: dir} do
+    release(dir)
+    script(Path.join(dir, "stubs/erl"), ~s(#!/bin/sh\nprintf '%s\\n' "$HOME" "$RELEASE_COOKIE"\n))
+
+    env =
+      clustering([
+        {"RELEASE_COOKIE", "a-shared-secret"},
+        {"ELIXIR_CLI_DRY_RUN", nil},
+        {"RELEASE_TMP", "relative/tmp"}
+      ])
+
+    # bin/apiary, run from the release's root; bin/server, which runs from bin/, and its
+    # second pass.
+    for {program, root} <- [{"apiary", dir}, {"server", Path.join(dir, "bin")}] do
+      assert {output, 0} = run(dir, program, ["start"], env, cd: dir)
+      assert [home, @word] = String.split(output, "\n", trim: true)
+      assert Path.type(home) == :absolute
+      assert Path.basename(Path.dirname(home)) == "tmp"
+      assert [^home] = Path.wildcard(Path.join(root, "relative/tmp/apiary-cookie.*"))
+      assert written_cookie(home) == "a-shared-secret"
+    end
   end
 end

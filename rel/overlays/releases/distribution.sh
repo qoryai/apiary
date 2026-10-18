@@ -27,25 +27,37 @@
 # every command but `version`, the cookie is written to .erlang.cookie, mode 0400, in a new
 # directory that mktemp makes under RELEASE_TMP (by default tmp/ of the release), mode 0700;
 # HOME is set to that directory, and RELEASE_COOKIE to the word -release_cookie_in_home.
+# RELEASE_TMP is made, when missing, under umask 077, and a relative RELEASE_TMP is taken
+# as the absolute path it names, so HOME is absolute.
 # The beam then gets "-setcookie -release_cookie_in_home": a -setcookie with no value,
 # which the kernel's auth module ignores, and a flag nothing reads. With no -setcookie
 # value, auth reads the cookie from $HOME/.erlang.cookie, which it accepts only when its
-# mode gives no one but its owner any access, and only as printable ASCII, which openssl
-# rand -base64 and -hex give. The value is written with printf, a shell builtin, so it is
-# in no command's arguments, and the beam's environment holds only the word.
+# mode gives no one but its owner any access, and only as printable ASCII on one line:
+# openssl rand -hex 32 or openssl rand -base64 32 gives one (-base64 breaks its output into
+# lines above 48 bytes). The value is written with printf, a shell builtin, so it is in no
+# command's arguments, and the beam's environment holds only the word. The shell opens the
+# file with noclobber set, so it never writes into a file that is there already.
 #
 # bin/server sources this file and then starts bin/apiary, whose env.sh sources it again:
-# RELEASE_COOKIE set to the word, with HOME a directory named apiary-cookie.<random> that
-# holds .erlang.cookie, means the cookie was written already. The word set any other way
-# counts as no RELEASE_COOKIE.
+# RELEASE_COOKIE set to the word means the cookie was written already only when HOME is a
+# directory named apiary-cookie.<random> directly in RELEASE_TMP, owned by this user, and
+# holds .erlang.cookie, a file owned by this user. The word set any other way counts as no
+# RELEASE_COOKIE: with DNS_CLUSTER_QUERY a command that starts distribution stops, and any
+# other command gets a random cookie.
 
 distribution_marker=-release_cookie_in_home
 distribution_written=
+distribution_tmp=${RELEASE_TMP:-$RELEASE_ROOT/tmp}
 
 if [ "${RELEASE_COOKIE:-}" = "$distribution_marker" ]; then
+  distribution_resolved=$(CDPATH='' cd -P -- "$distribution_tmp" 2>/dev/null && pwd -P) ||
+    distribution_resolved=
+
   case ${HOME:-} in
-  */apiary-cookie.*)
-    if [ -f "$HOME/.erlang.cookie" ]; then
+  "$distribution_resolved"/apiary-cookie.*)
+    if [ -n "$distribution_resolved" ] && [ "${HOME%/*}" = "$distribution_resolved" ] &&
+      [ -d "$HOME" ] && [ -O "$HOME" ] &&
+      [ -f "$HOME/.erlang.cookie" ] && [ -O "$HOME/.erlang.cookie" ]; then
       distribution_written=yes
     fi
     ;;
@@ -125,7 +137,7 @@ fi
 # The cookie out of every command line, as the head of this file says. A directory or file
 # that cannot be made stops the command with one line: the directory, RELEASE_TMP or the
 # one mktemp made, and the reason the failed command gave, what follows the last ": " of
-# its first line, or the command's name when it printed none. That command is mkdir,
+# its first line, or the command's name when it printed none. That command is mkdir, cd,
 # mktemp, the shell that opens the file or chmod; none of them is given the cookie, so the
 # reason cannot hold it.
 distribution_fail() {
@@ -139,19 +151,23 @@ distribution_fail() {
 distribution_newline='
 '
 
+# umask 077 and noclobber are set only in the subshells of the steps that need them, so the
+# umask of the command is kept.
 if [ -z "$distribution_written" ] && [ "${RELEASE_COMMAND:-}" != version ]; then
-  distribution_tmp=${RELEASE_TMP:-$RELEASE_ROOT/tmp}
-  distribution_output=$(mkdir -p "$distribution_tmp" 2>&1) ||
+  distribution_output=$(umask 077 && mkdir -p "$distribution_tmp" 2>&1) ||
     distribution_fail "$distribution_tmp" "$distribution_output" mkdir
 
+  distribution_output=$(CDPATH='' cd -P -- "$distribution_tmp" 2>&1 && pwd -P) ||
+    distribution_fail "$distribution_tmp" "$distribution_output" cd
+  distribution_tmp=$distribution_output
+
   # mktemp prints the directory it made, or only its error.
-  distribution_output=$(mktemp -d "$distribution_tmp/apiary-cookie.XXXXXXXX" 2>&1) ||
+  distribution_output=$(umask 077 && mktemp -d "$distribution_tmp/apiary-cookie.XXXXXXXX" 2>&1) ||
     distribution_fail "$distribution_tmp" "$distribution_output" mktemp
   distribution_home=$distribution_output
 
-  # umask 077 in a subshell: the file is made owner-only, and the umask of the command is
-  # kept. printf writes to the file; only the shell's error reaches the output.
-  distribution_output=$( (umask 077 && printf '%s' "$RELEASE_COOKIE" >"$distribution_home/.erlang.cookie") 2>&1) ||
+  # printf writes to the file; only the shell's error reaches the output.
+  distribution_output=$( (umask 077 && set -C && printf '%s' "$RELEASE_COOKIE" >"$distribution_home/.erlang.cookie") 2>&1) ||
     distribution_fail "$distribution_home" "$distribution_output" "the shell"
   distribution_output=$(chmod 0400 "$distribution_home/.erlang.cookie" 2>&1) ||
     distribution_fail "$distribution_home" "$distribution_output" chmod
