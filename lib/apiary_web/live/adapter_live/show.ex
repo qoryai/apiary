@@ -6,6 +6,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # `ApiaryWeb.AdapterLive.AccessKey`). An adapter the person does not find is a path that
   # does not exist.
   #
+  # The page's h1 is the integration's mark, decoration only, then its name; the browser
+  # title and the crumb are the name's plain words.
+  #
   # Under the integration's name, where the organisation's connection to it stands
   # (`Apiary.Adapters.Connections`):
   #
@@ -437,6 +440,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
         title={@adapter.name}
         measure={if @state in [:waiting, :listed], do: "list", else: "read"}
       >
+        <:title_block>
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="flex flex-none">
+              <IntegrationComponents.mark class="size-[18px]" />
+            </span>
+            <span class="min-w-0">{@adapter.name}</span>
+          </span>
+        </:title_block>
         <:subtitle>
           <span id="integration-status">{status(assigns)}</span>
         </:subtitle>
