@@ -317,7 +317,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       workspace_fixture(other.organisation)
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, titled(["X"])))
-      {:ok, :disconnected} = disconnect(ctx, "X")
+      {:ok, :disconnected} = disconnect(%{ctx | connection: theirs}, "X")
 
       assert %{ended: 1} = Collections.counts(other, theirs)
       assert %{ended: 0, total: 0} = Collections.counts(other, ctx.connection)
