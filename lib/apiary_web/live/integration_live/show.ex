@@ -36,7 +36,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations.Workspace
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.SettingsComponents
+  alias ApiaryWeb.{People, SettingsComponents}
 
   @tabs [:overview, :targets, :settings]
   @writes [:add_target, :remove_target, :version, :delete]
@@ -356,12 +356,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
         <dd>
-          {Common.who(@people, @connection.created_by_id)}
+          {People.short(Common.who(@people, @connection.created_by_id))}
           <span class="text-muted">· <.time_ago at={@connection.inserted_at} /></span>
         </dd>
         <dt class="text-faint">{gettext("Last changed")}</dt>
         <dd>
-          {Common.who(@people, @connection.updated_by_id)}
+          {People.short(Common.who(@people, @connection.updated_by_id))}
           <span class="text-muted">· <.time_ago at={@connection.updated_at} /></span>
         </dd>
       </dl>

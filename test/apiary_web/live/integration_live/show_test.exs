@@ -635,7 +635,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
   describe "who added it and who changed it last" do
     # What Overview says of who added the connection `admin` added and who changed it
-    # last, once `change` ran on it, its tags left out.
+    # last, once `change` ran on it, and the page's text, its tags left out.
     defp said_of(conn, scope, admin, change) do
       {:ok, runtime} = Connections.create_runtime(admin.scope, %{runtime: "claude"})
       change.(runtime)
@@ -644,7 +644,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       [_, added] = Regex.run(~r/Added (.*?) ·/, text)
       [_, changed] = Regex.run(~r/Last changed (.*?) ·/, text)
       assert added == changed
-      added
+      {added, text}
     end
 
     defp plain(html),
@@ -656,33 +656,37 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       |> Repo.update!()
     end
 
-    test "a person removed from the organisation is named by their account",
+    defp short(user), do: Apiary.Accounts.User.short_name(user.email)
+
+    test "a person removed from the organisation is named by the short name of their account",
          %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
-      said = said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
-      assert said =~ admin.user.email
-      refute said =~ "Former member"
+
+      {said, text} =
+        said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
+
+      assert said == short(admin.user)
+      refute text =~ admin.user.email
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
 
-      said =
+      {said, _text} =
         said_of(conn, scope, admin, fn _record ->
           {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
         end)
 
-      assert said =~ "Former member"
-      refute said =~ Apiary.Accounts.User.short_name(admin.user.email)
+      assert said == "Former member"
     end
 
-    test "a person who is not a member of the organisation is named by their account",
+    test "a person who is not a member of the organisation is named by the short name of their account",
          %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
       user = Apiary.AccountsFixtures.user_fixture()
-      said = said_of(conn, scope, admin, &by_user(&1, user))
-      assert said =~ user.email
-      refute said =~ "Former member"
+      {said, text} = said_of(conn, scope, admin, &by_user(&1, user))
+      assert said == short(user)
+      refute text =~ user.email
     end
   end
 end

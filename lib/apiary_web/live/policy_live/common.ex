@@ -1857,7 +1857,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          current?: latest.version == configuration.version,
          latest: latest.version,
          superseded_by: superseded_by,
-         changed_by: People.account(accounts, configuration.changed_by_id),
+         changed_by: People.short(People.account(accounts, configuration.changed_by_id)),
          mode: document_mode(configuration.document),
          mode_source:
            if(latest.version == configuration.version,

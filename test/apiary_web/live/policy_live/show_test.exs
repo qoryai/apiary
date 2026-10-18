@@ -1673,8 +1673,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
           {:ok, _} = Apiary.Organisations.remove_member(scope, member.membership.id)
         end)
 
-      assert strip =~ member.user.email
-      assert line =~ Apiary.Accounts.User.short_name(member.user.email)
+      short = Apiary.Accounts.User.short_name(member.user.email)
+      assert strip =~ "Changed by #{short} "
+      assert line =~ short
+      refute strip <> line =~ member.user.email
       refute strip <> line =~ "Former member"
     end
 
@@ -1686,7 +1688,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
           {:ok, _} = Apiary.Accounts.delete_user(member.scope)
         end)
 
-      assert strip =~ "Former member"
+      assert strip =~ "Changed by Former member "
       assert line =~ "Former member"
       refute strip <> line =~ Apiary.Accounts.User.short_name(member.user.email)
     end
@@ -1701,8 +1703,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
           version |> Ecto.Changeset.change(changed_by_id: user.id) |> Apiary.Repo.update!()
         end)
 
-      assert strip =~ user.email
-      assert line =~ Apiary.Accounts.User.short_name(user.email)
+      short = Apiary.Accounts.User.short_name(user.email)
+      assert strip =~ "Changed by #{short} "
+      assert line =~ short
+      refute strip <> line =~ user.email
       refute strip <> line =~ "Former member"
     end
   end

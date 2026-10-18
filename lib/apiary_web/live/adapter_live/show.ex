@@ -900,11 +900,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp status(%{state: state} = assigns) when state in [:waiting, :listed] do
     at = assigns.connection.connected_at
 
+    person = People.short(assigns.person)
+
     if today?(at),
-      do: gettext("Installed by %{person} today.", person: assigns.person),
+      do: gettext("Installed by %{person} today.", person: person),
       else:
         gettext("Installed by %{person} on %{date}.",
-          person: assigns.person,
+          person: person,
           date: Format.day(at)
         )
   end

@@ -27,7 +27,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Connections.Connection
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.SettingsComponents
+  alias ApiaryWeb.{People, SettingsComponents}
 
   # How often a pending release is read again, in milliseconds.
   @poll 2_000
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           <.time_ago :if={@release.fetched_at} at={@release.fetched_at} />
           <span :if={Common.who(@people, @release.requested_by_id)} class="text-muted">
             · {gettext("asked for by %{person}",
-              person: Common.who(@people, @release.requested_by_id)
+              person: People.short(Common.who(@people, @release.requested_by_id))
             )}
           </span>
         </dd>
