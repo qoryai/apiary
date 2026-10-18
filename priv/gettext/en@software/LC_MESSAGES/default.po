@@ -699,7 +699,7 @@ msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{items} that closed after they reached the backlog."
+msgid "%{items} that are closed on %{integration}."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
