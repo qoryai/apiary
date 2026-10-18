@@ -40,8 +40,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
   test "lists the instance's adapters by name, none installed, with Add for an owner",
        %{conn: conn, scope: scope} do
-    shop = adapter_fixture(%{name: "Shop tracker"})
-    acme = adapter_fixture(%{name: "Acme tracker"})
+    shop = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    acme = adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
 
     {:ok, lv, html} = live(conn, list_path(scope))
 
@@ -75,8 +75,12 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
   test "an installed one leads to its page, by its name and its chevron; a pending one is not installed",
        %{conn: conn, scope: scope} do
-    %{adapter: installed} = connectable_adapter_fixture(%{name: "Acme tracker"})
-    %{adapter: pending} = connectable_adapter_fixture(%{name: "Shop tracker"})
+    %{adapter: installed} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
+    %{adapter: pending} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+
     connection_fixture(scope, installed, :connected)
     connection_fixture(scope, pending, :pending)
 
@@ -84,8 +88,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
     show = "#{list_path(scope)}/#{installed.public_id}"
     id = "#integration-#{installed.public_id}"
-    assert has_element?(lv, ~s{a#{id}-name[href="#{show}"]}, "Acme tracker")
-    assert has_element?(lv, ~s{a#{id}-open[href="#{show}"][aria-label="Open Acme tracker"]})
+    assert has_element?(lv, ~s{a#{id}-name[href="#{show}"]}, installed.name)
+    assert has_element?(lv, ~s{a#{id}-open[href="#{show}"][aria-label="Open #{installed.name}"]})
     refute has_element?(lv, "#{id}-add")
     assert words(lv, "#{id}-state") == "Installed · 0 repositories"
 
@@ -99,9 +103,12 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     conn: conn,
     scope: scope
   } do
-    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
-    %{adapter: shop} = connectable_adapter_fixture(%{name: "Shop tracker"})
-    %{adapter: platform} = connectable_adapter_fixture(%{name: "Platform tracker"})
+    %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+    %{adapter: shop} = connectable_adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+
+    %{adapter: platform} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
+
     shop = describe_source(shop, "example-tracker.json")
     {acme_connection, _nonce} = connection_fixture(scope, acme, :listed)
     {shop_connection, _nonce} = connection_fixture(scope, shop, :listed)
@@ -128,7 +135,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   } do
     Edition.put_test_stub(EditionStubs.ManyWorkspaces)
     workspace_fixture(scope.organisation, "Platform")
-    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, acme, :listed)
     for _ <- 1..2, do: source_collection_fixture(scope, connection)
 
@@ -145,7 +152,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   end
 
   test "with one workspace, none is said unassigned", %{conn: conn, scope: scope} do
-    %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+    %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, acme, :listed)
     source_collection_fixture(scope, connection, %{workspace_id: nil})
 
@@ -226,8 +233,11 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       conn: conn,
       scope: scope
     } do
-      %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
-      %{adapter: installed} = connectable_adapter_fixture(%{name: "Platform tracker"})
+      %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
+      %{adapter: installed} =
+        connectable_adapter_fixture(%{name: unique_adapter_name("Platform tracker")})
+
       connection_fixture(scope, installed, :listed)
       org = scope.organisation.name
 
@@ -245,10 +255,10 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
                "Install one of this instance's integrations for #{org}."
 
       id = "#add-#{acme.public_id}"
-      assert words(lv, "#{id}-name") == "Acme tracker"
+      assert words(lv, "#{id}-name") == acme.name
 
       assert words(lv, id) ==
-               "Acme tracker Acme tracker then brings you back here. The repositories it reaches are listed on this page. #{org} can have one installation of Acme tracker. Install Cancel"
+               "#{acme.name} #{acme.name} then brings you back here. The repositories it reaches are listed on this page. #{org} can have one installation of #{acme.name}. Install Cancel"
 
       install = "#{list_path(scope)}/#{acme.public_id}/install"
       assert has_element?(lv, ~s{form#{id}-form[action="#{install}"][method="post"]})
@@ -264,8 +274,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       refute has_element?(lv, "#add-none")
       assert has_element?(lv, ".q-settings-head-sub")
 
-      for name <- ["Acme tracker", "Platform tracker"] do
-        %{adapter: adapter} = connectable_adapter_fixture(%{name: name})
+      for base <- ["Acme tracker", "Platform tracker"] do
+        %{adapter: adapter} = connectable_adapter_fixture(%{name: unique_adapter_name(base)})
         connection_fixture(scope, adapter, :listed)
       end
 
@@ -279,13 +289,13 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       conn: conn,
       scope: scope
     } do
-      %{adapter: acme} = connectable_adapter_fixture(%{name: "Acme tracker"})
+      %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       form = form(lv, "#add-#{acme.public_id}-form")
       render_submit(form)
 
-      assert words(lv, "#add-#{acme.public_id}-sending") == "Taking you to Acme tracker…"
+      assert words(lv, "#add-#{acme.public_id}-sending") == "Taking you to #{acme.name}…"
       refute has_element?(lv, "#add-#{acme.public_id}-cancel")
 
       conn = follow_trigger_action(form, conn)
@@ -299,21 +309,23 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     end
 
     test "an integration not set up yet: Install disabled, and why", %{conn: conn, scope: scope} do
-      adapter = adapter_fixture(%{name: "Shop tracker"})
+      adapter = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       id = "#add-#{adapter.public_id}"
       assert has_element?(lv, "#{id}-form-install[disabled]")
 
       assert words(lv, "#{id}-not-ready") ==
-               "Shop tracker can't be installed yet: this instance's admins are still setting it up."
+               "#{adapter.name} can't be installed yet: this instance's admins are still setting it up."
 
       render_submit(form(lv, "#{id}-form"))
       refute has_element?(lv, "#{id}-sending")
     end
 
     test "names the collections in each adapter's words", %{conn: conn, scope: scope} do
-      %{adapter: adapter} = connectable_adapter_fixture(%{name: "Acme tracker"})
+      %{adapter: adapter} =
+        connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
       describe_source(adapter, "example-tracker.json")
       {:ok, lv, _html} = live(conn, new_path(scope))
 

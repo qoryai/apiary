@@ -27,7 +27,7 @@ defmodule Apiary.Adapters.CollectionsTest do
     # A second workspace, so a collection is linked to none as it is made
     # (`Apiary.Adapters.CollectionsAssignTest` has the organisation with one).
     workspace_fixture(scope.organisation)
-    connectable = connectable_adapter_fixture(%{name: "Acme tracker"})
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
 
     %{
