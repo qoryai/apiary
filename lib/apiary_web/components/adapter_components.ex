@@ -83,6 +83,7 @@ defmodule ApiaryWeb.AdapterComponents do
       id={@id}
       action={paths(@adapter).setup}
       method="post"
+      novalidate
       class="contents"
     >
       <input :if={@back} type="hidden" name="back" value={@back} />
