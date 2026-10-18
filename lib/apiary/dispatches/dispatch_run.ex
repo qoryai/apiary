@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
   # collection's `environment_ref` it was queued for. At most one waits per collection and
   # pool (`Apiary.Dispatches.queue_prebuild/3`). Every other run is held for no pool and
-  # has none of the three (`20261017200200_queue_prebuilds`).
+  # has none of the three (`20261017160000_queue_prebuilds`).
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`

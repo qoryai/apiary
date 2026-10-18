@@ -204,6 +204,14 @@ defmodule Apiary.AdaptersTest do
       %{scope: member} = member_fixture(scope, :member)
       refute Access.instance_admin?(scope)
 
+      # Counted before and after, not against none: the trail of the instance's organisation
+      # may hold what a test outside the sandbox committed and left there.
+      created = fn ->
+        Repo.aggregate(from(e in Entry, where: e.action == "adapter.create"), :count)
+      end
+
+      before = created.()
+
       assert Adapters.create_adapter(scope, %{name: "Acme tracker"}) == {:error, :forbidden}
       assert Adapters.create_adapter(member, %{name: "Acme tracker"}) == {:error, :forbidden}
 
@@ -212,7 +220,7 @@ defmodule Apiary.AdaptersTest do
       end
 
       assert Adapters.list_adapters(admin) == []
-      assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.create"), :count) == 0
+      assert created.() == before
     end
 
     test "never comes from Apiary.Nodes", %{scope: scope} do

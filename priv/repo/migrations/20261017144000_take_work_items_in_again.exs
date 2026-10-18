@@ -1,7 +1,7 @@
 defmodule Apiary.Repo.Migrations.TakeWorkItemsInAgain do
   use Ecto.Migration
 
-  # A work item names the ticket it was taken in from (`source_items`, 20261017190000),
+  # A work item names the ticket it was taken in from (`source_items`, 20261017143000),
   # is one per ticket in its organisation, may be declined, may be taken in again, and
   # may move to another workspace of its organisation while it is not live.
   #
