@@ -1019,20 +1019,22 @@ defmodule Apiary.Sources.Backlog do
   # backlog_facts/1 is what an empty Backlog of the scope's workspace, and the line under
   # the page's title, speak from, to a person who may read its work items: whether the
   # organisation has a connection that is connected (`connected?`); the integrations of
-  # those connections, each by its adapter's name and public id, by name
-  # (`integrations`, `t:integration/0`); how many live collections of such a connection,
-  # through an adapter with items, are assigned to the workspace, whatever their Backlog
-  # switch and their items (`assigned_collections`, the count the line under the title
-  # says), and how many of them are linked, with their Backlog on and with items
-  # (`linked_collections`); whether an adapter's listing has named such a connection
-  # (`listed?`, its `listed_at`); and how many tickets the Backlog holds open at their
-  # source (`open_tickets`), whatever their work item. Nothing connected, no integration,
-  # nothing assigned, nothing linked, nothing listed and none open to anyone else.
+  # those connections whose adapter brings items, each by its adapter's name and public
+  # id, by name (`integrations`, `t:integration/0`); how many live collections of a
+  # connected connection, through an adapter with items, are assigned to the workspace,
+  # whatever their Backlog switch and their items (`assigned_collections`, the count the
+  # line under the title says), and how many of them are linked, with their Backlog on
+  # and with items (`linked_collections`); whether an adapter's listing has named a
+  # connected connection (`listed?`, its `listed_at`); and how many tickets the Backlog
+  # holds open at their source (`open_tickets`), whatever their work item. Nothing
+  # connected, no integration, nothing assigned, nothing linked, nothing listed and none
+  # open to anyone else.
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
       {:ok, organisation_id, %Workspace{id: workspace_id}} ->
-        # One row per adapter: its connected connections, and those a listing named.
+        # One row per adapter: its connected connections, those a listing named, and
+        # whether it brings items.
         connections =
           Repo.all(
             from k in Connection,
@@ -1041,9 +1043,9 @@ defmodule Apiary.Sources.Backlog do
               where:
                 k.organisation_id == ^organisation_id and k.state == :connected and
                   is_nil(k.ended_at),
-              group_by: [n.id, n.name, n.public_id],
+              group_by: [n.id, n.name, n.public_id, n.items],
               order_by: [asc: n.name, asc: n.public_id],
-              select: {%{name: n.name, id: n.public_id}, count(k.listed_at)}
+              select: {%{name: n.name, id: n.public_id}, count(k.listed_at), n.items}
           )
 
         # The assigned collections, and among them the linked ones, in one count.
@@ -1070,10 +1072,10 @@ defmodule Apiary.Sources.Backlog do
 
         %{
           connected?: connections != [],
-          integrations: Enum.map(connections, &elem(&1, 0)),
+          integrations: for({integration, _listed, true} <- connections, do: integration),
           assigned_collections: assigned,
           linked_collections: linked,
-          listed?: Enum.any?(connections, fn {_integration, listed} -> listed > 0 end),
+          listed?: Enum.any?(connections, fn {_integration, listed, _items} -> listed > 0 end),
           open_tickets: open
         }
 
