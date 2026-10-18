@@ -546,15 +546,33 @@ defmodule Apiary.ReleaseDistributionTest do
     tmp = Path.join(dir, "tmp")
     File.mkdir_p!(tmp)
 
-    # Elsewhere, below RELEASE_TMP, named otherwise, and a file in place of the directory.
+    # Elsewhere; nested in RELEASE_TMP, above the name or below it; named otherwise; a file
+    # in place of the directory; a symbolic link to a directory this user owns that holds a
+    # valid file; and a valid directory whose .erlang.cookie is a symbolic link to a valid
+    # file.
     file_home = Path.join(tmp, "apiary-cookie.FFFFFFFF")
     File.write!(file_home, "")
+
+    link_home = Path.join(tmp, "apiary-cookie.LLLLLLLL")
+    File.ln_s!(home.(Path.join(dir, "linked/apiary-cookie.GGGGGGGG")), link_home)
+
+    link_file_home = Path.join(tmp, "apiary-cookie.MMMMMMMM")
+    File.mkdir!(link_file_home)
+    File.chmod!(link_file_home, 0o700)
+
+    File.ln_s!(
+      Path.join(home.(Path.join(dir, "linked/apiary-cookie.HHHHHHHH")), ".erlang.cookie"),
+      Path.join(link_file_home, ".erlang.cookie")
+    )
 
     for untrusted <- [
           home.(Path.join(dir, "elsewhere/apiary-cookie.AAAAAAAA")),
           home.(Path.join(tmp, "nested/apiary-cookie.BBBBBBBB")),
+          home.(Path.join(tmp, "apiary-cookie.EEEEEEEE/inner")),
           home.(Path.join(tmp, "other.CCCCCCCC")),
-          file_home
+          file_home,
+          link_home,
+          link_file_home
         ] do
       before = cookie_homes(dir)
 

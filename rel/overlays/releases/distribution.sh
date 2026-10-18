@@ -36,14 +36,17 @@
 # openssl rand -hex 32 or openssl rand -base64 32 gives one (-base64 breaks its output into
 # lines above 48 bytes). The value is written with printf, a shell builtin, so it is in no
 # command's arguments, and the beam's environment holds only the word. The shell opens the
-# file with noclobber set, so it never writes into a file that is there already.
+# file with noclobber set, which refuses a regular file that is there already, or a
+# symbolic link to nothing; it does not refuse every file. What keeps other users from
+# placing anything there is the directory: mktemp makes it new, mode 0700.
 #
 # bin/server sources this file and then starts bin/apiary, whose env.sh sources it again:
 # RELEASE_COOKIE set to the word means the cookie was written already only when HOME is a
 # directory named apiary-cookie.<random> directly in RELEASE_TMP, owned by this user, and
-# holds .erlang.cookie, a file owned by this user. The word set any other way counts as no
-# RELEASE_COOKIE: with DNS_CLUSTER_QUERY a command that starts distribution stops, and any
-# other command gets a random cookie.
+# holds .erlang.cookie, a file owned by this user, neither of them a symbolic link: what
+# mktemp and printf made. The word set any other way counts as no RELEASE_COOKIE: with
+# DNS_CLUSTER_QUERY a command that starts distribution stops, and any other command gets a
+# random cookie.
 
 distribution_marker=-release_cookie_in_home
 distribution_written=
@@ -56,8 +59,9 @@ if [ "${RELEASE_COOKIE:-}" = "$distribution_marker" ]; then
   case ${HOME:-} in
   "$distribution_resolved"/apiary-cookie.*)
     if [ -n "$distribution_resolved" ] && [ "${HOME%/*}" = "$distribution_resolved" ] &&
-      [ -d "$HOME" ] && [ -O "$HOME" ] &&
-      [ -f "$HOME/.erlang.cookie" ] && [ -O "$HOME/.erlang.cookie" ]; then
+      [ ! -L "$HOME" ] && [ -d "$HOME" ] && [ -O "$HOME" ] &&
+      [ ! -L "$HOME/.erlang.cookie" ] && [ -f "$HOME/.erlang.cookie" ] &&
+      [ -O "$HOME/.erlang.cookie" ]; then
       distribution_written=yes
     fi
     ;;
@@ -138,8 +142,10 @@ fi
 # that cannot be made stops the command with one line: the directory, RELEASE_TMP or the
 # one mktemp made, and the reason the failed command gave, what follows the last ": " of
 # its first line, or the command's name when it printed none. That command is mkdir, cd,
-# mktemp, the shell that opens the file or chmod; none of them is given the cookie, so the
-# reason cannot hold it.
+# mktemp, the shell that opens the file, the printf builtin that writes it, or chmod. No
+# external command is given the cookie. The printf builtin is, but its error, like the
+# others', names a file or a reason and never the value written, so the reason cannot hold
+# the cookie.
 distribution_fail() {
   distribution_reason=${2%%"$distribution_newline"*}
   distribution_reason=${distribution_reason##*: }
