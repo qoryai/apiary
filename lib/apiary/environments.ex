@@ -13,9 +13,12 @@ defmodule Apiary.Environments do
   # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
   # held for that pool) when the collection is live, assigned to the pool's workspace, has a
   # target and an `environment_ref`, and the pool's record of it is missing, was queued
-  # for another `environment_ref`, or was retired after it was last queued. Queuing sets
-  # the record's `queued_ref` and `queued_at`, making the record when there was none. So
-  # the same `environment_ref` named again queues nothing. A change while a prebuild of
+  # for another `environment_ref` or another target, or was retired after it was last
+  # queued: the trigger is keyed on the target and the `environment_ref` (V-714). Queuing
+  # sets the record's `queued_ref`, `queued_at` and queued target (`queued_target_system`,
+  # `queued_target_path`), making the record when there was none. So the same
+  # `environment_ref` named again for the same target queues nothing, and a target that
+  # changes with the same `environment_ref` queues a prebuild. A change while a prebuild of
   # the collection waits for the pool sets the change's `environment_ref` on that waiting
   # one, in the same transaction as the record's `queued_ref`, so at most one waits per
   # collection and pool; a change while one is claimed or runs queues the one that waits
@@ -63,6 +66,20 @@ defmodule Apiary.Environments do
   # live collections assigned to the pool's workspace with that target, only those with an
   # `environment_ref` count, and of their records for the pool, the one built last
   # (`built_at`) that is not retired gives its `image`; nil when there is none.
+  #
+  # ## A build recorded: `record_build/4`
+  #
+  # `record_build(dispatch_run, build, built_target, now)` records the build a prebuild's
+  # `prebuilt` reported (`Apiary.Dispatches.Prebuilt`) on the record of its pool and
+  # collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
+  # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
+  # differs from `queued_ref`, `built_at`, `now`, and the built target
+  # (`built_target_system`, `built_target_path`), the registered run's target. The last
+  # failure is cleared, and `retired_at`, the queued ref and the queued target are left as
+  # they are, so a build that lands after the collection's `environment_ref` went absent is
+  # stored and stays retired; nothing is queued. A record that is missing is made with the
+  # build, queued for the run's `environment_ref` when the run was queued, and for the
+  # built target.
 
   import Ecto.Query, only: [from: 2]
 
@@ -145,6 +162,74 @@ defmodule Apiary.Environments do
         limit: 1,
         select: r.image
     )
+  end
+
+  ## A build recorded
+
+  # record_build/4 records the build of the prebuild `dispatch_run` its `prebuilt`
+  # reported, built for `built_target` (nil for none), at `now`, inside the caller's
+  # transaction, which locked the record first (the moduledoc).
+  @doc false
+  @spec record_build(
+          Apiary.Dispatches.DispatchRun.t(),
+          %{
+            image: String.t(),
+            size: pos_integer,
+            commit: String.t(),
+            environment_ref: String.t()
+          },
+          %{system: String.t(), path: String.t()} | nil,
+          DateTime.t()
+        ) :: :ok
+  def record_build(
+        %Apiary.Dispatches.DispatchRun{pool_id: pool_id, source_collection_id: collection_id} =
+          run,
+        %{image: image, size: size, commit: commit, environment_ref: reported_ref},
+        built_target,
+        %DateTime{} = now
+      )
+      when is_binary(pool_id) and is_binary(collection_id) do
+    in_transaction!("record_build/4")
+
+    {system, path} =
+      if built_target, do: {built_target.system, built_target.path}, else: {nil, nil}
+
+    built = [
+      image: image,
+      size: size,
+      commit: commit,
+      built_at: now,
+      reported_ref: reported_ref,
+      built_target_system: system,
+      built_target_path: path,
+      failure_cause: nil,
+      failure_reason: nil,
+      failed_at: nil,
+      updated_at: now
+    ]
+
+    row =
+      Map.new(built)
+      |> Map.merge(%{
+        id: Ecto.UUID.generate(),
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        pool_id: pool_id,
+        source_collection_id: collection_id,
+        queued_ref: run.environment_ref,
+        queued_at: run.queued_at,
+        queued_target_system: system,
+        queued_target_path: path,
+        inserted_at: now
+      })
+
+    {1, _rows} =
+      Repo.insert_all(Record, [row],
+        on_conflict: [set: built],
+        conflict_target: [:pool_id, :source_collection_id]
+      )
+
+    :ok
   end
 
   ## The trigger
@@ -247,7 +332,9 @@ defmodule Apiary.Environments do
   end
 
   # Writes the record of `collection` for each of `pools` that is due, in one statement,
-  # and queues a prebuild held for each of those pools.
+  # and queues a prebuild held for each of those pools: due when the record is new, was
+  # queued for another `environment_ref` or another target, or was retired after it was
+  # last queued.
   defp queue(_collection, [], _now), do: []
 
   defp queue(%Collection{environment_ref: ref} = collection, pools, now) do
@@ -261,6 +348,8 @@ defmodule Apiary.Environments do
           source_collection_id: collection.id,
           queued_ref: ref,
           queued_at: now,
+          queued_target_system: collection.target_system,
+          queued_target_path: collection.target_path,
           inserted_at: now,
           updated_at: now
         }
@@ -270,11 +359,15 @@ defmodule Apiary.Environments do
       from r in Record,
         where:
           r.queued_ref != fragment("EXCLUDED.queued_ref") or
+            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_system", r.queued_target_system) or
+            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_path", r.queued_target_path) or
             (not is_nil(r.retired_at) and r.queued_at < r.retired_at),
         update: [
           set: [
             queued_ref: fragment("EXCLUDED.queued_ref"),
             queued_at: fragment("EXCLUDED.queued_at"),
+            queued_target_system: fragment("EXCLUDED.queued_target_system"),
+            queued_target_path: fragment("EXCLUDED.queued_target_path"),
             updated_at: fragment("EXCLUDED.updated_at")
           ]
         ]

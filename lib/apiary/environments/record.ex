@@ -3,15 +3,20 @@ defmodule Apiary.Environments.Record do
   # pool of the collection's workspace: one per pool and collection. The table and its
   # rules are `20261017200100_keep_environments`'s.
   #
-  # `queued_ref` and `queued_at` are the collection's `environment_ref` the last prebuild
-  # for the pool was queued for, and when. `image`, `size`, `commit`, `built_at` and
-  # `reported_ref` are the last good build, set together or not at all: the image pinned
-  # by its digest, its size in bytes, and the commit and the `environment_ref` the job
-  # read, which are compared and stored, never read. `failure_cause` (`failure_causes/0`),
-  # `failure_reason` (a starter's release alone has one) and `failed_at` are the last
-  # build that failed, which leaves the last good build as it was. `retired_at` is when the
-  # collection's `environment_ref` went from a value to none: the image is retired for new
-  # runs, and the record keeps the rest.
+  # `queued_ref`, `queued_at`, `queued_target_system` and `queued_target_path` are the
+  # collection's `environment_ref` and target the last prebuild for the pool was queued
+  # for, and when: a record queued before its target was kept has its collection's target
+  # as it was when the migration that keeps it ran, or none. `image`, `size`, `commit`,
+  # `built_at` and `reported_ref` are the last good build, set together or not at all: the
+  # image pinned by its digest, its size in bytes, and the commit and the
+  # `environment_ref` the job read, which are compared and stored, never read.
+  # `built_target_system` and `built_target_path` are the target that build was built
+  # for, the registered run's target when it was recorded, or none. `failure_cause`
+  # (`failure_causes/0`), `failure_reason` (a starter's release alone has one) and
+  # `failed_at` are the last build that failed, which leaves the last good build as it
+  # was; a build recorded since clears them. `retired_at` is when the collection's
+  # `environment_ref` went from a value to none: the image is retired for new runs, and
+  # the record keeps the rest.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -27,11 +32,15 @@ defmodule Apiary.Environments.Record do
   schema "environments" do
     field :queued_ref, :string
     field :queued_at, :utc_datetime_usec
+    field :queued_target_system, :string
+    field :queued_target_path, :string
     field :image, :string
     field :size, :integer
     field :commit, :string
     field :built_at, :utc_datetime_usec
     field :reported_ref, :string
+    field :built_target_system, :string
+    field :built_target_path, :string
     field :failure_cause, Ecto.Enum, values: @failure_causes
     field :failure_reason, :string
     field :failed_at, :utc_datetime_usec
