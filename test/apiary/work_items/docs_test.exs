@@ -16,6 +16,7 @@ defmodule Apiary.WorkItems.DocsTest do
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
+    ApiaryWeb.WorkItemLive.Comments,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.ConnectSession
   ]
@@ -47,6 +48,7 @@ defmodule Apiary.WorkItems.DocsTest do
              Enum.sort([
                Apiary.WorkItems,
                Apiary.WorkItems.Answer,
+               Apiary.WorkItems.Comment,
                Apiary.WorkItems.Confirmation,
                Apiary.WorkItems.Explore,
                Apiary.WorkItems.ExploreView,
