@@ -576,6 +576,36 @@ defmodule Apiary.Dispatches.HandoverTest do
       ended!(ctx, queued, dispatch, :inputs_invalid)
     end
 
+    test "whose answers name a member by a name the contract refuses ends inputs_invalid, gone",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      %{user: member} = member_fixture(ctx.scope)
+
+      {1, _rows} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^member.id),
+          set: [email: "ann\u202Ex@example.com"]
+        )
+
+      Repo.insert!(%Apiary.WorkItems.Answer{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        take_in: queued.take_in,
+        attempt: 1,
+        position: 1,
+        question: "Which basket?",
+        answer: "The one at checkout.",
+        answered_by_id: member.id,
+        answered_at: DateTime.utc_now()
+      })
+
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert handover(ctx.key, dispatch) == {:error, :gone}
+      ended!(ctx, queued, dispatch, :inputs_invalid)
+    end
+
     test "ends a stale dispatch of it run_ended", ctx do
       {work_item, queued} = queued!(ctx)
       stale = claimed!(ctx)

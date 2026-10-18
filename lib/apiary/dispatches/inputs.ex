@@ -25,7 +25,8 @@ defmodule Apiary.Dispatches.Inputs do
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
   #   - `answers`: the answers given within the run's take in, oldest first
-  #     (`Apiary.WorkItems.take_in_answers/2`);
+  #     (`Apiary.WorkItems.take_in_answers/2`), each with who gave it, named as who took
+  #     the work item in is named and held to the same rule;
   #   - `target`: the work item's target, the handover answer's `target`.
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
@@ -83,9 +84,10 @@ defmodule Apiary.Dispatches.Inputs do
   def explore(%WorkItem{} = work_item, %DispatchRun{} = dispatch_run) do
     with {:ok, item} <- ticket(work_item),
          {:ok, by} <- taken_in_by(work_item),
-         :ok <- valid(work_item) do
+         :ok <- valid(work_item),
+         {:ok, answers} <- answers(work_item, dispatch_run) do
       comments = Enum.map(comments(item), &comment/1)
-      inputs = bounded(&document(work_item, dispatch_run, item, by, &1, &2), comments)
+      inputs = bounded(&document(work_item, dispatch_run, item, by, answers, &1, &2), comments)
 
       # Every comment left out, the rest is within the bound by the columns' bounds; held all
       # the same.
@@ -118,6 +120,15 @@ defmodule Apiary.Dispatches.Inputs do
       %User{deleted_at: nil, email: email} when is_binary(email) -> User.short_name(email)
       _deleted -> @former_member
     end
+  end
+
+  # The answers of the run's take in, read once, each with a name the contract takes.
+  defp answers(work_item, %DispatchRun{take_in: take_in}) do
+    answers = WorkItems.take_in_answers(work_item, take_in)
+
+    if Enum.all?(answers, &name?(&1["by"]["name"])),
+      do: {:ok, answers},
+      else: {:error, :inputs_invalid}
   end
 
   defp name?(name),
@@ -157,7 +168,7 @@ defmodule Apiary.Dispatches.Inputs do
   defp person(name, kind),
     do: Jason.OrderedObject.new([{"name", name}, {"kind", Atom.to_string(kind)}])
 
-  defp document(work_item, dispatch_run, item, by, comments, omitted) do
+  defp document(work_item, dispatch_run, item, by, answers, comments, omitted) do
     Jason.OrderedObject.new([
       {"version", @version},
       {"work_item",
@@ -186,7 +197,7 @@ defmodule Apiary.Dispatches.Inputs do
        ])},
       {"comments", comments},
       {"comments_omitted", omitted},
-      {"answers", WorkItems.take_in_answers(work_item, dispatch_run.take_in)},
+      {"answers", answers},
       {"target",
        Jason.OrderedObject.new([
          {"system", work_item.target_system},

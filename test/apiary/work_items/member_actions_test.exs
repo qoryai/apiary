@@ -211,6 +211,34 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert Jason.decode!(Jason.encode!(answer))["by"] == %{"name" => "former member"}
     end
 
+    test "an answer by a member whose name the contract refuses: the next run has no input",
+         ctx do
+      # The account's email rules take a bidirectional control in the local part; the
+      # explore input's name refuses it.
+      email = "ann\u202Ex@example.com"
+
+      assert Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{email: email},
+               validate_unique: false
+             ).valid?
+
+      %{user: user} = member_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^user.id),
+          set: [email: email]
+        )
+
+      member = workspace_scope(Repo.get!(Apiary.Accounts.User, user.id), ctx.scope.workspace)
+
+      asked!(ctx.work_item, ["Which basket?"])
+      {:ok, answered} = WorkItems.answer(member, ctx.work_item, 1, %{"1" => "The small one."})
+
+      next =
+        Repo.one!(from r in DispatchRun, where: r.work_item_id == ^answered.id and r.attempt == 2)
+
+      assert Inputs.explore(answered, next) == {:error, :inputs_invalid}
+    end
+
     test "answers belong to their take in: another take in reads none of them", ctx do
       asked!(ctx.work_item, ["Which basket?"])
       {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "The small one."})

@@ -125,7 +125,7 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
     assert kinds(ctx) == [:taken_in, :confirmed]
   end
 
-  test "an answer beside a decline: each waits for the other, and reads what it left", ctx do
+  test "an answer beside a decline: it waits, then finds the work item declined", ctx do
     asked!(ctx)
 
     {declined, declined_pid} = hold(decline(ctx))

@@ -185,6 +185,56 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert WorkItems.explore(elsewhere, ctx.work_item) == nil
       assert WorkItems.explore_thread(elsewhere, ctx.work_item) == []
     end
+
+    test "another organisation's work item, its struct changed to name this workspace: nothing",
+         ctx do
+      %{scope: other} = sign_up_fixture()
+      theirs = work_item_fixture(other)
+      explore_run_fixture(theirs, result: questions_result(["Which basket?"]))
+      {:ok, theirs} = WorkItems.answer(other, theirs, 1, %{"1" => "Their answer."})
+
+      forged = %{
+        theirs
+        | organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id
+      }
+
+      assert WorkItems.explore(ctx.scope, forged) == nil
+      assert WorkItems.explore_thread(ctx.scope, forged) == []
+    end
+
+    test "a work item that has since moved to another workspace: nothing from the old struct",
+         ctx do
+      explore_run_fixture(ctx.work_item, result: questions_result(["Which basket?"]))
+      {:ok, answered} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "At checkout."})
+      there = workspace_fixture(ctx.scope.organisation)
+
+      {1, _} =
+        Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^answered.id),
+          set: [workspace_id: there.id]
+        )
+
+      assert WorkItems.explore(ctx.scope, answered) == nil
+      assert WorkItems.explore_thread(ctx.scope, answered) == []
+
+      # Read in the workspace it is in now, it is drawn as the database holds it.
+      assert %{take_in: 1} = WorkItems.explore(workspace_scope(ctx.scope.user, there), answered)
+    end
+
+    test "an id that is not a UUID, or none: nothing, and no raise", ctx do
+      for id <- ["wi_0000000000000000", "not-a-uuid", nil] do
+        work_item = %{ctx.work_item | id: id}
+        assert WorkItems.explore(ctx.scope, work_item) == nil
+        assert WorkItems.explore_thread(ctx.scope, work_item) == []
+      end
+    end
+
+    test "the row is drawn as the database holds it, not as the struct says", ctx do
+      explore_run_fixture(ctx.work_item, result: understood_result())
+      stale = %{ctx.work_item | take_in: 7, state: :closed}
+
+      assert %{status: :confirm, take_in: 1, stage: nil} = WorkItems.explore(ctx.scope, stale)
+    end
   end
 
   describe "explore_thread/3" do

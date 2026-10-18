@@ -127,15 +127,29 @@ defmodule Apiary.Repo.Migrations.KeepATakeInSAnswersAndConfirmation do
   end
 
   # Rolled back, the two tables go, and an event may no longer be `answered`, `confirmed`
-  # or `explore_again`: the roll back deletes those events first, as the rows they speak
-  # of go with the tables.
+  # or `explore_again`, so the roll back refuses while an event of those kinds is kept: it
+  # deletes no event, and none of the records the tables hold.
+  @refusal "Qory keeps what members gave Explore, and an event of a work item may be " <>
+             "answered, confirmed or explore_again, so this migration rolls back only " <>
+             "while no event is of those kinds. Some are."
+
   def down do
+    execute("LOCK TABLE work_item_events IN SHARE MODE")
+
+    execute("""
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM work_item_events WHERE kind IN ('answered', 'confirmed', 'explore_again')
+      ) THEN
+        RAISE EXCEPTION '#{@refusal}';
+      END IF;
+    END
+    $$
+    """)
+
     drop table(:work_item_confirmations)
     drop table(:work_item_answers)
-
-    execute(
-      "DELETE FROM work_item_events WHERE kind IN ('answered', 'confirmed', 'explore_again')"
-    )
 
     drop constraint(:work_item_events, :work_item_events_kind_check)
 

@@ -222,31 +222,48 @@ defmodule Apiary.WorkItems do
   @doc false
   # explore/3 is where Explore stands for `work_item` at `now`, as the work item pages
   # draw it (`Apiary.WorkItems.ExploreView`), to a person who may read it there; nil
-  # otherwise.
+  # otherwise. Only the work item's id is taken from `work_item`: the row is read again
+  # within the scope's organisation and workspace, and drawn as the database holds it.
   @spec explore(Scope.t(), WorkItem.t(), DateTime.t()) :: map | nil
   def explore(%Scope{} = scope, %WorkItem{} = work_item, now \\ DateTime.utc_now()) do
-    if readable?(scope, work_item), do: ExploreView.explore(work_item, now)
+    case readable(scope, work_item) do
+      {:ok, row} -> ExploreView.explore(row, now)
+      :error -> nil
+    end
   end
 
   @doc false
   # explore_thread/3 is what happened to `work_item` at Explore, at `now`, for the
   # Thread (`Apiary.WorkItems.ExploreView`), to a person who may read it there; none
-  # otherwise.
+  # otherwise. The row is read again by its id, as for `explore/3`.
   @spec explore_thread(Scope.t(), WorkItem.t(), DateTime.t()) :: [map]
   def explore_thread(%Scope{} = scope, %WorkItem{} = work_item, now \\ DateTime.utc_now()) do
-    if readable?(scope, work_item), do: ExploreView.thread(work_item, now), else: []
-  end
-
-  # A work item of the scope's workspace, which the person may read.
-  defp readable?(scope, %WorkItem{id: id, workspace_id: workspace_id} = work_item)
-       when is_binary(id) do
-    case workspace(scope) do
-      {:ok, _organisation_id, ^workspace_id} -> Access.can?(scope, :"work_item.read", work_item)
-      _other -> false
+    case readable(scope, work_item) do
+      {:ok, row} -> ExploreView.thread(row, now)
+      :error -> []
     end
   end
 
-  defp readable?(_scope, _work_item), do: false
+  # The row of the work item `id` names, of the scope's organisation and workspace, which
+  # the person may read: `{:ok, row}`, or `:error` for an id that is not a UUID, a work
+  # item of another organisation or workspace, one not there, or a person who may not
+  # read it.
+  defp readable(scope, %WorkItem{id: id}) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, organisation_id, workspace_id} <- workspace(scope),
+         %WorkItem{} = row <-
+           Repo.one(
+             from w in WorkItem,
+               where:
+                 w.id == ^id and w.organisation_id == ^organisation_id and
+                   w.workspace_id == ^workspace_id
+           ),
+         true <- Access.can?(scope, :"work_item.read", row) do
+      {:ok, row}
+    else
+      _refused -> :error
+    end
+  end
 
   ## What the pages hear
 
