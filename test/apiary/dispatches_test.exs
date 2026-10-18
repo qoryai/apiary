@@ -1,6 +1,6 @@
 defmodule Apiary.DispatchesTest do
   # The queue of a workspace and its claims (`Apiary.Dispatches`): a run queued in its
-  # work item's workspace, a prebuild held for one pool and the claims that take it or
+  # work item's workspace, the next runs of a take in up to its `of`, a prebuild held for one pool and the claims that take it or
   # never see it, an undo before, during and after a claim, one try at a claim
   # against the pool's limit, the slots freed once, the sweep of lapsed leases on one clock, and
   # the instance limit of a pool that counts both its dispatched and its other runs. A
@@ -94,7 +94,145 @@ defmodule Apiary.DispatchesTest do
     test "runs only inside the caller's transaction", ctx do
       work_item = work_item_fixture(ctx.scope)
       assert_raise ArgumentError, fn -> Dispatches.queue(work_item, 1) end
+      assert_raise ArgumentError, fn -> Dispatches.queue_next(work_item, 1) end
       assert_raise ArgumentError, fn -> Dispatches.cancel_for_undo(work_item) end
+    end
+  end
+
+  describe "queue_next/2" do
+    defp queue_next(work_item, take_in \\ 1),
+      do: Repo.transact(fn -> {:ok, Dispatches.queue_next(work_item, take_in)} end)
+
+    defp queued_next!(work_item, take_in \\ 1) do
+      {:ok, {:ok, run}} = queue_next(work_item, take_in)
+      run
+    end
+
+    # The run as it stands in `state`, ended `lost` should that state be `:ended`.
+    defp put_state!(run, :ended), do: set_run!(run, state: :ended, end_cause: :lost)
+    defp put_state!(run, state), do: set_run!(run, state: state)
+
+    defp set_run!(run, set) do
+      {1, _rows} = Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: set)
+      run!(run)
+    end
+
+    defp runs_of(work_item, take_in) do
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^work_item.id and r.take_in == ^take_in,
+          order_by: r.attempt,
+          select: {r.attempt, r.of, r.state}
+      )
+    end
+
+    test "once the take in's run ended, writes its next: attempt 2 of the same of, waiting, a new run",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      first = work_item |> queue!() |> put_state!(:ended)
+      run = queued_next!(work_item)
+
+      assert %DispatchRun{
+               state: :waiting,
+               step: "explore",
+               take_in: 1,
+               attempt: 2,
+               of: 3,
+               end_cause: nil
+             } = run!(run)
+
+      assert run.work_item_id == work_item.id
+      assert run.workspace_id == ctx.scope.workspace.id
+      assert run.organisation_id == ctx.scope.organisation.id
+      assert run.run_id != first.run_id
+      assert run!(first).state == :ended
+    end
+
+    test "writes attempt 3 after 2, and once the third ended answers used_up, writing none",
+         ctx do
+      work_item = work_item_fixture(ctx.scope)
+      work_item |> queue!() |> put_state!(:ended)
+      work_item |> queued_next!() |> put_state!(:ended)
+      third = queued_next!(work_item)
+      assert %DispatchRun{attempt: 3, of: 3, state: :waiting} = run!(third)
+
+      put_state!(third, :ended)
+      assert {:ok, {:error, :used_up}} = queue_next(work_item)
+
+      assert runs_of(work_item, 1) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :ended}]
+    end
+
+    test "counts up to the `of` of the take in's runs, not to of/0", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      work_item |> queue!() |> set_run!(state: :ended, end_cause: :lost, of: 2)
+
+      second = queued_next!(work_item)
+      assert %DispatchRun{attempt: 2, of: 2} = run!(second)
+
+      put_state!(second, :ended)
+      assert {:ok, {:error, :used_up}} = queue_next(work_item)
+    end
+
+    test "while a run of the take in waits, is claimed or is handed over, answers running, writing none",
+         ctx do
+      for state <- [:waiting, :claimed, :handed_over] do
+        work_item = work_item_fixture(ctx.scope)
+        work_item |> queue!() |> put_state!(:ended)
+        work_item |> queued_next!() |> put_state!(state)
+
+        assert {:ok, {:error, :running}} = queue_next(work_item)
+        assert runs_of(work_item, 1) == [{1, 3, :ended}, {2, 3, state}]
+      end
+    end
+
+    test "while the take in's last run waits, answers running before used_up", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      work_item |> queue!() |> put_state!(:ended)
+      work_item |> queued_next!() |> put_state!(:ended)
+      queued_next!(work_item)
+
+      assert {:ok, {:error, :running}} = queue_next(work_item)
+    end
+
+    test "a take in with no run answers no_run, writing none", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      assert {:ok, {:error, :no_run}} = queue_next(work_item)
+      assert runs_of(work_item, 1) == []
+
+      # Another take in's runs are not this take in's.
+      work_item |> queue!(1) |> put_state!(:ended)
+      assert {:ok, {:error, :no_run}} = queue_next(work_item, 2)
+    end
+
+    test "a take in again counts its runs from 1, apart from the earlier take in's", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      work_item |> queue!(1) |> put_state!(:ended)
+      work_item |> queued_next!(1) |> put_state!(:ended)
+      work_item |> queued_next!(1) |> put_state!(:ended)
+      assert {:ok, {:error, :used_up}} = queue_next(work_item, 1)
+
+      again = queue!(work_item, 2)
+      assert %DispatchRun{take_in: 2, attempt: 1, of: 3} = run!(again)
+      put_state!(again, :ended)
+
+      assert %DispatchRun{take_in: 2, attempt: 2, of: 3} = run!(queued_next!(work_item, 2))
+      assert {:ok, {:error, :used_up}} = queue_next(work_item, 1)
+      assert {:ok, {:error, :running}} = queue_next(work_item, 2)
+    end
+
+    test "queues in the workspace the work item is in now, and tells it", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      work_item |> queue!() |> put_state!(:ended)
+      other = workspace_fixture(ctx.scope.organisation)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: other.id]
+      )
+
+      :ok = Dispatches.subscribe(other.id)
+      run = queued_next!(work_item)
+      assert run!(run).workspace_id == other.id
+      assert_received {Dispatches, :changed}
     end
   end
 

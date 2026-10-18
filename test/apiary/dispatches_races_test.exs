@@ -8,8 +8,10 @@ defmodule Apiary.DispatchesRacesTest do
   # The rules under test: a claim locks its pool's row `FOR NO KEY UPDATE` before it
   # counts the pool's slots, so two claims of one pool take turns and the second counts
   # the first; and it takes the oldest waiting run `FOR UPDATE SKIP LOCKED`, so two
-  # claims, of one pool or of two, never take one run. One prebuild waits per collection
-  # and node pool: two triggers at once take turns on the environment record, two queues
+  # claims, of one pool or of two, never take one run. Two next runs of one take in
+  # (`Apiary.Dispatches.queue_next/2`) take turns on the work item's row, so one is
+  # written and the other finds it waiting. One prebuild waits per collection and node
+  # pool: two triggers at once take turns on the environment record, two queues
   # at once on the index of the waiting ones, and a lapse that would make a claimed
   # prebuild wait again waits for a trigger that holds the record. Every path takes its
   # locks in the one order `Apiary.Dispatches.Slots` names, so none of them, let go
@@ -285,6 +287,35 @@ defmodule Apiary.DispatchesRacesTest do
     assert {1, _} = Task.await(mover.task)
 
     assert run.workspace_id == ctx.scope.workspace.id
+  end
+
+  test "of two next runs at once for one take in, the second waits on the work item, finds the first's run waiting and writes none",
+       ctx do
+    # queue_next/2 locks the work item before it reads the take in's runs, so the second
+    # reads them once the first committed its run.
+    work_item = work_item_fixture(ctx.scope)
+    Agent.update(ctx.made, &%{&1 | adapters: [work_item.adapter_id | &1.adapters]})
+    {:ok, first_run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+    Repo.update_all(from(r in DispatchRun, where: r.id == ^first_run.id),
+      set: [state: :ended, end_cause: :lost]
+    )
+
+    {first, first_pid} = hold(fn -> Dispatches.queue_next(work_item, 1) end)
+    assert {:ok, %DispatchRun{attempt: 2}} = first.result
+
+    second = start(fn -> Repo.transact(fn -> {:ok, Dispatches.queue_next(work_item, 1)} end) end)
+
+    await_blocked(second.backend, first_pid)
+    commit(first)
+    assert {:ok, {:error, :running}} = Task.await(second.task)
+
+    assert Repo.all(
+             from r in DispatchRun,
+               where: r.work_item_id == ^work_item.id,
+               order_by: r.attempt,
+               select: {r.attempt, r.state}
+           ) == [{1, :ended}, {2, :waiting}]
   end
 
   describe "one prebuild waits per collection and node pool" do

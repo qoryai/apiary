@@ -6,7 +6,7 @@ defmodule Apiary.Dispatches do
   # any node pool of the workspace claims from with its pool's access key
   # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`).
   #
-  # ## Queueing: `queue/2`, `cancel_for_undo/1` and `cancel_for_close/2`
+  # ## Queueing: `queue/2`, `queue_next/2`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
@@ -15,6 +15,17 @@ defmodule Apiary.Dispatches do
   # the run, or the run for the move. The database names a run's work item by the
   # organisation alone; this is what holds a queued run to its work item's workspace. The
   # run waits for no pool in particular: any pool of that workspace may claim it.
+  #
+  # `queue_next(work_item, take_in)` writes, inside the caller's transaction, the next run
+  # of a take in that has one: waiting, `attempt` one past the highest of the take in's
+  # runs, of the same `of`, for the step `step/0`, in the work item's workspace, its row
+  # locked `FOR UPDATE` first as `queue/2` locks it, and only then the take in's runs read.
+  # Every new run counts toward `of`; a run back in the queue after a lapsed lease or a
+  # release with retry before its handover is the same run, not a new one. While a run of
+  # the take in has not ended, waiting, claimed or handed over, it is `{:error, :running}`;
+  # once the highest attempt is its `of`, `{:error, :used_up}`; a take in with no run is
+  # `{:error, :no_run}`, as its first run is `queue/2`'s to write. Two at once for one take
+  # in take turns on the work item, and the second finds the first's run waiting.
   #
   # `queue_prebuild(collection, pool, environment_ref)` writes, inside the caller's
   # transaction, a run for the step `prebuild`: waiting in the pool's workspace, which is
@@ -214,14 +225,57 @@ defmodule Apiary.Dispatches do
   @spec queue(WorkItem.t(), pos_integer) :: {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
   def queue(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!("queue/2")
+    id |> lock_work_item!() |> insert_run(take_in, 1, @of)
+  end
 
-    %{organisation_id: organisation_id, workspace_id: workspace_id} =
-      Repo.one!(
-        from w in WorkItem,
-          where: w.id == ^id,
-          lock: "FOR UPDATE",
-          select: %{organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+  # queue_next/2 writes the next run of take in `take_in` of `work_item`, once every run
+  # of the take in ended and while one is left of its `of`, waiting in the work item's
+  # workspace, inside the caller's transaction (the moduledoc).
+  @doc false
+  @spec queue_next(WorkItem.t(), pos_integer) ::
+          {:ok, DispatchRun.t()}
+          | {:error, :no_run | :running | :used_up | Ecto.Changeset.t()}
+  def queue_next(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
+    in_transaction!("queue_next/2")
+    work_item = lock_work_item!(id)
+
+    runs =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          select: %{state: r.state, attempt: r.attempt, of: r.of}
       )
+
+    case runs do
+      [] ->
+        {:error, :no_run}
+
+      runs ->
+        %{attempt: attempt, of: of} = Enum.max_by(runs, & &1.attempt)
+
+        cond do
+          Enum.any?(runs, &(&1.state != :ended)) -> {:error, :running}
+          attempt >= of -> {:error, :used_up}
+          true -> insert_run(work_item, take_in, attempt + 1, of)
+        end
+    end
+  end
+
+  # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
+  # organisation and the workspace it is in now.
+  defp lock_work_item!(id) do
+    Repo.one!(
+      from w in WorkItem,
+        where: w.id == ^id,
+        lock: "FOR UPDATE",
+        select: %{id: w.id, organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+    )
+  end
+
+  # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
+  # step `step/0`, in the work item's organisation and workspace; the workspace is told.
+  defp insert_run(work_item, take_in, attempt, of) do
+    %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
     result =
       %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
@@ -229,8 +283,8 @@ defmodule Apiary.Dispatches do
         work_item_id: id,
         step: @step,
         take_in: take_in,
-        attempt: 1,
-        of: @of,
+        attempt: attempt,
+        of: of,
         queued_at: now()
       })
       |> Repo.insert()
