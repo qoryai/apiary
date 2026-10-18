@@ -10,7 +10,7 @@ defmodule Apiary.Dispatches.RunEnd do
   #   it in its transaction (`hold/1`, `lock/1`, then `finish/5`, from
   #   `Apiary.Runs.Outcome`), and a projection that folded the exit right after it
   #   (`run_ended/1`, from `Apiary.Runs.Projector`). A prebuild's exit ends nothing of the
-  #   queue (V-839): its one session may be the fetch, whose exit comes before the build
+  #   queue: its one session may be the fetch, whose exit comes before the build
   #   runs, so the exit folds onto the registered run as any exit does, and its outcome
   #   alone ends it so;
   # - its starter's release after the handover (`released/2`, from

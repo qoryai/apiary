@@ -5,9 +5,9 @@ defmodule Apiary.EnvironmentsTest do
   # composite keys that hold a record to its pool's workspace and its collection's
   # organisation, the purges of a workspace and of an organisation, the trigger that
   # queues a prebuild per node pool from a listing, an assign and a new pool, keyed on the
-  # target and the `environment_ref` (V-714), one waiting per collection and pool, a build
+  # target and the `environment_ref`, one waiting per collection and pool, a build
   # recorded with the target it was built for and when it was queued, whether a prebuild
-  # was queued before the recorded build (V-804), and a run's image: which record gives it.
+  # took its ref before the recorded build took its, and a run's image: which record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -631,7 +631,7 @@ defmodule Apiary.EnvironmentsTest do
              } = Environments.fetch(ctx.pool.id, shop.id)
     end
 
-    test "a target that changes with the same environment_ref queues a prebuild, as a changed environment_ref does (V-714)",
+    test "a target that changes with the same environment_ref queues a prebuild, as a changed environment_ref does",
          ctx do
       moved = %{system: "code.example.com", path: "acme/shop-next"}
       shop = list(ctx, 1, %{environment_ref: "env-1"})
@@ -816,7 +816,7 @@ defmodule Apiary.EnvironmentsTest do
     end
   end
 
-  describe "a build whose ref is older than the image's (V-804)" do
+  describe "a build whose ref is older than the image's" do
     # A prebuild queued an hour before it took its ref at `at`, as one that waited again.
     defp run_queued_at(at),
       do: %DispatchRun{

@@ -227,7 +227,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
              }) == nil
     end
 
-    test "records the target the run was handed over for, not the collection's target now (V-714)",
+    test "records the target the run was handed over for, not the collection's target now",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
 
@@ -246,7 +246,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     end
   end
 
-  describe "a prebuild whose ref is older than the recorded image's (V-804)" do
+  describe "a prebuild whose ref is older than the recorded image's" do
     # The run of `claimed` ended as a release after its handover ends it, its slot freed.
     defp released!(claimed, cause \\ :prebuilt)
 
@@ -353,7 +353,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     end
   end
 
-  describe "a prebuild that waits again, and takes a newer ref (V-804)" do
+  describe "a prebuild that waits again, and takes a newer ref" do
     @image_b "registry.example.com/acme/env@sha256:" <> String.duplicate("bb", 32)
     @image_c "registry.example.com/acme/env@sha256:" <> String.duplicate("cc", 32)
 
@@ -612,7 +612,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
       assert entries() == []
     end
 
-    test "after the run's exit folded, which ends nothing of a prebuild's queue, records the build and ends the run prebuilt (V-839)",
+    test "after the run's exit folded, which ends nothing of a prebuild's queue, records the build and ends the run prebuilt",
          ctx do
       %{collection: collection, dispatch: dispatch, dispatch_run: queued, run: run} =
         handed_over!(ctx)

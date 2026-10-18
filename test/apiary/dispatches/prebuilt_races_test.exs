@@ -250,7 +250,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
     end
   end
 
-  describe "a prebuild queued before the one that made the recorded image (V-804)" do
+  describe "a prebuild whose ref is older than the recorded image's" do
     defp commit!(ctx, claimed), do: record!(ctx, claimed).commit
 
     test "the newer prebuilt first: the older one's waits on the record, then ends its run and leaves the image",
@@ -344,7 +344,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
     end
   end
 
-  describe "a prebuilt and the run's end (V-839)" do
+  describe "a prebuilt and the run's end" do
     test "the projection of its exit at once: the prebuilt records the build, and the run of the queue ends prebuilt",
          ctx do
       for _round <- 1..3 do
